@@ -1,0 +1,5 @@
+This project is a port of the Liszt DSL, which was originally embedded in Scala, to the Lua/Terra system, with the following (planned) extensions:
+ - implicit method support (both sparse matrix encoding and an interface to external solver libraries)
+ - mesh data will be stored on a generic OP2-like graph structure that will allow us to represent fields and sparse matrices with the same data structure.
+
+spec/ - contains example programs written in the Scala version of Liszt, paired with their Liszt-in-Terra equivalents.
