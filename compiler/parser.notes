@@ -1,0 +1,17 @@
+add statements:
+
+ - if expr then block else block end
+ - if expr then block end
+ - while expr do block end
+ - FieldWrite
+ - FieldSave
+ - FieldRead
+ - DefVar
+ - Assign // lv op= var
+ 
+
+ Block -> statement+
+
+ statement: 
+ 	- assignment
+    - ...

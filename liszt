@@ -1,0 +1,2 @@
+#!/bin/bash
+terra -l /Users/crystallemire/repos/liszt-in-terra/compiler/liszt.t $1
