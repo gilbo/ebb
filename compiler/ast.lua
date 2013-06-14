@@ -68,9 +68,9 @@ inherit(NumericFor,     Statement)
 inherit(GenericFor,     Statement)
 
 
----------------------
+-----------------------------
 --[[ General AST Methods ]]--
----------------------
+-----------------------------
 function AST:New (...)
 	return setmetatable({ children = {...}, kind = self.kind }, {__index = self})
 end
@@ -81,9 +81,9 @@ function LValue.isLValue ( ) return true  end
 function Tuple:size ( ) return #self.children end
 
 
----------------------
+---------------------------
 --[[ AST tree printing ]]--
----------------------
+---------------------------
 local indent_delta = '   '
 
 function AST:pretty_print (indent)

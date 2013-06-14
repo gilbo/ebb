@@ -15,3 +15,43 @@ add statements:
  statement: 
  	- assignment
     - ...
+
+
+
+
+
+local a = expr
+
+a = expr
+
+lvalue = a + b...
+
+
+a <- Name <- LValue
+b <- Name <- LValue
+
+a.b = simpleexpr
+
+Assignment:
+LValue:
+TableLookup:
+Name: a, Field: Name: b
+
+
+
+supported for statements:
+
+for i in 1,10,1 do
+	Block
+end
+
+
+Numeric:
+for name (, name)? (,name)? = expr (,expr?) (,expr) do
+	block
+end
+
+Generic:
+for name (, name)* in expr do
+	Block
+end
