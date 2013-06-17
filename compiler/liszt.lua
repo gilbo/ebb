@@ -1,7 +1,7 @@
 -- Imports
 package.path = package.path .. ";./compiler/?.lua;./compiler/?.t"
 require "ast"
-local Parser = terralib.require('/Users/crystallemire/repos/liszt-in-terra/compiler/parsing')
+local Parser = terralib.require('terra/tests/lib/parsing')
 
 
 -- Global precedence table

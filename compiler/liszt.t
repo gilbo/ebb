@@ -1,8 +1,6 @@
 package.path = package.path .. ";./compiler/?.lua;./compiler/?.t"
 require "liszt"
 
-local Parser = terralib.require("/Users/crystallemire/repos/liszt-in-terra/compiler/parsing")
-
 local lisztlanguage = {
    name        = "liszt", -- name for debugging
    entrypoints = {"liszt_kernel"},
