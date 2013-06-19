@@ -41,17 +41,17 @@
 <table>
 
 <tr><td>Expression </td><td>::</td><td> BinaryOp | UnaryOp | LValue | Value | '(' Expression ')' </td></tr>
-<tr><td>Value      </td><td>::</td><td> Number | String                                              </td></tr>
+<tr><td>Value      </td><td>::</td><td> Number | String | Bool                                   </td></tr>
 
 <tr><td>&nbsp;</td></tr>
 <tr><td>BinaryOp </td><td>::</td><td> Expression Op Expression </td></tr>
-<tr><td>UnaryOp  </td><td>::</td><td> Uop Expression </td></tr>
+<tr><td>UnaryOp  </td><td>::</td><td> Uop Expression           </td></tr>
 
 <tr><td>&nbsp;</td></tr>
-<tr><td>LValue                      </td><td>::</td><td>  FieldIndex | Scalar | TableLookup | Name </td></tr>
-<tr><td>TableLookup                      </td><td>::</td><td> LValue '.' Name                                </td></tr>
-<tr><td>FieldIndex </td><td>::</td><td> LValue '(' Name ')'                      </td></tr>
-<tr><td>ScalarRead, ScalarWrite          </td><td>::</td><td> LValue                                         </td></tr>
+<tr><td>LValue                   </td><td>::</td><td>  FieldIndex | Scalar | TableLookup | Name </td></tr>
+<tr><td>TableLookup              </td><td>::</td><td> LValue '.' Name                           </td></tr>
+<tr><td>FieldIndex               </td><td>::</td><td> LValue '(' Name ')'                       </td></tr>
+<tr><td>ScalarRead, ScalarWrite  </td><td>::</td><td> LValue                                    </td></tr>
 
 <tr><td>&nbsp;</td></tr>
 <tr><td>Op  </td><td>::</td><td> + | - | * | / | == | &lt;= | &gt;= | &lt; | &gt; | ~= | <b>and</b> | <b>or</b> | ^ </td></tr>

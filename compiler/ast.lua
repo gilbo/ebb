@@ -20,6 +20,7 @@ Call           = { kind = 'call'   }
 Name           = { kind = 'name'   }
 Number         = { kind = 'number' }
 String         = { kind = 'string' }
+Bool           = { kind = 'bool'   }
 
 -- Statements:
 Statement      = { kind = 'statement'  }  -- abstract
@@ -53,6 +54,7 @@ inherit(BinaryOp, Expression)
 inherit(UnaryOp,  Expression)
 inherit(Number,   Expression)
 inherit(String,   Expression)
+inherit(Bool,     Expression)
 inherit(Tuple,    Expression)
 
 inherit(Call,        LValue)
@@ -129,6 +131,11 @@ end
 function Number:pretty_print (indent)
 	indent = indent or ''
 	print(indent .. self.kind .. ": " .. self.children[1])
+end
+
+function Bool:pretty_print (indent)
+	indent = indent or ''
+	print(indent .. self.kind .. ':' .. self.children[1])
 end
 
 function String:pretty_print (indent)

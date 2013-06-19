@@ -87,7 +87,7 @@ lang.tuple = function (P, exprs)
 end
 
 --[[ recursively checks to see if lhs is part of a field index 
-     or a table lookup lhs parameter is already an LValue 
+     or a table lookup. lhs parameter is already an LValue 
 --]]
 lang.lvaluehelper = function (P, lhs)
 	local cur = P:cur()
@@ -121,15 +121,17 @@ end
 
 --[[  simpleexp is called when exp cannot parse the next token...
       we could be looking at an LValue, Value, or parenthetically
-      enclosed expression 
+      enclosed expression  
 --]]
 lang.simpleexp = function(P)
-	local token = P:cur()
-
 	-- catch values
 	if P:matches(P.number) then
-		return Number:New(P:next().value)
-	
+		return Number:New(P:next().value)		
+
+	-- catch bools
+	elseif P:matches('true') or P:matches('false') then
+		return Bool:New(P:next().type)
+
 	-- catch parenthesized expressions
 	elseif P:nextif("(") then
 		local v = P:exp()
@@ -178,6 +180,7 @@ lang.statement = function (P)
 		local blocks = { }
 
 		local cond = P:exp()
+
 		P:expect("then")
 		local body = P:block()
 		blocks[#blocks+1] = CondBlock:New(cond, body)
@@ -224,7 +227,7 @@ end
 
 lang.block = function (P)
 	local statements = { }
-	while not P:matches('end') do
+	while not (P:matches('end') or P:matches('else') or P:matches('elseif')) do
 		statements[#statements+1] = lang.statement(P)
 	end
 	return Block:New(unpack(statements))
