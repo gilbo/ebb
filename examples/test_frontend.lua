@@ -36,17 +36,22 @@ function main ()
     -- add parsing for do end blocks, for blocks, tupled assignments?
     -- add tests/implementation for while loop, repeat loop, pretty much all statements!
 
-    --[[ 
-
     --generic for
-	local fortest = liszt_kernel (cell)
+        local f = liszt_kernel (cell)
+                for cell =
+        end
+
+--[[
+        liszt_kernel (cell)
 		field(cell) = Vec(1, 2)
 
 		for v in vertices(cell) do
 			myid(v) = myid(v) + 12
 		end
 	end
+--]]
 
+--[[
 	mesh.cells().map(
 		liszt_kernel (cell)
 			print(cell, field(cell))

@@ -209,6 +209,17 @@ lang.statement = function (P)
 		return WhileStatement:New(condition, body)
 
 	-- TODO: implement for statement
+	-- Just a skeleton. NumericFor loops should be of just one type.
+	-- GenericFor loops may be of different types.
+	-- What for loops to support within the DSL?
+        elseif P:nextif("for") then
+		local iterator = P:expect(P.name).value
+		if (P:nextif("in")) then
+			return GenericFor:New()
+		else
+			P:expect("=")
+			return NumericFor:New()
+		end
 
 	--[[ expression statement / assignment statement ]]--
 	else
