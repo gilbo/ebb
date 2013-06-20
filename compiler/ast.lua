@@ -23,16 +23,20 @@ String         = { kind = 'string' }
 Bool           = { kind = 'bool'   }
 
 -- Statements:
-Statement      = { kind = 'statement'  }  -- abstract
-IfStatement    = { kind = 'ifstmt'     }  -- if expr then block (elseif cond then block)* (else block)? end
-WhileStatement = { kind = 'whilestmt'  }  -- while expr do block end
-ExprStatement  = { kind = 'exprstmt'   }  -- e;
-Assignment     = { kind = 'assnstmt'   }  -- "blah     = expr"
-InitStatement  = { kind = 'initstmt'   }  -- "var blah = expr"
-NumericFor     = { kind = 'numericfor' }
-GenericFor     = { kind = 'genericfor' }
+Statement       = { kind = 'statement'  }  -- abstract
+IfStatement     = { kind = 'ifstmt'     }  -- if expr then block (elseif cond then block)* (else block)? end
+WhileStatement  = { kind = 'whilestmt'  }  -- while expr do block end
+DoStatement     = { kind = 'dostmt'     }  -- do block end
+RepeatStatement = { kind = 'repeatstmt' }  -- repeat block until cond
+ExprStatement   = { kind = 'exprstmt'   }  -- e;
+Assignment      = { kind = 'assnstmt'   }  -- "blah     = expr"
+InitStatement   = { kind = 'initstmt'   }  -- "var blah = expr"
+DeclStatement   = { kind = 'declstmt'   }  -- "var blah"
+NumericFor      = { kind = 'numericfor' }
+GenericFor      = { kind = 'genericfor' }
+Break           = { kind = 'break'      }
 
-CondBlock = { kind = 'condblock' } -- store condition and block to be executed...
+CondBlock = { kind = 'condblock' } -- store condition and block to be executed for if/elseif clauses
 
 
 ----------------------------
@@ -61,13 +65,17 @@ inherit(Call,        LValue)
 inherit(TableLookup, LValue)
 inherit(Name,        LValue)
 
-inherit(IfStatement,    Statement)
-inherit(WhileStatement, Statement)
-inherit(ExprStatement,  Statement)
-inherit(Assignment,     Statement)
-inherit(InitStatement,  Assignment)
-inherit(NumericFor,     Statement)
-inherit(GenericFor,     Statement)
+inherit(IfStatement,     Statement)
+inherit(WhileStatement,  Statement)
+inherit(DoStatement,     Statement)
+inherit(RepeatStatement, Statement)
+inherit(ExprStatement,   Statement)
+inherit(Assignment,      Statement)
+inherit(DeclStatement,   Statement)
+inherit(InitStatement,   Assignment)
+inherit(NumericFor,      Statement)
+inherit(GenericFor,      Statement)
+inherit(Break,           Statement)
 
 
 -----------------------------

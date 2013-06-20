@@ -15,23 +15,25 @@
 <code>
 <table>
 <tr><td>LisztKernel </td><td>::</td><td> "(" Name ")" Block <b>end</b> </td></tr>
-<tr><td>Block       </td><td>::</td><td> Statement*                    </td></tr>
+<tr><td>Block       </td><td>::</td><td> Statement*  <b>break</b>?     </td></tr>
 </table>
 </code>
 
 <h2> Statements: </h2>
 <code>
 <table>
-<tr><td> Statement      </td><td>::</td><td> IfStatement | WhileStatement | ForStatement | ExprStatement |
-                                             Assignment | DeclStatement | InitStatment </td></tr>
-<tr><td> IfStatement    </td><td>::</td><td> <b>if</b> Expression <b>then</b> Block (<b>elseif</b>"(" 
+<tr><td> Statement       </td><td>::</td><td> IfStatement | WhileStatement | RepeatStatement | DoStatement | ExprStatement |
+                                              Assignment  | DeclStatement  | InitStatment </td></tr>
+<tr><td> IfStatement     </td><td>::</td><td> <b>if</b> Expression <b>then</b> Block (<b>elseif</b>"(" 
 	                                         Expression ")" <b>then</b> Block)* (<b>else</b> Block)? 
-	                                         <b>end</b>                                          </td></tr>
-<tr><td> WhileStatement </td><td>::</td><td> <b>while</b> Expression <b>do</b> Block <b>end</b>  </td></tr>
-<tr><td> ExprStatement  </td><td>::</td><td> Expression                                          </td></tr>
-<tr><td> Assignment     </td><td>::</td><td> LValueWrite = Expression                            </td></tr>
-<tr><td> DeclStatement  </td><td>::</td><td> <b>Var</b> Name                                     </td></tr>
-<tr><td> InitStatement  </td><td>::</td><td> DeclStatement = Expression                          </td></tr>
+	                                         <b>end</b>                                               </td></tr>
+<tr><td> WhileStatement  </td><td>::</td><td> <b>while</b> Expression <b>do</b> Block <b>end</b>      </td></tr>
+<tr><td> RepeatStatement </td><td>::</td><td> <b>repeat</b> Block <b> until</b> Expression <b>end</b> </td></tr>
+<tr><td> DoStatement     </td><td>::</td><td> <b>do</b> Block <b>end</b>                              </td></tr>
+<tr><td> ExprStatement   </td><td>::</td><td> Expression                                              </td></tr>
+<tr><td> Assignment      </td><td>::</td><td> LValue = Expression                                     </td></tr>
+<tr><td> DeclStatement   </td><td>::</td><td> <b>var</b> Name                                         </td></tr>
+<tr><td> InitStatement   </td><td>::</td><td> DeclStatement = Expression                              </td></tr>
 </table>
 </code>
 
@@ -60,6 +62,7 @@
 <tr><td>&nbsp;</td></tr>
 <tr><td>Name   </td><td>::</td><td> (string that Lua lexes as a name)   </td></tr>
 <tr><td>Number </td><td>::</td><td> (string that Lua lexes as a number) </td></tr>
+<tr><td>Bool   </td><td>::</td><td> <b> true </b> | <b>false</b>        </td></tr>
 
 </table>
 </code>
