@@ -1,57 +1,23 @@
-add statements:
+* test_frontent.lua - verify that certain constructs will cause errors, others will not?
+TODO: we need a better framework for testing liszt in terra
+   - add a makefile, "make test"?
 
- - if expr then block else block end
- - if expr then block end
- - while expr do block end
- - FieldWrite
- - FieldSave
- - FieldRead
- - DefVar
- - Assign // lv op= var
- 
-
- Block -> statement+
-
- statement: 
- 	- assignment
-    - ...
-
-
-
-
-
-local a = expr
-
-a = expr
-
-lvalue = a + b...
-
-
-a <- Name <- LValue
-b <- Name <- LValue
-
-a.b = simpleexpr
-
-Assignment:
-LValue:
-TableLookup:
-Name: a, Field: Name: b
-
-
-
-supported for statements:
-
+Thoughts on supported for statements:
+=====================================
 for i in 1,10,1 do
 	Block
 end
 
-
 Numeric:
+--------
 for name (, name)? (,name)? = expr (,expr?) (,expr) do
 	block
 end
 
 Generic:
+--------
 for name (, name)* in expr do
 	Block
 end
+
+* more specific expression? e.g. function call?  verify type is iterable in semantic checks?

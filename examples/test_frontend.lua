@@ -11,9 +11,11 @@ function main ()
 	-- field lookups (lvalues), function calls (multiple arguments)
 	local b = liszt_kernel (cell) 
 		var a = Vector.new(Int, 1, 2)
-		var b = 3 + 4 + 5
+		var b = 3 + 4 * 5
+		var c = 6 / 7 + -8 ^ 9
 		field(cell) = b * a
 	end
+
 	local c = liszt_kernel (cell)
 		var x = a.b + c(d)
 	end
@@ -32,6 +34,38 @@ function main ()
 		table.field(cell) = x*(5-3)
 	end
 
+	-- break statement
+	local f = liszt_kernel (cell)
+		table.field(cell) = x*(5-3)
+		var x = y
+		break
+	end
+
+	-- repeat, do statements
+	liszt_kernel (cell)
+		repeat
+			var x
+			var y = x
+		until true
+
+		do
+			field(cell) = b * a
+		end
+	end
+
+	-- while statement
+	liszt_kernel (v)
+		while false do
+			var x
+			var y
+		end
+	end
+
+end
+
+main()
+
+
 	-- TODO:
     -- add parsing for do end blocks, for blocks, tupled assignments?
     -- add tests/implementation for while loop, repeat loop, pretty much all statements!
@@ -40,19 +74,17 @@ function main ()
         local f = liszt_kernel (cell)
                 for cell in mesh.cells
         end
-        terralib.tree.printraw(f)
-
---[[
-        liszt_kernel (cell)
+--        terralib.tree.printraw(f)
+    --[[ 
+    --generic for
+	local fortest = liszt_kernel (cell)
 		field(cell) = Vec(1, 2)
 
 		for v in vertices(cell) do
 			myid(v) = myid(v) + 12
 		end
 	end
---]]
 
---[[
 	mesh.cells().map(
 		liszt_kernel (cell)
 			print(cell, field(cell))
@@ -67,11 +99,11 @@ function main ()
 			a += Vector(1, 2)
 		end
 	)
---]]
+	--]]
 	
 
 
---[[
+	--[[
 	-- print parsed ASTs for debugging purposes:
 	print("b:")
 	b:pretty_print()
@@ -85,9 +117,6 @@ function main ()
 	print("e:")
 	e:pretty_print()
 	print()
-]]--
+	]]--
 
-end
-
-main()
 

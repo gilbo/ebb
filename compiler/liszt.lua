@@ -3,7 +3,6 @@ package.path = package.path .. ";./compiler/?.lua;./compiler/?.t"
 require "ast"
 local Parser = terralib.require('terra/tests/lib/parsing')
 
-
 -- Global precedence table
 local precedence = {
 
@@ -17,12 +16,12 @@ local precedence = {
 	["=="]  = 2,
 	["~="]  = 2,
 
-	["*"]   = 3,
-	["/"]   = 3,
-	["%"]   = 3,
+	["+"]   = 3,
+	["-"]   = 3,
 
-	["+"]   = 4,
-	["-"]   = 4,
+	["*"]   = 4,
+	["/"]   = 4,
+	["%"]   = 4,
 
 	unary   = 5,
 --	uminus  = 5,
@@ -30,6 +29,14 @@ local precedence = {
 --	["#"]   = 5,
 
 	["^"]   = 6,
+}
+
+local block_terminators = {
+    ['end']    = 1,
+ 	['else']   = 1,
+ 	['elseif'] = 1,
+ 	['until']  = 1,
+ 	['break']  = 1,
 }
 
 --[[ Generic expression operator parsing functions: ]]--
@@ -46,13 +53,17 @@ local function rightbinary(P, lhs)
 end
 
 local function unary (P)
-	op = P:next()
+	local op = P:next().type
 	local exp = P:exp(precedence.unary)
 	return UnaryOp:New(op, exp)
 end	
 
+----------------------------------
 --[[ Build Liszt Pratt parser ]]--
+----------------------------------
 lang = { }
+
+--[[ Expression parsing ]]--
 lang.exp = Parser.Pratt() -- returns a pratt parser
 		   :prefix("-",   unary)
 		   :prefix("not", unary)
@@ -76,6 +87,8 @@ lang.exp = Parser.Pratt() -- returns a pratt parser
 		   :infix('^',   precedence['^'],   rightbinary)
 		   :prefix(Parser.default, function(P) return P:simpleexp() end)
 
+-- tuples are used to represent a sequence of comma-seperated expressions that can
+-- be found in function calls and will perhaps be used in for statements
 lang.tuple = function (P, exprs)
 	exprs = exprs or { }
 	exprs[#exprs + 1] = P:exp()
@@ -159,21 +172,30 @@ lang.liszt_kernel = function (P)
 	return LisztKernel:New(param, block)
 end
 
---[[ Possible statements:
+--[[ Statement Parsing ]]--
+--[[ Supported statements:
       - if statement
       - while statement
+      - repeat statement
+      - do statement
+	  - variable declaration
       - assignment
-      - var initialization
-      - an expression
-      - for statement (not defined yet)
+      - variable initialization
+      - expression statement
+	  - TODO: for statement
 --]]
 lang.statement = function (P)
-	-- check for initialization statement
+
+	-- check for initialization/declaration
 	if (P:nextif("var")) then
 		local name = P:lvalue()
-		P:expect("=")
-		local expr = P:exp()
-		return InitStatement:New(name, expr)
+		-- differentiate between initialization and declaration
+		if (P:nextif("=")) then
+			local expr = P:exp()
+			return InitStatement:New(name, expr)
+		else
+			return DeclStatement:New(name)
+		end
 
 	--[[ if statement ]]--
 	elseif P:nextif("if") then
@@ -208,11 +230,24 @@ lang.statement = function (P)
 		P:expect("end")
 		return WhileStatement:New(condition, body)
 
+	-- do block end
+	elseif P:nextif("do") then
+		local body = P:block()
+		P:expect("end")
+		return DoStatement:New(body)
+
+	-- repeat block until condition
+	elseif P:nextif("repeat") then
+		local body = P:block()
+		P:expect("until")
+		local condition = P:exp()
+		return RepeatStatement:New(condition, body)
+
 	-- TODO: implement for statement
 	-- Just a skeleton. NumericFor loops should be of just one type.
 	-- GenericFor loops may be of different types.
 	-- What for loops to support within the DSL?
-        elseif P:nextif("for") then
+    elseif P:nextif("for") then
 		local iterator = P:expect(P.name).value
 		if (P:nextif("in")) then
                         local set = P:lvalue()
@@ -240,8 +275,24 @@ end
 
 lang.block = function (P)
 	local statements = { }
-	while not (P:matches('end') or P:matches('else') or P:matches('elseif')) do
+	local first = P:cur().type
+	while not block_terminators[first] do
 		statements[#statements+1] = lang.statement(P)
+		first = P:cur().type
 	end
+
+	if P:nextif('break') then
+		statements[#statements+1] = Break:New()
+		-- check to make sure break is the last statement of the block
+		local key = P:cur().type
+		if not block_terminators[key] then
+			P:error("block should terminate after the break statement")
+		end
+
+		-- make sure we didn't just hit another break statement
+		if key == 'break' then P:error("two consecutive break statements") end
+
+	end
+
 	return Block:New(unpack(statements))
 end
