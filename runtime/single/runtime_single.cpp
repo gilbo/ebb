@@ -161,10 +161,6 @@ lScalars * lGetScalars(lContext * ctx) {
 	return ctx->scalars;
 }
 
-void test_print () {
-	std::cout << "test print called!" << std::endl;
-}
-
 void lFieldInit(lContext * ctx, lField * field, int id, lElementType key_type, lType val_type, size_t val_length) {
 	size_t n_elems = numberOfElementsOfType(ctx,key_type);
 	field->data = (byte*) malloc(n_elems * val_length * lUtilTypeSize(val_type));
