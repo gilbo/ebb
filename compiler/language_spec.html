@@ -32,6 +32,12 @@
 <tr><td> Assignment     </td><td>::</td><td> LValueWrite = Expression                            </td></tr>
 <tr><td> DeclStatement  </td><td>::</td><td> <b>Var</b> Name                                     </td></tr>
 <tr><td> InitStatement  </td><td>::</td><td> DeclStatement = Expression                          </td></tr>
+<tr><td> ForStatement   </td><td>::</td><td> GenericFor | NumericFor                             </td></tr>
+<tr><td> NumericFor     </td><td>::</td><td> <b>for</b> Name = Numvar, Numvar [, Numvar] <b>do</b>
+                                             Block <b>end</b>                                    </td></tr>
+<tr><td> GenericFor     </td><td>::</td><td> FieldFor | DataFor                                  </td></tr>
+<tr><td> FieldFor       </td><td>::</td><td> <b>foreach</b> Name <b>in</b> TableLookup <b>do</b>
+                                             Block <b>end</b>                                    </td></tr>
 </table>
 </code>
 
@@ -60,6 +66,7 @@
 <tr><td>&nbsp;</td></tr>
 <tr><td>Name   </td><td>::</td><td> (string that Lua lexes as a name)   </td></tr>
 <tr><td>Number </td><td>::</td><td> (string that Lua lexes as a number) </td></tr>
+<tr><td>Numvar </td><td>::</td><td> Number | Name </td></tr>
 
 </table>
 </code>
