@@ -38,8 +38,9 @@ function main ()
 
     --generic for
         local f = liszt_kernel (cell)
-                for cell =
+                for cell in mesh.cells
         end
+        terralib.tree.printraw(f)
 
 --[[
         liszt_kernel (cell)

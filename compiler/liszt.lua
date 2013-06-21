@@ -215,7 +215,9 @@ lang.statement = function (P)
         elseif P:nextif("for") then
 		local iterator = P:expect(P.name).value
 		if (P:nextif("in")) then
-			return GenericFor:New()
+                        local set = P:lvalue()
+                        -- ?? what kinds should these be
+			return GenericFor:New(iterator, set)
 		else
 			P:expect("=")
 			return NumericFor:New()
