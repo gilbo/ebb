@@ -251,12 +251,34 @@ lang.statement = function (P)
 		local iterator = P:expect(P.name).value
 		if (P:nextif("in")) then
                         local set = P:lvalue()
+                        P:expect("do")
+                        local body = P:block()
+                        P:expect("end")
                         -- ?? what kinds should these be
-			return GenericFor:New(iterator, set)
+			return GenericFor:New(iterator, set, body)
 		else
 			P:expect("=")
-			return NumericFor:New()
+                        local exprs = { }
+                        exprs[1] = P:exp()
+                        P:expect(',')
+                        exprs[2] = P:exp()
+                        if P:nextif(',') then
+                            exprs[3] = P:exp()
+                        end
+                        P:expect("do")
+                        local body = P:block()
+                        P:expect("end")
+			return NumericFor:New(iterator, unpack(exprs), body)
 		end
+
+    elseif P:nextif("foreach") then
+		local iterator = P:expect(P.name).value
+                P:expect("in")
+                local set = P:lvalue()
+                P:expect("do")
+                local body = P:block()
+                P:expect("end")
+		return GenericFor:New(iterator, set, body)
 
 	--[[ expression statement / assignment statement ]]--
 	else
