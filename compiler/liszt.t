@@ -11,7 +11,7 @@ local Parser = terralib.require('terra/tests/lib/parsing')
 local lisztlanguage = {
    name        = "liszt", -- name for debugging
    entrypoints = {"liszt_kernel"},
-   keywords    = {"var"},
+   keywords    = {"var", "foreach"},
 
    expression = function(self, lexer)
       local kernel_ast = Parser.Parse(liszt.lang, lexer, "liszt_kernel")

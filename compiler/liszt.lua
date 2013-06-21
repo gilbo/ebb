@@ -42,11 +42,11 @@ local precedence = {
 }
 
 local block_terminators = {
-    ['end']    = 1,
- 	['else']   = 1,
- 	['elseif'] = 1,
- 	['until']  = 1,
- 	['break']  = 1,
+	['end']    = 1,
+	['else']   = 1,
+	['elseif'] = 1,
+	['until']  = 1,
+	['break']  = 1,
 }
 
 --[[ Generic expression operator parsing functions: ]]--
@@ -257,14 +257,38 @@ lang.statement = function (P)
 	-- Just a skeleton. NumericFor loops should be of just one type.
 	-- GenericFor loops may be of different types.
 	-- What for loops to support within the DSL?
-    elseif P:nextif("for") then
+	elseif P:nextif("for") then
 		local iterator = P:expect(P.name).value
 		if (P:nextif("in")) then
-			return GenericFor:New()
+		local set = P:lvalue()
+		P:expect("do")
+		local body = P:block()
+		P:expect("end")
+		-- ?? what kinds should these be
+			return ast.GenericFor:New(iterator, set, body)
 		else
 			P:expect("=")
-			return ast.NumericFor:New()
+			local exprs = { }
+			exprs[1] = P:exp()
+			P:expect(',')
+			exprs[2] = P:exp()
+			if P:nextif(',') then
+			    exprs[3] = P:exp()
+			end
+			P:expect("do")
+			local body = P:block()
+			P:expect("end")
+			return ast.NumericFor:New(iterator, unpack(exprs), body)
 		end
+
+	elseif P:nextif("foreach") then
+		local iterator = P:expect(P.name).value
+		P:expect("in")
+		local set = P:lvalue()
+		P:expect("do")
+		local body = P:block()
+		P:expect("end")
+		return ast.GenericFor:New(iterator, set, body)
 
 	--[[ expression statement / assignment statement ]]--
 	else

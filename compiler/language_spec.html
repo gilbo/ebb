@@ -22,11 +22,18 @@
 <h2> Statements: </h2>
 <code>
 <table>
-<tr><td> Statement       </td><td>::</td><td> IfStatement | WhileStatement | RepeatStatement | DoStatement | ExprStatement |
-                                              Assignment  | DeclStatement  | InitStatment </td></tr>
+<tr><td> Statement       </td><td>::</td><td> IfStatement | WhileStatement |
+                                              RepeatStatement | DoStatement | ForStatement | ExprStatement |
+                                              Assignment  | DeclStatement  | InitStatment            </td></tr>
 <tr><td> IfStatement     </td><td>::</td><td> <b>if</b> Expression <b>then</b> Block (<b>elseif</b>"(" 
 	                                         Expression ")" <b>then</b> Block)* (<b>else</b> Block)? 
-	                                         <b>end</b>                                               </td></tr>
+	                                         <b>end</b>                                           </td></tr>
+<tr><td> ForStatement   </td><td>::</td><td> GenericFor | NumericFor                                  </td></tr>
+<tr><td> NumericFor     </td><td>::</td><td> <b>for</b> Name = Expression, Expression (, Expression)? <b>do</b>
+                                             Block <b>end</b>                                         </td></tr>
+<tr><td> GenericFor     </td><td>::</td><td> FieldFor | DataFor                                       </td></tr>
+<tr><td> FieldFor       </td><td>::</td><td> <b>foreach</b> Name <b>in</b> TableLookup <b>do</b>
+                                             Block <b>end</b>                                         </td></tr>
 <tr><td> WhileStatement  </td><td>::</td><td> <b>while</b> Expression <b>do</b> Block <b>end</b>      </td></tr>
 <tr><td> RepeatStatement </td><td>::</td><td> <b>repeat</b> Block <b> until</b> Expression <b>end</b> </td></tr>
 <tr><td> DoStatement     </td><td>::</td><td> <b>do</b> Block <b>end</b>                              </td></tr>

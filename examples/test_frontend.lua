@@ -70,8 +70,23 @@ main()
     -- add parsing for do end blocks, for blocks, tupled assignments?
     -- add tests/implementation for while loop, repeat loop, pretty much all statements!
 
+    --generic for
+        local f = liszt_kernel (cell)
+                for cell in mesh.cells do
+                        field2(cell) = field2(cell) + 12
+                end
+                foreach cell in mesh.cells do
+                        field2(cell) = field2(cell) + 12
+                end
+                for cell = 1,3 do
+                    t = 1
+                end
+                for cell = 1,3,1 do
+                    t = 1
+                end
+        end
+--        terralib.tree.printraw(f)
     --[[ 
-
     --generic for
 	local fortest = liszt_kernel (cell)
 		field(cell) = Vec(1, 2)
