@@ -1,3 +1,8 @@
+--[[ Module defines all of the AST nodes used to represent the Liszt 
+     language.
+]]--
+module(... or 'ast', package.seeall)
+
 ---------------------------
 --[[ Declare AST types ]]--
 ---------------------------

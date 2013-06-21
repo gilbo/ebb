@@ -1,6 +1,16 @@
+--[[ Module defines all of the parsing functions used to generate
+     an AST for Liszt code 
+]]--
+
+module(... or 'liszt', package.seeall)
+
 -- Imports
 package.path = package.path .. ";./compiler/?.lua;./compiler/?.t"
-require "ast"
+
+-- Import ast nodes, keeping out of global scope
+ast = require "ast"
+_G['ast'] = nil
+
 local Parser = terralib.require('terra/tests/lib/parsing')
 
 -- Global precedence table
@@ -43,19 +53,19 @@ local block_terminators = {
 local function leftbinary(P, lhs)
 	local op  = P:next().type
 	local rhs = P:exp(op)
-	return BinaryOp:New(lhs, op, rhs)
+	return ast.BinaryOp:New(lhs, op, rhs)
 end
 
 local function rightbinary(P, lhs)
 	local op  = P:next().type
 	local rhs = P:exp(op, "right")
-	return BinaryOp:New(lhs, op, rhs)
+	return ast.BinaryOp:New(lhs, op, rhs)
 end
 
 local function unary (P)
 	local op = P:next().type
 	local exp = P:exp(precedence.unary)
-	return UnaryOp:New(op, exp)
+	return ast.UnaryOp:New(op, exp)
 end	
 
 ----------------------------------
@@ -95,7 +105,7 @@ lang.tuple = function (P, exprs)
 	if P:nextif(",") then
 		return P:tuple(exprs)
 	else 
-		return Tuple:New(unpack(exprs))
+		return ast.Tuple:New(unpack(exprs))
 	end
 end
 
@@ -109,13 +119,13 @@ lang.lvaluehelper = function (P, lhs)
 		local op = P:next().type
 		-- check to make sure the table is being indexed by a valid name
 		if not P:matches(P.name) then P:error("expected name after '.'") end
-		return P:lvaluehelper(TableLookup:New(lhs, op, Name:New(P:next().value)))
+		return P:lvaluehelper(ast.TableLookup:New(lhs, op, ast.Name:New(P:next().value)))
 
 	-- field index / function call?
 	elseif P:nextif('(') then
 		local args = P:tuple()
 		P:expect(')')
-		return P:lvaluehelper(Call:New(lhs, args))
+		return P:lvaluehelper(ast.Call:New(lhs, args))
 	end
 	return lhs
 end
@@ -129,7 +139,7 @@ lang.lvalue = function (P)
 		P:error("Expected name at " .. token.linenumber .. ":" .. token.offset)
 	end
 
-	return P:lvaluehelper(Name:New(P:next().value))
+	return P:lvaluehelper(ast.Name:New(P:next().value))
 end
 
 --[[  simpleexp is called when exp cannot parse the next token...
@@ -139,11 +149,11 @@ end
 lang.simpleexp = function(P)
 	-- catch values
 	if P:matches(P.number) then
-		return Number:New(P:next().value)		
+		return ast.Number:New(P:next().value)		
 
 	-- catch bools
 	elseif P:matches('true') or P:matches('false') then
-		return Bool:New(P:next().type)
+		return ast.Bool:New(P:next().type)
 
 	-- catch parenthesized expressions
 	elseif P:nextif("(") then
@@ -169,7 +179,7 @@ lang.liszt_kernel = function (P)
 	local block = P:block()
 	P:expect("end")
 
-	return LisztKernel:New(param, block)
+	return ast.LisztKernel:New(param, block)
 end
 
 --[[ Statement Parsing ]]--
@@ -192,9 +202,9 @@ lang.statement = function (P)
 		-- differentiate between initialization and declaration
 		if (P:nextif("=")) then
 			local expr = P:exp()
-			return InitStatement:New(name, expr)
+			return ast.InitStatement:New(name, expr)
 		else
-			return DeclStatement:New(name)
+			return ast.DeclStatement:New(name)
 		end
 
 	--[[ if statement ]]--
@@ -205,14 +215,14 @@ lang.statement = function (P)
 
 		P:expect("then")
 		local body = P:block()
-		blocks[#blocks+1] = CondBlock:New(cond, body)
+		blocks[#blocks+1] = ast.CondBlock:New(cond, body)
 
 		-- parse all elseif clauses
 		while (P:nextif("elseif")) do
 			local cond = P:exp()
 			P:expect("then")
 			local body = P:block()
-			blocks[#blocks+1] = CondBlock:New(cond, body)							
+			blocks[#blocks+1] = ast.CondBlock:New(cond, body)							
 			end
 
 		if (P:nextif('else')) then
@@ -220,7 +230,7 @@ lang.statement = function (P)
 		end
 
 		P:expect("end")
-		return IfStatement:New(unpack(blocks))
+		return ast.IfStatement:New(unpack(blocks))
 
 	--[[ while statement ]]--
 	elseif P:nextif("while") then
@@ -228,20 +238,20 @@ lang.statement = function (P)
 		P:expect("do")
 		local body = P:block()
 		P:expect("end")
-		return WhileStatement:New(condition, body)
+		return ast.WhileStatement:New(condition, body)
 
 	-- do block end
 	elseif P:nextif("do") then
 		local body = P:block()
 		P:expect("end")
-		return DoStatement:New(body)
+		return ast.DoStatement:New(body)
 
 	-- repeat block until condition
 	elseif P:nextif("repeat") then
 		local body = P:block()
 		P:expect("until")
 		local condition = P:exp()
-		return RepeatStatement:New(condition, body)
+		return ast.RepeatStatement:New(condition, body)
 
 	-- TODO: implement for statement
 	-- Just a skeleton. NumericFor loops should be of just one type.
@@ -253,7 +263,7 @@ lang.statement = function (P)
 			return GenericFor:New()
 		else
 			P:expect("=")
-			return NumericFor:New()
+			return ast.NumericFor:New()
 		end
 
 	--[[ expression statement / assignment statement ]]--
@@ -264,7 +274,7 @@ lang.statement = function (P)
 			if not expr.isLValue() then P:error("expected LValue before '='") end
 
 			local rhs = P:exp()
-			return Assignment:New(expr, rhs)
+			return ast.Assignment:New(expr, rhs)
 		else
 			return expr
 		end
@@ -280,17 +290,13 @@ lang.block = function (P)
 	end
 
 	if P:nextif('break') then
-		statements[#statements+1] = Break:New()
+		statements[#statements+1] = ast.Break:New()
 		-- check to make sure break is the last statement of the block
 		local key = P:cur().type
-		if not block_terminators[key] then
+		if (not block_terminators[key]) or key == 'break' then
 			P:error("block should terminate after the break statement")
 		end
-
-		-- make sure we didn't just hit another break statement
-		if key == 'break' then P:error("two consecutive break statements") end
-
 	end
 
-	return Block:New(unpack(statements))
+	return ast.Block:New(unpack(statements))
 end
