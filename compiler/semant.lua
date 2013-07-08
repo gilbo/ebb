@@ -19,15 +19,17 @@ function ast.AST:check()
 	print("To implement semantic checking for", self.kind)
 end
 
---[[ Block
+--[[ TODO: Block
 --]]
 function ast.Block:check()
+	--[[ Build symbol table first
+	--]]
 	for id, node in ipairs(self.children) do
 		node:check()
 	end
 end
 
---[[ Statements
+--[[ TODO: Statements
 --]]
 function ast.Statement:check()
 end
@@ -68,7 +70,7 @@ end
 function ast.CondBlock:check()
 end
 
---[[ Expressions
+--[[ TODO: Expressions
 --]]
 function ast.Expression:check()
 end
