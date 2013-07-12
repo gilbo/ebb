@@ -1,6 +1,6 @@
 #ifndef _RUNTIME_UTIL_H
 #define _RUNTIME_UTIL_H
-#include "include/liszt_runtime.h"
+#include "common/liszt_runtime.h"
 #include <limits.h>
 #include <float.h>
 

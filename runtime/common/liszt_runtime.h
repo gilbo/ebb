@@ -9,15 +9,15 @@ typedef uint8_t BOOL;
 
 enum lElementType {
 	L_VERTEX = 0,
-	L_CELL = 1,
-	L_EDGE = 2,
-	L_FACE = 3,
+	L_CELL   = 1,
+	L_EDGE   = 2,
+	L_FACE   = 3,
 };
 enum {
 	L_ELEMENT_TYPE_SIZE = 4
 };
 enum lType {
-	L_INT,
+	L_INT = 0,
 	L_FLOAT,
 	L_DOUBLE,
 	L_BOOL,
@@ -25,7 +25,7 @@ enum lType {
 };
 
 enum lReduction {
-    L_ASSIGN,
+    L_ASSIGN = 0,
 	L_PLUS,
 	L_MINUS,
 	L_MULTIPLY,
@@ -122,14 +122,19 @@ struct lProgramArguments;
 
 // void lExec(void (*entry_point)(struct lContext*),void (*entry_stencil)(struct lsFunctionTable*, struct lsContext*), struct lProgramArguments * arguments, size_t n_fields, size_t n_sets, size_t n_scalars);
 
-// L_RUNTIME_UNNESTED struct lFields * lGetFields(struct lContext * ctx);
-// L_RUNTIME_UNNESTED struct lSets * lGetSets(struct lContext * ctx);
+// L_RUNTIME_UNNESTED struct lFields  * lGetFields(struct lContext * ctx);
+// L_RUNTIME_UNNESTED struct lSets    * lGetSets(struct lContext * ctx);
 // L_RUNTIME_UNNESTED struct lScalars * lGetScalars(struct lContext * ctx);
 
 // move this into lua
 // L_RUNTIME_UNNESTED void lFieldInit(struct lContext * ctx, struct lField * field, int id, enum lElementType key_type, enum lType val_type, size_t val_length);
 
 // change signatures and generate code for each type
+
+// Load a context, which stores a bunch of necessary per-mesh instantiated objects
+L_RUNTIME_UNNESTED struct lContext *lLoadContext (char *mesh_file);
+L_RUNTIME_UNNESTED struct lField   *lLoadField (struct lContext *ctx, const char *key, enum lElementType key_type, enum lType val_type, size_t val_length);
+L_RUNTIME_UNNESTED struct lField   *lInitField (struct lContext *ctx, int id, enum lElementType key_type, enum lType val_type, size_t val_length);
 
 L_RUNTIME_UNNESTED void lFieldBroadcast (struct lContext * ctx, struct lField * field, enum lElementType key_type, enum lType val_type, size_t val_length, void * data);
 L_RUNTIME_UNNESTED void lFieldLoadData  (struct lContext * ctx, struct lField * field, enum lElementType key_type, enum lType val_type, size_t val_length, const char * key);

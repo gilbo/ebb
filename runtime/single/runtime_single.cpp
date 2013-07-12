@@ -5,7 +5,7 @@
 #include <assert.h>
 
 extern "C" {
-#include "include/liszt_runtime.h"
+#include "single/liszt_runtime.h"
 }
 
 struct lStencilData {
@@ -116,12 +116,59 @@ size_t numberOfElementsOfType(lContext * ctx, lElementType typ) {
 
 //Unnested Runtime Calls
 
+lContext *lLoadContext (char *mesh_file) {
+	lContext *ctx = (lContext *) malloc(sizeof(lContext));
+	FILE *file = NULL;
+	ctx->mesh_reader.init(mesh_file, &file);
+	ctx->mesh_writer.init(mesh_file, &file);
+
+	MeshIO::FileFacetEdge *ffe   = ctx->mesh_reader.facetEdges();
+	const MeshIO::LisztHeader &h = ctx->mesh_reader.header();
+	
+	MeshIO::FacetEdgeBuilder builder;
+	builder.init(h.nV,h.nE,h.nF,h.nC,h.nFE);
+	builder.insert(0,h.nFE,ffe);
+	//builder.validateFullMesh();
+	ctx->mesh_reader.free(ffe);
+	lMeshInitFromFacetEdgeBuilder(&ctx->mesh,&builder);
+	ctx->boundary_reader.init(h.nBoundaries,ctx->mesh_reader.boundaries());
+
+	return ctx;
+}
+
+lField *lLoadField(lContext *ctx, const char *key, lElementType key_type, lType val_type, size_t val_length) {
+	size_t n_elems = numberOfElementsOfType(ctx, key_type);
+	lField *field = (lField*) malloc(sizeof(lField));
+	field->data   = (byte*)   malloc(n_elems * val_length * lUtilTypeSize(val_type));
+	lFieldLoadData(ctx, field, key_type, val_type, val_length, key);
+	return field;
+}
+
+void lFieldInit(lContext * ctx, lField * field, int id, lElementType key_type, lType val_type, size_t val_length) {
+	size_t n_elems = numberOfElementsOfType(ctx,key_type);
+	field->data = (byte*) malloc(n_elems * val_length * lUtilTypeSize(val_type));
+}
+
+lField *lInitField (lContext *ctx, int id, lElementType key_type, lType val_type, size_t val_length) {
+	lField *field = (lField*) malloc(sizeof(lField));
+	lFieldInit(ctx, field, id, key_type, val_type, val_length);
+	return field;
+}
+
+L_RUNTIME_UNNESTED void lFieldLoadData(lContext * ctx, lField * field, lElementType key_type, lType val_type, size_t val_length, const char * key) {
+    if (!strcmp(key, "position")) {
+        assert(key_type == L_VERTEX);
+        assert(val_type == L_DOUBLE || val_type == L_FLOAT);
+    }
+    field->data = (byte *) ctx->mesh_reader.fieldData(key_type, val_type, val_length, key);
+}
+
 void lExec(void (*entry_point)(lContext*),void (*entry_stencil)(lsFunctionTable*,lsContext*), lProgramArguments * arguments, size_t n_fields, size_t n_sets, size_t n_scalars) {
 	lContext ctx;
 	
 	//allocate memory to hold global state
-	ctx.fields = (lFields*) malloc(sizeof(lField) * n_fields);
-	ctx.sets = (lSets*) malloc(sizeof(lSet) * n_sets);
+	ctx.fields  = (lFields*)  malloc(sizeof(lField)  * n_fields);
+	ctx.sets    = (lSets*)    malloc(sizeof(lSet)    * n_sets);
 	ctx.scalars = (lScalars*) malloc(sizeof(lScalar) * n_scalars);
 	
 	//load mesh and boundary sets
@@ -130,7 +177,6 @@ void lExec(void (*entry_point)(lContext*),void (*entry_stencil)(lsFunctionTable*
 	ctx.mesh_reader.init(arguments->mesh_file, &file);
 	ctx.mesh_writer.init(arguments->mesh_file, &file);
 
-//	ctx.mesh_reader.init(arguments->mesh_file);
 	MeshIO::FileFacetEdge * ffe = ctx.mesh_reader.facetEdges();
 	const MeshIO::LisztHeader & h = ctx.mesh_reader.header();
 	
@@ -161,10 +207,6 @@ lScalars * lGetScalars(lContext * ctx) {
 	return ctx->scalars;
 }
 
-void lFieldInit(lContext * ctx, lField * field, int id, lElementType key_type, lType val_type, size_t val_length) {
-	size_t n_elems = numberOfElementsOfType(ctx,key_type);
-	field->data = (byte*) malloc(n_elems * val_length * lUtilTypeSize(val_type));
-}
 L_ALWAYS_INLINE
 void lFieldBroadcast(lContext * ctx, lField * field, lElementType key_type, lType val_type, size_t val_length, void * data) {
 	size_t n_elems = numberOfElementsOfType(ctx,key_type);
@@ -174,13 +216,6 @@ void lFieldBroadcast(lContext * ctx, lField * field, lElementType key_type, lTyp
 	}
 }
 
-L_RUNTIME_UNNESTED void lFieldLoadData(lContext * ctx, lField * field, lElementType key_type, lType val_type, size_t val_length, const char * key) {
-    if (!strcmp(key, "position")) {
-        assert(key_type == L_VERTEX);
-        assert(val_type == L_DOUBLE || val_type == L_FLOAT);
-    }
-    field->data = (byte *) ctx->mesh_reader.fieldData(key_type, val_type, val_length, key);
-}
 L_RUNTIME_UNNESTED void lFieldSaveData(lContext * ctx, lField * field, lElementType key_type, lType val_type, size_t val_length, const char * key) {
 	lFieldEnterPhase(field,val_type, val_length, L_READ_ONLY);
 
