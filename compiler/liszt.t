@@ -11,27 +11,28 @@ package.loaded.liszt = nil
 local Parser = terralib.require('terra/tests/lib/parsing')
 
 local lisztlanguage = {
-   name        = "liszt", -- name for debugging
-   entrypoints = {"liszt_kernel"},
-   keywords    = {"var", "foreach"},
+	name        = "liszt", -- name for debugging
+	entrypoints = {"liszt_kernel"},
+	keywords    = {"var", "foreach"},
 
-   expression = function(self, lexer)
-      local kernel_ast = Parser.Parse(liszt.lang, lexer, "liszt_kernel")
-      --[[ this function is called in place of executing the code that 
-           we parsed 
-      --]]
+	expression = function(self, lexer)
+		local kernel_ast = Parser.Parse(liszt.lang, lexer, "liszt_kernel")
+		--[[ this function is called in place of executing the code that 
+			 we parsed 
+		--]]
 
-		local success = semant.check()
-
-		if success == false then
-			print("One or more semantic errors")
-			-- TODO: Produce a runtime error
+		local function kernel_fn(kernel_ast)
+			local success = semant.check(kernel_ast)
+			if success == false then
+				print("One or more semantic errors")
+				-- TODO: Produce a runtime error
+			end
 		end
 
-      return function () 
-         return kernel_ast
-      end
-   end
+		return function () 
+			return kernel_fn(kernel_ast)
+		end
+	end
 }
 
 return lisztlanguage

@@ -1,10 +1,10 @@
 require "include/liszt"
-mesh = LoadMesh("some file...")
+mesh = LoadMesh("examples/mesh.lmesh")
 
-position = mesh.fieldWithLabel(Vertex, Vector.type(3,Float), "position")
-field    = mesh.field(Cell, Vector.type(2,Int), Vector.new(0,0))
-field2   = mesh.field(Cell,   Int, 0)
-myid     = mesh.field(Vertex, Int, 0) --,Vec[_2,Int]](Vec(0,0))
+position = mesh:fieldWithLabel(Vertex, Vector.type(float,3), "position")
+-- field    = mesh:field(Cell, Vector.type(int,2), Vector.new(0,0))
+field2   = mesh:field(Cell,   int, 0)
+myid     = mesh:field(Vertex, int, 0) --,Vec[_2,Int]](Vec(0,0))
 
 function main ()
 	-- init statements, binary expressions, 

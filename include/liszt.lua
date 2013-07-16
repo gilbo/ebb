@@ -1,63 +1,44 @@
-LisztObj = { }
-function LisztObj.isTopoElem () return false end
-function LisztObj.isTopoSet  () return false end
-function LisztObj.isDataType () return false end
-LisztObj.__index = LisztObj
+-- import runtime, privately to this module (so that it is not exposed to liszt application programmers)
+terralib.require('runtime/liszt')
+local runtime = runtime
+_G.runtime    = nil
+
+local LisztObj = { }
 
 --[[ Liszt Types ]]--
-TopoElem = { }
-setmetatable(TopoElem, LisztObj)
-function TopoElem.isTopoElem () return true end
-TopoElem.__index = TopoElem
+local TopoElem = setmetatable({ }, { __index = LisztObj, __metatable = "TopoElem" })
+local TopoSet  = setmetatable({ }, { __index = LisztObj, __metatable = "TopoSet" })
+local Field    = setmetatable({ }, { __index = LisztObj, __metatable = "Field" })
 
-TopoSet  = { }
-setmetatable(TopoSet, LisztObj)
-function TopoSet.isTopoSet   () return true end
-TopoSet.__index = TopoSet
+Mesh   = setmetatable({ }, { __index = LisztObj, __metatable = "Mesh"   })
+Cell   = setmetatable({ }, { __index = TopoElem, __metatable = "Cell"   })
+Face   = setmetatable({ }, { __index = TopoElem, __metatable = "Face"   })
+Edge   = setmetatable({ }, { __index = TopoElem, __metatable = "Edge"   })
+Vertex = setmetatable({ }, { __index = TopoElem, __metatable = "Vertex" })
 
-Mesh  = { }
-Mesh.__index = Mesh
-setmetatable(Mesh, LisztObj)
+DataType = setmetatable({ }, { __index=LisztObj, __metatable="DataType"})
+Vector   = setmetatable({ }, { __index=DataType})
 
-Field = { }
-setmetatable(Field, LisztObj)
-
-Cell   = { }
-Face   = { }
-Edge   = { }
-Vertex = { }
-setmetatable(Cell,   TopoElem)
-setmetatable(Face,   TopoElem)
-setmetatable(Edge,   TopoElem)
-setmetatable(Vertex, TopoElem)
-
-DataType = { }
-setmetatable(DataType, LisztObj)
-function DataType.isDataType () return true end
-DataType.__index = DataType
-
-Int   = { }
-Float = { }
-
-setmetatable(Int,   DataType)
-setmetatable(Float, DataType)
-
-Vector = { }
-
-function Vector.type (num, data_type) 
+function Vector.type (data_type, num)
+   if not (data_type == int or
+           data_type == float) then
+      error("First argument to Vector.type() should be a terra data type!")
+   end
    if not type(num) == "number" or num < 1 or num % 1 ~= 0 then
-      error("First argument to Vector.type() should be a non-negative integer!")
+      error("Second argument to Vector.type() should be a non-negative integer!")
    end
-   if not (data_type.isDataType and data_type.isDataType()) then
-      error("second argument to Vector.type() should be a Liszt data type!")
-   end
-   return { size = num, data_type = data_type }
+   return setmetatable({size = num, data_type = data_type}, Vector)
 end
 
 function Vector.new(data_type, ...) 
-   local vec = {}
+   local vec = { ... }
+   vec.type = data_type
    setmetatable(vec, Vector)
    return vec
+end
+
+function Vector.isVector (obj)
+   return getmetatable(obj) == Vector
 end
 
 --[[ Mesh Construction and methods ]]--
@@ -72,28 +53,57 @@ Mesh.faces    = toposet_stub
 Mesh.vertices = toposet_stub
 Mesh.edges    = toposet_stub
 
-function Mesh.field (self, topo_elem, data_type, initial_val)
+local lElementTypeMap = {
+   [Vertex] = runtime.L_VERTEX,
+   [Cell]   = runtime.L_CELL,
+   [Face]   = runtime.L_FACE,
+   [Edge]   = runtime.L_EDGE
+}
+
+
+local lKeyTypeMap = {
+   [int]   = runtime.L_INT,
+   [float] = runtime.L_FLOAT
+}
+
+local function runtimeDataType (data_type)
+   if getmetatable(data_type) == Vector then
+      return data_type.data_type, data_type.num
+   else
+      return lKeyTypeMap[data_type], 1.0
+   end
+end
+
+
+function Mesh:field (topo_type, data_type, initial_val)
    local field = { }
    field.mesh  = self
-   setmetatable(field, Field)
+   setmetatable(field, { __index = Field })
+   local val_type, val_len = runtimeDataType(data_type)
+   field.field = runtime.initField(self, lElementTypeMap[topo_type], val_type, val_len)
    return field
 end
 
-function Mesh.fieldWithLabel (self, topo_elem, data_type, label)
+function Mesh:fieldWithLabel (topo_type, data_type, label)
    local field = { }
    field.mesh  = self
-   setmetatable(field, Field)
+   setmetatable(field, { __index = Field })
+   field.field = runtime.loadField(self, label, lElementTypeMap[topo_type], data_type, 3)
+   field.id    = self.num_fields
+   self.num_fields = self.num_fields + 1
    return field
 end
 
 function Mesh.new () 
-   local mesh = { }
-   setmetatable(mesh, Mesh)
-   return mesh
+   local m      = setmetatable({ }, { __index = Mesh } )
+   m.num_fields = 0
+   return m
 end
 
 LoadMesh = function (filename)
-   return Mesh.new()
+   local mesh      = Mesh.new()
+   mesh.ctx        = runtime.loadMesh(filename)
+   return mesh
 end
 
 
