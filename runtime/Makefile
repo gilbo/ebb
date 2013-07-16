@@ -1,12 +1,40 @@
 .PHONY= all single clean
 
-all: single
+UNAME = $(shell uname)
+CXX = clang
 
-single: single/runtime_single.dylib
+SINGLE_LIB =
+SINGLE_LIB_DEP_ALL =
+SINGLE_LIB_DEP_B =
+SINGLE_SRC =
+CXXFLAGS_LIB =
+CXXFLAGS_OBJ =
 
-single/runtime_single.dylib: single/runtime_single.cpp common/liszt_runtime.h single/liszt_runtime.h
-	clang -dynamiclib -I. -lstdc++ single/runtime_single.cpp -o single/runtime_single.dylib
+ifeq ($(UNAME),Darwin)
+	SINGLE_LIB += single/runtime_single.dylib
+	SINGLE_LIB_DEP_ALL += single/runtime_single.cpp common/liszt_runtime.h single/liszt_runtime.h
+	SINGLE_LIB_DEP_B += single/runtime_single.cpp
+	CXXFLAGS_LIB += -dynamiclib
+endif
+
+ifeq ($(UNAME),Linux)
+	SINGLE_LIB += single/libruntime_single.so
+	SINGLE_LIB_DEP_ALL += single/runtime_single.o
+	SINGLE_LIB_DEP_B += single/runtime_single.o
+	SINGLE_SRC += single/runtime_single.cpp common/liszt_runtime.h single/liszt_runtime.h
+	CXXFLAGS_LIB += -shared
+	CXXFLAGS_OBJ += -Wall -Werror -fpic
+endif
+
+all: $(SINGLE_LIB)
+
+$(SINGLE_LIB): $(SINGLE_LIB_DEP_ALL)
+	$(CXX) $(CXXFLAGS_LIB) -I. -lstdc++ $(SINGLE_LIB_DEP_B) -o $(SINGLE_LIB)
+
+$(SINGLE_LIB_DEP_B): $(SINGLE_SRC)
+ifeq ($(UNAME),Linux)
+	$(CXX) $(CXXFLAGS_OBJ) -I. -lstdc++ $(SINGLE_SRC)
+endif
 
 clean:
-	rm -rf *~ \#* single/*.o single/*.dylib
-
+	rm -rf *~ \#* single/*.o single/*.dylib single/*.so
