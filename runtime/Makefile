@@ -28,12 +28,12 @@ endif
 
 all: $(SINGLE_LIB)
 
-$(SINGLE_LIB): $(SINGLE_LIB_DEP)
+$(SINGLE_LIB): $(SINGLE_LIB_DEP_ALL)
 	$(CXX) $(CXXFLAGS_LIB) -I. -lstdc++ $(SINGLE_LIB_DEP_B) -o $(SINGLE_LIB)
 
-$(SINGLE_LIB_DEP): $(SINGLE_SRC)
+$(SINGLE_LIB_DEP_B): $(SINGLE_SRC)
 ifeq ($(UNAME),Linux)
-	$(CXX) $(CXXFLAGS_OBJ) -I. -lstdc++ $(SINGLE_SRC) -o $(SINGLE_LIB)
+	$(CXX) $(CXXFLAGS_OBJ) -I. -lstdc++ $(SINGLE_SRC)
 endif
 
 clean:
