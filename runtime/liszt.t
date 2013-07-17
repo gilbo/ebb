@@ -2,7 +2,18 @@
 module('runtime', package.seeall)
 
 local runtime = terralib.includec("runtime/common/liszt_runtime.h")
-terralib.linklibrary("runtime/single/runtime_single.dylib")
+
+local osf = assert(io.popen('uname', 'r'))
+local osname = assert(osf:read('*l'))
+osf:close()
+
+if osname == 'Linux' then
+	terralib.linklibrary("runtime/single/libruntime_single.so")
+elseif osname == 'Darwin' then
+	terralib.linklibrary("runtime/single/runtime_single.dylib")
+else
+	error("Unknown Operating System")
+end
 
 lr = runtime
 

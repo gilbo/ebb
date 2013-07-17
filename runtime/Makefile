@@ -6,6 +6,7 @@ CXX = clang
 SINGLE_LIB =
 SINGLE_LIB_DEP_ALL =
 SINGLE_LIB_DEP_B =
+SINGLE_LIB_DEP_C =
 SINGLE_SRC =
 CXXFLAGS_LIB =
 CXXFLAGS_OBJ =
@@ -21,9 +22,10 @@ ifeq ($(UNAME),Linux)
 	SINGLE_LIB += single/libruntime_single.so
 	SINGLE_LIB_DEP_ALL += single/runtime_single.o
 	SINGLE_LIB_DEP_B += single/runtime_single.o
+	SINGLE_LIB_DEP_C += single/runtime_single.cpp
 	SINGLE_SRC += single/runtime_single.cpp common/liszt_runtime.h single/liszt_runtime.h
 	CXXFLAGS_LIB += -shared
-	CXXFLAGS_OBJ += -Wall -Werror -fpic
+	CXXFLAGS_OBJ += -c -fPIC -Wno-deprecated
 endif
 
 all: $(SINGLE_LIB)
@@ -33,7 +35,7 @@ $(SINGLE_LIB): $(SINGLE_LIB_DEP_ALL)
 
 $(SINGLE_LIB_DEP_B): $(SINGLE_SRC)
 ifeq ($(UNAME),Linux)
-	$(CXX) $(CXXFLAGS_OBJ) -I. -lstdc++ $(SINGLE_SRC)
+	$(CXX) $(CXXFLAGS_OBJ) -I. $(SINGLE_LIB_DEP_C) -o $(SINGLE_LIB_DEP_B)
 endif
 
 clean:
