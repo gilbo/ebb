@@ -9,6 +9,8 @@ ast = require("ast")
 --[[ TODO: Implement semantic checking here
 --]]
 function check(kernel_ast)
+	-- environment for checking variables and scopes
+	local lisztenv = terralib.newenvironment(env)
 	-- block
 	for id, node in ipairs(kernel_ast.children) do
 		if (node.kind ~= nil) then

@@ -21,7 +21,10 @@ local lisztlanguage = {
 			 we parsed 
 		--]]
 
+		print("Parsing complete")
+
 		local function kernel_fn(kernel_ast)
+			print("In semantic checking")
 			local success = semant.check(kernel_ast)
 			if success == false then
 				print("One or more semantic errors")

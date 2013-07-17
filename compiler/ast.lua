@@ -86,8 +86,16 @@ inherit(Break,           Statement)
 -----------------------------
 --[[ General AST Methods ]]--
 -----------------------------
-function AST:New (...)
-	return setmetatable({ children = {...}, kind = self.kind }, {__index = self})
+function AST:New (P, ...)
+	local newnode = 
+	{ 
+		children = {...},
+		kind = self.kind, 
+		linenumber = P:cur().linenumber,
+		filename = P.source,
+		offset = P:cur().offset
+	}
+	return setmetatable(newnode, {__index = self})
 end
 
 function AST.isLValue    ( ) return false end
