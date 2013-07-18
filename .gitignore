@@ -2,3 +2,5 @@ terra
 *.o
 *.so
 *.dylib
+.metadata
+build

@@ -21,8 +21,8 @@ local lisztlanguage = {
 			 we parsed 
 		--]]
 
-		local function kernel_fn(kernel_ast, env)
-			local success = semant.check(kernel_ast, env)
+		local function kernel_fn(env, kernel_ast)
+			local success = semant.check(env, kernel_ast)
 			if success == false then
 				print("One or more semantic errors")
 				-- TODO: Produce a runtime error
@@ -30,7 +30,7 @@ local lisztlanguage = {
 		end
 
 		return function (env) 
-			return kernel_fn(kernel_ast, getfenv())
+			return kernel_fn(env(), kernel_ast)
 		end
 	end
 }

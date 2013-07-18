@@ -5,40 +5,20 @@ symbols = {}
 ast = require("ast")
 
 ------------------------------------------------------------------------------
---[[ Useful functions
---]]
-
-function table.contains(t, element)
-    for key, value in pairs(t) do
-        if key == element then
-            return true
-        else
-            return false
-        end
-    end
-end
-
-------------------------------------------------------------------------------
 
 --[[ TODO: Implement semantic checking here
 --]]
-function check(kernel_ast, env)
-    -- print ("Semantic checking")
+function check(luaenv, kernel_ast)
     -- environment for checking variables and scopes
-    local lisztenv = terralib.newenvironment(env)
-    lisztenv:enterblock()
-    for key, value in pairs(_G) do
-        if type(value) == "table" and table.contains(value, "kind") then
-            -- print("Global:", key, value.kind)
-        end
-    end
+    local env = terralib.newenvironment(luaenv)
+    env:enterblock()
     -- block
     for id, node in ipairs(kernel_ast.children) do
         if (node.kind ~= nil) then
             node:check()
         end
     end
-    lisztenv:leaveblock()
+    env:leaveblock()
     return true
 end
 
