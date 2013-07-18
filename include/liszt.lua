@@ -6,18 +6,18 @@ _G.runtime    = nil
 local LisztObj = { }
 
 --[[ Liszt Types ]]--
-local TopoElem = setmetatable({ }, { __index = LisztObj, __metatable = "TopoElem" })
-local TopoSet  = setmetatable({ }, { __index = LisztObj, __metatable = "TopoSet" })
-local Field    = setmetatable({ }, { __index = LisztObj, __metatable = "Field" })
+local TopoElem = setmetatable({kind = "topoelem"}, { __index = LisztObj, __metatable = "TopoElem" })
+local TopoSet  = setmetatable({kind = "toposet"}, { __index = LisztObj, __metatable = "TopoSet" })
+local Field    = setmetatable({kind = "field"}, { __index = LisztObj, __metatable = "Field" })
 
-Mesh   = setmetatable({ }, { __index = LisztObj, __metatable = "Mesh"   })
-Cell   = setmetatable({ }, { __index = TopoElem, __metatable = "Cell"   })
-Face   = setmetatable({ }, { __index = TopoElem, __metatable = "Face"   })
-Edge   = setmetatable({ }, { __index = TopoElem, __metatable = "Edge"   })
-Vertex = setmetatable({ }, { __index = TopoElem, __metatable = "Vertex" })
+Mesh   = setmetatable({kind = "mesh"}, { __index = LisztObj, __metatable = "Mesh"})
+Cell   = setmetatable({kind = "cell"}, { __index = TopoElem, __metatable = "Cell"})
+Face   = setmetatable({kind = "face"}, { __index = TopoElem, __metatable = "Face"})
+Edge   = setmetatable({kind = "edge"}, { __index = TopoElem, __metatable = "Edge"})
+Vertex = setmetatable({kind = "vertex"}, { __index = TopoElem, __metatable = "Vertex"})
 
-DataType = setmetatable({ }, { __index=LisztObj, __metatable="DataType"})
-Vector   = setmetatable({ }, { __index=DataType})
+DataType = setmetatable({kind = "datatype"}, { __index=LisztObj, __metatable="DataType"})
+Vector   = setmetatable({kind = "vector"}, { __index=DataType})
 
 function Vector.type (data_type, num)
    if not (data_type == int or

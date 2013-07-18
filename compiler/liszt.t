@@ -30,7 +30,7 @@ local lisztlanguage = {
 		end
 
 		return function (env) 
-			return kernel_fn(kernel_ast, env())
+			return kernel_fn(kernel_ast, getfenv())
 		end
 	end
 }

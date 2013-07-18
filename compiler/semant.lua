@@ -5,21 +5,41 @@ symbols = {}
 ast = require("ast")
 
 ------------------------------------------------------------------------------
+--[[ Useful functions
+--]]
+
+function table.contains(t, element)
+    for key, value in pairs(t) do
+        if key == element then
+            return true
+        else
+            return false
+        end
+    end
+end
+
+------------------------------------------------------------------------------
 
 --[[ TODO: Implement semantic checking here
 --]]
 function check(kernel_ast, env)
-	-- environment for checking variables and scopes
-	local lisztenv = terralib.newenvironment(env)
-	lisztenv:enterblock()
-	-- block
-	for id, node in ipairs(kernel_ast.children) do
-		if (node.kind ~= nil) then
-			node:check()
-		end
-	end
-	lisztenv:leaveblock()
-	return true
+    -- print ("Semantic checking")
+    -- environment for checking variables and scopes
+    local lisztenv = terralib.newenvironment(env)
+    lisztenv:enterblock()
+    for key, value in pairs(_G) do
+        if type(value) == "table" and table.contains(value, "kind") then
+            -- print("Global:", key, value.kind)
+        end
+    end
+    -- block
+    for id, node in ipairs(kernel_ast.children) do
+        if (node.kind ~= nil) then
+            node:check()
+        end
+    end
+    lisztenv:leaveblock()
+    return true
 end
 
 ------------------------------------------------------------------------------
@@ -27,7 +47,7 @@ end
 --[[ Cases not handled
 --]]
 function ast.AST:check()
-	print("To implement semantic checking for", self.kind)
+    print("To implement semantic checking for", self.kind)
 end
 
 ------------------------------------------------------------------------------
@@ -35,10 +55,10 @@ end
 --[[ TODO: Block
 --]]
 function ast.Block:check()
-	-- statements
-	for id, node in ipairs(self.children) do
-		node:check()
-	end
+    -- statements
+    for id, node in ipairs(self.children) do
+        node:check()
+    end
 end
 
 ------------------------------------------------------------------------------
@@ -46,51 +66,51 @@ end
 --[[ TODO: Statements
 --]]
 function ast.Statement:check()
-	-- not needed
-	for id, node in ipairs(self.children) do
-		node:check()
-	end
+    -- not needed
+    for id, node in ipairs(self.children) do
+        node:check()
+    end
 end
 
 function ast.IfStatement:check()
-	-- condblock and block
-	for id, node in ipairs(self.children) do
-		node:check()
-	end
+    -- condblock and block
+    for id, node in ipairs(self.children) do
+        node:check()
+    end
 end
 
 function ast.WhileStatement:check()
-	-- condition expression and block
-	for id, node in ipairs(self.children) do
-		node:check()
-	end
+    -- condition expression and block
+    for id, node in ipairs(self.children) do
+        node:check()
+    end
 end
 
 function ast.DoStatement:check()
-	-- block
-	for id, node in ipairs(self.children) do
-		node:check()
-	end
+    -- block
+    for id, node in ipairs(self.children) do
+        node:check()
+    end
 end
 
 function ast.RepeatStatement:check()
-	-- condition expression, block
+    -- condition expression, block
 end
 
 function ast.ExprStatement:check()
-	-- expression
+    -- expression
 end
 
 function ast.Assignment:check()
-	-- lhs, rhs expressions
+    -- lhs, rhs expressions
 end
 
 function ast.InitStatement:check()
-	-- name, expression
+    -- name, expression
 end
 
 function ast.DeclStatement:check()
-	-- name
+    -- name
 end
 
 function ast.NumericFor:check()
@@ -100,11 +120,11 @@ function ast.GenericFor:check()
 end
 
 function ast.Break:check()
-	-- nothing needed
+    -- nothing needed
 end
 
 function ast.CondBlock:check()
-	-- condition expression, block
+    -- condition expression, block
 end
 
 ------------------------------------------------------------------------------

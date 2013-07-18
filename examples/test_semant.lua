@@ -6,7 +6,7 @@ position = mesh:fieldWithLabel(Vertex, Vector.type(float,3), "position")
 field2   = mesh:field(Cell,   int, 0)
 myid     = mesh:field(Vertex, int, 0) --,Vec[_2,Int]](Vec(0,0))
 
-v1 = 1
+v1 = { value = 1, kind = 'int'}
 
 function addvar1()
 	local v3 = 3
