@@ -9,23 +9,9 @@ ast = require("ast")
 --[[ TODO: Implement semantic checking here
 --]]
 function check(kernel_ast, env)
-	env[check] = 'int'
-	_ENV.v1 = 2
-	local lvr = env[v1]
-	if lvr then 
-		print("Variable exists", lvr)
-	else
-		print("Variable does not exist", lvr)
-	end
 	-- environment for checking variables and scopes
 	local lisztenv = terralib.newenvironment(env)
-	local lv = lisztenv:luaenv()[check]
 	lisztenv:enterblock()
-	if lv then 
-		print("Variable exists", lv)
-	else
-		print("Variable does not exist", lv)
-	end
 	-- block
 	for id, node in ipairs(kernel_ast.children) do
 		if (node.kind ~= nil) then
