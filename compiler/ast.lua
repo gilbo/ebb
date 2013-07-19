@@ -3,10 +3,21 @@
 ]]--
 module(... or 'ast', package.seeall)
 
+-------------------------
+--[[ String literals ]]--
+-------------------------
+local NOTYPE = 'Notype'
+local INT = 'Int'
+local FLOAT = 'Float'
+local VERTEX = 'Vertex'
+local EDGE = 'Edge'
+local FACE = 'Face'
+local CELL = 'Cell'
+
 ---------------------------
 --[[ Declare AST types ]]--
 ---------------------------
-AST            = { kind = 'ast' }
+AST            = { kind = 'ast', base_type = NOTYPE }
 AST.__index    = AST
 
 LisztKernel    = { kind = 'kernel' }

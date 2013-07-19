@@ -9,13 +9,15 @@ ast = require("ast")
 --[[ TODO: Implement semantic checking here
 --]]
 function check(luaenv, kernel_ast)
+	--print("AST")
+	--terralib.tree.printraw(kernel_ast)
     -- environment for checking variables and scopes
     local env = terralib.newenvironment(luaenv)
     env:enterblock()
     -- block
     for id, node in ipairs(kernel_ast.children) do
         if (node.kind ~= nil) then
-            node:check()
+            node:check(env)
         end
     end
     env:leaveblock()
@@ -26,7 +28,7 @@ end
 
 --[[ Cases not handled
 --]]
-function ast.AST:check()
+function ast.AST:check(env)
     print("To implement semantic checking for", self.kind)
 end
 
@@ -34,10 +36,10 @@ end
 
 --[[ TODO: Block
 --]]
-function ast.Block:check()
+function ast.Block:check(env)
     -- statements
     for id, node in ipairs(self.children) do
-        node:check()
+        node:check(env)
     end
 end
 
@@ -45,65 +47,66 @@ end
 
 --[[ TODO: Statements
 --]]
-function ast.Statement:check()
+function ast.Statement:check(env)
     -- not needed
     for id, node in ipairs(self.children) do
-        node:check()
+        node:check(env)
     end
 end
 
-function ast.IfStatement:check()
+function ast.IfStatement:check(env)
     -- condblock and block
     for id, node in ipairs(self.children) do
-        node:check()
+        node:check(env)
     end
 end
 
-function ast.WhileStatement:check()
+function ast.WhileStatement:check(env)
     -- condition expression and block
     for id, node in ipairs(self.children) do
-        node:check()
+        node:check(env)
     end
 end
 
-function ast.DoStatement:check()
+function ast.DoStatement:check(env)
     -- block
     for id, node in ipairs(self.children) do
-        node:check()
+        node:check(env)
     end
 end
 
-function ast.RepeatStatement:check()
+function ast.RepeatStatement:check(env)
     -- condition expression, block
 end
 
-function ast.ExprStatement:check()
+function ast.ExprStatement:check(env)
     -- expression
 end
 
-function ast.Assignment:check()
+function ast.Assignment:check(env)
     -- lhs, rhs expressions
+	self.children[1].check(env)
 end
 
-function ast.InitStatement:check()
+function ast.InitStatement:check(env)
     -- name, expression
 end
 
-function ast.DeclStatement:check()
+function ast.DeclStatement:check(env)
     -- name
 end
 
-function ast.NumericFor:check()
+function ast.NumericFor:check(env)
 end
 
-function ast.GenericFor:check()
+function ast.GenericFor:check(env)
 end
 
-function ast.Break:check()
+function ast.Break:check(env)
     -- nothing needed
 end
 
-function ast.CondBlock:check()
+function ast.CondBlock:check(env)
     -- condition expression, block
 end
 
@@ -111,34 +114,34 @@ end
 
 --[[ TODO: Expressions
 --]]
-function ast.Expression:check()
+function ast.Expression:check(env)
 end
 
 ------------------------------------------------------------------------------
 
 --[[ TODO: Misc
 --]]
-function ast.LValue:check()
+function ast.LValue:check(env)
 end
 
-function ast.BinaryOp:check()
+function ast.BinaryOp:check(env)
 end
 
-function ast.UnaryOp:check()
+function ast.UnaryOp:check(env)
 end
 
-function ast.Tuple:check()
+function ast.Tuple:check(env)
 end
 
-function ast.TableLookup:check()
+function ast.TableLookup:check(env)
 end
 
-function ast.Call:check()
+function ast.Call:check(env)
 end
 
 ------------------------------------------------------------------------------
 
 --[[ TODO: Variables
 --]]
-function ast.Name:check()
+function ast.Name:check(env)
 end
