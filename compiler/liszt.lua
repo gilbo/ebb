@@ -149,6 +149,7 @@ enclosed expression
 --]]
 lang.simpleexp = function(P)
 	-- catch values
+	-- TODO: This does something weird with integers
 	if P:matches(P.number) then
 		return ast.Number:New(P, P:next().value)		
 

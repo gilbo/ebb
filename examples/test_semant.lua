@@ -18,8 +18,8 @@ function main ()
 	print("f1 is a field of", f1.data_type, "over", f1.topo_type)
 
     local k = liszt_kernel (cell)
-        checkthis1 = 0.5
-        checkthis2 = 4
+        checkthis1 = 5
+        checkthis2 = 1.3
         position = 2
         var a = Vector.new(Int, 1, 2)
     end
