@@ -4,27 +4,88 @@ ast = require("ast")
 
 --[[ Declare types
 --]]
-local NOSCOPE = 'noscope'
-local SLUA = 'lua'
-local SLISZT = 'liszt'
-local NOTYPE = 'notype'
-local INT = 'int'
-local FLOAT = 'float'
-local VECTOR = 'vector'
-local NUM = 'number'
-local TAB = 'table'
+_NOSCOPE_STR = 'noscope'
+_LUA_STR = 'lua'
+_LISZT_STR = 'liszt'
 
-Type = {}
-function Type:new()
-	local newtype = 
-	{
-		inftype = NOTYPE,
-		scope = NOSCOPE,
-		size = 1
-	}
+_NOTYPE_STR = 'notype'
+_INT_STR = 'int'
+_FLOAT_STR = 'float'
+_VECTOR_STR = 'vector'
+_NUM_STR = 'number'
+_TAB_STR = 'table'
+
+-- root variable type
+_NOTYPE = 
+{
+	name = _NOTYPE_STR,
+	parent = {},
+	children = {}
+}
+-- liszt variable type
+_INT = 
+{
+	name = _INT_STR,
+	parent = {},
+	children = {}
+}
+-- liszt variable type
+_FLOAT = 
+{
+	name = _FLOAT_STR,
+	parent = {},
+	children = {}
+}
+-- liszt variable type
+_VECTOR = 
+{
+	name = _VECTOR_STR,
+	parent = {},
+	children = {}
+}
+-- number type
+_NUM = 
+{
+	name = _NUM_STR,
+	parent = {},
+	children = {}
+}
+-- table type
+_TAB  =
+{
+	name = _TAB_STR,
+	parent = {},
+	children = {}
+}
+
+ObjType = 
+{
+	objtype = _NOTYPE,
+	scope = _NOSCOPE_STR,
+	elemtype = _NOTYPE,
+	size = 0
+}
+
+function ObjType:new()
+	local newtype = {}
 	setmetatable(newtype, {__index = self})
+	newtype.objtype = self.typename
+	newtype.scope = self.scope
+	newtype.elemtype = self.elemtype
+	newtype.size = self.size
 	return newtype
 end
+
+_TR = _NOTYPE
+_TR.parent = _NOTYPE
+
+_TR.children = {_NUM, _VECTOR}
+_NUM.parent = _NOTYPE
+_VECTOR.parent = _NOTYPE
+
+_NUM.children = {_INT, _FLOAT}
+_INT.parent = _NUM
+_FLOAT.parent = _NUM
 
 ------------------------------------------------------------------------------
 
@@ -42,13 +103,19 @@ function check(luaenv, kernel_ast)
 
 	--[[ Check if lhstype conforms to rhstype
 	--]]
-	local function conform(lhsobj, rhsobj)
-		return true
---		if rhsobj.inftype == lhstype.inftype then
---			return true
---		else
---			return false
---		end
+	local function conform(lhstype, rhstype)
+		if lhstype == _TR then
+			return true
+		elseif rhstype == lhstype then
+			return true
+		elseif rhstype == _TR then
+			return false
+		else
+			return conform(lhstype, rhstype.parent)
+		end
+	end
+
+	local function settype(lhsobj, rhsobj)
 	end
 
 	------------------------------------------------------------------------------
@@ -113,23 +180,39 @@ function check(luaenv, kernel_ast)
 
 	function ast.Assignment:check()
 		-- lhs, rhs expressions
-		print("Child 1 type:", self.children[1].kind)
-		print("Child 2 type:", self.children[2].kind)
 		local lhsobj = self.children[1]:check()
 		local rhsobj = self.children[2]:check()
-		local validassgn = conform(lhsobj, rhsobj)
-		print("LHS", lhsobj, "RHS", rhsobj.inftype)
+		local validassgn = conform(lhsobj.objtype, rhsobj.objtype)
 		if not validassgn then
-			diag:reporterror(self,"Inferred RHS type", rhstype, "does not conform to inferred LHS type", lhstype)
+			diag:reporterror(self,"Inferred RHS type ", rhsobj.objtype.name,
+			" does not conform to inferred LHS type ", lhsobj.objtype.name)
 		end
 	end
 
 	function ast.InitStatement:check()
 		-- name, expression
+		-- TODO: should redefinitions be allowed?
+		local nameobj = ObjType:new()
+		nameobj.scope = _LISZT_STR
+		env:localenv()[self.children[1]] = nameobj
+		local rhsobj = self.children[2]:check()
+		local validassgn = conform(nameobj.objtype, rhsobj.objtype)
+		if not validassgn then
+			diag:reporterror(self,"Inferred RHS type ", rhsobj.objtype.name,
+			" does not conform to inferred LHS type ", nameobj.objtype.name)
+		else
+			settype(nameobj, rhsobj)
+		end
+		return nameobj
 	end
 
 	function ast.DeclStatement:check()
 		-- name
+		-- TODO: should redefinitions be allowed?
+		local nameobj = ObjType:new()
+		nameobj.scope = _LISZT_STR
+		env:localenv()[self.children[1]] = nameobj
+		return nameobj
 	end
 
 	function ast.NumericFor:check()
@@ -181,26 +264,30 @@ function check(luaenv, kernel_ast)
 	--]]
 	function ast.Name:check()
 		local locv = env:localenv()[self.children[1]]
+		local nametype
 		if locv then
-
+			-- if liszt local variable, type stored in environment
+			nametype = locv
 		else
-			lv = env:luaenv()[self.children[1]]
-			if not lv then
-				diag:reporterror(self, "Left hand variable not defined in an assignment")
+			local locv = env:luaenv()[self.children[1]]
+			if not locv then
+				diag:reporterror(self, "Assignment Left hand variable \'" .. 
+					self.children[1] .. "\' is not defined")
 			else
-				-- TODO: lua value
-				local nametype = Type:new()
-				ametype.inftype = type(lv)
-				ametype.scope = SLUA
-				ametype.size = 1
+				-- TODO: infer liszt type for the lua variable
+				nametype = ObjType:new()
+				nametype.objtype = type(locv)
+				nametype.scope = _LUA_STR
+				nametype.size = 1
 			end
 		end
+		return nametype
 	end
 
 	function ast.Number:check()
-		local numtype = Type:new()
-		numtype.inftype = FLOAT
-		numtype.scope = SLISZT
+		local numtype = ObjType:new()
+		numtype.objtype = _NUM
+		numtype.scope = _LISZT_STR
 		numtype.size = 1
 		return numtype
 	end

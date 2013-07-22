@@ -21,7 +21,8 @@ function main ()
         checkthis1 = 5
         checkthis2 = 1.3
         position = 2
-        var a = Vector.new(Int, 1, 2)
+		var local1 = 9.0
+		global1 = 2.0
     end
 
 print("Completed main")
