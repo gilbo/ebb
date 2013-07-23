@@ -19,9 +19,11 @@ function main ()
 
     local k = liszt_kernel (cell)
         checkthis1 = 5
-        checkthis2 = 1.3
-        position = 2
+        checkthis2 = 1
 		var local1 = 9.0
+		var local2 = 2.0
+		var local3 = local1 + local2
+--		var local4 = checkthis1 + checkthis2
 		global1 = 2.0
     end
 

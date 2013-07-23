@@ -1,3 +1,9 @@
+--TODO: CHANGE lexer-parser to create nodes when CORRECT LINE NUMBER
+--information is present
+--TODO: OUTPUT the TYPED TREE
+-- ***************************************************************************
+------------------------------------------------------------------------------
+
 module(... or 'semant', package.seeall)
 
 ast = require("ast")
@@ -11,6 +17,7 @@ _LISZT_STR = 'liszt'
 _NOTYPE_STR = 'notype'
 _INT_STR = 'int'
 _FLOAT_STR = 'float'
+_BOOL_STR = 'bool'
 _VECTOR_STR = 'vector'
 _NUM_STR = 'number'
 _TAB_STR = 'table'
@@ -37,6 +44,13 @@ _FLOAT =
 	children = {}
 }
 -- liszt variable type
+_BOOL = 
+{
+	name = _BOOL_STR,
+	parent = {},
+	children = {}
+}
+-- liszt variable type
 _VECTOR = 
 {
 	name = _VECTOR_STR,
@@ -58,10 +72,10 @@ _TAB  =
 	children = {}
 }
 
-ObjType = 
+local ObjType = 
 {
 	objtype = _NOTYPE,
-	scope = _NOSCOPE_STR,
+	scope = _LISZT_STR,
 	elemtype = _NOTYPE,
 	size = 0
 }
@@ -76,25 +90,27 @@ function ObjType:new()
 	return newtype
 end
 
+-- class tree
 _TR = _NOTYPE
 _TR.parent = _NOTYPE
-
-_TR.children = {_NUM, _VECTOR}
+--
+_TR.children = {_NUM, _BOOL, _VECTOR}
 _NUM.parent = _NOTYPE
+_BOOL.parent = _NOTYPE
 _VECTOR.parent = _NOTYPE
-
+--
 _NUM.children = {_INT, _FLOAT}
 _INT.parent = _NUM
 _FLOAT.parent = _NUM
 
 ------------------------------------------------------------------------------
 
---[[ TODO: Implement semantic checking here
+--[[ Semantic checking called from here
 --]]
 function check(luaenv, kernel_ast)
 
 	print("AST")
-	--	terralib.tree.printraw(kernel_ast)
+	terralib.tree.printraw(kernel_ast)
 	-- environment for checking variables and scopes
 	local env = terralib.newenvironment(luaenv)
 	local diag = terralib.newdiagnostics()
@@ -115,7 +131,13 @@ function check(luaenv, kernel_ast)
 		end
 	end
 
-	local function settype(lhsobj, rhsobj)
+	local function set_type(lhsobj, rhsobj)
+		if lhsobj.objtype == _NOTYPE then
+			lhsobj.objtype = rhsobj.objtype
+			lhsobj.scope = rhsobj.scope
+			lhsobj.elemtype = rhsobj.elemtype
+			lhsobj.size = rhsobj.size
+		end
 	end
 
 	------------------------------------------------------------------------------
@@ -129,7 +151,7 @@ function check(luaenv, kernel_ast)
 
 	------------------------------------------------------------------------------
 
-	--[[ TODO: Block
+	--[[ Block
 	--]]
 	function ast.Block:check()
 		-- statements
@@ -140,7 +162,7 @@ function check(luaenv, kernel_ast)
 
 	------------------------------------------------------------------------------
 
-	--[[ TODO: Statements
+	--[[ Statements
 	--]]
 	function ast.Statement:check()
 		-- not needed
@@ -187,22 +209,17 @@ function check(luaenv, kernel_ast)
 			diag:reporterror(self,"Inferred RHS type ", rhsobj.objtype.name,
 			" does not conform to inferred LHS type ", lhsobj.objtype.name)
 		end
+		-- TODO: add type information to the environment
 	end
 
 	function ast.InitStatement:check()
 		-- name, expression
 		-- TODO: should redefinitions be allowed?
 		local nameobj = ObjType:new()
-		nameobj.scope = _LISZT_STR
-		env:localenv()[self.children[1]] = nameobj
+		local varname = self.children[1].children[1]
 		local rhsobj = self.children[2]:check()
-		local validassgn = conform(nameobj.objtype, rhsobj.objtype)
-		if not validassgn then
-			diag:reporterror(self,"Inferred RHS type ", rhsobj.objtype.name,
-			" does not conform to inferred LHS type ", nameobj.objtype.name)
-		else
-			settype(nameobj, rhsobj)
-		end
+		set_type(nameobj, rhsobj)
+		env:localenv()[varname] = nameobj
 		return nameobj
 	end
 
@@ -210,8 +227,8 @@ function check(luaenv, kernel_ast)
 		-- name
 		-- TODO: should redefinitions be allowed?
 		local nameobj = ObjType:new()
-		nameobj.scope = _LISZT_STR
-		env:localenv()[self.children[1]] = nameobj
+		local varname = self.children[1].children[1]
+		env:localenv()[varname] = nameobj
 		return nameobj
 	end
 
@@ -231,19 +248,75 @@ function check(luaenv, kernel_ast)
 
 	------------------------------------------------------------------------------
 
-	--[[ TODO: Expressions
+	--[[ Expressions
 	--]]
 	function ast.Expression:check()
 	end
 
-	------------------------------------------------------------------------------
-
-	--[[ TODO: Misc
-	--]]
-	function ast.LValue:check()
+	-- expression helper functions
+	local function match_num_vector(node, leftobj, rightobj)
+		local binterms = conform(_NUM, leftobj.objtype) and
+			conform(_NUM, rightobj.objtype)
+		if not binterms then
+			binterms = conform(_VECTOR, leftobj.objtype) and
+				conform(_VECTOR, rightobj.objtype)
+		end
+		binterms = binterms or (conform(_NUM, leftobj.elemtype)
+			and conform(_NUM, rightobj.elemtype))
+		if not binterms then
+			diag:reporterror(node,
+				"Atleast one of the terms is not ",
+				"a number or a vector of numbers")
+			return false
+		elseif not (conform(leftobj.elemtype, rightobj.elemtype)
+			or conform(rightobj.elemtype, leftobj.elemtype)) then
+			diag:reporterror(node, "Mismatch between element types ",
+				"for the two terms")
+			return false
+		elseif leftobj.size ~= rightobj.size then
+			diag:reporterror(node, "Mismatch in size of two terms")
+			return false
+		else
+			return true
+		end
 	end
 
+	-- binary expressions
 	function ast.BinaryOp:check()
+		local leftobj = self.children[1]:check()
+		local rightobj = self.children[3]:check()
+		local op = self.children[2]
+		local exprobj = ObjType:new()
+		if op == '+' or op == '-' or op == '*' or op == '/' then
+			if match_num_vector(self, leftobj, rightobj) then
+				if conform(leftobj.objtype, rightobj.objtype) then
+					exprobj.objtype = leftobj.objtype
+					exprobj.elemtype = leftobj.objtype
+				else
+					exprobj.objtype = rightob.objtype
+					exprobj.elemtype = rightobj.objtype
+				end
+			exprobj.size = leftobj.size
+			end
+		elseif op == '^' then
+		elseif op == '<=' or op == '>=' or op == '<' or op == '>' then
+			exprobj.objtype = _BOOL
+			exprobj.size = 1
+		elseif op == '==' or op == '~=' then
+			exprobj.objtype = _BOOL
+			exprobj.size = 1
+		elseif op == 'and' or op == 'or' then
+		else
+			diag:reporterror(self, "Unknown operator \'", op, "\'")
+		end
+		return exprobj
+	end
+
+	------------------------------------------------------------------------------
+
+	--[[ Misc
+	--]]
+	function ast.LValue:check()
 	end
 
 	function ast.UnaryOp:check()
@@ -260,14 +333,14 @@ function check(luaenv, kernel_ast)
 
 	------------------------------------------------------------------------------
 
-	--[[ TODO: Variables
+	--[[ Variables
 	--]]
 	function ast.Name:check()
+		local nameobj = ObjType:new()
 		local locv = env:localenv()[self.children[1]]
-		local nametype
 		if locv then
 			-- if liszt local variable, type stored in environment
-			nametype = locv
+			nameobj = locv
 		else
 			local locv = env:luaenv()[self.children[1]]
 			if not locv then
@@ -275,24 +348,28 @@ function check(luaenv, kernel_ast)
 					self.children[1] .. "\' is not defined")
 			else
 				-- TODO: infer liszt type for the lua variable
-				nametype = ObjType:new()
-				nametype.objtype = type(locv)
-				nametype.scope = _LUA_STR
-				nametype.size = 1
+				nameobj.objtype = type(locv)
+				nameobj.scope = _LUA_STR
+				nameobj.size = 1
 			end
 		end
-		return nametype
+		return nameobj
 	end
 
 	function ast.Number:check()
-		local numtype = ObjType:new()
-		numtype.objtype = _NUM
-		numtype.scope = _LISZT_STR
-		numtype.size = 1
-		return numtype
+		local numobj = ObjType:new()
+		numobj.objtype = _NUM
+		numobj.elemtype = _NUM
+		numobj.size = 1
+		return numobj
 	end
 
 	function ast.Bool:check()
+		local boolobj = ObjTyoe:new()
+		boolobj.objtype = _BOOL
+		numobj.elemtype = _NUM
+		boolobj.size = 1
+		return boolobj
 	end
 
 	------------------------------------------------------------------------------

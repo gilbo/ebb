@@ -22,7 +22,7 @@ local lisztlanguage = {
 		--]]
 
 		local function kernel_fn(env, kernel_ast)
---		local success = semant.check(env, kernel_ast)
+		local success = semant.check(env, kernel_ast)
 		end
 
 		return function (env) 
