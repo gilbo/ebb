@@ -51,21 +51,27 @@ local block_terminators = {
 
 --[[ Generic expression operator parsing functions: ]]--
 local function leftbinary(P, lhs)
+	local node = ast.BinaryOp:New(P)
 	local op  = P:next().type
 	local rhs = P:exp(op)
-	return ast.BinaryOp:New(P, lhs, op, rhs)
+	node.children = {lhs, op, rhs}
+	return node
 end
 
 local function rightbinary(P, lhs)
+	local node = ast.BinaryOp:New(P)
 	local op  = P:next().type
 	local rhs = P:exp(op, "right")
-	return ast.BinaryOp:New(P, lhs, op, rhs)
+	node.children = {lhs, op, rhs}
+	return node
 end
 
 local function unary (P)
+	local node = ast.UnaryOp:New(P)
 	local op = P:next().type
 	local exp = P:exp(precedence.unary)
-	return ast.UnaryOp:New(P, op, exp)
+	node.children = {op, exp}
+	return node
 end	
 
 ----------------------------------
@@ -105,6 +111,7 @@ lang.tuple = function (P, exprs)
 	if P:nextif(",") then
 		return P:tuple(exprs)
 	else 
+		--TODO: check line number
 		return ast.Tuple:New(P, unpack(exprs))
 	end
 end
@@ -116,16 +123,22 @@ lang.lvaluehelper = function (P, lhs)
 	local cur = P:cur()
 	-- table indexing:
 	if cur.type == '.' or cur.type == ':' then
+		local node = ast.TableLookup:New(P)
 		local op = P:next().type
 		-- check to make sure the table is being indexed by a valid name
 		if not P:matches(P.name) then P:error("expected name after '.'") end
-		return P:lvaluehelper(ast.TableLookup:New(P, lhs, op, ast.Name:New(P, P:next().value)))
+		local nodename = ast.Name:New(P)
+		nodename.children = {P:next().value}
+		node.children = {lhs, op, nodename}
+		return P:lvaluehelper(node)
 
 		-- field index / function call?
 	elseif P:nextif('(') then
+		local node = ast.Call:New(P)
 		local args = P:tuple()
 		P:expect(')')
-		return P:lvaluehelper(ast.Call:New(P, lhs, args))
+		node.children = {lhs, args}
+		return P:lvaluehelper(node)
 	end
 	return lhs
 end
@@ -138,9 +151,11 @@ lang.lvalue = function (P)
 		local token = P:next()
 		P:error("Expected name at " .. token.linenumber .. ":" .. token.offset)
 	end
+	local node = ast.Name:New(P)
 	local symname = P:next().value
+	node.children = {symname}
 	P:ref(symname)
-	return P:lvaluehelper(ast.Name:New(P, symname))
+	return P:lvaluehelper(node)
 end
 
 --[[  simpleexp is called when exp cannot parse the next token...
@@ -151,11 +166,15 @@ lang.simpleexp = function(P)
 	-- catch values
 	-- TODO: This does something weird with integers
 	if P:matches(P.number) then
-		return ast.Number:New(P, P:next().value)		
+		local node = ast.Number:New(P)
+		node.children = {P:next().value}
+		return node
 
 		-- catch bools
 	elseif P:matches('true') or P:matches('false') then
-		return ast.Bool:New(P, P:next().type)
+		local node = ast.Bool:New(P)
+		node.children = {P:next().type}
+		return node
 
 		-- catch parenthesized expressions
 	elseif P:nextif("(") then
@@ -171,6 +190,7 @@ end
 lang.liszt_kernel = function (P)
 	-- parse liszt_kernel keyword and argument:
 	P:expect("liszt_kernel")
+	local kernel_node = ast.LisztKernel:New(P)
 
 	-- parse parameter
 	P:expect("(")
@@ -181,7 +201,8 @@ lang.liszt_kernel = function (P)
 	local block = P:block()
 	P:expect("end")
 
-	return ast.LisztKernel:New(P, param, block)
+	kernel_node.children = {param, block}
+	return kernel_node
 end
 
 --[[ Statement Parsing ]]--
@@ -203,57 +224,68 @@ lang.statement = function (P)
 		local name = P:lvalue()
 		-- differentiate between initialization and declaration
 		if (P:nextif("=")) then
+			local node_init = ast.InitStatement:New(P)
 			local expr = P:exp()
-			return ast.InitStatement:New(P, name, expr)
+			node_init.children = {name, expr}
+			return node_init
 		else
-			return ast.DeclStatement:New(P, name)
+			local node_decl = ast.DeclStatement:New(P)
+			node_decl.children = {name}
+			return node_decl
 		end
 
 		--[[ if statement ]]--
 	elseif P:nextif("if") then
+		local node_if = ast.IfStatement:New(P)
+		local node_ifc = ast.CondBlock:New(P)
 		local blocks = { }
-
 		local cond = P:exp()
-
 		P:expect("then")
 		local body = P:block()
-		blocks[#blocks+1] = ast.CondBlock:New(P, cond, body)
-
+		node_ifc.children = {cond, body}
+		blocks[#blocks+1] = node_ifc
 		-- parse all elseif clauses
 		while (P:nextif("elseif")) do
+			local node_else = ast.CondBlock:New(P)
 			local cond = P:exp()
 			P:expect("then")
 			local body = P:block()
-			blocks[#blocks+1] = ast.CondBlock:New(P, cond, body)							
+			node_else.children = {cond, body}
+			blocks[#blocks+1] = node_else
 		end
-
 		if (P:nextif('else')) then
 			blocks[#blocks+1]=P:block()
 		end
-
 		P:expect("end")
-		return ast.IfStatement:New(P, unpack(blocks))
+		node_if.children = {unpack(blocks)}
+		return node_if
 
 		--[[ while statement ]]--
 	elseif P:nextif("while") then
+		local node_while = ast.WhileStatement:New(P)
 		local condition = P:exp()
 		P:expect("do")
 		local body = P:block()
 		P:expect("end")
-		return ast.WhileStatement:New(P, condition, body)
+		node_while.children = {condition, body}
+		return node_while
 
 		-- do block end
 	elseif P:nextif("do") then
+		local node_do = ast.DoStatement:New(P)
 		local body = P:block()
 		P:expect("end")
-		return ast.DoStatement:New(P, body)
+		node_do.children = {body}
+		return node_do
 
 		-- repeat block until condition
 	elseif P:nextif("repeat") then
+		local node_repeat = ast.RepeatStatement:New(P)
 		local body = P:block()
 		P:expect("until")
 		local condition = P:exp()
-		return ast.RepeatStatement:New(P, condition, body)
+		node_repeat.children = {condition, body}
+		return node_repeat
 
 		-- TODO: implement for statement
 		-- Just a skeleton. NumericFor loops should be of just one type.
@@ -262,14 +294,17 @@ lang.statement = function (P)
 	elseif P:nextif("for") then
 		local iterator = P:expect(P.name).value
 		if (P:nextif("in")) then
+			local node_gf = ast.GenericFor:New(P)
 			local set = P:lvalue()
 			P:expect("do")
 			local body = P:block()
 			P:expect("end")
 			-- ?? what kinds should these be
-			return ast.GenericFor:New(P, iterator, set, body)
+			node_gf.children = {iterator, set, body}
+			return node_gf
 		else
 			P:expect("=")
+			local node_nf = ast.NumericFor:New(P)
 			local exprs = { }
 			exprs[1] = P:exp()
 			P:expect(',')
@@ -280,27 +315,31 @@ lang.statement = function (P)
 			P:expect("do")
 			local body = P:block()
 			P:expect("end")
-			return ast.NumericFor:New(P, iterator, unpack(exprs), body)
+			node_nf.children = {iterator, unpack(exprs), body}
+			return node_nf
 		end
 
 	elseif P:nextif("foreach") then
+		local node_fe = ast.GenericFor:New(P)
 		local iterator = P:expect(P.name).value
 		P:expect("in")
 		local set = P:lvalue()
 		P:expect("do")
 		local body = P:block()
 		P:expect("end")
-		return ast.GenericFor:New(P, iterator, set, body)
+		node_fe.children = {iterator, set, body}
+		return node_fe
 
 		--[[ expression statement / assignment statement ]]--
 	else
 		local expr = P:exp()
 		if (P:nextif('=')) then
+			local node_asgn = ast.Assignment:New(P)
 			-- check to make sure lhs is an LValue
 			if not expr.isLValue() then P:error("expected LValue before '='") end
-
 			local rhs = P:exp()
-			return ast.Assignment:New(P, expr, rhs)
+			node_asgn.children = {expr, rhs}
+			return node_asgn
 		else
 			return expr
 		end
@@ -308,6 +347,7 @@ lang.statement = function (P)
 end
 
 lang.block = function (P)
+	local node_block = ast.Block:New(P)
 	local statements = { }
 	local first = P:cur().type
 	while not block_terminators[first] do
@@ -316,6 +356,7 @@ lang.block = function (P)
 	end
 
 	if P:nextif('break') then
+		--TODO: fix line number
 		statements[#statements+1] = ast.Break:New(P)
 		-- check to make sure break is the last statement of the block
 		local key = P:cur().type
@@ -324,5 +365,7 @@ lang.block = function (P)
 		end
 	end
 
-	return ast.Block:New(P, unpack(statements))
+	--TODO: fix line number
+	node_block.children = {unpack(statements)}
+	return node_block
 end
