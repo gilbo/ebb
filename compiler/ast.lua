@@ -6,18 +6,12 @@ module(... or 'ast', package.seeall)
 -------------------------
 --[[ String literals ]]--
 -------------------------
-local NOTYPE = 'Notype'
-local INT = 'Int'
-local FLOAT = 'Float'
-local VERTEX = 'Vertex'
-local EDGE = 'Edge'
-local FACE = 'Face'
-local CELL = 'Cell'
+local _NOTYPE = 'notype'
 
 ---------------------------
 --[[ Declare AST types ]]--
 ---------------------------
-AST            = { kind = 'ast', base_type = NOTYPE }
+AST            = { kind = 'ast' }
 AST.__index    = AST
 
 LisztKernel    = { kind = 'kernel' }
@@ -104,7 +98,8 @@ function AST:New (P, ...)
 		kind = self.kind, 
 		linenumber = P:cur().linenumber,
 		filename = P.source,
-		offset = P:cur().offset
+		offset = P:cur().offset,
+		node_type = _NOTYPE
 	}
 	return setmetatable(newnode, {__index = self})
 end

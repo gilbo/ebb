@@ -83,7 +83,7 @@ local ObjType =
 function ObjType:new()
 	local newtype = {}
 	setmetatable(newtype, {__index = self})
-	newtype.objtype = self.typename
+	newtype.objtype = self.objtype
 	newtype.scope = self.scope
 	newtype.elemtype = self.elemtype
 	newtype.size = self.size
@@ -109,7 +109,7 @@ _FLOAT.parent = _NUM
 --]]
 function check(luaenv, kernel_ast)
 
-	print("AST")
+	print("**** Untyped AST")
 	terralib.tree.printraw(kernel_ast)
 	-- environment for checking variables and scopes
 	local env = terralib.newenvironment(luaenv)
@@ -220,6 +220,7 @@ function check(luaenv, kernel_ast)
 		local rhsobj = self.children[2]:check()
 		set_type(nameobj, rhsobj)
 		env:localenv()[varname] = nameobj
+		self.node_type = nameobj.objtype.name
 		return nameobj
 	end
 
@@ -229,6 +230,7 @@ function check(luaenv, kernel_ast)
 		local nameobj = ObjType:new()
 		local varname = self.children[1].children[1]
 		env:localenv()[varname] = nameobj
+		self.node_type = nameobj.objtype.name
 		return nameobj
 	end
 
@@ -309,6 +311,7 @@ function check(luaenv, kernel_ast)
 		else
 			diag:reporterror(self, "Unknown operator \'", op, "\'")
 		end
+		self.node_type = exprobj.objtype.name
 		return exprobj
 	end
 
@@ -353,6 +356,7 @@ function check(luaenv, kernel_ast)
 				nameobj.size = 1
 			end
 		end
+		self.node_type = nameobj.objtype.name
 		return nameobj
 	end
 
@@ -361,6 +365,7 @@ function check(luaenv, kernel_ast)
 		numobj.objtype = _NUM
 		numobj.elemtype = _NUM
 		numobj.size = 1
+		self.node_type = numobj.objtype.name
 		return numobj
 	end
 
@@ -369,6 +374,7 @@ function check(luaenv, kernel_ast)
 		boolobj.objtype = _BOOL
 		numobj.elemtype = _NUM
 		boolobj.size = 1
+		self.node_type = boolobj.objtype.name
 		return boolobj
 	end
 
@@ -383,5 +389,10 @@ function check(luaenv, kernel_ast)
 		end
 	end
 	env:leaveblock()
+
+	print("**** Typed AST")
+	terralib.tree.printraw(kernel_ast)
+
 	diag:finishandabortiferrors("Errors during typechecking liszt", 1)
+
 end
