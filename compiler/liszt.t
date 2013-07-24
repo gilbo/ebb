@@ -2,7 +2,7 @@ package.path = package.path .. ";./compiler/?.lua;./compiler/?.t"
 
 -- Import liszt parser as a local module
 -- (keep liszt language internals out of global environment for liszt user)
-local liszt = require "liszt"
+local parser = require "parser"
 local semant = require "semant"
 
 _G.liszt             = nil
@@ -16,7 +16,7 @@ local lisztlanguage = {
 	keywords    = {"var", "foreach"},
 
 	expression = function(self, lexer)
-		local kernel_ast = Parser.Parse(liszt.lang, lexer, "liszt_kernel")
+		local kernel_ast = Parser.Parse(parser.lang, lexer, "liszt_kernel")
 		--[[ this function is called in place of executing the code that 
 			 we parsed 
 		--]]
