@@ -246,12 +246,12 @@ lang.statement = function (P)
 		blocks[#blocks+1] = node_ifc
 		-- parse all elseif clauses
 		while (P:nextif("elseif")) do
-			local node_else = ast.CondBlock:New(P)
+			local node_elseif = ast.CondBlock:New(P)
 			local cond = P:exp()
 			P:expect("then")
 			local body = P:block()
-			node_else.children = {cond, body}
-			blocks[#blocks+1] = node_else
+			node_elseif.children = {cond, body}
+			blocks[#blocks+1] = node_elseif
 		end
 		if (P:nextif('else')) then
 			blocks[#blocks+1]=P:block()

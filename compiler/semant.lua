@@ -1,9 +1,3 @@
---TODO: CHANGE lexer-parser to create nodes when CORRECT LINE NUMBER
---information is present
---TODO: OUTPUT the TYPED TREE
--- ***************************************************************************
-------------------------------------------------------------------------------
-
 module(... or 'semant', package.seeall)
 
 ast = require("ast")
@@ -77,7 +71,8 @@ local ObjType =
 	objtype = _NOTYPE,
 	scope = _LISZT_STR,
 	elemtype = _NOTYPE,
-	size = 0
+	size = 0,
+	defn = {}
 }
 
 function ObjType:new()
@@ -137,6 +132,7 @@ function check(luaenv, kernel_ast)
 			lhsobj.scope = rhsobj.scope
 			lhsobj.elemtype = rhsobj.elemtype
 			lhsobj.size = rhsobj.size
+			lhsobj.defn.node_type = rhsobj.objtype.name
 		end
 	end
 
@@ -166,38 +162,49 @@ function check(luaenv, kernel_ast)
 	--]]
 	function ast.Statement:check()
 		-- not needed
+		env:enterblock()
 		for id, node in ipairs(self.children) do
 			node:check()
 		end
+		env:leaveblock()
 	end
 
 	function ast.IfStatement:check()
 		-- condblock and block
 		for id, node in ipairs(self.children) do
+			env:enterblock()
 			node:check()
+			env:leaveblock()
 		end
 	end
 
 	function ast.WhileStatement:check()
-		-- condition expression and block
-		for id, node in ipairs(self.children) do
-			node:check()
+		-- condition (expression) and block
+		env:enterblock()
+		local condobj = self.children[1]:check()
+		if not conform(_BOOL, condobj.objtype) then
+			diag:reporterror(self, 
+				"Expected boolean value for while statement condition")
+		else
+			env:enterblock()
+			self.children[2]:check()
+			env:leaveblock()
 		end
+		env:leaveblock()
 	end
 
 	function ast.DoStatement:check()
 		-- block
+		env:enterblock()
 		for id, node in ipairs(self.children) do
 			node:check()
 		end
+		env:leaveblock()
 	end
 
+	--TODO: discuss repeat statement semantics
 	function ast.RepeatStatement:check()
 		-- condition expression, block
-	end
-
-	function ast.ExprStatement:check()
-		-- expression
 	end
 
 	function ast.Assignment:check()
@@ -216,6 +223,7 @@ function check(luaenv, kernel_ast)
 		-- name, expression
 		-- TODO: should redefinitions be allowed?
 		local nameobj = ObjType:new()
+		nameobj.defn = self.children[1]
 		local varname = self.children[1].children[1]
 		local rhsobj = self.children[2]:check()
 		set_type(nameobj, rhsobj)
@@ -228,12 +236,14 @@ function check(luaenv, kernel_ast)
 		-- name
 		-- TODO: should redefinitions be allowed?
 		local nameobj = ObjType:new()
+		nameobj.defn = self.children[1]
 		local varname = self.children[1].children[1]
 		env:localenv()[varname] = nameobj
 		self.node_type = nameobj.objtype.name
 		return nameobj
 	end
 
+	-- TODO: discuss for statements
 	function ast.NumericFor:check()
 	end
 
@@ -245,7 +255,17 @@ function check(luaenv, kernel_ast)
 	end
 
 	function ast.CondBlock:check()
-		-- condition expression, block
+		-- condition (expression), block
+		env:enterblock()
+		local condobj = self.children[1]:check()
+		if not conform(_BOOL, condobj.objtype) then
+			diag:reporterror(self, "Expected boolean value here")
+		else
+			env:enterblock()
+			self.children[2]:check()
+			env:leaveblock()
+		end
+		env:leaveblock()
 	end
 
 	------------------------------------------------------------------------------
@@ -300,14 +320,29 @@ function check(luaenv, kernel_ast)
 				end
 			exprobj.size = leftobj.size
 			end
+		--TODO: discuss semantics of ^
 		elseif op == '^' then
 		elseif op == '<=' or op == '>=' or op == '<' or op == '>' then
-			exprobj.objtype = _BOOL
-			exprobj.size = 1
+			if conform(_NUM, leftobj.objtype) and 
+				conform(_NUM, rightobj.objtype) then
+				exprobj.objtype = _BOOL
+				exprobj.size = 1
+			else
+				diag:reporterror(self, "One of the terms compared using \'",
+				op, "\' is not a number")
+			end
 		elseif op == '==' or op == '~=' then
 			exprobj.objtype = _BOOL
 			exprobj.size = 1
 		elseif op == 'and' or op == 'or' then
+			if conform(_BOOL, leftobj.objtype) and 
+				conform(_BOOL, rightobj.objtype) then
+				exprobj.objtype = _BOOL
+				exprobj.size = 1
+			else
+				diag:reporterror(self, "One of the terms in the \' ", op,
+					"\' expression is not a boolean value")
+			end
 		else
 			diag:reporterror(self, "Unknown operator \'", op, "\'")
 		end
@@ -317,7 +352,7 @@ function check(luaenv, kernel_ast)
 
 	------------------------------------------------------------------------------
 
-	--[[ Misc
+	--[[ TODO: Misc
 	--]]
 	function ast.LValue:check()
 	end
@@ -347,7 +382,7 @@ function check(luaenv, kernel_ast)
 		else
 			local locv = env:luaenv()[self.children[1]]
 			if not locv then
-				diag:reporterror(self, "Assignment Left hand variable \'" .. 
+				diag:reporterror(self, "Variable \'" .. 
 					self.children[1] .. "\' is not defined")
 			else
 				-- TODO: infer liszt type for the lua variable
@@ -370,9 +405,9 @@ function check(luaenv, kernel_ast)
 	end
 
 	function ast.Bool:check()
-		local boolobj = ObjTyoe:new()
+		local boolobj = ObjType:new()
 		boolobj.objtype = _BOOL
-		numobj.elemtype = _NUM
+		boolobj.elemtype = _NUM
 		boolobj.size = 1
 		self.node_type = boolobj.objtype.name
 		return boolobj
