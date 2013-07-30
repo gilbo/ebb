@@ -2,6 +2,12 @@ module(... or 'semant', package.seeall)
 
 ast = require("ast")
 
+------------------------------------------------------------------------------
+--[[NOTES: Variables may be introduced in the lua code, or in liszt code
+--through initialization/ declaration statements/ in for loops.
+--]]
+------------------------------------------------------------------------------
+
 --[[ Declare types
 --]]
 _NOSCOPE_STR = 'noscope'
@@ -15,6 +21,11 @@ _BOOL_STR = 'bool'
 _VECTOR_STR = 'vector'
 _NUM_STR = 'number'
 _TAB_STR = 'table'
+_MESH_STR = 'mesh'
+_CELL_STR = 'cell'
+_FACE_STR = 'face'
+_EDGE_STR = 'edge'
+_VERTEX_STR = 'vertex'
 
 -- root variable type
 _NOTYPE = 
@@ -65,12 +76,48 @@ _TAB  =
 	parent = {},
 	children = {}
 }
+-- mesh type
+_MESH  =
+{
+	name = _MESH_STR,
+	parent = {},
+	children = {}
+}
+-- mesh type
+_CELL  =
+{
+	name = _CELL_STR,
+	parent = {},
+	children = {}
+}
+-- mesh type
+_FACE  =
+{
+	name = _FACE_STR,
+	parent = {},
+	children = {}
+}
+-- mesh type
+_EDGE  =
+{
+	name = _EDGE_STR,
+	parent = {},
+	children = {}
+}
+-- mesh type
+_VERTEX  =
+{
+	name = _VERTEX_STR,
+	parent = {},
+	children = {}
+}
 
 local ObjType = 
 {
 	objtype = _NOTYPE,
 	scope = _LISZT_STR,
 	elemtype = _NOTYPE,
+    luaval = {},
 	size = 0,
 	defn = {}
 }
@@ -89,10 +136,25 @@ end
 _TR = _NOTYPE
 _TR.parent = _NOTYPE
 --
-_TR.children = {_NUM, _BOOL, _VECTOR}
+_TR.children =
+{
+    _NUM,
+    _BOOL,
+    _VECTOR,
+    _MESH,
+    _CELL,
+    _FACE,
+    _EDGE,
+    _VERTEX
+}
 _NUM.parent = _NOTYPE
 _BOOL.parent = _NOTYPE
 _VECTOR.parent = _NOTYPE
+_MESH.parent = _NOTYPE
+_CELL.parent = _NOTYPE
+_FACE.parent = _NOTYPE
+_EDGE.parent = _NOTYPE
+_VERTEX.parent = _NOTYPE
 --
 _NUM.children = {_INT, _FLOAT}
 _INT.parent = _NUM
@@ -215,7 +277,11 @@ function check(luaenv, kernel_ast)
 		if not validassgn then
 			diag:reporterror(self,"Inferred RHS type ", rhsobj.objtype.name,
 			" does not conform to inferred LHS type ", lhsobj.objtype.name)
+		else
+			set_type(lhsobj, rhsobj)
+			self.node_type = rhsobj.objtype.name
 		end
+		return rhsobj
 		-- TODO: add type information to the environment
 	end
 
@@ -248,6 +314,18 @@ function check(luaenv, kernel_ast)
 	end
 
 	function ast.GenericFor:check()
+        env:enterblock()
+        local setobj = self.children[2]:check()
+        local itobj = ObjType:new()
+        itobj.defn = self.children[1]
+--        itobj.objtype = setobj.elemtype
+        itobj.scope = _LISZT_STR
+--        itobj.defn.node_type = setobj.elemtype.name
+--        local varname = self.children[1].children[1]
+--        env:localenv()[varname] = itobj
+--        local forobj = self.children[3]:check()
+        env:leaveblock()
+--        return forobj
 	end
 
 	function ast.Break:check()
@@ -355,6 +433,7 @@ function check(luaenv, kernel_ast)
 	--[[ TODO: Misc
 	--]]
 	function ast.LValue:check()
+        print("Unreconginzed LValue, yet to implement type checking")
 	end
 
 	function ast.UnaryOp:check()
@@ -364,6 +443,22 @@ function check(luaenv, kernel_ast)
 	end
 
 	function ast.TableLookup:check()
+        local tableobj = ObjType:new()
+        -- LHS could be another LValue, or name
+        local lhsobj = self.children[1]:check()
+        -- RHS is a member of the LHS
+        local member = self.children[3].children[1]
+        local luaval = lhsobj.luaval[member]
+        if luaval == nil then
+            diag:reporterror(self, "LHS value does not have member ", member)
+        else
+            tableobj = ObjType:new()
+            if not lua_to_liszt(luaval, tableobj) then
+                diag:reporterror(self,
+                "Cannot convert the lua value to a liszt value")
+            end
+        end
+        self.node_type = tableobj.objtype.name
 	end
 
 	function ast.Call:check()
@@ -373,6 +468,39 @@ function check(luaenv, kernel_ast)
 
 	--[[ Variables
 	--]]
+
+	-- TODO: infer liszt type for the lua variable
+	function lua_to_liszt(luav, nameobj)
+		nameobj.scope = _LUA_STR
+        nameobj.luaval = luav
+		if type(luav) == _TAB_STR then
+            print("Lua variable of type ", luav.kind)
+			if luav.kind == _VECTOR_STR then
+				nameobj.objtype = _VECTOR
+				nameobj.elemtype = _INT
+				nameobj.size = luav.size
+				return true
+            elseif luav.kind == _MESH_STR then
+                nameobj.objtype = _MESH
+                return true
+            elseif luav.kind == _CELL_STR then
+                nameobj.objtype = _CELL
+                return true
+            elseif luav.kind == _FACE_STR then
+                nameobj.objtype = _FACE
+                return true
+            elseif luav.kind == _EDGE_STR then
+                nameobj.objtype = _EDGE
+                return true
+            elseif luav.kind == _VERTEX_STR then
+                nameobj.objtype = _VERTEX
+                return true
+            end
+        else
+			return false
+		end
+	end
+
 	function ast.Name:check()
 		local nameobj = ObjType:new()
 		local locv = env:localenv()[self.children[1]]
@@ -380,15 +508,13 @@ function check(luaenv, kernel_ast)
 			-- if liszt local variable, type stored in environment
 			nameobj = locv
 		else
-			local locv = env:luaenv()[self.children[1]]
-			if not locv then
+			local luav = env:luaenv()[self.children[1]]
+			if not luav then
 				diag:reporterror(self, "Variable \'" .. 
 					self.children[1] .. "\' is not defined")
-			else
-				-- TODO: infer liszt type for the lua variable
-				nameobj.objtype = type(locv)
-				nameobj.scope = _LUA_STR
-				nameobj.size = 1
+			elseif not lua_to_liszt(luav, nameobj) then
+				diag:reporterror(self,
+				"Cannot convert the lua value to a liszt value")
 			end
 		end
 		self.node_type = nameobj.objtype.name
@@ -425,8 +551,8 @@ function check(luaenv, kernel_ast)
 	end
 	env:leaveblock()
 
---	print("**** Typed AST")
---	terralib.tree.printraw(kernel_ast)
+	print("**** Typed AST")
+	terralib.tree.printraw(kernel_ast)
 
 	diag:finishandabortiferrors("Errors during typechecking liszt", 1)
 

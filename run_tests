@@ -17,7 +17,7 @@ for line in io.popen(lscmd):lines() do
         line = line:sub(cwd:len()+2)
         line = line:gsub("\\","/")
     end
-    local file = line:match("^(tests/[^/]*%.lua)$")
+    local file = line:match("^(tests/[^/]*%.t)$") or line:match("^(tests/[^/]*%.lua)$")
     if file then
         print(file .. ":")
         local execstring = "./terra/terra -l ./compiler/liszt.t " .. file
