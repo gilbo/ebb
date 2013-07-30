@@ -6,14 +6,14 @@ _G.runtime    = nil
 local LisztObj = { }
 
 --[[ String literals ]]--
-local NOTYPE = 'Notype'
+local NOTYPE = 'notype'
 local TABLE = 'table'
-local INT = 'Int'
-local FLOAT = 'Float'
-local VERTEX = 'Vertex'
-local EDGE = 'Edge'
-local FACE = 'Face'
-local CELL = 'Cell'
+local INT = 'int'
+local FLOAT = 'float'
+local VERTEX = 'vertex'
+local EDGE = 'edge'
+local FACE = 'face'
+local CELL = 'cell'
 
 --[[ Liszt Types ]]--
 local TopoElem = setmetatable({kind = "topoelem"}, { __index = LisztObj, __metatable = "TopoElem" })
