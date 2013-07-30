@@ -66,13 +66,15 @@ function Vector.type (data_type, num)
    if not type(num) == "number" or num < 1 or num % 1 ~= 0 then
       error("Second argument to Vector.type() should be a non-negative integer!")
    end
-   return setmetatable({size = num, data_type = data_type}, Vector)
+   return setmetatable({size = num, data_type = data_type}, {__index = Vector})
 end
 
 function Vector.new(data_type, ...) 
    local vec = { ... }
-   vec.type = data_type
-   setmetatable(vec, Vector)
+   local num = #vec
+   vec.data_type = data_type
+   vec.size = num
+   setmetatable(vec, {__index = Vector})
    return vec
 end
 

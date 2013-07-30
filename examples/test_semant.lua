@@ -3,6 +3,13 @@ mesh = LoadMesh("examples/mesh.lmesh")
 
 f1   = mesh:field(Cell,   int, 0)
 
+v1 = Vector.new(int, 1, 2, 3) 
+v2 = Vector.new(int, 2, 4, 6)
+v3 = Vector.new(float, 1.0, 2.0, 3.0)
+v4 = Vector.new(int, 1.0, 1.0)
+
+t1 = {}
+
 print("Defining checkthis1")
 checkthis1 = 1
 
@@ -18,6 +25,12 @@ function main ()
 	print("f1 is a field of", f1.data_type, "over", f1.topo_type)
 
     local k = liszt_kernel (cell)
+		v1 = v1
+		v1 = v1 + v2
+		v1 = v2 + v3
+		v1 = v1 + v4
+		v1 = v1 + v2
+		t1 = t1
         checkthis1 = 5
         checkthis2 = 1
 		var local1 = 9.0

@@ -215,7 +215,11 @@ function check(luaenv, kernel_ast)
 		if not validassgn then
 			diag:reporterror(self,"Inferred RHS type ", rhsobj.objtype.name,
 			" does not conform to inferred LHS type ", lhsobj.objtype.name)
+		else
+			set_type(lhsobj, rhsobj)
+			self.node_type = rhsobj.objtype.name
 		end
+		return rhsobj
 		-- TODO: add type information to the environment
 	end
 
@@ -373,6 +377,22 @@ function check(luaenv, kernel_ast)
 
 	--[[ Variables
 	--]]
+
+	-- TODO: infer liszt type for the lua variable
+	function lua_to_liszt(luav, nameobj)
+		if type(luav) == _TAB_STR then
+			if luav.kind == _VECTOR_STR then
+				nameobj.objtype = _VECTOR
+				nameobj.scope = _LUA_STR
+				nameobj.elemtype = _INT
+				nameobj.size = luav.size
+				return true
+			end
+		else
+			return false
+		end
+	end
+
 	function ast.Name:check()
 		local nameobj = ObjType:new()
 		local locv = env:localenv()[self.children[1]]
@@ -380,15 +400,13 @@ function check(luaenv, kernel_ast)
 			-- if liszt local variable, type stored in environment
 			nameobj = locv
 		else
-			local locv = env:luaenv()[self.children[1]]
-			if not locv then
+			local luav = env:luaenv()[self.children[1]]
+			if not luav then
 				diag:reporterror(self, "Variable \'" .. 
 					self.children[1] .. "\' is not defined")
-			else
-				-- TODO: infer liszt type for the lua variable
-				nameobj.objtype = type(locv)
-				nameobj.scope = _LUA_STR
-				nameobj.size = 1
+			elseif not lua_to_liszt(luav, nameobj) then
+				diag:reporterror(self,
+				"Cannot convert the lua value to a liszt value")
 			end
 		end
 		self.node_type = nameobj.objtype.name
