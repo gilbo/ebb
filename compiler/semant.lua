@@ -104,8 +104,8 @@ _FLOAT.parent = _NUM
 --]]
 function check(luaenv, kernel_ast)
 
-	print("**** Untyped AST")
-	terralib.tree.printraw(kernel_ast)
+--	print("**** Untyped AST")
+--	terralib.tree.printraw(kernel_ast)
 	-- environment for checking variables and scopes
 	local env = terralib.newenvironment(luaenv)
 	local diag = terralib.newdiagnostics()
@@ -425,8 +425,8 @@ function check(luaenv, kernel_ast)
 	end
 	env:leaveblock()
 
-	print("**** Typed AST")
-	terralib.tree.printraw(kernel_ast)
+--	print("**** Typed AST")
+--	terralib.tree.printraw(kernel_ast)
 
 	diag:finishandabortiferrors("Errors during typechecking liszt", 1)
 
