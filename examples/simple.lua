@@ -11,8 +11,8 @@ function main ()
 		com = com + pos(v)
 	end
 
-	mesh.cells.map(sum_pos)
-	com = com / mesh.cells.size
+	mesh.vertices.map(sum_pos)
+	com = com / mesh.vertices.size
 
 	print("center of mass of mesh: " .. tostring(com))
 end

@@ -40,7 +40,7 @@ enum lReduction {
 };
 
 enum lPhase {
-	L_READ_ONLY,
+	L_READ_ONLY = 0,
 	L_WRITE_ONLY,
 	L_MODIFY,
 	L_REDUCE_PLUS,
@@ -133,8 +133,12 @@ struct lProgramArguments;
 
 // Load a context, which stores a bunch of necessary per-mesh instantiated objects
 L_RUNTIME_UNNESTED struct lContext *lLoadContext (char *mesh_file);
-L_RUNTIME_UNNESTED struct lField   *lLoadField (struct lContext *ctx, const char *key, enum lElementType key_type, enum lType val_type, size_t val_length);
-L_RUNTIME_UNNESTED struct lField   *lInitField (struct lContext *ctx, int id, enum lElementType key_type, enum lType val_type, size_t val_length);
+L_RUNTIME_UNNESTED struct lField   *lLoadField   (struct lContext *ctx, const char *key, enum lElementType key_type, enum lType val_type, size_t val_length);
+L_RUNTIME_UNNESTED struct lField   *lInitField   (struct lContext *ctx, enum lElementType key_type, enum lType val_type, size_t val_length);
+L_RUNTIME_UNNESTED struct lScalar  *lInitScalar  (struct lContext *ctx, enum lType val_type, size_t val_length);
+
+L_RUNTIME_UNNESTED struct lSet *lNewlSet ();
+L_RUNTIME_UNNESTED void lFreelSet (struct lSet *set);
 
 L_RUNTIME_UNNESTED void lFieldBroadcast (struct lContext * ctx, struct lField * field, enum lElementType key_type, enum lType val_type, size_t val_length, void * data);
 L_RUNTIME_UNNESTED void lFieldLoadData  (struct lContext * ctx, struct lField * field, enum lElementType key_type, enum lType val_type, size_t val_length, const char * key);
