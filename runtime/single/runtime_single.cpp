@@ -26,7 +26,6 @@ struct lProgramArguments {
 #define L_UNNESTED
 #define L_STENCIL
 
-
 //define opaque data types and implementation for specific runtime
 
 struct lContext {
@@ -47,11 +46,13 @@ struct lSet {
 };
 
 lSet *lNewlSet () {
-	lSet *set = (lSet*) malloc(sizeof(lSet));
+	lSet *set = new lSet;
 	return set;
 }
 
-void lFreelSet (lSet *set) {std::free(set); }
+void lFreelSet (lSet *set) { 
+	delete set; 
+}
 
 struct lkSet {
 	lNestedSet set;
@@ -94,7 +95,7 @@ size_t numberOfElementsOfType(lContext * ctx, lElementType typ) {
 //Unnested Runtime Calls
 
 lContext *lLoadContext (char *mesh_file) {
-	lContext *ctx = (lContext *) malloc(sizeof(lContext));
+	lContext *ctx = new lContext;
 	FILE *file = NULL;
 	ctx->mesh_reader.init(mesh_file, &file);
 	ctx->mesh_writer.init(mesh_file, &file);
@@ -227,15 +228,11 @@ L_RUNTIME_UNNESTED void lFieldSaveData(lContext * ctx, lField * field, lElementT
     write_field.nElems = write_header->nF;
   }
   int currentSize = (int)MeshIO::lMeshTypeSize(val_type)*(int)val_length*write_field.nElems;
-//  printf("   domain: %d, other %d, %d, %d\n", (int)write_field.domain, (int)MeshIO::lMeshTypeSize(val_type), (int)val_length, write_field.nElems);
-//  printf("   got header. currentSize is: %d\n", currentSize);
-
 
   //see if field is already in file
   MeshIO::FileField *old_field = (MeshIO::FileField *)malloc(sizeof(MeshIO::FileField));
   int found = ctx->mesh_reader.findField(key, old_field);
 
-//  printf("   is field found? %d\n", found);
   if(found != -1){
     //if the field is already there, make sure the size for the old data is smaller than the size of the new data and the right over the old data.  
     write_field.name = old_field->name;
@@ -245,7 +242,6 @@ L_RUNTIME_UNNESTED void lFieldSaveData(lContext * ctx, lField * field, lElementT
     else if(old_field->range.flags == MeshIO::LISZT_MAT_FLAG)
       oldSize *= old_field->range.data[0]*old_field->range.data[1];
 
-//    printf("      oldSize is %d, %u\n", oldSize, old_field->data);
     if(currentSize <= oldSize){
       // find where to write the data 
       ctx->mesh_writer.setPosition(old_field->data);
@@ -256,17 +252,12 @@ L_RUNTIME_UNNESTED void lFieldSaveData(lContext * ctx, lField * field, lElementT
     write_field.data = ctx->mesh_writer.currentPosition();
     ctx->mesh_writer.write(currentSize, field->data);
     // update the fileField with the new info
-//    printf("      fieldpos %u\n", ctx->mesh_reader.findFieldPositionInTable(key));
     ctx->mesh_writer.setPosition(ctx->mesh_reader.findFieldPositionInTable(key));
-//    printf("      write_field: d %d, r.t %c, r.f %c, nE %d, name %u, data %u\n", (int)write_field.domain, write_field.range.type, write_field.range.flags, (int)write_field.nElems, write_field.name, write_field.data);
-//    printf("      old_field: d %d, r.t %c, r.f %c, nE %d, name %u, data %u\n", (int)old_field->domain, old_field->range.type, old_field->range.flags, (int)old_field->nElems, old_field->name, old_field->data);
     ctx->mesh_writer.writeValue(write_field);
   } else {
     // if the field does not exist then go here
     MeshIO::FileField *fields;
     uint32_t nfields = ctx->mesh_reader.findFieldTable(&fields);
-
-//    printf("      total number of fields: %d\n", nfields);
 
     ctx->mesh_writer.setEnd();
     write_field.name = ctx->mesh_writer.currentPosition();
@@ -307,6 +298,7 @@ void lScalarWrite(lContext * ctx, lScalar * scalar, lReduction reduction, lType 
 	size_t scalar_size = lUtilTypeSize(element_type);
 	lUtilValueReduce(scalar->data + offset * scalar_size, reduction, element_type, val_length, value);
 }
+
 void lScalarEnterPhase(lScalar * scalar, lType val_type, size_t val_length, lPhase phase) {
 	//nop
 }
