@@ -74,6 +74,7 @@ lStencilData    = runtime.lStencilData
 
 
 -- functions called directly
+lScalarRead        = runtime.lScalarRead
 lScalarWrite       = runtime.lScalarWrite
 lVerticesOfMesh    = runtime.lVerticesOfMesh
 lFieldEnterPhase   = runtime.lFieldEnterPhase

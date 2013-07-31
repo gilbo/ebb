@@ -5,7 +5,6 @@ require "include/liszt"
 
 mesh     = LoadMesh("examples/mesh.lmesh")
 position = mesh:fieldWithLabel(Vertex, Vector.type(float,3), "position")
-field    = mesh:field(Face, float, 0.0)
 
 local function main ( )
 	-- initialize com...
@@ -24,9 +23,9 @@ local function main ( )
 		var v   : runtime.lkElement
 		if (runtime.lkGetActiveElement(ctx, &v) > 0) then
 			var temp5 : float[3]
-	
 			runtime.lkFieldRead([position:lkField()], v, runtime.L_FLOAT,3,0,3,&temp5)
 			runtime.lkScalarWrite(ctx, [com:lkScalar()], runtime.L_PLUS, runtime.L_FLOAT,3,0,3,&temp5)
+			-- std.printf("%f %f %f\n", temp5[0], temp5[1], temp5[2])
 		end
 	end
 
@@ -37,8 +36,6 @@ local function main ( )
 	local terra run_sum_pos_kernel (ctx : &runtime.lContext)
 		var temp7 : &runtime.lSet = runtime.lNewlSet()
 		runtime.lVerticesOfMesh(ctx,temp7)
-		runtime.lScalarEnterPhase([com:lScalar()], runtime.L_FLOAT, 3, runtime.L_REDUCE_PLUS)
-		runtime.lFieldEnterPhase([position:lField()], runtime.L_FLOAT, 3, runtime.L_READ_ONLY)
 		runtime.lKernelRun(ctx, temp7, runtime.L_VERTEX, 0, sum_pos_kernel)
 		runtime.lFreelSet(temp7)
 	end
@@ -49,23 +46,22 @@ local function main ( )
 		var temp9 : &runtime.lSet = runtime.lNewlSet()
 		runtime.lVerticesOfMesh(ctx, temp9)
 		var temp10 : int = runtime.lSetSize(ctx, temp9)
-		runtime.lScalarEnterPhase(com:lScalar(), runtime.L_FLOAT, 3, runtime.L_READ_ONLY)
+		runtime.lFreelSet(temp9)
+
+		runtime.lScalarEnterPhase([com:lScalar()], runtime.L_FLOAT, 3, runtime.L_READ_ONLY)
 		var tmp_1 : float[3]
 		tmp_1[0] = temp10
 		tmp_1[1] = temp10
 		tmp_1[2] = temp10
 
-		runtime.lScalarWrite(ctx, com:lScalar(), runtime.L_DIVIDE, runtime.L_FLOAT, 3,0,3,&tmp_1)
+		runtime.lScalarWrite(ctx, [com:lScalar()], runtime.L_DIVIDE, runtime.L_FLOAT, 3,0,3,&tmp_1)
 		var tmp_2 : float[3];
-		lScalarRead(ctx, com:lScalar(), runtime.L_FLOAT, 3,0,3,&tmp_2)
+		runtime.lScalarRead(ctx, [com:lScalar()], runtime.L_FLOAT, 3,0,3,&tmp_2)
 
-		std.printf("final...\n")
-
+		std.printf("final... %f %f %f\n", tmp_2[0], tmp_2[1], tmp_2[2])
 	end
 
-	print_result()
-
-
+	print_result(mesh.ctx)
 end
 
 main()
