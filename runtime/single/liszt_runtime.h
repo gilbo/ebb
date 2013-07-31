@@ -1,23 +1,23 @@
 #ifndef __SINGLE_LISZT_RUNTIME_H
 #define __SINGLE_LISZT_RUNTIME_H
 
-#include "common/liszt_runtime.h"
+#include "runtime/common/liszt_runtime.h"
 
 typedef unsigned char byte;
 
 struct lStencilData {
 	void (*stencil_fn)(struct lsFunctionTable*,struct lsContext*);
-	bool is_trivial;
+	uint32_t is_trivial;
 };
 
 struct lField {
 	byte * data;
-	lkField *lkfield;
+	struct lkField *lkfield;
 };
 
 struct lScalar {
 	byte * data;
-	lkScalar *lkscalar;
+	struct lkScalar *lkscalar;
 };
 
 //in single-core runtime these are simply the same object as the unnested version
@@ -30,5 +30,16 @@ struct lkField {
 struct lkScalar {
 	byte * data;
 };
+
+struct lkContext {
+	struct lContext * ctx;
+	struct lkElement element;
+};
+
+//stenciling functions, stencils are not needed for single core so these are all blank
+struct lsElement  {};
+struct lsSet      {};
+struct lsContext  {};
+struct lsIterator {};
 
 #endif

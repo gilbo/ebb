@@ -30,6 +30,9 @@ Vertex = setmetatable({kind = "vertex"}, { __index = TopoElem, __metatable = "Ve
 
 DataType = setmetatable({kind = "datatype"}, { __index=LisztObj, __metatable="DataType"})
 Vector   = setmetatable({kind = "vector"},   { __index=DataType})
+Vector.__index = Vector
+
+local VectorType = { __index = Vector}
 
 function Field:set_topo_type(topo_type)
    -- TODO: handle errors
@@ -63,11 +66,11 @@ function Field:set_data_type(data_type)
 end
 
 function Field:lField ()
-   return self.field
+   return self.lfield
 end
 
 function Field:lkField ()
-   return self.field.lkfield
+   return self.lkfield
 end
 
 function Vector.type (data_type, num)
@@ -78,7 +81,7 @@ function Vector.type (data_type, num)
    if not type(num) == "number" or num < 1 or num % 1 ~= 0 then
       error("Second argument to Vector.type() should be a non-negative integer!")
    end
-   return setmetatable({size = num, data_type = data_type}, {__index = Vector})
+   return setmetatable({size = num, data_type = data_type}, Vector)
 end
 
 function Vector.new(data_type, ...) 
@@ -120,7 +123,7 @@ local lKeyTypeMap = {
 
 local function runtimeDataType (data_type)
    if getmetatable(data_type) == Vector then
-      return data_type.data_type, data_type.num
+      return lKeyTypeMap[data_type.data_type], data_type.size
    else
       return lKeyTypeMap[data_type], 1.0
    end
@@ -133,7 +136,8 @@ function Mesh:field (topo_type, data_type, initial_val)
    field:set_topo_type(topo_type)
    field:set_data_type(data_type)
    local val_type, val_len = runtimeDataType(data_type)
-   field.lField = runtime.initField(self, lElementTypeMap[topo_type], val_type, val_len)
+   field.lfield = runtime.initField(self.ctx, lElementTypeMap[topo_type], val_type, val_len)
+   field.lkfield = runtime.getlkField(field.lfield)
    return field
 end
 
@@ -143,25 +147,30 @@ function Mesh:fieldWithLabel (topo_type, data_type, label)
    setmetatable(field, { __index = Field })
    field:set_topo_type(topo_type)
    field:set_data_type(data_type)
-   field.lField    = runtime.loadField(self, label, lElementTypeMap[topo_type], data_type, 3)
+
+   local val_type, val_len = runtimeDataType(data_type)
+   field.lfield  = runtime.loadField(self.ctx, label, lElementTypeMap[topo_type], val_type, val_len)
+   field.lkfield = runtime.getlkField(field.lfield)
    return field
 end
 
 function Scalar:lScalar ()
-   return self.tscalar.lScalar()
+   return self.lscalar
 end
 
-function Scalar.New (tscalar)
-   local s = { tscalar = tscalar }
-   return setmetatable(s, {__index = Scalar })
+function Scalar:lkScalar()
+   return self.lkscalar
 end
 
 function Mesh:scalar (data_type)
-   return runtime.initScalar(self.ctx,0,0)
+   local s = setmetatable({}, {__index = Scalar })
+   s.lscalar  = runtime.initScalar(self.ctx,0,0)
+   s.lkscalar = runtime.getlkScalar(s.lscalar)
+   return s
 end
 
 function Mesh.new () 
-   local m      = setmetatable({ }, { __index = Mesh } )
+   local m = setmetatable({ }, { __index = Mesh } )
    return m
 end
 

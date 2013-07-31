@@ -10,6 +10,7 @@ SINGLE_LIB_DEP_C =
 SINGLE_SRC =
 CXXFLAGS_LIB =
 CXXFLAGS_OBJ =
+CXXFLAGS_INC = -I.. -I.
 
 ifeq ($(UNAME),Darwin)
 	SINGLE_LIB += single/runtime_single.dylib
@@ -31,11 +32,11 @@ endif
 all: $(SINGLE_LIB)
 
 $(SINGLE_LIB): $(SINGLE_LIB_DEP_ALL)
-	$(CXX) $(CXXFLAGS_LIB) -I. -lstdc++ $(SINGLE_LIB_DEP_B) -o $(SINGLE_LIB)
+	$(CXX) $(CXXFLAGS_LIB) $(CXXFLAGS_INC) -lstdc++ $(SINGLE_LIB_DEP_B) -o $(SINGLE_LIB)
 
 $(SINGLE_LIB_DEP_B): $(SINGLE_SRC)
 ifeq ($(UNAME),Linux)
-	$(CXX) $(CXXFLAGS_OBJ) -I. $(SINGLE_LIB_DEP_C) -o $(SINGLE_LIB_DEP_B)
+	$(CXX) $(CXXFLAGS_OBJ) $(CXXFLAGS_INC) $(SINGLE_LIB_DEP_C) -o $(SINGLE_LIB_DEP_B)
 endif
 
 clean:

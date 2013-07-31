@@ -155,9 +155,9 @@ L_RUNTIME_UNNESTED void lScalarWrite (struct lContext * ctx, struct lScalar * sc
 L_RUNTIME_UNNESTED void lScalarEnterPhase (struct lScalar * scalar, enum lType val_type, size_t val_length, enum lPhase phase);
 
 // L_RUNTIME_UNNESTED void lSetInitBoundary(struct lContext * ctx, struct lSet * set, enum lElementType type, const char * boundary_name);
-// L_RUNTIME_UNNESTED size_t lSetSize(struct lContext * ctx, struct lSet * set);
+L_RUNTIME_UNNESTED size_t lSetSize(struct lContext * ctx, struct lSet * set);
 
-L_RUNTIME_UNNESTED void lKernelRun (struct lContext * ctx,  struct lSet * set, enum lElementType typ, int id, void (*kernel)(struct lkContext), struct lStencilData data);
+L_RUNTIME_UNNESTED void lKernelRun (struct lContext * ctx,  struct lSet * set, enum lElementType typ, int id, void (*kernel)(struct lkContext));
 /*kernels have the signature and structure: 
 void kernel_name(lkContext ctx_) {
 	lkContext * ctx = &ctx_;

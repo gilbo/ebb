@@ -53,12 +53,6 @@ lSet *lNewlSet () {
 
 void lFreelSet (lSet *set) {std::free(set); }
 
-
-struct lkContext {
-	lContext * ctx;
-	lkElement element;
-};
-
 struct lkSet {
 	lNestedSet set;
 };
@@ -343,7 +337,7 @@ size_t lSetSize(lContext * ctx, lSet * set) {
 }
 
 L_ALWAYS_INLINE
-void lKernelRun(lContext * ctx,  lSet * set, lElementType typ, int id, void (*kernel)(lkContext), lStencilData data) {
+void lKernelRun(lContext * ctx,  lSet * set, lElementType typ, int id, void (*kernel)(lkContext)) {
 
 #ifndef NDEBUG
 	ctx->print_context.push();
@@ -568,14 +562,6 @@ int lkIDOfFace(lkContext * ctx, lkElement e) {
 int lkIDOfCell(lkContext * ctx, lkElement e) {
 	return elementID(e);
 }
-
-
-//stenciling functions, stencils are not needed for single core so these are all blank
-struct lsElement {};
-struct lsSet {};
-struct lsContext {};
-struct lsIterator {};
-
 
 #include "common/vector.h"
 #include "common/matrix.h"
