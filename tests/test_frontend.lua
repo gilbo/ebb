@@ -76,9 +76,6 @@ main()
                 for cell in mesh.cells do
                         field2(cell) = field2(cell) + 12
                 end
-                foreach cell in mesh.cells do
-                        field2(cell) = field2(cell) + 12
-                end
                 for cell = 1,3 do
                     t = 1
                 end
