@@ -26,6 +26,7 @@ _CELL_STR = 'cell'
 _FACE_STR = 'face'
 _EDGE_STR = 'edge'
 _VERTEX_STR = 'vertex'
+_TOPOSET_STR = 'toposet'
 
 -- root variable type
 _NOTYPE = 
@@ -83,31 +84,38 @@ _MESH  =
 	parent = {},
 	children = {}
 }
--- mesh type
+-- cell type
 _CELL  =
 {
 	name = _CELL_STR,
 	parent = {},
 	children = {}
 }
--- mesh type
+-- face type
 _FACE  =
 {
 	name = _FACE_STR,
 	parent = {},
 	children = {}
 }
--- mesh type
+-- edge type
 _EDGE  =
 {
 	name = _EDGE_STR,
 	parent = {},
 	children = {}
 }
--- mesh type
+-- vertex type
 _VERTEX  =
 {
 	name = _VERTEX_STR,
+	parent = {},
+	children = {}
+}
+-- topological set type
+_TOPOSET  =
+{
+	name = _TOPOSET_STR,
 	parent = {},
 	children = {}
 }
@@ -145,7 +153,8 @@ _TR.children =
     _CELL,
     _FACE,
     _EDGE,
-    _VERTEX
+    _VERTEX,
+    _TOPOSET
 }
 _NUM.parent = _NOTYPE
 _BOOL.parent = _NOTYPE
@@ -155,6 +164,7 @@ _CELL.parent = _NOTYPE
 _FACE.parent = _NOTYPE
 _EDGE.parent = _NOTYPE
 _VERTEX.parent = _NOTYPE
+_TOPOSET.parent = _NOTYPE
 --
 _NUM.children = {_INT, _FLOAT}
 _INT.parent = _NUM
@@ -318,11 +328,11 @@ function check(luaenv, kernel_ast)
         local setobj = self.children[2]:check()
         local itobj = ObjType:new()
         itobj.defn = self.children[1]
---        itobj.objtype = setobj.elemtype
+        itobj.objtype = setobj.elemtype
         itobj.scope = _LISZT_STR
---        itobj.defn.node_type = setobj.elemtype.name
---        local varname = self.children[1].children[1]
---        env:localenv()[varname] = itobj
+        itobj.defn.node_type = setobj.elemtype.name
+        local varname = self.children[1].children[1]
+        env:localenv()[varname] = itobj
 --        local forobj = self.children[3]:check()
         env:leaveblock()
 --        return forobj
@@ -444,6 +454,7 @@ function check(luaenv, kernel_ast)
 
 	function ast.TableLookup:check()
         local tableobj = ObjType:new()
+        tableobj.defn = self
         -- LHS could be another LValue, or name
         local lhsobj = self.children[1]:check()
         -- RHS is a member of the LHS
@@ -452,13 +463,13 @@ function check(luaenv, kernel_ast)
         if luaval == nil then
             diag:reporterror(self, "LHS value does not have member ", member)
         else
-            tableobj = ObjType:new()
             if not lua_to_liszt(luaval, tableobj) then
                 diag:reporterror(self,
                 "Cannot convert the lua value to a liszt value")
             end
         end
         self.node_type = tableobj.objtype.name
+        return tableobj
 	end
 
 	function ast.Call:check()
@@ -495,6 +506,10 @@ function check(luaenv, kernel_ast)
             elseif luav.kind == _VERTEX_STR then
                 nameobj.objtype = _VERTEX
                 return true
+            elseif luav.kind == _TOPOSET_STR then
+                nameobj.objtype = _TOPOSET
+                nameobj.elemtype = luav.elemtype
+                return true
             end
         else
 			return false
@@ -503,6 +518,7 @@ function check(luaenv, kernel_ast)
 
 	function ast.Name:check()
 		local nameobj = ObjType:new()
+        nameobj.defn = self
 		local locv = env:localenv()[self.children[1]]
 		if locv then
 			-- if liszt local variable, type stored in environment
