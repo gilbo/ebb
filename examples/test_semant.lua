@@ -67,9 +67,8 @@ function main ()
 --        v1
 
         for cell in mesh.cells do
+            cell
         end
-
-        var a.x
 
 --        a.b.c(d)
 

@@ -96,7 +96,7 @@ end
 
 --[[ Mesh Construction and methods ]]--
 local function toposet_stub (topoelem)
-   local tmp = {elemtype =  topoelem}
+   local tmp = {elemtypename =  topoelem}
    setmetatable(tmp, {__index = TopoSet})
    return tmp
 end
