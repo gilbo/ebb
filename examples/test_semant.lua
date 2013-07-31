@@ -1,4 +1,5 @@
 require "include/liszt"
+import "compiler/liszt"
 mesh = LoadMesh("examples/mesh.lmesh")
 
 f1   = mesh:field(Cell,   int, 0)

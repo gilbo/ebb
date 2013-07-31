@@ -1,3 +1,4 @@
+import "compiler/liszt"
 require "include/liszt"
 mesh = LoadMesh("examples/mesh.lmesh")
 

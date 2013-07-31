@@ -1,4 +1,5 @@
 require "include/liszt"
+import "compiler/liszt"
 mesh = LoadMesh("examples/mesh.lmesh")
 
 position = mesh:fieldWithLabel(Vertex, Vector.type(float,3), "position")

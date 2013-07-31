@@ -1,7 +1,7 @@
 #!/bin/bash
 if [ $1 == "-v" ];
 then
-	./terra/terra -vv -l ./compiler/liszt.t $2
+	./terra/terra -vv $2
 else
-	./terra/terra -l ./compiler/liszt.t $1
+	./terra/terra $1
 fi
