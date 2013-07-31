@@ -8,11 +8,6 @@ extern "C" {
 #include "single/liszt_runtime.h"
 }
 
-struct lStencilData {
-	void (*stencil_fn)(struct lsFunctionTable*,struct lsContext*);
-	bool is_trivial;
-};
-
 struct lProgramArguments {
 	const char * mesh_file;
 	bool redirect_output_to_log;
@@ -46,31 +41,19 @@ struct lContext {
 	PrintContext print_context;
 };
 
-typedef unsigned char byte;
-
-struct lField {
-	byte * data;
-};
-
-struct lScalar {
-	byte * data;
-};
-
 struct lSet {
 	BoundarySetReader::range_list_t ranges;
 	size_t size;
 };
 
+lSet *lNewlSet () {
+	lSet *set = (lSet*) malloc(sizeof(lSet));
+	return set;
+}
 
-//in single-core runtime these are simply the same object as the unnested version
-//the 'unnested' function simply casts these objects to their unnested equivalent
+void lFreelSet (lSet *set) {std::free(set); }
 
-struct lkField {
-	byte * data;
-};
-struct lkScalar {
-	byte * data;
-};
+
 struct lkContext {
 	lContext * ctx;
 	lkElement element;
@@ -139,28 +122,29 @@ lContext *lLoadContext (char *mesh_file) {
 lField *lLoadField(lContext *ctx, const char *key, lElementType key_type, lType val_type, size_t val_length) {
 	size_t n_elems = numberOfElementsOfType(ctx, key_type);
 	lField *field = (lField*) malloc(sizeof(lField));
-	field->data   = (byte*)   malloc(n_elems * val_length * lUtilTypeSize(val_type));
-	lFieldLoadData(ctx, field, key_type, val_type, val_length, key);
-	return field;
-}
-
-void lFieldInit(lContext * ctx, lField * field, int id, lElementType key_type, lType val_type, size_t val_length) {
-	size_t n_elems = numberOfElementsOfType(ctx,key_type);
-	field->data = (byte*) malloc(n_elems * val_length * lUtilTypeSize(val_type));
-}
-
-lField *lInitField (lContext *ctx, int id, lElementType key_type, lType val_type, size_t val_length) {
-	lField *field = (lField*) malloc(sizeof(lField));
-	lFieldInit(ctx, field, id, key_type, val_type, val_length);
-	return field;
-}
-
-L_RUNTIME_UNNESTED void lFieldLoadData(lContext * ctx, lField * field, lElementType key_type, lType val_type, size_t val_length, const char * key) {
+	// field->data   = (byte*)   malloc(n_elems * val_length * lUtilTypeSize(val_type));
     if (!strcmp(key, "position")) {
         assert(key_type == L_VERTEX);
         assert(val_type == L_DOUBLE || val_type == L_FLOAT);
     }
     field->data = (byte *) ctx->mesh_reader.fieldData(key_type, val_type, val_length, key);
+    field->lkfield = (lkField *) field;
+	return field;
+}
+
+lField *lInitField (lContext *ctx, lElementType key_type, lType val_type, size_t val_length) {
+	lField *field = (lField*) malloc(sizeof(lField));
+	size_t n_elems = numberOfElementsOfType(ctx,key_type);
+	field->data = (byte*) malloc(n_elems * val_length * lUtilTypeSize(val_type));
+	field->lkfield = (lkField *) field;
+	return field;
+}
+
+lScalar *lInitScalar (lContext *ctx, enum lType val_type, size_t val_length) {
+	lScalar *scalar = (lScalar*) malloc(sizeof(lField));
+	scalar->data = (byte *) malloc(lUtilTypeSize(val_type) * val_length);
+	scalar->lkscalar = (lkScalar *) scalar;
+	return scalar;
 }
 
 void lExec(void (*entry_point)(lContext*),void (*entry_stencil)(lsFunctionTable*,lsContext*), lProgramArguments * arguments, size_t n_fields, size_t n_sets, size_t n_scalars) {

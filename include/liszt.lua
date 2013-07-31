@@ -10,6 +10,7 @@ local NOTYPE = 'notype'
 local TABLE = 'table'
 local INT = 'int'
 local FLOAT = 'float'
+local VECTOR = 'vector'
 local VERTEX = 'vertex'
 local EDGE = 'edge'
 local FACE = 'face'
@@ -17,17 +18,18 @@ local CELL = 'cell'
 
 --[[ Liszt Types ]]--
 local TopoElem = setmetatable({kind = "topoelem"}, { __index = LisztObj, __metatable = "TopoElem" })
-local TopoSet  = setmetatable({kind = "toposet"}, { __index = LisztObj, __metatable = "TopoSet" })
-local Field    = setmetatable({kind = "field", topo_type = NOTYPE, data_type = NOTYPE}, { __index = LisztObj, __metatable = "Field" })
+local TopoSet  = setmetatable({kind = "toposet"},  { __index = LisztObj, __metatable = "TopoSet" })
+local Field    = setmetatable({kind = "field",  topo_type = NOTYPE, data_type = NOTYPE}, { __index = LisztObj, __metatable = "Field" })
+local Scalar   = setmetatable({kind = "scalar", data_type = NOTYPE},                     { __index = LisztObj, __metatable = "Scalar"})
 
-Mesh   = setmetatable({kind = "mesh"}, { __index = LisztObj, __metatable = "Mesh"})
-Cell   = setmetatable({kind = "cell"}, { __index = TopoElem, __metatable = "Cell"})
-Face   = setmetatable({kind = "face"}, { __index = TopoElem, __metatable = "Face"})
-Edge   = setmetatable({kind = "edge"}, { __index = TopoElem, __metatable = "Edge"})
+Mesh   = setmetatable({kind = "mesh"},   { __index = LisztObj, __metatable = "Mesh"})
+Cell   = setmetatable({kind = "cell"},   { __index = TopoElem, __metatable = "Cell"})
+Face   = setmetatable({kind = "face"},   { __index = TopoElem, __metatable = "Face"})
+Edge   = setmetatable({kind = "edge"},   { __index = TopoElem, __metatable = "Edge"})
 Vertex = setmetatable({kind = "vertex"}, { __index = TopoElem, __metatable = "Vertex"})
 
 DataType = setmetatable({kind = "datatype"}, { __index=LisztObj, __metatable="DataType"})
-Vector   = setmetatable({kind = "vector"}, { __index=DataType})
+Vector   = setmetatable({kind = "vector"},   { __index=DataType})
 
 function Field:set_topo_type(topo_type)
    -- TODO: handle errors
@@ -53,9 +55,19 @@ function Field:set_data_type(data_type)
 	   self.data_type = INT
    elseif data_type == float  then
 	   self.data_type = FLOAT
+   elseif getmetatable(data_type) == Vector then
+      self.data_type = VECTOR
    else
 	   print("*** Unrecognized data type!!")
    end
+end
+
+function Field:lField ()
+   return self.field
+end
+
+function Field:lkField ()
+   return self.field.lkfield
 end
 
 function Vector.type (data_type, num)
@@ -101,7 +113,6 @@ local lElementTypeMap = {
    [Edge]   = runtime.L_EDGE
 }
 
-
 local lKeyTypeMap = {
    [int]   = runtime.L_INT,
    [float] = runtime.L_FLOAT
@@ -115,7 +126,6 @@ local function runtimeDataType (data_type)
    end
 end
 
-
 function Mesh:field (topo_type, data_type, initial_val)
    local field = { }
    field.mesh  = self
@@ -123,7 +133,7 @@ function Mesh:field (topo_type, data_type, initial_val)
    field:set_topo_type(topo_type)
    field:set_data_type(data_type)
    local val_type, val_len = runtimeDataType(data_type)
-   field.field = runtime.initField(self, lElementTypeMap[topo_type], val_type, val_len)
+   field.lField = runtime.initField(self, lElementTypeMap[topo_type], val_type, val_len)
    return field
 end
 
@@ -133,15 +143,25 @@ function Mesh:fieldWithLabel (topo_type, data_type, label)
    setmetatable(field, { __index = Field })
    field:set_topo_type(topo_type)
    field:set_data_type(data_type)
-   field.field = runtime.loadField(self, label, lElementTypeMap[topo_type], data_type, 3)
-   field.id    = self.num_fields
-   self.num_fields = self.num_fields + 1
+   field.lField    = runtime.loadField(self, label, lElementTypeMap[topo_type], data_type, 3)
    return field
+end
+
+function Scalar:lScalar ()
+   return self.tscalar.lScalar()
+end
+
+function Scalar.New (tscalar)
+   local s = { tscalar = tscalar }
+   return setmetatable(s, {__index = Scalar })
+end
+
+function Mesh:scalar (data_type)
+   return runtime.initScalar(self.ctx,0,0)
 end
 
 function Mesh.new () 
    local m      = setmetatable({ }, { __index = Mesh } )
-   m.num_fields = 0
    return m
 end
 
