@@ -26,6 +26,7 @@ _CELL_STR = 'cell'
 _FACE_STR = 'face'
 _EDGE_STR = 'edge'
 _VERTEX_STR = 'vertex'
+_TOPOSET_STR = 'toposet'
 
 -- root variable type
 _NOTYPE = 
@@ -83,31 +84,38 @@ _MESH  =
 	parent = {},
 	children = {}
 }
--- mesh type
+-- cell type
 _CELL  =
 {
 	name = _CELL_STR,
 	parent = {},
 	children = {}
 }
--- mesh type
+-- face type
 _FACE  =
 {
 	name = _FACE_STR,
 	parent = {},
 	children = {}
 }
--- mesh type
+-- edge type
 _EDGE  =
 {
 	name = _EDGE_STR,
 	parent = {},
 	children = {}
 }
--- mesh type
+-- vertex type
 _VERTEX  =
 {
 	name = _VERTEX_STR,
+	parent = {},
+	children = {}
+}
+-- topological set type
+_TOPOSET  =
+{
+	name = _TOPOSET_STR,
 	parent = {},
 	children = {}
 }
@@ -145,7 +153,8 @@ _TR.children =
     _CELL,
     _FACE,
     _EDGE,
-    _VERTEX
+    _VERTEX,
+    _TOPOSET
 }
 _NUM.parent = _NOTYPE
 _BOOL.parent = _NOTYPE
@@ -155,6 +164,7 @@ _CELL.parent = _NOTYPE
 _FACE.parent = _NOTYPE
 _EDGE.parent = _NOTYPE
 _VERTEX.parent = _NOTYPE
+_TOPOSET.parent = _NOTYPE
 --
 _NUM.children = {_INT, _FLOAT}
 _INT.parent = _NUM
@@ -213,9 +223,14 @@ function check(luaenv, kernel_ast)
 	--]]
 	function ast.Block:check()
 		-- statements
+        local blockobj
 		for id, node in ipairs(self.children) do
-			node:check()
+			blockobj = node:check()
 		end
+        if blockobj ~= nil then
+            self.node_type = blockobj.objtype.name
+        end
+        return blockobj
 	end
 
 	------------------------------------------------------------------------------
@@ -225,43 +240,63 @@ function check(luaenv, kernel_ast)
 	function ast.Statement:check()
 		-- not needed
 		env:enterblock()
+        local stblock;
 		for id, node in ipairs(self.children) do
-			node:check()
+			stblock = node:check()
 		end
+        if stblock ~= nil then
+            self.node_type = stblock.objtype.name
+        end
 		env:leaveblock()
+        return stblock
 	end
 
 	function ast.IfStatement:check()
 		-- condblock and block
+        local stblock;
 		for id, node in ipairs(self.children) do
 			env:enterblock()
-			node:check()
+			stblock = node:check()
 			env:leaveblock()
 		end
+        if stblock ~= nil then
+            self.node_type = stblock.objtype.name
+        end
+        return stblock
 	end
 
 	function ast.WhileStatement:check()
 		-- condition (expression) and block
 		env:enterblock()
+        local stblock
 		local condobj = self.children[1]:check()
 		if not conform(_BOOL, condobj.objtype) then
 			diag:reporterror(self, 
 				"Expected boolean value for while statement condition")
 		else
 			env:enterblock()
-			self.children[2]:check()
+			stblock = self.children[2]:check()
 			env:leaveblock()
 		end
+        if stblock ~= nil then
+            self.node_type = stblock.objtype.name
+        end
 		env:leaveblock()
+        return stblock
 	end
 
 	function ast.DoStatement:check()
 		-- block
 		env:enterblock()
+        local stblock
 		for id, node in ipairs(self.children) do
-			node:check()
+			stblock = node:check()
 		end
+        if stblock ~= nil then
+            self.node_type = stblock.objtype.name
+        end
 		env:leaveblock()
+        return stblock
 	end
 
 	--TODO: discuss repeat statement semantics
@@ -318,14 +353,17 @@ function check(luaenv, kernel_ast)
         local setobj = self.children[2]:check()
         local itobj = ObjType:new()
         itobj.defn = self.children[1]
---        itobj.objtype = setobj.elemtype
+        itobj.objtype = setobj.elemtype
         itobj.scope = _LISZT_STR
---        itobj.defn.node_type = setobj.elemtype.name
---        local varname = self.children[1].children[1]
---        env:localenv()[varname] = itobj
---        local forobj = self.children[3]:check()
+        itobj.defn.node_type = setobj.elemtypename
+        local varname = self.children[1].children[1]
+        env:localenv()[varname] = itobj
+        local forobj = self.children[3]:check()
         env:leaveblock()
---        return forobj
+        if forobj ~= nil then
+            self.node_type = forobj.objtype.name
+        end
+        return forobj
 	end
 
 	function ast.Break:check()
@@ -343,7 +381,11 @@ function check(luaenv, kernel_ast)
 			self.children[2]:check()
 			env:leaveblock()
 		end
+        if stblock ~= nil then
+            self.node_type = stblock.objtype.name
+        end
 		env:leaveblock()
+        return stblock
 	end
 
 	------------------------------------------------------------------------------
@@ -424,7 +466,9 @@ function check(luaenv, kernel_ast)
 		else
 			diag:reporterror(self, "Unknown operator \'", op, "\'")
 		end
-		self.node_type = exprobj.objtype.name
+        if exprobj ~= nil then
+    		self.node_type = exprobj.objtype.name
+        end
 		return exprobj
 	end
 
@@ -444,6 +488,7 @@ function check(luaenv, kernel_ast)
 
 	function ast.TableLookup:check()
         local tableobj = ObjType:new()
+        tableobj.defn = self
         -- LHS could be another LValue, or name
         local lhsobj = self.children[1]:check()
         -- RHS is a member of the LHS
@@ -452,13 +497,15 @@ function check(luaenv, kernel_ast)
         if luaval == nil then
             diag:reporterror(self, "LHS value does not have member ", member)
         else
-            tableobj = ObjType:new()
             if not lua_to_liszt(luaval, tableobj) then
                 diag:reporterror(self,
                 "Cannot convert the lua value to a liszt value")
             end
         end
-        self.node_type = tableobj.objtype.name
+        if tableobj ~= nil then
+            self.node_type = tableobj.objtype.name
+        end
+        return tableobj
 	end
 
 	function ast.Call:check()
@@ -474,7 +521,6 @@ function check(luaenv, kernel_ast)
 		nameobj.scope = _LUA_STR
         nameobj.luaval = luav
 		if type(luav) == _TAB_STR then
-            print("Lua variable of type ", luav.kind)
 			if luav.kind == _VECTOR_STR then
 				nameobj.objtype = _VECTOR
 				nameobj.elemtype = _INT
@@ -495,6 +541,20 @@ function check(luaenv, kernel_ast)
             elseif luav.kind == _VERTEX_STR then
                 nameobj.objtype = _VERTEX
                 return true
+            elseif luav.kind == _TOPOSET_STR then
+                nameobj.objtype = _TOPOSET
+                if luav.elemtypename == _VERTEX_STR then
+                    nameobj.elemtype = _VERTEX
+                elseif luav.elemtypename == _EDGE_STR then
+                    nameobj.elemtype = _EDGE
+                elseif luav.elemtypename == _FACE_STR then
+                    nameobj.elemtype = _FACE
+                elseif luav.elemtypename == _CELL_STR then
+                    nameobj.elemtype = _CELL
+                else
+                    return false
+                end
+                return true
             end
         else
 			return false
@@ -503,10 +563,13 @@ function check(luaenv, kernel_ast)
 
 	function ast.Name:check()
 		local nameobj = ObjType:new()
+        nameobj.defn = self
 		local locv = env:localenv()[self.children[1]]
 		if locv then
 			-- if liszt local variable, type stored in environment
 			nameobj = locv
+            print("Found "..self.children[1].." in local environment ",
+            "with type "..nameobj.objtype.name)
 		else
 			local luav = env:luaenv()[self.children[1]]
 			if not luav then
@@ -517,7 +580,9 @@ function check(luaenv, kernel_ast)
 				"Cannot convert the lua value to a liszt value")
 			end
 		end
-		self.node_type = nameobj.objtype.name
+        if nameobj ~= nil then
+    		self.node_type = nameobj.objtype.name
+        end
 		return nameobj
 	end
 
@@ -551,8 +616,8 @@ function check(luaenv, kernel_ast)
 	end
 	env:leaveblock()
 
-	print("**** Typed AST")
-	terralib.tree.printraw(kernel_ast)
+--	print("**** Typed AST")
+--	terralib.tree.printraw(kernel_ast)
 
 	diag:finishandabortiferrors("Errors during typechecking liszt", 1)
 

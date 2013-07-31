@@ -67,6 +67,7 @@ function main ()
 --        v1
 
         for cell in mesh.cells do
+            cell
         end
 
 --        a.b.c(d)

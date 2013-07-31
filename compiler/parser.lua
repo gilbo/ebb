@@ -158,6 +158,18 @@ lang.lvalue = function (P)
 	return P:lvaluehelper(node)
 end
 
+lang.lvalname = function (P)
+	if not P:matches(P.name) then
+		local token = P:next()
+		P:error("Expected name at " .. token.linenumber .. ":" .. token.offset)
+	end
+	local node = ast.Name:New(P)
+	local symname = P:next().value
+	node.children = {symname}
+	P:ref(symname)
+	return node
+end
+
 --[[  simpleexp is called when exp cannot parse the next token...
 we could be looking at an LValue, Value, or parenthetically
 enclosed expression  
@@ -292,7 +304,7 @@ lang.statement = function (P)
 		-- GenericFor loops may be of different types.
 		-- What for loops to support within the DSL?
 	elseif P:nextif("for") then
-		local iterator = P:expect(P.name).value
+		local iterator = P:lvalname()
 		if (P:nextif("in")) then
 			local node_gf = ast.GenericFor:New(P)
 			local set = P:lvalue()
@@ -318,17 +330,6 @@ lang.statement = function (P)
 			node_nf.children = {iterator, unpack(exprs), body}
 			return node_nf
 		end
-
-	elseif P:nextif("foreach") then
-		local node_fe = ast.GenericFor:New(P)
-		local iterator = P:expect(P.name).value
-		P:expect("in")
-		local set = P:lvalue()
-		P:expect("do")
-		local body = P:block()
-		P:expect("end")
-		node_fe.children = {iterator, set, body}
-		return node_fe
 
 		--[[ expression statement / assignment statement ]]--
 	else

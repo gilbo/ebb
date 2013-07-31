@@ -98,16 +98,16 @@ function Vector.isVector (obj)
 end
 
 --[[ Mesh Construction and methods ]]--
-local function toposet_stub ()
-   local tmp = { }
-   tmp.mt    = TopoSet
+local function toposet_stub (topoelem)
+   local tmp = {elemtypename =  topoelem}
+   setmetatable(tmp, {__index = TopoSet})
    return tmp
 end
 
-Mesh.cells    = toposet_stub
-Mesh.faces    = toposet_stub
-Mesh.vertices = toposet_stub
-Mesh.edges    = toposet_stub
+Mesh.cells    = toposet_stub(CELL)
+Mesh.faces    = toposet_stub(FACE)
+Mesh.vertices = toposet_stub(VERTEX)
+Mesh.edges    = toposet_stub(EDGE)
 
 local lElementTypeMap = {
    [Vertex] = runtime.L_VERTEX,
