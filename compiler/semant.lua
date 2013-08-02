@@ -11,133 +11,132 @@ ast = require("ast")
 --[[ Declare types
 --]]
 _NOSCOPE_STR = 'noscope'
-_LUA_STR = 'lua'
-_LISZT_STR = 'liszt'
+_LUA_STR     = 'lua'
+_LISZT_STR   = 'liszt'
 
-_NOTYPE_STR = 'notype'
-_INT_STR = 'int'
-_FLOAT_STR = 'float'
-_BOOL_STR = 'bool'
-_VECTOR_STR = 'vector'
-_NUM_STR = 'number'
-_TAB_STR = 'table'
-_MESH_STR = 'mesh'
-_CELL_STR = 'cell'
-_FACE_STR = 'face'
-_EDGE_STR = 'edge'
-_VERTEX_STR = 'vertex'
+_NOTYPE_STR  = 'notype'
+_INT_STR     = 'int'
+_FLOAT_STR   = 'float'
+_BOOL_STR    = 'bool'
+_VECTOR_STR  = 'vector'
+_NUM_STR     = 'number'
+_TAB_STR     = 'table'
+_MESH_STR    = 'mesh'
+_CELL_STR    = 'cell'
+_FACE_STR    = 'face'
+_EDGE_STR    = 'edge'
+_VERTEX_STR  = 'vertex'
 _TOPOSET_STR = 'toposet'
 
 -- root variable type
 _NOTYPE = 
 {
-	name = _NOTYPE_STR,
-	parent = {},
+	name     = _NOTYPE_STR,
+	parent   = {},
 	children = {}
 }
 -- liszt variable type
 _INT = 
 {
-	name = _INT_STR,
-	parent = {},
+	name     = _INT_STR,
+	parent   = {},
 	children = {}
 }
 -- liszt variable type
 _FLOAT = 
 {
-	name = _FLOAT_STR,
-	parent = {},
+	name     = _FLOAT_STR,
+	parent   = {},
 	children = {}
 }
 -- liszt variable type
 _BOOL = 
 {
-	name = _BOOL_STR,
-	parent = {},
+	name     = _BOOL_STR,
+	parent   = {},
 	children = {}
 }
 -- liszt variable type
 _VECTOR = 
 {
-	name = _VECTOR_STR,
-	parent = {},
+	name     = _VECTOR_STR,
+	parent   = {},
 	children = {}
 }
 -- number type
 _NUM = 
 {
-	name = _NUM_STR,
-	parent = {},
+	name     = _NUM_STR,
+	parent   = {},
 	children = {}
 }
 -- table type
 _TAB  =
 {
-	name = _TAB_STR,
-	parent = {},
+	name     = _TAB_STR,
+	parent   = {},
 	children = {}
 }
 -- mesh type
 _MESH  =
 {
-	name = _MESH_STR,
-	parent = {},
+	name     = _MESH_STR,
+	parent   = {},
 	children = {}
 }
 -- cell type
 _CELL  =
 {
-	name = _CELL_STR,
-	parent = {},
+	name     = _CELL_STR,
+	parent   = {},
 	children = {}
 }
 -- face type
 _FACE  =
 {
-	name = _FACE_STR,
-	parent = {},
+	name     = _FACE_STR,
+	parent   = {},
 	children = {}
 }
 -- edge type
 _EDGE  =
 {
-	name = _EDGE_STR,
-	parent = {},
+	name     = _EDGE_STR,
+	parent   = {},
 	children = {}
 }
 -- vertex type
 _VERTEX  =
 {
-	name = _VERTEX_STR,
-	parent = {},
+	name     = _VERTEX_STR,
+	parent   = {},
 	children = {}
 }
 -- topological set type
 _TOPOSET  =
 {
-	name = _TOPOSET_STR,
-	parent = {},
+	name     = _TOPOSET_STR,
+	parent   = {},
 	children = {}
 }
 
 local ObjType = 
 {
-	objtype = _NOTYPE,
-	scope = _LISZT_STR,
+	objtype  = _NOTYPE,
+	scope    = _LISZT_STR,
 	elemtype = _NOTYPE,
-    luaval = {},
-	size = 0,
-	defn = {}
+    luaval   = {},
+	size     = 0,
+	defn     = {}
 }
 
 function ObjType:new()
-	local newtype = {}
-	setmetatable(newtype, {__index = self})
-	newtype.objtype = self.objtype
-	newtype.scope = self.scope
-	newtype.elemtype = self.elemtype
-	newtype.size = self.size
-	return newtype
+	return setmetatable(
+		{   objtype  = self.objtype,
+		    scope    = self.scope,
+		    elemtype = self.elemetype,
+		    size     = self.size }, 
+		{   __index  = self })
 end
 
 -- class tree
@@ -156,18 +155,18 @@ _TR.children =
     _VERTEX,
     _TOPOSET
 }
-_NUM.parent = _NOTYPE
-_BOOL.parent = _NOTYPE
-_VECTOR.parent = _NOTYPE
-_MESH.parent = _NOTYPE
-_CELL.parent = _NOTYPE
-_FACE.parent = _NOTYPE
-_EDGE.parent = _NOTYPE
-_VERTEX.parent = _NOTYPE
+_NUM.parent     = _NOTYPE
+_BOOL.parent    = _NOTYPE
+_VECTOR.parent  = _NOTYPE
+_MESH.parent    = _NOTYPE
+_CELL.parent    = _NOTYPE
+_FACE.parent    = _NOTYPE
+_EDGE.parent    = _NOTYPE
+_VERTEX.parent  = _NOTYPE
 _TOPOSET.parent = _NOTYPE
 --
 _NUM.children = {_INT, _FLOAT}
-_INT.parent = _NUM
+_INT.parent   = _NUM
 _FLOAT.parent = _NUM
 
 ------------------------------------------------------------------------------
@@ -200,10 +199,10 @@ function check(luaenv, kernel_ast)
 
 	local function set_type(lhsobj, rhsobj)
 		if lhsobj.objtype == _NOTYPE then
-			lhsobj.objtype = rhsobj.objtype
-			lhsobj.scope = rhsobj.scope
-			lhsobj.elemtype = rhsobj.elemtype
-			lhsobj.size = rhsobj.size
+			lhsobj.objtype        = rhsobj.objtype
+			lhsobj.scope          = rhsobj.scope
+			lhsobj.elemtype       = rhsobj.elemtype
+			lhsobj.size           = rhsobj.size
 			lhsobj.defn.node_type = rhsobj.objtype.name
 		end
 	end
@@ -324,9 +323,9 @@ function check(luaenv, kernel_ast)
 		-- name, expression
 		-- TODO: should redefinitions be allowed?
 		local nameobj = ObjType:new()
-		nameobj.defn = self.children[1]
+		nameobj.defn  = self.children[1]
 		local varname = self.children[1].children[1]
-		local rhsobj = self.children[2]:check()
+		local rhsobj  = self.children[2]:check()
 		set_type(nameobj, rhsobj)
 		env:localenv()[varname] = nameobj
 		self.node_type = nameobj.objtype.name
@@ -337,7 +336,7 @@ function check(luaenv, kernel_ast)
 		-- name
 		-- TODO: should redefinitions be allowed?
 		local nameobj = ObjType:new()
-		nameobj.defn = self.children[1]
+		nameobj.defn  = self.children[1]
 		local varname = self.children[1].children[1]
 		env:localenv()[varname] = nameobj
 		self.node_type = nameobj.objtype.name
