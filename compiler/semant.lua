@@ -27,6 +27,7 @@ _FACE_STR = 'face'
 _EDGE_STR = 'edge'
 _VERTEX_STR = 'vertex'
 _TOPOSET_STR = 'toposet'
+_FIELD_STR = 'field'
 
 -- root variable type
 _NOTYPE = 
@@ -119,12 +120,24 @@ _TOPOSET  =
 	parent = {},
 	children = {}
 }
+-- field type
+_FIELD  =
+{
+	name = _TOPOSET_STR,
+	parent = {},
+	children = {}
+}
 
 local ObjType = 
 {
+    -- type of the object
 	objtype = _NOTYPE,
-	scope = _LISZT_STR,
+    -- if object consists of elements, then type of elements
 	elemtype = _NOTYPE,
+    -- if object is over a topological set, then the corresponding topological
+    -- element
+    topotype = _NOTYPE,
+	scope = _LISZT_STR,
     luaval = {},
 	size = 0,
 	defn = {}
@@ -133,9 +146,10 @@ local ObjType =
 function ObjType:new()
 	local newtype = {}
 	setmetatable(newtype, {__index = self})
-	newtype.objtype = self.objtype
 	newtype.scope = self.scope
+	newtype.objtype = self.objtype
 	newtype.elemtype = self.elemtype
+    newtype.topotype = self.elemtype
 	newtype.size = self.size
 	return newtype
 end
@@ -154,7 +168,8 @@ _TR.children =
     _FACE,
     _EDGE,
     _VERTEX,
-    _TOPOSET
+    _TOPOSET,
+    _FIELD
 }
 _NUM.parent = _NOTYPE
 _BOOL.parent = _NOTYPE
@@ -165,6 +180,7 @@ _FACE.parent = _NOTYPE
 _EDGE.parent = _NOTYPE
 _VERTEX.parent = _NOTYPE
 _TOPOSET.parent = _NOTYPE
+_FIELD.parent = _NOTYPE
 --
 _NUM.children = {_INT, _FLOAT}
 _INT.parent = _NUM
@@ -197,6 +213,28 @@ function check(luaenv, kernel_ast)
 			return conform(lhstype, rhstype.parent)
 		end
 	end
+
+    local function is_valid_type(dtype)
+        if is_valid_type_rec(_NOTYPE, dtype) then
+            return true
+        else
+            return false
+        end
+    end
+
+    local function is_valid_type_rec(node, dtype)
+        if dtype == node.name then
+            return true
+        else
+            if node.children ~= nil then
+                for child in node.children do
+                    is_valid_type_rec(child, dtype)
+                end
+            else
+                return false
+            end
+        end
+    end
 
 	local function set_type(lhsobj, rhsobj)
 		if lhsobj.objtype == _NOTYPE then
@@ -373,19 +411,20 @@ function check(luaenv, kernel_ast)
 	function ast.CondBlock:check()
 		-- condition (expression), block
 		env:enterblock()
+        local condblock
 		local condobj = self.children[1]:check()
 		if not conform(_BOOL, condobj.objtype) then
 			diag:reporterror(self, "Expected boolean value here")
 		else
 			env:enterblock()
-			self.children[2]:check()
+			condblock = self.children[2]:check()
 			env:leaveblock()
 		end
-        if stblock ~= nil then
-            self.node_type = stblock.objtype.name
+        if condblock ~= nil then
+            self.node_type = condblock.objtype.name
         end
 		env:leaveblock()
-        return stblock
+        return condblock
 	end
 
 	------------------------------------------------------------------------------
@@ -543,6 +582,7 @@ function check(luaenv, kernel_ast)
                 return true
             elseif luav.kind == _TOPOSET_STR then
                 nameobj.objtype = _TOPOSET
+                nameobj.topoelem = _MESH
                 if luav.elemtypename == _VERTEX_STR then
                     nameobj.elemtype = _VERTEX
                 elseif luav.elemtypename == _EDGE_STR then
@@ -554,7 +594,24 @@ function check(luaenv, kernel_ast)
                 else
                     return false
                 end
+            elseif luav.kind == _FIELD_STR then
+                nameobj.objtype = _FIELD
+                local dtype = luav.data_type
+                if dtype ~= _INT_STR and dtype ~= _FLOAT_STR and dtype ~= _VECTOR_STR then
+                    return false
+                else
+                    nameobj.elemtpe = dtype
+                end
+                local ttype = luav.topo_type
+                if ttype ~= _CELL_STR and ttype ~= _FACE_STR and
+                    ttype ~= _EDGE_STR and ttype ~= _VERTEX_STR then
+                    return false
+                else
+                    nameobj.topotype = ttype
+                end
                 return true
+            else
+                return false
             end
         else
 			return false
