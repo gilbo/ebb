@@ -29,7 +29,7 @@ Edge   = setmetatable({kind = "edge"},   { __index = TopoElem, __metatable = "Ed
 Vertex = setmetatable({kind = "vertex"}, { __index = TopoElem, __metatable = "Vertex"})
 
 DataType = setmetatable({kind = "datatype"}, { __index=LisztObj, __metatable="DataType"})
-Vector   = setmetatable({kind = "vector"},   { __index=DataType})
+Vector   = setmetatable({kind = "vector", data_type = NOTYPE, size = 0}, { __index=DataType})
 Vector.__index = Vector
 
 local VectorType = { __index = Vector}

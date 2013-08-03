@@ -137,9 +137,13 @@ local ObjType =
     -- if object is over a topological set, then the corresponding topological
     -- element
     topotype = _NOTYPE,
+	-- scope
 	scope = _LISZT_STR,
+	-- lua value
     luaval = {},
+	-- size
 	size = 0,
+	-- ast node which has the definition
 	defn = {}
 }
 
@@ -538,7 +542,7 @@ function check(luaenv, kernel_ast)
         else
             if not lua_to_liszt(luaval, tableobj) then
                 diag:reporterror(self,
-                "Cannot convert the lua value to a liszt value")
+                "Cannot convert the lua value to a liszt value @ ")
             end
         end
         if tableobj ~= nil then
@@ -594,6 +598,7 @@ function check(luaenv, kernel_ast)
                 else
                     return false
                 end
+				return true
             elseif luav.kind == _FIELD_STR then
                 nameobj.objtype = _FIELD
                 local dtype = luav.data_type
