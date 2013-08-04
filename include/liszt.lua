@@ -5,6 +5,12 @@ _G.runtime    = nil
 
 local LisztObj = { }
 
+--[[
+-- data_type represents type of elements for vectors/ sets/ fields.
+-- topo_type represents the type of the topolgical element for a field over
+-- some topological set.
+--]]
+
 --[[ String literals ]]--
 local NOTYPE = 'notype'
 local TABLE = 'table'
@@ -16,10 +22,30 @@ local EDGE = 'edge'
 local FACE = 'face'
 local CELL = 'cell'
 
+-- need to use this for fields to store the type of field, due to nested types
+local ObjType = 
+{
+    -- type of the object
+	obj_type = NOTYPE,
+    -- if object consists of elements, then type of elements
+	elem_type = NOTYPE,
+	-- size of the object (example, vector length)
+	size = 0,
+}
+
+function ObjType:new()
+	local newtype = {}
+	setmetatable(newtype, {__index = self})
+	newtype.objtype = self.objtype
+	newtype.elemtype = self.elemtype
+	newtype.size = self.size
+	return newtype
+end
+
 --[[ Liszt Types ]]--
 local TopoElem = setmetatable({kind = "topoelem"}, { __index = LisztObj, __metatable = "TopoElem" })
-local TopoSet  = setmetatable({kind = "toposet"},  { __index = LisztObj, __metatable = "TopoSet" })
-local Field    = setmetatable({kind = "field",  topo_type = NOTYPE, data_type = NOTYPE}, { __index = LisztObj, __metatable = "Field" })
+local TopoSet  = setmetatable({kind = "toposet", data_type = NOTYPE},  { __index = LisztObj, __metatable = "TopoSet" })
+local Field    = setmetatable({kind = "field",  topo_type = NOTYPE, data_type = ObjType}, { __index = LisztObj, __metatable = "Field" })
 local Scalar   = setmetatable({kind = "scalar", data_type = NOTYPE},                     { __index = LisztObj, __metatable = "Scalar"})
 
 Mesh   = setmetatable({kind = "mesh"},   { __index = LisztObj, __metatable = "Mesh"})
@@ -35,9 +61,8 @@ Vector.__index = Vector
 local VectorType = { __index = Vector}
 
 function Field:set_topo_type(topo_type)
-   -- TODO: handle errors
    if (type(topo_type) ~= TABLE) then
-	   print("*** Topological type should be a table!!")
+	   error("Field over unrecognized topological type!!")
    end
    if topo_type == Vertex then
 	   self.topo_type = VERTEX
@@ -48,20 +73,31 @@ function Field:set_topo_type(topo_type)
    elseif topo_type == Cell then
 	   self.topo_type = CELL
    else
-	   print("*** Unrecognized topological type!!")
+	   error("Field over unrecognized topological type!!")
    end
 end
 
 function Field:set_data_type(data_type)
-   -- TODO: handle errors
-   if data_type == int  then
-	   self.data_type = INT
-   elseif data_type == float  then
-	   self.data_type = FLOAT
-   elseif getmetatable(data_type) == Vector then
-      self.data_type = VECTOR
+	if data_type == int then
+		self.data_type.obj_type = INT
+		self.data_type.elem_type = INT
+		self.data_type.size = 1
+	elseif data_type == float then
+		self.data_type.obj_type = FLOAT
+		self.data_type.elem_type = FLOAT
+		self.data_type.szie = 1
+	elseif getmetatable(data_type) == Vector then
+		self.data_type.obj_type = VECTOR
+		if data_type.data_type == int then
+			self.data_type.elem_type = INT
+		elseif data_type.data_type == float then
+			self.data_type.elem_type = FLOAT
+		else
+			error("Field over unspported data type!!")
+		end
+	  self.data_type.size = data_type.size
    else
-	   print("*** Unrecognized data type!!")
+	   error("Field over unsupported data type!!")
    end
 end
 
@@ -76,7 +112,7 @@ end
 function Vector.type (data_type, num)
    if not (data_type == int or
            data_type == float) then
-      error("First argument to Vector.type() should be a terra data type!")
+      error("First argument to Vector.type() should be an int or float!")
    end
    if not type(num) == "number" or num < 1 or num % 1 ~= 0 then
       error("Second argument to Vector.type() should be a non-negative integer!")
@@ -99,7 +135,7 @@ end
 
 --[[ Mesh Construction and methods ]]--
 local function toposet_stub (topoelem)
-   local tmp = {elemtypename =  topoelem}
+   local tmp = {data_type =  topoelem}
    setmetatable(tmp, {__index = TopoSet})
    return tmp
 end
@@ -130,7 +166,7 @@ local function runtimeDataType (data_type)
 end
 
 function Mesh:field (topo_type, data_type, initial_val)
-   local field = { }
+   local field = {topo_type = NOTYPE, data_type = ObjType:new()}
    field.mesh  = self
    setmetatable(field, { __index = Field })
    field:set_topo_type(topo_type)
@@ -142,7 +178,7 @@ function Mesh:field (topo_type, data_type, initial_val)
 end
 
 function Mesh:fieldWithLabel (topo_type, data_type, label)
-   local field = { }
+   local field = {topo_type = NOTYPE, data_type = ObjType:new()}
    field.mesh  = self
    setmetatable(field, { __index = Field })
    field:set_topo_type(topo_type)

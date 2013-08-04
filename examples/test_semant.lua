@@ -69,7 +69,8 @@ function main ()
         v1
 
         for cell in mesh.cells do
-            cell
+            f1(cell)
+			f2(cell)
         end
 
         var local11 = cell

@@ -397,7 +397,7 @@ function check(luaenv, kernel_ast)
         itobj.defn = self.children[1]
         itobj.objtype = setobj.elemtype
         itobj.scope = _LISZT_STR
-        itobj.defn.node_type = setobj.elemtypename
+        itobj.defn.node_type = setobj.data_type
         local varname = self.children[1].children[1]
         env:localenv()[varname] = itobj
         local forobj = self.children[3]:check()
@@ -543,6 +543,7 @@ function check(luaenv, kernel_ast)
             if not lua_to_liszt(luaval, tableobj) then
                 diag:reporterror(self,
                 "Cannot convert the lua value to a liszt value @ ")
+			return tableobj
             end
         end
         if tableobj ~= nil then
@@ -552,6 +553,30 @@ function check(luaenv, kernel_ast)
 	end
 
 	function ast.Call:check()
+		-- call name can be a field
+		print("Inside call type checking")
+		local callobj = self.children[1]:check()
+		if callobj == nil then
+			diag:reporterror(self, "Undefined call")
+			return nil
+		elseif callobj.objtype.name == _FIELD_STR then
+			if #self.children > 2 then
+				diag:reporterror(self, "Field can be indexed by only argument")
+				return nil
+			end
+			local argobj = self.children[2]:check()
+			if argobj.objtype.name == callobj.topotype.name then
+				print("Indexing should work")
+			else
+				diag:reporterror(self,
+				"Field over ", callobj.topotype.name,
+				"s is indexed by a ", argobj.objtype.name)
+				return nil 
+			end
+		else
+			print("Call object is ", callobj.objtype.name)
+		end
+		return callobj
 	end
 
 	------------------------------------------------------------------------------
@@ -563,62 +588,106 @@ function check(luaenv, kernel_ast)
 	function lua_to_liszt(luav, nameobj)
 		nameobj.scope = _LUA_STR
         nameobj.luaval = luav
+		-- TODO: scalars
 		if type(luav) == _TAB_STR then
+			-- vectors
 			if luav.kind == _VECTOR_STR then
 				nameobj.objtype = _VECTOR
-				nameobj.elemtype = _INT
+				if luav.data_type == int then
+					nameobj.elemtype = _INT
+				elseif luav.data_type == float then
+					nameobj.elemtype = _FLOAT
+				else
+					return false
+				end
 				nameobj.size = luav.size
 				return true
+			-- mesh
             elseif luav.kind == _MESH_STR then
                 nameobj.objtype = _MESH
                 return true
+			-- cell
             elseif luav.kind == _CELL_STR then
                 nameobj.objtype = _CELL
                 return true
+			-- face
             elseif luav.kind == _FACE_STR then
                 nameobj.objtype = _FACE
                 return true
+			-- edge
             elseif luav.kind == _EDGE_STR then
                 nameobj.objtype = _EDGE
                 return true
+			-- vertex
             elseif luav.kind == _VERTEX_STR then
                 nameobj.objtype = _VERTEX
                 return true
+			-- topological set
             elseif luav.kind == _TOPOSET_STR then
                 nameobj.objtype = _TOPOSET
                 nameobj.topoelem = _MESH
-                if luav.elemtypename == _VERTEX_STR then
+                if luav.data_type == _VERTEX_STR then
                     nameobj.elemtype = _VERTEX
-                elseif luav.elemtypename == _EDGE_STR then
+                elseif luav.data_type == _EDGE_STR then
                     nameobj.elemtype = _EDGE
-                elseif luav.elemtypename == _FACE_STR then
+                elseif luav.data_type == _FACE_STR then
                     nameobj.elemtype = _FACE
-                elseif luav.elemtypename == _CELL_STR then
+                elseif luav.data_type == _CELL_STR then
                     nameobj.elemtype = _CELL
                 else
                     return false
                 end
 				return true
+			-- field
             elseif luav.kind == _FIELD_STR then
                 nameobj.objtype = _FIELD
-                local dtype = luav.data_type
-                if dtype ~= _INT_STR and dtype ~= _FLOAT_STR and dtype ~= _VECTOR_STR then
-                    return false
-                else
-                    nameobj.elemtpe = dtype
-                end
+                local dobj = luav.data_type
+				local elemobj = ObjType:new()
+				if dobj.obj_type == _INT_STR then
+					elemobj.objtype = _INT
+					elemobj.elemtype = _INT
+					elemobj.size = 1
+					elemobj.scope = _LUA_STR
+				elseif dobj.obj_type == _FLOAT_STR then
+					elemobj.obj_type = _FLOAT
+					elemobj.elemtype = _FLOAT
+					elemobj.size = 1
+					elemobj.scope = _LUA_STR
+				elseif dobj.obj_type == _VECTOR_STR then
+					elemobj.objtype = _VECTOR
+					if dobj.elem_type == _INT_STR then
+						elemobj.elemtype = INT
+					elseif dobj.elem_type == _FLOAT_STR then
+						elemobj.elemtype = _FLOAT
+					else
+						return false
+					end
+					elemobj.size = dobj.size
+					elemobj.scope = _LUA_STR
+				else
+					return false
+				end
+				nameobj.elemtype = elemobj
                 local ttype = luav.topo_type
-                if ttype ~= _CELL_STR and ttype ~= _FACE_STR and
-                    ttype ~= _EDGE_STR and ttype ~= _VERTEX_STR then
-                    return false
-                else
-                    nameobj.topotype = ttype
-                end
-                return true
+				local topoobj = ObjType:new()
+				if ttype == _CELL_STR then
+					nameobj.topotype = _CELL
+				elseif ttype == _FACE_STR then
+					nameobj.topotype = _FACE
+				elseif ttype == _EDGE_STR then
+					nameobj.topotype = _EDGE
+				elseif ttype == _VERTEX_STR then
+					nameobj.topotype = _VERTEX
+				else
+					return false
+				end
+					return true
+			-- none of the above in table
             else
                 return false
             end
         else
+			-- not number/ table
 			return false
 		end
 	end
@@ -679,7 +748,7 @@ function check(luaenv, kernel_ast)
 	env:leaveblock()
 
 --	print("**** Typed AST")
---	terralib.tree.printraw(kernel_ast)
+	terralib.tree.printraw(kernel_ast)
 
 	diag:finishandabortiferrors("Errors during typechecking liszt", 1)
 
