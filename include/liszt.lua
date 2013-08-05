@@ -81,7 +81,7 @@ end
 -------------------------------------------------
 function Field:set_topo_type(topo_type)
    if (type(topo_type) ~= TABLE) then
-	   error("Field over unrecognized topological type!!")
+	   error("Field over unrecognized topological type!!", 3)
    end
    if topo_type == Vertex then
 	   self.topo_type = VERTEX
@@ -92,7 +92,7 @@ function Field:set_topo_type(topo_type)
    elseif topo_type == Cell then
 	   self.topo_type = CELL
    else
-	   error("Field over unrecognized topological type!!")
+	   error("Field over unrecognized topological type!!", 3)
    end
 end
 
@@ -170,10 +170,10 @@ end
 -------------------------------------------------
 function Vector.type (data_type, size)
    if not (contains_entry(lKeyTypeMap, data_type)) then
-      error("First argument to Vector.type() should be a Liszt-supported terra data type!")
+      error("First argument to Vector.type() should be a Liszt-supported terra data type!", 2)
    end
    if not type(size) == "number" or size < 1 or size % 1 ~= 0 then
-      error("Second argument to Vector.type() should be a non-negative integer!")
+      error("Second argument to Vector.type() should be a non-negative integer!", 2)
    end
 
    return setmetatable({size = size, data_type = data_type}, VectorType)
@@ -181,10 +181,10 @@ end
 
 function Vector.new(data_type, size, ...) 
    if not (contains_entry(lKeyTypeMap, data_type)) then
-      error("First argument to Vector.new() should be a Liszt-supported terra data type!")
+      error("First argument to Vector.new() should be a Liszt-supported terra data type!", 2)
    end
    if not type(size) == "number" or size < 1 or size % 1 ~= 0 then
-      error("Second argument to Vector.type() should be a non-negative integer!")
+      error("Second argument to Vector.type() should be a non-negative integer!", 2)
    end
 
    local init = ...
@@ -196,7 +196,7 @@ function Vector.new(data_type, size, ...)
       local max = size > #init and #init or size
       for i = 1, max do
          print(type(init[i]))
-         if type(init[i]) ~= 'number' then error("Cannot initialize vector with non-numeric type!") end
+         if type(init[i]) ~= 'number' then error("Cannot initialize vector with non-numeric type!", 2) end
          v[i-1] = init[i]
       end
 
@@ -220,10 +220,10 @@ end
 
 function Vector.add (v1, v2)
    if v1.data_type ~= v2.data_type then
-      error("Cannot add vectors of differing types!", 1)
+      error("Cannot add vectors of differing types!", 2)
    end
    if v1.size ~= v2.size then
-      error("Cannot add vectors of differing lengths!", 1)
+      error("Cannot add vectors of differing lengths!", 2)
    end
 end
 

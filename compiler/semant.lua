@@ -258,7 +258,7 @@ function check(luaenv, kernel_ast)
 	--]]
 	function ast.AST:check()
 		print("To implement semantic checking for", self.kind)
-		diag:reporterror(self, "No known method to typecheck"..self.kind)
+		diag:reporterror(self, "No known method to typecheck "..self.kind)
 	end
 
 	------------------------------------------------------------------------------
@@ -373,7 +373,7 @@ function check(luaenv, kernel_ast)
 		if not validassgn then
 			diag:reporterror(self,"Inferred RHS type ", rhsobj.objtype.name,
 			" does not conform to inferred LHS type ", lhsobj.objtype.name,
-			" in the assginment expression")
+			" in the assignment expression")
 			return nil
 		else
 			set_type(lhsobj, rhsobj)
@@ -534,7 +534,7 @@ function check(luaenv, kernel_ast)
 			and conform(_NUM, rightobj.elemtype))
 		if not binterms then
 			diag:reporterror(node,
-				"Atleast one of the terms is not ",
+				"At least one of the terms is not ",
 				"a number or a vector of numbers")
 			return false
 		elseif not (conform(leftobj.elemtype, rightobj.elemtype)
