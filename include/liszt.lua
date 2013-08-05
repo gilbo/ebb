@@ -65,7 +65,7 @@ Vertex = setmetatable({kind = "vertex"}, { __index = TopoElem, __metatable = "Ve
 DataType = setmetatable({kind = "datatype"}, { __index=LisztObj, __metatable="DataType"})
 local DataType   = setmetatable({kind = "datatype"}, { __index=LisztObj, __metatable="DataType"})
 Vector           = setmetatable({kind = "vector", data_type = NOTYPE, size = 0},   { __index=DataType})
-local VectorType = setmetatable({}, DataType)
+local VectorType = setmetatable({kind = "vector", data_type = NOTYPE, size = 0}, { __index=DataType})
 Vector.__index     = Vector
 VectorType.__index = VectorType
 
@@ -105,12 +105,16 @@ function Field:set_data_type(data_type)
 		self.data_type.obj_type = FLOAT
 		self.data_type.elem_type = FLOAT
 		self.data_type.szie = 1
-	elseif getmetatable(data_type) == Vector then
+	elseif getmetatable(data_type) == Vector or
+		getmetatable(data_type) == VectorType then
 		self.data_type.obj_type = VECTOR
 		if data_type.data_type == int then
 			self.data_type.elem_type = INT
 		elseif data_type.data_type == float then
 			self.data_type.elem_type = FLOAT
+		else
+			error("Field over unsupported data type!!", 3)
+		end
 	   self.data_type.size = data_type.size
    else
 	   error("Field over unsupported data type!!", 3)
