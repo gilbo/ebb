@@ -111,12 +111,9 @@ function Field:set_data_type(data_type)
 			self.data_type.elem_type = INT
 		elseif data_type.data_type == float then
 			self.data_type.elem_type = FLOAT
-		else
-			error("Field over unspported data type!!")
-		end
-	  self.data_type.size = data_type.size
+	   self.data_type.size = data_type.size
    else
-	   error("Field over unsupported data type!!")
+	   error("Field over unsupported data type!!", 3)
    end
 end
 
