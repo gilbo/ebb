@@ -314,15 +314,16 @@ function check(luaenv, kernel_ast)
 		env:enterblock()
         local stblock
 		local condobj = self.children[1]:check()
-		if not conform(_BOOL, condobj.objtype) then
-			diag:reporterror(self, 
+		if condobj ~= nil then
+			if not conform(_BOOL, condobj.objtype) then
+				diag:reporterror(self, 
 				"Expected boolean value for while statement condition")
-		else
-			env:enterblock()
-			stblock = self.children[2]:check()
-			env:leaveblock()
+			end
 		end
-        if stblock ~= nil then
+		env:enterblock()
+		stblock = self.children[2]:check()
+		env:leaveblock()
+		if stblock ~= nil then
             self.node_type = stblock.objtype.name
         end
 		env:leaveblock()
@@ -352,10 +353,15 @@ function check(luaenv, kernel_ast)
 		-- lhs, rhs expressions
 		local lhsobj = self.children[1]:check()
 		local rhsobj = self.children[2]:check()
+		if lhsobj == nil or rhsobj == nil then
+			return nil
+		end
 		local validassgn = conform(lhsobj.objtype, rhsobj.objtype)
 		if not validassgn then
 			diag:reporterror(self,"Inferred RHS type ", rhsobj.objtype.name,
-			" does not conform to inferred LHS type ", lhsobj.objtype.name)
+			" does not conform to inferred LHS type ", lhsobj.objtype.name,
+			" in the assginment expression")
+			return nil
 		else
 			set_type(lhsobj, rhsobj)
 			self.node_type = rhsobj.objtype.name
@@ -397,6 +403,9 @@ function check(luaenv, kernel_ast)
 	function ast.GenericFor:check()
         env:enterblock()
         local setobj = self.children[2]:check()
+		if setobj == nil then
+			return nil
+		end
         local itobj = ObjType:new()
         itobj.defn = self.children[1]
         itobj.objtype = setobj.elemtype
@@ -419,20 +428,21 @@ function check(luaenv, kernel_ast)
 	function ast.CondBlock:check()
 		-- condition (expression), block
 		env:enterblock()
-        local condblock
+		local condblock
 		local condobj = self.children[1]:check()
-		if not conform(_BOOL, condobj.objtype) then
-			diag:reporterror(self, "Expected boolean value here")
-		else
-			env:enterblock()
-			condblock = self.children[2]:check()
-			env:leaveblock()
+		if condobj ~= nil then
+			if not conform(_BOOL, condobj.objtype) then
+				diag:reporterror(self, "Expected boolean value here")
+			end
 		end
-        if condblock ~= nil then
-            self.node_type = condblock.objtype.name
-        end
+		env:enterblock()
+		condblock = self.children[2]:check()
 		env:leaveblock()
-        return condblock
+		if condblock ~= nil then
+			self.node_type = condblock.objtype.name
+		end
+		env:leaveblock()
+		return condblock
 	end
 
 	------------------------------------------------------------------------------
@@ -444,6 +454,9 @@ function check(luaenv, kernel_ast)
 
 	-- expression helper functions
 	local function match_num_vector(node, leftobj, rightobj)
+		if leftobj == nil or rightobj == nil then
+			return false
+		end
 		local binterms = conform(_NUM, leftobj.objtype) and
 			conform(_NUM, rightobj.objtype)
 		if not binterms then
@@ -476,6 +489,9 @@ function check(luaenv, kernel_ast)
 		local rightobj = self.children[3]:check()
 		local op = self.children[2]
 		local exprobj = ObjType:new()
+		if leftobj == nil or rightobj == nil then
+			return nil
+		end
 		if op == '+' or op == '-' or op == '*' or op == '/' then
 			if match_num_vector(self, leftobj, rightobj) then
 				if conform(leftobj.objtype, rightobj.objtype) then
@@ -513,16 +529,17 @@ function check(luaenv, kernel_ast)
 		else
 			diag:reporterror(self, "Unknown operator \'", op, "\'")
 		end
-        if exprobj ~= nil then
-    		self.node_type = exprobj.objtype.name
-        end
+    	self.node_type = exprobj.objtype.name
 		return exprobj
 	end
 
 	function ast.UnaryOp:check()
 		local op = self.children[1]
+		local exprobj = self.children[2]:check()
+		if exprobj == nil then
+			return nil
+		end
 		if op == 'not' then
-			local exprobj = self.children[2]:check()
 			if not conform(_BOOL, exprobj.objtype) then
 				diag:reporterror(self, "Expected a boolean expression here")
 				return nil
@@ -531,7 +548,6 @@ function check(luaenv, kernel_ast)
 				return exprobj
 			end
 		elseif op == '-' then
-			local exprobj = self.children[2]:check()
 			local binterms = conform(_NUM, exprobj.objtype)
 			if not binterms then
 				binterms = conform(_VECTOR, exprobj.objtype) and
@@ -574,22 +590,25 @@ function check(luaenv, kernel_ast)
 		end
 		local argobj = self.children[1]:check()
 		if argobj == nil then
-			diag:reporterror(self, "Cannot index field using the given argument")
 			return nil
 		end
 		return argobj
 	end
 
 	function ast.TableLookup:check()
-        local tableobj = ObjType:new()
-        tableobj.defn = self
         -- LHS could be another LValue, or name
         local lhsobj = self.children[1]:check()
+		if lhsobj == nil then
+			return nil
+		end
+        local tableobj = ObjType:new()
+        tableobj.defn = self
         -- RHS is a member of the LHS
         local member = self.children[3].children[1]
         local luaval = lhsobj.luaval[member]
         if luaval == nil then
             diag:reporterror(self, "LHS value does not have member ", member)
+			return nil
         else
             if not lua_to_liszt(luaval, tableobj) then
                 diag:reporterror(self,
@@ -597,14 +616,12 @@ function check(luaenv, kernel_ast)
 			return nil
             end
         end
-        if tableobj ~= nil then
-            self.node_type = tableobj.objtype.name
-        end
+        self.node_type = tableobj.objtype.name
         return tableobj
 	end
 
 	function ast.Call:check()
-		-- call name can be a field
+		-- call name can be a field only in current implementation
 		print("Inside call type checking")
 		local callobj = self.children[1]:check()
 		if callobj == nil then
@@ -756,14 +773,14 @@ function check(luaenv, kernel_ast)
 			if not luav then
 				diag:reporterror(self, "Variable \'" .. 
 					self.children[1] .. "\' is not defined")
+				return nil
 			elseif not lua_to_liszt(luav, nameobj) then
 				diag:reporterror(self,
 				"Cannot convert the lua value to a liszt value")
+				return nil
 			end
 		end
-        if nameobj ~= nil then
-    		self.node_type = nameobj.objtype.name
-        end
+    	self.node_type = nameobj.objtype.name
 		return nameobj
 	end
 
