@@ -31,11 +31,10 @@
 <tr><td> ForStatement   </td><td>::</td><td> GenericFor | NumericFor                                  </td></tr>
 <tr><td> NumericFor     </td><td>::</td><td> <b>for</b> Name = Expression, Expression (, Expression)? <b>do</b>
                                              Block <b>end</b>                                         </td></tr>
-<tr><td> GenericFor     </td><td>::</td><td> FieldFor | DataFor                                       </td></tr>
-<tr><td> FieldFor       </td><td>::</td><td> <b>foreach</b> Name <b>in</b> TableLookup <b>do</b>
+<tr><td> GenericFor     </td><td>::</td><td> <b>for</b> Name <b>in</b> TableLookup <b>do</b>
                                              Block <b>end</b>                                         </td></tr>
 <tr><td> WhileStatement  </td><td>::</td><td> <b>while</b> Expression <b>do</b> Block <b>end</b>      </td></tr>
-<tr><td> RepeatStatement </td><td>::</td><td> <b>repeat</b> Block <b> until</b> Expression <b>end</b> </td></tr>
+<tr><td> RepeatStatement </td><td>::</td><td> <b>repeat</b> Block <b> until</b> Expression            </td></tr>
 <tr><td> DoStatement     </td><td>::</td><td> <b>do</b> Block <b>end</b>                              </td></tr>
 <tr><td> ExprStatement   </td><td>::</td><td> Expression                                              </td></tr>
 <tr><td> Assignment      </td><td>::</td><td> LValue = Expression                                     </td></tr>

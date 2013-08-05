@@ -344,9 +344,22 @@ function check(luaenv, kernel_ast)
         return stblock
 	end
 
-	--TODO: discuss repeat statement semantics
 	function ast.RepeatStatement:check()
 		-- condition expression, block
+		env:enterblock()
+		local stblock = self.children[2]:check()
+		if stblock ~= nil then
+			self.node_type = stblock.objtype.name
+		end
+		local condobj = self.children[1]:check()
+		if condobj ~= nil then
+			if not conform(_BOOL, condobj.objtype) then
+				diag:reporterror(self,
+				"Expected boolean value for repeat statement condition")
+			end
+		end
+		env:leaveblock()
+		return stblock
 	end
 
 	function ast.Assignment:check()
@@ -371,7 +384,6 @@ function check(luaenv, kernel_ast)
 
 	function ast.InitStatement:check()
 		-- name, expression
-		-- TODO: should redefinitions be allowed?
 		local nameobj = ObjType:new()
 		nameobj.defn = self.children[1]
 		local varname = self.children[1].children[1]
@@ -387,7 +399,6 @@ function check(luaenv, kernel_ast)
 
 	function ast.DeclStatement:check()
 		-- name
-		-- TODO: should redefinitions be allowed?
 		local nameobj = ObjType:new()
 		nameobj.defn = self.children[1]
 		local varname = self.children[1].children[1]

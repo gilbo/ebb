@@ -85,6 +85,10 @@ function main ()
 		var local15 = not 1 + 2
 		var local16 = -1
 
+		repeat
+			var local17 = 2
+		until true
+
     end
 
 end
