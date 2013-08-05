@@ -22,7 +22,7 @@ function main ()
     local checkthis2 = 2
 
     local k = liszt_kernel (cell)
-		v1 = v1
+		u1 = v1
 		v1 = v1 + v2
 		v1 = v2 + v3
 		v1 = v1 + v4

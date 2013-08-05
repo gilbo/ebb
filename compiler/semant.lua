@@ -123,7 +123,7 @@ _TOPOSET  =
 -- field type
 _FIELD  =
 {
-	name = _TOPOSET_STR,
+	name = _FIELD_STR,
 	parent = {},
 	children = {}
 }
@@ -527,6 +527,22 @@ function check(luaenv, kernel_ast)
 	end
 
 	function ast.Tuple:check()
+		print("Inside tuple type checking")
+	end
+
+	function ast.Tuple:index_check()
+		-- type checking tuple when it should be a single argument, for
+		-- instance, when indexing a field
+		if #self.children ~= 1 then
+			diag:reporterror(self, "Can use exactly one argument to index here")
+			return nil
+		end
+		local argobj = self.children[1]:check()
+		if argobj == nil then
+			diag:reporterror(self, "Cannot index field using the given argument")
+			return nil
+		end
+		return argobj
 	end
 
 	function ast.TableLookup:check()
@@ -560,11 +576,10 @@ function check(luaenv, kernel_ast)
 			diag:reporterror(self, "Undefined call")
 			return nil
 		elseif callobj.objtype.name == _FIELD_STR then
-			if #self.children > 2 then
-				diag:reporterror(self, "Field can be indexed by only argument")
+			local argobj = self.children[2]:index_check()
+			if argobj == nil then
 				return nil
 			end
-			local argobj = self.children[2]:check()
 			if argobj.objtype.name == callobj.topotype.name then
 				print("Indexing should work")
 			else
@@ -574,7 +589,8 @@ function check(luaenv, kernel_ast)
 				return nil 
 			end
 		else
-			print("Call object is ", callobj.objtype.name)
+			-- TOO: How should function calls be allowed??
+			diag:reporterror(self, "Invalid call")
 		end
 		return callobj
 	end
@@ -625,7 +641,6 @@ function check(luaenv, kernel_ast)
 			-- topological set
             elseif luav.kind == _TOPOSET_STR then
                 nameobj.objtype = _TOPOSET
-                nameobj.topoelem = _MESH
                 if luav.data_type == _VERTEX_STR then
                     nameobj.elemtype = _VERTEX
                 elseif luav.data_type == _EDGE_STR then
@@ -669,7 +684,6 @@ function check(luaenv, kernel_ast)
 				end
 				nameobj.elemtype = elemobj
                 local ttype = luav.topo_type
-				local topoobj = ObjType:new()
 				if ttype == _CELL_STR then
 					nameobj.topotype = _CELL
 				elseif ttype == _FACE_STR then
@@ -699,8 +713,6 @@ function check(luaenv, kernel_ast)
 		if locv then
 			-- if liszt local variable, type stored in environment
 			nameobj = locv
-            print("Found "..self.children[1].." in local environment ",
-            "with type "..nameobj.objtype.name)
 		else
 			local luav = env:luaenv()[self.children[1]]
 			if not luav then
@@ -748,7 +760,7 @@ function check(luaenv, kernel_ast)
 	env:leaveblock()
 
 --	print("**** Typed AST")
-	terralib.tree.printraw(kernel_ast)
+--	terralib.tree.printraw(kernel_ast)
 
 	diag:finishandabortiferrors("Errors during typechecking liszt", 1)
 
