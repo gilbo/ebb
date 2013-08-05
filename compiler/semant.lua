@@ -139,10 +139,10 @@ local ObjType =
     topotype = _NOTYPE,
 	-- scope
 	scope = _LISZT_STR,
-	-- lua value
-    luaval = {},
 	-- size
 	size = 0,
+	-- lua value
+    luaval = {},
 	-- ast node which has the definition
 	defn = {}
 }
@@ -150,11 +150,13 @@ local ObjType =
 function ObjType:new()
 	local newtype = {}
 	setmetatable(newtype, {__index = self})
-	newtype.scope = self.scope
 	newtype.objtype = self.objtype
 	newtype.elemtype = self.elemtype
     newtype.topotype = self.elemtype
+	newtype.scope = self.scope
 	newtype.size = self.size
+	newtype.luaval = self.luaval
+	newtype.defn = self.defn
 	return newtype
 end
 
@@ -196,8 +198,8 @@ _FLOAT.parent = _NUM
 --]]
 function check(luaenv, kernel_ast)
 
---	print("**** Untyped AST")
---	terralib.tree.printraw(kernel_ast)
+	print("**** Untyped AST")
+	terralib.tree.printraw(kernel_ast)
 	-- environment for checking variables and scopes
 	local env = terralib.newenvironment(luaenv)
 	local diag = terralib.newdiagnostics()
@@ -359,7 +361,6 @@ function check(luaenv, kernel_ast)
 			self.node_type = rhsobj.objtype.name
 		end
 		return rhsobj
-		-- TODO: add type information to the environment
 	end
 
 	function ast.InitStatement:check()
@@ -369,6 +370,9 @@ function check(luaenv, kernel_ast)
 		nameobj.defn = self.children[1]
 		local varname = self.children[1].children[1]
 		local rhsobj = self.children[2]:check()
+		if rhsobj == nil then
+			return nil
+		end
 		set_type(nameobj, rhsobj)
 		env:localenv()[varname] = nameobj
 		self.node_type = nameobj.objtype.name
@@ -515,18 +519,49 @@ function check(luaenv, kernel_ast)
 		return exprobj
 	end
 
+	function ast.UnaryOp:check()
+		local op = self.children[1]
+		if op == 'not' then
+			local exprobj = self.children[2]:check()
+			if not conform(_BOOL, exprobj.objtype) then
+				diag:reporterror(self, "Expected a boolean expression here")
+				return nil
+			else
+				self.node_type = exprobj.objtype.name
+				return exprobj
+			end
+		elseif op == '-' then
+			local exprobj = self.children[2]:check()
+			local binterms = conform(_NUM, exprobj.objtype)
+			if not binterms then
+				binterms = conform(_VECTOR, exprobj.objtype) and
+				conform(_NUM, exprobj.elemtype)
+			end
+			if not binterms then
+				diag:reporterror(self,
+				"Atleast one of the terms is not ",
+				"a number or a vector of numbers")
+				return nil
+			else
+				self.node_type = exprobj.objtype.name
+				return exprobj
+			end
+		else
+			diag:reporterror(self, "Unknown unary operator \'"..op.."\'")
+			return nil
+		end
+	end
+
 	------------------------------------------------------------------------------
 
-	--[[ TODO: Misc
+	--[[ Misc
 	--]]
 	function ast.LValue:check()
         print("Unreconginzed LValue, yet to implement type checking")
 	end
 
-	function ast.UnaryOp:check()
-	end
-
 	function ast.Tuple:check()
+		-- TODO: not needed right now, but to implement functions later on
 		print("Inside tuple type checking")
 	end
 
@@ -559,7 +594,7 @@ function check(luaenv, kernel_ast)
             if not lua_to_liszt(luaval, tableobj) then
                 diag:reporterror(self,
                 "Cannot convert the lua value to a liszt value @ ")
-			return tableobj
+			return nil
             end
         end
         if tableobj ~= nil then
@@ -581,7 +616,9 @@ function check(luaenv, kernel_ast)
 				return nil
 			end
 			if argobj.objtype.name == callobj.topotype.name then
-				print("Indexing should work")
+				local retobj = callobj.elemtype:new()
+				self.node_type = retobj.objtype.name
+				return retobj
 			else
 				diag:reporterror(self,
 				"Field over ", callobj.topotype.name,
@@ -591,8 +628,9 @@ function check(luaenv, kernel_ast)
 		else
 			-- TOO: How should function calls be allowed??
 			diag:reporterror(self, "Invalid call")
+			return nil
 		end
-		return callobj
+		return nil
 	end
 
 	------------------------------------------------------------------------------
@@ -600,7 +638,7 @@ function check(luaenv, kernel_ast)
 	--[[ Variables
 	--]]
 
-	-- TODO: infer liszt type for the lua variable
+	-- Infer liszt type for the lua variable
 	function lua_to_liszt(luav, nameobj)
 		nameobj.scope = _LUA_STR
         nameobj.luaval = luav
@@ -760,7 +798,7 @@ function check(luaenv, kernel_ast)
 	env:leaveblock()
 
 --	print("**** Typed AST")
---	terralib.tree.printraw(kernel_ast)
+	terralib.tree.printraw(kernel_ast)
 
 	diag:finishandabortiferrors("Errors during typechecking liszt", 1)
 

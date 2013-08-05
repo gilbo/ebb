@@ -73,12 +73,17 @@ function main ()
 			f2(cell)
         end
 
+		for v in mesh.vertices do
+			var forlocal1 = f2(v)
+		end
+
         var local11 = cell
         var local12 = local11
         var local13 = mesh.cells + mesh.vertices
 
-        var local14 = f1
-        var local15 = f2
+        var local14 = not true
+		var local15 = not 1 + 2
+		var local16 = -1
 
     end
 

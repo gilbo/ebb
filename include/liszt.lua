@@ -9,6 +9,10 @@ local LisztObj = { }
 -- data_type represents type of elements for vectors/ sets/ fields.
 -- topo_type represents the type of the topolgical element for a field over
 -- some topological set.
+-- data_type is int/ float for vectors, vertex/ edge/ face/ cell for
+-- topological sets, and ObjType for fields. topo_type is always vertex/ edge/
+-- face/ cell. ObjType contains strings for types ("int" and "float") and not
+-- the actual type (int or float), since the type could be a vector too.
 --]]
 
 --[[ String literals ]]--
