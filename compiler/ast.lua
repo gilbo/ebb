@@ -94,12 +94,12 @@ inherit(Break,           Statement)
 function AST:New (P, ...)
 	local newnode = 
 	{ 
-		children = {...},
-		kind = self.kind, 
+		children   = {...},
+		kind       = self.kind, 
 		linenumber = P:cur().linenumber,
-		filename = P.source,
-		offset = P:cur().offset,
-		node_type = _NOTYPE
+		filename   = P.source,
+		offset     = P:cur().offset,
+		node_type  = _NOTYPE
 	}
 	return setmetatable(newnode, {__index = self})
 end

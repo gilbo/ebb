@@ -387,14 +387,10 @@ function check(luaenv, kernel_ast)
 		local nameobj = ObjType:new()
 		nameobj.defn  = self.children[1]
 		local varname = self.children[1].children[1]
-<<<<<<< HEAD
 		local rhsobj  = self.children[2]:check()
-=======
-		local rhsobj = self.children[2]:check()
 		if rhsobj == nil then
 			return nil
 		end
->>>>>>> 9a549a40b7551c23920e00bd9766622bba191421
 		set_type(nameobj, rhsobj)
 		env:localenv()[varname] = nameobj
 		self.node_type = nameobj.objtype.name
