@@ -77,6 +77,10 @@ function main ()
 			var forlocal1 = f2(v)
 		end
 
+		for i = 1, false, 3 do
+			var forlocal1 = i
+		end
+
         var local11 = cell
         var local12 = local11
         var local13 = mesh.cells + mesh.vertices

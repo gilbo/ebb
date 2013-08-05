@@ -317,17 +317,20 @@ lang.statement = function (P)
 		else
 			P:expect("=")
 			local node_nf = ast.NumericFor:New(P)
-			local exprs = { }
-			exprs[1] = P:exp()
+			node_nf.children[1] = iterator
+			node_nf.children[2] = P:exp()
 			P:expect(',')
-			exprs[2] = P:exp()
+			node_nf.children[3] = P:exp()
 			if P:nextif(',') then
-				exprs[3] = P:exp()
+				node_nf.children[4] = P:exp()
+				P:expect("do")
+				node_nf.children[5] = P:block()
+				P:expect("end")
+			else
+				P:expect("do")
+				node_nf.children[4] = P:block()
+				P:expect("end")
 			end
-			P:expect("do")
-			local body = P:block()
-			P:expect("end")
-			node_nf.children = {iterator, unpack(exprs), body}
 			return node_nf
 		end
 
