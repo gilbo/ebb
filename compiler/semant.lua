@@ -409,6 +409,62 @@ function check(luaenv, kernel_ast)
 
 	-- TODO: discuss for statements
 	function ast.NumericFor:check()
+		env:enterblock()
+		local intexpr = 0
+		local floatexpr = 0
+		local otherexpr = 0
+		local expr1obj = self.children[2]:check()
+		if expr1obj == nil then
+			diag:reporterror(self,
+			"Expected a number for defining the iterator")
+		else
+			if not conform(_NUM, expr1obj.objtype) then
+				diag:reporterror(self,
+				"Expected a number for defining the iterator")
+			end
+			if expr1obj.objtype == _INT then
+				intexpr = intexpr + 1
+			elseif expr1obj.objtype == _FLOAT then
+				floatexpr = floatexpr + 1
+			end
+		end
+		local expr2obj = self.children[3]:check()
+		if expr2obj == nil then
+			diag:reporterror(self,
+			"Expected a number for defining the iterator")
+		else
+			if not conform(_NUM, expr2obj.objtype) then
+				diag:reporterror(self,
+				"Expected a number for defining the iterator")
+			end
+			if expr2obj.objtype == _INT then
+				intexpr = intexpr + 1
+			elseif expr2obj.objtype == _FLOAT then
+				floatexpr = floatexpr + 1
+			end
+		end
+		if #self.children == 5 then
+			local expr3obj = self.children[4]:check()
+			if expr3obj == nil then
+				diag:reporterror(self,
+				"Expected a number for defining the iterator")
+			else
+				if not conform(_NUM, expr3obj.objtype) then
+					diag:reporterror(self,
+					"Expected a number for defining the iterator")
+				end
+				if expr3obj.objtype == _INT then
+					intexpr = intexpr + 1
+				elseif expr3obj.objtype == _FLOAT then
+					floatexpr = floatexpr + 1
+				end
+			end
+		end
+		local itobj = ObjType:new()
+		itobj.defn = self.children[1]
+		itobj.objtype = setobj.elemtype
+		itobj.scope = _LISZT_STR
+		env:leaveblock()
 	end
 
 	function ast.GenericFor:check()
