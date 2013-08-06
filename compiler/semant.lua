@@ -657,7 +657,7 @@ function check(luaenv, kernel_ast)
         else
             if not lua_to_liszt(luaval, tableobj) then
                 diag:reporterror(self,
-                "Cannot convert the lua value to a liszt value @ ")
+                "Cannot convert the lua value to a liszt value")
 			return nil
             end
         end

@@ -9,7 +9,9 @@ function main ()
 	local com = Vector.new(float, 3, {0.0, 0.0, 0.0})
 
 	local sum_pos = liszt_kernel (v)
+	for v in mesh.vertices do
 		com = com + pos(v)
+	end
 	end
 
 	-- kernel application
