@@ -3,7 +3,7 @@ import "compiler/liszt"
 mesh = LoadMesh("examples/mesh.lmesh")
 
 position = mesh:fieldWithLabel(Vertex, Vector.type(float,3), "position")
--- field    = mesh:field(Cell, Vector.type(int,2), Vector.new(0,0))
+-- field    = mesh:field(Cell, Vector.type(int,2), Vector.new(int, 2, {0,0}))
 field2   = mesh:field(Cell,   int, 0)
 myid     = mesh:field(Vertex, int, 0) --,Vec[_2,Int]](Vec(0,0))
 
@@ -11,7 +11,7 @@ function main ()
 	-- init statements, binary expressions, 
 	-- field lookups (lvalues), function calls (multiple arguments)
 	local b = liszt_kernel (cell) 
-		var a = Vector.new(Int, 1, 2)
+		var a = Vector.new(int, 1, 2)
 		var b = 3 + 4 * 5
 		var c = 6 / 7 + -8 ^ 9
 		field(cell) = b * a
