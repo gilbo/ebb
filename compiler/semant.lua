@@ -28,6 +28,7 @@ _EDGE_STR    = 'edge'
 _VERTEX_STR  = 'vertex'
 _TOPOSET_STR = 'toposet'
 _FIELD_STR = 'field'
+_ELEM_STR  = 'elem'
 
 -- root variable type
 _NOTYPE = 
@@ -85,6 +86,13 @@ _MESH  =
 	parent   = {},
 	children = {}
 }
+-- generic topological element type
+_ELEM =
+{
+	name     = _ELEM_STR,
+	parent   = {},
+	children = {}
+}
 -- cell type
 _CELL  =
 {
@@ -123,20 +131,53 @@ _TOPOSET  =
 -- field type
 _FIELD  =
 {
-	name = _FIELD_STR,
-	parent = {},
+	name     = _FIELD_STR,
+	parent   = {},
 	children = {}
 }
+
+--[[ Tables for simplifying semantic checking logic: ]]
+local topoType = {
+	[_MESH_STR]   = _MESH,
+	[_CELL_STR]   = _CELL,
+	[_FACE_STR]   = _FACE,
+	[_EDGE_STR]   = _EDGE,
+	[_VERTEX_STR] = _VERTEX
+}
+
+local elemType = {
+	--[_ELEM_STR]   = _ELEM,
+	[_CELL_STR]   = _CELL,
+	[_FACE_STR]   = _FACE,
+	[_EDGE_STR]   = _EDGE,
+	[_VERTEX_STR] = _VERTEX
+}
+
+-- valid types for liszt vectors:
+local vectorType = {
+	[_INT_STR]   = _INT,
+	[_FLOAT_STR] = _FLOAT,
+	--[_BOOL_STR]  = _BOOL,
+}
+
+-- integral data types of liszt:
+local integralFieldType = {
+	[_INT_STR]   = _INT,
+	[_FLOAT_STR] = _FLOAT,
+	[_BOOL_STR]  = _BOOL,
+}
+
 
 local ObjType = 
 {
     -- type of the object
 	objtype = _NOTYPE,
-    -- if object consists of elements, then type of elements
+    -- if object consists of elements, then type of elements (vectors, fields)
 	elemtype = _NOTYPE,
     -- if object is over a topological set, then the corresponding topological
-    -- element
+    -- element (fields, boundary sets, toposets, etc)
     topotype = _NOTYPE,
+
 	-- scope
 	scope = _LISZT_STR,
 	-- size
@@ -148,16 +189,7 @@ local ObjType =
 }
 
 function ObjType:new()
-	local newtype = {}
-	setmetatable(newtype, {__index = self})
-	newtype.objtype = self.objtype
-	newtype.elemtype = self.elemtype
-    newtype.topotype = self.elemtype
-	newtype.scope = self.scope
-	newtype.size = self.size
-	newtype.luaval = self.luaval
-	newtype.defn = self.defn
-	return newtype
+	return setmetatable({}, {__index = self})
 end
 
 -- class tree
@@ -186,7 +218,7 @@ _FACE.parent    = _NOTYPE
 _EDGE.parent    = _NOTYPE
 _VERTEX.parent  = _NOTYPE
 _TOPOSET.parent = _NOTYPE
-_FIELD.parent = _NOTYPE
+_FIELD.parent   = _NOTYPE
 --
 _NUM.children = {_INT, _FLOAT}
 _INT.parent   = _NUM
@@ -201,14 +233,18 @@ function check(luaenv, kernel_ast)
 	-- print("**** Untyped AST")
 	-- terralib.tree.printraw(kernel_ast)
 	-- environment for checking variables and scopes
-	local env = terralib.newenvironment(luaenv)
+	local env  = terralib.newenvironment(luaenv)
+
+	print("lua environment:")
+	terralib.tree.printraw(env)
+
 	local diag = terralib.newdiagnostics()
 
 	------------------------------------------------------------------------------
 
 	--[[ Check if lhstype conforms to rhstype
 	--]]
-	local function conform(lhstype, rhstype)
+	local function conforms(lhstype, rhstype)
 		if lhstype == _TR then
 			return true
 		elseif rhstype == lhstype then
@@ -216,25 +252,18 @@ function check(luaenv, kernel_ast)
 		elseif rhstype == _TR then
 			return false
 		else
-			return conform(lhstype, rhstype.parent)
+			return conforms(lhstype, rhstype.parent)
 		end
 	end
 
-    local function is_valid_type(dtype)
-        if is_valid_type_rec(_NOTYPE, dtype) then
-            return true
-        else
-            return false
-        end
-    end
-
-    local function is_valid_type_rec(node, dtype)
+    local function is_valid_type(dtype, node)
+    	if node == nil then node = _NOTYPE end
         if dtype == node.name then
             return true
         else
             if node.children ~= nil then
                 for child in node.children do
-                    is_valid_type_rec(child, dtype)
+                    is_valid_type(dtype, child)
                 end
             else
                 return false
@@ -282,17 +311,7 @@ function check(luaenv, kernel_ast)
 	--[[ Statements
 	--]]
 	function ast.Statement:check()
-		-- not needed
-		env:enterblock()
-        local stblock;
-		for id, node in ipairs(self.children) do
-			stblock = node:check()
-		end
-        if stblock ~= nil then
-            self.node_type = stblock.objtype.name
-        end
-		env:leaveblock()
-        return stblock
+		error("Unimplemented semantic checking for " .. self.kind)
 	end
 
 	function ast.IfStatement:check()
@@ -303,30 +322,21 @@ function check(luaenv, kernel_ast)
 			stblock = node:check()
 			env:leaveblock()
 		end
-        if stblock ~= nil then
-            self.node_type = stblock.objtype.name
-        end
+		self.node_type = stblock and stblock.objtype.name
         return stblock
 	end
 
 	function ast.WhileStatement:check()
 		-- condition (expression) and block
-		env:enterblock()
-        local stblock
 		local condobj = self.children[1]:check()
-		if condobj ~= nil then
-			if not conform(_BOOL, condobj.objtype) then
-				diag:reporterror(self, 
-				"Expected boolean value for while statement condition")
-			end
+		if condobj and not conforms(_BOOL, condobj.objtype) then
+			diag:reporterror(self, 
+			"Expected boolean value for while statement condition")
 		end
 		env:enterblock()
-		stblock = self.children[2]:check()
+		local stblock = self.children[2]:check()
 		env:leaveblock()
-		if stblock ~= nil then
-            self.node_type = stblock.objtype.name
-        end
-		env:leaveblock()
+		self.node_type = stblock and stblock.objtype.name
         return stblock
 	end
 
@@ -337,10 +347,8 @@ function check(luaenv, kernel_ast)
 		for id, node in ipairs(self.children) do
 			stblock = node:check()
 		end
-        if stblock ~= nil then
-            self.node_type = stblock.objtype.name
-        end
 		env:leaveblock()
+		self.node_type = stblock and stblock.objtype.name
         return stblock
 	end
 
@@ -348,18 +356,21 @@ function check(luaenv, kernel_ast)
 		-- condition expression, block
 		env:enterblock()
 		local stblock = self.children[2]:check()
-		if stblock ~= nil then
-			self.node_type = stblock.objtype.name
-		end
+		self.node_type = stblock and stblock.objtype.name
+
 		local condobj = self.children[1]:check()
-		if condobj ~= nil then
-			if not conform(_BOOL, condobj.objtype) then
-				diag:reporterror(self,
-				"Expected boolean value for repeat statement condition")
-			end
+		if condobj and not conforms(_BOOL, condobj.objtype) then
+			diag:reporterror(self,
+			"Expected boolean value for repeat statement condition")
 		end
 		env:leaveblock()
 		return stblock
+	end
+
+	function ast.ExprStatement:check()
+		local expr = self.children[1]:check()
+		self.node_type = expr and expr.objtype.name
+		return expr
 	end
 
 	function ast.Assignment:check()
@@ -369,7 +380,7 @@ function check(luaenv, kernel_ast)
 		if lhsobj == nil or rhsobj == nil then
 			return nil
 		end
-		local validassgn = conform(lhsobj.objtype, rhsobj.objtype)
+		local validassgn = conforms(lhsobj.objtype, rhsobj.objtype)
 		if not validassgn then
 			diag:reporterror(self,"Inferred RHS type ", rhsobj.objtype.name,
 			" does not conform to inferred LHS type ", lhsobj.objtype.name,
@@ -408,52 +419,49 @@ function check(luaenv, kernel_ast)
 	end
 
 	function ast.NumericFor:check()
-		env:enterblock()
 		for i = 2, #self.children-1 do
 			local exprobj = self.children[i]:check()
 			if exprobj == nil then
 				diag:reporterror(self,
 				"Expected a number for defining the iterator")
 			else
-				if not conform(_NUM, exprobj.objtype) then
+				if not conforms(_NUM, exprobj.objtype) then
 					diag:reporterror(self,
 					"Expected a number for defining the iterator")
 				end
 			end
 		end
-		local itobj = ObjType:new()
-		itobj.defn = self.children[1]
-		itobj.objtype = _NUM
-		itobj.elemtype = _NUM
-		itobj.scope = _LISZT_STR
+		local itobj          = ObjType:new()
+		itobj.defn           = self.children[1]
+		itobj.objtype        = _NUM
+		itobj.elemtype       = _NUM
+		itobj.scope          = _LISZT_STR
 		itobj.defn.node_type = _NUM_STR
+
+		env:enterblock()
 		local varname = self.children[1].children[1]
 		env:localenv()[varname] = itobj
 		local forobj = self.children[#self.children]:check()
-		if forobj ~= nil then
-			self.node_type = forobj.objtype.name
-		end
+		self.node_type = forobj and forobj.objtype.name
 		env:leaveblock()
 		return forobj
 	end
 
 	function ast.GenericFor:check()
-        env:enterblock()
         local setobj = self.children[2]:check()
 		if setobj == nil then
-			return nil
 		end
-        local itobj = ObjType:new()
-        itobj.defn = self.children[1]
-        itobj.objtype = setobj.elemtype
-        itobj.scope = _LISZT_STR
+        local itobj          = ObjType:new()
+        itobj.defn           = self.children[1]
+        itobj.objtype        = setobj.elemtype
+        itobj.scope          = _LISZT_STR
         itobj.defn.node_type = setobj.data_type
+
+        env:enterblock()
         local varname = self.children[1].children[1]
         env:localenv()[varname] = itobj
         local forobj = self.children[3]:check()
-        if forobj ~= nil then
-            self.node_type = forobj.objtype.name
-        end
+        self.node_type = forobj and forobj.objtype.name
         env:leaveblock()
         return forobj
 	end
@@ -464,22 +472,17 @@ function check(luaenv, kernel_ast)
 
 	function ast.CondBlock:check()
 		-- condition (expression), block
-		env:enterblock()
-		local condblock
 		local condobj = self.children[1]:check()
-		if condobj ~= nil then
-			if not conform(_BOOL, condobj.objtype) then
-				diag:reporterror(self, "Expected boolean value here")
-			end
+		if condobj and not conforms(_BOOL, condobj.objtype) then
+			diag:reporterror(self, "Expected boolean value here")
 		end
+
 		env:enterblock()
-		condblock = self.children[2]:check()
+		local block = self.children[2]:check()
 		env:leaveblock()
-		if condblock ~= nil then
-			self.node_type = condblock.objtype.name
-		end
-		env:leaveblock()
-		return condblock
+
+		self.node_type = block and block.objtype.name
+		return block
 	end
 
 	------------------------------------------------------------------------------
@@ -490,25 +493,25 @@ function check(luaenv, kernel_ast)
 	end
 
 	-- expression helper functions
-	local function match_num_vector(node, leftobj, rightobj)
+	local function vector_length_matches(node, leftobj, rightobj)
 		if leftobj == nil or rightobj == nil then
 			return false
 		end
-		local binterms = conform(_NUM, leftobj.objtype) and
-			conform(_NUM, rightobj.objtype)
+		local binterms = conforms(_NUM, leftobj.objtype) and
+			conforms(_NUM, rightobj.objtype)
 		if not binterms then
-			binterms = conform(_VECTOR, leftobj.objtype) and
-				conform(_VECTOR, rightobj.objtype)
+			binterms = conforms(_VECTOR, leftobj.objtype) and
+				conforms(_VECTOR, rightobj.objtype)
 		end
-		binterms = binterms or (conform(_NUM, leftobj.elemtype)
-			and conform(_NUM, rightobj.elemtype))
+		binterms = binterms or (conforms(_NUM, leftobj.elemtype)
+			and conforms(_NUM, rightobj.elemtype))
 		if not binterms then
 			diag:reporterror(node,
 				"At least one of the terms is not ",
 				"a number or a vector of numbers")
 			return false
-		elseif not (conform(leftobj.elemtype, rightobj.elemtype)
-			or conform(rightobj.elemtype, leftobj.elemtype)) then
+		elseif not (conforms(leftobj.elemtype, rightobj.elemtype)
+			or conforms(rightobj.elemtype, leftobj.elemtype)) then
 			diag:reporterror(node, "Mismatch between element types ",
 				"for the two terms")
 			return false
@@ -520,58 +523,98 @@ function check(luaenv, kernel_ast)
 		end
 	end
 
+    --[[ Logic tables for binary expression checking: ]]--
+    -- vector ops can take either numbers or vectors as arguments
+    local isVecOp = {
+       ['+'] = true,
+       ['-'] = true,
+       ['*'] = true,
+       ['/'] = true
+    }
+
+    local isNumOp = {
+    	['^'] = true
+	}
+
+    local isCompOp = {
+       ['<='] = true,
+       ['>='] = true,
+       ['>']  = true,
+       ['<']  = true
+    }
+
+    local isEqOp = {
+       ['=='] = true,
+       ['~='] = true
+    }
+
+    local isBoolOp = {
+       ['and'] = true,
+       ['or']  = true,
+    }
+
 	-- binary expressions
 	function ast.BinaryOp:check()
-		local leftobj = self.children[1]:check()
+		local leftobj  = self.children[1]:check()
 		local rightobj = self.children[3]:check()
 		local op = self.children[2]
 		local exprobj = ObjType:new()
+
 		if leftobj == nil or rightobj == nil then
 			return nil
 		end
-		if op == '+' or op == '-' or op == '*' or op == '/' then
-			if match_num_vector(self, leftobj, rightobj) then
-				if conform(leftobj.objtype, rightobj.objtype) then
-					exprobj.objtype = leftobj.objtype
+
+		if isVecOp[op] then
+			if vector_length_matches(self, leftobj, rightobj) then
+				if conforms(leftobj.objtype, rightobj.objtype) then
+					exprobj.objtype  = leftobj.objtype
 					exprobj.elemtype = leftobj.objtype
 				else
-					exprobj.objtype = rightob.objtype
+					exprobj.objtype  = rightobj.objtype
 					exprobj.elemtype = rightobj.objtype
 				end
-			exprobj.size = leftobj.size
+				exprobj.size = leftobj.size
 			end
-		elseif op == '^' then
-			if not conform(_NUM, leftobj.objtype) then
+			-- BUG/TODO: what if vector lengths don't match?
+			-- vector * constant or vector / constant should be valid expressions, but
+			-- vector(n) + vector(m) is not valid (m != n)
+
+		elseif isNumOp[op] then
+			if not conforms(_NUM, leftobj.objtype) then
 				diag:reporterror(self, "Expected a number here")
 			end
-			if not conform(_NUM, rightobj.objtype) then
+			if not conforms(_NUM, rightobj.objtype) then
 				diag:reporterror(self, "Expected a number here")
 			end
-			exprobj.objtype = _FLOAT
+			exprobj.objtype  = _FLOAT
 			exprobj.elemtype = _FLOAT
-			exprobj.size = 1
-		elseif op == '<=' or op == '>=' or op == '<' or op == '>' then
-			if conform(_NUM, leftobj.objtype) and 
-				conform(_NUM, rightobj.objtype) then
+			exprobj.size     = 1
+
+		elseif isCompOp[op] then
+			if conforms(_NUM, leftobj.objtype) and 
+				conforms(_NUM, rightobj.objtype) then
 				exprobj.objtype = _BOOL
-				exprobj.size = 1
+				exprobj.size    = 1
 			else
 				diag:reporterror(self, "One of the terms compared using \'",
 				op, "\' is not a number")
 			end
-		elseif op == '==' or op == '~=' then
+
+		elseif isEqOp[op] then
 			exprobj.objtype = _BOOL
-			exprobj.size = 1
-		elseif op == 'and' or op == 'or' then
-			if conform(_BOOL, leftobj.objtype) and 
-				conform(_BOOL, rightobj.objtype) then
+			exprobj.size    = 1
+
+		elseif isBoolOp[op] then
+			if conforms(_BOOL, leftobj.objtype) and 
+				conforms(_BOOL, rightobj.objtype) then
 				exprobj.objtype = _BOOL
-				exprobj.size = 1
+				exprobj.size    = 1
 			else
 				diag:reporterror(self, "One of the terms in the \' ", op,
 					"\' expression is not a boolean value")
 			end
-		else
+
+		else -- not a recognized operator (?)
 			diag:reporterror(self, "Unknown operator \'", op, "\'")
 		end
     	self.node_type = exprobj.objtype.name
@@ -585,23 +628,21 @@ function check(luaenv, kernel_ast)
 			return nil
 		end
 		if op == 'not' then
-			if not conform(_BOOL, exprobj.objtype) then
-				diag:reporterror(self, "Expected a boolean expression here")
+			if not conforms(_BOOL, exprobj.objtype) then
+				diag:reporterror(self, "\"not\" operator expects a boolean expression")
 				return nil
 			else
 				self.node_type = exprobj.objtype.name
 				return exprobj
 			end
 		elseif op == '-' then
-			local binterms = conform(_NUM, exprobj.objtype)
+			local binterms = conforms(_NUM, exprobj.objtype)
 			if not binterms then
-				binterms = conform(_VECTOR, exprobj.objtype) and
-				conform(_NUM, exprobj.elemtype)
+				binterms = conforms(_VECTOR, exprobj.objtype) and
+				conforms(_NUM, exprobj.elemtype)
 			end
 			if not binterms then
-				diag:reporterror(self,
-				"Atleast one of the terms is not ",
-				"a number or a vector of numbers")
+				diag:reporterror(self, "Unary minus expects a number or a vector of numbers")
 				return nil
 			else
 				self.node_type = exprobj.objtype.name
@@ -617,13 +658,10 @@ function check(luaenv, kernel_ast)
 
 	--[[ Misc
 	--]]
-	function ast.LValue:check()
-        print("Unreconginzed LValue, yet to implement type checking")
-	end
-
 	function ast.Tuple:check()
-		-- TODO: not needed right now, but to implement functions later on
-		print("Inside tuple type checking")
+		for i, node in ipairs(self.children) do
+			node:check()
+		end
 	end
 
 	function ast.Tuple:index_check()
@@ -667,7 +705,6 @@ function check(luaenv, kernel_ast)
 
 	function ast.Call:check()
 		-- call name can be a field only in current implementation
-		print("Inside call type checking")
 		local callobj = self.children[1]:check()
 		if callobj == nil then
 			diag:reporterror(self, "Undefined call")
@@ -707,107 +744,83 @@ function check(luaenv, kernel_ast)
 		if type(luav) == _TAB_STR then
 			-- vectors
 			if luav.kind == _VECTOR_STR then
-				nameobj.objtype = _VECTOR
-				if luav.data_type == int then
-					nameobj.elemtype = _INT
-				elseif luav.data_type == float then
-					nameobj.elemtype = _FLOAT
+				if vectorType[luav.data_type] then
+					nameobj.objtype  = _VECTOR
+					nameobj.elemtype = vectorType[luav.data_type]
+					nameobj.size     = luav.size
+					return true
 				else
 					return false
 				end
-				nameobj.size = luav.size
-				return true
-			-- mesh
-            elseif luav.kind == _MESH_STR then
-                nameobj.objtype = _MESH
+
+			-- mesh, cell, face, edge, vertex
+            elseif topoType[luav.kind] then
+                nameobj.objtype = topoType[luav.kind]
                 return true
-			-- cell
-            elseif luav.kind == _CELL_STR then
-                nameobj.objtype = _CELL
-                return true
-			-- face
-            elseif luav.kind == _FACE_STR then
-                nameobj.objtype = _FACE
-                return true
-			-- edge
-            elseif luav.kind == _EDGE_STR then
-                nameobj.objtype = _EDGE
-                return true
-			-- vertex
-            elseif luav.kind == _VERTEX_STR then
-                nameobj.objtype = _VERTEX
-                return true
+
 			-- topological set
             elseif luav.kind == _TOPOSET_STR then
                 nameobj.objtype = _TOPOSET
-                if luav.data_type == _VERTEX_STR then
-                    nameobj.elemtype = _VERTEX
-                elseif luav.data_type == _EDGE_STR then
-                    nameobj.elemtype = _EDGE
-                elseif luav.data_type == _FACE_STR then
-                    nameobj.elemtype = _FACE
-                elseif luav.data_type == _CELL_STR then
-                    nameobj.elemtype = _CELL
-                else
-                    return false
+                -- cell, face, edge, vertex
+                if elemType[luav.data_type] then
+                    nameobj.elemtype = elemType[luav.data_type]
+                    return true
                 end
-				return true
+				return false
+
 			-- field
             elseif luav.kind == _FIELD_STR then
                 nameobj.objtype = _FIELD
-                local dobj = luav.data_type
+                local dobj    = luav.data_type
 				local elemobj = ObjType:new()
-				if dobj.obj_type == _INT_STR then
-					elemobj.objtype = _INT
-					elemobj.elemtype = _INT
-					elemobj.size = 1
-					elemobj.scope = _LUA_STR
-				elseif dobj.obj_type == _FLOAT_STR then
-					elemobj.obj_type = _FLOAT
-					elemobj.elemtype = _FLOAT
-					elemobj.size = 1
-					elemobj.scope = _LUA_STR
+				elemobj.scope = _LUA_STR
+
+				-- determine field element type:
+				if integralFieldType[dobj.obj_type] then
+					elemobj.objtype  = integralFieldType[dobj.obj_type]
+					elemobj.elemtype = integralFieldType[dobj.obj_type]
+					elemobj.size     = 1
 				elseif dobj.obj_type == _VECTOR_STR then
 					elemobj.objtype = _VECTOR
-					if dobj.elem_type == _INT_STR then
-						elemobj.elemtype = INT
-					elseif dobj.elem_type == _FLOAT_STR then
-						elemobj.elemtype = _FLOAT
+					if vectorType[dobj.elem_type] then
+						elemobj.elemtype = vectorType[dobj.elem_type]
+						elemobj.size = dobj.size
 					else
 						return false
 					end
-					elemobj.size = dobj.size
-					elemobj.scope = _LUA_STR
-				else
+				else -- field element type must be an integral type or a vector!
 					return false
 				end
 				nameobj.elemtype = elemobj
-                local ttype = luav.topo_type
-				if ttype == _CELL_STR then
-					nameobj.topotype = _CELL
-				elseif ttype == _FACE_STR then
-					nameobj.topotype = _FACE
-				elseif ttype == _EDGE_STR then
-					nameobj.topotype = _EDGE
-				elseif ttype == _VERTEX_STR then
-					nameobj.topotype = _VERTEX
+
+				-- determine field topo type:
+				if elemType[luav.topo_type] then
+					nameobj.topotype = elemType[luav.topo_type]
 				else
 					return false
 				end
-					return true
-			-- none of the above in table
+				return true
+
+			-- table does not represent a liszt type
             else
                 return false
             end
+
+        -- for referenced lua values that may be used as an int or a float
+        elseif (type(luav) == _NUM_STR) then
+        	nameobj.objtype  = _NUM
+        	nameobj.elemtype = _NUM
+        	nameobj.size     = 1
+        	return true
         else
-			-- not number/ table
-			return false
+        	-- not number / table
+        	return false
 		end
 	end
 
 	function ast.Name:check()
 		local nameobj = ObjType:new()
-        nameobj.defn = self
+        nameobj.defn  = self
 		local locv = env:localenv()[self.children[1]]
 		if locv then
 			-- if liszt local variable, type stored in environment
@@ -829,20 +842,20 @@ function check(luaenv, kernel_ast)
 	end
 
 	function ast.Number:check()
-		local numobj = ObjType:new()
-		numobj.objtype = _NUM
+		local numobj    = ObjType:new()
+		numobj.objtype  = _NUM
 		numobj.elemtype = _NUM
-		numobj.size = 1
-		self.node_type = numobj.objtype.name
+		numobj.size     = 1
+		self.node_type  = numobj.objtype.name
 		return numobj
 	end
 
 	function ast.Bool:check()
-		local boolobj = ObjType:new()
-		boolobj.objtype = _BOOL
+		local boolobj    = ObjType:new()
+		boolobj.objtype  = _BOOL
 		boolobj.elemtype = _NUM
-		boolobj.size = 1
-		self.node_type = boolobj.objtype.name
+		boolobj.size     = 1
+		self.node_type   = boolobj.objtype.name
 		return boolobj
 	end
 
@@ -851,6 +864,19 @@ function check(luaenv, kernel_ast)
 	-- begin actual typechecking
 	diag:begin()
 	env:enterblock()
+	local param = kernel_ast.children[1]
+	local block = kernel_ast.children[2]
+
+	local paramobj = ObjType:new()
+	paramobj.objtype  = _ELEM
+	paramobj.elemtype = _ELEM
+	paramobj.size     = 1
+	paramobj.scope    = _LISZT_STR
+	paramobj.defn     = param
+	param.node_type   = paramobj.objtype.name
+
+	env:localenv()[param.children[1]] = paramobj
+
 	for id, node in ipairs(kernel_ast.children) do
 		if (node.kind ~= nil) then
 			node:check()
@@ -859,7 +885,7 @@ function check(luaenv, kernel_ast)
 	env:leaveblock()
 
 --	print("**** Typed AST")
-	terralib.tree.printraw(kernel_ast)
+--	terralib.tree.printraw(kernel_ast)
 
 	diag:finishandabortiferrors("Errors during typechecking liszt", 1)
 

@@ -234,7 +234,8 @@ end
 -------------------------------------------------
 local function toposet_stub (topoelem)
    local tmp = {data_type = topoelem}
-   tmp.size = function () return 10 end
+   tmp.size  = function () return 10 end
+   tmp.map   = function (...) end
    setmetatable(tmp, {__index = TopoSet})
    return tmp
 end

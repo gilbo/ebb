@@ -111,8 +111,9 @@ lang.tuple = function (P, exprs)
 	if P:nextif(",") then
 		return P:tuple(exprs)
 	else 
-		--TODO: check line number
-		return ast.Tuple:New(P, unpack(exprs))
+		local tuple = ast.Tuple:New(P, unpack(exprs))
+		tuple:copy_location(exprs[1])
+		return tuple
 	end
 end
 
@@ -131,12 +132,14 @@ lang.lvaluehelper = function (P, lhs)
 		nodename.children = {P:next().value}
 		node.children = {lhs, op, nodename}
 		return P:lvaluehelper(node)
-
-		-- field index / function call?
-	elseif P:nextif('(') then
+	end
+		
+	-- field index / function call?
+	local open = P:nextif('(')
+	if open then
 		local node = ast.Call:New(P)
 		local args = P:tuple()
-		P:expect(')')
+		P:expectmatch(')', '(', open.linenumber)
 		node.children = {lhs, args}
 		return P:lvaluehelper(node)
 	end
@@ -187,11 +190,13 @@ lang.simpleexp = function(P)
 		local node = ast.Bool:New(P)
 		node.children = {P:next().type}
 		return node
+	end
 
-		-- catch parenthesized expressions
-	elseif P:nextif("(") then
+	-- catch parenthesized expressions
+	local open = P:nextif('(')
+	if open then
 		local v = P:exp()
-		P:expect(")")
+		P:expectmatch(")", "(", open.linenumber)
 		return v
 	end
 
@@ -205,9 +210,9 @@ lang.liszt_kernel = function (P)
 	local kernel_node = ast.LisztKernel:New(P)
 
 	-- parse parameter
-	P:expect("(")
-	local param = P:expect(P.name).value
-	P:expect(")")
+	local open  = P:expect("(")
+	local param = ast.Name:New(P,P:expect(P.name).value)
+	P:expectmatch(")", "(", open.linenumber)
 
 	-- parse block
 	local block = P:block()
@@ -339,13 +344,16 @@ lang.statement = function (P)
 		local expr = P:exp()
 		if (P:nextif('=')) then
 			local node_asgn = ast.Assignment:New(P)
+			-- fix line # info for assignment statement
+			node_asgn:copy_location(expr)
+
 			-- check to make sure lhs is an LValue
 			if not expr.isLValue() then P:error("expected LValue before '='") end
 			local rhs = P:exp()
 			node_asgn.children = {expr, rhs}
 			return node_asgn
 		else
-			return expr
+			return ast.ExprStatement:New(P,expr)
 		end
 	end
 end

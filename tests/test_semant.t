@@ -19,7 +19,7 @@ function main ()
 	print("f1 is a field of", f1.data_type, "over", f1.topo_type)
 
     local k = liszt_kernel (cell)
-        checkthis1 = 5
+        checkthis1 = f1(cell)
         checkthis2 = 1
 		var local1 = 9.0
 		var local2 = 2.0
@@ -29,6 +29,8 @@ function main ()
 		var local5 = true
 		var local6 = local5 and false
 		var local7 = 8 <= 9
+
+		3 + 4
 
 		while true
 		do

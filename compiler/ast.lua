@@ -104,6 +104,12 @@ function AST:New (P, ...)
 	return setmetatable(newnode, {__index = self})
 end
 
+function AST:copy_location (node)
+	linenumber = node.linenumber
+	filename   = node.filename
+	offset     = node.offset
+end
+
 function AST.isLValue    ( ) return false end
 function LValue.isLValue ( ) return true  end
 
