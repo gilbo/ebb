@@ -5,10 +5,10 @@ mesh = LoadMesh("examples/mesh.lmesh")
 f1   = mesh:field(Cell, int, 0)
 f2 = mesh:fieldWithLabel(Vertex, Vector.type(float,3), "position")
 
-v1 = Vector.new(int, 1, 2, 3) 
-v2 = Vector.new(int, 2, 4, 6)
-v3 = Vector.new(float, 1.0, 2.0, 3.0)
-v4 = Vector.new(int, 1.0, 1.0)
+v1 = Vector.new(int, {1, 2, 3}) 
+v2 = Vector.new(int, {2, 4, 6})
+v3 = Vector.new(float, {1.0, 2.0, 3.0})
+v4 = Vector.new(int, {1.0, 1.0})
 
 t1 = {}
 

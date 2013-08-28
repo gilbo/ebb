@@ -2,6 +2,9 @@ module(... or 'semant', package.seeall)
 
 ast = require("ast")
 
+--local DEBUG_PRINT = function (...) print(...) end
+local DEBUG_PRINT = function (...) end
+           
 ------------------------------------------------------------------------------
 --[[NOTES: Variables may be introduced in the lua code, or in liszt code
 --through initialization/ declaration statements/ in for loops.
@@ -27,8 +30,8 @@ _FACE_STR    = 'face'
 _EDGE_STR    = 'edge'
 _VERTEX_STR  = 'vertex'
 _TOPOSET_STR = 'toposet'
-_FIELD_STR = 'field'
-_ELEM_STR  = 'elem'
+_FIELD_STR   = 'field'
+_ELEM_STR    = 'elem'
 
 -- root variable type
 _NOTYPE = 
@@ -137,7 +140,7 @@ _FIELD  =
 }
 
 --[[ Tables for simplifying semantic checking logic: ]]
-local topoType = {
+local strToTopoType = {
 	[_MESH_STR]   = _MESH,
 	[_CELL_STR]   = _CELL,
 	[_FACE_STR]   = _FACE,
@@ -145,7 +148,7 @@ local topoType = {
 	[_VERTEX_STR] = _VERTEX
 }
 
-local elemType = {
+local strToElemType = {
 	--[_ELEM_STR]   = _ELEM,
 	[_CELL_STR]   = _CELL,
 	[_FACE_STR]   = _FACE,
@@ -154,36 +157,47 @@ local elemType = {
 }
 
 -- valid types for liszt vectors:
-local vectorType = {
+local strToVectorType = {
 	[_INT_STR]   = _INT,
 	[_FLOAT_STR] = _FLOAT,
 	--[_BOOL_STR]  = _BOOL,
 }
 
+local luaToVectorType = {
+	[int]   = _INT,
+	[float] = _FLOAT
+}
+
 -- integral data types of liszt:
-local integralFieldType = {
+local strToIntegralFieldType = {
 	[_INT_STR]   = _INT,
 	[_FLOAT_STR] = _FLOAT,
 	[_BOOL_STR]  = _BOOL,
 }
 
-
 local ObjType = 
 {
-    -- type of the object
+    -- base type of the object
 	objtype = _NOTYPE,
-    -- if object consists of elements, then type of elements (vectors, fields)
+
+    -- if object consists of elements, then type of elements
+    -- vector - integral type of vector components
+    -- field  - type of stored field data
 	elemtype = _NOTYPE,
+
     -- if object is over a topological set, then the corresponding topological
-    -- element (fields, boundary sets, toposets, etc)
+    -- element (fields, boundary sets, toposets)
     topotype = _NOTYPE,
 
-	-- scope
+	-- scope (liszt_str is a kernel temporary)
 	scope = _LISZT_STR,
-	-- size
+
+	-- used for vectors
 	size = 0,
-	-- lua value
+
+	-- lua object referred to
     luaval = {},
+
 	-- ast node which has the definition
 	defn = {}
 }
@@ -202,21 +216,15 @@ _TR.children =
     _BOOL,
     _VECTOR,
     _MESH,
-    _CELL,
-    _FACE,
-    _EDGE,
-    _VERTEX,
+    _ELEM,
     _TOPOSET,
     _FIELD
 }
+
 _NUM.parent     = _NOTYPE
 _BOOL.parent    = _NOTYPE
 _VECTOR.parent  = _NOTYPE
 _MESH.parent    = _NOTYPE
-_CELL.parent    = _NOTYPE
-_FACE.parent    = _NOTYPE
-_EDGE.parent    = _NOTYPE
-_VERTEX.parent  = _NOTYPE
 _TOPOSET.parent = _NOTYPE
 _FIELD.parent   = _NOTYPE
 --
@@ -224,19 +232,21 @@ _NUM.children = {_INT, _FLOAT}
 _INT.parent   = _NUM
 _FLOAT.parent = _NUM
 
+_ELEM.children = { _CELL, _FACE, _EDGE, _VERTEX }
+_CELL.parent    = _ELEM
+_FACE.parent    = _ELEM
+_EDGE.parent    = _ELEM
+_VERTEX.parent  = _ELEM
+
+
 ------------------------------------------------------------------------------
 
 --[[ Semantic checking called from here
 --]]
 function check(luaenv, kernel_ast)
 
-	-- print("**** Untyped AST")
-	-- terralib.tree.printraw(kernel_ast)
 	-- environment for checking variables and scopes
 	local env  = terralib.newenvironment(luaenv)
-
-	print("lua environment:")
-	terralib.tree.printraw(env)
 
 	local diag = terralib.newdiagnostics()
 
@@ -251,6 +261,9 @@ function check(luaenv, kernel_ast)
 			return true
 		elseif rhstype == _TR then
 			return false
+		-- float ops with ints or numbers get casted to float
+		elseif lhstype == _FLOAT and (rhstype == _INT or rhstype == _NUM) then
+			return true
 		else
 			return conforms(lhstype, rhstype.parent)
 		end
@@ -390,6 +403,7 @@ function check(luaenv, kernel_ast)
 			set_type(lhsobj, rhsobj)
 			self.node_type = rhsobj.objtype.name
 		end
+		DEBUG_PRINT(self.children[1].children[1] .. " (node type: " .. self.kind .. ") is of type " .. self.node_type)
 		return rhsobj
 	end
 
@@ -405,6 +419,7 @@ function check(luaenv, kernel_ast)
 		set_type(nameobj, rhsobj)
 		env:localenv()[varname] = nameobj
 		self.node_type = nameobj.objtype.name
+		DEBUG_PRINT(self.children[1].children[1] .. " (node type: " .. self.kind .. ") is of type " .. self.node_type)
 		return nameobj
 	end
 
@@ -435,6 +450,7 @@ function check(luaenv, kernel_ast)
 		itobj.defn           = self.children[1]
 		itobj.objtype        = _NUM
 		itobj.elemtype       = _NUM
+		itobj.size           = 1
 		itobj.scope          = _LISZT_STR
 		itobj.defn.node_type = _NUM_STR
 
@@ -453,7 +469,7 @@ function check(luaenv, kernel_ast)
 		end
         local itobj          = ObjType:new()
         itobj.defn           = self.children[1]
-        itobj.objtype        = setobj.elemtype
+        itobj.objtype        = setobj.topotype
         itobj.scope          = _LISZT_STR
         itobj.defn.node_type = setobj.data_type
 
@@ -510,13 +526,13 @@ function check(luaenv, kernel_ast)
 				"At least one of the terms is not ",
 				"a number or a vector of numbers")
 			return false
-		elseif not (conforms(leftobj.elemtype, rightobj.elemtype)
-			or conforms(rightobj.elemtype, leftobj.elemtype)) then
-			diag:reporterror(node, "Mismatch between element types ",
-				"for the two terms")
+		elseif  not (conforms(leftobj.elemtype, rightobj.elemtype)
+			     or  conforms(rightobj.elemtype, leftobj.elemtype)) then
+			diag:reporterror(node, "Mismatch between operand types of binary expression")
 			return false
 		elseif leftobj.size ~= rightobj.size then
-			diag:reporterror(node, "Mismatch in size of two terms")
+			diag:reporterror(node, "Mismatch of vector length of operands",
+							       " in binary expression")
 			return false
 		else
 			return true
@@ -575,9 +591,11 @@ function check(luaenv, kernel_ast)
 				end
 				exprobj.size = leftobj.size
 			end
-			-- BUG/TODO: what if vector lengths don't match?
+			-- BUG/TODOS: what if vector lengths don't match?
+			-- int op float -> float
 			-- vector * constant or vector / constant should be valid expressions, but
 			-- vector(n) + vector(m) is not valid (m != n)
+			-- also vector * vector and vector / vector don't make sense
 
 		elseif isNumOp[op] then
 			if not conforms(_NUM, leftobj.objtype) then
@@ -586,9 +604,19 @@ function check(luaenv, kernel_ast)
 			if not conforms(_NUM, rightobj.objtype) then
 				diag:reporterror(self, "Expected a number here")
 			end
-			exprobj.objtype  = _FLOAT
-			exprobj.elemtype = _FLOAT
-			exprobj.size     = 1
+            -- int * int -> int
+			if conforms(leftobj.objtype, _INT) and conforms(rightobj.objtype, _INT) then
+				exprobj.objtype  = _INT
+				exprobj.elemtype = _INT
+            -- float * Num -> float
+			elseif conforms(leftobj.objtype, _FLOAT) or conforms(leftobj, _FLOAT) then
+				exprobj.objtype  = _FLOAT
+				exprobj.elemtype = _FLOAT
+			else
+				exprobj.objtype  = _NUM
+				exprobj.elemtype = _NUM
+			end
+			exprobj.size = 1
 
 		elseif isCompOp[op] then
 			if conforms(_NUM, leftobj.objtype) and 
@@ -618,6 +646,7 @@ function check(luaenv, kernel_ast)
 			diag:reporterror(self, "Unknown operator \'", op, "\'")
 		end
     	self.node_type = exprobj.objtype.name
+    	DEBUG_PRINT(op .. " " .. self.kind .. " of type " .. self.node_type)
 		return exprobj
 	end
 
@@ -646,6 +675,7 @@ function check(luaenv, kernel_ast)
 				return nil
 			else
 				self.node_type = exprobj.objtype.name
+				DEBUG_PRINT(self.kind .. " of type " .. self.node_type)
 				return exprobj
 			end
 		else
@@ -718,6 +748,16 @@ function check(luaenv, kernel_ast)
 				local retobj = callobj.elemtype:new()
 				self.node_type = retobj.objtype.name
 				return retobj
+			elseif argobj.objtype.name == _ELEM_STR then
+				-- infer type of argument to field topological type
+				argobj.objtype        = callobj.topotype
+				argobj.defn.node_type = argobj.objtype.name
+
+				-- return object that is field data type
+				local retobj   = callobj.elemtype:new()
+				self.node_type = retobj.objtype.name
+				return retobj
+
 			else
 				diag:reporterror(self,
 				"Field over ", callobj.topotype.name,
@@ -739,14 +779,34 @@ function check(luaenv, kernel_ast)
 
 	-- Infer liszt type for the lua variable
 	function lua_to_liszt(luav, nameobj)
+		DEBUG_PRINT("lua to liszt type(luav): " .. type(luav) .. "value: " .. tostring(luav))
+		if (type(luav) == 'table') then
+			DEBUG_PRINT("  luav.kind: " .. tostring(luav.kind))
+			DEBUG_PRINT("  luav.data_type: " .. tostring(luav.data_type))
+		end
 		nameobj.scope = _LUA_STR
         nameobj.luaval = luav
 		if type(luav) == _TAB_STR then
+
+			-- terra globals
+			if luav.isglobal then
+				if luaToVectorType[luav.type] then
+					nameobj.objtype  = luaToVectorType[luav.type]
+					nameobj.elemtype = luaToVectorType[luav.type]
+					nameobj.size     = 1
+					return true
+				else
+					-- TODO:
+					-- want to use diag:reporterror here, but don't have line # info
+					-- print("Liszt does not yet support terra type " .. tostring(luav.type))
+					return false
+				end
+
 			-- vectors
-			if luav.kind == _VECTOR_STR then
-				if vectorType[luav.data_type] then
+			elseif luav.kind == _VECTOR_STR then
+				if luaToVectorType[luav.data_type] then
 					nameobj.objtype  = _VECTOR
-					nameobj.elemtype = vectorType[luav.data_type]
+					nameobj.elemtype = luaToVectorType[luav.data_type]
 					nameobj.size     = luav.size
 					return true
 				else
@@ -754,16 +814,16 @@ function check(luaenv, kernel_ast)
 				end
 
 			-- mesh, cell, face, edge, vertex
-            elseif topoType[luav.kind] then
-                nameobj.objtype = topoType[luav.kind]
+            elseif strToTopoType[luav.kind] then
+                nameobj.objtype = strToTopoType[luav.kind]
                 return true
 
 			-- topological set
             elseif luav.kind == _TOPOSET_STR then
                 nameobj.objtype = _TOPOSET
                 -- cell, face, edge, vertex
-                if elemType[luav.data_type] then
-                    nameobj.elemtype = elemType[luav.data_type]
+                if strToElemType[luav.data_type] then
+                    nameobj.topotype = strToElemType[luav.data_type]
                     return true
                 end
 				return false
@@ -776,15 +836,17 @@ function check(luaenv, kernel_ast)
 				elemobj.scope = _LUA_STR
 
 				-- determine field element type:
-				if integralFieldType[dobj.obj_type] then
-					elemobj.objtype  = integralFieldType[dobj.obj_type]
-					elemobj.elemtype = integralFieldType[dobj.obj_type]
+				if strToIntegralFieldType[dobj.obj_type] then
+					DEBUG_PRINT("  field is of integral type " .. tostring(dobj.obj_type))
+					elemobj.objtype  = strToIntegralFieldType[dobj.obj_type]
+					elemobj.elemtype = strToIntegralFieldType[dobj.obj_type]
 					elemobj.size     = 1
 				elseif dobj.obj_type == _VECTOR_STR then
 					elemobj.objtype = _VECTOR
-					if vectorType[dobj.elem_type] then
-						elemobj.elemtype = vectorType[dobj.elem_type]
+					if strToVectorType[dobj.elem_type] then
+						elemobj.elemtype = strToVectorType[dobj.elem_type]
 						elemobj.size = dobj.size
+						DEBUG_PRINT("  field is a vector of type " .. tostring(dobj.elem_type) .. ", size " .. tostring(elemobj.size))
 					else
 						return false
 					end
@@ -794,8 +856,8 @@ function check(luaenv, kernel_ast)
 				nameobj.elemtype = elemobj
 
 				-- determine field topo type:
-				if elemType[luav.topo_type] then
-					nameobj.topotype = elemType[luav.topo_type]
+				if strToElemType[luav.topo_type] then
+					nameobj.topotype = strToElemType[luav.topo_type]
 				else
 					return false
 				end
@@ -838,15 +900,19 @@ function check(luaenv, kernel_ast)
 			end
 		end
     	self.node_type = nameobj.objtype.name
+    	DEBUG_PRINT(self.children[1] .. " (node type: " .. self.kind .. ") is of type " .. self.node_type)
 		return nameobj
 	end
 
 	function ast.Number:check()
 		local numobj    = ObjType:new()
-		numobj.objtype  = _NUM
-		numobj.elemtype = _NUM
+		-- These numbers are stored in lua as floats, so we might as well use them that way
+		-- until the terra lexer gets the ability to separately parse ints and floats
+		numobj.objtype  = _FLOAT
+		numobj.elemtype = _FLOAT
 		numobj.size     = 1
 		self.node_type  = numobj.objtype.name
+		DEBUG_PRINT(self.kind .. " of type " .. self.node_type .. ", value: " .. self.children[1])
 		return numobj
 	end
 
@@ -867,7 +933,7 @@ function check(luaenv, kernel_ast)
 	local param = kernel_ast.children[1]
 	local block = kernel_ast.children[2]
 
-	local paramobj = ObjType:new()
+	local paramobj    = ObjType:new()
 	paramobj.objtype  = _ELEM
 	paramobj.elemtype = _ELEM
 	paramobj.size     = 1

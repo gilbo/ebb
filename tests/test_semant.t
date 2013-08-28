@@ -1,31 +1,29 @@
 import "compiler/liszt"
-require "include/liszt"
 mesh = LoadMesh("examples/mesh.lmesh")
-
 f1   = mesh:field(Cell,   int, 0)
-
-print("Defining checkthis1")
+f2   = mesh:field(Vertex, Vector.type(float, 3), 0)
 checkthis1 = 1
+
+gb = global(int, 3)
 
 function main ()
     -- init statements, binary expressions, 
     -- field lookups (lvalues), function calls (multiple arguments)
 
-    print("Beginning to execute main")
-
-    print("Defining checkthis2")
     local checkthis2 = 2
-
-	print("f1 is a field of", f1.data_type, "over", f1.topo_type)
 
     local k = liszt_kernel (cell)
         checkthis1 = f1(cell)
+        cell -- cell's type should be inferred as cell now
+        gb -- should be able to understand global terra variables (a shortcut to allow users to specify types for numbers used in liszt kernels)
+        f2
         checkthis2 = 1
 		var local1 = 9.0
 		var local2 = 2.0
-		var local3 = local1 + local2
+		var local3 = local1 + local2 -- ints should upcast to floats
+		var local5 = 2 + 3.3
 --		var local4 = checkthis1 + checkthis2
-		global1 = 2.0
+		global1    = 2.0
 		var local5 = true
 		var local6 = local5 and false
 		var local7 = 8 <= 9
@@ -59,12 +57,15 @@ function main ()
 			local1 = 2.0
 		end
 
+		var local9 = 0
+		for i = 1, 4, 1 do
+			local9 = local9 + i * i
+		end
+
 		local1
 
     end
-
-print("Completed main")
-
+	print("Completed main")
 end
 
 main()

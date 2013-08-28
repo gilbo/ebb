@@ -38,12 +38,7 @@ local ObjType =
 }
 
 function ObjType:new()
-	local newtype = {}
-	setmetatable(newtype, {__index = self})
-	newtype.objtype = self.objtype
-	newtype.elemtype = self.elemtype
-	newtype.size = self.size
-	return newtype
+	return setmetatable({}, {__index = self})
 end
 
 --[[ Liszt Types ]]--
@@ -62,7 +57,6 @@ Face   = setmetatable({kind = "face"},   { __index = TopoElem, __metatable = "Fa
 Edge   = setmetatable({kind = "edge"},   { __index = TopoElem, __metatable = "Edge"})
 Vertex = setmetatable({kind = "vertex"}, { __index = TopoElem, __metatable = "Vertex"})
 
-DataType = setmetatable({kind = "datatype"}, { __index=LisztObj, __metatable="DataType"})
 local DataType   = setmetatable({kind = "datatype"}, { __index=LisztObj, __metatable="DataType"})
 Vector           = setmetatable({kind = "vector", data_type = NOTYPE, size = 0},   { __index=DataType})
 local VectorType = setmetatable({kind = "vector", data_type = NOTYPE, size = 0}, { __index=DataType})
@@ -79,39 +73,38 @@ end
 -------------------------------------------------
 --[[ Field methods                           ]]--
 -------------------------------------------------
+local elemTypeToStr = {
+   [Vertex] = VERTEX,
+   [Edge]   = EDGE,
+   [Face]   = FACE,
+   [Cell]   = CELL
+}
+
+local vectorTypeToStr = {
+   [int]   = INT,
+   [float] = FLOAT
+}
+
 function Field:set_topo_type(topo_type)
    if (type(topo_type) ~= TABLE) then
 	   error("Field over unrecognized topological type!!", 3)
    end
-   if topo_type == Vertex then
-	   self.topo_type = VERTEX
-   elseif topo_type == Edge then
-	   self.topo_type = EDGE
-   elseif topo_type == Face then
-	   self.topo_type = FACE
-   elseif topo_type == Cell then
-	   self.topo_type = CELL
-   else
+   self.topo_type = elemTypeToStr[topo_type]
+
+   if not self.topo_type then
 	   error("Field over unrecognized topological type!!", 3)
    end
 end
 
 function Field:set_data_type(data_type)
-	if data_type == int then
-		self.data_type.obj_type = INT
-		self.data_type.elem_type = INT
+	if vectorTypeToStr[data_type] then
+		self.data_type.obj_type  = vectorTypeToStr[data_type]
+		self.data_type.elem_type = vectorTypeToStr[data_type]
 		self.data_type.size = 1
-	elseif data_type == float then
-		self.data_type.obj_type = FLOAT
-		self.data_type.elem_type = FLOAT
-		self.data_type.szie = 1
-	elseif getmetatable(data_type) == Vector or
-		getmetatable(data_type) == VectorType then
+	elseif Vector.isVector(data_type) or Vector.isVectorType(data_type) then
 		self.data_type.obj_type = VECTOR
-		if data_type.data_type == int then
-			self.data_type.elem_type = INT
-		elseif data_type.data_type == float then
-			self.data_type.elem_type = FLOAT
+		if vectorTypeToStr[data_type.data_type] then
+			self.data_type.elem_type = vectorTypeToStr[data_type.data_type]
 		else
 			error("Field over unsupported data type!!", 3)
 		end
@@ -144,6 +137,7 @@ end
 -------------------------------------------------
 --[[ Runtime type conversion                 ]]--
 -------------------------------------------------
+-- topological element types mapped to Liszt types
 local lElementTypeMap = {
    [Vertex] = runtime.L_VERTEX,
    [Cell]   = runtime.L_CELL,
@@ -151,6 +145,7 @@ local lElementTypeMap = {
    [Edge]   = runtime.L_EDGE
 }
 
+-- Valid vector types, mapped to Liszt types
 local lKeyTypeMap = {
    [int]   = runtime.L_INT,
    [float] = runtime.L_FLOAT
@@ -169,7 +164,7 @@ end
 --[[ Vector methods                          ]]--
 -------------------------------------------------
 function Vector.type (data_type, size)
-   if not (contains_entry(lKeyTypeMap, data_type)) then
+   if not lKeyTypeMap[data_type] then
       error("First argument to Vector.type() should be a Liszt-supported terra data type!", 2)
    end
    if not type(size) == "number" or size < 1 or size % 1 ~= 0 then
@@ -179,34 +174,31 @@ function Vector.type (data_type, size)
    return setmetatable({size = size, data_type = data_type}, VectorType)
 end
 
-function Vector.new(data_type, size, ...) 
-   if not (contains_entry(lKeyTypeMap, data_type)) then
+function Vector.new(data_type, ct) 
+   if not lKeyTypeMap[data_type] then
       error("First argument to Vector.new() should be a Liszt-supported terra data type!", 2)
    end
-   if not type(size) == "number" or size < 1 or size % 1 ~= 0 then
-      error("Second argument to Vector.type() should be a non-negative integer!", 2)
+   if type(ct) ~= 'table' and not type(ct) == "number" or ct < 1 or ct % 1 ~= 0 then
+      error("Second argument to Vector.new() should be a list of numbers or a non-negative integer!", 2)
    end
 
-   local init = ...
-   local v    = vector(data_type, size)
-
-   -- if the user gave us a table as the third argument, assume it is an array of numeric elements
-   if type(init) == 'table' then
-      -- copy over first size numeric elements from init
-      local max = size > #init and #init or size
-      for i = 1, max do
-         print(type(init[i]))
-         if type(init[i]) ~= 'number' then error("Cannot initialize vector with non-numeric type!", 2) end
-         v[i-1] = init[i]
-      end
-
-      -- make sure all entries are initialized
-      for i = #init, size do
-         v[i-1] = 0.0
-      end
+   local init, size
+   if type(ct) == 'table' then
+      size = #ct
+      init = ct
    else
-
+      size = ct
+      init = {}
+      for i = 1, ct do init[i] = 0 end
    end
+
+   local v = vector(data_type, size)
+
+   for i = 1, size do
+      if type(init[i]) ~= 'number' then error("Cannot initialize vector with non-numeric type!", 2) end
+      v[i-1] = init[i]
+   end
+
    return setmetatable({size = size, data_type = data_type, __data = v}, Vector)
 end
 
@@ -219,10 +211,11 @@ function Vector.isVectorType (obj)
 end
 
 function Vector.add (v1, v2)
-   if v1.data_type ~= v2.data_type then
+   if not Vector.isVector(v2) then
+      error("Cannot add non-vector type " .. type(v2) .. "to vector")
+   elseif v1.data_type ~= v2.data_type then
       error("Cannot add vectors of differing types!", 2)
-   end
-   if v1.size ~= v2.size then
+   elseif v1.size ~= v2.size then
       error("Cannot add vectors of differing lengths!", 2)
    end
 end

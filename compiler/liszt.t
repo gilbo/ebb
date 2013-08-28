@@ -2,8 +2,11 @@ package.path = package.path .. ";./compiler/?.lua;./compiler/?.t"
 
 -- Import liszt parser as a local module
 -- (keep liszt language internals out of global environment for liszt user)
-local parser = require "parser"
-local semant = require "semant"
+local parser  = require "parser"
+local semant  = require "semant"
+terralib.require "compiler/codegen"
+
+require "include/liszt"
 
 _G.liszt             = nil
 package.loaded.liszt = nil
@@ -23,7 +26,8 @@ local lisztlanguage = {
 
 		local function kernel_fn(env, kernel_ast)
 			local success = semant.check(env, kernel_ast)
-			return kernel_ast
+			local kernel  = codegen.codegen(env, kernel_ast)
+			return kernel
 		end
 
 		return function (env) 
