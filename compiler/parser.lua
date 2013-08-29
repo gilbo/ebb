@@ -238,7 +238,7 @@ lang.statement = function (P)
 
 	-- check for initialization/declaration
 	if (P:nextif("var")) then
-		local name = P:lvalue()
+		local name = P:lvalname()
 		-- differentiate between initialization and declaration
 		if (P:nextif("=")) then
 			local node_init = ast.InitStatement:New(P)
