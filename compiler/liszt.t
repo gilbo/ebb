@@ -24,14 +24,11 @@ local lisztlanguage = {
 			 we parsed 
 		--]]
 
-		local function kernel_fn(env, kernel_ast)
+		return function (env_fn) 
+			local env = env_fn()
 			local success = semant.check(env, kernel_ast)
 			local kernel  = codegen.codegen(env, kernel_ast)
 			return kernel
-		end
-
-		return function (env) 
-			return kernel_fn(env(), kernel_ast)
 		end
 	end
 }

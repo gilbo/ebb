@@ -872,7 +872,7 @@ function check(luaenv, kernel_ast)
 			self.node_type = locv
 			return locv
 		end
-			
+		
 		local luav = env:luaenv()[self.children[1]]
 		if not luav then
 			diag:reporterror(self, "Variable \'" .. 
