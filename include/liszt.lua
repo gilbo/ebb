@@ -178,7 +178,7 @@ function Vector.new(data_type, ct)
    if not lKeyTypeMap[data_type] then
       error("First argument to Vector.new() should be a Liszt-supported terra data type!", 2)
    end
-   if type(ct) ~= 'table' and not type(ct) == "number" or ct < 1 or ct % 1 ~= 0 then
+   if type(ct) ~= 'table' and (type(ct) ~= "number" or ct < 1 or ct % 1 ~= 0) then
       error("Second argument to Vector.new() should be a list of numbers or a non-negative integer!", 2)
    end
 
