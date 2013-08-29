@@ -195,7 +195,7 @@ local ObjType =
 	-- used for vectors
 	size = 0,
 
-	-- lua object referred to
+	-- object referred to
     luaval = {},
 
 	-- ast node which has the definition
@@ -290,7 +290,7 @@ function check(luaenv, kernel_ast)
 			lhsobj.scope          = rhsobj.scope
 			lhsobj.elemtype       = rhsobj.elemtype
 			lhsobj.size           = rhsobj.size
-			lhsobj.defn.node_type = rhsobj.objtype.name
+			lhsobj.defn.node_type = lhsobj
 		end
 	end
 
@@ -313,9 +313,7 @@ function check(luaenv, kernel_ast)
 		for id, node in ipairs(self.children) do
 			blockobj = node:check()
 		end
-        if blockobj ~= nil then
-            self.node_type = blockobj.objtype.name
-        end
+        self.node_type = blockobj
         return blockobj
 	end
 
@@ -329,14 +327,12 @@ function check(luaenv, kernel_ast)
 
 	function ast.IfStatement:check()
 		-- condblock and block
-        local stblock;
 		for id, node in ipairs(self.children) do
 			env:enterblock()
-			stblock = node:check()
+			self.node_type = node:check()
 			env:leaveblock()
 		end
-		self.node_type = stblock and stblock.objtype.name
-        return stblock
+		return self.node_type
 	end
 
 	function ast.WhileStatement:check()
@@ -347,29 +343,25 @@ function check(luaenv, kernel_ast)
 			"Expected boolean value for while statement condition")
 		end
 		env:enterblock()
-		local stblock = self.children[2]:check()
+		self.node_type = self.children[2]:check()
 		env:leaveblock()
-		self.node_type = stblock and stblock.objtype.name
-        return stblock
+        return self.node_type
 	end
 
 	function ast.DoStatement:check()
 		-- block
 		env:enterblock()
-        local stblock
 		for id, node in ipairs(self.children) do
-			stblock = node:check()
+			self.node_type = node:check()
 		end
 		env:leaveblock()
-		self.node_type = stblock and stblock.objtype.name
-        return stblock
+        return self.node_type
 	end
 
 	function ast.RepeatStatement:check()
 		-- condition expression, block
 		env:enterblock()
-		local stblock = self.children[2]:check()
-		self.node_type = stblock and stblock.objtype.name
+		self.node_type = self.children[2]:check()
 
 		local condobj = self.children[1]:check()
 		if condobj and not conforms(_BOOL, condobj.objtype) then
@@ -377,13 +369,12 @@ function check(luaenv, kernel_ast)
 			"Expected boolean value for repeat statement condition")
 		end
 		env:leaveblock()
-		return stblock
+		return self.node_type
 	end
 
 	function ast.ExprStatement:check()
-		local expr = self.children[1]:check()
-		self.node_type = expr and expr.objtype.name
-		return expr
+		self.node_type = self.children[1]:check()
+		return self.node_type
 	end
 
 	function ast.Assignment:check()
@@ -399,74 +390,70 @@ function check(luaenv, kernel_ast)
 			" does not conform to inferred LHS type ", lhsobj.objtype.name,
 			" in the assignment expression")
 			return nil
-		else
-			set_type(lhsobj, rhsobj)
-			self.node_type = rhsobj.objtype.name
 		end
-		DEBUG_PRINT(self.children[1].children[1] .. " (node type: " .. self.kind .. ") is of type " .. self.node_type)
-		return rhsobj
+		set_type(lhsobj, rhsobj)
+		self.node_type = lhsobj
+		DEBUG_PRINT(self.children[1].children[1] .. " (node type: " .. self.kind .. ") is of type " .. self.node_type.objtype.name)
+		return self.node_type
 	end
 
 	function ast.InitStatement:check()
 		-- name, expression
-		local nameobj = ObjType:new()
-		nameobj.defn  = self.children[1]
-		local varname = self.children[1].children[1]
-		local rhsobj  = self.children[2]:check()
+		self.node_type       = ObjType:new()
+		self.node_type.defn  = self.children[1]
+		local varname        = self.children[1].children[1]
+		local rhsobj         = self.children[2]:check()
+
 		if rhsobj == nil then
 			return nil
 		end
-		set_type(nameobj, rhsobj)
-		env:localenv()[varname] = nameobj
-		self.node_type = nameobj.objtype.name
-		DEBUG_PRINT(self.children[1].children[1] .. " (node type: " .. self.kind .. ") is of type " .. self.node_type)
-		return nameobj
+
+		set_type(self.node_type, rhsobj)
+		env:localenv()[varname] = self.node_type
+		DEBUG_PRINT(self.children[1].children[1] .. " (node type: " .. self.kind .. ") is of type " .. self.node_type.objtype.name)
+		return self.node_type
 	end
 
 	function ast.DeclStatement:check()
 		-- name
-		local nameobj = ObjType:new()
+		self.node_type = ObjType:new()
 		nameobj.defn  = self.children[1]
 		local varname = self.children[1].children[1]
-		env:localenv()[varname] = nameobj
-		self.node_type = nameobj.objtype.name
-		return nameobj
+		env:localenv()[varname] = self.node_type
+		return self.node_type
 	end
 
 	function ast.NumericFor:check()
 		for i = 2, #self.children-1 do
 			local exprobj = self.children[i]:check()
-			if exprobj == nil then
-				diag:reporterror(self,
-				"Expected a number for defining the iterator")
-			else
-				if not conforms(_NUM, exprobj.objtype) then
-					diag:reporterror(self,
-					"Expected a number for defining the iterator")
-				end
+			if exprobj == nil or not conforms(_NUM, exprobj.objtype) then
+				diag:reporterror(self, "Expected a number for defining the iterator")
 			end
 		end
+
 		local itobj          = ObjType:new()
 		itobj.defn           = self.children[1]
 		itobj.objtype        = _NUM
 		itobj.elemtype       = _NUM
 		itobj.size           = 1
 		itobj.scope          = _LISZT_STR
-		itobj.defn.node_type = _NUM_STR
+		itobj.defn.node_type = itobj
 
 		env:enterblock()
 		local varname = self.children[1].children[1]
 		env:localenv()[varname] = itobj
-		local forobj = self.children[#self.children]:check()
-		self.node_type = forobj and forobj.objtype.name
+		self.node_type = self.children[#self.children]:check()
 		env:leaveblock()
-		return forobj
+		return self.node_type
 	end
 
 	function ast.GenericFor:check()
         local setobj = self.children[2]:check()
+
+        -- TODO: is some kind of error checking supposed to be here?
 		if setobj == nil then
 		end
+
         local itobj          = ObjType:new()
         itobj.defn           = self.children[1]
         itobj.objtype        = setobj.topotype
@@ -476,10 +463,9 @@ function check(luaenv, kernel_ast)
         env:enterblock()
         local varname = self.children[1].children[1]
         env:localenv()[varname] = itobj
-        local forobj = self.children[3]:check()
-        self.node_type = forobj and forobj.objtype.name
+        self.node_type = self.children[3]:check()
         env:leaveblock()
-        return forobj
+        return self.node_type
 	end
 
 	function ast.Break:check()
@@ -494,11 +480,10 @@ function check(luaenv, kernel_ast)
 		end
 
 		env:enterblock()
-		local block = self.children[2]:check()
+		self.node_type = self.children[2]:check()
 		env:leaveblock()
 
-		self.node_type = block and block.objtype.name
-		return block
+		return self.node_type
 	end
 
 	------------------------------------------------------------------------------
@@ -506,6 +491,7 @@ function check(luaenv, kernel_ast)
 	--[[ Expressions
 	--]]
 	function ast.Expression:check()
+		error("Semantic checking has not been implemented for expression type " .. self.kind)
 	end
 
 	-- expression helper functions
@@ -645,8 +631,8 @@ function check(luaenv, kernel_ast)
 		else -- not a recognized operator (?)
 			diag:reporterror(self, "Unknown operator \'", op, "\'")
 		end
-    	self.node_type = exprobj.objtype.name
-    	DEBUG_PRINT(op .. " " .. self.kind .. " of type " .. self.node_type)
+    	self.node_type = exprobj
+    	DEBUG_PRINT(op .. " " .. self.kind .. " of type " .. self.node_type.objtype.name)
 		return exprobj
 	end
 
@@ -661,7 +647,7 @@ function check(luaenv, kernel_ast)
 				diag:reporterror(self, "\"not\" operator expects a boolean expression")
 				return nil
 			else
-				self.node_type = exprobj.objtype.name
+				self.node_type = exprobj
 				return exprobj
 			end
 		elseif op == '-' then
@@ -674,8 +660,8 @@ function check(luaenv, kernel_ast)
 				diag:reporterror(self, "Unary minus expects a number or a vector of numbers")
 				return nil
 			else
-				self.node_type = exprobj.objtype.name
-				DEBUG_PRINT(self.kind .. " of type " .. self.node_type)
+				self.node_type = exprobj
+				DEBUG_PRINT(self.kind .. " of type " .. self.node_type.objtype.name)
 				return exprobj
 			end
 		else
@@ -705,6 +691,7 @@ function check(luaenv, kernel_ast)
 		if argobj == nil then
 			return nil
 		end
+		self.node_type = argobj
 		return argobj
 	end
 
@@ -715,7 +702,7 @@ function check(luaenv, kernel_ast)
 			return nil
 		end
         local tableobj = ObjType:new()
-        tableobj.defn = self
+        tableobj.defn  = self
         -- RHS is a member of the LHS
         local member = self.children[3].children[1]
         local luaval = lhsobj.luaval[member]
@@ -729,7 +716,7 @@ function check(luaenv, kernel_ast)
 			return nil
             end
         end
-        self.node_type = tableobj.objtype.name
+        self.node_type = tableobj
         return tableobj
 	end
 
@@ -745,18 +732,16 @@ function check(luaenv, kernel_ast)
 				return nil
 			end
 			if argobj.objtype.name == callobj.topotype.name then
-				local retobj = callobj.elemtype:new()
-				self.node_type = retobj.objtype.name
-				return retobj
+				self.node_type = callobj.elemtype:new()
+				return self.node_type
 			elseif argobj.objtype.name == _ELEM_STR then
 				-- infer type of argument to field topological type
 				argobj.objtype        = callobj.topotype
 				argobj.defn.node_type = argobj.objtype.name
 
 				-- return object that is field data type
-				local retobj   = callobj.elemtype:new()
-				self.node_type = retobj.objtype.name
-				return retobj
+				self.node_type = callobj.elemtype:new()
+				return self.node_type
 
 			else
 				diag:reporterror(self,
@@ -765,7 +750,7 @@ function check(luaenv, kernel_ast)
 				return nil 
 			end
 		else
-			-- TOO: How should function calls be allowed??
+			-- TODO: How should function calls be allowed??
 			diag:reporterror(self, "Invalid call")
 			return nil
 		end
@@ -881,26 +866,31 @@ function check(luaenv, kernel_ast)
 	end
 
 	function ast.Name:check()
-		local nameobj = ObjType:new()
-        nameobj.defn  = self
 		local locv = env:localenv()[self.children[1]]
 		if locv then
 			-- if liszt local variable, type stored in environment
-			nameobj = locv
-		else
-			local luav = env:luaenv()[self.children[1]]
-			if not luav then
-				diag:reporterror(self, "Variable \'" .. 
-					self.children[1] .. "\' is not defined")
-				return nil
-			elseif not lua_to_liszt(luav, nameobj) then
-				diag:reporterror(self,
-				"Cannot convert the lua value to a liszt value")
-				return nil
-			end
+			self.node_type = locv
+			return locv
 		end
-    	self.node_type = nameobj.objtype.name
-    	DEBUG_PRINT(self.children[1] .. " (node type: " .. self.kind .. ") is of type " .. self.node_type)
+			
+		local luav = env:luaenv()[self.children[1]]
+		if not luav then
+			diag:reporterror(self, "Variable \'" .. 
+				self.children[1] .. "\' is not defined")
+			return nil
+		end
+
+		local nameobj = ObjType:new()
+    	nameobj.defn  = self
+
+		if not lua_to_liszt(luav, nameobj) then
+			diag:reporterror(self,
+			"Cannot convert the lua value to a liszt value")
+			return nil
+		end
+
+    	self.node_type = nameobj
+    	DEBUG_PRINT(self.children[1] .. " (node type: " .. self.kind .. ") is of type " .. self.node_type.objtype.name)
 		return nameobj
 	end
 
@@ -911,8 +901,8 @@ function check(luaenv, kernel_ast)
 		numobj.objtype  = _FLOAT
 		numobj.elemtype = _FLOAT
 		numobj.size     = 1
-		self.node_type  = numobj.objtype.name
-		DEBUG_PRINT(self.kind .. " of type " .. self.node_type .. ", value: " .. self.children[1])
+		self.node_type  = numobj
+		DEBUG_PRINT(self.kind .. " of type " .. self.node_type.objtype.name .. ", value: " .. self.children[1])
 		return numobj
 	end
 
@@ -921,7 +911,7 @@ function check(luaenv, kernel_ast)
 		boolobj.objtype  = _BOOL
 		boolobj.elemtype = _NUM
 		boolobj.size     = 1
-		self.node_type   = boolobj.objtype.name
+		self.node_type   = boolobj
 		return boolobj
 	end
 
@@ -939,7 +929,7 @@ function check(luaenv, kernel_ast)
 	paramobj.size     = 1
 	paramobj.scope    = _LISZT_STR
 	paramobj.defn     = param
-	param.node_type   = paramobj.objtype.name
+	param.node_type   = paramobj
 
 	env:localenv()[param.children[1]] = paramobj
 
