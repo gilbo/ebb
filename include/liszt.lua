@@ -148,7 +148,8 @@ local lElementTypeMap = {
 -- Valid vector types, mapped to Liszt types
 local lKeyTypeMap = {
    [int]   = runtime.L_INT,
-   [float] = runtime.L_FLOAT
+   [float] = runtime.L_FLOAT,
+   [bool]  = runtime.L_BOOL,
 }
 
 local function runtimeDataType (data_type)
@@ -159,6 +160,10 @@ local function runtimeDataType (data_type)
    end
 end
 
+local function isPositiveInteger (elem)
+   return type(elem) == 'number' and elem > 0 and elem % 1 == 0
+end
+
 
 -------------------------------------------------
 --[[ Vector methods                          ]]--
@@ -167,39 +172,50 @@ function Vector.type (data_type, size)
    if not lKeyTypeMap[data_type] then
       error("First argument to Vector.type() should be a Liszt-supported terra data type!", 2)
    end
-   if not type(size) == "number" or size < 1 or size % 1 ~= 0 then
+   if not isPositiveInteger(size) then
       error("Second argument to Vector.type() should be a non-negative integer!", 2)
    end
 
    return setmetatable({size = size, data_type = data_type}, VectorType)
 end
 
-function Vector.new(data_type, ct) 
+-- second argument specifies either the length of the vector, or the contents
+function Vector.new(data_type, arg) 
    if not lKeyTypeMap[data_type] then
       error("First argument to Vector.new() should be a Liszt-supported terra data type!", 2)
    end
-   if type(ct) ~= 'table' and (type(ct) ~= "number" or ct < 1 or ct % 1 ~= 0) then
+   if type(arg) ~= 'table' and isPositiveInteger(arg) then
       error("Second argument to Vector.new() should be a list of numbers or a non-negative integer!", 2)
    end
 
    local init, size
-   if type(ct) == 'table' then
-      size = #ct
-      init = ct
+   if type(arg) == 'table' then
+      size = #arg
+      init = arg
    else
-      size = ct
+      size = arg
       init = {}
-      for i = 1, ct do init[i] = 0 end
+      for i = 1, size do init[i] = 0 end
    end
 
    local v = vector(data_type, size)
 
    for i = 1, size do
-      if type(init[i]) ~= 'number' then error("Cannot initialize vector with non-numeric type!", 2) end
+      -- Check type of each entry in initialization vector
+      if data_type == 'float' or data_type == 'int' then
+         if type(init[i]) ~= 'number' 
+            then error("Cannot initialize vector with non-numeric type!", 2) 
+         end
+      else
+         if (type(init[i]) ~= 'boolean') then 
+            error("Cannot initialize vector with non-boolean type!", 2)
+         end
+      end
+
       v[i-1] = init[i]
    end
 
-   return setmetatable({size = size, data_type = data_type, __data = v}, Vector)
+   return setmetatable({size = size, data_type = data_type, __data = v, initialized= #init > 0 }, Vector)
 end
 
 function Vector.isVector (obj)
@@ -264,7 +280,11 @@ function Mesh:fieldWithLabel (topo_type, data_type, label)
 end
 
 function Mesh:scalar (data_type)
-   local s    = setmetatable({}, {__index = Scalar })
+   if not lKeyTypeMap[data_type] and not Vector.isVectorType(data_type) then
+      error("First argument to mesh:scalar must be a Liszt-supported data type!", 2)
+   end
+
+   local s    = setmetatable({}, {__index = Scalar})
    s.lscalar  = runtime.initScalar(self.ctx,0,0)
    s.lkscalar = runtime.getlkScalar(s.lscalar)
    return s

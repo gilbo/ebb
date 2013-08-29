@@ -2,11 +2,12 @@ require "include/liszt"
 import "compiler/liszt"
 
 mesh  = LoadMesh("examples/mesh.lmesh")
-pos   = mesh:fieldWithLabel(Vertex, Vector.type(float, 3), "position")
+pos   = mesh:fieldWithLabel(Vertex, Vector(float, 3), "position")
 field = mesh:field(Face, float, 0.0)
 
 function main ()
-	local com = Vector.new(float, {0.0, 0.0, 0.0})
+	local com = mesh:scalar(Vector.type(float, 3))--Vector.new(float, {0.0, 0.0, 0.0})
+	com = {0, 0, 0}
 
 	local upval = 5
 
