@@ -20,7 +20,7 @@ for line in io.popen(lscmd):lines() do
     local file = line:match("^(tests/[^/]*%.t)$") or line:match("^(tests/[^/]*%.lua)$")
     if file then
         print(file .. ":")
-        local execstring = "./terra/terra -l ./compiler/liszt.t " .. file
+        local execstring = "./terra/terra " .. file
         --things in the fail directory should cause terra compiler errors
         --we dont check for the particular error
         --but we do check to see that the "Errors reported.." message prints
