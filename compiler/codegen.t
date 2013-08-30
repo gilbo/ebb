@@ -71,23 +71,61 @@ end
 function ast.Name:codegen (env)
 	local str = self.children[1]
 	val = env:combinedenv()[str]
-	return `[val]
+	if (type(val) == 'number' or type(val) == 'boolean') then
+		return `[val]
+	elseif (val.isglobal) then
+		local terra get_global () return val end
+		-- store this global in the environment table so we won't have to look it up again
+		env:luaenv()[str] = get_global()
+		val = env:luaenv()[str]
+		return `val
+	elseif Vector.isVector(val) then
+		return `val.__data
+	-- symbols
+	else
+		return `[val]
+	end
 end
 
 function ast.Number:codegen (env)
 	return `[self.children[1]]
 end
 
+function ast.Bool:codegen (env)
+	if self.children[1] == 'true' then return `true
+	else return `false
+	end
+end
+
+function ast.UnaryOp:codegen (env)
+	local expr = self.children[2]:codegen(env)
+	local op   = self.children[1]
+
+	if (op == '-') then return `-[expr]
+	else return `not [expr]
+	end
+end
+
 function ast.BinaryOp:codegen (env)
-	lhe = self.children[1]:codegen(env)
-	rhe = self.children[3]:codegen(env)
+	local lhe = self.children[1]:codegen(env)
+	local rhe = self.children[3]:codegen(env)
 
 	op = self.children[2]
 
-	if     op == '+' then return `lhe + rhe
-	elseif op == '-' then return `lhe - rhe
-	elseif op == '/' then return `lhe / rhe
-	elseif op == '*' then return `lhe * rhe
+	if     op == '+'   then return `lhe +   rhe
+	elseif op == '-'   then return `lhe -   rhe
+	elseif op == '/'   then return `lhe /   rhe
+	elseif op == '*'   then return `lhe *   rhe
+	elseif op == '%'   then return `lhe %   rhe
+	elseif op == '^'   then return `lhe ^   rhe
+	elseif op == 'or'  then return `lhe or  rhe
+	elseif op == 'and' then return `lhe and rhe
+	elseif op == '<'   then return `lhe <   rhe
+	elseif op == '>'   then return `lhe >   rhe
+	elseif op == '<='  then return `lhe <=  rhe
+	elseif op == '>='  then return `lhe >=  rhe
+	elseif op == '=='  then return `lhe ==  rhe
+	elseif op == '~='  then return `lhe ~=  rhe
 	end
 
 end
