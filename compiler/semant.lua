@@ -16,6 +16,7 @@ local DEBUG_PRINT = function (...) end
 _NOSCOPE_STR = 'noscope'
 _LUA_STR     = 'lua'
 _LISZT_STR   = 'liszt'
+_NOT_LUA_STR = 'notlua'
 
 _NOTYPE_STR  = 'notype'
 _INT_STR     = 'int'
@@ -196,7 +197,7 @@ local ObjType =
 	size = 0,
 
 	-- object referred to
-    luaval = {},
+    luaval = _NOT_LUA_STR,
 
 	-- ast node which has the definition
 	defn = {}
@@ -384,9 +385,22 @@ function check(luaenv, kernel_ast)
 		if lhsobj == nil or rhsobj == nil then
 			return nil
 		end
+		-- only those lua objects that have belong to liszt type will be allowed
+		if not lhsobj.luav == _NOT_LUA_STR then
+			if not type(luav) == _TAB_STR or luav.isglobal then
+				diag:reporterror(self, "Can not write to ai value of non liszt type")
+			end
+			return nil
+		end
+		-- disallow writes to topological sets/ elements/ fields
+		-- allow writes to only scalars and field values
+		if not (lhsobj.objtype == _VECTOR or conforms(lhsobj.objtype, _NUM)) then
+			diag::reporterror(self, "Can not write to ", rhs.objtype.name)
+			return nil
+		end
 		local validassgn = conforms(lhsobj.objtype, rhsobj.objtype)
 		if not validassgn then
-			diag:reporterror(self,"Inferred RHS type ", rhsobj.objtype.name,
+			diag:reporterror(self, "Inferred RHS type ", rhsobj.objtype.name,
 			" does not conform to inferred LHS type ", lhsobj.objtype.name,
 			" in the assignment expression")
 			return nil
