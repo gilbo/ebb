@@ -198,11 +198,11 @@ function Vector.new(data_type, arg)
       for i = 1, size do init[i] = 0 end
    end
 
-   local v = vector(data_type, size)
+   local v = global(vector(data_type, size))
 
    for i = 1, size do
       -- Check type of each entry in initialization vector
-      if data_type == 'float' or data_type == 'int' then
+      if data_type == float or data_type == int then
          if type(init[i]) ~= 'number' 
             then error("Cannot initialize vector with non-numeric type!", 2) 
          end
