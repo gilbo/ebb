@@ -32,7 +32,7 @@ _EDGE_STR    = 'edge'
 _VERTEX_STR  = 'vertex'
 _TOPOSET_STR = 'toposet'
 _FIELD_STR   = 'field'
-_ELEM_STR    = 'elem'
+_ELEM_STR    = 'element'
 
 -- root variable type
 _NOTYPE = 
@@ -228,6 +228,7 @@ _VECTOR.parent  = _NOTYPE
 _MESH.parent    = _NOTYPE
 _TOPOSET.parent = _NOTYPE
 _FIELD.parent   = _NOTYPE
+_ELEM.parent    = _NOTYPE
 --
 _NUM.children = {_INT, _FLOAT}
 _INT.parent   = _NUM
@@ -395,7 +396,7 @@ function check(luaenv, kernel_ast)
 		-- disallow writes to topological sets/ elements/ fields
 		-- allow writes to only scalars and field values
 		if not (lhsobj.objtype == _VECTOR or conforms(lhsobj.objtype, _NUM)) then
-			diag::reporterror(self, "Can not write to ", rhs.objtype.name)
+			diag:reporterror(self, "Can not write to ", rhsobj.objtype.name)
 			return nil
 		end
 		local validassgn = conforms(lhsobj.objtype, rhsobj.objtype)
@@ -543,10 +544,13 @@ function check(luaenv, kernel_ast)
     -- vector ops can take either numbers or vectors as arguments
     local isVecOp = {
        ['+'] = true,
-       ['-'] = true,
-       ['*'] = true,
-       ['/'] = true
+       ['-'] = true
     }
+
+	local isMixedOp = {
+	   ['*'] = true,
+       ['/'] = true
+	}
 
     local isNumOp = {
     	['^'] = true
@@ -566,7 +570,7 @@ function check(luaenv, kernel_ast)
 
     local isBoolOp = {
        ['and'] = true,
-       ['or']  = true,
+       ['or']  = true
     }
 
 	-- binary expressions
@@ -580,7 +584,26 @@ function check(luaenv, kernel_ast)
 			return nil
 		end
 
-		if isVecOp[op] then
+		if isMixedOp[op] then
+			if (op == '*' and (leftobj.size == 1 or rightobj.size == 1)) or
+			   (op == '/' and rightobj.size == 1) then
+				local lbasetype = leftobj.objtype  == _VECTOR and leftobj.elemtype  or leftobj.objtype
+				local rbasetype = rightobj.objtype == _VECTOR and rightobj.elemtype or rightobj.objtype
+				if conforms(lbasetype, rbasetype) then
+					exprobj.objtype  = lbasetype
+					exprobj.elemtype = lbasetype
+				elseif conforms(rbasetype, lbasetype) then
+					exprobj.objtype  = rbasetype
+					exprobj.elemtype = rbasetype
+				else
+					diag:reporterror(self, "Objects of type " .. leftobj.objtype.name .. ' and ' .. rightobj.objtype.name .. ' are not compatible operands of operator \'' .. op .. '\'')
+				end
+				exprobj.size = (leftobj.size > rightobj.size and leftobj.size or rightobj.size)
+				if exprobj.size > 1 then exprobj.objtype = _VECTOR end
+			else
+				diag:reporterror(self, "Objects of type " .. leftobj.objtype.name .. ' and ' .. rightobj.objtype.name .. ' are not compatible operands of operator \'' .. op .. '\'')
+			end
+		elseif isVecOp[op] then
 			if vector_length_matches(self, leftobj, rightobj) then
 				if conforms(leftobj.objtype, rightobj.objtype) then
 					exprobj.objtype  = leftobj.objtype
@@ -591,12 +614,7 @@ function check(luaenv, kernel_ast)
 				end
 				exprobj.size = leftobj.size
 			end
-			-- BUG/TODOS: what if vector lengths don't match?
-			-- int op float -> float
-			-- vector * constant or vector / constant should be valid expressions, but
-			-- vector(n) + vector(m) is not valid (m != n)
-			-- also vector * vector and vector / vector don't make sense
-
+			-- Vectors can be multiplied by numbers and vice versa...
 		elseif isNumOp[op] then
 			if not conforms(_NUM, leftobj.objtype) then
 				diag:reporterror(self, "Expected a number here")
@@ -786,7 +804,6 @@ function check(luaenv, kernel_ast)
 		nameobj.scope = _LUA_STR
         nameobj.luaval = luav
 		if type(luav) == _TAB_STR then
-
 			-- terra globals
 			if luav.isglobal then
 				if luaToVectorType[luav.type] then
