@@ -45,8 +45,7 @@ end
 local TopoElem = setmetatable({kind = "topoelem"}, { __index = LisztObj, __metatable = "TopoElem" })
 local TopoSet  = setmetatable({kind = "toposet", data_type = NOTYPE},  { __index = LisztObj, __metatable = "TopoSet" })
 local Field    = setmetatable({kind = "field",  topo_type = NOTYPE, data_type = ObjType}, { __index = LisztObj, __metatable = "Field" })
-local Scalar   = setmetatable({kind = "scalar", data_type = NOTYPE},                     { __index = LisztObj, __metatable = "Scalar"})
-local TopoSet  = setmetatable({kind = "toposet"},  { __index = LisztObj, __metatable = "TopoSet" })
+Scalar   = setmetatable({kind = "scalar", data_type = NOTYPE},                     { __index = LisztObj, __metatable = "Scalar"})
 
 Field  = setmetatable({kind = "field",  topo_type = NOTYPE, data_type = NOTYPE}, { __index = LisztObj, __metatable = "Field" })
 Scalar = setmetatable({kind = "scalar", data_type = NOTYPE},                     { __index = LisztObj, __metatable = "Scalar"})
@@ -133,24 +132,6 @@ function Scalar:lkScalar()
    return self.lkscalar
 end
 
-function Scalar.new(data_type)
-   local scalar_type, scalar_length
-   if Vector.isVector and lKeyType[data_type.data_type] then
-	   scalar_type = lKeyType[data_type.data_type]
-	   scalar_length = data_type.size
-   elseif lKeyTypeMap[data_type] then
-	   scalar_type = lKeyTypeMap[data_type]
-	   scalar_length = 1
-   else
-      error("First argument to mesh:scalar must be a Liszt-supported data type!", 2)
-   end
-
-   local s    = setmetatable({}, {__index = Scalar})
-   s.lscalar  = runtime.initScalar(self.ctx, scalar_type, scalar_length)
-   s.lkscalar = runtime.getlkScalar(s.lscalar)
-   return s
-end
-
 -------------------------------------------------
 --[[ Runtime type conversion                 ]]--
 -------------------------------------------------
@@ -162,7 +143,7 @@ local lElementTypeMap = {
    [Edge]   = runtime.L_EDGE
 }
 
--- Valid vector types, mapped to Liszt types
+-- Valid scalar types, mapped to Liszt types
 local lKeyTypeMap = {
    [int]   = runtime.L_INT,
    [float] = runtime.L_FLOAT,
@@ -297,12 +278,19 @@ function Mesh:fieldWithLabel (topo_type, data_type, label)
 end
 
 function Mesh:scalar (data_type)
-   if not lKeyTypeMap[data_type] and not Vector.isVectorType(data_type) then
+   local scalar_type, scalar_length
+   if Vector.isVector and lKeyTypeMap[data_type.data_type] then
+	   scalar_type = lKeyTypeMap[data_type.data_type]
+	   scalar_length = data_type.size
+   elseif lKeyTypeMap[data_type] then
+	   scalar_type = lKeyTypeMap[data_type]
+	   scalar_length = 1
+   else
       error("First argument to mesh:scalar must be a Liszt-supported data type!", 2)
    end
 
    local s    = setmetatable({}, {__index = Scalar})
-   s.lscalar  = runtime.initScalar(self.ctx,0,0)
+   s.lscalar  = runtime.initScalar(self.ctx, scalar_type, scalar_length)
    s.lkscalar = runtime.getlkScalar(s.lscalar)
    return s
 end
