@@ -392,7 +392,7 @@ function check(luaenv, kernel_ast)
 			return nil
 			end
 		end
-		-- disallow writes to topological sets/ elements/ fields
+		-- disallow writes to topological sets/ elements/ field object
 		-- allow writes to only scalars and field values
 		if not (lhsobj.objtype == _VECTOR or conforms(lhsobj.objtype, _NUM)) then
 			diag:reporterror(self, "Can not write to ", rhsobj.objtype.name)

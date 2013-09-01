@@ -115,7 +115,7 @@ terra getlkField (field : &runtime.lField)
 end
 
 terra initScalar(ctx : &runtime.lContext, val_type : uint, val_length : uint)
-	return runtime.lInitScalar(ctx, L_FLOAT, 3)
+	return runtime.lInitScalar(ctx, val_type, val_length)
 end
 
 terra getlkScalar (scalar : &runtime.lScalar)

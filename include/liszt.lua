@@ -133,6 +133,23 @@ function Scalar:lkScalar()
    return self.lkscalar
 end
 
+function Scalar.new(data_type)
+   local scalar_type, scalar_length
+   if Vector.isVector and lKeyType[data_type.data_type] then
+	   scalar_type = lKeyType[data_type.data_type]
+	   scalar_length = data_type.size
+   elseif lKeyTypeMap[data_type] then
+	   scalar_type = lKeyTypeMap[data_type]
+	   scalar_length = 1
+   else
+      error("First argument to mesh:scalar must be a Liszt-supported data type!", 2)
+   end
+
+   local s    = setmetatable({}, {__index = Scalar})
+   s.lscalar  = runtime.initScalar(self.ctx, scalar_type, scalar_length)
+   s.lkscalar = runtime.getlkScalar(s.lscalar)
+   return s
+end
 
 -------------------------------------------------
 --[[ Runtime type conversion                 ]]--
