@@ -391,7 +391,6 @@ function check(luaenv, kernel_ast)
 				diag:reporterror(self, "Can not write to ai value of non liszt type")
 			return nil
 			end
-		end
 		-- disallow writes to topological sets/ elements/ field object
 		-- allow writes to only scalars and field values
 		if not (lhsobj.objtype == _VECTOR or conforms(lhsobj.objtype, _NUM)) then
