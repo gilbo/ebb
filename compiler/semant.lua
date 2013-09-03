@@ -385,18 +385,22 @@ function check(luaenv, kernel_ast)
 		if lhsobj == nil or rhsobj == nil then
 			return nil
 		end
-		-- only those lua objects that have belong to liszt type will be allowed
-		if lhsobj.scope == _LUA_STR and
-			(not type(luav) == _TAB_STR or luav.isglobal) then
-				diag:reporterror(self, "Can not write to ai value of non liszt type")
-			return nil
+
+		-- only those lua objects that are of a liszt object type will be allowed
+		if lhsobj.scope == _LUA_STR then
+			if type(luav) ~= _TAB_STR or luav.isglobal then
+				diag:reporterror(self, "Can not write to a value of non liszt type")
+				return nil
 			end
+		end
+
 		-- disallow writes to topological sets/ elements/ field object
 		-- allow writes to only scalars and field values
-		if not (lhsobj.objtype == _VECTOR or conforms(lhsobj.objtype, _NUM)) then
+		if not (lhsobj.objtype == _VECTOR or conforms(lhsobj.objtype, _NUM) or conforms(lhsobj.objtype, _BOOL)) then
 			diag:reporterror(self, "Can not write to ", rhsobj.objtype.name)
 			return nil
 		end
+		
 		local validassgn = conforms(lhsobj.objtype, rhsobj.objtype)
 		if not validassgn then
 			diag:reporterror(self, "Inferred RHS type ", rhsobj.objtype.name,
@@ -430,7 +434,7 @@ function check(luaenv, kernel_ast)
 	function ast.DeclStatement:check()
 		-- name
 		self.node_type = ObjType:new()
-		nameobj.defn  = self.children[1]
+		self.node_type.defn  = self.children[1]
 		local varname = self.children[1].children[1]
 		env:localenv()[varname] = self.node_type
 		return self.node_type

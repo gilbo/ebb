@@ -31,13 +31,46 @@ function main ()
 		var z = x + y
 		var a = y - x
 
+		var x = 3
+		var y = 4
+--[[
+		if q then
+			var x = 5
+			y = x
+		else
+			y = 9
+		end
+		y = x
+]]
+		if y == x * 2 then
+			x = 4
+		elseif y == x then
+			x = 5
+		end
+--[[
+		if y == x * 2 then
+			x = 4
+		end
+
+		if y == x * 2 then
+			x = 4
+		elseif y == x then
+			x = 5
+		else
+			var a = true
+		end
+]]--
+
+
 	end
 
 	print("sum_pos:")
 	sum_pos:printpretty()
+	-- call to make sure it works!
 	sum_pos()
+
 	-- kernel application
-	mesh.vertices.map(sum_pos)
+	-- mesh.vertices.map(sum_pos)
 
 	--com = com / mesh.vertices.size()
 	-- print("center of mass of mesh: " .. tostring(com))
