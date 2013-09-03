@@ -388,7 +388,8 @@ function check(luaenv, kernel_ast)
 
 		-- only those lua objects that are of a liszt object type will be allowed
 		if lhsobj.scope == _LUA_STR then
-			if type(luav) ~= _TAB_STR or luav.isglobal then
+
+			if type(lhsobj.luav) ~= _TAB_STR or lhsobj.luav.isglobal then
 				diag:reporterror(self, "Can not write to a value of non liszt type")
 				return nil
 			end
@@ -400,7 +401,7 @@ function check(luaenv, kernel_ast)
 			diag:reporterror(self, "Can not write to ", rhsobj.objtype.name)
 			return nil
 		end
-		
+
 		local validassgn = conforms(lhsobj.objtype, rhsobj.objtype)
 		if not validassgn then
 			diag:reporterror(self, "Inferred RHS type ", rhsobj.objtype.name,
