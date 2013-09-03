@@ -2,9 +2,6 @@ module(... or 'semant', package.seeall)
 
 ast = require("ast")
 
---local DEBUG_PRINT = function (...) print(...) end
-local DEBUG_PRINT = function (...) end
-           
 ------------------------------------------------------------------------------
 --[[NOTES: Variables may be introduced in the lua code, or in liszt code
 --through initialization/ declaration statements/ in for loops.
@@ -32,6 +29,7 @@ _VERTEX_STR  = 'vertex'
 _TOPOSET_STR = 'toposet'
 _FIELD_STR   = 'field'
 _ELEM_STR    = 'element'
+_MDATA_STR   = 'mdata'
 
 -- root variable type
 _NOTYPE = 
@@ -139,6 +137,13 @@ _FIELD  =
 	children = {}
 }
 
+_MDATA  =
+{
+	name     = _MDATA_STR,
+	parent   = {},
+	children = {}
+}
+
 --[[ Tables for simplifying semantic checking logic: ]]
 local strToTopoType = {
 	[_MESH_STR]   = _MESH,
@@ -212,6 +217,7 @@ _TR.parent = _NOTYPE
 --
 _TR.children =
 {
+	_MDATA,
     _NUM,
     _BOOL,
     _VECTOR,
@@ -221,13 +227,17 @@ _TR.children =
     _FIELD
 }
 
-_NUM.parent     = _NOTYPE
-_BOOL.parent    = _NOTYPE
-_VECTOR.parent  = _NOTYPE
 _MESH.parent    = _NOTYPE
 _TOPOSET.parent = _NOTYPE
 _FIELD.parent   = _NOTYPE
 _ELEM.parent    = _NOTYPE
+_MDATA.parent = _NOTYPE
+
+_MDATA.children = { _NUM, _BOOL, _VECTOR }
+_NUM.parent     = _MDATA
+_BOOL.parent    = _MDATA
+_VECTOR.parent  = _MDATA
+
 --
 _NUM.children = {_INT, _FLOAT}
 _INT.parent   = _NUM
@@ -238,6 +248,14 @@ _CELL.parent    = _ELEM
 _FACE.parent    = _ELEM
 _EDGE.parent    = _ELEM
 _VERTEX.parent  = _ELEM
+
+
+local FieldIndex = { kind = 'fieldindex'}
+FieldIndex.__index = FieldIndex
+
+function FieldIndex.New(field, objtype)
+	return setmetatable({field = field, objtype = objtype}, FieldIndex)
+end
 
 
 ------------------------------------------------------------------------------
@@ -382,36 +400,38 @@ function check(luaenv, kernel_ast)
 		-- lhs, rhs expressions
 		local lhsobj = self.children[1]:check()
 		local rhsobj = self.children[2]:check()
+
+		-- propogate nil type for semantic errors in children so that typechecking will continue
 		if lhsobj == nil or rhsobj == nil then
 			return nil
 		end
 
-		-- only those lua objects that are of a liszt object type will be allowed
+		local err_msg = "Global assignments only valid for indexed fields or scalars (did you mean to use a scalar here?)"
+		-- if the lhs is from the global scope, then it must be an indexed field or a scalar:
 		if lhsobj.scope == _LUA_STR then
-
-			if type(lhsobj.luav) ~= _TAB_STR or lhsobj.luav.isglobal then
-				diag:reporterror(self, "Can not write to a value of non liszt type")
+			if type(lhsobj.luaval) ~= _TAB_STR or not (lhsobj.luaval.kind == 'fieldindex' or lhsobj.luaval.kind == 'scalar') then
+				diag:reporterror(self.children[1], err_msg)
 				return nil
 			end
 		end
 
-		-- disallow writes to topological sets/ elements/ field object
-		-- allow writes to only scalars and field values
-		if not (lhsobj.objtype == _VECTOR or conforms(lhsobj.objtype, _NUM) or conforms(lhsobj.objtype, _BOOL)) then
-			diag:reporterror(self, "Can not write to ", rhsobj.objtype.name)
+		-- local temporaries can only be updated if they refer to numeric/boolean data types
+		-- we do not allow users to re-assign variables of topological element type, etc so that they
+		-- do not confuse our stencil analysis.
+		if lhsobj.scope == _LISZT_STR and not conforms(_MDATA, lhsobj.objtype) then
+			diag:reporterror(self.children[1], "Cannot update local variables referring to objects of topological type")
 			return nil
 		end
 
-		local validassgn = conforms(lhsobj.objtype, rhsobj.objtype)
-		if not validassgn then
+		if not conforms(lhsobj.objtype, rhsobj.objtype) then
 			diag:reporterror(self, "Inferred RHS type ", rhsobj.objtype.name,
 			" does not conform to inferred LHS type ", lhsobj.objtype.name,
 			" in the assignment expression")
 			return nil
 		end
+
 		set_type(lhsobj, rhsobj)
 		self.node_type = lhsobj
-		DEBUG_PRINT(self.children[1].children[1] .. " (node type: " .. self.kind .. ") is of type " .. self.node_type.objtype.name)
 		return self.node_type
 	end
 
@@ -426,9 +446,15 @@ function check(luaenv, kernel_ast)
 			return nil
 		end
 
+		if not conforms(_MDATA, rhsobj.objtype) and not conforms(_ELEM, rhsobj.objtype) then
+			diag:reporterror(self, "Can only assign numbers, bools, or topological elements to local temporaries")
+			return nil
+		end
+
 		set_type(self.node_type, rhsobj)
+		self.node_type.scope = _LISZT_STR
 		env:localenv()[varname] = self.node_type
-		DEBUG_PRINT(self.children[1].children[1] .. " (node type: " .. self.kind .. ") is of type " .. self.node_type.objtype.name)
+
 		return self.node_type
 	end
 
@@ -667,7 +693,6 @@ function check(luaenv, kernel_ast)
 			diag:reporterror(self, "Unknown operator \'", op, "\'")
 		end
     	self.node_type = exprobj
-    	DEBUG_PRINT(op .. " " .. self.kind .. " of type " .. self.node_type.objtype.name)
 		return exprobj
 	end
 
@@ -696,7 +721,6 @@ function check(luaenv, kernel_ast)
 				return nil
 			else
 				self.node_type = exprobj
-				DEBUG_PRINT(self.kind .. " of type " .. self.node_type.objtype.name)
 				return exprobj
 			end
 		else
@@ -768,14 +792,16 @@ function check(luaenv, kernel_ast)
 			end
 			if argobj.objtype.name == callobj.topotype.name then
 				self.node_type = callobj.elemtype:new()
-				return self.node_type
+				self.node_type.luaval = FieldIndex.New(callobj.luaval, self.node_type)
+ 				return self.node_type
+
+			-- infer type of argument to field topological type
 			elseif argobj.objtype.name == _ELEM_STR then
-				-- infer type of argument to field topological type
 				argobj.objtype        = callobj.topotype
-				argobj.defn.node_type = argobj.objtype.name
 
 				-- return object that is field data type
 				self.node_type = callobj.elemtype:new()
+				self.node_type.luaval = FieldIndex.New(callobj.luaval, self.node_type)
 				return self.node_type
 
 			else
@@ -799,11 +825,6 @@ function check(luaenv, kernel_ast)
 
 	-- Infer liszt type for the lua variable
 	function lua_to_liszt(luav, nameobj)
-		DEBUG_PRINT("lua to liszt type(luav): " .. type(luav) .. "value: " .. tostring(luav))
-		if (type(luav) == 'table') then
-			DEBUG_PRINT("  luav.kind: " .. tostring(luav.kind))
-			DEBUG_PRINT("  luav.data_type: " .. tostring(luav.data_type))
-		end
 		nameobj.scope = _LUA_STR
         nameobj.luaval = luav
 		if type(luav) == _TAB_STR then
@@ -817,7 +838,7 @@ function check(luaenv, kernel_ast)
 				else
 					-- TODO:
 					-- want to use diag:reporterror here, but don't have line # info
-					-- print("Liszt does not yet support terra type " .. tostring(luav.type))
+					-- print("Liszt does not support terra type " .. tostring(luav.type))
 					return false
 				end
 
@@ -856,7 +877,6 @@ function check(luaenv, kernel_ast)
 
 				-- determine field element type:
 				if strToIntegralFieldType[dobj.obj_type] then
-					DEBUG_PRINT("  field is of integral type " .. tostring(dobj.obj_type))
 					elemobj.objtype  = strToIntegralFieldType[dobj.obj_type]
 					elemobj.elemtype = strToIntegralFieldType[dobj.obj_type]
 					elemobj.size     = 1
@@ -865,7 +885,6 @@ function check(luaenv, kernel_ast)
 					if strToVectorType[dobj.elem_type] then
 						elemobj.elemtype = strToVectorType[dobj.elem_type]
 						elemobj.size = dobj.size
-						DEBUG_PRINT("  field is a vector of type " .. tostring(dobj.elem_type) .. ", size " .. tostring(elemobj.size))
 					else
 						return false
 					end
@@ -924,7 +943,6 @@ function check(luaenv, kernel_ast)
 		end
 
     	self.node_type = nameobj
-    	DEBUG_PRINT(self.children[1] .. " (node type: " .. self.kind .. ") is of type " .. self.node_type.objtype.name)
 		return nameobj
 	end
 
@@ -936,7 +954,6 @@ function check(luaenv, kernel_ast)
 		numobj.elemtype = _FLOAT
 		numobj.size     = 1
 		self.node_type  = numobj
-		DEBUG_PRINT(self.kind .. " of type " .. self.node_type.objtype.name .. ", value: " .. self.children[1])
 		return numobj
 	end
 
@@ -972,11 +989,7 @@ function check(luaenv, kernel_ast)
 			node:check()
 		end
 	end
+
 	env:leaveblock()
-
---	print("**** Typed AST")
---	terralib.tree.printraw(kernel_ast)
-
 	diag:finishandabortiferrors("Errors during typechecking liszt", 1)
-
 end
