@@ -43,12 +43,9 @@ end
 
 --[[ Liszt Types ]]--
 local TopoElem = setmetatable({kind = "topoelem"}, { __index = LisztObj, __metatable = "TopoElem" })
-local TopoSet  = setmetatable({kind = "toposet", data_type = NOTYPE},  { __index = LisztObj, __metatable = "TopoSet" })
-local Field    = setmetatable({kind = "field",  topo_type = NOTYPE, data_type = ObjType}, { __index = LisztObj, __metatable = "Field" })
-Scalar   = setmetatable({kind = "scalar", data_type = NOTYPE},                     { __index = LisztObj, __metatable = "Scalar"})
-
-Field  = setmetatable({kind = "field",  topo_type = NOTYPE, data_type = NOTYPE}, { __index = LisztObj, __metatable = "Field" })
-Scalar = setmetatable({kind = "scalar", data_type = NOTYPE},                     { __index = LisztObj, __metatable = "Scalar"})
+local TopoSet  = setmetatable({kind = "toposet", topo_type = NOTYPE },                     { __index = LisztObj, __metatable = "TopoSet"})
+local Field    = setmetatable({kind = "field",   topo_type = NOTYPE, data_type = ObjType}, { __index = LisztObj, __metatable = "Field" })
+local Scalar   = setmetatable({kind = "scalar",                      data_type = NOTYPE},  { __index = LisztObj, __metatable = "Scalar"})
 
 Mesh   = setmetatable({kind = "mesh"},   { __index = LisztObj, __metatable = "Mesh"})
 Cell   = setmetatable({kind = "cell"},   { __index = TopoElem, __metatable = "Cell"})
@@ -62,12 +59,6 @@ local VectorType = setmetatable({kind = "vector", data_type = NOTYPE, size = 0},
 Vector.__index     = Vector
 VectorType.__index = VectorType
 
-
-local function contains_entry (tbl, entry)
-   local set
-   pcall(function () set = tbl[entry] ~= nil end)
-   return set
-end
 
 -------------------------------------------------
 --[[ Field methods                           ]]--
@@ -85,11 +76,7 @@ local vectorTypeToStr = {
 }
 
 function Field:set_topo_type(topo_type)
-   if (type(topo_type) ~= TABLE) then
-	   error("Field over unrecognized topological type!!", 3)
-   end
    self.topo_type = elemTypeToStr[topo_type]
-
    if not self.topo_type then
 	   error("Field over unrecognized topological type!!", 3)
    end
@@ -121,6 +108,7 @@ function Field:lkField ()
    return self.lkfield
 end
 
+
 -------------------------------------------------
 --[[ Scalar methods                          ]]--
 -------------------------------------------------
@@ -131,6 +119,7 @@ end
 function Scalar:lkScalar()
    return self.lkscalar
 end
+
 
 -------------------------------------------------
 --[[ Runtime type conversion                 ]]--
@@ -267,8 +256,7 @@ function Mesh:field (topo_type, data_type, initial_val)
 end
 
 function Mesh:fieldWithLabel (topo_type, data_type, label)
-   local field = {topo_type = NOTYPE, data_type = ObjType:new(), mesh = self}
-   setmetatable(field, { __index = Field })
+   local field = setmetatable({topo_type = NOTYPE, data_type = ObjType:new(), mesh = self}, { __index=Field})
    field:set_topo_type(topo_type)
    field:set_data_type(data_type)
    local val_type, val_len = runtimeDataType(data_type)
@@ -278,21 +266,14 @@ function Mesh:fieldWithLabel (topo_type, data_type, label)
 end
 
 function Mesh:scalar (data_type)
-   local scalar_type, scalar_length
-   if Vector.isVector and lKeyTypeMap[data_type.data_type] then
-	   scalar_type = lKeyTypeMap[data_type.data_type]
-	   scalar_length = data_type.size
-   elseif lKeyTypeMap[data_type] then
-	   scalar_type = lKeyTypeMap[data_type]
-	   scalar_length = 1
-   else
+   local scalar_type, scalar_length = runtimeDataType(data_type)
+   if not scalar_type then
       error("First argument to mesh:scalar must be a Liszt-supported data type!", 2)
    end
 
-   local s    = setmetatable({}, {__index = Scalar})
-   s.lscalar  = runtime.initScalar(self.ctx, scalar_type, scalar_length)
-   s.lkscalar = runtime.getlkScalar(s.lscalar)
-   return s
+   local lscalar  = runtime.initScalar(self.ctx, scalar_type, scalar_length)
+   local lkscalar = runtime.getlkScalar(lscalar)
+   return setmetatable({ lscalar = lscalar, lkscalar = lkscalar }, {__index = Scalar})
 end
 
 function Mesh.new () 
