@@ -1,4 +1,4 @@
-package.path = package.path .. ";./compiler/?.lua;./compiler/?.t"
+package.path = package.path .. ";./compiler/?.lua;./compiler/?.t;./?.lua"
 
 -- Import liszt parser as a local module
 -- (keep liszt language internals out of global environment for liszt user)

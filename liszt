@@ -1,7 +1,9 @@
 #!/bin/bash
+OPTS=-p$(pwd)/?.t
+
 if [ $1 == "-v" ];
 then
-	./terra/terra -vv $2
+	./terra/terra -vv $OPTS $2
 else
-	./terra/terra $1
+	./terra/terra  $OPTS $1
 fi
