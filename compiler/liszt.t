@@ -1,15 +1,9 @@
 package.path = package.path .. ";./compiler/?.lua;./compiler/?.t;./?.lua"
 
--- Import liszt parser as a local module
--- (keep liszt language internals out of global environment for liszt user)
 local parser  = require "parser"
 local semant  = require "semant"
 terralib.require "compiler/codegen"
-
 require "include/liszt"
-
-_G.liszt             = nil
-package.loaded.liszt = nil
 
 local Parser = terralib.require('terra/tests/lib/parsing')
 
