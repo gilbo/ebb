@@ -117,7 +117,7 @@ test.fail_function(fail9, "inferred LHS type bool")
 
 -- Nothing should fail in this kernel:
 local k = liszt_kernel (cell)
-    f1(cell) = gb
+    -- f1(cell) = gb
 
     var lc = gb
     lc = gb + 1

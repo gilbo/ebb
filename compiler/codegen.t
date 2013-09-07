@@ -9,6 +9,10 @@ function ast.AST:codegen (env)
 	error("Codegen not implemented for AST node " .. self.kind)
 end
 
+function ast.ExprStatement:codegen (env)
+	return quote end
+end
+
 function ast.LisztKernel:codegen (env)
 	env:localenv()[self.children[1].children[1]] = symbol() -- symbol for kernel parameter
 	env.context = symbol() -- lkContext* argument for kernel function
@@ -91,7 +95,6 @@ function ast.DeclStatement:codegen (env)
 	local typ = lisztToTerraTypes[self.node_type.objtype]
 	if not typ then
 		local elemtype = lisztToTerraTypes[self.node_type.elemtype]
-		print(elemtype)
 		typ = vector(elemtype, self.node_type.size)
 	end
 
@@ -141,10 +144,6 @@ end
 function ast.Assignment:codegen (env)
 	local lhs = self.children[1]:codegen_lhs(env)
 	local rhs = self.children[2]:codegen(env)
-
-	terralib.tree.printraw(lhs)
-	-- print(rhs)
-
 	return quote lhs = rhs end
 end
 
@@ -158,9 +157,6 @@ end
 
 function ast.Name:codegen_lhs (env)
 	local name = self.children[1]
-
-	print("name: " .. name)
-	print("scope: " .. self.node_type.scope)
 
 	-- if declared in local scope, then we should have a 
 	-- symbol in the environment table
