@@ -211,6 +211,18 @@ function ObjType:new()
 	return setmetatable({}, {__index = self})
 end
 
+function ObjType:toString()
+	if self.objtype == _VECTOR then
+		return 'vector(' .. self.elemtype.name .. ', ' .. tostring(self.size) .. ')'
+	elseif self.objtype == _TOPOSET then
+		return 'toposet(' .. self.topotype.name .. ')'
+	elseif self.objtype == _FIELD then
+		return 'field(' .. self.topotype.name .. ', ' .. self.elemtype:toString() .. ')'
+	else
+		return self.objtype.name
+	end
+end
+
 -- class tree
 _TR = _NOTYPE
 _TR.parent = _NOTYPE
@@ -418,14 +430,14 @@ function check(luaenv, kernel_ast)
 		-- local temporaries can only be updated if they refer to numeric/boolean data types
 		-- we do not allow users to re-assign variables of topological element type, etc so that they
 		-- do not confuse our stencil analysis.
-		if lhsobj.scope == _LISZT_STR and not conforms(_MDATA, lhsobj.objtype) then
+		if lhsobj.scope == _LISZT_STR and not (conforms(_MDATA, lhsobj.objtype) or lhsobj.objtype == _NOTYPE) then
 			diag:reporterror(self.children[1], "Cannot update local variables referring to objects of topological type")
 			return nil
 		end
 
 		if not conforms(lhsobj.objtype, rhsobj.objtype) then
-			diag:reporterror(self, "Inferred RHS type ", rhsobj.objtype.name,
-			" does not conform to inferred LHS type ", lhsobj.objtype.name,
+			diag:reporterror(self, "Inferred RHS type ", rhsobj:toString(),
+			" does not conform to inferred LHS type ", lhsobj:toString(),
 			" in the assignment expression")
 			return nil
 		end
@@ -625,12 +637,12 @@ function check(luaenv, kernel_ast)
 					exprobj.objtype  = rbasetype
 					exprobj.elemtype = rbasetype
 				else
-					diag:reporterror(self, "Objects of type " .. leftobj.objtype.name .. ' and ' .. rightobj.objtype.name .. ' are not compatible operands of operator \'' .. op .. '\'')
+					diag:reporterror(self, "Objects of type " .. leftobj:toString() .. ' and ' .. rightobj:toString() .. ' are not compatible operands of operator \'' .. op .. '\'')
 				end
 				exprobj.size = (leftobj.size > rightobj.size and leftobj.size or rightobj.size)
 				if exprobj.size > 1 then exprobj.objtype = _VECTOR end
 			else
-				diag:reporterror(self, "Objects of type " .. leftobj.objtype.name .. ' and ' .. rightobj.objtype.name .. ' are not compatible operands of operator \'' .. op .. '\'')
+				diag:reporterror(self, "Objects of type " .. leftobj:toString() .. ' and ' .. rightobj:toString() .. ' are not compatible operands of operator \'' .. op .. '\'')
 			end
 		elseif isVecOp[op] then
 			if vector_length_matches(self, leftobj, rightobj) then
@@ -805,9 +817,7 @@ function check(luaenv, kernel_ast)
 				return self.node_type
 
 			else
-				diag:reporterror(self,
-				"Field over ", callobj.topotype.name,
-				"s is indexed by a ", argobj.objtype.name)
+				diag:reporterror(self, callobj:toString(), " indexed by incorrect type ", argobj:toString())
 				return nil 
 			end
 		else
