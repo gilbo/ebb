@@ -1,4 +1,4 @@
-local test = {}
+test = {}
 
 function test.eq(a,b)
 	if a ~= b then
@@ -29,4 +29,25 @@ function test.time(fn)
     local e = os.clock()
     return e - s
 end
+
+-- This code is based off tests/coverage.t from the terra project
+function test.fail_function(fn, match)
+	local success, msg = pcall(fn)
+	if success then
+		error("Function did not produce the expected failure.", 2)
+	elseif not string.match(msg,match) then
+		error("Function did not produce the expected error: " .. msg, 2)
+	end
+end
+
+-- And this function is based off of a similar fn found in tests/twolang.t in the terra project
+function test.fail_parse(str,match)
+	local r,msg = terralib.loadstring(str)
+	if r then
+		error("Erroneous syntax did not produce error.", 2)
+	elseif not msg:match(match) then
+		error("Erroneous syntax did not produce the expected error: " .. msg, 2)
+	end
+end
+
 return test

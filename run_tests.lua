@@ -1,4 +1,4 @@
-#!../terra/build/LuaJIT-2.0.1/src/luajit
+#!./terra/build/LuaJIT-2.0.1/src/luajit
 local ffi = require("ffi")
 
 local lscmd
@@ -18,20 +18,19 @@ for line in io.popen(lscmd):lines() do
         line = line:gsub("\\","/")
     end
     local file = line:match("^(tests/[^/]*%.t)$") or line:match("^(tests/[^/]*%.lua)$")
-    if file then
-        print(file .. ":")
-        local execstring = "./terra/terra " .. file
+    if file and not line:match("tests/test.lua") then
+        print(file)
+        local execstring = "./liszt " .. file
         --things in the fail directory should cause terra compiler errors
         --we dont check for the particular error
         --but we do check to see that the "Errors reported.." message prints
         --which suggests that the error was reported gracefully
         --(if the compiler bites it before it finishes typechecking then it will not print this)
         local success = os.execute(execstring)
-		print("Status ", success)
-        if success then
-            table.insert(passed,file)
-        else
+        if success ~= 0 then
             table.insert(failed,file)
+        else
+            table.insert(passed,file)
         end
     end
 end
