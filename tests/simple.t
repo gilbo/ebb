@@ -16,7 +16,6 @@ function main ()
 	local vv = Vector.new(float, {1,2,3})
 
 	local sum_pos = liszt_kernel (v)
-	--[[
 		-- BinaryOp, UnaryOp, InitStatement, Number, Bool, and RValue codegen tests
 		var x = 9
 		var xx = x - 4
@@ -117,28 +116,17 @@ function main ()
 
 		-- should be able to assign w/an expression after declaring,
 		-- checking with var e to make sure expressions are the same.
+		var a = 43.3
 		var d
 		d = a * vv
 		var e = a * vv
-		]]--
 
 		-- Numeric for tests: --
 		for i = 1, 5 do
 			var x = i
 			if x == 3 then break end
 		end
-
 	end
-
-	print()
-	print("sum_pos AST:")
-	sum_pos:printpretty()
-	-- call to make sure it works!
-	print()
-	print("calling sum_pos...")
-	sum_pos()
-	print()
-	print("Done!")
 end
 
 main()
