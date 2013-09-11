@@ -1,3 +1,4 @@
+--DISABLE-TEST
 package.path = package.path .. ";./tests/?.lua;?.lua"
 require "test"
 import "compiler/liszt"
