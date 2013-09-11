@@ -20,7 +20,7 @@ _FLOAT_STR   = 'float'
 _BOOL_STR    = 'bool'
 _VECTOR_STR  = 'vector'
 _NUM_STR     = 'number'
-_TAB_STR     = 'table'
+_TABLE_STR   = 'table'
 _MESH_STR    = 'mesh'
 _CELL_STR    = 'cell'
 _FACE_STR    = 'face'
@@ -28,6 +28,7 @@ _EDGE_STR    = 'edge'
 _VERTEX_STR  = 'vertex'
 _TOPOSET_STR = 'toposet'
 _FIELD_STR   = 'field'
+_SCALAR_STR  = 'scalar'
 _ELEM_STR    = 'element'
 _MDATA_STR   = 'mdata'
 
@@ -74,9 +75,9 @@ _NUM =
 	children = {}
 }
 -- table type
-_TAB  =
+_TABLE  =
 {
-	name     = _TAB_STR,
+	name     = _TABLE_STR,
 	parent   = {},
 	children = {}
 }
@@ -136,7 +137,13 @@ _FIELD  =
 	parent   = {},
 	children = {}
 }
-
+-- scalar type
+_SCALAR = {
+	name     = _SCALAR_STR,
+	parent   = {},
+	children = {}
+}
+-- the parent of any obj type that can appear in liszt expressions (bools, numbers, vectors)
 _MDATA  =
 {
 	name     = _MDATA_STR,
@@ -198,13 +205,13 @@ local ObjType =
 	scope = _LISZT_STR,
 
 	-- used for vectors
-	size = 0,
+	size = 1,
 
 	-- object referred to
-    luaval = {},
+    luaval = nil,
 
 	-- ast node which has the definition
-	defn = {}
+	defn = nil
 }
 
 function ObjType:new()
@@ -230,27 +237,25 @@ _TR.parent = _NOTYPE
 _TR.children =
 {
 	_MDATA,
-    _NUM,
-    _BOOL,
-    _VECTOR,
     _MESH,
     _ELEM,
     _TOPOSET,
-    _FIELD
+    _FIELD,
+    _SCALAR
 }
 
 _MESH.parent    = _NOTYPE
 _TOPOSET.parent = _NOTYPE
 _FIELD.parent   = _NOTYPE
+_SCALAR.parent  = _NOTYPE
 _ELEM.parent    = _NOTYPE
-_MDATA.parent = _NOTYPE
+_MDATA.parent   = _NOTYPE
 
 _MDATA.children = { _NUM, _BOOL, _VECTOR }
 _NUM.parent     = _MDATA
 _BOOL.parent    = _MDATA
 _VECTOR.parent  = _MDATA
 
---
 _NUM.children = {_INT, _FLOAT}
 _INT.parent   = _NUM
 _FLOAT.parent = _NUM
@@ -262,6 +267,9 @@ _EDGE.parent    = _ELEM
 _VERTEX.parent  = _ELEM
 
 
+------------------------------------------------------------------------------
+-- Stand-in for the luaval of an indexed global field
+------------------------------------------------------------------------------
 local FieldIndex = { kind = 'fieldindex'}
 FieldIndex.__index = FieldIndex
 
@@ -271,9 +279,8 @@ end
 
 
 ------------------------------------------------------------------------------
-
---[[ Semantic checking called from here
---]]
+--[[ Semantic checking called from here --]]
+------------------------------------------------------------------------------
 function check(luaenv, kernel_ast)
 
 	-- environment for checking variables and scopes
@@ -421,7 +428,7 @@ function check(luaenv, kernel_ast)
 		local err_msg = "Global assignments only valid for indexed fields or scalars (did you mean to use a scalar here?)"
 		-- if the lhs is from the global scope, then it must be an indexed field or a scalar:
 		if lhsobj.scope == _LUA_STR then
-			if type(lhsobj.luaval) ~= _TAB_STR or not (lhsobj.luaval.kind == 'fieldindex' or lhsobj.luaval.kind == 'scalar') then
+			if type(lhsobj.luaval) ~= _TABLE_STR or not (lhsobj.luaval.kind == 'fieldindex' or lhsobj.luaval.kind == 'scalar') then
 				diag:reporterror(self.children[1], err_msg)
 				return nil
 			end
@@ -491,7 +498,6 @@ function check(luaenv, kernel_ast)
 		itobj.defn           = self.children[1]
 		itobj.objtype        = _NUM
 		itobj.elemtype       = _NUM
-		itobj.size           = 1
 		itobj.scope          = _LISZT_STR
 		itobj.defn.node_type = itobj
 
@@ -618,8 +624,8 @@ function check(luaenv, kernel_ast)
 	function ast.BinaryOp:check()
 		local leftobj  = self.children[1]:check()
 		local rightobj = self.children[3]:check()
-		local op = self.children[2]
-		local exprobj = ObjType:new()
+		local op       = self.children[2]
+		local exprobj  = ObjType:new()
 
 		if leftobj == nil or rightobj == nil then
 			return nil
@@ -675,7 +681,6 @@ function check(luaenv, kernel_ast)
 				exprobj.objtype  = _NUM
 				exprobj.elemtype = _NUM
 			end
-			exprobj.size = 1
 
 		elseif isCompOp[op] then
 			if conforms(_NUM, leftobj.objtype) and 
@@ -689,13 +694,11 @@ function check(luaenv, kernel_ast)
 
 		elseif isEqOp[op] then
 			exprobj.objtype = _BOOL
-			exprobj.size    = 1
 
 		elseif isBoolOp[op] then
 			if conforms(_BOOL, leftobj.objtype) and 
 				conforms(_BOOL, rightobj.objtype) then
 				exprobj.objtype = _BOOL
-				exprobj.size    = 1
 			else
 				diag:reporterror(self, "One of the terms in the \' ", op,
 					"\' expression is not a boolean value")
@@ -837,7 +840,7 @@ function check(luaenv, kernel_ast)
 	function lua_to_liszt(luav, nameobj)
 		nameobj.scope = _LUA_STR
         nameobj.luaval = luav
-		if type(luav) == _TAB_STR then
+		if type(luav) == _TABLE_STR then
 			-- terra globals
 			if luav.isglobal then
 				if luaToVectorType[luav.type] then
@@ -911,9 +914,10 @@ function check(luaenv, kernel_ast)
 				end
 				return true
 
-			-- table does not represent a liszt type
+			-- table does not represent a liszt type, but needs to be returned since we support nested select operators
             else
-                return false
+            	nameobj.objtype = _TABLE
+                return true
             end
 
         -- for referenced lua values that may be used as an int or a float

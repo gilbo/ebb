@@ -17,6 +17,11 @@ local checkthis2 = 2
 gb = global(float, 3)
 gb1 = global(int, 4)
 
+local a = {}
+a.b     = {}
+a.b.c   = {}
+a.b.c.d = 4
+
 -- ...let the testing begin!
 
 -- Should fail b/c checkthis1 is not a scalar
@@ -125,8 +130,9 @@ local k = liszt_kernel (cell)
     -- s1 = gb1
 
 	var local1 = 9.0
+	-- local1 = a.b.c.d
 	var local2 = 2.0
-	var local3 = local1 + local2 -- ints should upcast to floats
+	var local3 = local1 + local2
 	var local5 = 2 + 3.3
 	var local4 = checkthis1 + checkthis2
 	var local7 = 8 <= 9

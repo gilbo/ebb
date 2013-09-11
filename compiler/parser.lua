@@ -123,7 +123,7 @@ or a table lookup. lhs parameter is already an LValue
 lang.lvaluehelper = function (P, lhs)
 	local cur = P:cur()
 	-- table indexing:
-	if cur.type == '.' or cur.type == ':' then
+	if cur.type == '.' then
 		local node = ast.TableLookup:New(P)
 		local op = P:next().type
 		-- check to make sure the table is being indexed by a valid name
