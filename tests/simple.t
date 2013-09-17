@@ -1,4 +1,3 @@
-require "include/liszt"
 import "compiler/liszt"
 
 mesh  = LoadMesh("examples/mesh.lmesh")

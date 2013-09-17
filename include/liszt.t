@@ -1,8 +1,5 @@
--- import runtime, privately to this module (so that it is not exposed to liszt application programmers)
 terralib.require('runtime/liszt')
-local runtime = runtime
-_G.runtime    = nil
-
+local runtime = package.loaded.runtime
 local LisztObj = { }
 
 --[[
@@ -16,16 +13,21 @@ local LisztObj = { }
 --]]
 
 --[[ String literals ]]--
-local NOTYPE = 'notype'
-local TABLE  = 'table'
-local INT    = 'int'
-local FLOAT  = 'float'
-local BOOL   = 'bool'
-local VECTOR = 'vector'
-local VERTEX = 'vertex'
-local EDGE   = 'edge'
-local FACE   = 'face'
-local CELL   = 'cell'
+local NOTYPE   = 'notype'
+local TABLE    = 'table'
+local INT      = 'int'
+local FLOAT    = 'float'
+local BOOL     = 'bool'
+local VECTOR   = 'vector'
+local VERTEX   = 'vertex'
+local EDGE     = 'edge'
+local FACE     = 'face'
+local CELL     = 'cell'
+local MESH     = 'mesh'
+local FIELD    = 'field'
+local SCALAR   = 'scalar'
+local TOPOSET  = 'toposet'
+local TOPOELEM = 'topoelem'
 
 -- need to use this for fields to store the type of field, due to nested types
 local ObjType = 
@@ -43,20 +45,20 @@ function ObjType:new()
 end
 
 --[[ Liszt Types ]]--
-local TopoElem = setmetatable({kind = "topoelem"}, { __index = LisztObj, __metatable = "TopoElem" })
-local TopoSet  = setmetatable({kind = "toposet", topo_type = NOTYPE },                     { __index = LisztObj, __metatable = "TopoSet"})
-local Field    = setmetatable({kind = "field",   topo_type = NOTYPE, data_type = ObjType}, { __index = LisztObj, __metatable = "Field" })
-local Scalar   = setmetatable({kind = "scalar",                      data_type = NOTYPE},  { __index = LisztObj, __metatable = "Scalar"})
+local TopoElem = setmetatable({kind = TOPOELEM}, { __index = LisztObj, __metatable = "TopoElem" })
+local TopoSet  = setmetatable({kind = TOPOSET, topo_type = NOTYPE },                     { __index = LisztObj, __metatable = "TopoSet"})
+local Field    = setmetatable({kind = FIELD,   topo_type = NOTYPE, data_type = ObjType}, { __index = LisztObj, __metatable = "Field" })
+local Scalar   = setmetatable({kind = SCALAR,                      data_type = NOTYPE},  { __index = LisztObj, __metatable = "Scalar"})
 
-Mesh   = setmetatable({kind = "mesh"},   { __index = LisztObj, __metatable = "Mesh"})
-Cell   = setmetatable({kind = "cell"},   { __index = TopoElem, __metatable = "Cell"})
-Face   = setmetatable({kind = "face"},   { __index = TopoElem, __metatable = "Face"})
-Edge   = setmetatable({kind = "edge"},   { __index = TopoElem, __metatable = "Edge"})
-Vertex = setmetatable({kind = "vertex"}, { __index = TopoElem, __metatable = "Vertex"})
+Mesh   = setmetatable({kind = MESH},   { __index = LisztObj, __metatable = "Mesh"})
+Cell   = setmetatable({kind = CELL},   { __index = TopoElem, __metatable = "Cell"})
+Face   = setmetatable({kind = FACE},   { __index = TopoElem, __metatable = "Face"})
+Edge   = setmetatable({kind = EDGE},   { __index = TopoElem, __metatable = "Edge"})
+Vertex = setmetatable({kind = VERTEX}, { __index = TopoElem, __metatable = "Vertex"})
 
 local DataType   = setmetatable({kind = "datatype"}, { __index=LisztObj, __metatable="DataType"})
-Vector           = setmetatable({kind = "vector", data_type = NOTYPE, size = 0},   { __index=DataType})
-local VectorType = setmetatable({kind = "vector", data_type = NOTYPE, size = 0}, { __index=DataType})
+Vector           = setmetatable({kind = VECTOR, data_type = NOTYPE, size = 0},   { __index=DataType})
+local VectorType = setmetatable({kind = VECTOR, data_type = NOTYPE, size = 0}, { __index=DataType})
 Vector.__index     = Vector
 VectorType.__index = VectorType
 
@@ -80,7 +82,7 @@ local vectorTypeToStr = {
 function Field:set_topo_type(topo_type)
    self.topo_type = elemTypeToStr[topo_type]
    if not self.topo_type then
-	   error("Field over unrecognized topological type!!", 3)
+	   error("Field over unrecognized topological type.", 3)
    end
 end
 
@@ -94,11 +96,11 @@ function Field:set_data_type(data_type)
 		if vectorTypeToStr[data_type.data_type] then
 			self.data_type.elem_type = vectorTypeToStr[data_type.data_type]
 		else
-			error("Field over unsupported data type!!", 3)
+			error("Field over unsupported data type.", 3)
 		end
 	   self.data_type.size = data_type.size
    else
-	   error("Field over unsupported data type!!", 3)
+	   error("Field over unsupported data type.", 3)
    end
 end
 
@@ -226,28 +228,70 @@ function Vector.add (v1, v2)
 end
 
 
-
 -------------------------------------------------
 --[[ TopoSet methods                         ]]--
 -------------------------------------------------
 TopoSet.__index = TopoSet
 
+local size_fn = {
+   [Cell]   = runtime.numCells,
+   [Face]   = runtime.numFaces,
+   [Edge]   = runtime.numEdges,
+   [Vertex] = runtime.numVertices
+}
+
 function TopoSet.new (mesh, topo_type)
-   local size_fn = {
-      [Cell]   = runtime.numCells,
-      [Face]   = runtime.numFaces,
-      [Edge]   = runtime.numEdges,
-      [Vertex] = runtime.numVertices
-   }
-   local size = size_fn[topo_type](mesh.ctx)
-   return setmetatable({__mesh=mesh, __type=topo_type,__size=size}, TopoSet)
+   local size   = size_fn[topo_type](mesh.__ctx)
+   local ts     = setmetatable({__mesh=mesh, __type=topo_type,__size=size}, TopoSet)
+   -- table with weak keys/values to keep a small cache of most-previously used kernels
+   ts.__kernels = setmetatable({}, {__mode="kv"})
+   return ts
 end
 
 function TopoSet:size ()
    return self.__size
 end
 
+local topoToInitFn = {
+   [Cell]   = runtime.lCellsOfMesh,
+   [Face]   = runtime.lFacesOfMesh,
+   [Edge]   = runtime.lEdgesOfMesh,
+   [Vertex] = runtime.lVerticesOfMesh
+}
+
+function TopoSet:__init_symbol (ctx_symb, set_symb)
+   local setInitFunction = topoToInitFn[self.__type]
+   return quote setInitFunction([ctx_symb], [set_symb]) end
+end
+
+
+local topoToLiszt = {
+   [Cell]   = runtime.L_CELL,
+   [Face]   = runtime.L_FACE,
+   [Edge]   = runtime.L_EDGE,
+   [Vertex] = runtime.L_VERTEX
+}
 function TopoSet:map (kernel)
+   if not kernel:acceptsType(self.__type) then error("Kernel cannot iterate over set of this topological type") end
+
+   local run_kernel = self.__kernels[kernel]
+   if not run_kernel then
+      local kernel_fn = kernel:generate(self)
+
+      local set = symbol()
+      local l_topo = topoToLiszt[self.__type]
+
+      run_kernel = terra (ctx : &runtime.lContext)
+         var [set] : &runtime.lSet = runtime.lNewlSet()
+         [self:__init_symbol(ctx, set)]
+         runtime.lKernelRun(ctx, [set], l_topo, 0, kernel_fn)
+         runtime.lFreelSet([set])
+      end
+
+      self.__kernels[kernel] = run_kernel
+   end
+
+   run_kernel(self.__mesh.__ctx)
 end
 
 
@@ -259,7 +303,7 @@ function Mesh:field (topo_type, data_type, initial_val)
    field:set_topo_type(topo_type)
    field:set_data_type(data_type)
    local val_type, val_len = runtimeDataType(data_type)
-   field.lfield  = runtime.initField(self.ctx, lElementTypeMap[topo_type], val_type, val_len)
+   field.lfield  = runtime.initField(self.__ctx, lElementTypeMap[topo_type], val_type, val_len)
    field.lkfield = runtime.getlkField(field.lfield)
    return field
 end
@@ -269,7 +313,7 @@ function Mesh:fieldWithLabel (topo_type, data_type, label)
    field:set_topo_type(topo_type)
    field:set_data_type(data_type)
    local val_type, val_len = runtimeDataType(data_type)
-   field.lfield  = runtime.loadField(self.ctx, label, lElementTypeMap[topo_type], val_type, val_len)
+   field.lfield  = runtime.loadField(self.__ctx, label, lElementTypeMap[topo_type], val_type, val_len)
    field.lkfield = runtime.getlkField(field.lfield)
    return field
 end
@@ -280,7 +324,7 @@ function Mesh:scalar (data_type)
       error("First argument to mesh:scalar must be a Liszt-supported data type!", 2)
    end
 
-   local lscalar  = runtime.initScalar(self.ctx, scalar_type, scalar_length)
+   local lscalar  = runtime.initScalar(self.__ctx, scalar_type, scalar_length)
    local lkscalar = runtime.getlkScalar(lscalar)
    return setmetatable({ lscalar = lscalar, lkscalar = lkscalar }, {__index = Scalar})
 end
@@ -291,7 +335,7 @@ end
 
 LoadMesh = function (filename)
    local mesh    = Mesh.new()
-   mesh.ctx      = runtime.loadMesh(filename)
+   mesh.__ctx    = runtime.loadMesh(filename)
    mesh.cells    = TopoSet.new(mesh, Cell)
    mesh.faces    = TopoSet.new(mesh, Face)
    mesh.edges    = TopoSet.new(mesh, Edge)

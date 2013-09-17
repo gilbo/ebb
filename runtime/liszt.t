@@ -78,30 +78,32 @@ lStencilData    = runtime.lStencilData
 -- functions called directly
 lScalarRead        = runtime.lScalarRead
 lScalarWrite       = runtime.lScalarWrite
-lVerticesOfMesh    = runtime.lVerticesOfMesh
+lKernelRun         = runtime.lKernelRun
+
+-- phase fns
 lFieldEnterPhase   = runtime.lFieldEnterPhase
 lScalarEnterPhase  = runtime.lScalarEnterPhase
-lKernelRun         = runtime.lKernelRun
+
+-- set fns
 lNewlSet           = runtime.lNewlSet
 lFreelSet          = runtime.lFreelSet
 lSetSize           = runtime.lSetSize
 
+-- topo fns
+lCellsOfMesh       = runtime.lCellsOfMesh
+lFacesOfMesh       = runtime.lFacesOfMesh
+lEdgesOfMesh       = runtime.lEdgesOfMesh
+lVerticesOfMesh    = runtime.lVerticesOfMesh
+
+-- lk functions
 lkGetActiveElement = runtime.lkGetActiveElement
 lkScalarWrite      = runtime.lkScalarWrite
 
--- Types
+-- parameter types
 lType        = uint
 lElementType = uint
 size_t       = uint
 lReduction   = uint
-
-struct Mesh {
-	ctx : &lContext;
-	nVertices : int;
-	nEdges    : int;
-	nFaces    : int;
-	nCells    : int;
-}
 
 terra loadMesh (filename : rawstring) : { &lContext }
 	var ctx : &lContext = runtime.lLoadContext(filename)

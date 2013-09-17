@@ -3,7 +3,6 @@
 	 produces something that can compile.
 ]]
 
-require "include/liszt"
 import "compiler/liszt"
 
 mesh  = LoadMesh("examples/mesh.lmesh")
@@ -36,8 +35,9 @@ local write1 = liszt_kernel(f)
 	field3(f) = 0.0
 end
 
-reduce1:compile()
-reduce2:compile()
-reduce3:compile()
-read1:compile()
-write1:compile()
+mesh.faces:map(reduce1)
+--reduce1:compile()
+--reduce2:compile()
+--reduce3:compile()
+--read1:compile()
+--write1:compile()

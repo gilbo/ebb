@@ -1,9 +1,9 @@
 module(... or 'codegen', package.seeall)
 
-ast    = require 'ast'
-semant = require 'semant'
+local ast    = require 'ast'
+local semant = require 'semant'
 terralib.require 'runtime/liszt'
-local runtime = runtime
+local runtime = package.loaded.runtime
 
 function ast.AST:codegen (env)
 	error("Codegen not implemented for AST node " .. self.kind)
@@ -259,7 +259,6 @@ function ast.InitStatement:codegen (env)
 	local varname = self.children[1].children[1]
 	local varsym  = symbol()
 	env:localenv()[varname] = varsym
-
 	return quote var [varsym] = [self.children[2]:codegen(env)] end
 end
 
@@ -300,6 +299,10 @@ function ast.Name:codegen (env)
 	else
 		return `[val]
 	end
+end
+
+function ast.TableLookup:codegen (env)
+	return `[self.node_type.luaval]
 end
 
 function ast.Number:codegen (env)
@@ -368,16 +371,13 @@ end
 function codegen (luaenv, kernel_ast)
 	local env = terralib.newenvironment(luaenv)
 	env:enterblock()
-	local kernel_code = kernel_ast:codegen(env)
---[[
-	local kernel_fn = terra ([env.context] : runtime.lkContext) : {}
-		[kernel_code]
-	end
-]]
+	local kernel_body = kernel_ast:codegen(env)
 
-	return terra ()
+	return terra (ctx : runtime.lkContext)
+		var [env.context] = &ctx
 		var [env.param] : runtime.lkElement
-		kernel_code
+		if runtime.lkGetActiveElement([env.context], &[env.param]) > 0 then
+			kernel_body
+		end
 	end
-	-- return kernel_fn
 end

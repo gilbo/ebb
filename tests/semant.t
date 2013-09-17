@@ -29,6 +29,7 @@ function fail1()
 	local t = liszt_kernel (cell)
 		checkthis1 = f1(cell)
 	end
+	mesh.cells:map(t)
 end
 
 -- Should fail when we re-assign a new value to x, since it originally
@@ -38,6 +39,7 @@ function fail2()
 	    var x = cell
     	x = cell
 	end
+	mesh.cells:map(k)
 end
 
 -- Should fail because we do not allow assignments to fields
@@ -46,6 +48,7 @@ function fail3()
 	local k = liszt_kernel (cell)
 		f1 = 5
 	end
+	mesh.cells:map(k)
 end
 
 -- Should fail because we do not allow the user to alias fields,
@@ -54,12 +57,14 @@ function fail4()
 	local k = liszt_kernel (cell)
 		var z = f1
 	end
+	mesh.cells:map(k)
 end
 
 function fail5()
 	local k = liszt_kernel(cell)
 		undefined = 3
 	end
+	mesh.cells:map(k)
 end
 
 function fail6()
@@ -67,6 +72,7 @@ function fail6()
 		var floatvar = 2 + 3.3
 		floatvar = true
 	end
+	mesh.cells:map(k)
 end
 
 function fail7()
@@ -82,6 +88,7 @@ function fail7()
 			local7 = 4.5
 		end
 	end
+	mesh.cells:map(k)
 end
 
 
@@ -98,6 +105,7 @@ function fail8()
 			var local10 = local7
 		end
 	end
+	mesh.cells:map(k)
 end
 
 function fail9()
@@ -108,6 +116,7 @@ function fail9()
 			local1 = 2.0 -- should fail, local1 is of type bool
 		end
 	end
+	mesh.cells:map(k)
 end
 
 test.fail_function(fail1, "Global assignments only valid")
@@ -129,8 +138,7 @@ local k = liszt_kernel (cell)
 
     -- s1 = gb1
 
-	var local1 = 9.0
-	-- local1 = a.b.c.d
+	var local1 = a.b.c.d
 	var local2 = 2.0
 	var local3 = local1 + local2
 	var local5 = 2 + 3.3
@@ -150,4 +158,6 @@ local k = liszt_kernel (cell)
 		local9 = local9 + i * i
 	end
 end
+
+mesh.cells:map(k)
 

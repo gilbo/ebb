@@ -1,9 +1,8 @@
 package.path = package.path .. ";./compiler/?.lua;./compiler/?.t;./?.lua"
 
 local parser  = require "parser"
-local semant  = require "semant"
-terralib.require "compiler/codegen"
-require "include/liszt"
+terralib.require "compiler/kernel"
+terralib.require "include/liszt"
 
 local Parser = terralib.require('terra/tests/lib/parsing')
 
@@ -14,15 +13,10 @@ local lisztlanguage = {
 
 	expression = function(self, lexer)
 		local kernel_ast = Parser.Parse(parser.lang, lexer, "liszt_kernel")
-		--[[ this function is called in place of executing the code that 
-			 we parsed 
-		--]]
 
 		return function (env_fn) 
 			local env = env_fn()
-			local success = semant.check(env, kernel_ast)
-			local kernel  = codegen.codegen(env, kernel_ast)
-			return kernel
+			return kernel.Kernel.new(kernel_ast, env)
 		end
 	end
 }
