@@ -20,6 +20,7 @@ local NOTYPE = 'notype'
 local TABLE  = 'table'
 local INT    = 'int'
 local FLOAT  = 'float'
+local BOOL   = 'bool'
 local VECTOR = 'vector'
 local VERTEX = 'vertex'
 local EDGE   = 'edge'
@@ -72,7 +73,8 @@ local elemTypeToStr = {
 
 local vectorTypeToStr = {
    [int]   = INT,
-   [float] = FLOAT
+   [float] = FLOAT,
+   [bool]  = BOOL,
 }
 
 function Field:set_topo_type(topo_type)
@@ -228,18 +230,25 @@ end
 -------------------------------------------------
 --[[ TopoSet methods                         ]]--
 -------------------------------------------------
-local function toposet_stub (topoelem)
-   local tmp = {data_type = topoelem}
-   tmp.size  = function () return 10 end
-   tmp.map   = function (...) end
-   setmetatable(tmp, {__index = TopoSet})
-   return tmp
+TopoSet.__index = TopoSet
+
+function TopoSet.new (mesh, topo_type)
+   local size_fn = {
+      [Cell]   = runtime.numCells,
+      [Face]   = runtime.numFaces,
+      [Edge]   = runtime.numEdges,
+      [Vertex] = runtime.numVertices
+   }
+   local size = size_fn[topo_type](mesh.ctx)
+   return setmetatable({__mesh=mesh, __type=topo_type,__size=size}, TopoSet)
 end
 
-Mesh.cells    = toposet_stub(CELL)
-Mesh.faces    = toposet_stub(FACE)
-Mesh.vertices = toposet_stub(VERTEX)
-Mesh.edges    = toposet_stub(EDGE)
+function TopoSet:size ()
+   return self.__size
+end
+
+function TopoSet:map (kernel)
+end
 
 
 -------------------------------------------------
@@ -281,7 +290,11 @@ function Mesh.new ()
 end
 
 LoadMesh = function (filename)
-   local mesh = Mesh.new()
-   mesh.ctx   = runtime.loadMesh(filename)
+   local mesh    = Mesh.new()
+   mesh.ctx      = runtime.loadMesh(filename)
+   mesh.cells    = TopoSet.new(mesh, Cell)
+   mesh.faces    = TopoSet.new(mesh, Face)
+   mesh.edges    = TopoSet.new(mesh, Edge)
+   mesh.vertices = TopoSet.new(mesh, Vertex)
    return mesh
 end

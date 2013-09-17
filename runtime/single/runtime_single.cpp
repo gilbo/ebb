@@ -84,13 +84,17 @@ L_ALWAYS_INLINE
 size_t numberOfElementsOfType(lContext * ctx, lElementType typ) {
 	switch(typ) {
 		case L_VERTEX: return ctx->mesh.nvertices;
-		case L_EDGE: return ctx->mesh.nedges;
-		case L_FACE: return ctx->mesh.nfaces;
-		case L_CELL: return ctx->mesh.ncells;
+		case L_EDGE:   return ctx->mesh.nedges;
+		case L_FACE:   return ctx->mesh.nfaces;
+		case L_CELL:   return ctx->mesh.ncells;
 	}
 	return 0; //silence warnings
 }
 
+uint32_t lNumVertices (struct lContext *ctx) { return numberOfElementsOfType(ctx, L_VERTEX); }
+uint32_t lNumEdges    (struct lContext *ctx) { return numberOfElementsOfType(ctx, L_EDGE);   }
+uint32_t lNumFaces    (struct lContext *ctx) { return numberOfElementsOfType(ctx, L_FACE);   }
+uint32_t lNumCells    (struct lContext *ctx) { return numberOfElementsOfType(ctx, L_CELL);   }
 
 //Unnested Runtime Calls
 

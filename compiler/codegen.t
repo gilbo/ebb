@@ -14,7 +14,8 @@ function ast.ExprStatement:codegen (env)
 end
 
 function ast.LisztKernel:codegen (env)
-	env:localenv()[self.children[1].children[1]] = symbol() -- symbol for kernel parameter
+	env.param   = symbol()
+	env:localenv()[self.children[1].children[1]] = env.param -- symbol for kernel parameter
 	env.context = symbol() -- lkContext* argument for kernel function
 	return self.children[2]:codegen(env)
 end
@@ -141,10 +142,117 @@ end
 -- for now, just assume all assignments are to locally-scoped variables
 -- assignments to variables from lua scope will require liszt runtime 
 -- calls and extra information from semantic type checking
+
+local simpleTypeMap = {
+	[semant._FLOAT] = runtime.L_FLOAT,
+	[semant._INT]   = runtime.L_INT,
+	[semant._BOOL]  = runtime.L_BOOL,
+}
+
+local terraTypeMap = {
+	[semant._FLOAT] = float,
+	[semant._INT]   = int,
+	[semant._BOOL]  = bool,
+}
+
+local function objTypeToLiszt (obj)
+	if simpleTypeMap[obj.objtype] then
+		return simpleTypeMap[obj.objtype], 1, 0, 1
+	else -- objtype should be a vector!
+		return simpleTypeMap[obj.elemtype], obj.size, 0, obj.size
+	end
+end
+
+local elemTypeMap = {
+	[semant._VERTEX] = runtime.L_VERTEX,
+	[semant._CELL]   = runtime.L_CELL,
+	[semant._FACE]   = runtime.L_FACE,
+	[semant._EDGE]   = runtime.L_EDGE
+}
+
+local mPhaseMap = {
+	['+']   = runtime.L_PLUS,
+	['-']   = runtime.L_MINUS,
+	['*']   = runtime.L_MULTIPLY,
+	['/']   = runtime.L_DIVIDE,
+	['and'] = runtime.L_BAND,
+	['or']  = runtime.L_BOR
+}
+
+local bPhaseMap = {
+	['and'] = runtime.L_AND,
+	['or']  = runtime.L_OR
+}
+
+local function getPhase (binop)
+	local op = binop.children[2]
+
+	-- for boolean types, return boolean reduction phases
+	if binop.node_type.objtype == semant._BOOL or
+		(binop.node_type.objtype == semant._VECTOR and binop.node_type.elemtype == semant._BOOL) then
+		return bPhaseMap[op] end
+
+	return mPhaseMap[op]
+end
+
+
 function ast.Assignment:codegen (env)
-	local lhs = self.children[1]:codegen_lhs(env)
-	local rhs = self.children[2]:codegen(env)
-	return quote lhs = rhs end
+	if self.fieldop == semant._FIELD_WRITE then
+		local rhs     = self.children[2]:codegen(env)
+						--   Call        LValue
+		local field   = self.children[1].children[1].node_type.luaval
+		                --   Call        Tuple       Name
+		local topo    = self.children[1].children[2].children[1]:codegen(env)
+		local element_type, element_length, val_offset, val_length = objTypeToLiszt(self.children[1].node_type)
+
+		return quote
+			var tmp = [rhs]
+			runtime.lkFieldWrite([field.lkfield], [topo], runtime.L_ASSIGN, element_type, element_length, val_offset, val_length, &tmp)
+		end
+	elseif self.fieldop == semant._FIELD_REDUCE then
+		local rhs     = self.children[2].children[3]:codegen(env)
+						--   Call        LValue
+		local field   = self.children[1].children[1].node_type.luaval
+		                --   Call        Tuple       Name
+		local topo    = self.children[1].children[2].children[1]:codegen(env)
+		local phase   = getPhase(self.children[2])
+		local element_type, element_length, val_offset, val_length = objTypeToLiszt(self.children[1].node_type)
+
+		return quote
+			var tmp = [rhs]
+			runtime.lkFieldWrite([field.lkfield], [topo], [phase], element_type, element_length, val_offset, val_length, &tmp)
+		end
+	else
+		local lhs = self.children[1]:codegen_lhs(env)
+		local rhs = self.children[2]:codegen(env)
+		return quote lhs = rhs end
+	end
+end
+
+-- Call:codegen is called for field reads, when the field appears
+-- in an expression, or on the rhs of an assignment.
+function ast.Call:codegen (env)
+	local field = self.children[1].node_type.luaval
+	              -- Call          Tuple       LValue
+	local topo  = self.children[2].children[1]:codegen(env) -- Should return an lkElement
+	local read  = symbol()
+
+	local typ
+	if self.node_type.size == 1 then
+		typ = terraTypeMap[self.node_type.objtype]
+	else
+		typ = vector(terraTypeMap[self.node_type.objtype], self.node_type.size)
+	end
+
+	local el_type, el_len, val_off, val_len = objTypeToLiszt(self.node_type)
+
+	return quote
+		var [read] : typ
+		runtime.lkFieldRead([field.lkfield], [topo], el_type, el_len, val_off, val_len, &[read])
+		in
+		[read]
+	end
+
 end
 
 function ast.InitStatement:codegen (env)
@@ -177,7 +285,7 @@ end
 -- in the environment as a symbol
 function ast.Name:codegen (env)
 	local str = self.children[1]
-	val = env:combinedenv()[str]
+	local val = env:combinedenv()[str]
 	if (type(val) == 'number' or type(val) == 'boolean') then
 		return `[val]
 	elseif (val.isglobal) then
@@ -199,9 +307,7 @@ function ast.Number:codegen (env)
 end
 
 function ast.Bool:codegen (env)
-	if self.children[1] == 'true' then return `true
-	else return `false
-	end
+	if self.children[1] == 'true' then return `true else return `false end
 end
 
 function ast.UnaryOp:codegen (env)
@@ -270,6 +376,7 @@ function codegen (luaenv, kernel_ast)
 ]]
 
 	return terra ()
+		var [env.param] : runtime.lkElement
 		kernel_code
 	end
 	-- return kernel_fn

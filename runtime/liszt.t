@@ -62,9 +62,11 @@ L_REDUCE_OR       = 11
 
 -- structs used in liszt kernels/stencil functions
 lContext        = runtime.lContext
+lField          = runtime.lField
 
 lkElement       = runtime.lkElement
 lkContext       = runtime.lkContext
+lkField         = runtime.lkField
 
 lsContext       = runtime.lsContext
 lsFunctionTable = runtime.lsFunctionTable
@@ -85,9 +87,13 @@ lFreelSet          = runtime.lFreelSet
 lSetSize           = runtime.lSetSize
 
 lkGetActiveElement = runtime.lkGetActiveElement
-lkFieldRead        = runtime.lkFieldRead
 lkScalarWrite      = runtime.lkScalarWrite
 
+-- Types
+lType        = uint
+lElementType = uint
+size_t       = uint
+lReduction   = uint
 
 struct Mesh {
 	ctx : &lContext;
@@ -102,22 +108,46 @@ terra loadMesh (filename : rawstring) : { &lContext }
 	return ctx
 end
 
-terra loadField (ctx : &runtime.lContext, name : &int8, key_type : uint, val_type : uint, val_length : uint)
+terra numVertices (ctx : &lContext)
+	return runtime.lNumVertices(ctx)
+end
+
+terra numCells (ctx : &lContext)
+	return runtime.lNumCells(ctx)
+end
+
+terra numEdges (ctx : &lContext)
+	return runtime.lNumEdges(ctx)
+end
+
+terra numFaces (ctx : &lContext)
+	return runtime.lNumFaces(ctx)
+end
+
+terra loadField (ctx : &lContext, name : &int8, key_type : lElementType, val_type : lType, val_length : size_t)
     return runtime.lLoadField(ctx,name,L_VERTEX,L_FLOAT,val_length)
 end
 
-function initField(ctx, key_type, val_type, val_length)
+terra initField (ctx : &lContext, key_type : lElementType, val_type : ltype, val_length : size_t)
 	return runtime.lInitField(ctx, key_type, val_type, val_length)
 end
 
-terra getlkField (field : &runtime.lField)
+terra getlkField (field : &lField)
 	return field.lkfield
 end
 
-terra initScalar(ctx : &runtime.lContext, val_type : uint, val_length : uint)
+terra initScalar (ctx : &lContext, val_type : lElementType, val_length : size_t)
 	return runtime.lInitScalar(ctx, val_type, val_length)
 end
 
 terra getlkScalar (scalar : &runtime.lScalar)
 	return scalar.lkscalar
+end
+
+terra lkFieldWrite (scalar : &lkField, e : lkElement, reduction : uint, element_type : lType, element_length : size_t, val_offset : size_t, val_length : size_t, result : &opaque)
+	runtime.lkFieldWrite(scalar,e,reduction,element_type,element_length,val_offset,val_length,result)
+end
+
+terra lkFieldRead (scalar : &lkField, e : lkElement, element_type : lType, element_length : size_t, val_offset : size_t, val_length : size_t,  result : &opaque)
+	runtime.lkFieldRead(scalar,e,element_type,element_length,val_offset,val_length,result)
 end

@@ -116,6 +116,23 @@ function LValue.isLValue ( ) return true  end
 function Tuple:size ( ) return #self.children end
 
 
+--------------------------------------
+--[[ BinaryOp Reduction detection ]]--
+--------------------------------------
+local commutative = {
+	['+']   = true,
+	['-']   = true,
+	['*']   = true,
+	['/']   = true,
+	['and'] = true,
+	['or']  = true
+}
+
+function BinaryOp:operatorCommutes ()
+	return commutative[self.children[2]]
+end
+
+
 ---------------------------
 --[[ AST tree printing ]]--
 ---------------------------

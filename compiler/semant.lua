@@ -32,6 +32,9 @@ _SCALAR_STR  = 'scalar'
 _ELEM_STR    = 'element'
 _MDATA_STR   = 'mdata'
 
+_FIELD_WRITE  = 'WRITE'
+_FIELD_REDUCE = 'REDUCE'
+
 -- root variable type
 _NOTYPE = 
 {
@@ -416,7 +419,11 @@ function check(luaenv, kernel_ast)
 	end
 
 	function ast.Assignment:check()
-		-- lhs, rhs expressions
+		-- if the right-hand expression contains a field read in the left-most child that
+		-- uses a commutative operation, refactor the expression tree to make the field
+		-- read the top-level left child.  (Best to do this before semantic checking!)
+		if self.children[2].kind == 'binop' then self.children[2]:refactorReduction() end
+
 		local lhsobj = self.children[1]:check()
 		local rhsobj = self.children[2]:check()
 
@@ -434,7 +441,7 @@ function check(luaenv, kernel_ast)
 			end
 		end
 
-		-- local temporaries can only be updated if they refer to numeric/boolean data types
+		-- local temporaries can only be updated if they refer to numeric/boolean/vector data types
 		-- we do not allow users to re-assign variables of topological element type, etc so that they
 		-- do not confuse our stencil analysis.
 		if lhsobj.scope == _LISZT_STR and not (conforms(_MDATA, lhsobj.objtype) or lhsobj.objtype == _NOTYPE) then
@@ -451,6 +458,20 @@ function check(luaenv, kernel_ast)
 
 		set_type(lhsobj, rhsobj)
 		self.node_type = lhsobj
+
+		-- Determine if this assignment is a field write or a reduction (since this requires special codegen)
+		local lval = self.children[1]
+		local rexp = self.children[2]
+		if lval.node_type.luaval and lval.node_type.luaval.kind == 'fieldindex' then
+			if rexp.kind ~= 'binop' or rexp.children[1].node_type.luaval.kind ~= 'fieldindex' then
+				self.fieldop = _FIELD_WRITE
+			else
+				local lfield = lval.children[1].node_type.luaval
+				local rfield = rexp.children[1].children[1].node_type.luaval
+				self.fieldop = (lfield == rfield and rexp:operatorCommutes()) and _FIELD_REDUCE or _FIELD_WRITE
+			end
+		end
+
 		return self.node_type
 	end
 
@@ -465,6 +486,9 @@ function check(luaenv, kernel_ast)
 			return nil
 		end
 
+		-- Local temporaries can only refer to numeric/boolean/vector data or topolocal element types,
+		-- and variables referring to topo types can never be re-assigned.  That way, we don't allow
+		-- users to write code that makes stencil analysis intractable.
 		if not conforms(_MDATA, rhsobj.objtype) and not conforms(_ELEM, rhsobj.objtype) then
 			diag:reporterror(self, "Can only assign numbers, bools, or topological elements to local temporaries")
 			return nil
@@ -619,6 +643,63 @@ function check(luaenv, kernel_ast)
        ['and'] = true,
        ['or']  = true
     }
+
+    -- can "(a <lop> b) <rop> c" be refactored into "a <lop'> (b <rop'> c)"?
+    local function commutes (lop, rop)
+    	local additive       = { ['+'] = true, ['-'] = true }
+    	local multiplicative = { ['*'] = true, ['/'] = true }
+    	if additive[lop]       and additive[rop]       then return true end
+    	if multiplicative[lop] and multiplicative[rop] then return true end
+    	if lop == 'and' and rop == 'and' then return true end
+    	if lop == 'or'  and rop == 'or'  then return true end
+    	return false
+    end
+
+    function ast.BinaryOp:refactorReduction ()
+    	local left = self.children[1]
+    	if left.kind ~= 'binop' then return end
+
+    	left:refactorReduction()
+
+    	-- Make sure left grandchild is a field read
+    	if not left.children[1].kind == 'call' then return end
+
+    	local rop   = self.children[2]
+    	local lop   = left.children[2]
+
+    	local simple = {['+'] = true, ['*'] = true, ['and'] = true, ['or'] = true}
+    	if commutes(lop, rop) then
+    		--[[ 
+				We want to pull up the left grandchild to be the left child of
+				this node.  Thus, we'll need to refactor the tree like so:
+
+				      *                  *
+				     / \                / \
+					/   \              /   \
+				   *     C    ==>     A     *
+				  / \                      / \
+				 /   \                    /   \
+				A     B                  B     C
+			]]--
+			local A = left.children[1]
+			local B = left.children[3]
+			local C = self.children[3]
+			self.children[1] = A
+			self.children[3] = left
+			left.children[1] = B
+			left.children[3] = C
+
+			-- if the left operator is an inverse operator, we'll need to
+			-- change the right operator as well.
+			if not simple[lop] then
+    			-- switch the right operator to do the inverse operation
+    			local inv_map = { ['+'] = '-', ['-'] = '+', ['*'] = '/', ['/'] = '*' }
+    			rop = inv_map[rop]
+				self.children[2] = lop
+				self.children[3].children[2] = rop    			
+    		end
+    	end
+    end
 
 	-- binary expressions
 	function ast.BinaryOp:check()

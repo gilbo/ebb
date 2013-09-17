@@ -140,6 +140,11 @@ L_RUNTIME_UNNESTED struct lScalar  *lInitScalar  (struct lContext *ctx, enum lTy
 L_RUNTIME_UNNESTED struct lSet *lNewlSet ();
 L_RUNTIME_UNNESTED void lFreelSet (struct lSet *set);
 
+L_RUNTIME_UNNESTED uint32_t lNumVertices (struct lContext *ctx);
+L_RUNTIME_UNNESTED uint32_t lNumEdges    (struct lContext *ctx);
+L_RUNTIME_UNNESTED uint32_t lNumFaces    (struct lContext *ctx);
+L_RUNTIME_UNNESTED uint32_t lNumCells    (struct lContext *ctx);
+
 L_RUNTIME_UNNESTED void lFieldBroadcast (struct lContext * ctx, struct lField * field, enum lElementType key_type, enum lType val_type, size_t val_length, void * data);
 L_RUNTIME_UNNESTED void lFieldLoadData  (struct lContext * ctx, struct lField * field, enum lElementType key_type, enum lType val_type, size_t val_length, const char * key);
 L_RUNTIME_UNNESTED void lFieldSaveData  (struct lContext * ctx, struct lField * field, enum lElementType key_type, enum lType val_type, size_t val_length, const char * key);
