@@ -128,7 +128,7 @@ terra loadField (ctx : &lContext, name : &int8, key_type : lElementType, val_typ
     return runtime.lLoadField(ctx,name,L_VERTEX,L_FLOAT,val_length)
 end
 
-terra initField (ctx : &lContext, key_type : lElementType, val_type : ltype, val_length : size_t)
+terra initField (ctx : &lContext, key_type : lElementType, val_type : lType, val_length : size_t)
 	return runtime.lInitField(ctx, key_type, val_type, val_length)
 end
 
