@@ -25,21 +25,21 @@
 <tr><td> Statement       </td><td>::</td><td> IfStatement | WhileStatement |
                                               RepeatStatement | DoStatement | ForStatement | ExprStatement |
                                               Assignment  | DeclStatement  | InitStatment            </td></tr>
-<tr><td> IfStatement     </td><td>::</td><td> <b>if</b> Expression <b>then</b> Block (<b>elseif</b>"(" 
-	                                         Expression ")" <b>then</b> Block)* (<b>else</b> Block)? 
-	                                         <b>end</b>                                           </td></tr>
-<tr><td> ForStatement   </td><td>::</td><td> GenericFor | NumericFor                                  </td></tr>
-<tr><td> NumericFor     </td><td>::</td><td> <b>for</b> Name = Expression, Expression (, Expression)? <b>do</b>
-                                             Block <b>end</b>                                         </td></tr>
-<tr><td> GenericFor     </td><td>::</td><td> <b>for</b> Name <b>in</b> TableLookup <b>do</b>
-                                             Block <b>end</b>                                         </td></tr>
-<tr><td> WhileStatement  </td><td>::</td><td> <b>while</b> Expression <b>do</b> Block <b>end</b>      </td></tr>
-<tr><td> RepeatStatement </td><td>::</td><td> <b>repeat</b> Block <b> until</b> Expression            </td></tr>
-<tr><td> DoStatement     </td><td>::</td><td> <b>do</b> Block <b>end</b>                              </td></tr>
-<tr><td> ExprStatement   </td><td>::</td><td> Expression                                              </td></tr>
-<tr><td> Assignment      </td><td>::</td><td> LValue = Expression                                     </td></tr>
-<tr><td> DeclStatement   </td><td>::</td><td> <b>var</b> Name                                         </td></tr>
-<tr><td> InitStatement   </td><td>::</td><td> <b>var</b> Name = Expression                              </td></tr>
+<tr><td> IfStatement     </td><td>::</td><td> <b>if</b> Expression <b>then</b> Block (<b>elseif</b> 
+	                                          Expression <b>then</b> Block)* (<b>else</b> Block)? 
+	                                          <b>end</b>                                               </td></tr>
+<tr><td> ForStatement    </td><td>::</td><td> GenericFor | NumericFor                                  </td></tr>
+<tr><td> NumericFor      </td><td>::</td><td> <b>for</b> Name = Expression, Expression (, Expression)? <b>do</b>
+                                              Block <b>end</b>                                         </td></tr>
+<tr><td> GenericFor      </td><td>::</td><td> <b>for</b> Name <b>in</b> Expression <b>do</b>
+                                              Block <b>end</b>                                         </td></tr>
+<tr><td> WhileStatement  </td><td>::</td><td> <b>while</b> Expression <b>do</b> Block <b>end</b>       </td></tr>
+<tr><td> RepeatStatement </td><td>::</td><td> <b>repeat</b> Block <b> until</b> Expression             </td></tr>
+<tr><td> DoStatement     </td><td>::</td><td> <b>do</b> Block <b>end</b>                               </td></tr>
+<tr><td> ExprStatement   </td><td>::</td><td> Expression                                               </td></tr>
+<tr><td> Assignment      </td><td>::</td><td> LValue = Expression                                      </td></tr>
+<tr><td> DeclStatement   </td><td>::</td><td> <b>var</b> Name                                          </td></tr>
+<tr><td> InitStatement   </td><td>::</td><td> <b>var</b> Name = Expression                             </td></tr>
 </table>
 </code>
 
@@ -56,9 +56,9 @@
 <tr><td>UnaryOp  </td><td>::</td><td> Uop Expression           </td></tr>
 
 <tr><td>&nbsp;</td></tr>
-<tr><td>LValue                   </td><td>::</td><td>  FieldIndex | Scalar | TableLookup | Name </td></tr>
+<tr><td>LValue                   </td><td>::</td><td> Call | Scalar | TableLookup | Name        </td></tr>
 <tr><td>TableLookup              </td><td>::</td><td> LValue '.' Name                           </td></tr>
-<tr><td>FieldIndex               </td><td>::</td><td> LValue '(' Name ')'                       </td></tr>
+<tr><td>Call                     </td><td>::</td><td> LValue '(' Name ')'                       </td></tr>
 <tr><td>ScalarRead, ScalarWrite  </td><td>::</td><td> LValue                                    </td></tr>
 
 <tr><td>&nbsp;</td></tr>
@@ -74,23 +74,28 @@
 </code>
 
 
-<h1>Language Syntax</h1>
+<h1>Language Syntax/Semantics</h1>
 
 <h2>LisztKernel</h2>
 <p> The single parameter of the Liszt kernel always refers to an object of topological element type. The type of this object depends on set that the Liszt kernel is mapped over.</p>
-<p>Global variables cannot be declared inside of a Liszt kernel.  Existent global variables can be read or written to.</p>
+<p>Global variables cannot be declared inside of a Liszt kernel, and references to upvalues can be written to only if they are liszt fields or scalars (which we perform phase analysis on to prevent R/W dependencies).</p>
 
 <h2>Global Variables</h2>
-<h3>Fields</h3>
-<p> Fields are always indexed by names referring to objects that are Liszt topological elements -- attempting to index by any other object type is an error.</p>
-<p>FieldWrite refers to an associative reduction (e.g. <code>field(topo) = field(topo) + 3</code>) Currently, FieldWrites are detected through checking the tree of the assigned expression, since terra does not yet parse associative operators like <code>+=</code>. FieldSave refers to a direct write to the field value (e.g. <code>field(topo) = 3</code>)
 
 <h3> Phasing </h3>
+	<p> Global variables appearing in a liszt kernel can only be used in one of three ways:
 <ul>
-  <li><b>Read</b>  - we can read the value of the variable.</li>
-  <li><b>Save</b>  - we can make assignments to the value of the variable.</li>
-  <li><b>Write</b> - we can perform associative operations on the value of the variable (e.g. <code> sum += tmp </code>) </li>
+  <li><b>Read</b> state - we can read the value of the variable.</li>
+  <li><b>Save</b> state - we can make assignments to the value of the variable.</li>
+  <li><b>Write</b> state - we can perform associative operations on the value of the variable (e.g. <code> sum += tmp </code>) </li>
 </ul>
+
+
+<h3>Fields</h3>
+<p> Fields are always indexed by Names referring to objects that are Liszt topological elements -- attempting to index by any other object type is always an error.</p>
+
+
+<p>A field write is an associative reduction (e.g. <code>field(topo) = field(topo) + 3</code>) Currently, field writes are detected through checking the tree of the assigned expression, since terra does not yet parse associative operators like <code>+=</code>. The field must be used in the left-most side of the top-level binary expression in an Assignment statement in order for the compiler to recognize a reduction.  A field save occurs when the kernel contains a direct write to the field value (e.g. <code>field(topo) = 3</code>)
 
 
 
