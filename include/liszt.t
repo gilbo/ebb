@@ -3,7 +3,25 @@ terralib.require('runtime/liszt')
 local runtime = runtime
 _G.runtime    = nil
 
-local LisztObj = { }
+local semant = require 'semant'
+_G.semant    = nil
+
+--[[ String literals ]]--
+local NOTYPE   = semant._NOTYPE_STR
+local TABLE    = semant._TABLE_STR
+local INT      = semant._INT_STR
+local FLOAT    = semant._FLOAT_STR
+local BOOL     = semant._BOOL_STR
+local VECTOR   = semant._VECTOR_STR
+local VERTEX   = semant._VERTEX_STR
+local EDGE     = semant._EDGE_STR
+local FACE     = semant._FACE_STR
+local CELL     = semant._CELL_STR
+local MESH     = semant._MESH_STR
+local FIELD    = semant._FIELD_STR
+local SCALAR   = semant._SCALAR_STR
+local TOPOSET  = semant._TOPOSET_STR
+local TOPOELEM = semant._ELEM_STR
 
 --[[
 -- data_type represents type of elements for vectors/ sets/ fields.
@@ -14,25 +32,6 @@ local LisztObj = { }
 -- face/ cell. ObjType contains strings for types ("int" and "float") and not
 -- the actual type (int or float), since the type could be a vector too.
 --]]
-
---[[ String literals ]]--
-local NOTYPE   = 'notype'
-local TABLE    = 'table'
-local INT      = 'int'
-local FLOAT    = 'float'
-local BOOL     = 'bool'
-local VECTOR   = 'vector'
-local VERTEX   = 'vertex'
-local EDGE     = 'edge'
-local FACE     = 'face'
-local CELL     = 'cell'
-local MESH     = 'mesh'
-local FIELD    = 'field'
-local SCALAR   = 'scalar'
-local TOPOSET  = 'toposet'
-local TOPOELEM = 'topoelem'
-
--- need to use this for fields to store the type of field, due to nested types
 local ObjType = 
 {
     -- type of the object
@@ -47,6 +46,8 @@ function ObjType:new()
 	return setmetatable({}, {__index = self})
 end
 
+local LisztObj = { }
+
 --[[ Liszt Types ]]--
 local TopoElem = setmetatable({kind = TOPOELEM}, { __index = LisztObj, __metatable = "TopoElem" })
 local TopoSet  = setmetatable({kind = TOPOSET, topo_type = NOTYPE },                     { __index = LisztObj, __metatable = "TopoSet"})
@@ -59,9 +60,8 @@ Face   = setmetatable({kind = FACE},   { __index = TopoElem, __metatable = "Face
 Edge   = setmetatable({kind = EDGE},   { __index = TopoElem, __metatable = "Edge"})
 Vertex = setmetatable({kind = VERTEX}, { __index = TopoElem, __metatable = "Vertex"})
 
-local DataType   = setmetatable({kind = "datatype"}, { __index=LisztObj, __metatable="DataType"})
-Vector           = setmetatable({kind = VECTOR, data_type = NOTYPE, size = 0},   { __index=DataType})
-local VectorType = setmetatable({kind = VECTOR, data_type = NOTYPE, size = 0}, { __index=DataType})
+Vector           = setmetatable({kind = VECTOR, data_type = NOTYPE, size = 0}, { __index=LisztObj})
+local VectorType = setmetatable({kind = VECTOR, data_type = NOTYPE, size = 0}, { __index=LisztObj})
 Vector.__index     = Vector
 VectorType.__index = VectorType
 
@@ -85,7 +85,7 @@ local vectorTypeToStr = {
 function Field:set_topo_type(topo_type)
    self.topo_type = elemTypeToStr[topo_type]
    if not self.topo_type then
-	   error("Field over unrecognized topological type.", 3)
+	   error("Field over unrecognized topological type", 3)
    end
 end
 
@@ -99,11 +99,11 @@ function Field:set_data_type(data_type)
 		if vectorTypeToStr[data_type.data_type] then
 			self.data_type.elem_type = vectorTypeToStr[data_type.data_type]
 		else
-			error("Field over unsupported data type.", 3)
+			error("Field over unsupported data type", 3)
 		end
 	   self.data_type.size = data_type.size
    else
-	   error("Field over unsupported data type.", 3)
+	   error("Field over unsupported data type", 3)
    end
 end
 
@@ -170,10 +170,10 @@ end
 -------------------------------------------------
 function Vector.type (data_type, size)
    if not lKeyTypeMap[data_type] then
-      error("First argument to Vector.type() should be a Liszt-supported terra data type!", 2)
+      error("First argument to Vector.type() should be a Liszt-supported terra data type", 2)
    end
    if not isPositiveInteger(size) then
-      error("Second argument to Vector.type() should be a non-negative integer!", 2)
+      error("Second argument to Vector.type() should be a non-negative integer", 2)
    end
 
    return setmetatable({size = size, data_type = data_type}, VectorType)
@@ -182,10 +182,10 @@ end
 -- second argument specifies either the length of the vector, or the contents
 function Vector.new(data_type, arg) 
    if not lKeyTypeMap[data_type] then
-      error("First argument to Vector.new() should be a Liszt-supported terra data type!", 2)
+      error("First argument to Vector.new() should be a Liszt-supported terra data type", 2)
    end
    if type(arg) ~= 'table' and isPositiveInteger(arg) then
-      error("Second argument to Vector.new() should be a list of numbers or a non-negative integer!", 2)
+      error("Second argument to Vector.new() should be a list of numbers or a non-negative integer", 2)
    end
 
    local init, size
@@ -204,11 +204,11 @@ function Vector.new(data_type, arg)
       -- Check type of each entry in initialization vector
       if data_type == float or data_type == int then
          if type(init[i]) ~= 'number' 
-            then error("Cannot initialize vector with non-numeric type!", 2) 
+            then error("Cannot initialize vector with non-numeric type", 2) 
          end
       else
          if (type(init[i]) ~= 'boolean') then 
-            error("Cannot initialize vector with non-boolean type!", 2)
+            error("Cannot initialize vector with non-boolean type", 2)
          end
       end
 
@@ -230,9 +230,9 @@ function Vector.add (v1, v2)
    if not Vector.isVector(v2) then
       error("Cannot add non-vector type " .. type(v2) .. "to vector")
    elseif v1.data_type ~= v2.data_type then
-      error("Cannot add vectors of differing types!", 2)
+      error("Cannot add vectors of differing types", 2)
    elseif v1.size ~= v2.size then
-      error("Cannot add vectors of differing lengths!", 2)
+      error("Cannot add vectors of differing lengths", 2)
    end
 end
 
@@ -330,7 +330,7 @@ end
 function Mesh:scalar (data_type, init)
    local scalar_type, scalar_length = runtimeDataType(data_type)
    if not scalar_type then
-      error("First argument to mesh:scalar must be a Liszt-supported data type!", 2)
+      error("First argument to mesh:scalar must be a Liszt-supported data type", 2)
    end
 
    local lscalar  = runtime.initScalar(self.__ctx, scalar_type, scalar_length)
