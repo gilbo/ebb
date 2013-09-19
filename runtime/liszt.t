@@ -4,7 +4,7 @@ module('runtime', package.seeall)
 
 local runtime = terralib.includec("runtime/single/liszt_runtime.h")
 
-function link_runtime ()
+local function link_runtime ()
 	local osf = assert(io.popen('uname', 'r'))
 	local osname = assert(osf:read('*l'))
 	osf:close()
@@ -100,10 +100,10 @@ lkGetActiveElement = runtime.lkGetActiveElement
 lkScalarWrite      = runtime.lkScalarWrite
 
 -- parameter types
-lType        = uint
-lElementType = uint
-size_t       = uint
-lReduction   = uint
+local lType        = uint
+local lElementType = uint
+local size_t       = uint
+local lReduction   = uint
 
 terra loadMesh (filename : rawstring) : { &lContext }
 	var ctx : &lContext = runtime.lLoadContext(filename)

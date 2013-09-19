@@ -5,6 +5,13 @@ terralib.require "include/liszt"
 terralib.require "compiler/codegen"
 terralib.require "runtime/liszt"
 
+-- Keep imports from polluting global scope of any file that includes this module
+local runtime = runtime
+local codegen = codegen
+_G.runtime = nil
+_G.codegen = nil
+_G.semant  = nil
+
 Kernel = { }
 Kernel.__index = Kernel
 

@@ -1,8 +1,11 @@
-package.path = package.path .. ";./compiler/?.lua;./compiler/?.t;./?.lua"
-
-local parser  = require "parser"
+local parser  = require "compiler/parser"
 terralib.require "compiler/kernel"
-terralib.require "include/liszt"
+terralib.require "include/liszt" -- included for liszt programmer
+
+-- Keep kernel out of global scope for liszt programmer
+local kernel = kernel
+_G.kernel    = nil
+
 
 local Parser = terralib.require('terra/tests/lib/parsing')
 

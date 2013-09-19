@@ -7,8 +7,8 @@ field = mesh:field(Face, float, 0.0)
 local a = global(int, 43)
 
 function main ()
-	local com = mesh:scalar(Vector.type(float, 3))--Vector.new(float, {0.0, 0.0, 0.0})
-	com = {0, 0, 0}
+	local com = mesh:scalar(Vector.type(float, 3), {0, 0, 0})--Vector.new(float, {0.0, 0.0, 0.0})
+	-- com = {0, 0, 0}
 
 	local upval = 5
 

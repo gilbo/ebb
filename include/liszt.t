@@ -1,13 +1,16 @@
 terralib.require('runtime/liszt')
-local runtime = package.loaded.runtime
+-- Keep runtime module private
+local runtime = runtime
+_G.runtime    = nil
+
 local LisztObj = { }
 
 --[[
 -- data_type represents type of elements for vectors/ sets/ fields.
--- topo_type represents the type of the topolgical element for a field over
--- some topological set.
--- data_type is int/ float for vectors, vertex/ edge/ face/ cell for
--- topological sets, and ObjType for fields. topo_type is always vertex/ edge/
+-- topo_type represents the type of the topological element type covered by
+-- a field or a toposet.
+-- data_type is int/float/bool for vectors, can be a vector for fields
+-- topo_type is always vertex/ edge/
 -- face/ cell. ObjType contains strings for types ("int" and "float") and not
 -- the actual type (int or float), since the type could be a vector too.
 --]]
@@ -122,6 +125,12 @@ end
 
 function Scalar:lkScalar()
    return self.lkscalar
+end
+
+function Scalar:setTo(val)
+end
+
+function Scalar:value()
 end
 
 
@@ -318,7 +327,7 @@ function Mesh:fieldWithLabel (topo_type, data_type, label)
    return field
 end
 
-function Mesh:scalar (data_type)
+function Mesh:scalar (data_type, init)
    local scalar_type, scalar_length = runtimeDataType(data_type)
    if not scalar_type then
       error("First argument to mesh:scalar must be a Liszt-supported data type!", 2)
