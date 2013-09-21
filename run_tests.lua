@@ -70,7 +70,7 @@ local function printtests(nm,lst)
         print()
     end
 end
-printtests("passing tests",passed)
+--printtests("passing tests",passed)
 printtests("FAILING tests",failed)
 printtests("disabled tests",disabled)
 
