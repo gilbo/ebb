@@ -11,6 +11,13 @@ function test.neq(a,b)
 	end
 end
 
+function test.aeq(a, b)
+	if #a ~= #b then error("Arrays are not of equal length", 2) end
+	for i = 1, #a do
+		if a[i] ~= b[i] then error("Element " .. tostring(i) .. " of arrays do not match (" .. tostring(a[i]) .. ", " .. tostring(b[i]) .. ")", 2) end
+	end
+end
+
 function test.meq(a,...)
 	local lst = {...}
 	if #lst ~= #a then

@@ -14,6 +14,7 @@ field4 = mesh:field(Cell, bool, 0.0)
 field5 = mesh:field(Vertex, Vector.type(float, 4), {0.0, 0.0, 0.0, 0.0})
 
 local a = global(int, 6)
+local b = Vector.new(float, {1, 3, 4, 5})
 
 local reduce1 = liszt_kernel (f)
 	field(f) = field(f) - 3 + 243.3 * a
@@ -35,9 +36,13 @@ local write1 = liszt_kernel(f)
 	field3(f) = 0.0
 end
 
+local write2 = liszt_kernel (f)
+	field5(f) = b
+end
+
 mesh.faces:map(reduce1)
---reduce1:compile()
---reduce2:compile()
---reduce3:compile()
---read1:compile()
---write1:compile()
+mesh.faces:map(reduce2)
+mesh.faces:map(reduce3)
+mesh.faces:map(read1)
+mesh.faces:map(write1)
+mesh.faces:map(write2)

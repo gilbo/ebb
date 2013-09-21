@@ -264,18 +264,7 @@ end
 
 function ast.Name:codegen_lhs (env)
 	local name = self.children[1]
-
-	-- if declared in local scope, then we should have a 
-	-- symbol in the environment table
-	if self.node_type.scope == semant._LISZT_STR then
-		return `[env:combinedenv()[name]]
-	else
-		if self.node_type.objtype == semant._VECTOR then
-			return `[self.children[1] .. '.__data']
-		else
-			return `[self.children[1]]
-		end
-	end
+	return `[env:combinedenv()[name]]
 end
 
 -- Name:codegen only has to worry about returning r-values,
@@ -285,20 +274,19 @@ end
 function ast.Name:codegen (env)
 	local str = self.children[1]
 	local val = env:combinedenv()[str]
-	if (type(val) == 'number' or type(val) == 'boolean') then
-		return `[val]
-	elseif (val.isglobal) then
+	if type(val) == 'table' and (val.isglobal) then
 		local terra get_global () return val end
 		-- store this global in the environment table so we won't have to look it up again
 		env:luaenv()[str] = get_global()
 		val = env:luaenv()[str]
 		return `val
-	elseif Vector.isVector(val) then
-		return `val.__data
-	-- symbols
-	else
-		return `[val]
+	-- if we've encountered a Liszt vector, extract a terra vector and store it in the local environment
+
+	elseif type(val) == 'table' and Vector.isVector(val) then
+		return val:__codegen()
 	end
+
+	return `[val]
 end
 
 function ast.TableLookup:codegen (env)

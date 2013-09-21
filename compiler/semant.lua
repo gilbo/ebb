@@ -2,18 +2,12 @@ module(... or 'semant', package.seeall)
 
 ast = require("ast")
 
-------------------------------------------------------------------------------
---[[NOTES: Variables may be introduced in the lua code, or in liszt code
---through initialization/ declaration statements/ in for loops.
---]]
-------------------------------------------------------------------------------
-
---[[ Declare types
---]]
+--[[ Keep track of variable scope ]]
 _NOSCOPE_STR = 'noscope'
 _LUA_STR     = 'lua'
 _LISZT_STR   = 'liszt'
 
+--[[ Declare types --]]
 _NOTYPE_STR  = 'notype'
 _INT_STR     = 'int'
 _FLOAT_STR   = 'float'
@@ -28,12 +22,17 @@ _EDGE_STR    = 'edge'
 _VERTEX_STR  = 'vertex'
 _TOPOSET_STR = 'toposet'
 _FIELD_STR   = 'field'
-_SCALAR_STR  = 'scalar'
 _ELEM_STR    = 'element'
 _MDATA_STR   = 'mdata'
 
-_FIELD_WRITE  = 'WRITE'
-_FIELD_REDUCE = 'REDUCE'
+-- luaval.kind test strings for field/scalar references
+_FIELDINDEX_STR = 'fieldindex'
+_SCALAR_STR     = 'scalar'
+
+-- Phases used in assignment statements
+_FIELD_WRITE   = 'FIELD_WRITE'
+_FIELD_REDUCE  = 'FIELD_REDUCE'
+_SCALAR_REDUCE = 'SCALAR_REDUCE'
 
 -- root variable type
 _NOTYPE = 
@@ -140,12 +139,6 @@ _FIELD  =
 	parent   = {},
 	children = {}
 }
--- scalar type
-_SCALAR = {
-	name     = _SCALAR_STR,
-	parent   = {},
-	children = {}
-}
 -- the parent of any obj type that can appear in liszt expressions (bools, numbers, vectors)
 _MDATA  =
 {
@@ -175,7 +168,7 @@ local strToElemType = {
 local strToVectorType = {
 	[_INT_STR]   = _INT,
 	[_FLOAT_STR] = _FLOAT,
-	--[_BOOL_STR]  = _BOOL,
+	[_BOOL_STR]  = _BOOL,
 }
 
 local luaToVectorType = {
@@ -204,7 +197,7 @@ local ObjType =
     -- element (fields, boundary sets, toposets)
     topotype = _NOTYPE,
 
-	-- scope (liszt_str is a kernel temporary)
+	-- scope (liszt_str implies a kernel temporary)
 	scope = _LISZT_STR,
 
 	-- used for vectors
@@ -244,13 +237,11 @@ _TR.children =
     _ELEM,
     _TOPOSET,
     _FIELD,
-    _SCALAR
 }
 
 _MESH.parent    = _NOTYPE
 _TOPOSET.parent = _NOTYPE
 _FIELD.parent   = _NOTYPE
-_SCALAR.parent  = _NOTYPE
 _ELEM.parent    = _NOTYPE
 _MDATA.parent   = _NOTYPE
 
@@ -273,7 +264,7 @@ _VERTEX.parent  = _ELEM
 ------------------------------------------------------------------------------
 -- Stand-in for the luaval of an indexed global field
 ------------------------------------------------------------------------------
-local FieldIndex = { kind = 'fieldindex'}
+local FieldIndex = { kind = _FIELDINDEX_STR}
 FieldIndex.__index = FieldIndex
 
 function FieldIndex.New(field, objtype)
@@ -435,7 +426,7 @@ function check(luaenv, kernel_ast)
 		local err_msg = "Global assignments only valid for indexed fields or scalars (did you mean to use a scalar here?)"
 		-- if the lhs is from the global scope, then it must be an indexed field or a scalar:
 		if lhsobj.scope == _LUA_STR then
-			if type(lhsobj.luaval) ~= _TABLE_STR or not (lhsobj.luaval.kind == 'fieldindex' or lhsobj.luaval.kind == 'scalar') then
+			if type(lhsobj.luaval) ~= _TABLE_STR or not (lhsobj.luaval.kind == _FIELDINDEX_STR or lhsobj.luaval.kind == _SCALAR_STR) then
 				diag:reporterror(self.children[1], err_msg)
 				return nil
 			end
@@ -462,8 +453,8 @@ function check(luaenv, kernel_ast)
 		-- Determine if this assignment is a field write or a reduction (since this requires special codegen)
 		local lval = self.children[1]
 		local rexp = self.children[2]
-		if lval.node_type.luaval and lval.node_type.luaval.kind == 'fieldindex' then
-			if rexp.kind ~= 'binop' or rexp.children[1].node_type.luaval.kind ~= 'fieldindex' then
+		if lval.node_type.luaval and lval.node_type.luaval.kind == _FIELDINDEX_STR then
+			if rexp.kind ~= 'binop' or rexp.children[1].node_type.luaval.kind ~= _FIELDINDEX_STR then
 				self.fieldop = _FIELD_WRITE
 			else
 				local lfield = lval.children[1].node_type.luaval
@@ -661,8 +652,9 @@ function check(luaenv, kernel_ast)
 
     	left:refactorReduction()
 
-    	-- Make sure left grandchild is a field read
-    	if not left.children[1].kind == 'call' then return end
+    	local luav = left.children[1].node_type.luaval
+    	-- Make sure left grandchild is a field or scalar index
+    	if not type(luav) == _TABLE_STR and (luav.kind == 'fieldindex' or luav.kind == 'scalar') then return end
 
     	local rop   = self.children[2]
     	local lop   = left.children[2]

@@ -49,7 +49,7 @@ end
 local LisztObj = { }
 
 --[[ Liszt Types ]]--
-local TopoElem = setmetatable({kind = TOPOELEM}, { __index = LisztObj, __metatable = "TopoElem" })
+local TopoElem = setmetatable({kind = TOPOELEM},                                         { __index = LisztObj, __metatable = "TopoElem" })
 local TopoSet  = setmetatable({kind = TOPOSET, topo_type = NOTYPE },                     { __index = LisztObj, __metatable = "TopoSet"})
 local Field    = setmetatable({kind = FIELD,   topo_type = NOTYPE, data_type = ObjType}, { __index = LisztObj, __metatable = "Field" })
 local Scalar   = setmetatable({kind = SCALAR,                      data_type = NOTYPE},  { __index = LisztObj, __metatable = "Scalar"})
@@ -152,6 +152,43 @@ local lKeyTypeMap = {
    [bool]  = runtime.L_BOOL,
 }
 
+local function isValidVectorType (tp)
+   return lKeyTypeMap[tp] ~= nil
+end
+
+
+local function isValidDataType (tp)
+   if isValidVectorType(tp) then return true end
+   if Vector.isVectorType(tp) and isValidVectorType(tp.data_type) then return true end
+   return false
+end
+
+-- Can the instance be converted into a meaningful Liszt data type?
+local function conformsToDataType (inst, tp)
+   if tp == int or tp == float or tp == double then return type(inst) == 'number'
+   elseif tp == bool then return type(inst) == 'boolean'
+   elseif Vector.isVectorType(tp) then
+      -- behavior here is that any numeric vector can be initialized by another numeric
+      -- vector, but bool vectors can only be initialized by bool vectors
+      if Vector.isVector(inst) then return type(inst.data_type) == type(tp.data_type) and inst.size == tp.size end
+
+      -- we also accept arrays as instances of vectors
+      if type(inst) == 'table' then
+         -- make sure array is of the correct length
+         if #inst ~= tp.size then return false end
+         -- make sure each element conforms to the vector's data type
+         for i = 1, #inst do
+            if not conformsToDataType(inst[i], tp.data_type) then return false end
+         end
+         return true
+      end
+   end
+   return false
+end
+
+-- assuming data-type refers to a valid liszt data type, 
+-- return the liszt lType and size of the type, both of which
+-- are needed as arguments for field/scalar runtime functions
 local function runtimeDataType (data_type)
    if Vector.isVectorType(data_type) then
       return lKeyTypeMap[data_type.data_type], data_type.size
@@ -160,6 +197,7 @@ local function runtimeDataType (data_type)
    end
 end
 
+-- used for verifying size_t-type arguments to constructor fns, etc.
 local function isPositiveInteger (elem)
    return type(elem) == 'number' and elem > 0 and elem % 1 == 0
 end
@@ -169,7 +207,7 @@ end
 --[[ Vector methods                          ]]--
 -------------------------------------------------
 function Vector.type (data_type, size)
-   if not lKeyTypeMap[data_type] then
+   if not isValidVectorType(data_type) then
       error("First argument to Vector.type() should be a Liszt-supported terra data type", 2)
    end
    if not isPositiveInteger(size) then
@@ -179,43 +217,74 @@ function Vector.type (data_type, size)
    return setmetatable({size = size, data_type = data_type}, VectorType)
 end
 
--- second argument specifies either the length of the vector, or the contents
-function Vector.new(data_type, arg) 
-   if not lKeyTypeMap[data_type] then
+function Vector.new(data_type, init) 
+   if not isValidVectorType(data_type) then
       error("First argument to Vector.new() should be a Liszt-supported terra data type", 2)
    end
-   if type(arg) ~= 'table' and isPositiveInteger(arg) then
-      error("Second argument to Vector.new() should be a list of numbers or a non-negative integer", 2)
+
+   -- Vectors can be initialized with table literals (e.g. "{1, 2, 3}") or other Liszt Vectors
+   if not conformsToDataType(init, Vector.type(data_type, #init)) then
+      error("Second argument to Vector.new() should be a Vector or an array", 2)
    end
 
-   local init, size
-   if type(arg) == 'table' then
-      size = #arg
-      init = arg
-   else
-      size = arg
-      init = {}
-      for i = 1, size do init[i] = 0 end
+   local data = {}
+   if Vector.isVector(init) then init = init.data end
+   for i = 1, #init do
+      data[i] = data_type == int and init[i] % 1 or init[i]
    end
 
-   local v = global(vector(data_type, size))
+   return setmetatable({size = #init, data_type = data_type, data = data}, Vector)
+end
 
-   for i = 1, size do
-      -- Check type of each entry in initialization vector
-      if data_type == float or data_type == int then
-         if type(init[i]) ~= 'number' 
-            then error("Cannot initialize vector with non-numeric type", 2) 
-         end
-      else
-         if (type(init[i]) ~= 'boolean') then 
-            error("Cannot initialize vector with non-boolean type", 2)
-         end
+function Vector:__codegen ()
+   if self.size == 3 then
+      local v1, v2, v3 = self.data[1], self.data[2], self.data[3]
+      local s = symbol()
+
+      local q = quote
+         var [s] = vectorof(self.data_type, v1, v2, v3)
+      in
+         [s]
       end
+      return q
+   elseif self.size == 4 then
+      local v1, v2, v3, v4 = self.data[1], self.data[2], self.data[3], self.data[4]
+      local s = symbol()
 
-      v[i-1] = init[i]
+      local q = quote
+         var [s] = vectorof(self.data_type, v1, v2, v3, v4)
+      in
+         [s]
+      end
+      return q
+   elseif self.size == 5 then
+      local v1, v2, v3, v4, v5 = self.data[1], self.data[2], self.data[3], self.data[4], self.data[5]
+      local s = symbol()
+
+      local q = quote
+         var [s] = vectorof(self.data_type, v1, v2, v3, v4, v5)
+      in
+         [s]
+      end
+      return q
    end
 
-   return setmetatable({size = size, data_type = data_type, __data = v, initialized= #init > 0 }, Vector)
+   local s = symbol()
+   local t = symbol()
+   local q = quote
+      var [s] : vector(self.data_type, self.size)
+      var [t] = [&self.data_type](&s)
+   end
+
+   for i = 1, self.size do
+      local val = self.data[i]
+      q = quote 
+         [q] 
+         @[t] = [val]
+         t = t + 1
+      end
+   end
+   return quote [q] in [s] end
 end
 
 function Vector.isVector (obj)
@@ -226,14 +295,105 @@ function Vector.isVectorType (obj)
    return getmetatable(obj) == VectorType
 end
 
-function Vector.add (v1, v2)
-   if not Vector.isVector(v2) then
-      error("Cannot add non-vector type " .. type(v2) .. "to vector")
-   elseif v1.data_type ~= v2.data_type then
-      error("Cannot add vectors of differing types", 2)
+function new_type (t1, t2)
+   if t1 == double or  t2 == double then return double end
+   if t1 == float  or  t2 == float  then return float  end
+   return int
+end
+
+function Vector.__add (v1, v2)
+   if not Vector.isVector(v1) or not Vector.isVector(v2) then
+      error("Cannot add non-vector type to vector", 2)
    elseif v1.size ~= v2.size then
       error("Cannot add vectors of differing lengths", 2)
+   elseif v1.data_type == bool or v2.data_type == bool then
+      error("Cannot add boolean vectors", 2)
    end
+
+   local data = { }
+   local tp = new_type(v1.data_type, v2.data_type)
+
+   for i = 1, #v1.data do
+      data[i] = v1.data[i] + v2.data[i]
+   end
+   return Vector.new(tp, data)
+end
+
+function Vector.__sub (v1, v2)
+   if not Vector.isVector(v1) then
+      error("Cannot subtract vector from non-vector type", 2)
+   elseif not Vector.isVector(v2) then
+      error("Cannot subtract non-vector type from vector", 2)
+   elseif v1.size ~= v2.size then
+      error("Cannot subtract vectors of differing lengths", 2)
+   elseif v1.data_type == bool or v2.data_type == bool then
+      error("Cannot subtract boolean vectors", 2)
+   end
+
+   local data = { }
+   local tp = new_type(v1.data_type, v2.data_type)
+
+   for i = 1, #v1.data do
+      data[i] = v1.data[i] - v2.data[i]
+   end
+   return Vector.new(tp, data)
+end
+
+function Vector.__mul (a1, a2)
+   if Vector.isVector(a1) and Vector.isVector(a2) then
+      error("Cannot multiply two vectors", 2)
+   end
+   local v, a
+   if Vector.isVector(a1) then v, a = a1, a2 else v, a = a2, a1 end
+
+   if     v.type == bool      then error("Cannot multiply a non-numeric vector", 2)
+   elseif type(a) ~= 'number' then error("Cannot multiply a vector by a non-numeric type", 2)
+   end
+
+   local data = {}
+   for i = 1, #v.data do
+      data[i] = v.data[i] * a
+   end
+   return Vector.new(float, data)
+end
+
+function Vector.__div (v, a)
+   if     Vector.isVector(a)  then error("Cannot divide by a vector", 2)
+   elseif v.data_type == bool then error("Cannot divide a non-numeric vector", 2)
+   elseif type(a) ~= 'number' then error("Cannot divide a vector by a non-numeric type", 2)
+   end
+
+   local data = {}
+   for i = 1, #v.data do
+      data[i] = v.data[i] / a
+   end
+   return Vector.new(float, data)
+end
+
+function Vector.__mod (v1, a2)
+   if Vector.isVector(a2) then error("Cannot modulus by a vector", 2) end
+   local data = {}
+   for i = 1, v1.size do
+      data[i] = v1.data[i] % a2
+   end
+   local tp = new_type(v1.data_type, float)
+   return Vector.new(tp, data)
+end
+
+function Vector.__unm (v1)
+   if v1.data_type == bool then error("Cannot negate a non-numeric vector", 2) end
+   local data = {}
+   for i = 1, #v1.data do
+      data[i] = -v1.data[i]
+   end
+end
+
+function Vector.__eq (v1, v2)
+   if v1.size ~= v2.size then return false end
+   for i = 1, v1.size do
+      if v1.data[i] ~= v2.data[i] then return false end
+   end
+   return true
 end
 
 
@@ -272,7 +432,6 @@ function TopoSet:__init_symbol (ctx_symb, set_symb)
    local setInitFunction = topoToInitFn[self.__type]
    return quote setInitFunction([ctx_symb], [set_symb]) end
 end
-
 
 local topoToLiszt = {
    [Cell]   = runtime.L_CELL,
@@ -328,22 +487,21 @@ function Mesh:fieldWithLabel (topo_type, data_type, label)
 end
 
 function Mesh:scalar (data_type, init)
-   local scalar_type, scalar_length = runtimeDataType(data_type)
-   if not scalar_type then
+   if not isValidDataType(data_type) then
       error("First argument to mesh:scalar must be a Liszt-supported data type", 2)
    end
-
+   if not conformsToDataType(init, data_type) then
+      error("Second argument to mesh:scalar must be an instance of the specified data type", 2)
+   end
+   local scalar_type, scalar_length = runtimeDataType(data_type)
+   
    local lscalar  = runtime.initScalar(self.__ctx, scalar_type, scalar_length)
    local lkscalar = runtime.getlkScalar(lscalar)
    return setmetatable({ lscalar = lscalar, lkscalar = lkscalar }, {__index = Scalar})
 end
 
-function Mesh.new () 
-   return setmetatable({ }, { __index = Mesh } )
-end
-
 LoadMesh = function (filename)
-   local mesh    = Mesh.new()
+   local mesh    = setmetatable({}, {__index=Mesh})
    mesh.__ctx    = runtime.loadMesh(filename)
    mesh.cells    = TopoSet.new(mesh, Cell)
    mesh.faces    = TopoSet.new(mesh, Face)

@@ -7,7 +7,7 @@ import "compiler/liszt"
 mesh = LoadMesh("examples/mesh.lmesh")
 f1   = mesh:field(Cell, float, 0)
 f2   = mesh:field(Vertex, Vector.type(float, 3), 0)
-s1   = mesh:scalar(int)
+s1   = mesh:scalar(int, 0)
 
 -- Global lua var
 checkthis1 = 1
