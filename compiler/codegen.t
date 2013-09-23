@@ -163,6 +163,14 @@ local function objTypeToLiszt (obj)
 	end
 end
 
+local function objTypeToTerra (obj)
+	if obj.size == 1 then
+		return terraTypeMap[obj.objtype]
+	else
+		return vector(terraTypeMap[obj.elemtype], obj.size)
+	end
+end
+
 local elemTypeMap = {
 	[semant._VERTEX] = runtime.L_VERTEX,
 	[semant._CELL]   = runtime.L_CELL,
@@ -222,6 +230,17 @@ function ast.Assignment:codegen (env)
 			var tmp = [rhs]
 			runtime.lkFieldWrite([field.lkfield], [topo], [phase], element_type, element_length, val_offset, val_length, &tmp)
 		end
+	elseif self.fieldop == semant._SCALAR_REDUCE then
+					-- Binop         rhs Exp
+		local rhs = self.children[2].children[3]:codegen(env)
+		local lsc = self.children[1].node_type.luaval
+		local phase = getPhase(self.children[2])
+		local el_type, el_len, val_offset, val_len = objTypeToLiszt(self.children[1].node_type)
+		return quote
+			var tmp = [rhs]
+			runtime.lkScalarWrite([env.context], [lsc.__lkscalar], [phase], [el_type], [el_len], [val_offset], [val_len], &tmp)
+		end
+
 	else
 		local lhs = self.children[1]:codegen_lhs(env)
 		local rhs = self.children[2]:codegen(env)
@@ -237,12 +256,7 @@ function ast.Call:codegen (env)
 	local topo  = self.children[2].children[1]:codegen(env) -- Should return an lkElement
 	local read  = symbol()
 
-	local typ
-	if self.node_type.size == 1 then
-		typ = terraTypeMap[self.node_type.objtype]
-	else
-		typ = vector(terraTypeMap[self.node_type.objtype], self.node_type.size)
-	end
+	local typ = objTypeToTerra(self.node_type)
 
 	local el_type, el_len, val_off, val_len = objTypeToLiszt(self.node_type)
 
@@ -252,7 +266,6 @@ function ast.Call:codegen (env)
 		in
 		[read]
 	end
-
 end
 
 function ast.InitStatement:codegen (env)
@@ -267,11 +280,30 @@ function ast.Name:codegen_lhs (env)
 	return `[env:combinedenv()[name]]
 end
 
+
+local function codegen_scalar(node, env)
+	local read = symbol()
+	local el_type, el_len, val_off, val_len = objTypeToLiszt(node.node_type)
+	print("el_type: " .. tostring(el_type))
+	local lks = node.node_type.luaval.__lkscalar
+	local typ = objTypeToTerra(node.node_type)
+
+	return quote
+		var [read] : typ
+		runtime.lkScalarRead([env.context], [lks], el_type, el_len, val_off, val_len, &[read])
+		in
+		[read]
+	end
+end
 -- Name:codegen only has to worry about returning r-values,
 -- so it can just look stuff up in the environment and return
 -- it, since all variables in the liszt scope will be
 -- in the environment as a symbol
 function ast.Name:codegen (env)
+	if type(self.node_type.luaval) == 'table' and self.node_type.luaval.kind == semant._SCALAR_STR then
+		return codegen_scalar(self, env)
+	end
+
 	local str = self.children[1]
 	local val = env:combinedenv()[str]
 	if type(val) == 'table' and (val.isglobal) then
@@ -290,7 +322,11 @@ function ast.Name:codegen (env)
 end
 
 function ast.TableLookup:codegen (env)
-	return `[self.node_type.luaval]
+	if type(self.node_type.luaval) == 'table' and self.node_type.luaval.kind == semant._SCALAR_STR then
+		return codegen_scalar(self, env)
+	else
+		return `[self.node_type.luaval]
+	end
 end
 
 function ast.Number:codegen (env)
@@ -346,7 +382,7 @@ function ast.GenericFor:codegen (env)
 	local code = quote
 		var [varsym] : runtime.lkElement
 		if (runtime.lkGetActiveElement(&[ctx], [varsym]) > 0) then
-			[self.chidren]
+			-- run block!
 		end
 	end
 

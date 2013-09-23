@@ -173,7 +173,8 @@ local strToVectorType = {
 
 local luaToVectorType = {
 	[int]   = _INT,
-	[float] = _FLOAT
+	[float] = _FLOAT,
+	[bool]  = _BOOL,
 }
 
 -- integral data types of liszt:
@@ -460,6 +461,20 @@ function check(luaenv, kernel_ast)
 				local lfield = lval.children[1].node_type.luaval
 				local rfield = rexp.children[1].children[1].node_type.luaval
 				self.fieldop = (lfield == rfield and rexp:operatorCommutes()) and _FIELD_REDUCE or _FIELD_WRITE
+			end
+		end
+
+		if lval.node_type.luaval and lval.node_type.luaval.kind == _SCALAR_STR then
+			if rexp.kind ~= 'binop' or rexp.children[1].node_type.luaval.kind ~= _SCALAR_STR then
+				diag:reporterror("Scalar variables can only be modified through reductions")
+			else
+				local lsc = lval.node_type.luaval
+				local rsc = rexp.children[1].node_type.luaval
+				if lsc ~= rsc then
+					diag:reporterror("Scalar variables can only be modified through reductions")
+				else
+					self.fieldop = _SCALAR_REDUCE
+				end
 			end
 		end
 
@@ -937,6 +952,24 @@ function check(luaenv, kernel_ast)
 					return true
 				else
 					return false
+				end
+
+			-- scalars
+			elseif luav.kind == _SCALAR_STR then
+				if Vector.isVectorType(luav.data_type) then
+					if luaToVectorType[luav.data_type.data_type] then
+						nameobj.objtype  = _VECTOR
+						nameobj.elemtype = luaToVectorType[luav.data_type.data_type]
+						nameobj.size     = luav.data_type.size
+						return true
+					else
+						return false
+					end
+				else
+					nameobj.objtype  = luaToVectorType[luav.data_type]
+					nameobj.elemtype = luaToVectorType[luav.data_type]
+					nameobj.size     = 1
+					return true
 				end
 
 			-- mesh, cell, face, edge, vertex

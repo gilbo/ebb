@@ -18,6 +18,18 @@ function test.aeq(a, b)
 	end
 end
 
+local zero_diff = .0000005
+function test.fuzzy_aeq (a, b)
+	if #a ~= #b then error("Arrays are not of equal length", 2) end
+	for i = 1, #a do
+		local d = a[i] - b[i]
+		if d < 0 then d = -d end
+		if d > zero_diff then error("Element " .. tostring(i) .. " of arrays do not match (" .. tostring(a[i]) .. ", " .. tostring(b[i]) .. ")", 2) end
+	end
+end
+
+
+
 function test.meq(a,...)
 	local lst = {...}
 	if #lst ~= #a then

@@ -117,24 +117,6 @@ end
 
 
 -------------------------------------------------
---[[ Scalar methods                          ]]--
--------------------------------------------------
-function Scalar:lScalar ()
-   return self.lscalar
-end
-
-function Scalar:lkScalar()
-   return self.lkscalar
-end
-
-function Scalar:setTo(val)
-end
-
-function Scalar:value()
-end
-
-
--------------------------------------------------
 --[[ Runtime type conversion                 ]]--
 -------------------------------------------------
 -- topological element types mapped to Liszt types
@@ -200,6 +182,58 @@ end
 -- used for verifying size_t-type arguments to constructor fns, etc.
 local function isPositiveInteger (elem)
    return type(elem) == 'number' and elem > 0 and elem % 1 == 0
+end
+
+local function typeToString(tp)
+   if not Vector.isVectorType(tp) then return tostring(tp) end
+   return "vector(" .. tostring(tp.data_type) .. ", " .. tostring(tp.size) .. ")"
+end
+
+-------------------------------------------------
+--[[ Scalar methods                          ]]--
+-------------------------------------------------
+function Scalar:setTo(val)
+   if not conformsToDataType(val, self.data_type) then
+      error("Cannot convert value of type " .. typeToString(val) .. " to type " .. typeToString(self.data_type), 2)
+   end
+
+   if Vector.isVectorType(self.data_type) then
+      local q = Vector.new(self.data_type.data_type, val):__codegen()
+      local terra writeSc () 
+         var p = [q]
+         runtime.lScalarWrite(self.__ctx,self.__lscalar,runtime.L_ASSIGN,self.__sctype, self.__sclen,0,self.__sclen,&p)
+      end
+      writeSc()
+   else
+      local terra writeSc ()
+         var p : self.data_type = val
+         runtime.lScalarWrite(self.__ctx,self.__lscalar,runtime.L_ASSIGN,self.__sctype,self.__sclen,0,self.__sclen,&p)
+      end
+      writeSc()
+   end
+end
+
+function Scalar:value()
+   if Vector.isVectorType(self.data_type) then
+      local terra getSc (i : uint)
+         var p : self.data_type.data_type
+         runtime.lScalarRead(self.__ctx, self.__lscalar,self.__sctype,self.__sclen,i,1,&p)
+         return p
+      end
+
+      local data = { }
+      for i = 1, self.data_type.size do
+         data[i] = getSc(i-1)
+      end
+      return Vector.new(self.data_type.data_type, data)
+   else
+      local terra getSc ()
+         var p : self.data_type
+         runtime.lScalarRead(self.__ctx, self.__lscalar,self.__sctype,self.__sclen,0,self.__sclen,&p)
+         return p
+      end
+      return getSc()
+   end
 end
 
 
@@ -493,11 +527,21 @@ function Mesh:scalar (data_type, init)
    if not conformsToDataType(init, data_type) then
       error("Second argument to mesh:scalar must be an instance of the specified data type", 2)
    end
-   local scalar_type, scalar_length = runtimeDataType(data_type)
-   
+ 
+   local scalar_type, scalar_length = runtimeDataType(data_type)  
    local lscalar  = runtime.initScalar(self.__ctx, scalar_type, scalar_length)
    local lkscalar = runtime.getlkScalar(lscalar)
-   return setmetatable({ lscalar = lscalar, lkscalar = lkscalar }, {__index = Scalar})
+   local sc = {
+      __lscalar  = lscalar,
+      __lkscalar = lkscalar,
+      data_type  = data_type,
+      __sctype   = scalar_type,
+      __sclen    = scalar_length,
+      __ctx      = mesh.__ctx
+   }
+   setmetatable(sc, {__index=Scalar})
+   sc:setTo(init)
+   return sc
 end
 
 LoadMesh = function (filename)
