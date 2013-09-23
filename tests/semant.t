@@ -1,7 +1,5 @@
-package.path = package.path .. ";./tests/?.lua;?.lua"
-require "test"
-
 import "compiler/liszt"
+require "tests/test"
 
 -- Field and scalar objs
 mesh = LoadMesh("examples/mesh.lmesh")
