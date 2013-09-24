@@ -4,40 +4,48 @@ UNAME = $(shell uname)
 CXX = clang
 
 SINGLE_LIB =
-SINGLE_LIB_DEP_ALL =
-SINGLE_LIB_DEP_B =
-SINGLE_LIB_DEP_C =
+
+SINGLE_DEP =
 SINGLE_SRC =
+
+COMMON_DEP =
+COMMON_SRC =
+
 CXXFLAGS_LIB =
 CXXFLAGS_OBJ =
 CXXFLAGS_INC = -I.. -I.
 
 ifeq ($(UNAME),Darwin)
 	SINGLE_LIB += single/runtime_single.dylib
-	SINGLE_LIB_DEP_ALL += single/runtime_single.cpp common/liszt_runtime.h single/liszt_runtime.h
-	SINGLE_LIB_DEP_B += single/runtime_single.cpp
+	SINGLE_DEP += single/runtime_single.cpp
+	COMMON_DEP += common/mesh.cpp
 	CXXFLAGS_LIB += -dynamiclib
 endif
 
 ifeq ($(UNAME),Linux)
 	SINGLE_LIB += single/libruntime_single.so
-	SINGLE_LIB_DEP_ALL += single/runtime_single.o
-	SINGLE_LIB_DEP_B += single/runtime_single.o
-	SINGLE_LIB_DEP_C += single/runtime_single.cpp
-	SINGLE_SRC += single/runtime_single.cpp common/liszt_runtime.h single/liszt_runtime.h
+	SINGLE_DEP += single/runtime_single.o
+	SINGLE_SRC += single/runtime_single.cpp
+	COMMON_DEP += common/mesh.o
+	COMMON_SRC += common/mesh.cpp
 	CXXFLAGS_LIB += -shared
 	CXXFLAGS_OBJ += -c -fPIC -Wno-deprecated
 endif
 
 all: $(SINGLE_LIB)
 
-$(SINGLE_LIB): $(SINGLE_LIB_DEP_ALL)
-	$(CXX) $(CXXFLAGS_LIB) $(CXXFLAGS_INC) -lstdc++ $(SINGLE_LIB_DEP_B) -o $(SINGLE_LIB)
+$(SINGLE_LIB): $(SINGLE_DEP) $(COMMON_DEP)
+	$(CXX) $(CXXFLAGS_LIB) $(CXXFLAGS_INC) -lstdc++ $(SINGLE_DEP) $(COMMON_DEP) -o $(SINGLE_LIB)
 
-$(SINGLE_LIB_DEP_B): $(SINGLE_SRC)
+$(SINGLE_DEP): $(SINGLE_SRC)
 ifeq ($(UNAME),Linux)
-	$(CXX) $(CXXFLAGS_OBJ) $(CXXFLAGS_INC) $(SINGLE_LIB_DEP_C) -o $(SINGLE_LIB_DEP_B)
+	$(CXX) $(CXXFLAGS_OBJ) $(CXXFLAGS_INC) $(SINGLE_SRC) -o $(SINGLE_DEP)
+endif
+
+$(COMMON_DEP): $(COMMON_SRC)
+ifeq ($(UNAME),Linux)
+	$(CXX) $(CXXFLAGS_OBJ) $(CXXFLAGS_INC) $(COMMON_SRC) -o $(COMMON_DEP)
 endif
 
 clean:
-	rm -rf *~ \#* single/*.o single/*.dylib single/*.so
+	rm -rf *~ \#* single/*.o common/*.o single/*.dylib single/*.so
