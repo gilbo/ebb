@@ -1,0 +1,9 @@
+ - add double type
+ - load boundary sets
+ - add topological functions to language
+ - implement nested for loops over topological sets
+	- sets in nested for loops should always be related to the parameter of the next-highest loop
+ - implement scalars
+ - vector indexing in liszt kernels (allow arbitrary?)
+ - bring in print statement
+ - assert statement
