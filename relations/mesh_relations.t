@@ -20,7 +20,15 @@ local mesh_rels = {
     {"vtov", 1, vertices, vertices},
     {"vtoe", 1, vertices, edges},
     {"vtof", 1, vertices, faces},
-    {"vtoc", 1, vertices, cells}
+    {"vtoc", 1, vertices, cells},
+    {"etof", 1, edges, faces},
+    {"etoc", 1, edges, cells},
+    {"ftov", 1, faces, vertices},
+    {"ftoe", 1, faces, edges},
+    {"ctov", 1, cells, vertices},
+    {"ctoe", 1, cells, edges},
+    {"ctof", 1, cells, faces},
+    {"ctoc", 1, cells, cells}
     }
 
 local function link_runtime ()
@@ -79,11 +87,20 @@ function L.initMeshRelations(mesh, params)
         local tsize = mesh[rel_name].row_idx[params["n"..x]]
         rels[rel_name] = utils.newtable(tsize, rel_name)
         local rel_table = rels[rel_name]
-        rel_table.x = utils.newfield(elems[x])
-        rel_table.y = utils.newfield(elems[y])
-        rel_table.y:loadfrommemory(mesh[rel_name].values)
-        rel_table:loadindexfrommemory("x", mesh[rel_name].row_idx)
-        rel_table:dump()
+        if rel_tuple[2] then
+            rel_table.x = utils.newfield(elems[x])
+            rel_table.y = utils.newfield(elems[y])
+            rel_table.y:loadfrommemory(mesh[rel_name].values)
+            rel_table:loadindexfrommemory("x", mesh[rel_name].row_idx)
+            rel_table:dump()
+        else
+            -- TODO: Ask Zach about CRSConst
+            rel_table.x = utils.newfield(elems[x])
+            rel_table.y = utils.newfield(elems[y])
+            rel_table.y:loadfrommemory(mesh[rel_name].values)
+            rel_table:loadindexfrommemory("x", mesh[rel_name].row_idx)
+            rel_table:dump()
+        end
     end
 end
 
