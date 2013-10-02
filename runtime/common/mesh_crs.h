@@ -20,24 +20,26 @@ struct Mesh {
 	size_t nfaces;
 	size_t ncells;
 
-	CRS vtov;
-	CRS vtoe;
-	CRS vtof;
-	CRS vtoc;
+	struct CRS vtov;
+	struct CRS vtoe;
+	struct CRS vtof;
+	struct CRS vtoc;
 
-	CRSConst etov;
-	CRS etof;
-	CRS etoc;
+	struct CRSConst etov;
+	struct CRS etof;
+	struct CRS etoc;
 
-	CRS ftov;
-	CRS ftoe;
-	CRSConst ftoc;
+	struct CRS ftov;
+	struct CRS ftoe;
+	struct CRSConst ftoc;
 
-	CRS ctov;
-	CRS ctoe;
-	CRS ctof;
-	CRS ctoc;
+	struct CRS ctov;
+	struct CRS ctoe;
+	struct CRS ctof;
+	struct CRS ctoc;
 };
+
+struct Mesh* lMeshInitFromFile(const char *mesh_file);
 
 const unsigned int FLIP_DIRECTION_SHIFT = 31;
 const unsigned int FLIP_DIRECTION_BIT = 1u << FLIP_DIRECTION_SHIFT;

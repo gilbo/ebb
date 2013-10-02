@@ -1,4 +1,5 @@
 local L = {}
+
 local C = terralib.includecstring [[
     #include <stdlib.h>
     #include <string.h>
@@ -51,7 +52,9 @@ end
 function table:loadindexfrommemory(fieldname,row_idx)
     assert(self._index == nil)
     local f = self[fieldname]
-    assert(f and f.data == nil and L.istable(f.type))
+    assert (f)
+    assert(f.data == nil)
+    assert(L.istable(f.type))
     local realtypesize = terralib.sizeof(f.realtype)
     local nbytes = (f.type._size + 1)*realtypesize
     rawset(self, "_index", terralib.cast(&f.realtype,C.malloc(nbytes)))
@@ -67,7 +70,6 @@ function table:loadindexfrommemory(fieldname,row_idx)
         end
     end
 end
-
 
 function field:dump()
     print(self.name..":")
@@ -88,30 +90,4 @@ function table:dump()
     end
 end
 
-
-local cells = L.newtable(4,"cells")
-cells.temperature = L.newfield(double)
-
-local data = terralib.cast(&double,terralib.new(double[4],{4,3,2,1}))
-cells.temperature:loadfrommemory(data)
-cells:dump()
-
-
-local function newmem(T,data)
-    --this is probably not safe... but is just used here for debugging
-    return terralib.cast(&T,terralib.new(T[#data],data))
-end
-
-local faces = L.newtable(2,"faces")
-local edges = L.newtable(9,"edges")
-
-local ftoe = L.newtable(5,"ftoe")
-ftoe.face = L.newfield(faces)
-ftoe.edge = L.newfield(edges)
-
-ftoe.edge:loadfrommemory(newmem(uint32,{0,1,5,7,8}))
-ftoe:loadindexfrommemory("face",newmem(uint32,{0,2,5}))
-
-ftoe:dump()
-
-
+return L
