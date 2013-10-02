@@ -34,120 +34,67 @@ _FIELD_WRITE   = 'FIELD_WRITE'
 _FIELD_REDUCE  = 'FIELD_REDUCE'
 _SCALAR_REDUCE = 'SCALAR_REDUCE'
 
--- root variable type
-_NOTYPE = 
+
+-------------------------------
+--[[ Basic Liszt Types:    ]]--
+-------------------------------
+_NOTYPE   = { name = _NOTYPE_STR  }  -- root variable type
+_INT      = { name = _INT_STR     }  -- liszt variable types:
+_FLOAT    = { name = _FLOAT_STR   }
+_BOOL     = { name = _BOOL_STR    }
+_VECTOR   = { name = _VECTOR_STR  }
+_NUM      = { name = _NUM_STR     } -- number type
+_TABLE    = { name = _TABLE_STR   } -- table type
+_MESH     = { name = _MESH_STR    } -- mesh type
+_ELEM     = { name = _ELEM_STR    } -- generic topological element type
+_CELL     = { name = _CELL_STR    } -- cell type
+_FACE     = { name = _FACE_STR    } -- face type
+_EDGE     = { name = _EDGE_STR    } -- edge type
+_VERTEX   = { name = _VERTEX_STR  } -- vertex type
+_TOPOSET  = { name = _TOPOSET_STR } -- topological set type
+_FIELD    = { name = _FIELD_STR   } -- field type
+_MDATA    = { name = _MDATA_STR   } -- the parent of any obj type that can appear in liszt expressions (bools, numbers, vectors)
+
+
+-------------------------------
+--[[ Build Type Hierarchy  ]]--
+-------------------------------
+_TR        = _NOTYPE
+_TR.parent = _NOTYPE
+_TR.children =
 {
-	name     = _NOTYPE_STR,
-	parent   = {},
-	children = {}
-}
--- liszt variable type
-_INT = 
-{
-	name     = _INT_STR,
-	parent   = {},
-	children = {}
-}
--- liszt variable type
-_FLOAT = 
-{
-	name     = _FLOAT_STR,
-	parent   = {},
-	children = {}
-}
--- liszt variable type
-_BOOL = 
-{
-	name     = _BOOL_STR,
-	parent   = {},
-	children = {}
-}
--- liszt variable type
-_VECTOR = 
-{
-	name     = _VECTOR_STR,
-	parent   = {},
-	children = {}
-}
--- number type
-_NUM = 
-{
-	name     = _NUM_STR,
-	parent   = {},
-	children = {}
-}
--- table type
-_TABLE  =
-{
-	name     = _TABLE_STR,
-	parent   = {},
-	children = {}
-}
--- mesh type
-_MESH  =
-{
-	name     = _MESH_STR,
-	parent   = {},
-	children = {}
-}
--- generic topological element type
-_ELEM =
-{
-	name     = _ELEM_STR,
-	parent   = {},
-	children = {}
-}
--- cell type
-_CELL  =
-{
-	name     = _CELL_STR,
-	parent   = {},
-	children = {}
-}
--- face type
-_FACE  =
-{
-	name     = _FACE_STR,
-	parent   = {},
-	children = {}
-}
--- edge type
-_EDGE  =
-{
-	name     = _EDGE_STR,
-	parent   = {},
-	children = {}
-}
--- vertex type
-_VERTEX  =
-{
-	name     = _VERTEX_STR,
-	parent   = {},
-	children = {}
-}
--- topological set type
-_TOPOSET  =
-{
-	name     = _TOPOSET_STR,
-	parent   = {},
-	children = {}
-}
--- field type
-_FIELD  =
-{
-	name     = _FIELD_STR,
-	parent   = {},
-	children = {}
-}
--- the parent of any obj type that can appear in liszt expressions (bools, numbers, vectors)
-_MDATA  =
-{
-	name     = _MDATA_STR,
-	parent   = {},
-	children = {}
+	_MDATA,
+    _MESH,
+    _ELEM,
+    _TOPOSET,
+    _FIELD,
 }
 
---[[ Tables for simplifying semantic checking logic: ]]
+_MESH.parent    = _NOTYPE
+_TOPOSET.parent = _NOTYPE
+_FIELD.parent   = _NOTYPE
+_ELEM.parent    = _NOTYPE
+_MDATA.parent   = _NOTYPE
+
+_MDATA.children = { _NUM, _BOOL, _VECTOR }
+_NUM.parent     = _MDATA
+_BOOL.parent    = _MDATA
+_VECTOR.parent  = _MDATA
+
+_NUM.children = {_INT, _FLOAT}
+_INT.parent   = _NUM
+_FLOAT.parent = _NUM
+
+_ELEM.children = { _CELL, _FACE, _EDGE, _VERTEX }
+_CELL.parent    = _ELEM
+_FACE.parent    = _ELEM
+_EDGE.parent    = _ELEM
+_VERTEX.parent  = _ELEM
+
+
+---------------------------------------------------------
+--[[ Tables for simplifying semantic checking logic: ]]--
+---------------------------------------------------------
 local strToTopoType = {
 	[_MESH_STR]   = _MESH,
 	[_CELL_STR]   = _CELL,
@@ -184,30 +131,34 @@ local strToIntegralFieldType = {
 	[_BOOL_STR]  = _BOOL,
 }
 
+--------------------------------------------------------------------------------
+--[[ An object that can fully describe both simple and complex liszt types: ]]--
+--------------------------------------------------------------------------------
 local ObjType = 
 {
-    -- base type of the object
+    -- base type of the object (e.g. _INT, _BOOL, _VECTOR, _FIELD, _TOPOSET)
 	objtype = _NOTYPE,
 
     -- if object consists of elements, then type of elements
-    -- vector - integral type of vector components
+    -- vector - integral type of vector components (e.g. _INT, _BOOL)
     -- field  - type of stored field data
 	elemtype = _NOTYPE,
 
     -- if object is over a topological set, then the corresponding topological
     -- element (fields, boundary sets, toposets)
+    -- (e.g. _CELL, _FACE ...)
     topotype = _NOTYPE,
 
-	-- scope (liszt_str implies a kernel temporary)
+	-- scope (liszt_str implies a kernel temporary, _LUA_STR is an upval)
 	scope = _LISZT_STR,
 
-	-- used for vectors
+	-- differentiates between scalar and vector data types
 	size = 1,
 
-	-- object referred to
+	-- for nodes referring to the global scope, the lua value the name refers to
     luaval = nil,
 
-	-- ast node which has the definition
+	-- for nodes referring to liszt_kernel temporaries, the ast node where this variable was defined
 	defn = nil
 }
 
@@ -216,7 +167,7 @@ function ObjType:new()
 end
 
 function ObjType:toString()
-	if self.objtype == _VECTOR then
+	if self.objtype     == _VECTOR then
 		return 'vector(' .. self.elemtype.name .. ', ' .. tostring(self.size) .. ')'
 	elseif self.objtype == _TOPOSET then
 		return 'toposet(' .. self.topotype.name .. ')'
@@ -227,43 +178,9 @@ function ObjType:toString()
 	end
 end
 
--- class tree
-_TR = _NOTYPE
-_TR.parent = _NOTYPE
---
-_TR.children =
-{
-	_MDATA,
-    _MESH,
-    _ELEM,
-    _TOPOSET,
-    _FIELD,
-}
-
-_MESH.parent    = _NOTYPE
-_TOPOSET.parent = _NOTYPE
-_FIELD.parent   = _NOTYPE
-_ELEM.parent    = _NOTYPE
-_MDATA.parent   = _NOTYPE
-
-_MDATA.children = { _NUM, _BOOL, _VECTOR }
-_NUM.parent     = _MDATA
-_BOOL.parent    = _MDATA
-_VECTOR.parent  = _MDATA
-
-_NUM.children = {_INT, _FLOAT}
-_INT.parent   = _NUM
-_FLOAT.parent = _NUM
-
-_ELEM.children = { _CELL, _FACE, _EDGE, _VERTEX }
-_CELL.parent    = _ELEM
-_FACE.parent    = _ELEM
-_EDGE.parent    = _ELEM
-_VERTEX.parent  = _ELEM
-
 
 ------------------------------------------------------------------------------
--- Stand-in for the luaval of an indexed global field
+--[[ Stand-in for the luaval of an indexed global field                   ]]--
 ------------------------------------------------------------------------------
 local FieldIndex = { kind = _FIELDINDEX_STR}
 FieldIndex.__index = FieldIndex
@@ -274,19 +191,17 @@ end
 
 
 ------------------------------------------------------------------------------
---[[ Semantic checking called from here --]]
+--[[ Semantic checking called from here:                                  ]]--
 ------------------------------------------------------------------------------
 function check(luaenv, kernel_ast)
 
 	-- environment for checking variables and scopes
 	local env  = terralib.newenvironment(luaenv)
-
 	local diag = terralib.newdiagnostics()
 
-	------------------------------------------------------------------------------
+	--------------------------------------------------------------------------
 
-	--[[ Check if lhstype conforms to rhstype
-	--]]
+	--[[ Check if lhstype conforms to rhstype --]]
 	local function conforms(lhstype, rhstype)
 		if lhstype == _TR then
 			return true
@@ -302,21 +217,6 @@ function check(luaenv, kernel_ast)
 		end
 	end
 
-    local function is_valid_type(dtype, node)
-    	if node == nil then node = _NOTYPE end
-        if dtype == node.name then
-            return true
-        else
-            if node.children ~= nil then
-                for child in node.children do
-                    is_valid_type(dtype, child)
-                end
-            else
-                return false
-            end
-        end
-    end
-
 	local function set_type(lhsobj, rhsobj)
 		if lhsobj.objtype == _NOTYPE then
 			lhsobj.objtype        = rhsobj.objtype
@@ -329,17 +229,12 @@ function check(luaenv, kernel_ast)
 
 	------------------------------------------------------------------------------
 
-	--[[ Cases not handled
-	--]]
+	--[[ Cases not handled ]]--
 	function ast.AST:check()
 		print("To implement semantic checking for", self.kind)
 		diag:reporterror(self, "No known method to typecheck "..self.kind)
 	end
 
-	------------------------------------------------------------------------------
-
-	--[[ Block
-	--]]
 	function ast.Block:check()
 		-- statements
         local blockobj
@@ -350,16 +245,7 @@ function check(luaenv, kernel_ast)
         return blockobj
 	end
 
-	------------------------------------------------------------------------------
-
-	--[[ Statements
-	--]]
-	function ast.Statement:check()
-		error("Unimplemented semantic checking for " .. self.kind)
-	end
-
 	function ast.IfStatement:check()
-		-- condblock and block
 		for id, node in ipairs(self.children) do
 			env:enterblock()
 			self.node_type = node:check()
@@ -369,7 +255,6 @@ function check(luaenv, kernel_ast)
 	end
 
 	function ast.WhileStatement:check()
-		-- condition (expression) and block
 		local condobj = self.children[1]:check()
 		if condobj and not conforms(_BOOL, condobj.objtype) then
 			diag:reporterror(self, 
@@ -382,7 +267,6 @@ function check(luaenv, kernel_ast)
 	end
 
 	function ast.DoStatement:check()
-		-- block
 		env:enterblock()
 		for id, node in ipairs(self.children) do
 			self.node_type = node:check()
@@ -392,11 +276,9 @@ function check(luaenv, kernel_ast)
 	end
 
 	function ast.RepeatStatement:check()
-		-- condition expression, block
 		env:enterblock()
 		self.node_type = self.children[2]:check()
-
-		local condobj = self.children[1]:check()
+		local condobj  = self.children[1]:check()
 		if condobj and not conforms(_BOOL, condobj.objtype) then
 			diag:reporterror(self,
 			"Expected boolean value for repeat statement condition")
@@ -411,16 +293,19 @@ function check(luaenv, kernel_ast)
 	end
 
 	function ast.Assignment:check()
-		-- if the right-hand expression contains a field read in the left-most child that
-		-- uses a commutative operation, refactor the expression tree to make the field
-		-- read the top-level left child.  (Best to do this before semantic checking!)
-		if self.children[2].kind == 'binop' then self.children[2]:refactorReduction() end
-
 		local lhsobj = self.children[1]:check()
-		local rhsobj = self.children[2]:check()
+		if lhsobj == nil then return nil end
 
-		-- propogate nil type for semantic errors in children so that typechecking will continue
-		if lhsobj == nil or rhsobj == nil then
+		-- Only refactor the left binaryOp tree if we could potentially be commiting a field/scalar write
+		if  type(lhsobj.luaval) == 'table' and 
+			(lhsobj.luaval.kind == _FIELDINDEX_STR or lhsobj.luaval.kind == _SCALAR_STR) and
+			self.children[2].kind == 'binop' 
+		then 
+			self.children[2]:refactorReduction()
+		end
+
+		local rhsobj = self.children[2]:check()
+		if rhsobj == nil then
 			return nil
 		end
 
@@ -468,6 +353,8 @@ function check(luaenv, kernel_ast)
 			if rexp.kind ~= 'binop' or rexp.children[1].node_type.luaval.kind ~= _SCALAR_STR then
 				diag:reporterror("Scalar variables can only be modified through reductions")
 			else
+				-- Make sure the scalar objects on the lhs and rhs match.  Otherwise, we are 
+				-- looking at a write to the lhs scalar, which is illegal.
 				local lsc = lval.node_type.luaval
 				local rsc = rexp.children[1].node_type.luaval
 				if lsc ~= rsc then
@@ -482,15 +369,12 @@ function check(luaenv, kernel_ast)
 	end
 
 	function ast.InitStatement:check()
-		-- name, expression
 		self.node_type       = ObjType:new()
 		self.node_type.defn  = self.children[1]
 		local varname        = self.children[1].children[1]
 		local rhsobj         = self.children[2]:check()
 
-		if rhsobj == nil then
-			return nil
-		end
+		if rhsobj == nil then return nil end
 
 		-- Local temporaries can only refer to numeric/boolean/vector data or topolocal element types,
 		-- and variables referring to topo types can never be re-assigned.  That way, we don't allow
@@ -503,12 +387,10 @@ function check(luaenv, kernel_ast)
 		set_type(self.node_type, rhsobj)
 		self.node_type.scope = _LISZT_STR
 		env:localenv()[varname] = self.node_type
-
 		return self.node_type
 	end
 
 	function ast.DeclStatement:check()
-		-- name
 		self.node_type = ObjType:new()
 		self.node_type.defn  = self.children[1]
 		local varname = self.children[1].children[1]
@@ -565,7 +447,6 @@ function check(luaenv, kernel_ast)
 	end
 
 	function ast.CondBlock:check()
-		-- condition (expression), block
 		local condobj = self.children[1]:check()
 		if condobj and not conforms(_BOOL, condobj.objtype) then
 			diag:reporterror(self, "Expected boolean value here")
@@ -574,14 +455,12 @@ function check(luaenv, kernel_ast)
 		env:enterblock()
 		self.node_type = self.children[2]:check()
 		env:leaveblock()
-
 		return self.node_type
 	end
 
 	------------------------------------------------------------------------------
-
-	--[[ Expressions
-	--]]
+	--[[                         Expression Checking:                         ]]--
+	------------------------------------------------------------------------------
 	function ast.Expression:check()
 		error("Semantic checking has not been implemented for expression type " .. self.kind)
 	end
@@ -662,14 +541,10 @@ function check(luaenv, kernel_ast)
     end
 
     function ast.BinaryOp:refactorReduction ()
+    	-- recursively refactor the left-hand child
     	local left = self.children[1]
     	if left.kind ~= 'binop' then return end
-
     	left:refactorReduction()
-
-    	local luav = left.children[1].node_type.luaval
-    	-- Make sure left grandchild is a field or scalar index
-    	if not type(luav) == _TABLE_STR and (luav.kind == 'fieldindex' or luav.kind == 'scalar') then return end
 
     	local rop   = self.children[2]
     	local lop   = left.children[2]
@@ -833,9 +708,8 @@ function check(luaenv, kernel_ast)
 	end
 
 	------------------------------------------------------------------------------
-
-	--[[ Misc
-	--]]
+	--[[                         Miscellaneous nodes:                         ]]--
+	------------------------------------------------------------------------------
 	function ast.Tuple:check()
 		for i, node in ipairs(self.children) do
 			node:check()
@@ -920,10 +794,8 @@ function check(luaenv, kernel_ast)
 	end
 
 	------------------------------------------------------------------------------
-
-	--[[ Variables
-	--]]
-
+	--[[                               Variables                              ]]--
+	------------------------------------------------------------------------------
 	-- Infer liszt type for the lua variable
 	function lua_to_liszt(luav, nameobj)
 		nameobj.scope = _LUA_STR
@@ -1086,9 +958,10 @@ function check(luaenv, kernel_ast)
 		return boolobj
 	end
 
-	------------------------------------------------------------------------------
 
-	-- begin actual typechecking
+	------------------------------------------------------------------------------
+	--[[                      Begin Typechecking:                             ]]--
+	------------------------------------------------------------------------------
 	diag:begin()
 	env:enterblock()
 	local param = kernel_ast.children[1]
