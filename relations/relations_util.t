@@ -38,7 +38,6 @@ function L.newfield(t)
     return { type = t } 
 end
 
-
 function field:loadfrommemory(mem)
     assert(self.data == nil)
     local nbytes = self.table._size * terralib.sizeof(self.realtype)
@@ -47,6 +46,18 @@ function field:loadfrommemory(mem)
     local memT = terralib.typeof(mem)
     assert(memT == &self.realtype)
     C.memcpy(self.data,mem,nbytes)
+end
+
+function field:loadalternatefrommemory(mem)
+    assert(self.data == nil)
+    local nelems = self.table._size
+    local nbytes = nelems * terralib.sizeof(self.realtype)
+    local bytes = C.malloc(nbytes)
+    self.data = terralib.cast(&self.realtype,bytes)
+    -- TODO: error checking here
+    for i = 0, nelems-1 do
+        self.data[i] = mem[2*i]
+    end
 end
 
 function table:loadindexfrommemory(fieldname,row_idx)

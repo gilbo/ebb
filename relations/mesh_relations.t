@@ -28,7 +28,9 @@ local mesh_rels = {
     {"ctov", 1, cells, vertices},
     {"ctoe", 1, cells, edges},
     {"ctof", 1, cells, faces},
-    {"ctoc", 1, cells, cells}
+    {"ctoc", 1, cells, cells},
+    {"etov", 0, "head", "tail", edges, vertices},
+    {"ftoc", 0, "outside", "inside", faces, cells}
     }
 
 local function link_runtime ()
@@ -61,9 +63,10 @@ struct FieldParams {
 }
 
 terra L.getMeshParams(mesh : &mesh_h.Mesh) : FieldParams
-    var numvertices = mesh.nvertices
-    c.printf("Number of vertices = %i\n", numvertices)
-    c.printf("vtov = %i\n", mesh.vtov.row_idx[9])
+    c.printf("Number of vertices = %i\n", mesh.nvertices)
+    c.printf("Number of edges = %i\n", mesh.nedges)
+    c.printf("Number of faces = %i\n", mesh.nfaces)
+    c.printf("Number of cells = %i\n", mesh.ncells)
     var params : FieldParams
     params.nvertices = mesh.nvertices
     params.nedges = mesh.nedges
@@ -76,29 +79,34 @@ function L.initMeshRelations(mesh, params)
     -- initialize list of relations
     local elems = {}
     local rels = {}
+    -- basic elements relations
     for k, topo_elem in pairs(topo_elems) do
         local tsize = params["n"..topo_elem]
         elems[topo_elem] = utils.newtable(tsize, topo_elem)
     end
+    -- relations from mesh
     for k, rel_tuple in pairs(mesh_rels) do
         local rel_name = rel_tuple[1]
-        local x = rel_tuple[3]
-        local y = rel_tuple[4]
-        local tsize = mesh[rel_name].row_idx[params["n"..x]]
-        rels[rel_name] = utils.newtable(tsize, rel_name)
-        local rel_table = rels[rel_name]
-        if rel_tuple[2] then
+        if rel_tuple[2] == 1 then
+            local x = rel_tuple[3]
+            local y = rel_tuple[4]
+            local tsize = mesh[rel_name].row_idx[params["n"..x]]
+            rels[rel_name] = utils.newtable(tsize, rel_name)
+            local rel_table = rels[rel_name]
             rel_table.x = utils.newfield(elems[x])
             rel_table.y = utils.newfield(elems[y])
             rel_table.y:loadfrommemory(mesh[rel_name].values)
             rel_table:loadindexfrommemory("x", mesh[rel_name].row_idx)
             rel_table:dump()
         else
-            -- TODO: Ask Zach about CRSConst
-            rel_table.x = utils.newfield(elems[x])
-            rel_table.y = utils.newfield(elems[y])
-            rel_table.y:loadfrommemory(mesh[rel_name].values)
-            rel_table:loadindexfrommemory("x", mesh[rel_name].row_idx)
+            local first = rel_tuple[3]
+            local second = rel_tuple[4]
+            local rel_table = elems[rel_tuple[5]]
+            local rel_field = elems[rel_tuple[6]]
+            rel_table[first] = utils.newfield(rel_field)
+            rel_table[second] = utils.newfield(rel_field)
+            rel_table[first]:loadalternatefrommemory(mesh[rel_name].values[0])
+            rel_table[second]:loadalternatefrommemory(mesh[rel_name].values[1])
             rel_table:dump()
         end
     end
