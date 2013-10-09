@@ -4,11 +4,17 @@ local utils = terralib.require("relations/relations_util")
 local mesh_h = terralib.includec("runtime/common/mesh_crs.h")
 local c = terralib.includec("stdio.h")
 
+--[[
+For mesh relations corresponding to CRS relations in original mesh, x (first
+field) represents index field and y (second field) the corresponding values.
+--]]
+
 local vertices = "vertices"
 local edges = "edges"
 local faces = "faces"
 local cells = "cells"
 
+-- basic relations
 local topo_elems = {
     vertices,
     edges,
@@ -16,6 +22,7 @@ local topo_elems = {
     cells
     }
 
+-- other mesh relations
 local mesh_rels = {
     {"vtov", 1, vertices, vertices},
     {"vtoe", 1, vertices, edges},
@@ -79,12 +86,12 @@ function L.initMeshRelations(mesh, params)
     -- initialize list of relations
     local elems = {}
     local rels = {}
-    -- basic elements relations
+    -- basic element relations
     for k, topo_elem in pairs(topo_elems) do
         local tsize = params["n"..topo_elem]
         elems[topo_elem] = utils.newtable(tsize, topo_elem)
     end
-    -- relations from mesh
+    -- other mesh relations
     for k, rel_tuple in pairs(mesh_rels) do
         local rel_name = rel_tuple[1]
         if rel_tuple[2] == 1 then
