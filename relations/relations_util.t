@@ -4,6 +4,17 @@ local C = terralib.includecstring [[
     #include <stdlib.h>
     #include <string.h>
 ]]
+
+--[[
+- A table contains size, fields and _indexrelations, which point to tables
+that are indexed by this table. Example, _indexrelations for vertices table
+will point to vtov, vtoe etc.
+- A table also contains _index that has the compressed row values for index
+field, and the corresponding expanded index field and other field values.
+- A field contains fieldname, type of field, pointer to its table and expanded
+  data.
+--]]
+
 local table = {}
 table.__index = table
 function L.istable(t)
@@ -13,7 +24,13 @@ end
 local key = {}
 
 function L.newtable(size, debugname)
-    return setmetatable({ _size = size, _fields = terralib.newlist(), _debugname = debugname or "anon" },table)
+    return setmetatable( {
+        _size = size,
+        _fields = terralib.newlist(),
+        _indexrelations = {},
+        _debugname = debugname or "anon"
+        },
+        table)
 end
 
 local field = {}
@@ -37,6 +54,10 @@ function table:__newindex(fieldname,value)
     f.realtype = L.istable(f.type) and uint32 or f.type
     self._fields:insert(f)
 end 
+
+function table:getrelation(relname)
+    return self._indexrelations[relname]
+end
 
 function field:loadfrommemory(mem)
     assert(self.data == nil)
@@ -66,6 +87,7 @@ function table:loadindexfrommemory(fieldname,row_idx)
     assert (f)
     assert(f.data == nil)
     assert(L.istable(f.type))
+    f.type._indexrelations[fieldname] = f
     local realtypesize = terralib.sizeof(f.realtype)
     local nbytes = (f.type._size + 1)*realtypesize
     rawset(self, "_index", terralib.cast(&f.realtype,C.malloc(nbytes)))
