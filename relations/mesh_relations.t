@@ -122,22 +122,3 @@ local mesh = L.readMesh("relations/mesh.lmesh")
 local params = L.getMeshParams(mesh)
 
 local elems, rels = L.initMeshRelations(mesh, params)
-
---[[
-local function newmem(T,data)
-    --this is probably not safe... but is just used here for debugging
-    return terralib.cast(&T,terralib.new(T[#data],data))
-end
-
-local faces = utils.newtable(2,"faces")
-local edges = utils.newtable(9,"edges")
-
-local ftoe = utils.newtable(5,"ftoe")
-ftoe.face = utils.newfield(faces)
-ftoe.edge = utils.newfield(edges)
-
-ftoe.edge:loadfrommemory(newmem(uint32,{0,1,5,7,8}))
-ftoe:loadindexfrommemory("face",newmem(uint32,{0,2,5}))
-
-ftoe:dump()
---]]

@@ -18,6 +18,15 @@ end
 
 local field = {}
 
+field.__index = field
+function L.isfield(f)
+    return getmetatable(f) == field
+end
+
+function L.newfield(t)
+    return { type = t } 
+end
+
 function table:__newindex(fieldname,value)
     local typ = value.type --TODO better error checking
     local f = setmetatable({},field)
@@ -28,15 +37,6 @@ function table:__newindex(fieldname,value)
     f.realtype = L.istable(f.type) and uint32 or f.type
     self._fields:insert(f)
 end 
-
-field.__index = field
-function L.isfield(f)
-    return getmetatable(f) == field
-end
-
-function L.newfield(t)
-    return { type = t } 
-end
 
 function field:loadfrommemory(mem)
     assert(self.data == nil)
