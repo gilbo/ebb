@@ -114,7 +114,6 @@ function L.initMeshRelations(mesh, params)
         rel_table[rel_tuple.n2] = utils.newfield(elems[rel_tuple.ft])
         rel_table[rel_tuple.n1]:loadalternatefrommemory(mesh[rel_name].values[0])
         rel_table[rel_tuple.n2]:loadalternatefrommemory(mesh[rel_name].values[1])
-        -- TODO: add indexing code here 
     end
     return elems, rels
 end
@@ -140,3 +139,5 @@ for i,t in pairs(rels) do
     print("## Other rels table ##")
     t:dump()
 end
+
+return L
