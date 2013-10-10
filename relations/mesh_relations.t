@@ -19,20 +19,20 @@ local topo_elems = {
 
 -- other mesh relations
 local mesh_rels = {
-    {"vtov", 1, "vertices", "vertices"},
-    {"vtoe", 1, "vertices", "edges"},
-    {"vtof", 1, "vertices", "faces"},
-    {"vtoc", 1, "vertices", "cells"},
-    {"etof", 1, "edges", "faces"},
-    {"etoc", 1, "edges", "cells"},
-    {"ftov", 1, "faces", "vertices"},
-    {"ftoe", 1, "faces", "edges"},
-    {"ctov", 1, "cells", "vertices"},
-    {"ctoe", 1, "cells", "edges"},
-    {"ctof", 1, "cells", "faces"},
-    {"ctoc", 1, "cells", "cells"},
-    {"etov", 0, "head", "tail", "edges", "vertices"},
-    {"ftoc", 0, "outside", "inside", "faces", "cells"}
+    {name = "vtov", crs = 1,  t1 = "vertices", t2 = "vertices", n1 = "v1", n2 = "v2"},
+    {name = "vtoe", crs =  1, t1 = "vertices", t2 = "edges", n1 = "v", n2 = "e"},
+    {name = "vtof", crs =  1, t1 = "vertices", t2 = "faces", n1 = "v", n2 = "f"},
+    {name = "vtoc", crs =  1, t1 = "vertices", t2 = "cells", n1 = "v", n2 = "c"},
+    {name = "etof", crs =  1, t1 = "edges", t2 = "faces", n1 = "e", n2 = "f"},
+    {name = "etoc", crs =  1, t1 = "edges", t2 = "cells", n1 = "e", n2 = "c"},
+    {name = "ftov", crs =  1, t1 = "faces", t2 = "vertices", n1 = "f", n2 = "v"},
+    {name = "ftoe", crs =  1, t1 = "faces", t2 = "edges", n1 = "f", n2 = "e"},
+    {name = "ctov", crs =  1, t1 = "cells", t2 = "vertices", n1 = "c", n2 = "v"},
+    {name = "ctoe", crs =  1, t1 = "cells", t2 = "edges", n1 = "c", n2 = "e"},
+    {name = "ctof", crs =  1, t1 = "cells", t2 = "faces", n1 = "c", n2 = "f"},
+    {name = "ctoc", crs =  1, t1 = "cells", t2 = "cells", n1 = "c1", n2 = "c2"},
+    {name = "etov", crs =  0, table = "edges", ft = "vertices", n1 = "head", n2 = "tail"},
+    {name = "ftoc", crs =  0, table = "faces", ft = "cells", n1 = "outside", n2 ="inside"}
     }
 
 local function link_runtime ()
@@ -65,10 +65,6 @@ struct FieldParams {
 }
 
 terra L.getMeshParams(mesh : &mesh_h.Mesh) : FieldParams
-    c.printf("Number of vertices = %i\n", mesh.nvertices)
-    c.printf("Number of edges = %i\n", mesh.nedges)
-    c.printf("Number of faces = %i\n", mesh.nfaces)
-    c.printf("Number of cells = %i\n", mesh.ncells)
     var params : FieldParams
     params.nvertices = mesh.nvertices
     params.nedges = mesh.nedges
@@ -85,30 +81,27 @@ function L.initMeshRelations(mesh, params)
     for k, topo_elem in pairs(topo_elems) do
         local tsize = params["n"..topo_elem]
         elems[topo_elem] = utils.newtable(tsize, topo_elem)
+        -- TODO: complete loading
     end
     -- other mesh relations
     for k, rel_tuple in pairs(mesh_rels) do
-        local rel_name = rel_tuple[1]
-        if rel_tuple[2] == 1 then
-            local x = rel_tuple[3]
-            local y = rel_tuple[4]
-            local tsize = mesh[rel_name].row_idx[params["n"..x]]
-            rels[rel_name] = utils.newtable(tsize, rel_name)
-            local rel_table = rels[rel_name]
-            rel_table.x = utils.newfield(elems[x])
-            rel_table.y = utils.newfield(elems[y])
-            rel_table.y:loadfrommemory(mesh[rel_name].values)
-            rel_table:loadindexfrommemory("x", mesh[rel_name].row_idx)
-            elems[x]:addrelation(y, rel_table)
+        local rel_name = rel_tuple.name
+        if rel_tuple.crs == 1 then
+            local tsize = mesh[rel_name].row_idx[params["n"..rel_tuple.t1]]
+            local rel_table = utils.newtable(tsize, rel_name)
+            rels[rel_name] = rel_table
+            rel_table[rel_tuple.n1] = utils.newfield(elems[rel_tuple.t1])
+            rel_table[rel_tuple.n2] = utils.newfield(elems[rel_tuple.t2])
+            rel_table[rel_tuple.n2]:loadfrommemory(mesh[rel_name].values)
+            rel_table:loadindexfrommemory(rel_tuple.n1, mesh[rel_name].row_idx)
+            elems[rel_tuple.t1]:addrelation(rel_tuple.t2, rel_table)
         else
-            local first = rel_tuple[3]
-            local second = rel_tuple[4]
-            local rel_table = elems[rel_tuple[5]]
-            local rel_field = elems[rel_tuple[6]]
-            rel_table[first] = utils.newfield(rel_field)
-            rel_table[second] = utils.newfield(rel_field)
-            rel_table[first]:loadalternatefrommemory(mesh[rel_name].values[0])
-            rel_table[second]:loadalternatefrommemory(mesh[rel_name].values[1])
+            local rel_table = elems[rel_tuple.table]
+            -- TODO: complete index field loading
+            rel_table[rel_tuple.n1] = utils.newfield(elems[rel_tuple.ft])
+            rel_table[rel_tuple.n2] = utils.newfield(elems[rel_tuple.ft])
+            rel_table[rel_tuple.n1]:loadalternatefrommemory(mesh[rel_name].values[0])
+            rel_table[rel_tuple.n2]:loadalternatefrommemory(mesh[rel_name].values[1])
         end
     end
     return elems, rels
@@ -129,8 +122,8 @@ for i,t in pairs(elems) do
     print("** Elem table **")
     t:dump()
 end
---
---for i,t in pairs(rels) do
---    print("## Other rels table ##")
---    t:dump()
---end
+
+for i,t in pairs(rels) do
+    print("## Other rels table ##")
+    t:dump()
+end
