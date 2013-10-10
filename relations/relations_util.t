@@ -59,6 +59,10 @@ function table:getrelation(relname)
     return self._indexrelations[relname]
 end
 
+function table:addrelation(relname, tableptr)
+    self._indexrelations[relname] = tableptr
+end
+
 function field:loadfrommemory(mem)
     assert(self.data == nil)
     local nbytes = self.table._size * terralib.sizeof(self.realtype)
@@ -87,7 +91,6 @@ function table:loadindexfrommemory(fieldname,row_idx)
     assert (f)
     assert(f.data == nil)
     assert(L.istable(f.type))
-    f.type._indexrelations[fieldname] = f
     local realtypesize = terralib.sizeof(f.realtype)
     local nbytes = (f.type._size + 1)*realtypesize
     rawset(self, "_index", terralib.cast(&f.realtype,C.malloc(nbytes)))
@@ -118,6 +121,9 @@ end
 
 function table:dump()
     print(self._debugname, "size: "..self._size)
+    for rel,t in pairs(self._indexrelations) do
+        print("Indexes to "..rel.." in "..t._debugname)
+    end
     for i,f in ipairs(self._fields) do
         f:dump()
     end

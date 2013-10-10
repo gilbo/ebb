@@ -9,35 +9,30 @@ For mesh relations corresponding to CRS relations in original mesh, x (first
 field) represents index field and y (second field) the corresponding values.
 --]]
 
-local vertices = "vertices"
-local edges = "edges"
-local faces = "faces"
-local cells = "cells"
-
 -- basic relations
 local topo_elems = {
-    vertices,
-    edges,
-    faces,
-    cells
+    "vertices",
+    "edges",
+    "faces",
+    "cells"
     }
 
 -- other mesh relations
 local mesh_rels = {
-    {"vtov", 1, vertices, vertices},
-    {"vtoe", 1, vertices, edges},
-    {"vtof", 1, vertices, faces},
-    {"vtoc", 1, vertices, cells},
-    {"etof", 1, edges, faces},
-    {"etoc", 1, edges, cells},
-    {"ftov", 1, faces, vertices},
-    {"ftoe", 1, faces, edges},
-    {"ctov", 1, cells, vertices},
-    {"ctoe", 1, cells, edges},
-    {"ctof", 1, cells, faces},
-    {"ctoc", 1, cells, cells},
-    {"etov", 0, "head", "tail", edges, vertices},
-    {"ftoc", 0, "outside", "inside", faces, cells}
+    {"vtov", 1, "vertices", "vertices"},
+    {"vtoe", 1, "vertices", "edges"},
+    {"vtof", 1, "vertices", "faces"},
+    {"vtoc", 1, "vertices", "cells"},
+    {"etof", 1, "edges", "faces"},
+    {"etoc", 1, "edges", "cells"},
+    {"ftov", 1, "faces", "vertices"},
+    {"ftoe", 1, "faces", "edges"},
+    {"ctov", 1, "cells", "vertices"},
+    {"ctoe", 1, "cells", "edges"},
+    {"ctof", 1, "cells", "faces"},
+    {"ctoc", 1, "cells", "cells"},
+    {"etov", 0, "head", "tail", "edges", "vertices"},
+    {"ftoc", 0, "outside", "inside", "faces", "cells"}
     }
 
 local function link_runtime ()
@@ -104,7 +99,7 @@ function L.initMeshRelations(mesh, params)
             rel_table.y = utils.newfield(elems[y])
             rel_table.y:loadfrommemory(mesh[rel_name].values)
             rel_table:loadindexfrommemory("x", mesh[rel_name].row_idx)
-            rel_table:dump()
+            elems[x]:addrelation(y, rel_table)
         else
             local first = rel_tuple[3]
             local second = rel_tuple[4]
@@ -114,9 +109,9 @@ function L.initMeshRelations(mesh, params)
             rel_table[second] = utils.newfield(rel_field)
             rel_table[first]:loadalternatefrommemory(mesh[rel_name].values[0])
             rel_table[second]:loadalternatefrommemory(mesh[rel_name].values[1])
-            rel_table:dump()
         end
     end
+    return elems, rels
 end
 
 -- Test code
@@ -129,3 +124,13 @@ local mesh = L.readMesh("relations/mesh.lmesh")
 local params = L.getMeshParams(mesh)
 
 local elems, rels = L.initMeshRelations(mesh, params)
+
+for i,t in pairs(elems) do
+    print("** Elem table **")
+    t:dump()
+end
+--
+--for i,t in pairs(rels) do
+--    print("## Other rels table ##")
+--    t:dump()
+--end
