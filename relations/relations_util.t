@@ -4,6 +4,18 @@ local C = terralib.includecstring [[
     #include <stdlib.h>
     #include <string.h>
 ]]
+
+--[[
+- A table contains size, fields and _indexrelations, which point to tables
+  that are indexed by this table. Example, _indexrelations for vertices table
+  will point to vtov, vtoe etc. Use table:getrelationtable(topo_elem) to get a
+  relation table. Example, vertices:getrelationtable(edges) will give vtoe.
+- A table also contains _index that has the compressed row values for index
+  field, and the corresponding expanded index field and other field values.
+- A field contains fieldname, type of field, pointer to its table and expanded
+  data.
+--]]
+
 local table = {}
 table.__index = table
 function L.istable(t)
@@ -13,10 +25,25 @@ end
 local key = {}
 
 function L.newtable(size, debugname)
-    return setmetatable({ _size = size, _fields = terralib.newlist(), _debugname = debugname or "anon" },table)
+    return setmetatable( {
+        _size = size,
+        _fields = terralib.newlist(),
+        _indexrelations = {},
+        _debugname = debugname or "anon"
+        },
+        table)
 end
 
 local field = {}
+
+field.__index = field
+function L.isfield(f)
+    return getmetatable(f) == field
+end
+
+function L.newfield(t)
+    return { type = t } 
+end
 
 function table:__newindex(fieldname,value)
     local typ = value.type --TODO better error checking
@@ -29,13 +56,37 @@ function table:__newindex(fieldname,value)
     self._fields:insert(f)
 end 
 
-field.__index = field
-function L.isfield(f)
-    return getmetatable(f) == field
+function table:getrelationtable(relname)
+    return self._indexrelations[relname]
 end
 
-function L.newfield(t)
-    return { type = t } 
+function table:addrelation(relname, tableptr)
+    self._indexrelations[relname] = tableptr
+end
+
+-- If default value is false, field is initialized as 0 to tablesize - 1
+-- If default value is true, field is initialized to 0
+-- If default value is a number, field is initialized to the given value
+function table:initializenumfield(fieldname, defaultval)
+    self[fieldname] = L.newfield(uint32)
+    local f = self[fieldname]
+    f.data = {}
+    if type(defaultval) == "boolean" then
+        if defaultval == false then
+            for i = 0, self._size - 1 do
+                f.data[i] = i
+            end
+        else
+            for i = 0, self._size - 1 do
+                f.data[i] = 0
+            end
+        end
+    else
+        assert(type(defaultval) == "number")
+        for i = 0, self._size -1 do
+            f.data[i] = defaultval
+        end
+    end
 end
 
 function field:loadfrommemory(mem)
@@ -46,6 +97,34 @@ function field:loadfrommemory(mem)
     local memT = terralib.typeof(mem)
     assert(memT == &self.realtype)
     C.memcpy(self.data,mem,nbytes)
+end
+
+function field:loadfrommemoryskipmsb(mem)
+    assert(self.data == nil)
+    local nelems = self.table._size
+    local nbytes = nelems * terralib.sizeof(self.realtype)
+    local bytes = C.malloc(nbytes)
+    self.data = terralib.cast(&self.realtype,bytes)
+    local memT = terralib.typeof(mem)
+    assert(memT == &self.realtype)
+    local bitmask = bit.bnot(bit.lshift(1, terralib.sizeof(self.realtype)*8-1))
+    for i = 0, nelems-1 do
+        self.data[i] = bit.band(mem[i], bitmask)
+    end
+    return terralib.sizeof(self.realtype)
+end
+
+function field:loadfrommemoryorientation(mem, wordsize)
+    assert(self.data == nil)
+    assert(self.type == bool)
+    local nelems = self.table._size
+    local nbytes = nelems * wordsize
+    local bytes = C.malloc(nbytes)
+    self.data = terralib.cast(&self.realtype,bytes)
+    local bitmask = bit.lshift(1, wordsize*8-1)
+    for i = 0, nelems-1 do
+        self.data[i] = (0 ~= bit.band(mem[i], bitmask))
+    end
 end
 
 function field:loadalternatefrommemory(mem)
@@ -96,6 +175,9 @@ end
 
 function table:dump()
     print(self._debugname, "size: "..self._size)
+    for rel,t in pairs(self._indexrelations) do
+        print("Indexes to "..rel.." in "..t._debugname)
+    end
     for i,f in ipairs(self._fields) do
         f:dump()
     end
