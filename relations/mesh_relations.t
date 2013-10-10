@@ -117,6 +117,7 @@ print("Testing code ...")
 local mesh = L.readMesh("relations/mesh.lmesh")
 
 -- TODO: Speak to Zach and remove this - problem accessing mesh elements
+-- Remove this eventually, this should not be required.
 local params = L.getMeshParams(mesh)
 
 local elems, rels = L.initMeshRelations(mesh, params)
