@@ -43,6 +43,8 @@ ExprStatement   = { kind = 'exprstmt'   }  -- e;
 Assignment      = { kind = 'assnstmt'   }  -- "lvalue   = expr" 
 InitStatement   = { kind = 'initstmt'   }  -- "var name = expr"
 DeclStatement   = { kind = 'declstmt'   }  -- "var name"
+AssertStatement = { kind = 'assertstmt' }  -- "assert(expr)"
+PrintStatement  = { kind = 'printstmt'  }  -- "print(expr)" 
 NumericFor      = { kind = 'numericfor' }
 GenericFor      = { kind = 'genericfor' }
 Break           = { kind = 'break'      }
@@ -84,6 +86,8 @@ inherit(ExprStatement,   Statement)
 inherit(Assignment,      Statement)
 inherit(DeclStatement,   Statement)
 inherit(InitStatement,   Assignment)
+inherit(AssertStatement, Statement)
+inherit(PrintStatement,  Statement)
 inherit(NumericFor,      Statement)
 inherit(GenericFor,      Statement)
 inherit(Break,           Statement)
@@ -265,6 +269,18 @@ end
 function Break:pretty_print (indent)
 	indent = indent or ''
 	print(indent .. self.kind)
+end
+
+function AssertStatement:pretty_print (indent)
+	indent = indent or ''
+	print(indent .. self.kind)
+	self.test:pretty_print(indent .. indent_delta)
+end
+
+function PrintStatement:pretty_print (indent)
+	indent = indent or ''
+	print(indent .. self.kind)
+	self.output:pretty_print(indent .. indent_delta)
 end
 
 function NumericFor:pretty_print (indent)	

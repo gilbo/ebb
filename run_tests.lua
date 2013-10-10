@@ -1,4 +1,4 @@
-#!./terra/build/LuaJIT-2.0.1/src/luajit
+#!/usr/bin/luajit
 local ffi = require("ffi")
 
 local lscmd
@@ -8,9 +8,10 @@ else
     lscmd = "find . | cut -c 3-"
 end
 
-local passed   = {}
-local failed   = {}
-local disabled = {}
+local passed     = {}
+local bad_passed = {}
+local failed     = {}
+local disabled   = {}
 
 local exclude = {
     ['tests/test.lua'] = true,
@@ -34,7 +35,7 @@ for line in io.popen(lscmd):lines() do
         line = line:sub(cwd:len()+2)
         line = line:gsub("\\","/")
     end
-    local file = line:match("^(tests/[^/]*%.t)$") or line:match("^(tests/[^/]*%.lua)$")
+    local file = line:match("^(tests/.*%.t)$") or line:match("^(tests/.*%.lua)$")
     if file and not exclude[file] then
         if is_disabled(file) then
             table.insert(disabled, file)
@@ -47,8 +48,11 @@ for line in io.popen(lscmd):lines() do
             --which suggests that the error was reported gracefully
             --(if the compiler bites it before it finishes typechecking then it will not print this)
             local success = os.execute(execstring)
-            if success ~= 0 then
+            local should_fail = (file:match("fails/") ~= nil)
+            if success ~= 0 and not should_fail then
                 table.insert(failed,file)
+            elseif success == 0 and should_fail then
+                table.insert(bad_passed,file)
             else
                 table.insert(passed,file)
             end
@@ -72,6 +76,7 @@ local function printtests(nm,lst)
 end
 --printtests("passing tests",passed)
 printtests("FAILING tests",failed)
+printtests("passed but should have failed",bad_passed)
 printtests("disabled tests",disabled)
 
-print(tostring(#passed).." tests passed, "..tostring(#failed).." tests failed. " .. tostring(#disabled) .. " tests disabled.")
+print(tostring(#passed).." tests passed, "..tostring(#failed + #bad_passed).." tests failed. " .. tostring(#disabled) .. " tests disabled.")

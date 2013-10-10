@@ -434,12 +434,25 @@ function check(luaenv, kernel_ast)
 		return self.node_type
 	end
 
+    function ast.AssertStatement:check()
+        local test_type = self.test:check()
+        if _BOOL ~= test_type.objtype then
+            diag:reporterror(self, "Expected a boolean as the test for assert statement")
+        end
+    end
+
+    function ast.PrintStatement:check()
+        local output = self.output:check()
+        if not conforms(_MDATA, output.objtype) then
+            diag:reporterror(self, "Only numbers, bools, and vectors can be printed")
+        end
+    end
+
 	function enforce_numeric_type (node, typeobj)
 		if typeobj == nil or not conforms(_NUM, typeobj.objtype) then
 			diag:reporterror(self, "Expected a numeric expression to define the iterator bounds/step")
 		end
 	end
-
 
 	function ast.NumericFor:check()
 		enforce_numeric_type(self, self.lower:check())

@@ -135,6 +135,56 @@ function ast.Break:codegen(env)
 	return quote break end
 end
 
+local c = terralib.includecstring([[
+#include <stdio.h>
+#include <stdlib.h>
+]])
+local terra lisztAssert(test : bool, file : rawstring, line : int)
+    if not test then
+        c.printf("%s:%d: assertion failed!\n", file, line)
+        c.exit(1)
+    end
+end
+
+function ast.AssertStatement:codegen(env)
+    local test = self.test:codegen(env)
+    return quote lisztAssert(test, self.filename, self.linenumber) end
+end
+
+function ast.PrintStatement:codegen(env)
+    local output = self.output
+    local code = output:codegen(env)
+    if output.node_type.objtype == semant._FLOAT then return quote c.printf("%f\n", [float](code)) end
+	elseif output.node_type.objtype == semant._INT then return quote c.printf("%d\n", code) end
+	elseif output.node_type.objtype == semant._BOOL then
+        return quote c.printf("%s", terralib.select(code, "true\n", "false\n")) end
+	elseif output.node_type.objtype == semant._VECTOR then
+        printSpec = "{"
+        local sym = symbol()
+        elemQuotes = {}
+        for i = 0, output.node_type.size - 1 do
+            if output.node_type.elemtype == semant._FLOAT then
+                printSpec = printSpec .. " %f"
+                table.insert(elemQuotes, `[float](sym[i]))
+            elseif output.node_type.elemtype == semant._INT then
+                printSpec = printSpec .. " %d"
+                table.insert(elemQuotes, `sym[i])
+            elseif output.node_type.elemtype == semant._BOOL then
+                printSpec = printSpec .. " %s"
+                table.insert(elemQuotes, `terralib.select(sym[i], "true", "false"))
+            end
+        end
+        printSpec = printSpec .. " }\n"
+        return quote
+            var [sym] = code
+        in
+            c.printf(printSpec, elemQuotes)
+        end
+    else
+        assert(false and "Printed object should always be number, bool, or vector")
+    end
+end
+
 -- for now, just assume all assignments are to locally-scoped variables
 -- assignments to variables from lua scope will require liszt runtime 
 -- calls and extra information from semantic type checking
