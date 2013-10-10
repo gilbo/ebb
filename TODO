@@ -1,12 +1,9 @@
- - add double type
+ - integrate Will's assert code
  - modify parser to support integer constants
  - load boundary sets
- - add dot, length
- - add topological functions to language
- - implement nested for loops over topological sets
-	- sets in nested for loops should always be related to the parameter of the next-highest loop
- - vector indexing in liszt kernels (allow arbitrary?)
-
+ - add dot, length, builtin math functions for vectors, numbers
+ - implement nested for loops over topological sets / implement syntax/semantics for loading and specifying relations
+ - eventually: vector indexing in liszt kernels (allow arbitrary?), double type
 
  - how to implement built-in functions!
- - heat con
+ - implement heat conduction using relational runtime!
