@@ -4,6 +4,17 @@ local C = terralib.includecstring [[
     #include <stdlib.h>
     #include <string.h>
 ]]
+
+--[[
+- A table contains size, fields and _indexrelations, which point to tables
+that are indexed by this table. Example, _indexrelations for vertices table
+will point to vtov, vtoe etc.
+- A table also contains _index that has the compressed row values for index
+field, and the corresponding expanded index field and other field values.
+- A field contains fieldname, type of field, pointer to its table and expanded
+  data.
+--]]
+
 local table = {}
 table.__index = table
 function L.istable(t)
@@ -13,10 +24,25 @@ end
 local key = {}
 
 function L.newtable(size, debugname)
-    return setmetatable({ _size = size, _fields = terralib.newlist(), _debugname = debugname or "anon" },table)
+    return setmetatable( {
+        _size = size,
+        _fields = terralib.newlist(),
+        _indexrelations = {},
+        _debugname = debugname or "anon"
+        },
+        table)
 end
 
 local field = {}
+
+field.__index = field
+function L.isfield(f)
+    return getmetatable(f) == field
+end
+
+function L.newfield(t)
+    return { type = t } 
+end
 
 function table:__newindex(fieldname,value)
     local typ = value.type --TODO better error checking
@@ -29,13 +55,12 @@ function table:__newindex(fieldname,value)
     self._fields:insert(f)
 end 
 
-field.__index = field
-function L.isfield(f)
-    return getmetatable(f) == field
+function table:getrelation(relname)
+    return self._indexrelations[relname]
 end
 
-function L.newfield(t)
-    return { type = t } 
+function table:addrelation(relname, tableptr)
+    self._indexrelations[relname] = tableptr
 end
 
 function field:loadfrommemory(mem)
@@ -96,6 +121,9 @@ end
 
 function table:dump()
     print(self._debugname, "size: "..self._size)
+    for rel,t in pairs(self._indexrelations) do
+        print("Indexes to "..rel.." in "..t._debugname)
+    end
     for i,f in ipairs(self._fields) do
         f:dump()
     end
