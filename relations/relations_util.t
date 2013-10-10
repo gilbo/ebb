@@ -7,10 +7,11 @@ local C = terralib.includecstring [[
 
 --[[
 - A table contains size, fields and _indexrelations, which point to tables
-that are indexed by this table. Example, _indexrelations for vertices table
-will point to vtov, vtoe etc.
+  that are indexed by this table. Example, _indexrelations for vertices table
+  will point to vtov, vtoe etc. Use table:getrelationtable(topo_elem) to get a
+  relation table. Example, vertices:getrelationtable(edges) will give vtoe.
 - A table also contains _index that has the compressed row values for index
-field, and the corresponding expanded index field and other field values.
+  field, and the corresponding expanded index field and other field values.
 - A field contains fieldname, type of field, pointer to its table and expanded
   data.
 --]]
@@ -55,7 +56,7 @@ function table:__newindex(fieldname,value)
     self._fields:insert(f)
 end 
 
-function table:getrelation(relname)
+function table:getrelationtable(relname)
     return self._indexrelations[relname]
 end
 
