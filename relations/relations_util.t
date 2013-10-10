@@ -68,7 +68,7 @@ end
 -- If default value is true, field is initialized to 0
 -- If default value is a number, field is initialized to the given value
 function table:initializenumfield(fieldname, defaultval)
-    self[fieldname] = L.newfield("number")
+    self[fieldname] = L.newfield(uint32)
     local f = self[fieldname]
     f.data = {}
     if type(defaultval) == "boolean" then
@@ -97,6 +97,34 @@ function field:loadfrommemory(mem)
     local memT = terralib.typeof(mem)
     assert(memT == &self.realtype)
     C.memcpy(self.data,mem,nbytes)
+end
+
+function field:loadfrommemoryskipmsb(mem)
+    assert(self.data == nil)
+    local nelems = self.table._size
+    local nbytes = nelems * terralib.sizeof(self.realtype)
+    local bytes = C.malloc(nbytes)
+    self.data = terralib.cast(&self.realtype,bytes)
+    local memT = terralib.typeof(mem)
+    assert(memT == &self.realtype)
+    local bitmask = bit.bnot(bit.lshift(1, terralib.sizeof(self.realtype)*8-1))
+    for i = 0, nelems-1 do
+        self.data[i] = bit.band(mem[i], bitmask)
+    end
+    return terralib.sizeof(self.realtype)
+end
+
+function field:loadfrommemoryorientation(mem, wordsize)
+    assert(self.data == nil)
+    assert(self.type == bool)
+    local nelems = self.table._size
+    local nbytes = nelems * wordsize
+    local bytes = C.malloc(nbytes)
+    self.data = terralib.cast(&self.realtype,bytes)
+    local bitmask = bit.lshift(1, wordsize*8-1)
+    for i = 0, nelems-1 do
+        self.data[i] = (0 ~= bit.band(mem[i], bitmask))
+    end
 end
 
 function field:loadalternatefrommemory(mem)

@@ -8,7 +8,9 @@ local c = terralib.includec("stdio.h")
 - For mesh relations corresponding to CRS relations in original mesh, first
   field represents index field and second field represents corresponding
   values.
-- For relation tables for vertices, edges, faces and cells, 
+- Oriented relations have a field orientation.
+- For relation tables for vertices, edges, faces and cells, elements are
+  initialized to length-1, with corresponding fields if any.
 --]]
 
 -- basic relations
@@ -21,18 +23,18 @@ local topo_elems = {
 
 -- other mesh relations
 local mesh_rels_new = {
-    {name = "vtov",  t1 = "vertices", t2 = "vertices", n1 = "v1", n2 = "v2"},
-    {name = "vtoe", t1 = "vertices", t2 = "edges", n1 = "v", n2 = "e"},
-    {name = "vtof", t1 = "vertices", t2 = "faces", n1 = "v", n2 = "f"},
-    {name = "vtoc", t1 = "vertices", t2 = "cells", n1 = "v", n2 = "c"},
-    {name = "etof", t1 = "edges", t2 = "faces", n1 = "e", n2 = "f"},
-    {name = "etoc", t1 = "edges", t2 = "cells", n1 = "e", n2 = "c"},
-    {name = "ftov", t1 = "faces", t2 = "vertices", n1 = "f", n2 = "v"},
-    {name = "ftoe", t1 = "faces", t2 = "edges", n1 = "f", n2 = "e"},
-    {name = "ctov", t1 = "cells", t2 = "vertices", n1 = "c", n2 = "v"},
-    {name = "ctoe", t1 = "cells", t2 = "edges", n1 = "c", n2 = "e"},
-    {name = "ctof", t1 = "cells", t2 = "faces", n1 = "c", n2 = "f"},
-    {name = "ctoc", t1 = "cells", t2 = "cells", n1 = "c1", n2 = "c2"}
+    {name = "vtov", orientation = 0, t1 = "vertices", t2 = "vertices", n1 = "v1", n2 = "v2"},
+    {name = "vtoe", orientation = 1, t1 = "vertices", t2 = "edges", n1 = "v", n2 = "e"},
+    {name = "vtof", orientation = 0, t1 = "vertices", t2 = "faces", n1 = "v", n2 = "f"},
+    {name = "vtoc", orientation = 0, t1 = "vertices", t2 = "cells", n1 = "v", n2 = "c"},
+    {name = "etof", orientation = 1, t1 = "edges", t2 = "faces", n1 = "e", n2 = "f"},
+    {name = "etoc", orientation = 0, t1 = "edges", t2 = "cells", n1 = "e", n2 = "c"},
+    {name = "ftov", orientation = 0, t1 = "faces", t2 = "vertices", n1 = "f", n2 = "v"},
+    {name = "ftoe", orientation = 1, t1 = "faces", t2 = "edges", n1 = "f", n2 = "e"},
+    {name = "ctov", orientation = 0, t1 = "cells", t2 = "vertices", n1 = "c", n2 = "v"},
+    {name = "ctoe", orientation = 0, t1 = "cells", t2 = "edges", n1 = "c", n2 = "e"},
+    {name = "ctof", orientation = 1, t1 = "cells", t2 = "faces", n1 = "c", n2 = "f"},
+    {name = "ctoc", orientation = 0, t1 = "cells", t2 = "cells", n1 = "c1", n2 = "c2"}
     }
 local mesh_rels_topo = {
     {name = "etov", table = "edges", ft = "vertices", n1 = "head", n2 = "tail"},
@@ -86,7 +88,6 @@ function L.initMeshRelations(mesh, params)
         local tsize = params["n"..topo_elem]
         elems[topo_elem] = utils.newtable(tsize, topo_elem)
         elems[topo_elem]:initializenumfield("values", false)
-        -- TODO: complete loading
     end
     -- other mesh relations
     for k, rel_tuple in pairs(mesh_rels_new) do
@@ -96,19 +97,24 @@ function L.initMeshRelations(mesh, params)
         rels[rel_name] = rel_table
         rel_table[rel_tuple.n1] = utils.newfield(elems[rel_tuple.t1])
         rel_table[rel_tuple.n2] = utils.newfield(elems[rel_tuple.t2])
-        rel_table[rel_tuple.n2]:loadfrommemory(mesh[rel_name].values)
+        if rel_tuple.orientation then
+            local datasize = rel_table[rel_tuple.n2]:loadfrommemoryskipmsb(mesh[rel_name].values)
+            rel_table.orientation = utils.newfield(bool)
+            rel_table.orientation:loadfrommemoryorientation(mesh[rel_name].values, datasize)
+        else
+            rel_table[rel_tuple.n2]:loadfrommemory(mesh[rel_name].values)
+        end
         rel_table:loadindexfrommemory(rel_tuple.n1, mesh[rel_name].row_idx)
         elems[rel_tuple.t1]:addrelation(rel_tuple.t2, rel_table)
     end
     for k, rel_tuple in pairs(mesh_rels_topo) do
         local rel_name = rel_tuple.name
         local rel_table = elems[rel_tuple.table]
-        -- TODO: complete index field loading
         rel_table[rel_tuple.n1] = utils.newfield(elems[rel_tuple.ft])
         rel_table[rel_tuple.n2] = utils.newfield(elems[rel_tuple.ft])
         rel_table[rel_tuple.n1]:loadalternatefrommemory(mesh[rel_name].values[0])
         rel_table[rel_tuple.n2]:loadalternatefrommemory(mesh[rel_name].values[1])
-        
+        -- TODO: add indexing code here 
     end
     return elems, rels
 end
