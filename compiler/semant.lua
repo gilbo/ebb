@@ -191,6 +191,23 @@ end
 
 
 ------------------------------------------------------------------------------
+--[[ BinaryOp Reduction detection                                         ]]--
+------------------------------------------------------------------------------
+local commutative = {
+	['+']   = true,
+	['-']   = true,
+	['*']   = true,
+	['/']   = true,
+	['and'] = true,
+	['or']  = true
+}
+
+function ast.BinaryOp:operatorCommutes ()
+	return commutative[self.op]
+end
+
+
+------------------------------------------------------------------------------
 --[[ Semantic checking called from here:                                  ]]--
 ------------------------------------------------------------------------------
 function check(luaenv, kernel_ast)
@@ -217,6 +234,16 @@ function check(luaenv, kernel_ast)
 		end
 	end
 
+	local function type_meet (lobj, robj)
+		if conforms(lobj, robj) then 
+			return lobj
+		elseif conforms(robj, lobj) then
+			return robj
+		else
+			return nil
+		end
+	end
+
 	local function set_type(lhsobj, rhsobj)
 		if lhsobj.objtype == _NOTYPE then
 			lhsobj.objtype        = rhsobj.objtype
@@ -231,14 +258,13 @@ function check(luaenv, kernel_ast)
 
 	--[[ Cases not handled ]]--
 	function ast.AST:check()
-		print("To implement semantic checking for", self.kind)
-		diag:reporterror(self, "No known method to typecheck "..self.kind)
+		error("Typechecking not implemented for AST node " .. self.kind)
 	end
 
 	function ast.Block:check()
 		-- statements
         local blockobj
-		for id, node in ipairs(self.children) do
+		for id, node in ipairs(self.statements) do
 			blockobj = node:check()
 		end
         self.node_type = blockobj
@@ -246,39 +272,42 @@ function check(luaenv, kernel_ast)
 	end
 
 	function ast.IfStatement:check()
-		for id, node in ipairs(self.children) do
+		for id, node in ipairs(self.if_blocks) do
 			env:enterblock()
 			self.node_type = node:check()
+			env:leaveblock()
+		end
+		if self.else_block then
+			env:enterblock()
+			self.else_block:check()
 			env:leaveblock()
 		end
 		return self.node_type
 	end
 
 	function ast.WhileStatement:check()
-		local condobj = self.children[1]:check()
+		local condobj = self.cond:check()
 		if condobj and not conforms(_BOOL, condobj.objtype) then
 			diag:reporterror(self, 
 			"Expected boolean value for while statement condition")
 		end
 		env:enterblock()
-		self.node_type = self.children[2]:check()
+		self.node_type = self.body:check()
 		env:leaveblock()
         return self.node_type
 	end
 
 	function ast.DoStatement:check()
 		env:enterblock()
-		for id, node in ipairs(self.children) do
-			self.node_type = node:check()
-		end
+		self.node_type = self.body:check()
 		env:leaveblock()
         return self.node_type
 	end
 
 	function ast.RepeatStatement:check()
 		env:enterblock()
-		self.node_type = self.children[2]:check()
-		local condobj  = self.children[1]:check()
+		self.node_type = self.body:check()
+		local condobj  = self.cond:check()
 		if condobj and not conforms(_BOOL, condobj.objtype) then
 			diag:reporterror(self,
 			"Expected boolean value for repeat statement condition")
@@ -288,23 +317,23 @@ function check(luaenv, kernel_ast)
 	end
 
 	function ast.ExprStatement:check()
-		self.node_type = self.children[1]:check()
+		self.node_type = self.exp:check()
 		return self.node_type
 	end
 
 	function ast.Assignment:check()
-		local lhsobj = self.children[1]:check()
+		local lhsobj = self.lvalue:check()
 		if lhsobj == nil then return nil end
 
 		-- Only refactor the left binaryOp tree if we could potentially be commiting a field/scalar write
 		if  type(lhsobj.luaval) == 'table' and 
 			(lhsobj.luaval.kind == _FIELDINDEX_STR or lhsobj.luaval.kind == _SCALAR_STR) and
-			self.children[2].kind == 'binop' 
+			self.exp.kind == 'binop' 
 		then 
-			self.children[2]:refactorReduction()
+			self.exp:refactorReduction()
 		end
 
-		local rhsobj = self.children[2]:check()
+		local rhsobj = self.exp:check()
 		if rhsobj == nil then
 			return nil
 		end
@@ -313,7 +342,7 @@ function check(luaenv, kernel_ast)
 		-- if the lhs is from the global scope, then it must be an indexed field or a scalar:
 		if lhsobj.scope == _LUA_STR then
 			if type(lhsobj.luaval) ~= _TABLE_STR or not (lhsobj.luaval.kind == _FIELDINDEX_STR or lhsobj.luaval.kind == _SCALAR_STR) then
-				diag:reporterror(self.children[1], err_msg)
+				diag:reporterror(self.lvalue, err_msg)
 				return nil
 			end
 		end
@@ -322,7 +351,7 @@ function check(luaenv, kernel_ast)
 		-- we do not allow users to re-assign variables of topological element type, etc so that they
 		-- do not confuse our stencil analysis.
 		if lhsobj.scope == _LISZT_STR and not (conforms(_MDATA, lhsobj.objtype) or lhsobj.objtype == _NOTYPE) then
-			diag:reporterror(self.children[1], "Cannot update local variables referring to objects of topological type")
+			diag:reporterror(self.lvalue, "Cannot update local variables referring to objects of topological type")
 			return nil
 		end
 
@@ -337,30 +366,38 @@ function check(luaenv, kernel_ast)
 		self.node_type = lhsobj
 
 		-- Determine if this assignment is a field write or a reduction (since this requires special codegen)
-		local lval = self.children[1]
-		local rexp = self.children[2]
+		local lval = self.lvalue
+		local rexp = self.exp
 		if lval.node_type.luaval and lval.node_type.luaval.kind == _FIELDINDEX_STR then
-			if rexp.kind ~= 'binop' or rexp.children[1].node_type.luaval.kind ~= _FIELDINDEX_STR then
+			local lfield = lval.func.node_type.luaval
+			self.field   = lfield -- lua object
+			self.topo    = lval.params.children[1] -- liszt ast node
+
+			if rexp.kind ~= 'binop' or rexp.lhs.node_type.luaval.kind ~= _FIELDINDEX_STR then
 				self.fieldop = _FIELD_WRITE
 			else
-				local lfield = lval.children[1].node_type.luaval
-				local rfield = rexp.children[1].children[1].node_type.luaval
+				local rfield = rexp.lhs.func.node_type.luaval
 				self.fieldop = (lfield == rfield and rexp:operatorCommutes()) and _FIELD_REDUCE or _FIELD_WRITE
+				if self.fieldop == _FIELD_REDUCE then
+					self.rexp  = rexp.rhs -- liszt ast node
+				end
 			end
 		end
 
 		if lval.node_type.luaval and lval.node_type.luaval.kind == _SCALAR_STR then
-			if rexp.kind ~= 'binop' or rexp.children[1].node_type.luaval.kind ~= _SCALAR_STR then
-				diag:reporterror("Scalar variables can only be modified through reductions")
+			if rexp.kind ~= 'binop' or rexp.lhs.node_type.luaval.kind ~= _SCALAR_STR then
+				diag:reporterror(self, "Scalar variables can only be modified through reductions")
 			else
 				-- Make sure the scalar objects on the lhs and rhs match.  Otherwise, we are 
 				-- looking at a write to the lhs scalar, which is illegal.
 				local lsc = lval.node_type.luaval
-				local rsc = rexp.children[1].node_type.luaval
+				local rsc = rexp.lhs.node_type.luaval
 				if lsc ~= rsc then
-					diag:reporterror("Scalar variables can only be modified through reductions")
+					diag:reporterror(self, "Scalar variables can only be modified through reductions")
 				else
 					self.fieldop = _SCALAR_REDUCE
+					self.scalar  = lsc
+					self.rexp    = rexp.rhs
 				end
 			end
 		end
@@ -370,9 +407,9 @@ function check(luaenv, kernel_ast)
 
 	function ast.InitStatement:check()
 		self.node_type       = ObjType:new()
-		self.node_type.defn  = self.children[1]
-		local varname        = self.children[1].children[1]
-		local rhsobj         = self.children[2]:check()
+		self.node_type.defn  = self.ref
+		local varname        = self.ref.name
+		local rhsobj         = self.exp:check()
 
 		if rhsobj == nil then return nil end
 
@@ -392,52 +429,57 @@ function check(luaenv, kernel_ast)
 
 	function ast.DeclStatement:check()
 		self.node_type = ObjType:new()
-		self.node_type.defn  = self.children[1]
-		local varname = self.children[1].children[1]
-		env:localenv()[varname] = self.node_type
+		self.node_type.defn = self.ref
+		env:localenv()[self.ref.name] = self.node_type
 		return self.node_type
 	end
 
+	function enforce_numeric_type (node, typeobj)
+		if typeobj == nil or not conforms(_NUM, typeobj.objtype) then
+			diag:reporterror(self, "Expected a numeric expression to define the iterator bounds/step")
+		end
+	end
+
+
 	function ast.NumericFor:check()
-		for i = 2, #self.children-1 do
-			local exprobj = self.children[i]:check()
-			if exprobj == nil or not conforms(_NUM, exprobj.objtype) then
-				diag:reporterror(self, "Expected a number for defining the iterator")
-			end
+		enforce_numeric_type(self, self.lower:check())
+		enforce_numeric_type(self, self.upper:check())
+		if self.step then 
+			enforce_numeric_type(self, self.step:check()) 
 		end
 
 		local itobj          = ObjType:new()
-		itobj.defn           = self.children[1]
+		itobj.defn           = self.iter
 		itobj.objtype        = _NUM
 		itobj.elemtype       = _NUM
 		itobj.scope          = _LISZT_STR
 		itobj.defn.node_type = itobj
 
 		env:enterblock()
-		local varname = self.children[1].children[1]
+		local varname = self.iter.name
 		env:localenv()[varname] = itobj
-		self.node_type = self.children[#self.children]:check()
+		self.node_type = self.body:check()
 		env:leaveblock()
 		return self.node_type
 	end
 
 	function ast.GenericFor:check()
-        local setobj = self.children[2]:check()
+        local setobj = self.set:check()
 
         -- TODO: is some kind of error checking supposed to be here?
 		if setobj == nil then
 		end
 
         local itobj          = ObjType:new()
-        itobj.defn           = self.children[1]
+        itobj.defn           = self.iter
         itobj.objtype        = setobj.topotype
         itobj.scope          = _LISZT_STR
         itobj.defn.node_type = setobj.data_type
 
         env:enterblock()
-        local varname = self.children[1].children[1]
+        local varname = self.iter.name
         env:localenv()[varname] = itobj
-        self.node_type = self.children[3]:check()
+        self.node_type = self.body:check()
         env:leaveblock()
         return self.node_type
 	end
@@ -447,13 +489,13 @@ function check(luaenv, kernel_ast)
 	end
 
 	function ast.CondBlock:check()
-		local condobj = self.children[1]:check()
+		local condobj = self.cond:check()
 		if condobj and not conforms(_BOOL, condobj.objtype) then
 			diag:reporterror(self, "Expected boolean value here")
 		end
 
 		env:enterblock()
-		self.node_type = self.children[2]:check()
+		self.node_type = self.body:check()
 		env:leaveblock()
 		return self.node_type
 	end
@@ -542,12 +584,11 @@ function check(luaenv, kernel_ast)
 
     function ast.BinaryOp:refactorReduction ()
     	-- recursively refactor the left-hand child
-    	local left = self.children[1]
-    	if left.kind ~= 'binop' then return end
-    	left:refactorReduction()
+    	if self.lhs.kind ~= 'binop' then return end
+    	self.lhs:refactorReduction()
 
-    	local rop   = self.children[2]
-    	local lop   = left.children[2]
+    	local rop   = self.op
+    	local lop   = self.lhs.op
 
     	local simple = {['+'] = true, ['*'] = true, ['and'] = true, ['or'] = true}
     	if commutes(lop, rop) then
@@ -555,39 +596,40 @@ function check(luaenv, kernel_ast)
 				We want to pull up the left grandchild to be the left child of
 				this node.  Thus, we'll need to refactor the tree like so:
 
-				      *                  *
-				     / \                / \
-					/   \              /   \
-				   *     C    ==>     A     *
-				  / \                      / \
-				 /   \                    /   \
-				A     B                  B     C
+		  self ->     *                  *
+		             / \                / \
+		            /   \              /   \
+		  left ->  *     C    ==>     A     *
+		          / \                      / \
+		         /   \                    /   \
+		        A     B                  B     C
 			]]--
-			local A = left.children[1]
-			local B = left.children[3]
-			local C = self.children[3]
-			self.children[1] = A
-			self.children[3] = left
-			left.children[1] = B
-			left.children[3] = C
+			local left = self.lhs
+			local A    = left.lhs
+			local B    = left.rhs
+			local C    = self.rhs
+			self.lhs = A
+			self.rhs = left
+			left.lhs = B
+			left.rhs = C
 
 			-- if the left operator is an inverse operator, we'll need to
 			-- change the right operator as well.
 			if not simple[lop] then
     			-- switch the right operator to do the inverse operation
     			local inv_map = { ['+'] = '-', ['-'] = '+', ['*'] = '/', ['/'] = '*' }
-    			rop = inv_map[rop]
-				self.children[2] = lop
-				self.children[3].children[2] = rop    			
+    			rop         = inv_map[rop]
+				self.op     = lop
+				self.rhs.op = rop    			
     		end
     	end
     end
 
 	-- binary expressions
 	function ast.BinaryOp:check()
-		local leftobj  = self.children[1]:check()
-		local rightobj = self.children[3]:check()
-		local op       = self.children[2]
+		local leftobj  = self.lhs:check()
+		local rightobj = self.rhs:check()
+		local op       = self.op
 		local exprobj  = ObjType:new()
 
 		if leftobj == nil or rightobj == nil then
@@ -599,12 +641,10 @@ function check(luaenv, kernel_ast)
 			   (op == '/' and rightobj.size == 1) then
 				local lbasetype = leftobj.objtype  == _VECTOR and leftobj.elemtype  or leftobj.objtype
 				local rbasetype = rightobj.objtype == _VECTOR and rightobj.elemtype or rightobj.objtype
-				if conforms(lbasetype, rbasetype) then
-					exprobj.objtype  = lbasetype
-					exprobj.elemtype = lbasetype
-				elseif conforms(rbasetype, lbasetype) then
-					exprobj.objtype  = rbasetype
-					exprobj.elemtype = rbasetype
+				local btype = type_meet(lbasetype, rbasetype)
+				if btype then
+					exprobj.objtype  = btype
+					exprobj.elemtype = btype
 				else
 					diag:reporterror(self, "Objects of type " .. leftobj:toString() .. ' and ' .. rightobj:toString() .. ' are not compatible operands of operator \'' .. op .. '\'')
 				end
@@ -615,12 +655,14 @@ function check(luaenv, kernel_ast)
 			end
 		elseif isVecOp[op] then
 			if vector_length_matches(self, leftobj, rightobj) then
-				if conforms(leftobj.objtype, rightobj.objtype) then
+				if conforms(leftobj.elemtype, rightobj.elemtype) then
 					exprobj.objtype  = leftobj.objtype
-					exprobj.elemtype = leftobj.objtype
-				else
+					exprobj.elemtype = leftobj.elemtype
+				elseif conforms(rightobj.elemtype, leftobj.elemtype) then
 					exprobj.objtype  = rightobj.objtype
-					exprobj.elemtype = rightobj.objtype
+					exprobj.elemtype = rightobj.elemtype
+				else
+					diag:reporterror(self, "Vector types do not match")
 				end
 				exprobj.size = leftobj.size
 			end
@@ -675,12 +717,11 @@ function check(luaenv, kernel_ast)
 	end
 
 	function ast.UnaryOp:check()
-		local op = self.children[1]
-		local exprobj = self.children[2]:check()
+		local exprobj = self.exp:check()
 		if exprobj == nil then
 			return nil
 		end
-		if op == 'not' then
+		if self.op == 'not' then
 			if not conforms(_BOOL, exprobj.objtype) then
 				diag:reporterror(self, "\"not\" operator expects a boolean expression")
 				return nil
@@ -688,7 +729,7 @@ function check(luaenv, kernel_ast)
 				self.node_type = exprobj
 				return exprobj
 			end
-		elseif op == '-' then
+		elseif self.op == '-' then
 			local binterms = conforms(_NUM, exprobj.objtype)
 			if not binterms then
 				binterms = conforms(_VECTOR, exprobj.objtype) and
@@ -733,22 +774,22 @@ function check(luaenv, kernel_ast)
 
 	function ast.TableLookup:check()
         -- LHS could be another LValue, or name
-        local lhsobj = self.children[1]:check()
+        local lhsobj = self.table:check()
 		if lhsobj == nil then
 			return nil
 		end
         local tableobj = ObjType:new()
         tableobj.defn  = self
         -- RHS is a member of the LHS
-        local member = self.children[3].children[1]
+        local member = self.member.name
         local luaval = lhsobj.luaval[member]
         if luaval == nil then
-            diag:reporterror(self, "LHS value does not have member ", member)
+            diag:reporterror(self, "Object does not have member " .. member)
 			return nil
         else
             if not lua_to_liszt(luaval, tableobj) then
                 diag:reporterror(self,
-                "Cannot convert the lua value to a liszt value")
+                "Cannot convert the lua value to a Liszt value")
 			return nil
             end
         end
@@ -758,12 +799,12 @@ function check(luaenv, kernel_ast)
 
 	function ast.Call:check()
 		-- call name can be a field only in current implementation
-		local callobj = self.children[1]:check()
+		local callobj = self.func:check()
 		if callobj == nil then
 			diag:reporterror(self, "Undefined call")
 			return nil
 		elseif callobj.objtype.name == _FIELD_STR then
-			local argobj = self.children[2]:index_check()
+			local argobj = self.params:index_check()
 			if argobj == nil then
 				return nil
 			end
@@ -911,17 +952,17 @@ function check(luaenv, kernel_ast)
 	end
 
 	function ast.Name:check()
-		local locv = env:localenv()[self.children[1]]
+		local locv = env:localenv()[self.name]
 		if locv then
 			-- if liszt local variable, type stored in environment
 			self.node_type = locv
 			return locv
 		end
 		
-		local luav = env:luaenv()[self.children[1]]
+		local luav = env:luaenv()[self.name]
 		if not luav then
 			diag:reporterror(self, "Variable \'" .. 
-				self.children[1] .. "\' is not defined")
+				self.name .. "\' is not defined")
 			return nil
 		end
 
@@ -949,10 +990,49 @@ function check(luaenv, kernel_ast)
 		return numobj
 	end
 
+	function ast.VectorLiteral:check()
+		local numobj = ObjType:new()
+
+		local first = self.elems[1]:check()
+
+		-- semantic checking error in first
+		if not first then
+			return nil
+		end
+
+		local tp_error = "Vector literals can only contain expressions of boolean or numeric type"
+		local mt_error = "Vectors cannot have mixed numeric and boolean types"
+
+		if not conforms(_MDATA, first.objtype) then
+			diag:reporterror(self, tp_error)
+			return nil
+		end
+
+		local tp = first.objtype
+		for i = 2, #self.elems do
+			local obj = self.elems[i]:check()
+			if not conforms(_MDATA, obj.objtype) then 
+				diag:reporterror(self, tp_error)
+				return nil
+			end
+			tp = type_meet(tp, obj.objtype)
+			if not tp then
+				diag:reporterror(self, mt_error)
+				return nil
+			end
+		end
+
+		numobj.objtype  = _VECTOR
+		numobj.elemtype = tp
+		numobj.size     = #self.elems
+		self.node_type = numobj
+		return numobj
+	end
+
 	function ast.Bool:check()
 		local boolobj    = ObjType:new()
 		boolobj.objtype  = _BOOL
-		boolobj.elemtype = _NUM
+		boolobj.elemtype = _BOOL
 		boolobj.size     = 1
 		self.node_type   = boolobj
 		return boolobj
@@ -964,24 +1044,18 @@ function check(luaenv, kernel_ast)
 	------------------------------------------------------------------------------
 	diag:begin()
 	env:enterblock()
-	local param = kernel_ast.children[1]
-	local block = kernel_ast.children[2]
 
 	local paramobj    = ObjType:new()
 	paramobj.objtype  = _ELEM
 	paramobj.elemtype = _ELEM
 	paramobj.size     = 1
 	paramobj.scope    = _LISZT_STR
-	paramobj.defn     = param
-	param.node_type   = paramobj
+	paramobj.defn     = kernel_ast.param
+	kernel_ast.param.node_type = paramobj
+	env:localenv()[kernel_ast.param.name] = paramobj
 
-	env:localenv()[param.children[1]] = paramobj
-
-	for id, node in ipairs(kernel_ast.children) do
-		if (node.kind ~= nil) then
-			node:check()
-		end
-	end
+	kernel_ast.param:check()
+	kernel_ast.body:check()
 
 	env:leaveblock()
 	diag:finishandabortiferrors("Errors during typechecking liszt", 1)

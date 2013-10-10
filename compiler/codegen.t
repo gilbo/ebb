@@ -15,67 +15,66 @@ end
 
 function ast.LisztKernel:codegen (env)
 	env.param   = symbol()
-	env:localenv()[self.children[1].children[1]] = env.param -- symbol for kernel parameter
+	env:localenv()[self.param.name] = env.param -- symbol for kernel parameter
 	env.context = symbol() -- lkContext* argument for kernel function
-	return self.children[2]:codegen(env)
+	return self.body:codegen(env)
 end
 
 function ast.Block:codegen (env)
 	-- start with an empty ast node, or we'll get an error when appending new quotes below
 	local code = quote end
-	for i = 1, #self.children do
-		local stmt = self.children[i]:codegen(env)
+	for i = 1, #self.statements do
+		local stmt = self.statements[i]:codegen(env)
 		code = quote code stmt end
 	end
 	return code
 end
 
-function ast.CondBlock:codegen(env, stmts, index)
-	local cond  = self.children[1]:codegen(env)
-	env:enterblock()
-	local block = self.children[2]:codegen(env)
-	env:leaveblock()
-	-- Last statement of if block is an elseif:
-	if index == #stmts then
-		return quote if [cond] then [block] end end
-	end
+function ast.CondBlock:codegen(env, cond_blocks, else_block, index)
+	index = index or 1
 
-	local elseblock
+	local cond  = self.cond:codegen(env)
 	env:enterblock()
-	-- If the next block is not conditional:
-	if index == #stmts - 1 and stmts[#stmts].kind == 'block' then
-		elseblock = stmts[#stmts]:codegen(env)
+	local body = self.body:codegen(env)
+	env:leaveblock()
+
+	if index == #cond_blocks then
+		if else_block then
+			return quote if [cond] then [body] else [else_block:codegen(env)] end end
+		else
+			return quote if [cond] then [body] end end
+		end
 	else
-		elseblock = stmts[index + 1]:codegen(env, stmts, index + 1)
+		env:enterblock()
+		local nested = cond_blocks[index + 1]:codegen(env, cond_blocks, else_block, index + 1)
+		env:leaveblock()
+		return quote if [cond] then [body] else [nested] end end
 	end
-	env:leaveblock()
-
-	return quote if [cond] then [block] else [elseblock] end end
 end
 
 function ast.IfStatement:codegen (env)
-	return self.children[1]:codegen(env, self.children, 1)
+	return self.if_blocks[1]:codegen(env, self.if_blocks, self.else_block)
 end
 
 function ast.WhileStatement:codegen (env)
-	local cond = self.children[1]:codegen(env)
+	local cond = self.cond:codegen(env)
 	env:enterblock()
-	local body = self.children[2]:codegen(env)
+	local body = self.body:codegen(env)
 	env:leaveblock()
 	return quote while [cond] do [body] end end
 end
 
 function ast.DoStatement:codegen (env)
 	env:enterblock()
-	local body = self.children[1]:codegen(env)
+	local body = self.body:codegen(env)
 	env:leaveblock()
 	return quote do [body] end end
 end
 
 function ast.RepeatStatement:codegen (env)
 	env:enterblock()
-	local body = self.children[2]:codegen(env)
-	local cond = self.children[1]:codegen(env)
+	local body = self.body:codegen(env)
+	local cond = self.cond:codegen(env)
 	env:leaveblock()
 
 	return quote repeat [body] until [cond] end
@@ -99,7 +98,7 @@ function ast.DeclStatement:codegen (env)
 		typ = vector(elemtype, self.node_type.size)
 	end
 
-	local name = self.children[1].children[1]
+	local name = self.ref.name
 	local sym  = symbol(typ)
 	env:localenv()[name] = sym
 
@@ -111,20 +110,17 @@ function ast.NumericFor:codegen (env)
 	-- iter expression should be in a nested scope, and for block
 	-- should be nested again -- that way the loop var is reset every
 	-- time the loop runs.
-	local minexp = self.children[2]:codegen(env)
-	local maxexp = self.children[3]:codegen(env)
-	local stepexp
-	if #self.children == 5 then
-		stepexp = self.children[4]:codegen(env)
-	end
+	local minexp  = self.lower:codegen(env)
+	local maxexp  = self.upper:codegen(env)
+	local stepexp = self.step and self.step:codegen(env) or nil
 
 	env:enterblock()
-	local iterstr = self.children[1].children[1]
+	local iterstr = self.iter.name
 	local itersym = symbol()
 	env:localenv()[iterstr] = itersym
 
 	env:enterblock()
-	local body = self.children[#self.children]:codegen(env)
+	local body = self.body:codegen(env)
 	env:leaveblock()
 	env:leaveblock()
 
@@ -193,57 +189,51 @@ local bPhaseMap = {
 }
 
 local function getPhase (binop)
-	local op = binop.children[2]
-
 	-- for boolean types, return boolean reduction phases
 	if binop.node_type.objtype == semant._BOOL or
 		(binop.node_type.objtype == semant._VECTOR and binop.node_type.elemtype == semant._BOOL) then
-		return bPhaseMap[op] end
+		return bPhaseMap[binop.op] end
 
-	return mPhaseMap[op]
+	return mPhaseMap[binop.op]
 end
 
 
 function ast.Assignment:codegen (env)
+	local tp = objTypeToTerra(self.node_type)
 	if self.fieldop == semant._FIELD_WRITE then
-		local rhs     = self.children[2]:codegen(env)
-						--   Call        LValue
-		local field   = self.children[1].children[1].node_type.luaval
-		                --   Call        Tuple       Name
-		local topo    = self.children[1].children[2].children[1]:codegen(env)
-		local element_type, element_length, val_offset, val_length = objTypeToLiszt(self.children[1].node_type)
+		local exp     = self.exp:codegen(env)
+		local field   = self.field
+		local topo    = self.topo:codegen(env)
+		local element_type, element_length, val_offset, val_length = objTypeToLiszt(self.lvalue.node_type)
 
 		return quote
-			var tmp = [rhs]
+			var tmp : tp = [exp]
 			runtime.lkFieldWrite([field.lkfield], [topo], runtime.L_ASSIGN, element_type, element_length, val_offset, val_length, &tmp)
 		end
 	elseif self.fieldop == semant._FIELD_REDUCE then
-		local rhs     = self.children[2].children[3]:codegen(env)
-						--   Call        LValue
-		local field   = self.children[1].children[1].node_type.luaval
-		                --   Call        Tuple       Name
-		local topo    = self.children[1].children[2].children[1]:codegen(env)
-		local phase   = getPhase(self.children[2])
-		local element_type, element_length, val_offset, val_length = objTypeToLiszt(self.children[1].node_type)
+		local exp     = self.rexp:codegen(env)
+		local field   = self.field
+		local topo    = self.topo:codegen(env)
+		local phase   = getPhase(self.exp)
+		local element_type, element_length, val_offset, val_length = objTypeToLiszt(self.lvalue.node_type)
 
 		return quote
-			var tmp = [rhs]
+			var tmp : tp = [exp]
 			runtime.lkFieldWrite([field.lkfield], [topo], [phase], element_type, element_length, val_offset, val_length, &tmp)
 		end
 	elseif self.fieldop == semant._SCALAR_REDUCE then
-					-- Binop         rhs Exp
-		local rhs = self.children[2].children[3]:codegen(env)
-		local lsc = self.children[1].node_type.luaval
-		local phase = getPhase(self.children[2])
-		local el_type, el_len, val_offset, val_len = objTypeToLiszt(self.children[1].node_type)
+		local exp   = self.rexp:codegen(env)
+		local lsc   = self.scalar
+		local phase = getPhase(self.exp)
+		local el_type, el_len, val_offset, val_len = objTypeToLiszt(self.lvalue.node_type)
 		return quote
-			var tmp = [rhs]
+			var tmp : tp = [exp]
 			runtime.lkScalarWrite([env.context], [lsc.__lkscalar], [phase], [el_type], [el_len], [val_offset], [val_len], &tmp)
 		end
 
 	else
-		local lhs = self.children[1]:codegen_lhs(env)
-		local rhs = self.children[2]:codegen(env)
+		local lhs = self.lvalue:codegen_lhs(env)
+		local rhs = self.exp:codegen(env)
 		return quote lhs = rhs end
 	end
 end
@@ -251,13 +241,11 @@ end
 -- Call:codegen is called for field reads, when the field appears
 -- in an expression, or on the rhs of an assignment.
 function ast.Call:codegen (env)
-	local field = self.children[1].node_type.luaval
-	              -- Call          Tuple       LValue
-	local topo  = self.children[2].children[1]:codegen(env) -- Should return an lkElement
+	local field = self.func.node_type.luaval
+	local topo  = self.params.children[1]:codegen(env) -- Should return an lkElement
 	local read  = symbol()
 
 	local typ = objTypeToTerra(self.node_type)
-
 	local el_type, el_len, val_off, val_len = objTypeToLiszt(self.node_type)
 
 	return quote
@@ -269,22 +257,49 @@ function ast.Call:codegen (env)
 end
 
 function ast.InitStatement:codegen (env)
-	local varname = self.children[1].children[1]
+	local varname = self.ref.name
 	local varsym  = symbol()
 	env:localenv()[varname] = varsym
-	return quote var [varsym] = [self.children[2]:codegen(env)] end
+	return quote var [varsym] = [self.exp:codegen(env)] end
 end
 
 function ast.Name:codegen_lhs (env)
-	local name = self.children[1]
-	return `[env:combinedenv()[name]]
+	return `[env:combinedenv()[self.name]]
 end
 
+function ast.VectorLiteral:codegen (env)
+	local ct = { }
+	local v = symbol()
+	local tp = terraTypeMap[self.node_type.elemtype]
+	for i = 1, #self.elems do
+		ct[i] = self.elems[i]:codegen()
+	end
+
+   -- These quotes give terra the opportunity to generate optimized assembly via the vectorof call
+   -- when I dissassembled terra functions at the console, they seemed more likely to use vector
+   -- ops for loading values if vectors are initialized this way.
+	if #ct == 3 then
+		return quote var [v] = vectorof([tp], [ct[1]], [ct[2]], [ct[3]]) in [v] end
+	elseif #ct == 4 then
+		return quote var [v] = vectorof([tp], [ct[1]], [ct[2]], [ct[3]], [ct[4]]) in [v] end
+	elseif #ct == 5 then
+		return quote var [v] = vectorof([tp], [ct[1]], [ct[2]], [ct[3]], [ct[4]], [ct[5]]) in [v] end
+	else
+		local t = symbol()
+		local q = quote
+			var [v] : vector(tp, #ct)
+			var [t] = &[tp](&s)
+		end
+		for i = 1, #ct do
+			q = quote [q] @[t] = [ct[i]] t = t + 1 end
+		end
+		return quote [q] in [s] end
+	end
+end
 
 local function codegen_scalar(node, env)
 	local read = symbol()
 	local el_type, el_len, val_off, val_len = objTypeToLiszt(node.node_type)
-	print("el_type: " .. tostring(el_type))
 	local lks = node.node_type.luaval.__lkscalar
 	local typ = objTypeToTerra(node.node_type)
 
@@ -304,13 +319,12 @@ function ast.Name:codegen (env)
 		return codegen_scalar(self, env)
 	end
 
-	local str = self.children[1]
-	local val = env:combinedenv()[str]
+	local val = env:combinedenv()[self.name]
 	if type(val) == 'table' and (val.isglobal) then
 		local terra get_global () return val end
 		-- store this global in the environment table so we won't have to look it up again
-		env:luaenv()[str] = get_global()
-		val = env:luaenv()[str]
+		env:luaenv()[self.name] = get_global()
+		val = env:luaenv()[self.name]
 		return `val
 	-- if we've encountered a Liszt vector, extract a terra vector and store it in the local environment
 
@@ -330,42 +344,42 @@ function ast.TableLookup:codegen (env)
 end
 
 function ast.Number:codegen (env)
-	return `[self.children[1]]
+	return `[self.value]
 end
 
 function ast.Bool:codegen (env)
-	if self.children[1] == 'true' then return `true else return `false end
+	if self.value == 'true' then
+		return quote in true end 
+	else 
+		return quote in false end
+	end
 end
 
 function ast.UnaryOp:codegen (env)
-	local expr = self.children[2]:codegen(env)
-	local op   = self.children[1]
-
-	if (op == '-') then return `-[expr]
+	local expr = self.exp:codegen(env)
+	if (self.op == '-') then return `-[expr]
 	else return `not [expr]
 	end
 end
 
 function ast.BinaryOp:codegen (env)
-	local lhe = self.children[1]:codegen(env)
-	local rhe = self.children[3]:codegen(env)
+	local lhe = self.lhs:codegen(env)
+	local rhe = self.rhs:codegen(env)
 
-	op = self.children[2]
-
-	if     op == '+'   then return `lhe +   rhe
-	elseif op == '-'   then return `lhe -   rhe
-	elseif op == '/'   then return `lhe /   rhe
-	elseif op == '*'   then return `lhe *   rhe
-	elseif op == '%'   then return `lhe %   rhe
-	elseif op == '^'   then return `lhe ^   rhe
-	elseif op == 'or'  then return `lhe or  rhe
-	elseif op == 'and' then return `lhe and rhe
-	elseif op == '<'   then return `lhe <   rhe
-	elseif op == '>'   then return `lhe >   rhe
-	elseif op == '<='  then return `lhe <=  rhe
-	elseif op == '>='  then return `lhe >=  rhe
-	elseif op == '=='  then return `lhe ==  rhe
-	elseif op == '~='  then return `lhe ~=  rhe
+	if     self.op == '+'   then return `lhe +   rhe
+	elseif self.op == '-'   then return `lhe -   rhe
+	elseif self.op == '/'   then return `lhe /   rhe
+	elseif self.op == '*'   then return `lhe *   rhe
+	elseif self.op == '%'   then return `lhe %   rhe
+	elseif self.op == '^'   then return `lhe ^   rhe
+	elseif self.op == 'or'  then return `lhe or  rhe
+	elseif self.op == 'and' then return `lhe and rhe
+	elseif self.op == '<'   then return `lhe <   rhe
+	elseif self.op == '>'   then return `lhe >   rhe
+	elseif self.op == '<='  then return `lhe <=  rhe
+	elseif self.op == '>='  then return `lhe >=  rhe
+	elseif self.op == '=='  then return `lhe ==  rhe
+	elseif self.op == '~='  then return `lhe ~=  rhe
 	end
 
 end

@@ -79,6 +79,7 @@ lStencilData    = runtime.lStencilData
 lScalarRead        = runtime.lScalarRead
 lScalarWrite       = runtime.lScalarWrite
 lKernelRun         = runtime.lKernelRun
+lFieldBroadcast    = runtime.lFieldBroadcast
 
 -- phase fns
 lFieldEnterPhase   = runtime.lFieldEnterPhase
@@ -98,6 +99,7 @@ lVerticesOfMesh    = runtime.lVerticesOfMesh
 -- lk functions
 lkGetActiveElement = runtime.lkGetActiveElement
 lkScalarWrite      = runtime.lkScalarWrite
+lkFieldWrite       = runtime.lkFieldWrite
 
 -- parameter types
 local lType        = uint
@@ -144,10 +146,6 @@ end
 
 terra getlkScalar (scalar : &runtime.lScalar)
 	return scalar.lkscalar
-end
-
-terra lkFieldWrite (scalar : &lkField, e : lkElement, reduction : uint, element_type : lType, element_length : size_t, val_offset : size_t, val_length : size_t, result : &opaque)
-	runtime.lkFieldWrite(scalar,e,reduction,element_type,element_length,val_offset,val_length,result)
 end
 
 terra lkFieldRead (scalar : &lkField, e : lkElement, element_type : lType, element_length : size_t, val_offset : size_t, val_length : size_t,  result : &opaque)

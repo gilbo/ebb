@@ -29,6 +29,7 @@ end
 
 function Kernel:generate (param_type)
 	semant.check(self.env, self.ast)
+
 	if not self.__kernel then
 		self.__kernel = codegen.codegen(self.env, self.ast)
 	end

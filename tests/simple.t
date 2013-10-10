@@ -14,7 +14,7 @@ function main ()
 
 	local vv = Vector.new(float, {1,2,3})
 
-	local sum_pos = liszt_kernel (v)
+	local test_kernel = liszt_kernel (v)
 		-- BinaryOp, UnaryOp, InitStatement, Number, Bool, and RValue codegen tests
 		var x = 9
 		var xx = x - 4
@@ -22,7 +22,7 @@ function main ()
 		var z = upval
 		var b = a
 		var q = true
-		var x = q       -- Also, test re-declaring variables (symbols for 'x' should now be different)
+		var x = q  -- Also, test re-declaring variables (symbols for 'x' should now be different)
 		var z = not x
 		var y = not z or x
 		var z = not true and false or true
@@ -126,6 +126,8 @@ function main ()
 			if x == 3 then break end
 		end
 	end
+
+	mesh.vertices:map(test_kernel)
 end
 
 main()

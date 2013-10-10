@@ -99,3 +99,31 @@ test.fail_function(type_fail2, "lengths")
 test.fail_function(type_fail3, "lengths")
 test.fail_function(type_fail4, "lengths")
 test.fail_function(type_fail5, "lengths")
+
+
+--------------------------
+-- Kernel vector tests: --
+--------------------------
+mesh   = LoadMesh("examples/mesh.lmesh")
+pos    = mesh:fieldWithLabel(Vertex, Vector.type(float, 3), "position")
+
+
+------------------
+-- Should pass: --
+------------------
+function test_vector_literals ()
+	local k = liszt_kernel (v)
+		var x = {5, 5, 5}
+		pos(v) = pos(v) + x + {0, 1, 1}
+	end
+	mesh.vertices:map(k)
+
+	local s = mesh:scalar(Vector.type(float, 3), {0.0, 0.0, 0.0})
+	local check = liszt_kernel(v)
+		s = s + pos(v)
+	end
+	mesh.vertices:map(check)
+	local f = s:value() / mesh.vertices:size()
+	test.fuzzy_aeq(f.data, {5, 6, 6})
+end
+test_vector_literals()

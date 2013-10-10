@@ -4,7 +4,7 @@ require "tests/test"
 -- Field and scalar objs
 mesh = LoadMesh("examples/mesh.lmesh")
 f1   = mesh:field(Cell, float, 0)
-f2   = mesh:field(Vertex, Vector.type(float, 3), 0)
+f2   = mesh:field(Vertex, Vector.type(float, 3), {0, 0, 0})
 s1   = mesh:scalar(int, 0)
 
 -- Global lua var
@@ -12,8 +12,8 @@ checkthis1 = 1
 local checkthis2 = 2
 
 -- Global terra vars
-gb = global(float, 3)
-gb1 = global(int, 4)
+gb  = global(float, 3)
+gb1 = global(int,   4)
 
 local a = {}
 a.b     = {}

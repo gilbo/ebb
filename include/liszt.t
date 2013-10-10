@@ -82,14 +82,14 @@ local vectorTypeToStr = {
    [bool]  = BOOL,
 }
 
-function Field:set_topo_type(topo_type)
+function Field:setTopoType(topo_type)
    self.topo_type = elemTypeToStr[topo_type]
-   if not self.topo_type then
+   if self.topo_type == NOTYPE then
 	   error("Field over unrecognized topological type", 3)
    end
 end
 
-function Field:set_data_type(data_type)
+function Field:setDataType(data_type)
 	if vectorTypeToStr[data_type] then
 		self.data_type.obj_type  = vectorTypeToStr[data_type]
 		self.data_type.elem_type = vectorTypeToStr[data_type]
@@ -264,43 +264,20 @@ function Vector.new(data_type, init)
    local data = {}
    if Vector.isVector(init) then init = init.data end
    for i = 1, #init do
-      data[i] = data_type == int and init[i] % 1 or init[i]
+      data[i] = data_type == int and init[i] - init[i] % 1 or init[i]
    end
 
    return setmetatable({size = #init, data_type = data_type, data = data}, Vector)
 end
 
 function Vector:__codegen ()
+   local v1, v2, v3, v4, v5 = self.data[1], self.data[2], self.data[3], self.data[4], self.data[5]
    if self.size == 3 then
-      local v1, v2, v3 = self.data[1], self.data[2], self.data[3]
-      local s = symbol()
-
-      local q = quote
-         var [s] = vectorof(self.data_type, v1, v2, v3)
-      in
-         [s]
-      end
-      return q
+      return quote var s = vectorof(self.data_type, v1, v2, v3) in s end
    elseif self.size == 4 then
-      local v1, v2, v3, v4 = self.data[1], self.data[2], self.data[3], self.data[4]
-      local s = symbol()
-
-      local q = quote
-         var [s] = vectorof(self.data_type, v1, v2, v3, v4)
-      in
-         [s]
-      end
-      return q
+      return quote var s = vectorof(self.data_type, v1, v2, v3, v4) in s end
    elseif self.size == 5 then
-      local v1, v2, v3, v4, v5 = self.data[1], self.data[2], self.data[3], self.data[4], self.data[5]
-      local s = symbol()
-
-      local q = quote
-         var [s] = vectorof(self.data_type, v1, v2, v3, v4, v5)
-      in
-         [s]
-      end
-      return q
+      return quote var s = vectorof(self.data_type, v1, v2, v3, v4, v5) in s end
    end
 
    local s = symbol()
@@ -501,19 +478,44 @@ end
 --[[ Mesh methods                            ]]--
 -------------------------------------------------
 function Mesh:field (topo_type, data_type, initial_val)
-   local field = setmetatable({ mesh = self, topo_type = NOTYPE, data_type = ObjType:new() }, { __index = Field })
-   field:set_topo_type(topo_type)
-   field:set_data_type(data_type)
+   local field = setmetatable({mesh=self,topo_type=NOTYPE,data_type=ObjType:new()}, {__index=Field})
+   field:setTopoType(topo_type)
+   field:setDataType(data_type)
+   if not conformsToDataType(initial_val, data_type) then
+      error("Initializer is not of type " .. typeToString(data_type), 2)
+   end
+
    local val_type, val_len = runtimeDataType(data_type)
-   field.lfield  = runtime.initField(self.__ctx, lElementTypeMap[topo_type], val_type, val_len)
+   local ltopotype         = lElementTypeMap[topo_type]
+   local terratype         = type(data_type) == 'table' and data_type.data_type or data_type
+   field.lfield  = runtime.initField(self.__ctx, ltopotype, val_type, val_len)
    field.lkfield = runtime.getlkField(field.lfield)
+
+   -- Initialize field to initial_val
+   -- simple type:
+   if val_len == 1 then
+      local terra init_field () : {}
+         var v : terratype = initial_val
+         runtime.lFieldBroadcast([self.__ctx], [field.lfield], ltopotype, val_type, val_len, &v)
+      end
+      init_field()
+
+   -- Vector type: use vector codegen functionality!
+   else
+      local v = Vector.new(terratype, initial_val)
+      local terra init_field () : {}
+         var v : vector(terratype, val_len)  = [v:__codegen()]
+         runtime.lFieldBroadcast([self.__ctx], [field.lfield], ltopotype, val_type, val_len, &v)
+      end         
+      init_field()
+   end
    return field
 end
 
 function Mesh:fieldWithLabel (topo_type, data_type, label)
    local field = setmetatable({topo_type = NOTYPE, data_type = ObjType:new(), mesh = self}, { __index=Field})
-   field:set_topo_type(topo_type)
-   field:set_data_type(data_type)
+   field:setTopoType(topo_type)
+   field:setDataType(data_type)
    local val_type, val_len = runtimeDataType(data_type)
    field.lfield  = runtime.loadField(self.__ctx, label, lElementTypeMap[topo_type], val_type, val_len)
    field.lkfield = runtime.getlkField(field.lfield)
