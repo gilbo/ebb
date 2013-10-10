@@ -21,21 +21,21 @@ struct Mesh {
 	size_t ncells;
 
 	struct CRS vtov;
-	struct CRS vtoe;
-	struct CRS vtof;
+	struct CRS vtoe; //oriented
+	struct CRS vtof; 
 	struct CRS vtoc;
 
-	struct CRSConst etov;
-	struct CRS etof;
-	struct CRS etoc;
+	struct CRSConst etov; 
+	struct CRS etof; //oriented
+	struct CRS etoc; 
 
-	struct CRS ftov;
-	struct CRS ftoe;
+	struct CRS ftov; 
+	struct CRS ftoe; //oriented
 	struct CRSConst ftoc;
 
-	struct CRS ctov;
-	struct CRS ctoe;
-	struct CRS ctof;
+	struct CRS ctov; 
+	struct CRS ctoe; 
+	struct CRS ctof; //oriented
 	struct CRS ctoc;
 };
 
