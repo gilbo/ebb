@@ -5,8 +5,10 @@ local mesh_h = terralib.includec("runtime/common/mesh_crs.h")
 local c = terralib.includec("stdio.h")
 
 --[[
-For mesh relations corresponding to CRS relations in original mesh, x (first
-field) represents index field and y (second field) the corresponding values.
+- For mesh relations corresponding to CRS relations in original mesh, first
+  field represents index field and second field represents corresponding
+  values.
+- For relation tables for vertices, edges, faces and cells, 
 --]]
 
 -- basic relations
@@ -83,6 +85,7 @@ function L.initMeshRelations(mesh, params)
     for k, topo_elem in pairs(topo_elems) do
         local tsize = params["n"..topo_elem]
         elems[topo_elem] = utils.newtable(tsize, topo_elem)
+        elems[topo_elem]:initializenumfield("values", false)
         -- TODO: complete loading
     end
     -- other mesh relations

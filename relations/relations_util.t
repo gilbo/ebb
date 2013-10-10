@@ -64,6 +64,31 @@ function table:addrelation(relname, tableptr)
     self._indexrelations[relname] = tableptr
 end
 
+-- If default value is false, field is initialized as 0 to tablesize - 1
+-- If default value is true, field is initialized to 0
+-- If default value is a number, field is initialized to the given value
+function table:initializenumfield(fieldname, defaultval)
+    self[fieldname] = L.newfield("number")
+    local f = self[fieldname]
+    f.data = {}
+    if type(defaultval) == "boolean" then
+        if defaultval == false then
+            for i = 0, self._size - 1 do
+                f.data[i] = i
+            end
+        else
+            for i = 0, self._size - 1 do
+                f.data[i] = 0
+            end
+        end
+    else
+        assert(type(defaultval) == "number")
+        for i = 0, self._size -1 do
+            f.data[i] = defaultval
+        end
+    end
+end
+
 function field:loadfrommemory(mem)
     assert(self.data == nil)
     local nbytes = self.table._size * terralib.sizeof(self.realtype)
