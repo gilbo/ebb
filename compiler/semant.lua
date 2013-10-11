@@ -455,16 +455,24 @@ function check(luaenv, kernel_ast)
 	end
 
 	function ast.NumericFor:check()
-		enforce_numeric_type(self, self.lower:check())
-		enforce_numeric_type(self, self.upper:check())
+		local lower, upper = self.lower:check(), self.upper:check()
+		local step
+		enforce_numeric_type(self, lower)
+		enforce_numeric_type(self, upper)
 		if self.step then 
-			enforce_numeric_type(self, self.step:check()) 
+			step = self.step:check()
+			enforce_numeric_type(self, step)
 		end
 
-		local itobj          = ObjType:new()
-		itobj.defn           = self.iter
-		itobj.objtype        = _NUM
-		itobj.elemtype       = _NUM
+		local itobj = ObjType:new()
+		itobj.defn  = self.iter
+		if lower.objtype == _INT and upper.objtype == _INT and (not step or step.objtype == _INT) then
+			itobj.objtype  = _INT
+			itobj.elemtype = _INT
+		else
+			itobj.objtype  = _NUM
+			itobj.elemtype = _NUM
+		end
 		itobj.scope          = _LISZT_STR
 		itobj.defn.node_type = itobj
 
@@ -1003,8 +1011,13 @@ function check(luaenv, kernel_ast)
 		local numobj    = ObjType:new()
 		-- These numbers are stored in lua as floats, so we might as well use them that way
 		-- until the terra lexer gets the ability to separately parse ints and floats
-		numobj.objtype  = _FLOAT
-		numobj.elemtype = _FLOAT
+		if tonumber(self.value) % 1 == 0 then
+			numobj.objtype  = _INT
+			numobj.elemtype = _INT
+		else
+			numobj.objtype  = _FLOAT
+			numobj.elemtype = _FLOAT
+		end
 		numobj.size     = 1
 		self.node_type  = numobj
 		return numobj
