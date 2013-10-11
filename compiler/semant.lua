@@ -436,14 +436,14 @@ function check(luaenv, kernel_ast)
 
     function ast.AssertStatement:check()
         local test_type = self.test:check()
-        if _BOOL ~= test_type.objtype then
+        if test_type and _BOOL ~= test_type.objtype then
             diag:reporterror(self, "Expected a boolean as the test for assert statement")
         end
     end
 
     function ast.PrintStatement:check()
         local output = self.output:check()
-        if not conforms(_MDATA, output.objtype) then
+        if output and output.objtype and not conforms(_MDATA, output.objtype) then
             diag:reporterror(self, "Only numbers, bools, and vectors can be printed")
         end
     end
@@ -711,6 +711,13 @@ function check(luaenv, kernel_ast)
 			end
 
 		elseif isEqOp[op] then
+			if leftobj.size ~= rightobj.size then
+				diag:reporterror(self, "Cannot compare types of differing lengths")
+			end
+			if not type_meet(leftobj.elemtype, rightobj.elemtype) then
+				diag:reporterror(self, "Equality test between incomparable types")
+			end
+
 			exprobj.objtype = _BOOL
 
 		elseif isBoolOp[op] then

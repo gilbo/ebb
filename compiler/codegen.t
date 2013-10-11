@@ -308,7 +308,9 @@ end
 
 function ast.InitStatement:codegen (env)
 	local varname = self.ref.name
-	local varsym  = symbol()
+	local tp      = objTypeToTerra(self.node_type)
+	local varsym  = symbol(tp)
+
 	env:localenv()[varname] = varsym
 	return quote var [varsym] = [self.exp:codegen(env)] end
 end
@@ -399,9 +401,9 @@ end
 
 function ast.Bool:codegen (env)
 	if self.value == 'true' then
-		return quote in true end 
+		return `true
 	else 
-		return quote in false end
+		return `false
 	end
 end
 
@@ -415,6 +417,8 @@ end
 function ast.BinaryOp:codegen (env)
 	local lhe = self.lhs:codegen(env)
 	local rhe = self.rhs:codegen(env)
+
+	-- TODO: special case equality, inequality operators for vectors!
 
 	if     self.op == '+'   then return `lhe +   rhe
 	elseif self.op == '-'   then return `lhe -   rhe

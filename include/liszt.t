@@ -451,6 +451,7 @@ local topoToLiszt = {
    [Vertex] = runtime.L_VERTEX
 }
 function TopoSet:map (kernel)
+   if not kernel.isKernel                 then error("Cannot map over object of type " .. type(kernel))         end
    if not kernel:acceptsType(self.__type) then error("Kernel cannot iterate over set of this topological type") end
 
    local run_kernel = self.__kernels[kernel]

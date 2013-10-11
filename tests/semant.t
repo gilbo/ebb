@@ -117,6 +117,21 @@ function fail9()
 	mesh.cells:map(k)
 end
 
+function fail10()
+	local k = liszt_kernel (cell)
+		assert(4 == true)
+	end
+	mesh.cells:map(k)
+end
+
+function fail11()
+	local v = Vector.new(float, {1, 1, 1})
+	local k = liszt_kernel (cell)
+		assert(v == 1)
+	end
+	mesh.cells:map(k)
+end
+
 test.fail_function(fail1, "Global assignments only valid")
 test.fail_function(fail2, "Cannot update local variables")
 test.fail_function(fail3, "Global assignments only valid")
@@ -126,6 +141,8 @@ test.fail_function(fail6, "Inferred RHS type")
 test.fail_function(fail7, "Variable 'local8' is not defined")
 test.fail_function(fail8, "Variable 'local8' is not defined")
 test.fail_function(fail9, "inferred LHS type bool")
+test.fail_function(fail10, "incomparable types")
+test.fail_function(fail11, "differing lengths")
 
 -- Nothing should fail in this kernel:
 local k = liszt_kernel (cell)
@@ -156,6 +173,4 @@ local k = liszt_kernel (cell)
 		local9 = local9 + i * i
 	end
 end
-
 mesh.cells:map(k)
-
