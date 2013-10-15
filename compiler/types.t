@@ -106,6 +106,7 @@ function Type:terraType()
 	if     self:isPrimitive() then return self.type.terratype
 	elseif self:isVector()    then return vector(self.type:terraType(), self.N)
 	elseif self:isField()     then return self.type:terraType()
+	elseif self:isScalar()    then return self.type:terraType()
 	end
 	error("terraType method not implemented for type " .. self:toString(), 2)
 end
@@ -114,12 +115,13 @@ function Type:terraBaseType()
 	if     self:isPrimitive()  then return self:terraType()
 	elseif self:isVector()     then return self.type:terraType()
 	elseif self:isField()      then return self.type:terraBaseType()
+	elseif self:isScalar()     then return self.type:terraBaseType()
 	end
 	error("terraBaseType method not implemented for type " .. self:toString(), 2)
 end
 
 function Type:dataType()
-	if self:isField() then return self.type end
+	if self:isField() or self:isScalar() then return self.type end
 	error("dataType not implemented for type " .. self:toString(),2)
 end
 

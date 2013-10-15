@@ -96,10 +96,39 @@ for ttype, ltype in pairs(ptypes) do
 		assert(sc == sc2)
 		assert(accum[sc] == nil)
 		accum[sc] = true
+		assert(sc:terraType()     == vtype:terraType())
+		assert(sc:terraBaseType() == ttype)
+		assert(sc:dataType()      == vtype)
 	end
 end
 
 --------------------------------
 --[[ Test field types:      ]]--
 --------------------------------
+local accum = {}
+for ttype, ltype in pairs(ptypes) do
+	for ltopo, rtype in pairs(rtopo) do
+		local f  = t.field(ltopo, ltype)
+		local f2 = t.field(ltopo, ltype)
+		assert(f == f2)
+		assert(accum[f] == nil)
+		accum[f] = true
+
+		assert(f:dataType() == ltype)
+		assert(f:topoType() == ltopo)
+
+		for i = 2, 10 do
+			local vtype = t.vector(ltype,i)
+			local f     = t.field(ltopo, vtype)
+			local f2    = t.field(ltopo, vtype)
+
+			assert(f == f2)
+			assert(accum[f] == nil)
+			accum[f] = true
+
+			assert(f:dataType() == vtype)
+			assert(f:topoType() == ltopo)
+		end
+	end
+end
 

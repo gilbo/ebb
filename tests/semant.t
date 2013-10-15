@@ -89,7 +89,6 @@ function fail7()
 	mesh.cells:map(k)
 end
 
-
 function fail8()
 	local k = liszt_kernel (cell)
 		if 4 < 2 then
@@ -132,6 +131,24 @@ function fail11()
 	mesh.cells:map(k)
 end
 
+function fail12()
+	local k = liszt_kernel (cell)
+		a.b = 12
+	end
+	mesh.cells:map(k)
+end
+
+function fail13()
+	local k = liszt_kernel (cell)
+		var v
+		if false then
+			v = true
+		end
+		v = 5
+	end
+	mesh.cells:map(k)
+end
+
 test.fail_function(fail1, "Global assignments only valid")
 test.fail_function(fail2, "Cannot update local variables")
 test.fail_function(fail3, "Global assignments only valid")
@@ -143,6 +160,9 @@ test.fail_function(fail8, "Variable 'local8' is not defined")
 test.fail_function(fail9, "invalid conversion from int to bool")
 test.fail_function(fail10, "invalid types for operator")
 test.fail_function(fail11, "Expected a boolean")
+test.fail_function(fail12, "Global assignments only valid")
+test.fail_function(fail13, "invalid conversion from int to bool")
+
 
 -- Nothing should fail in this kernel:
 local k = liszt_kernel (cell)
