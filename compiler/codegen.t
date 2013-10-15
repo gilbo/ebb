@@ -314,11 +314,11 @@ function ast.Name:codegen (env)
 
 	-- anything declared in the local scope will be stored in the environment as a symbol
 	if self:isLocalScope() then
-		return `val 
+		return `[val] 
 
 	-- global scope, primitive type
 	elseif type(val) ~= 'table' then
-		return `val
+		return `[val]
 
 	-- Scalar read
 	elseif Type.isScalar(val) then
@@ -331,10 +331,10 @@ function ast.Name:codegen (env)
 		local terra get_global() return val end
 		local ret = get_global()
 		env:localenv()[self.name] = ret -- store this for later use
-		return `ret
+		return `[ret]
 
 	else
-		return `val
+		return `[val]
 	end
 end
 
