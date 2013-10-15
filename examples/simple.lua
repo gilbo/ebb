@@ -1,11 +1,11 @@
 import "compiler/liszt"
 
 mesh = LoadMesh("examples/mesh.lmesh")
-pos  = mesh:fieldWithLabel(Vertex, Vector.type(float, 3), "position")
+pos  = mesh:fieldWithLabel(Vertex, Vector(float, 3), "position")
 
 function main ()
 	-- declare a scalar to store the computed centroid of the mesh
-	local com = mesh:scalar(Vector.type(float, 3), {0, 0, 0})
+	local com = mesh:scalar(Vector(float, 3), {0, 0, 0})
 
 	-- compute centroid
 	local sum_pos = liszt_kernel (v)

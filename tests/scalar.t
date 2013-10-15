@@ -8,9 +8,9 @@ sf = mesh:scalar(float, 0.0)
 si = mesh:scalar(int,     0)
 sb = mesh:scalar(bool, true)
 
-sf3 = mesh:scalar(Vector.type(float, 3), {0, 0, 0})
-si4 = mesh:scalar(Vector.type(int,   4), {1, 2, 3, 4})
-sb5 = mesh:scalar(Vector.type(bool,  5), {true, true, true, true, true})
+sf3 = mesh:scalar(Vector(float, 3), {0, 0, 0})
+si4 = mesh:scalar(Vector(int,   4), {1, 2, 3, 4})
+sb5 = mesh:scalar(Vector(bool,  5), {true, true, true, true, true})
 
 vf  = Vector.new(float, {1, 2, 3})
 vi  = Vector.new(int,   {2, 2, 2, 2})

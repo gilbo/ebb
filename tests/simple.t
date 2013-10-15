@@ -1,13 +1,13 @@
 import "compiler/liszt"
 
 mesh  = LoadMesh("examples/mesh.lmesh")
-pos   = mesh:fieldWithLabel(Vertex, Vector.type(float, 3), "position")
+pos   = mesh:fieldWithLabel(Vertex, Vector(float, 3), "position")
 field = mesh:field(Face, float, 0.0)
 
 local a = global(int, 43)
 
 function main ()
-	local com   = mesh:scalar(Vector.type(float, 3), {0, 0, 0})--Vector.new(float, {0.0, 0.0, 0.0})
+	local com   = mesh:scalar(Vector(float, 3), {0, 0, 0})--Vector.new(float, {0.0, 0.0, 0.0})
 	local upval = 5
 	local vv    = Vector.new(float, {1,2,3})
 
@@ -32,6 +32,14 @@ function main ()
 
 		var x
 		x = true
+
+		var z
+		do z = true end
+		assert(z == true)
+
+		var z
+		do z = 4 end
+		assert(z == 4)
 
 		-- this should be fine
 		var y

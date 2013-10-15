@@ -100,6 +100,7 @@ lVerticesOfMesh    = runtime.lVerticesOfMesh
 lkGetActiveElement = runtime.lkGetActiveElement
 lkScalarWrite      = runtime.lkScalarWrite
 lkFieldWrite       = runtime.lkFieldWrite
+lkScalarRead       = runtime.lkScalarRead
 
 -- parameter types
 local lType        = uint

@@ -4,7 +4,7 @@ require "tests/test"
 -- Field and scalar objs
 mesh = LoadMesh("examples/mesh.lmesh")
 f1   = mesh:field(Cell, float, 0)
-f2   = mesh:field(Vertex, Vector.type(float, 3), {0, 0, 0})
+f2   = mesh:field(Vertex, Vector(float, 3), {0, 0, 0})
 s1   = mesh:scalar(int, 0)
 
 -- Global lua var
@@ -137,21 +137,18 @@ test.fail_function(fail2, "Cannot update local variables")
 test.fail_function(fail3, "Global assignments only valid")
 test.fail_function(fail4, "Can only assign")
 test.fail_function(fail5, "Variable 'undefined' is not defined")
-test.fail_function(fail6, "Inferred RHS type")
+test.fail_function(fail6, "invalid conversion from bool to float")
 test.fail_function(fail7, "Variable 'local8' is not defined")
 test.fail_function(fail8, "Variable 'local8' is not defined")
-test.fail_function(fail9, "inferred LHS type bool")
-test.fail_function(fail10, "incomparable types")
-test.fail_function(fail11, "differing lengths")
+test.fail_function(fail9, "invalid conversion from int to bool")
+test.fail_function(fail10, "invalid types for operator")
+test.fail_function(fail11, "Expected a boolean")
 
 -- Nothing should fail in this kernel:
 local k = liszt_kernel (cell)
-    -- f1(cell) = gb
-
+    f1(cell) = gb
     var lc = gb
     lc = gb + 1
-
-    -- s1 = gb1
 
 	var local1 = a.b.c.d
 	var local2 = 2.0

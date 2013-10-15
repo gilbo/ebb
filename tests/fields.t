@@ -13,11 +13,12 @@ mesh = LoadMesh("examples/mesh.lmesh")
 -- check args --
 ----------------
 function fail_topo1()
-	local f = mesh:field(Vector.type(float, 3), 'abc', 4)
+	local f = mesh:field(Vector(float, 3), 'abc', 4)
 end
 function fail_topo2()
 	local f = mesh:field(4, int, 3)
 end
+
 test.fail_function(fail_topo1, "topological")
 test.fail_function(fail_topo2, "topological")
 
@@ -31,7 +32,7 @@ test.fail_function(fail_type1, "data type")
 test.fail_function(fail_type2, "data type")
 
 function fail_init1()
-	local f = mesh:field(Face, Vector.type(float, 3), true)
+	local f = mesh:field(Face, Vector(float, 3), true)
 end
 function fail_init2()
 	local f = mesh:field(Face, float, {1, 3, 4})
@@ -43,12 +44,12 @@ test.fail_function(fail_init2, "Initializer is not of type")
 ------------------
 -- Test Codegen --
 ------------------
-pos    = mesh:fieldWithLabel(Vertex, Vector.type(float, 3), "position")
+pos    = mesh:fieldWithLabel(Vertex, Vector(float, 3), "position")
 field  = mesh:field(Face, float, 1.0)
 field2 = mesh:field(Face, float, 2.5)
 field3 = mesh:field(Face, float, 6.0)
 field4 = mesh:field(Cell, bool, false)
-field5 = mesh:field(Vertex, Vector.type(float, 4), {0.0, 0.0, 0.0, 0.0})
+field5 = mesh:field(Vertex, Vector(float, 4), {0.0, 0.0, 0.0, 0.0})
 
 local a = global(int, 6)
 local b = Vector.new(float, {1, 3, 4, 5})
@@ -80,8 +81,16 @@ local write3 = liszt_kernel (f)
 	field4(f) = true
 end
 
+local check3 = liszt_kernel (f)
+	assert(field4(f))
+end
+
 local write4 = liszt_kernel (f)
 	field4(f) = false
+end
+
+local check4 = liszt_kernel(f)
+	assert(not field4(f))
 end
 
 mesh.faces:map(reduce1)
@@ -90,13 +99,16 @@ mesh.faces:map(reduce3)
 mesh.faces:map(read1)
 mesh.faces:map(write1)
 mesh.faces:map(write2)
-mesh.faces:map(write3)
-mesh.faces:map(write4)
 
+mesh.faces:map(write3)
+mesh.faces:map(check3)
+
+mesh.faces:map(write4)
+mesh.faces:map(check4)
 
 local  f = mesh:scalar(float, 0.0)
 local bv = mesh:scalar(bool, true)
-local f4 = mesh:scalar(Vector.type(float, 4), {0, 0, 0, 0})
+local f4 = mesh:scalar(Vector(float, 4), {0, 0, 0, 0})
 
 local function check_write ()
 	-- should initialize each field element to {1, 3, 4, 5}
@@ -111,4 +123,5 @@ local function check_write ()
 	local avg = f4:value() / mesh.faces:size()
 	test.fuzzy_aeq(avg.data, {1, 3, 4, 5 })
 end
-check_write()
+--check_write()
+

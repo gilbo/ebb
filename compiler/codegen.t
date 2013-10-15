@@ -3,6 +3,9 @@ module(... or 'codegen', package.seeall)
 local ast    = require 'ast'
 local semant = require 'semant'
 terralib.require 'runtime/liszt'
+terralib.require 'compiler/types'
+local Type = types.Type
+local t    = types.t
 local runtime = package.loaded.runtime
 
 function ast.AST:codegen (env)
@@ -83,25 +86,12 @@ end
 function ast.DeclStatement:codegen (env)
 	-- if this var is never used, don't bother declaring it
 	-- since we don't know the type, we couldn't anyway.
-	if self.node_type.objtype == semant._NOTYPE then return quote end end
+	if self.ref.node_type == t.unknown then return quote end end
 
-	local lisztToTerraTypes = {
-		[semant._NUM]   = double,
-		[semant._INT]   = int,
-		[semant._FLOAT] = float,
-		[semant._BOOL]  = bool
-	}
-
-	local typ = lisztToTerraTypes[self.node_type.objtype]
-	if not typ then
-		local elemtype = lisztToTerraTypes[self.node_type.elemtype]
-		typ = vector(elemtype, self.node_type.size)
-	end
-
+	local typ = self.ref.node_type:terraType()
 	local name = self.ref.name
 	local sym  = symbol(typ)
 	env:localenv()[name] = sym
-
 	return quote var [sym] end
 end
 
@@ -152,31 +142,33 @@ function ast.AssertStatement:codegen(env)
 end
 
 function ast.PrintStatement:codegen(env)
-    local output = self.output
-    local code = output:codegen(env)
-    if output.node_type.objtype == semant._FLOAT then return quote c.printf("%f\n", [float](code)) end
-	elseif output.node_type.objtype == semant._INT then return quote c.printf("%d\n", code) end
-	elseif output.node_type.objtype == semant._BOOL then
+	local lt   = self.output.node_type
+    local tt   = lt:terraType()
+    local code = self.output:codegen(env)
+    if     lt == t.float then return quote c.printf("%f\n", [float](code)) end
+	elseif lt == t.int   then return quote c.printf("%d\n", code) end
+	elseif lt == t.bool  then
         return quote c.printf("%s", terralib.select(code, "true\n", "false\n")) end
-	elseif output.node_type.objtype == semant._VECTOR then
+	elseif lt:isVector() then
         printSpec = "{"
         local sym = symbol()
         elemQuotes = {}
-        for i = 0, output.node_type.size - 1 do
-            if output.node_type.elemtype == semant._FLOAT then
+        local bt = lt:baseType()
+        for i = 0, lt.N - 1 do
+            if bt == t.float then
                 printSpec = printSpec .. " %f"
                 table.insert(elemQuotes, `[float](sym[i]))
-            elseif output.node_type.elemtype == semant._INT then
+            elseif bt == t.int then
                 printSpec = printSpec .. " %d"
                 table.insert(elemQuotes, `sym[i])
-            elseif output.node_type.elemtype == semant._BOOL then
+            elseif bt == t.bool then
                 printSpec = printSpec .. " %s"
                 table.insert(elemQuotes, `terralib.select(sym[i], "true", "false"))
             end
         end
         printSpec = printSpec .. " }\n"
         return quote
-            var [sym] = code
+            var [sym] : tt = code
         in
             c.printf(printSpec, elemQuotes)
         end
@@ -184,45 +176,6 @@ function ast.PrintStatement:codegen(env)
         assert(false and "Printed object should always be number, bool, or vector")
     end
 end
-
--- for now, just assume all assignments are to locally-scoped variables
--- assignments to variables from lua scope will require liszt runtime 
--- calls and extra information from semantic type checking
-
-local simpleTypeMap = {
-	[semant._FLOAT] = runtime.L_FLOAT,
-	[semant._INT]   = runtime.L_INT,
-	[semant._BOOL]  = runtime.L_BOOL,
-}
-
-local terraTypeMap = {
-	[semant._FLOAT] = float,
-	[semant._INT]   = int,
-	[semant._BOOL]  = bool,
-}
-
-local function objTypeToLiszt (obj)
-	if simpleTypeMap[obj.objtype] then
-		return simpleTypeMap[obj.objtype], 1, 0, 1
-	else -- objtype should be a vector!
-		return simpleTypeMap[obj.elemtype], obj.size, 0, obj.size
-	end
-end
-
-local function objTypeToTerra (obj)
-	if obj.size == 1 then
-		return terraTypeMap[obj.objtype]
-	else
-		return vector(terraTypeMap[obj.elemtype], obj.size)
-	end
-end
-
-local elemTypeMap = {
-	[semant._VERTEX] = runtime.L_VERTEX,
-	[semant._CELL]   = runtime.L_CELL,
-	[semant._FACE]   = runtime.L_FACE,
-	[semant._EDGE]   = runtime.L_EDGE
-}
 
 local mPhaseMap = {
 	['+']   = runtime.L_PLUS,
@@ -238,47 +191,37 @@ local bPhaseMap = {
 	['or']  = runtime.L_OR
 }
 
-local function getPhase (binop)
+function ast.BinaryOp:phase()
 	-- for boolean types, return boolean reduction phases
-	if binop.node_type.objtype == semant._BOOL or
-		(binop.node_type.objtype == semant._VECTOR and binop.node_type.elemtype == semant._BOOL) then
-		return bPhaseMap[binop.op] end
-
-	return mPhaseMap[binop.op]
+	if self.node_type:isLogical() then
+		return bPhaseMap[self.op]
+	else
+		return mPhaseMap[self.op]
+    end
 end
 
-
 function ast.Assignment:codegen (env)
-	local tp = objTypeToTerra(self.node_type)
-	if self.fieldop == semant._FIELD_WRITE then
+	local ttype = self.lvalue.node_type:terraType()
+	if self.fieldop == semant._FIELD_WRITE or self.fieldop == semant._FIELD_REDUCE then
 		local exp     = self.exp:codegen(env)
 		local field   = self.field
 		local topo    = self.topo:codegen(env)
-		local element_type, element_length, val_offset, val_length = objTypeToLiszt(self.lvalue.node_type)
+		local phase = self.fieldop == semant._FIELD_WRITE and runtime.L_ASSIGN or self.exp:phase()
+		local element_type, element_length = self.lvalue.node_type:runtimeType()
 
 		return quote
-			var tmp : tp = [exp]
-			runtime.lkFieldWrite([field.lkfield], [topo], runtime.L_ASSIGN, element_type, element_length, val_offset, val_length, &tmp)
+			var tmp : ttype = [exp]
+			runtime.lkFieldWrite([field.__lkfield], topo, phase, element_type, element_length, 0, element_length, &tmp)
 		end
-	elseif self.fieldop == semant._FIELD_REDUCE then
-		local exp     = self.rexp:codegen(env)
-		local field   = self.field
-		local topo    = self.topo:codegen(env)
-		local phase   = getPhase(self.exp)
-		local element_type, element_length, val_offset, val_length = objTypeToLiszt(self.lvalue.node_type)
 
-		return quote
-			var tmp : tp = [exp]
-			runtime.lkFieldWrite([field.lkfield], [topo], [phase], element_type, element_length, val_offset, val_length, &tmp)
-		end
 	elseif self.fieldop == semant._SCALAR_REDUCE then
 		local exp   = self.rexp:codegen(env)
 		local lsc   = self.scalar
-		local phase = getPhase(self.exp)
-		local el_type, el_len, val_offset, val_len = objTypeToLiszt(self.lvalue.node_type)
+		local phase = self.exp:phase()
+		local el_type, el_len = self.lvalue.node_type:runtimeType()
 		return quote
-			var tmp : tp = [exp]
-			runtime.lkScalarWrite([env.context], [lsc.__lkscalar], [phase], [el_type], [el_len], [val_offset], [val_len], &tmp)
+			var tmp : ttype = [exp]
+			runtime.lkScalarWrite([env.context], [lsc.__lkscalar], phase, el_type, el_len, 0, el_len, &tmp)
 		end
 
 	else
@@ -291,16 +234,16 @@ end
 -- Call:codegen is called for field reads, when the field appears
 -- in an expression, or on the rhs of an assignment.
 function ast.Call:codegen (env)
-	local field = self.func.node_type.luaval
+	local field = self.func.luaval
 	local topo  = self.params.children[1]:codegen(env) -- Should return an lkElement
 	local read  = symbol()
 
-	local typ = objTypeToTerra(self.node_type)
-	local el_type, el_len, val_off, val_len = objTypeToLiszt(self.node_type)
+	local typ = self.node_type:terraType()
+	local el_type, el_len = self.node_type:runtimeType()
 
 	return quote
 		var [read] : typ
-		runtime.lkFieldRead([field.lkfield], [topo], el_type, el_len, val_off, val_len, &[read])
+		runtime.lkFieldRead([field.__lkfield], [topo], el_type, el_len, 0, el_len, &[read])
 		in
 		[read]
 	end
@@ -308,11 +251,12 @@ end
 
 function ast.InitStatement:codegen (env)
 	local varname = self.ref.name
-	local tp      = objTypeToTerra(self.node_type)
+	local tp      = self.ref.node_type:terraType()
 	local varsym  = symbol(tp)
 
 	env:localenv()[varname] = varsym
-	return quote var [varsym] = [self.exp:codegen(env)] end
+	local exp = self.exp:codegen(env)
+	return quote var [varsym] = [exp] end
 end
 
 function ast.Name:codegen_lhs (env)
@@ -322,7 +266,7 @@ end
 function ast.VectorLiteral:codegen (env)
 	local ct = { }
 	local v = symbol()
-	local tp = terraTypeMap[self.node_type.elemtype]
+	local tp = self.node_type:terraBaseType()
 	for i = 1, #self.elems do
 		ct[i] = self.elems[i]:codegen()
 	end
@@ -331,11 +275,11 @@ function ast.VectorLiteral:codegen (env)
    -- when I dissassembled terra functions at the console, they seemed more likely to use vector
    -- ops for loading values if vectors are initialized this way.
 	if #ct == 3 then
-		return quote var [v] = vectorof([tp], [ct[1]], [ct[2]], [ct[3]]) in [v] end
+		return `vectorof([tp], [ct[1]], [ct[2]], [ct[3]])
 	elseif #ct == 4 then
-		return quote var [v] = vectorof([tp], [ct[1]], [ct[2]], [ct[3]], [ct[4]]) in [v] end
+		return `vectorof([tp], [ct[1]], [ct[2]], [ct[3]], [ct[4]])
 	elseif #ct == 5 then
-		return quote var [v] = vectorof([tp], [ct[1]], [ct[2]], [ct[3]], [ct[4]], [ct[5]]) in [v] end
+		return `vectorof([tp], [ct[1]], [ct[2]], [ct[3]], [ct[4]], [ct[5]])
 	else
 		local t = symbol()
 		local q = quote
@@ -351,47 +295,54 @@ end
 
 local function codegen_scalar(node, env)
 	local read = symbol()
-	local el_type, el_len, val_off, val_len = objTypeToLiszt(node.node_type)
-	local lks = node.node_type.luaval.__lkscalar
-	local typ = objTypeToTerra(node.node_type)
+	local el_type, el_len = node.node_type:runtimeType()
+	local lks = node.luaval.__lkscalar
+	local typ = node.node_type:terraType()
 
 	return quote
 		var [read] : typ
-		runtime.lkScalarRead([env.context], [lks], el_type, el_len, val_off, val_len, &[read])
+		runtime.lkScalarRead([env.context], [lks], el_type, el_len, 0, el_len, &[read])
 		in
 		[read]
 	end
 end
--- Name:codegen only has to worry about returning r-values,
--- so it can just look stuff up in the environment and return
--- it, since all variables in the liszt scope will be
--- in the environment as a symbol
+
+-- Name:codegen only has to worry about returning r-values
+-- Name:codegen_lhs returns l-values
 function ast.Name:codegen (env)
-	if type(self.node_type.luaval) == 'table' and self.node_type.luaval.kind == semant._SCALAR_STR then
-		return codegen_scalar(self, env)
-	end
-
 	local val = env:combinedenv()[self.name]
-	if type(val) == 'table' and (val.isglobal) then
-		local terra get_global () return val end
-		-- store this global in the environment table so we won't have to look it up again
-		env:luaenv()[self.name] = get_global()
-		val = env:luaenv()[self.name]
+
+	-- anything declared in the local scope will be stored in the environment as a symbol
+	if self:isLocalScope() then
+		return `val 
+
+	-- global scope, primitive type
+	elseif type(val) ~= 'table' then
 		return `val
-	-- if we've encountered a Liszt vector, extract a terra vector and store it in the local environment
 
-	elseif type(val) == 'table' and Vector.isVector(val) then
-		return val:__codegen()
+	-- Scalar read
+	elseif Type.isScalar(val) then
+		return codegen_scalar(self, env) 
+
+	elseif Type.isVector(val) then
+		return `[val:__codegen()]
+
+	elseif val.isglobal then
+		local terra get_global() return val end
+		local ret = get_global()
+		env:localenv()[self.name] = ret -- store this for later use
+		return `ret
+
+	else
+		return `val
 	end
-
-	return `[val]
 end
 
 function ast.TableLookup:codegen (env)
-	if type(self.node_type.luaval) == 'table' and self.node_type.luaval.kind == semant._SCALAR_STR then
+	if Type.isScalar(self.luaval) then
 		return codegen_scalar(self, env)
 	else
-		return `[self.node_type.luaval]
+		return `[self.luaval]
 	end
 end
 

@@ -2,7 +2,7 @@ import "compiler/liszt"
 require "tests/test"
 
 mesh   = LoadMesh("examples/mesh.lmesh")
-pos    = mesh:fieldWithLabel(Vertex, Vector.type(float, 3), "position")
+pos    = mesh:fieldWithLabel(Vertex, Vector(float, 3), "position")
 val    = mesh:field(Vertex, float, 1.0)
 
 red = mesh:scalar(float, 0.0)

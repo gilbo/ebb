@@ -3,10 +3,6 @@
 ]]--
 module(... or 'ast', package.seeall)
 
--------------------------
---[[ String literals ]]--
--------------------------
-local _NOTYPE = 'notype'
 
 ---------------------------
 --[[ Declare AST types ]]--
@@ -85,7 +81,7 @@ inherit(RepeatStatement, Statement)
 inherit(ExprStatement,   Statement)
 inherit(Assignment,      Statement)
 inherit(DeclStatement,   Statement)
-inherit(InitStatement,   Assignment)
+inherit(InitStatement,   Statement)
 inherit(AssertStatement, Statement)
 inherit(PrintStatement,  Statement)
 inherit(NumericFor,      Statement)
@@ -103,9 +99,8 @@ function AST:New (P)
 		linenumber = P:cur().linenumber,
 		filename   = P.source,
 		offset     = P:cur().offset,
-		node_type  = _NOTYPE
 	}
-	return setmetatable(newnode, {__index = self})
+	return setmetatable(newnode, self)
 end
 
 function AST:copy_location (node)
@@ -119,6 +114,9 @@ function LValue.isLValue ( ) return true  end
 
 function Tuple:size ( ) return #self.children end
 
+function AST:is (obj)
+	return self == getmetatable(obj)
+end
 
 ---------------------------
 --[[ AST tree printing ]]--

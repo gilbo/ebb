@@ -1,7 +1,8 @@
 package.path = package.path .. ";./tests/?.lua;?.lua"
 require "test"
 import "compiler/liszt"
-
+terralib.require "compiler/types"
+local t = types.t
 
 ------------------
 -- Should pass: --
@@ -26,9 +27,9 @@ test.eq(b.size,  a.size)
 test.eq(b2.size, a.size)
 test.eq(c.size,  a.size)
 test.eq(d.size,  a.size)
-test.eq(d.data_type, a.data_type)
-test.eq(b.data_type, b2.data_type)
-test.eq(e.data_type, float)
+test.eq(d.type,  a.type)
+test.eq(b.type,  b2.type)
+test.eq(e.type:baseType(), t.float)
 
 test.aeq(a.data, {1, 2, 3.29})
 test.aeq(b.data, {3*1, 3*2, 3*3.29})
@@ -105,7 +106,7 @@ test.fail_function(type_fail5, "lengths")
 -- Kernel vector tests: --
 --------------------------
 mesh   = LoadMesh("examples/mesh.lmesh")
-pos    = mesh:fieldWithLabel(Vertex, Vector.type(float, 3), "position")
+pos    = mesh:fieldWithLabel(Vertex, Vector(float, 3), "position")
 
 
 ------------------
@@ -118,7 +119,7 @@ function test_vector_literals ()
 	end
 	mesh.vertices:map(k)
 
-	local s = mesh:scalar(Vector.type(float, 3), {0.0, 0.0, 0.0})
+	local s = mesh:scalar(Vector(float, 3), {0.0, 0.0, 0.0})
 	local check = liszt_kernel(v)
 		s = s + pos(v)
 	end
