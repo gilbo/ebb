@@ -5,12 +5,12 @@ local mesh_h = terralib.includec("runtime/common/mesh_crs.h")
 local c = terralib.includec("stdio.h")
 
 --[[
-- For mesh relations corresponding to CRS relations in original mesh, first
-  field represents index field and second field represents corresponding
+  First field represents index field and second field represents corresponding
   values.
-- Oriented relations have a field orientation.
+- Oriented relations have an additional field orientation.
 - For relation tables for vertices, edges, faces and cells, elements are
-  initialized to length-1, with corresponding fields if any.
+  initialized to length-1, with corresponding fields if any from
+  mesh_rels_topo.
 --]]
 
 -- basic relations
@@ -21,7 +21,7 @@ local topo_elems = {
     "cells"
     }
 
--- other mesh relations
+-- other mesh relations - we have a separate table for each of these relations
 local mesh_rels_new = {
     {name = "vtov", orientation = 0, t1 = "vertices", t2 = "vertices", n1 = "v1", n2 = "v2"},
     {name = "vtoe", orientation = 1, t1 = "vertices", t2 = "edges", n1 = "v", n2 = "e"},
@@ -36,6 +36,8 @@ local mesh_rels_new = {
     {name = "ctof", orientation = 1, t1 = "cells", t2 = "faces", n1 = "c", n2 = "f"},
     {name = "ctoc", orientation = 0, t1 = "cells", t2 = "cells", n1 = "c1", n2 = "c2"}
     }
+-- these relations go directly into the corresponding element table
+-- etov goes into table for edges, ftoc goes into table for faces
 local mesh_rels_topo = {
     {name = "etov", table = "edges", ft = "vertices", n1 = "head", n2 = "tail"},
     {name = "ftoc", table = "faces", ft = "cells", n1 = "outside", n2 ="inside"}
@@ -56,47 +58,35 @@ local function link_runtime ()
 end
 link_runtime()
 
-terra L.readMesh(filename : rawstring) : &mesh_h.Mesh
+terra readMesh(filename : rawstring) : &mesh_h.Mesh
     c.printf("Loading mesh file ...\n")
     var mesh : &mesh_h.Mesh = mesh_h.lMeshInitFromFile(filename)
     c.printf("Loaded mesh file\n")
     return mesh
 end
 
-struct FieldParams {
-    nvertices : int;
-    nedges : int;
-    nfaces : int;
-    ncells : int;
-}
-
-terra L.getMeshParams(mesh : &mesh_h.Mesh) : FieldParams
-    var params : FieldParams
-    params.nvertices = mesh.nvertices
-    params.nedges = mesh.nedges
-    params.nfaces = mesh.nfaces
-    params.ncells = mesh.ncells
-    return params
+terra extractValue(x : int) : int
+    return x
 end
 
-function L.initMeshRelations(mesh, params)
+function initMeshRelations(mesh)
     -- initialize list of relations
-    local elems = {}
     local rels = {}
     -- basic element relations
     for k, topo_elem in pairs(topo_elems) do
-        local tsize = params["n"..topo_elem]
-        elems[topo_elem] = utils.newtable(tsize, topo_elem)
-        elems[topo_elem]:initializenumfield("values", false)
+        local tsize = extractValue(mesh["n"..topo_elem])
+        print("Number of "..topo_elem.." is :")
+        rels[topo_elem] = utils.newtable(tsize, topo_elem)
+        rels[topo_elem]:initializenumfield("values", false)
     end
     -- other mesh relations
     for k, rel_tuple in pairs(mesh_rels_new) do
         local rel_name = rel_tuple.name
-        local tsize = mesh[rel_name].row_idx[params["n"..rel_tuple.t1]]
+        local tsize = mesh[rel_name].row_idx[mesh["n"..rel_tuple.t1]]
         local rel_table = utils.newtable(tsize, rel_name)
         rels[rel_name] = rel_table
-        rel_table[rel_tuple.n1] = utils.newfield(elems[rel_tuple.t1])
-        rel_table[rel_tuple.n2] = utils.newfield(elems[rel_tuple.t2])
+        rel_table[rel_tuple.n1] = utils.newfield(rels[rel_tuple.t1])
+        rel_table[rel_tuple.n2] = utils.newfield(rels[rel_tuple.t2])
         if rel_tuple.orientation then
             local datasize = rel_table[rel_tuple.n2]:loadfrommemoryskipmsb(mesh[rel_name].values)
             rel_table.orientation = utils.newfield(bool)
@@ -105,38 +95,31 @@ function L.initMeshRelations(mesh, params)
             rel_table[rel_tuple.n2]:loadfrommemory(mesh[rel_name].values)
         end
         rel_table:loadindexfrommemory(rel_tuple.n1, mesh[rel_name].row_idx)
-        elems[rel_tuple.t1]:addrelation(rel_tuple.t2, rel_table)
+        rels[rel_tuple.t1]:addrelation(rel_tuple.t2, rel_table)
     end
     for k, rel_tuple in pairs(mesh_rels_topo) do
         local rel_name = rel_tuple.name
-        local rel_table = elems[rel_tuple.table]
-        rel_table[rel_tuple.n1] = utils.newfield(elems[rel_tuple.ft])
-        rel_table[rel_tuple.n2] = utils.newfield(elems[rel_tuple.ft])
+        local rel_table = rels[rel_tuple.table]
+        rel_table[rel_tuple.n1] = utils.newfield(rels[rel_tuple.ft])
+        rel_table[rel_tuple.n2] = utils.newfield(rels[rel_tuple.ft])
         rel_table[rel_tuple.n1]:loadalternatefrommemory(mesh[rel_name].values[0])
         rel_table[rel_tuple.n2]:loadalternatefrommemory(mesh[rel_name].values[1])
     end
-    return elems, rels
+    return rels
+end
+
+-- returns all relations from the given file
+function L.initMeshRelationsFromFile(filename)
+    local mesh = readMesh(filename)
+    local rels = initMeshRelations(mesh)
+    return rels
 end
 
 -- Test code
-
 print("Testing code ...")
-
-local mesh = L.readMesh("relations/mesh.lmesh")
-
--- TODO: Speak to Zach and remove this - problem accessing mesh elements
--- Remove this eventually, this should not be required.
-local params = L.getMeshParams(mesh)
-
-local elems, rels = L.initMeshRelations(mesh, params)
-
-for i,t in pairs(elems) do
-    print("** Elem table **")
-    t:dump()
-end
-
+local rels = L.initMeshRelationsFromFile("relations/mesh.lmesh")
 for i,t in pairs(rels) do
-    print("## Other rels table ##")
+    print("** Relation table **")
     t:dump()
 end
 
