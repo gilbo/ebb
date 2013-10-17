@@ -1,6 +1,6 @@
 local L = {}
 
-local utils = terralib.require("relations/relations_util")
+local utils = terralib.require("include/liszt_relations")
 local mesh_h = terralib.includec("runtime/common/mesh_crs.h")
 local c = terralib.includec("stdio.h")
 
@@ -113,14 +113,6 @@ function L.initMeshRelationsFromFile(filename)
     local mesh = readMesh(filename)
     local rels = initMeshRelations(mesh)
     return rels
-end
-
--- Test code
-print("Testing code ...")
-local rels = L.initMeshRelationsFromFile("relations/mesh.lmesh")
-for i,t in pairs(rels) do
-    print("** Relation table **")
-    t:dump()
 end
 
 return L
