@@ -11,7 +11,7 @@ package.path = package.path .. ";./compiler/?.lua;./compiler/?.t"
 ast = require "ast"
 _G['ast'] = nil
 
-local Parser = terralib.require('terra/tests/lib/parsing')
+local pratt = terralib.require('compiler/pratt')
 
 -- Global precedence table
 local precedence = {
@@ -80,7 +80,7 @@ end
 lang = { }
 
 --[[ Expression parsing ]]--
-lang.exp = Parser.Pratt() -- returns a pratt parser
+lang.exp = pratt.Pratt() -- returns a pratt parser
 :prefix("-",   unary)
 :prefix("not", unary)
 
@@ -101,7 +101,7 @@ lang.exp = Parser.Pratt() -- returns a pratt parser
 :infix("+",   precedence["+"],   leftbinary)
 :infix("-",   precedence["-"],   leftbinary)
 :infix('^',   precedence['^'],   rightbinary)
-:prefix(Parser.default, function(P) return P:simpleexp() end)
+:prefix(pratt.default, function(P) return P:simpleexp() end)
 
 -- tuples are used to represent a sequence of comma-seperated expressions that can
 -- be found in function calls and will perhaps be used in for statements

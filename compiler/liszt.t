@@ -7,7 +7,7 @@ local kernel = kernel
 _G.kernel    = nil
 
 
-local Parser = terralib.require('terra/tests/lib/parsing')
+local pratt = terralib.require('compiler/pratt')
 
 local lisztlanguage = {
 	name        = "liszt", -- name for debugging
@@ -15,7 +15,7 @@ local lisztlanguage = {
 	keywords    = {"var", "assert", "print"},
 
 	expression = function(self, lexer)
-		local kernel_ast = Parser.Parse(parser.lang, lexer, "liszt_kernel")
+		local kernel_ast = pratt.Parse(parser.lang, lexer, "liszt_kernel")
 
 		return function (env_fn) 
 			local env = env_fn()
