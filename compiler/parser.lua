@@ -8,8 +8,8 @@ module(... or 'liszt', package.seeall)
 package.path = package.path .. ";./compiler/?.lua;./compiler/?.t"
 
 -- Import ast nodes, keeping out of global scope
-ast = require "ast"
-_G['ast'] = nil
+local ast = require "ast"
+--_G['ast'] = nil
 
 local pratt = terralib.require('compiler/pratt')
 

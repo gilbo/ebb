@@ -1,51 +1,55 @@
 --[[ Module defines all of the AST nodes used to represent the Liszt 
      language.
 ]]--
-module(... or 'ast', package.seeall)
+--module(... or 'ast', package.seeall)
 
+local exports = {}
 
 ---------------------------
 --[[ Declare AST types ]]--
 ---------------------------
-AST            = { kind = 'ast' }
-AST.__index    = AST
+local AST             = { kind = 'ast' }
+AST.__index     = AST
 
-LisztKernel    = { kind = 'kernel' }
-Block          = { kind = 'block'  } -- Statement*
+local LisztKernel     = { kind = 'kernel' }
+local Block           = { kind = 'block'  } -- Statement*
 
 -- Expressions:
-Expression     = { kind = 'expr'   } -- abstract
-LValue         = { kind = 'lvalue' } -- abstract
-BinaryOp       = { kind = 'binop'  }
-UnaryOp        = { kind = 'unop'   }
-Tuple          = { kind = 'tuple'  }
+local Expression      = { kind = 'expr'   } -- abstract
+local LValue          = { kind = 'lvalue' } -- abstract
+local BinaryOp        = { kind = 'binop'  }
+local UnaryOp         = { kind = 'unop'   }
+local Tuple           = { kind = 'tuple'  }
 
-TableLookup    = { kind = 'lookup' } 
-Call           = { kind = 'call'   }
+local TableLookup     = { kind = 'lookup' } 
+local Call            = { kind = 'call'   }
 
-Name           = { kind = 'name'       }
-Number         = { kind = 'number'     }
-String         = { kind = 'string'     }
-Bool           = { kind = 'bool'       }
-VectorLiteral  = { kind = 'vecliteral' } -- {0, 4, 3} {true, true, false}
+local Name            = { kind = 'name'       }
+local Number          = { kind = 'number'     }
+local String          = { kind = 'string'     }
+local Bool            = { kind = 'bool'       }
+  -- {0, 4, 3} {true, true, false}
+local VectorLiteral   = { kind = 'vecliteral' } 
 
 -- Statements:
-Statement       = { kind = 'statement'  }  -- abstract
-IfStatement     = { kind = 'ifstmt'     }  -- if expr then block (elseif cond then block)* (else block)? end
-WhileStatement  = { kind = 'whilestmt'  }  -- while expr do block end
-DoStatement     = { kind = 'dostmt'     }  -- do block end
-RepeatStatement = { kind = 'repeatstmt' }  -- repeat block until cond
-ExprStatement   = { kind = 'exprstmt'   }  -- e;
-Assignment      = { kind = 'assnstmt'   }  -- "lvalue   = expr" 
-InitStatement   = { kind = 'initstmt'   }  -- "var name = expr"
-DeclStatement   = { kind = 'declstmt'   }  -- "var name"
-AssertStatement = { kind = 'assertstmt' }  -- "assert(expr)"
-PrintStatement  = { kind = 'printstmt'  }  -- "print(expr)" 
-NumericFor      = { kind = 'numericfor' }
-GenericFor      = { kind = 'genericfor' }
-Break           = { kind = 'break'      }
+local Statement       = { kind = 'statement'  }  -- abstract
+  -- if expr then block (elseif cond then block)* (else block)? end
+local IfStatement     = { kind = 'ifstmt'     }
+local WhileStatement  = { kind = 'whilestmt'  }  -- while expr do block end
+local DoStatement     = { kind = 'dostmt'     }  -- do block end
+local RepeatStatement = { kind = 'repeatstmt' }  -- repeat block until cond
+local ExprStatement   = { kind = 'exprstmt'   }  -- e;
+local Assignment      = { kind = 'assnstmt'   }  -- "lvalue   = expr" 
+local InitStatement   = { kind = 'initstmt'   }  -- "var name = expr"
+local DeclStatement   = { kind = 'declstmt'   }  -- "var name"
+local AssertStatement = { kind = 'assertstmt' }  -- "assert(expr)"
+local PrintStatement  = { kind = 'printstmt'  }  -- "print(expr)" 
+local NumericFor      = { kind = 'numericfor' }
+local GenericFor      = { kind = 'genericfor' }
+local Break           = { kind = 'break'      }
 
-CondBlock = { kind = 'condblock' } -- store condition and block to be executed for if/elseif clauses
+  -- store condition and block to be executed for if/elseif clauses
+local CondBlock = { kind = 'condblock' } 
 
 ----------------------------
 --[[ Set up inheritance ]]--
@@ -104,9 +108,9 @@ function AST:New (P)
 end
 
 function AST:copy_location (node)
-	linenumber = node.linenumber
-	filename   = node.filename
-	offset     = node.offset
+	self.linenumber = node.linenumber
+	self.filename   = node.filename
+	self.offset     = node.offset
 end
 
 function AST.isLValue    ( ) return false end
@@ -310,3 +314,42 @@ function VectorLiteral:pretty_print (indent)
 		self.elems[i]:pretty_print(indent .. indent_delta)
 	end
 end
+
+-- declare other exports
+for k,v in pairs({
+
+	AST             = AST,
+	LisztKernel     = LisztKernel,
+	Block           = Block,
+	Expression      = Expression,
+	LValue          = LValue,
+	BinaryOp        = BinaryOp,
+	UnaryOp         = UnaryOp,
+	Tuple           = Tuple,
+	TableLookup     = TableLookup,
+	Call            = Call,
+	Name            = Name,
+	Number          = Number,
+	String          = String,
+	Bool            = Bool,
+	VectorLiteral   = VectorLiteral,
+	Statement       = Statement,
+	IfStatement     = IfStatement,
+	WhileStatement  = WhileStatement,
+	DoStatement     = DoStatement,
+	RepeatStatement = RepeatStatement,
+	ExprStatement   = ExprStatement,
+	Assignment      = Assignment,
+	InitStatement   = InitStatement,
+	DeclStatement   = DeclStatement,
+	AssertStatement = AssertStatement,
+	PrintStatement  = PrintStatement,
+	NumericFor      = NumericFor,
+	GenericFor      = GenericFor,
+	Break           = Break,
+	CondBlock 			= CondBlock,
+
+}) do exports[k] = v end
+
+return exports
+
