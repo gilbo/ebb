@@ -170,28 +170,28 @@ local topo_elems = {
     edges    = 'edge',
     faces    = 'face',
     cells    = 'cell'
-    }
+}
 
 -- other mesh relations - we have a separate table for each of these relations
 local mesh_rels_new = {
-    --{global = 'verticesofvertex', name = "vtov", orientation = false, t1 = "vertices", t2 = "vertices", n1 = "v1", n2 = "v2"},
-    --{global = 'edgesofvertex',    name = "vtoe", orientation = true,  t1 = "vertices", t2 = "edges",    n1 = "vertex",  n2 = "edge"},
-    --{global = 'facesofvertex',    name = "vtof", orientation = false, t1 = "vertices", t2 = "faces",    n1 = "vertex",  n2 = "face"},
-    --{global = 'cellsofvertex',    name = "vtoc", orientation = false, t1 = "vertices", t2 = "cells",    n1 = "vertex",  n2 = "cell"},
-    --{global = 'facesofedge',      name = "etof", orientation = true,  t1 = "edges",    t2 = "faces",    n1 = "edge",    n2 = "face"},
-    --{global = 'cellsofedge',      name = "etoc", orientation = false, t1 = "edges",    t2 = "cells",    n1 = "edge",    n2 = "cell"},
-    --{global = 'verticesofface',   name = "ftov", orientation = false, t1 = "faces",    t2 = "vertices", n1 = "face",    n2 = "vertex"},
-    --{global = 'edgesofface',      name = "ftoe", orientation = true,  t1 = "faces",    t2 = "edges",    n1 = "face",    n2 = "edge"},
-    --{global = 'verticesofcell',   name = "ctov", orientation = false, t1 = "cells",    t2 = "vertices", n1 = "cell",    n2 = "vertex"},
+    {global = 'verticesofvertex', name = "vtov", orientation = false, t1 = "vertices", t2 = "vertices", n1 = "v1", n2 = "v2"},
+    {global = 'edgesofvertex',    name = "vtoe", orientation = true,  t1 = "vertices", t2 = "edges",    n1 = "vertex",  n2 = "edge"},
+    {global = 'facesofvertex',    name = "vtof", orientation = false, t1 = "vertices", t2 = "faces",    n1 = "vertex",  n2 = "face"},
+    {global = 'cellsofvertex',    name = "vtoc", orientation = false, t1 = "vertices", t2 = "cells",    n1 = "vertex",  n2 = "cell"},
+    {global = 'facesofedge',      name = "etof", orientation = true,  t1 = "edges",    t2 = "faces",    n1 = "edge",    n2 = "face"},
+    {global = 'cellsofedge',      name = "etoc", orientation = false, t1 = "edges",    t2 = "cells",    n1 = "edge",    n2 = "cell"},
+    {global = 'verticesofface',   name = "ftov", orientation = false, t1 = "faces",    t2 = "vertices", n1 = "face",    n2 = "vertex"},
+    {global = 'edgesofface',      name = "ftoe", orientation = true,  t1 = "faces",    t2 = "edges",    n1 = "face",    n2 = "edge"},
+    {global = 'verticesofcell',   name = "ctov", orientation = false, t1 = "cells",    t2 = "vertices", n1 = "cell",    n2 = "vertex"},
     {global = 'edgesofcell',      name = "ctoe", orientation = false, t1 = "cells",    t2 = "edges",    n1 = "cell",    n2 = "edge"},
-    --{global = 'facesofcell',      name = "ctof", orientation = true,  t1 = "cells",    t2 = "faces",    n1 = "cell",    n2 = "face"},
-    --{global = 'cellsofcell',      name = "ctoc", orientation = false, t1 = "cells",    t2 = "cells",    n1 = "c1",      n2 = "c2"}
+    {global = 'facesofcell',      name = "ctof", orientation = true,  t1 = "cells",    t2 = "faces",    n1 = "cell",    n2 = "face"},
+    {global = 'cellsofcell',      name = "ctoc", orientation = false, t1 = "cells",    t2 = "cells",    n1 = "c1",      n2 = "c2"}
 }
 -- these relations go directly into the corresponding element table
 -- etov goes into table for edges, ftoc goes into table for faces
 local mesh_rels_topo = {
-    --{name = "etov", table = "edges", ft = "vertices", n1 = "head",    n2 = "tail"},
-    --{name = "ftoc", table = "faces", ft = "cells",    n1 = "outside", n2 ="inside"}
+    {name = "etov", table = "edges", ft = "vertices", n1 = "head",    n2 = "tail"},
+    {name = "ftoc", table = "faces", ft = "cells",    n1 = "outside", n2 ="inside"}
 }
 
 local function initMeshRelations(mesh)
