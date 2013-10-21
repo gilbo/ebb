@@ -27,6 +27,11 @@ function test.fuzzy_aeq (a, b)
 		if d > zero_diff then error("Element " .. tostring(i) .. " of arrays do not match (" .. tostring(a[i]) .. ", " .. tostring(b[i]) .. ")", 2) end
 	end
 end
+function test.fuzzy_eq (a, b)
+	local d = a - b
+	if d < 0 then d = -d end
+	if d > zero_diff then error(tostring(a) .. " ~= " .. tostring(b),2) end
+end
 
 
 

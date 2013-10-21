@@ -1,7 +1,6 @@
 --[[ Module defines all of the AST nodes used to represent the Liszt 
      language.
 ]]--
---module(... or 'ast', package.seeall)
 
 local exports = {}
 
@@ -13,6 +12,8 @@ AST.__index     = AST
 
 local LisztKernel     = { kind = 'kernel' }
 local Block           = { kind = 'block'  } -- Statement*
+  -- store condition and block to be executed for if/elseif clauses
+local CondBlock = { kind = 'condblock' } 
 
 -- Expressions:
 local Expression      = { kind = 'expr'   } -- abstract
@@ -21,7 +22,8 @@ local BinaryOp        = { kind = 'binop'  }
 local UnaryOp         = { kind = 'unop'   }
 local Tuple           = { kind = 'tuple'  }
 
-local TableLookup     = { kind = 'lookup' } 
+local TableLookup     = { kind = 'lookup' }
+local VectorIndex 		= { kind = 'index'  }
 local Call            = { kind = 'call'   }
 
 local Name            = { kind = 'name'       }
@@ -48,8 +50,6 @@ local NumericFor      = { kind = 'numericfor' }
 local GenericFor      = { kind = 'genericfor' }
 local Break           = { kind = 'break'      }
 
-  -- store condition and block to be executed for if/elseif clauses
-local CondBlock = { kind = 'condblock' } 
 
 ----------------------------
 --[[ Set up inheritance ]]--
@@ -76,6 +76,7 @@ inherit(VectorLiteral, Expression)
 
 inherit(Call,        LValue)
 inherit(TableLookup, LValue)
+inherit(VectorIndex, LValue)
 inherit(Name,        LValue)
 
 inherit(IfStatement,     Statement)
@@ -187,8 +188,16 @@ end
 
 function TableLookup:pretty_print (indent)
 	indent = indent or ''
+	print(indent .. self.kind .. ": (table, member)")
 	self.table:pretty_print(indent .. indent_delta)
 	self.member:pretty_print(indent .. indent_delta)
+end
+
+function VectorIndex:pretty_print (indent)
+	indent = indent or ''
+	print(indent .. self.kind .. ": (vector, index)")
+	self.vector:pretty_print(indent .. indent_delta)
+	self.index:pretty_print(indent .. indent_delta)
 end
 
 function Name:pretty_print (indent)
@@ -327,6 +336,7 @@ for k,v in pairs({
 	UnaryOp         = UnaryOp,
 	Tuple           = Tuple,
 	TableLookup     = TableLookup,
+	VectorIndex 		= VectorIndex,
 	Call            = Call,
 	Name            = Name,
 	Number          = Number,

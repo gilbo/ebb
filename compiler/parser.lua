@@ -1,15 +1,13 @@
 --[[ Module defines all of the parsing functions used to generate
 an AST for Liszt code 
 ]]--
-
-module(... or 'liszt', package.seeall)
+local exports = {}
 
 -- Imports
 package.path = package.path .. ";./compiler/?.lua;./compiler/?.t"
 
 -- Import ast nodes, keeping out of global scope
 local ast = require "ast"
---_G['ast'] = nil
 
 local pratt = terralib.require('compiler/pratt')
 
@@ -77,7 +75,7 @@ end
 ----------------------------------
 --[[ Build Liszt Pratt parser ]]--
 ----------------------------------
-lang = { }
+local lang = { }
 
 --[[ Expression parsing ]]--
 lang.exp = pratt.Pratt() -- returns a pratt parser
@@ -136,14 +134,24 @@ lang.lvaluehelper = function (P, lhs)
 	end
 		
 	-- field index / function call?
-	local open = P:nextif('(')
-	if open then
+	local open_parens = P:nextif('(')
+	if open_parens then
 		local node = ast.Call:New(P)
 		local args = P:tuple()
-		P:expectmatch(')', '(', open.linenumber)
+		P:expectmatch(')', '(', open_parens.linenumber)
 		node.func, node.params = lhs, args
 		return P:lvaluehelper(node)
 	end
+
+	local open_sq_bracket = P:nextif('[')
+	if open_sq_bracket then
+		local node = ast.VectorIndex:New(P)
+		local exp = P:exp()
+		P:expectmatch(']', '[', open_sq_bracket.linenumber)
+		node.vector, node.index = lhs, exp
+		return P:lvaluehelper(node)
+	end
+
 	return lhs
 end
 
@@ -362,21 +370,22 @@ lang.statement = function (P)
 			return node_nf
 		end
 
-        -- TODO: when Liszt has functions/macros, these two should probably just be builtins
-    elseif P:nextif("assert") then
-        local node_assert = ast.AssertStatement:New(P)
-        P:expect('(')
-        node_assert.test = P:exp()
-        P:expect(')')
-        return node_assert
+		-- TODO: when Liszt has functions/macros,
+		-- 			 these two should probably just be builtins
+	elseif P:nextif("assert") then
+		local node_assert = ast.AssertStatement:New(P)
+		P:expect('(')
+		node_assert.test = P:exp()
+		P:expect(')')
+		return node_assert
 
-    elseif P:nextif("print") then
-        local node_print = ast.PrintStatement:New(P)
-        P:expect('(')
-        node_print.output = P:exp()
-        P:expect(')')
-        return node_print
-        
+	elseif P:nextif("print") then
+		local node_print = ast.PrintStatement:New(P)
+		P:expect('(')
+		node_print.output = P:exp()
+		P:expect(')')
+		return node_print
+		
 		--[[ expression statement / assignment statement ]]--
 	else
 		local expr = P:exp()
@@ -421,3 +430,9 @@ lang.block = function (P)
 	node_block.statements = statements
 	return node_block
 end
+
+
+exports.lang = lang
+
+return exports
+
