@@ -1,9 +1,9 @@
-module(... or 'codegen', package.seeall)
+local exports = {}
 
 local ast    = require 'ast'
 local semant = require 'semant'
 terralib.require 'runtime/liszt'
-terralib.require 'compiler/types'
+local types = terralib.require 'compiler/types'
 local Type = types.Type
 local t    = types.t
 local runtime = package.loaded.runtime
@@ -150,9 +150,9 @@ function ast.PrintStatement:codegen(env)
 	elseif lt == t.bool  then
         return quote c.printf("%s", terralib.select(code, "true\n", "false\n")) end
 	elseif lt:isVector() then
-        printSpec = "{"
+        local printSpec = "{"
         local sym = symbol()
-        elemQuotes = {}
+        local elemQuotes = {}
         local bt = lt:baseType()
         for i = 0, lt.N - 1 do
             if bt == t.float then
@@ -346,6 +346,13 @@ function ast.TableLookup:codegen (env)
 	end
 end
 
+function ast.VectorIndex:codegen (env)
+	local vector = self.vector:codegen(env)
+	local index  = self.index:codegen(env)
+
+	return `vector[index]
+end
+
 function ast.Number:codegen (env)
 	return `[self.value]
 end
@@ -411,7 +418,7 @@ function ast.GenericFor:codegen (env)
 end
 ]]--
 
-function codegen (luaenv, kernel_ast)
+function exports.codegen (luaenv, kernel_ast)
 	local env = terralib.newenvironment(luaenv)
 	env:enterblock()
 	local kernel_body = kernel_ast:codegen(env)
@@ -424,3 +431,7 @@ function codegen (luaenv, kernel_ast)
 		end
 	end
 end
+
+
+return exports
+

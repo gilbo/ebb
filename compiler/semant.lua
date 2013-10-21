@@ -1,7 +1,7 @@
-module(... or 'semant', package.seeall)
+local exports   = {}
 
 ast = require("ast")
-terralib.require("compiler/types")
+local types = terralib.require("compiler/types")
 local tutil     = types.usertypes
 local Type      = types.Type
 local t         = types.t
@@ -12,6 +12,10 @@ local Scope     = types.Scope
 _FIELD_WRITE   = 'FIELD_WRITE'
 _FIELD_REDUCE  = 'FIELD_REDUCE'
 _SCALAR_REDUCE = 'SCALAR_REDUCE'
+exports._FIELD_WRITE 		= _FIELD_WRITE
+exports._FIELD_REDUCE 	= _FIELD_REDUCE
+exports._SCALAR_REDUCE 	= _SCALAR_REDUCE
+
 
 
 ------------------------------------------------------------------------------
@@ -65,7 +69,7 @@ end
 ------------------------------------------------------------------------------
 --[[ AST semantic checking methods:                                       ]]--
 ------------------------------------------------------------------------------
-function ast.AST:check(env, diag)
+function ast.AST:check(env, diag) -- diag(nostic)
 	error("Typechecking not implemented for AST node " .. self.kind)
 end
 
@@ -125,8 +129,11 @@ function ast.Assignment:check(env, diag)
 	local ltype = self.lvalue:check_lhs(env, diag, true)
 	if ltype == t.error then return end
 
-	-- Only refactor the left binaryOp tree if we could potentially be commiting a field/scalar write
-	if self.lvalue:isGlobalScope() and Type.isScalar(self.lvalue.luaval) or Type.isFieldIndex(self.lvalue.luaval) and
+	-- Only refactor the left binaryOp tree if we could potentially
+	-- be commiting a field/scalar write
+	if self.lvalue:isGlobalScope() and
+		 Type.isScalar(self.lvalue.luaval) or
+		 Type.isFieldIndex(self.lvalue.luaval) and
 	   ast.BinaryOp:is(self.exp) then
 		self.exp:refactorReduction()
 	end
@@ -137,7 +144,7 @@ function ast.Assignment:check(env, diag)
 	-- is this the first use of a declared, but not defined, variable?
 	if ltype == t.unknown then
 		ltype                 = rtype
-		self.lvalue.node_type = rtype 
+		self.lvalue.node_type = rtype
 
 		env:localenv()[self.lvalue.name].node_type = rtype
 	end
@@ -151,9 +158,10 @@ function ast.Assignment:check(env, diag)
 		end
 	end
 
-	-- local temporaries can only be updated if they refer to numeric/boolean/vector data types
-	-- we do not allow users to re-assign variables of topological element type, etc so that they
-	-- do not confuse our stencil analysis.
+	-- local temporaries can only be updated if they refer to
+	-- numeric/boolean/vector data types.  We do not allow users to
+	-- re-assign variables of topological element type, etc.
+	-- This way, they do not confuse our stencil analysis.
 	if self.lvalue:isLocalScope() and not ltype:isExpressionType() then
 		diag:reporterror(self.lvalue, "Cannot update local variables referring to objects of topological type")
 		return
@@ -217,9 +225,10 @@ function ast.InitStatement:check(env, diag)
 
 	if rhstype == t.error then return end
 
-	-- Local temporaries can only refer to numeric/boolean/vector data or topolocal element types,
-	-- and variables referring to topo types can never be re-assigned.  That way, we don't allow
-	-- users to write code that makes stencil analysis intractable.
+	-- Local temporaries can only refer to numeric/boolean/vector data or
+	-- topolocal element types, and variables referring to topo types can
+	-- never be re-assigned.  That way, we don't allow users to write
+	-- code that makes stencil analysis intractable.
 	if not rhstype:isExpressionType() and not rhstype:isTopo() then
 		diag:reporterror(self, "Can only assign numbers, bools, or topological elements to local temporaries")
 	end
@@ -248,7 +257,7 @@ function ast.PrintStatement:check(env, diag)
     end
 end
 
-function enforce_numeric_type (node, tp)
+local function enforce_numeric_type (node, tp)
 	if tp ~= t.error and not tp:isNumeric() then
 		diag:reporterror(self, "Expected a numeric expression to define the iterator bounds/step (found " .. tp:toString() .. ')')
 	end
@@ -480,106 +489,10 @@ function ast.UnaryOp:check(env, diag)
 end
 
 ------------------------------------------------------------------------------
---[[                         Miscellaneous nodes:                         ]]--
-------------------------------------------------------------------------------
-function ast.Tuple:check(env, diag)
-	for i, node in ipairs(self.children) do
-		node:check(env, diag)
-	end
-end
-
-function ast.Tuple:index_check(env, diag)
-	-- type checking tuple when it should be a single argument, for
-	-- instance, when indexing a field
-	if #self.children ~= 1 then
-		diag:reporterror(self, "Can use exactly one argument to index here")
-		return nil
-	end
-	local argobj = self.children[1]:check(env, diag)
-	if argobj == nil then
-		return nil
-	end
-	self.node_type = argobj
-	return argobj
-end
-
-function ast.TableLookup:check(env, diag)
-	local ttype = self.table:check(env, diag)
-
-	if ttype == t.error then
-		self.node_type = t.error
-		return self.node_type
-
-	-- Enforce table type for lhs
-	elseif ttype ~= t.table then
-		diag:reporterror(self, "select operator not supported for non-table type " .. ttype:toString())
-		self.node_type = t.error
-		return self.node_type
-	end
-
-	-- RHS is a member of the LHS
-	self.luaval = self.table.luaval[self.member.name]
-
-	if self.luaval == nil then
-		self.node_type = t.error
-		diag:reporterror(self, "Object does not have member " .. member)
-
-	else
-		self.node_type = lua_to_liszt(self.luaval)
-		if self.node_type == t.error then
-			diag:reporterror(self, "Cannot convert the lua value to a Liszt value")
-		end
-	end
-
-	self:setGlobalScope()
-	return self.node_type
-end
-
-function ast.Call:check(env, diag)
-	-- call name can be a field only in current implementation
-	local ftype = self.func:check(env, diag)
-	if ftype == t.error then
-		self.node_type = t.error
-
-	elseif ftype:isField() then
-		local ftopo = ftype:topoType()
-		local fdata = ftype:dataType()
-
-		local argtype = self.params:index_check(env,diag)
-		if (argtype == t.error) then
-			self.node_type = t.error
-
-		elseif argtype == ftopo then
-			self.node_type = fdata
-			self.luaval    = FieldIndex.New(self.func.luaval, self.node_type)
-
-		-- infer type of argument to field topological type
-		elseif argtype == t.topo then
-			local pname = self.params.children[1].name
-			env:localenv()[pname].node_type = ftopo -- update type in local environment
-
-			self.node_type = fdata
-			self.luaval = FieldIndex.New(self.func.luaval, self.node_type)
-
-		else
-			diag:reporterror(self, ftype:toString(), " indexed by incorrect type ", argtype:toString())
-			self.node_type = t.error
-		end
-
-	else
-		diag:reporterror(self, "Invalid call")
-		self.node_type = t.error
-	end
-
-	self:setGlobalScope()
-	return self.node_type
-end
-
-------------------------------------------------------------------------------
 --[[                               Variables                              ]]--
 ------------------------------------------------------------------------------
 -- Infer liszt type for the lua variable
-function lua_to_liszt(luav)
+local function lua_to_liszt(luav)
 	-- all liszt objects must be of lua type table...
 	if type(luav) == 'table' then
 		-- vectors, scalars
@@ -633,13 +546,14 @@ function ast.Name:check(env, diag, assign)
 		self.node_type = t.error
 		return self.node_type
 
+	-- if we found a type in the environment, the name must be defined locally
 	elseif locv then
 		self:setLocalScope()
 		self.node_type = locv
 		return self.node_type
 	end
 
-	-- does name exist in global scope?
+	-- Otherwise, does the name exist in the global scope?
 	local luav = env:luaenv()[self.name]
 	if not luav then
 		diag:reporterror(self, "Variable '" .. self.name .. "' is not defined")
@@ -706,11 +620,134 @@ function ast.Bool:check(env, diag)
 	return self.node_type
 end
 
+------------------------------------------------------------------------------
+--[[                         Miscellaneous nodes:                         ]]--
+------------------------------------------------------------------------------
+function ast.Tuple:check(env, diag)
+	for i, node in ipairs(self.children) do
+		node:check(env, diag)
+	end
+end
+
+function ast.Tuple:index_check(env, diag)
+	-- type checking tuple when it should be a single argument, for
+	-- instance, when indexing a field
+	if #self.children ~= 1 then
+		diag:reporterror(self, "Can use exactly one argument to index here")
+		return nil
+	end
+	local argobj = self.children[1]:check(env, diag)
+	if argobj == nil then
+		return nil
+	end
+	self.node_type = argobj
+	return argobj
+end
+
+function ast.TableLookup:check(env, diag)
+	local ttype = self.table:check(env, diag)
+
+	if ttype == t.error then
+		self.node_type = t.error
+		return self.node_type
+
+	-- Enforce table type for lhs
+	elseif ttype ~= t.table then
+		diag:reporterror(self, "select operator not supported for non-table type " .. ttype:toString())
+		self.node_type = t.error
+		return self.node_type
+	end
+
+	-- RHS is a member of the LHS
+	self.luaval = self.table.luaval[self.member.name]
+
+	if self.luaval == nil then
+		self.node_type = t.error
+		diag:reporterror(self, "Object does not have member " .. member)
+
+	else
+		self.node_type = lua_to_liszt(self.luaval)
+		if self.node_type == t.error then
+			diag:reporterror(self, "Cannot convert the lua value to a Liszt value")
+		end
+	end
+
+	self:setGlobalScope()
+	return self.node_type
+end
+
+function ast.VectorIndex:check(env, diag)
+	local vector_type = self.vector:check(env, diag)
+
+	if vector_type == t.error then
+		self.node_type = t.error
+		return self.node_type
+
+	-- Enforce vector type for LHS
+	elseif not vector_type:isVector() then
+		diag:reporterror(self, "indexing operator [] not supported for non-vector type " .. vector_type:toString())
+		self.node_type = t.error
+		return self.node_type
+	end
+
+	-- RHS is an expression of integral type
+	local index_type = self.index:check(env,diag)
+	if index_type ~= t.error and not index_type:isIntegral() then
+		diag:reporterror(self, "Expected a numeric expression to index into the vector (found " .. index_type:toString() .. ')')
+	end
+
+	self.node_type = vector_type:baseType()
+
+	return self.node_type
+	--return ast.AST.check(self,env,diag) -- UNTIL WE'RE DONE DEVELOPING...
+end
+
+function ast.Call:check(env, diag)
+	-- call name can be a field only in current implementation
+	local ftype = self.func:check(env, diag)
+	if ftype == t.error then
+		self.node_type = t.error
+
+	elseif ftype:isField() then
+		local ftopo = ftype:topoType()
+		local fdata = ftype:dataType()
+
+		local argtype = self.params:index_check(env,diag)
+		if (argtype == t.error) then
+			self.node_type = t.error
+
+		elseif argtype == ftopo then
+			self.node_type = fdata
+			self.luaval    = FieldIndex.New(self.func.luaval, self.node_type)
+
+		-- infer type of argument to field topological type
+		elseif argtype == t.topo then
+			local pname = self.params.children[1].name
+			env:localenv()[pname].node_type = ftopo -- update type in local environment
+
+			self.node_type = fdata
+			self.luaval = FieldIndex.New(self.func.luaval, self.node_type)
+
+		else
+			diag:reporterror(self, ftype:toString(), " indexed by incorrect type ", argtype:toString())
+			self.node_type = t.error
+		end
+
+	else
+		diag:reporterror(self, "Invalid call")
+		self.node_type = t.error
+	end
+
+	self:setGlobalScope()
+	return self.node_type
+end
+
+
 
 ------------------------------------------------------------------------------
 --[[ Semantic checking called from here:                                  ]]--
 ------------------------------------------------------------------------------
-function check(luaenv, kernel_ast)
+function exports.check(luaenv, kernel_ast)
 
 	-- environment for checking variables and scopes
 	local env  = terralib.newenvironment(luaenv)
@@ -728,3 +765,8 @@ function check(luaenv, kernel_ast)
 	env:leaveblock()
 	diag:finishandabortiferrors("Errors during typechecking liszt", 1)
 end
+
+
+return exports
+
+

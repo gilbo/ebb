@@ -1,7 +1,7 @@
 --------------------------------------------------------------------------------
 --[[ Test implementation of type system for consistency                     ]]--
 --------------------------------------------------------------------------------
-terralib.require("compiler/types")
+local types = terralib.require("compiler/types")
 terralib.require("runtime/liszt")
 terralib.require("include/liszt")
 require 'tests/test'
