@@ -1,10 +1,8 @@
 -- Privately import from types module
-local _types = types
-terralib.require('compiler/types')
+local types = terralib.require('compiler/types')
 local Type  = types.Type
 local t     = types.t
 local tutil = types.usertypes
-_G.types    = _types
 
 -- Keep runtime module private
 local _runtime = runtime
