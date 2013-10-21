@@ -1,18 +1,15 @@
-module(... or 'kernel', package.seeall)
+local exports = {}
 
 local semant = require "semant"
 terralib.require "include/liszt"
-terralib.require "compiler/codegen"
+local codegen = terralib.require "compiler/codegen"
 terralib.require "runtime/liszt"
 
 -- Keep imports from polluting global scope of any file that includes this module
 local runtime = runtime
-local codegen = codegen
 _G.runtime = nil
-_G.codegen = nil
-_G.semant  = nil
 
-Kernel = { }
+local Kernel = { }
 Kernel.__index = Kernel
 
 function Kernel.isKernel (obj)
@@ -35,3 +32,9 @@ function Kernel:generate (param_type)
 	end
 	return self.__kernel
 end
+
+
+exports.Kernel = Kernel
+
+return exports
+

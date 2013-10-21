@@ -1,12 +1,13 @@
-module('types', package.seeall)
+local exports = {}
 terralib.require('runtime/liszt')
 
---------------------------------------------------------------------------------
---[[ Liszt type prototype:                                                  ]]--
---------------------------------------------------------------------------------
-Type = {}
+-------------------------------------------------------------------------------
+--[[ Liszt type prototype:                                                 ]]--
+-------------------------------------------------------------------------------
+local Type   = {}
+exports.Type = Type
 Type.__index = Type
-Type.kinds = {}
+Type.kinds   = {}
 Type.kinds.primitive   = {}
 Type.kinds.vector      = {}
 Type.kinds.field       = {}
@@ -17,11 +18,10 @@ Type.kinds.scalar      = {}
 Type.kinds.table       = {}
 Type.kinds.error       = {}
 
-Type.kinds.fieldindex = {}
-
-Scope       = {}
-Scope.lua   = {}
-Scope.liszt = {}
+local Scope       = {}
+exports.Scope     = Scope
+Scope.lua         = {}
+Scope.liszt       = {}
 
 Type.kinds.int   = {string='int',   terratype=int,   runtimetype=runtime.L_INT}
 Type.kinds.float = {string='float', terratype=float, runtimetype=runtime.L_FLOAT}
@@ -49,13 +49,13 @@ function Type:new (kind,typ,scope)
 	return setmetatable({kind=kind,type=typ,scope=scope}, self)
 end
 
-function Type.isLType (obj)
+function Type.isLisztType (obj)
 	return getmetatable(obj) == Type
 end
 
---------------------------------------------------------------------------------
---[[ These methods can only be called on liszt types                        ]]--
---------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+--[[ These methods can only be called on liszt types                       ]]--
+-------------------------------------------------------------------------------
 function Type:isPrimitive() return type(self) == 'table' and self.kind == Type.kinds.primitive end
 function Type:isVector()    return type(self) == 'table' and self.kind == Type.kinds.vector    end
 
@@ -72,21 +72,22 @@ function Type:isLogical  () return (self.kind == Type.kinds.primitive or self.ki
 function Type:isExpressionType() return self:isPrimitive() or self:isVector() end
 
 
---------------------------------------------------------------------------------
---[[ These methods can be called on liszt types or liszt objects            ]]--
---------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+--[[ These methods can be called on liszt types or liszt objects           ]]--
+-------------------------------------------------------------------------------
 function Type:isTopo()       return type(self) == 'table' and self.kind == Type.kinds.topo       end
 function Type:isField()      return type(self) == 'table' and self.kind == Type.kinds.field      end
 function Type:isScalar()     return type(self) == 'table' and self.kind == Type.kinds.scalar     end
 function Type:isSet()        return type(self) == 'table' and self.kind == Type.kinds.set        end
 function Type:isFunction()   return type(self) == 'table' and self.kind == Type.kinds.functype   end
 function Type:isFieldIndex() return type(self) == 'table' and self.kind == Type.kinds.fieldindex end
+-- currently isTable will return true if obj has kind fieldindex
 function Type.isTable(obj)   return type(obj)  == 'table' and not Type.validKinds[obj.kind]      end
 
 
---------------------------------------------------------------------------------
---[[ Methods for computing terra or runtime types                           ]]--
---------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+--[[ Methods for computing terra or runtime types                          ]]--
+-------------------------------------------------------------------------------
 function Type:baseType()
 	if self:isVector()    then return self.type end
 	if self:isPrimitive() then return self      end
@@ -131,9 +132,9 @@ function Type:topoType()
 end
 
 
---------------------------------------------------------------------------------
---[[ Stringify types                                                        ]]--
---------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+--[[ Stringify types                                                       ]]--
+-------------------------------------------------------------------------------
 function Type:toString()
 	if     self:isPrimitive() then return self.type.string
 	elseif self:isTopo()      then return self.type.string
@@ -147,14 +148,14 @@ function Type:toString()
 end
 
 
---------------------------------------------------------------------------------
---[[ Type constructors:                                                     ]]--
---------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+--[[ Type constructors:                                                    ]]--
+-------------------------------------------------------------------------------
 -- cache complex type objects for re-use
 local complexTypes = {}
 
 local function vectorType (typ, len)
-	if not Type.isLType(typ) then error("invalid type argument to vectorType (is this a terra type?)") end
+	if not Type.isLisztType(typ) then error("invalid type argument to vectorType (is this a terra type?)") end
 	local tpn = 'vector(' .. typ:toString() .. ',' .. tostring(len) .. ')'
 	if not complexTypes[tpn] then
 		local vt = Type:new(Type.kinds.vector,typ)
@@ -194,41 +195,43 @@ local function scalarType(typ)
 end
 
 
---------------------------------------------------------------------------------
---[[ Type interface:                                                        ]]--
---------------------------------------------------------------------------------
-t        = {}
-t.error  = Type:new(Type.kinds.error)
+-------------------------------------------------------------------------------
+--[[ Type interface:                                                       ]]--
+-------------------------------------------------------------------------------
+local t     = {}
+exports.t   = t
+t.error     = Type:new(Type.kinds.error)
 
 -- Primitives
-t.int    = Type:new(Type.kinds.primitive,Type.kinds.int)
-t.float  = Type:new(Type.kinds.primitive,Type.kinds.float)
-t.bool   = Type:new(Type.kinds.primitive,Type.kinds.bool)
+t.int       = Type:new(Type.kinds.primitive,Type.kinds.int)
+t.float     = Type:new(Type.kinds.primitive,Type.kinds.float)
+t.bool      = Type:new(Type.kinds.primitive,Type.kinds.bool)
 
 -- Topo types
-t.topo   = Type:new(Type.kinds.topo)
-t.vertex = Type:new(Type.kinds.topo,Type.kinds.vertex)
-t.edge   = Type:new(Type.kinds.topo,Type.kinds.edge)
-t.face   = Type:new(Type.kinds.topo,Type.kinds.face)
-t.cell   = Type:new(Type.kinds.topo,Type.kinds.cell)
+t.topo      = Type:new(Type.kinds.topo)
+t.vertex    = Type:new(Type.kinds.topo,Type.kinds.vertex)
+t.edge      = Type:new(Type.kinds.topo,Type.kinds.edge)
+t.face      = Type:new(Type.kinds.topo,Type.kinds.face)
+t.cell      = Type:new(Type.kinds.topo,Type.kinds.cell)
 
 -- un-inferred type
-t.unknown = Type:new()
+t.unknown   = Type:new()
 
 -- Complex type constructors
-t.vector     = vectorType
-t.field      = fieldType
-t.set        = setType
-t.scalar     = scalarType
+t.vector    = vectorType
+t.field     = fieldType
+t.set       = setType
+t.scalar    = scalarType
 
 -- Support for table lookups / select operator
 t.table  = Type:new(Type.kinds.table)
 
 
---------------------------------------------------------------------------------
---[[ Utilities for converting user-exposed terra types to Liszt types       ]]--
---------------------------------------------------------------------------------
-usertypes = {}
+-------------------------------------------------------------------------------
+--[[ Utilities for converting user-exposed terra types to Liszt types      ]]--
+-------------------------------------------------------------------------------
+local usertypes = {}
+exports.usertypes = usertypes
 local terraToPrimitiveType = {
    [int]   = t.int,
    [float] = t.float,
@@ -301,10 +304,10 @@ function usertypes.ltype (dt)
 end
 
 
---------------------------------------------------------------------------------
---[[ Type meeting                                                           ]]--
---------------------------------------------------------------------------------
-function type_meet(ltype, rtype)
+-------------------------------------------------------------------------------
+--[[ Type meeting                                                          ]]--
+-------------------------------------------------------------------------------
+local function type_meet(ltype, rtype)
 	if ltype:isVector() and rtype:isVector() and ltype.N ~= rtype.N then 
 		return t.error
 
@@ -327,3 +330,8 @@ function type_meet(ltype, rtype)
 		return t.int
 	end
 end
+exports.type_meet = type_meet
+
+
+return exports
+

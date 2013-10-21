@@ -1,10 +1,6 @@
 local parser  = require "compiler/parser"
-terralib.require "compiler/kernel"
+local kernel  = terralib.require "compiler/kernel"
 terralib.require "include/liszt" -- included for liszt programmer
-
--- Keep kernel out of global scope for liszt programmer
-local kernel = kernel
-_G.kernel    = nil
 
 
 local pratt = terralib.require('compiler/pratt')
