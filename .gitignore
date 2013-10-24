@@ -4,3 +4,5 @@ terra
 *.dylib
 .metadata
 build
+
+notes.txt
