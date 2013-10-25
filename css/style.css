@@ -262,6 +262,13 @@ code, tt {
   background-color: #f8f8f8;
   border-radius: 3px; }
 
+code.code-block {
+  display: block;
+}
+code.code-block table td {
+  background-color: #f8f8f8;
+}
+
 pre code {
   margin: 0;
   padding: 0;
