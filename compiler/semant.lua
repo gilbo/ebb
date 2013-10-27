@@ -17,6 +17,29 @@ exports._FIELD_REDUCE 	= _FIELD_REDUCE
 exports._SCALAR_REDUCE 	= _SCALAR_REDUCE
 
 
+--[[
+	AST:check(env, diag) type checking routines
+		These methods define type checking.
+		Each check() method is designed to accept a typing environment &
+	a diagnostic object.  Once called, it will construct a new type-checked
+	version of its subtree (all new AST nodes) and return that subtree
+	along with its computed type (or nil if a statement etc.)
+		If only the new AST is desired, the second return value can be ignored.
+		If only the type is desired, the first value can be ignored as
+			_, type = abc:check(env, diag)
+
+]]--
+
+
+
+------------------------------------------------------------------------------
+--[[ Small Helper Functions														                    ]]--
+------------------------------------------------------------------------------
+local function clone_name(name_node)
+	local copy = name_node:clone()
+	copy.name = name_node.name
+	return copy
+end
 
 ------------------------------------------------------------------------------
 --[[ Stand-in for the luaval of an indexed global field                   ]]--
@@ -74,59 +97,89 @@ function ast.AST:check(env, diag) -- diag(nostic)
 end
 
 function ast.Block:check(env, diag)
+	local block = self:clone()
+
 	-- statements
+	block.statements = {}
 	for id, node in ipairs(self.statements) do
-		node:check(env, diag)
+		block.statements[id] = node:check(env, diag)
 	end
+
+	return block
 end
 
 function ast.IfStatement:check(env, diag)
+	local ifstmt = self:clone()
+
+	ifstmt.if_blocks = {}
 	for id, node in ipairs(self.if_blocks) do
 		env:enterblock()
-		node:check(env, diag)
+		ifstmt.if_blocks[id] = node:check(env, diag)
 		env:leaveblock()
 	end
 	if self.else_block then
 		env:enterblock()
-		self.else_block:check(env, diag)
+		ifstmt.else_block = self.else_block:check(env, diag)
 		env:leaveblock()
 	end
+
+	return ifstmt
 end
 
 function ast.WhileStatement:check(env, diag)
-	local condtype = self.cond:check(env, diag)
+	local whilestmt = self:clone()
+
+	local cond, condtype = self.cond:check(env, diag)
+	whilestmt.cond 			 = cond
 	if condtype ~= t.error and condtype ~= t.bool then
-		diag:reporterror(self, "Expected bool expression but found " .. condtype:toString())
+		diag:reporterror(self, "Expected bool expression but found " ..
+													 condtype:toString())
 	end
 
 	env:enterblock()
-	self.body:check(env, diag)
+	whilestmt.body = self.body:check(env, diag)
 	env:leaveblock()
+
+	return whilestmt
 end
 
 function ast.DoStatement:check(env, diag)
+	local dostmt = self:clone()
+
 	env:enterblock()
-	self.body:check(env, diag)
+	dostmt.body = self.body:check(env, diag)
 	env:leaveblock()
+
+	return dostmt
 end
 
 function ast.RepeatStatement:check(env, diag)
+	local repeatstmt = self:clone()
 	env:enterblock()
-	self.body:check(env, diag)
 
-	local condtype = self.cond:check(env, diag)
+	repeatstmt.body = self.body:check(env, diag)
+
+	local cond, condtype = self.cond:check(env, diag)
+	repeatstmt.cond 		 = cond
 	if condtype ~= t.error and condtype ~= t.bool then
 		diag:reporterror(self, "Expected bool expression but found " .. condtype:toString())
 	end
+
 	env:leaveblock()
+	return repeatstmt
 end
 
 function ast.ExprStatement:check(env, diag)
-	self.exp:check(env, diag)
+	local expstmt = self:clone()
+	expstmt.exp   = self.exp:check(env, diag)
+	return expstmt
 end
 
 function ast.Assignment:check(env, diag)
-	local ltype = self.lvalue:check_lhs(env, diag, true)
+	local assignment = self:clone()
+
+	local lhs, ltype  = self.lvalue:check_lhs(env, diag, true)
+	assignment.lvalue = lhs
 	if ltype == t.error then return end
 
 	-- Only refactor the left binaryOp tree if we could potentially
@@ -138,14 +191,17 @@ function ast.Assignment:check(env, diag)
 		self.exp:refactorReduction()
 	end
 
-	local rtype = self.exp:check(env, diag)
+	local rhs, rtype = self.exp:check(env, diag)
+	assignment.exp   = rhs
 	if rtype == t.error then return end
 
 	-- is this the first use of a declared, but not defined, variable?
 	if ltype == t.unknown then
 		ltype                 = rtype
 		self.lvalue.node_type = rtype
+		--assignment.lvalue.node_type = rtype
 
+		--env:localenv()[assignment.lvalue.name].node_type = rtype
 		env:localenv()[self.lvalue.name].node_type = rtype
 	end
 
@@ -220,8 +276,11 @@ function ast.Assignment:check(env, diag)
 end
 
 function ast.InitStatement:check(env, diag)
-	local varname = self.ref.name
-	local rhstype = self.exp:check(env, diag)
+	local initstmt 			= self:clone()
+		initstmt.ref 			= clone_name(self.ref)
+	local varname  			= self.ref.name
+	local rhs, rhstype 	= self.exp:check(env, diag)
+		initstmt.exp = rhs
 
 	if rhstype == t.error then return end
 
@@ -230,53 +289,79 @@ function ast.InitStatement:check(env, diag)
 	-- never be re-assigned.  That way, we don't allow users to write
 	-- code that makes stencil analysis intractable.
 	if not rhstype:isExpressionType() and not rhstype:isTopo() then
-		diag:reporterror(self, "Can only assign numbers, bools, or topological elements to local temporaries")
+		diag:reporterror(self,"Can only assign numbers, bools, "..
+													"or topological elements to local temporaries")
 	end
 
 	self.ref.node_type = rhstype
 	self.ref:setLocalScope()
 	env:localenv()[varname] = self.exp
+	--initstmt.ref.node_type = rhstype
+	--initstmt.ref:setLocalScope()
+	--env:localenv()[varname] = initstmt.exp
+
+	return initstmt
 end
 
 function ast.DeclStatement:check(env, diag)
+	local decl 			= self:clone()
+		decl.ref 			= clone_name(self.ref)
 	self.ref.node_type = t.unknown
 	env:localenv()[self.ref.name] = self.ref
+	--decl.ref.node_type = t.unknown
+	--env:localenv()[decl.ref.name] = decl.ref
+	return decl
 end
 
 function ast.AssertStatement:check(env, diag)
-    local test_type = self.test:check(env, diag)
-    if test_type ~= t.error and test_type ~= t.bool then
-        diag:reporterror(self, "Expected a boolean as the test for assert statement")
-    end
+	local assertstmt = self:clone()
+	local test, test_type = self.test:check(env, diag)
+	assertstmt.test 			= test
+	if test_type ~= t.error and test_type ~= t.bool then
+		diag:reporterror(self,
+						"Expected a boolean as the test for assert statement")
+	end
+	return assertstmt
 end
 
 function ast.PrintStatement:check(env, diag)
-    local outtype = self.output:check(env, diag)
-    if outtype ~= t.error and not outtype:isExpressionType() then
-        diag:reporterror(self, "Only numbers, bools, and vectors can be printed")
-    end
+	local printstmt = self:clone()
+	local out, outtype = self.output:check(env, diag)
+	printstmt.out 		 = out
+	if outtype ~= t.error and not outtype:isExpressionType() then
+		diag:reporterror(self, "Only numbers, bools, "..
+													 "and vectors can be printed")
+	end
+	return printstmt
 end
 
 local function enforce_numeric_type (node, tp)
 	if tp ~= t.error and not tp:isNumeric() then
-		diag:reporterror(self, "Expected a numeric expression to define the iterator bounds/step (found " .. tp:toString() .. ')')
+		diag:reporterror(node, "Expected a numeric expression "..
+													 "to define the iterator bounds/step (found "..
+													 tp:toString() .. ')')
 	end
 end
 
 function ast.NumericFor:check(env, diag)
-	local lower, upper = self.lower:check(env, diag), self.upper:check(env, diag)
-	local step
-	enforce_numeric_type(self, lower)
-	enforce_numeric_type(self, upper)
+	local numfor = self:clone()
+	local lower, lower_type = self.lower:check(env, diag)
+	local upper, upper_type = self.upper:check(env, diag)
+	numfor.lower, numfor.upper = lower, upper
+	enforce_numeric_type(self, lower_type)
+	enforce_numeric_type(self, upper_type)
+	local step, step_type
 	if self.step then
-		step = self.step:check(env, diag)
-		enforce_numeric_type(self, step)
+		step, step_type = self.step:check(env, diag)
+		numfor.step = step
+		enforce_numeric_type(self, step_type)
 	end
 
 	-- infer iterator type
-	self.iter.node_type = type_meet(lower, upper)
-	if step then
-		self.iter.node_type = type_meet(self.iter.node_type, step)
+	self.iter.node_type = type_meet(lower_type, upper_type)
+	numfor.node_type = type_meet(lower_type, upper_type)
+	if step_type then
+		self.iter.node_type = type_meet(self.iter.node_type, step_type)
 	end
 
 	self.iter:setLocalScope()
@@ -286,6 +371,8 @@ function ast.NumericFor:check(env, diag)
 	env:localenv()[varname] = self.iter
 	self.body:check(env, diag)
 	env:leaveblock()
+
+	return numfor
 end
 
 function ast.GenericFor:check(env, diag)
@@ -294,24 +381,31 @@ end
 
 function ast.Break:check(env, diag)
 	-- nothing needed
+	return self:clone()
 end
 
 function ast.CondBlock:check(env, diag)
-	local condtype = self.cond:check(env, diag)
+	local condblock = self:clone()
+	local cond, condtype = self.cond:check(env, diag)
+		condblock.cond  	 = cond
 	if condtype ~= t.error and condtype ~= t.bool then
-		diag:reporterror(self, "Conditional expression type should be boolean (found " .. condtype:toString() .. ")")
+		diag:reporterror(self, "Conditional expression type should be"..
+												   "boolean (found " .. condtype:toString() .. ")")
 	end
 
 	env:enterblock()
-	self.body:check(env, diag)
+	condblock.body = self.body:check(env, diag)
 	env:leaveblock()
+
+	return condblock
 end
 
 ------------------------------------------------------------------------------
 --[[                         Expression Checking:                         ]]--
 ------------------------------------------------------------------------------
 function ast.Expression:check(env, diag)
-	error("Semantic checking has not been implemented for expression type " .. self.kind)
+	error("Semantic checking has not been implemented for "..
+			  "expression type " .. self.kind)
 end
 
 --[[ Logic tables for binary expression checking: ]]--
@@ -392,100 +486,100 @@ end
 
 	-- binary expressions
 function ast.BinaryOp:check(env, diag)
-	local lefttype  = self.lhs:check(env, diag)
-	local righttype = self.rhs:check(env, diag)
-	local op        = self.op
+	local binop = self:clone()
+	binop.op 		= self.op
+	local lefttype, righttype
+	binop.lhs, lefttype  = self.lhs:check(env, diag)
+	binop.rhs, righttype = self.rhs:check(env, diag)
+	local op    = self.op
+	local node  = self
 
-	-- Silently ignore/propogate errors
-	if lefttype == t.error or righttype == t.error then
-		self.node_type = t.error
-		return self.node_type
+	-- factors out common code
+	local function err(msg)
+		if msg then diag:reporterror(node, msg) end
+		node.node_type = t.error
+		binop.node_type = t.error
+		return binop, t.error
 	end
 
-	local typ_err = "incompatible types: " .. lefttype:toString() .. ' and ' .. righttype:toString()
-	local op_err  = "invalid types for operator " .. op .. ': ' .. lefttype:toString() .. ' and ' .. righttype:toString()
+	-- Silently ignore/propagate errors
+	if lefttype == t.error or righttype == t.error then return err() end
+
+	local type_err = "incompatible types: " .. lefttype:toString() ..
+									 ' and ' .. righttype:toString()
+	local op_err  = "invalid types for operator " .. op .. ': ' ..
+									lefttype:toString() .. ' and ' .. righttype:toString()
 
 	if not lefttype:isExpressionType() or not righttype:isExpressionType() then
-		diag:reporterror(self, type_err)
-		self.node_type = t.error
-		return self.node_type
+		return err(type_err)
 	end
 
 	local derived = type_meet(lefttype, righttype)
 
 	if isNumOp[op] then
-		if lefftype:isVector() or righttype:isVector() then
-			diag:reporterror(self, op_err)
-			self.node_type = t.error
-			return self.node_type
-		end
-
+		if lefftype:isVector() or righttype:isVector() then return err(op_err) end
 	elseif isCompOp[op] then
-		if lefttype:isLogical() ~= righttype:isLogical() then
-			diag:reporterror(self, op_err)
-			self.node_type = t.error
-			return self.node_type
+		if lefttype:isLogical() ~= righttype:isLogical() then return err(op_err)
 
-		-- if we can't compute a valid derived type, then the operands are not
-		-- comparable, so issue and error
-		elseif derived == t.error then
-			diag:reporterror(self, typ_err)
-			self.node_type = t.error
-			return self.node_type
+		-- if the type_meet failed, types are incompatible
+		elseif derived == t.error then return err(type_err)
 
 		-- otherwise, we need to return a logical type
 		elseif derived:isPrimitive() then
 			self.node_type = t.bool
-			return self.node_type
+			binop.node_type = t.bool
+			return binop, t.bool
 
 		else
 			self.node_type = t.vector(t.bool,derived.N)
-			return self.node_type
+			binop.node_type = t.vector(t.bool,derived.N)
+			return binop, binop.node_type
 		end
 
 	elseif isBoolOp[op] then
 		if not lefttype:isLogical() or not righttype:isLogical() then
-			diag:reporterror(self, op_err)
-			self.node_type = t.error
-			return node_type
+			return err(op_err)
 		end
 	end
 
 	if derived == t.error then
-		diag:reporterror(self, typ_err)
+		diag:reporterror(self, type_err)
 	end
 
 	self.node_type = derived
-	return self.node_type
+	binop.node_type = derived
+	return binop, binop.node_type
 end
 
 function ast.UnaryOp:check(env, diag)
-	local exprtype = self.exp:check(env, diag)
-	if exprtype == t.error then
-		self.node_type = t.error
+	local unop = self:clone()
+	unop.op 	 = self.op
+	local exprtype
+	unop.exp, exprtype = self.exp:check(env, diag)
 
-	elseif self.op == 'not' then
-		if not exprtype:isLogical() then
+	-- default to error, try to prove otherwise
+	self.node_type = t.error
+	unop.node_type = t.error
+
+	if self.op == 'not' then
+		if exprtype:isLogical() then
+			self.node_type = exprtype
+			unop.node_type = exprtype
+		else
 			diag:reporterror(self, "Unary \"not\" expects a boolean operand")
-			self.node_type = t.error
-		else
-			self.node_type = exprtype
 		end
-
 	elseif self.op == '-' then
-		if not exprtype:isNumeric() then
-			diag:reporterror(self, "Unary minus expects a numeric operand")
-			self.node_type = t.error
-		else
+		if exprtype:isNumeric() then
 			self.node_type = exprtype
+			unop.node_type = exprtype
+		else
+			diag:reporterror(self, "Unary minus expects a numeric operand")
 		end
-
 	else
-		diag:reporterror(self, "Unknown unary operator \'"..op.."\'")
-		self.node_type = t.error
+		diag:reporterror(self, "Unknown unary operator \'".. self.op .."\'")
 	end
 
-	return self.node_type
+	return unop, unop.node_type
 end
 
 ------------------------------------------------------------------------------
@@ -537,96 +631,112 @@ function ast.Name:check_lhs(env, diag)
 end
 
 function ast.Name:check(env, diag, assign)
-	local node = env:localenv()[self.name]
-	local locv = node and node.node_type -- we store the types of local variables in the environment
+	local name = self:clone()
+	name.name  = self.name
 
-	-- if we're trying to read an undefined variable, report an error
-	if locv == t.unknown and not assign then
-		diag:reporterror(self, "Variable '" .. self.name .. "' is not defined")
-		self.node_type = t.error
-		return self.node_type
-
-	-- if we found a type in the environment, the name must be defined locally
-	elseif locv then
-		self:setLocalScope()
-		self.node_type = locv
-		return self.node_type
+	-- try to find the name in the local scope
+	local locv = env:localenv()[name.name]
+	if locv then
+		local loctype = locv.node_type
+		-- cannot read from an uninitialized variable
+		if loctype == t.unknown and not assign then
+			diag:reporterror(self, "Variable '" .. self.name .. "' is not defined")
+			loctype = t.error
+		else
+			self:setLocalScope()
+			name:setLocalScope()
+		end
+		self.node_type = loctype
+		name.node_type = loctype
+		return name, loctype
 	end
 
 	-- Otherwise, does the name exist in the global scope?
-	local luav = env:luaenv()[self.name]
-	if not luav then
-		diag:reporterror(self, "Variable '" .. self.name .. "' is not defined")
-		self.node_type = t.error
-		return self.node_type
+	local luav = env:luaenv()[name.name]
+	if luav then
+		self.luaval 	 = luav
+		name.node_type = lua_to_liszt(luav)
+		self.node_type = name.node_type
+		if name.node_type == t.error then
+			diag:reporterror(self, "Cannot convert the lua value to a liszt value")
+		end
+		self:setGlobalScope()
+		name:setGlobalScope()
+		return name, name.node_type
 	end
 
-	self.luaval    = luav
-	self.node_type = lua_to_liszt(luav)
-	if self.node_type == t.error then
-		diag:reporterror(self, "Cannot convert the lua value to a liszt value")
-	end
-
-	self:setGlobalScope()
-	return self.node_type
+	-- failed to find this name anywhere
+	diag:reporterror(self, "Variable '" .. self.name .. "' is not defined")
+	self.node_type = t.error
+	name.node_type = t.error
+	return name, t.error
 end
 
 function ast.Number:check(env, diag)
+	local number = self:clone()
+	number.value = self.value
 	if tonumber(self.value) % 1 == 0 then
 		self.node_type = t.int
+		number.node_type = t.int
 	else
 		self.node_type = t.float
+		number.node_type = t.float
 	end
-	return self.node_type
+	return number, number.node_type
 end
 
 function ast.VectorLiteral:check(env, diag)
-	local first = self.elems[1]:check(env, diag)
-	if first == t.error then
-		return first
+	local veclit = self:clone()
+	veclit.elems = {}
+	local type_so_far
+	veclit.elems[1], type_so_far = self.elems[1]:check(env, diag)
+	local node  = self
+
+	local tp_error = "Vector literals can only contain literals "..
+									 "of boolean or numeric type"
+	local mt_error = "Vector entries must be of the same type"
+	local function err(msg)
+		if msg then diag:reporterror(node, msg) end
+		node.node_type = t.error
+		veclit.node_type = t.error
+		return veclit, t.error
 	end
 
-	local tp_error = "Vector literals can only contain expressions of boolean or numeric type"
-	local mt_error = "Vectors cannot have mixed numeric and boolean types"
+	if type_so_far == t.error then return err() end
+	if not type_so_far:isPrimitive() then return err(tp_error) end
 
-	if not first:isNumeric() then
-		diag:reporterror(self, tp_error)
-		self.node_type = t.error
-		return self.node_type
-	end
-
-	local meeted_type = first
 	for i = 2, #self.elems do
-		local tp = self.elems[i]:check(env, diag)
-		if not tp:isPrimitive() then
-			diag:reporterror(self, tp_error)
-			self.node_type = t.error
-			return self.node_type
-		end
-		meeted_type = type_meet(meeted_type, tp)
-		if not meeted_type then
-			diag:reporterror(self, mt_error)
-			self.node_type = t.error
-			return self.node_type
-		end
+		local tp
+		veclit.elems[i], tp = self.elems[i]:check(env, diag)
+		if not tp:isPrimitive() then return err(tp_error) end
+
+		type_so_far = type_meet(type_so_far, tp)
+		if not type_so_far then return err(mt_error) end
 	end
 
-	self.node_type = t.vector(meeted_type, #self.elems)
-	return self.node_type
+	self.node_type = t.vector(type_so_far, #self.elems)
+	veclit.node_type = t.vector(type_so_far, #veclit.elems)
+	return veclit, veclit.node_type
 end
 
 function ast.Bool:check(env, diag)
+	local boolnode = self:clone()
+	boolnode.value = self.value
+	boolnode.node_type = t.bool
 	self.node_type = t.bool
-	return self.node_type
+	return boolnode, boolnode.node_type
 end
 
 ------------------------------------------------------------------------------
 --[[                         Miscellaneous nodes:                         ]]--
 ------------------------------------------------------------------------------
 function ast.Tuple:check(env, diag)
+	local tuple = self:clone()
+	tuple.children = {}
 	for i, node in ipairs(self.children) do
-		node:check(env, diag)
+		tuple.children[i] = node:check(env, diag)
 	end
+	return tuple
 end
 
 function ast.Tuple:index_check(env, diag)
@@ -636,7 +746,7 @@ function ast.Tuple:index_check(env, diag)
 		diag:reporterror(self, "Can use exactly one argument to index here")
 		return nil
 	end
-	local argobj = self.children[1]:check(env, diag)
+	local _, argobj = self.children[1]:check(env, diag)
 	if argobj == nil then
 		return nil
 	end
@@ -645,68 +755,79 @@ function ast.Tuple:index_check(env, diag)
 end
 
 function ast.TableLookup:check(env, diag)
-	local ttype = self.table:check(env, diag)
+	local lookup  = self:clone()
+	lookup.member = clone_name(self.member)
+	local ttype 
+	lookup.table, ttype = self.table:check(env, diag)
+	local node 		= self
 
-	if ttype == t.error then
-		self.node_type = t.error
-		return self.node_type
+	local function err(msg)
+		if msg then diag:reporterror(node, msg) end
+		node.node_type = t.error
+		lookup.node_type = t.error
+		return lookup, t.error
+	end
 
-	-- Enforce table type for lhs
+	if ttype == t.error then return err()
 	elseif ttype ~= t.table then
-		diag:reporterror(self, "select operator not supported for non-table type " .. ttype:toString())
-		self.node_type = t.error
-		return self.node_type
+		return err("select operator not supported for non-table type " ..
+							 ttype:toString())
 	end
 
 	-- RHS is a member of the LHS
 	self.luaval = self.table.luaval[self.member.name]
+	self:setGlobalScope()
 
 	if self.luaval == nil then
-		self.node_type = t.error
-		diag:reporterror(self, "Object does not have member " .. member)
-
+		return err("Object does not have member " .. member)
 	else
-		self.node_type = lua_to_liszt(self.luaval)
+		lookup.node_type = lua_to_liszt(self.luaval)
+		self.node_type = lookup.node_type
 		if self.node_type == t.error then
 			diag:reporterror(self, "Cannot convert the lua value to a Liszt value")
 		end
 	end
 
-	self:setGlobalScope()
-	return self.node_type
+	return lookup, lookup.node_type
 end
 
 function ast.VectorIndex:check(env, diag)
-	local vector_type = self.vector:check(env, diag)
-
-	if vector_type == t.error then
-		self.node_type = t.error
-		return self.node_type
-
-	-- Enforce vector type for LHS
-	elseif not vector_type:isVector() then
-		diag:reporterror(self, "indexing operator [] not supported for non-vector type " .. vector_type:toString())
-		self.node_type = t.error
-		return self.node_type
-	end
+	local vidx = self:clone()
+	local vector_type, index_type
+	vidx.vector, vector_type = self.vector:check(env, diag)
+	vidx.index,  index_type  = self.index:check(env,diag)
 
 	-- RHS is an expression of integral type
-	local index_type = self.index:check(env,diag)
+	-- (make sure this check always runs)
 	if index_type ~= t.error and not index_type:isIntegral() then
-		diag:reporterror(self, "Expected a numeric expression to index into the vector (found " .. index_type:toString() .. ')')
+		diag:reporterror(self, "Expected an integer expression to index into "..
+													 "the vector (found ".. index_type:toString() ..')')
+	end
+
+	-- LHS is a vector
+	if vector_type ~= t.error and not vector_type:isVector() then
+		diag:reporterror(self, "indexing operator [] not supported for "..
+													 "non-vector type " .. vector_type:toString())
+		vector_type = t.error
+	end
+	if vector_type == t.error then
+		self.node_type = t.error
+		vidx.node_type = t.error
+		return vidx, t.error
 	end
 
 	self.node_type = vector_type:baseType()
-
-	return self.node_type
-	--return ast.AST.check(self,env,diag) -- UNTIL WE'RE DONE DEVELOPING...
+	vidx.node_type = vector_type:baseType()
+	return vidx, vidx.node_type
 end
 
 function ast.Call:check(env, diag)
+	local call = self:clone()
 	-- call name can be a field only in current implementation
-	local ftype = self.func:check(env, diag)
+	local ftype
+	call.func, ftype = self.func:check(env, diag)
 	if ftype == t.error then
-		self.node_type = t.error
+		call.node_type = t.error
 
 	elseif ftype:isField() then
 		local ftopo = ftype:topoType()
@@ -714,32 +835,33 @@ function ast.Call:check(env, diag)
 
 		local argtype = self.params:index_check(env,diag)
 		if (argtype == t.error) then
-			self.node_type = t.error
+			call.node_type = t.error
 
 		elseif argtype == ftopo then
-			self.node_type = fdata
-			self.luaval    = FieldIndex.New(self.func.luaval, self.node_type)
+			call.node_type = fdata
+			self.luaval    = FieldIndex.New(self.func.luaval, fdata)
 
 		-- infer type of argument to field topological type
 		elseif argtype == t.topo then
 			local pname = self.params.children[1].name
 			env:localenv()[pname].node_type = ftopo -- update type in local environment
 
-			self.node_type = fdata
-			self.luaval = FieldIndex.New(self.func.luaval, self.node_type)
+			call.node_type = fdata
+			self.luaval = FieldIndex.New(self.func.luaval, fdata)
 
 		else
 			diag:reporterror(self, ftype:toString(), " indexed by incorrect type ", argtype:toString())
-			self.node_type = t.error
+			call.node_type = t.error
 		end
 
 	else
 		diag:reporterror(self, "Invalid call")
-		self.node_type = t.error
+		call.node_type = t.error
 	end
 
+	self.node_type = call.node_type
 	self:setGlobalScope()
-	return self.node_type
+	return call, call.node_type
 end
 
 
@@ -747,6 +869,15 @@ end
 ------------------------------------------------------------------------------
 --[[ Semantic checking called from here:                                  ]]--
 ------------------------------------------------------------------------------
+local function check_kernel_param(param, env, diag)
+	local new_param 			= clone_name(param)
+	new_param.node_type		= t.topo
+
+	env:localenv()[param.name] = new_param
+
+	return new_param
+end
+
 function exports.check(luaenv, kernel_ast)
 
 	-- environment for checking variables and scopes
@@ -755,15 +886,18 @@ function exports.check(luaenv, kernel_ast)
 
 	--------------------------------------------------------------------------
 
+	local new_kernel_ast = kernel_ast:clone()
+
 	diag:begin()
 	env:enterblock()
 
-	kernel_ast.param.node_type = t.topo
-	env:localenv()[kernel_ast.param.name] = kernel_ast.param
-	kernel_ast.body:check(env, diag)
+	new_kernel_ast.param = check_kernel_param(kernel_ast.param, env, diag)
+	new_kernel_ast.body  = kernel_ast.body:check(env, diag)
 
 	env:leaveblock()
 	diag:finishandabortiferrors("Errors during typechecking liszt", 1)
+
+	return new_kernel_ast
 end
 
 

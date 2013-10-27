@@ -114,6 +114,17 @@ function AST:copy_location (node)
 	self.offset     = node.offset
 end
 
+function AST:clone ()
+	local copy =
+	{
+		kind       = self.kind,
+		linenumber = self.linenumber,
+		filename   = self.filename,
+		offset     = self.offset,
+	}
+	return setmetatable(copy, getmetatable(self))
+end
+
 function AST.isLValue    ( ) return false end
 function LValue.isLValue ( ) return true  end
 
