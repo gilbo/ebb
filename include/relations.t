@@ -10,43 +10,34 @@ local C = terralib.includecstring [[
     #include <math.h>
 ]]
 
-local RTYPE = uint32 -- terra type of a field that refers to another table row
+local RTYPE = uint32 -- terra type of a field that refers to another relation
 local OTYPE = uint8  -- terra type of an orientation field
 
+
+local function make_prototype(tb)
+   tb.__index = tb
+   return tb
+end
+
 --[[
-- A table contains size, fields and _indexrelations, which point to tables
-  that are indexed by this table. Example, _indexrelations for vertices table
-  will point to vtov, vtoe etc. Use table:getrelationtable(topo_elem) to get a
-  relation table. Example, vertices:getrelationtable(edges) will give vtoe.
-- A table also contains _index that has the compressed row values for index
-  field, and the corresponding expanded index field and other field values.
-- A field contains fieldname, type of field, pointer to its table and expanded
-  data.
+- An LRelation contains its size and fields as members.  The _index member
+- refers to an array of the compressed row values for the index field.
+
+- An LField stores it's fieldname, type, an array of data, and a pointer
+- to another LRelation if the field itself represents relational data.
 --]]
 
 --------------------------------------------------------------------------------
 --[[ Field prototype:                                                       ]]--
 --------------------------------------------------------------------------------
-local LField = {}
-LField.__index = LField
-
-
-function LField.isField(obj)
-    return getmetatable(obj) == LField
-end
-
+local LRelation = make_prototype {}
+local LField    = make_prototype {kind=T.Type.kinds.field}
+local LScalar   = make_prototype {kind=T.Type.kinds.scalar}
+local LVector   = make_prototype {kind=T.Type.kinds.vector}
 
 --------------------------------------------------------------------------------
---[[ Relation prototype:                                                    ]]--
+--[[ LRelation methods                                                      ]]--
 --------------------------------------------------------------------------------
-local LRelation = {}
-LRelation.__index = LRelation
-
-function LRelation.is(t)
-    return getmetatable(t) == LRelation
-end
-
--- Relation constructor
 function L.NewRelation(size, debugname)
     return setmetatable( {
         _size      = size,
@@ -56,14 +47,17 @@ function L.NewRelation(size, debugname)
     LRelation)
 end
 
+-- prevent user from modifying the lua table
 function LRelation:__newindex(fieldname,value)
     error("Cannot assign members to LRelation object (did you mean to call self:NewField?)")
 end 
 
+local function is_relation (obj) return getmetatable(obj) == LRelation end
+
 function LRelation:NewField (name, typ)
     local f = setmetatable({}, LField)
-    f.relation = LRelation.is(typ) and typ   or nil
-    f.type     = LRelation.is(typ) and RTYPE or typ
+    f.relation = is_relation(typ) and typ   or nil
+    f.type     = is_relation(typ) and RTYPE or typ
 
     f.name  = name
     f.table = self
@@ -73,7 +67,7 @@ function LRelation:NewField (name, typ)
     return f
 end
 
-function LRelation:loadIndexFromMemory(name,row_idx)
+function LRelation:LoadIndexFromMemory(name,row_idx)
     assert(self._index == nil)
     local f = self[name]
     assert(f ~= nil)
@@ -109,7 +103,7 @@ end
 --------------------------------------------------------------------------------
 --[[ Field methods:                                                         ]]--
 --------------------------------------------------------------------------------
-terra copy_bytes (dest : &uint8, src : &uint8, length : uint, size : uint, stride : uint, offset : uint)
+local terra copy_bytes (dest : &uint8, src : &uint8, length : uint, size : uint, stride : uint, offset : uint)
     src = src + offset
     for i = 0, length do
         C.memcpy(dest,src,size)
@@ -119,12 +113,7 @@ terra copy_bytes (dest : &uint8, src : &uint8, length : uint, size : uint, strid
 end
 
 -- specify stride, offset in bytes, default stride reads memory contiguously and default offset reads from mem ptr directly
-
-function LField:allocate ()
-    self.data = terralib.cast(&self.realtype, C.malloc(self.table._size * terralib.sizeof(self.realtype)))
-end
-
-function LField:loadFromMemory (mem, stride, offset)
+function LField:LoadFromMemory (mem, stride, offset)
     if not stride then stride = terralib.sizeof(self.type) end
     if not offset then offset = 0 end
 
@@ -147,7 +136,7 @@ function LField:loadFromMemory (mem, stride, offset)
     end
 end
 
-function LField:loadFromCallback (callback)
+function LField:LoadFromCallback (callback)
     local bytes  = C.malloc(self.table._size * terralib.sizeof(self.type))
     self.data    = terralib.cast(&self.type,bytes)
 
@@ -164,20 +153,16 @@ function LField:dump()
     end
 
     local N = self.table._size
-    if self.type.kind == 68 then
-        for i = 0,N-1 do
-            local s = ''
-            for k = 0, self.type.N-1 do
-                s = s .. tostring(tonumber(self.data[i][k])) .. ' '
-            end
-            print("", i, s)
-        end
-
-    else
-        for i = 0,N - 1 do
-            print("",i, self.data[i])
-        end
+    for i = 0,N - 1 do
+        print("",i, self.data[i])
     end
+end
+
+
+--------------------------------------------------------------------------------
+--[[ LScalars:                                                              ]]--
+--------------------------------------------------------------------------------
+function L.NewScalar ()
 end
 
 -------------------------------------------------------------------------------
@@ -279,15 +264,15 @@ local function initMeshRelations(mesh)
             end
             extract_orientation()
 
-            rel_table[rel_tuple.n2]:loadFromMemory(mesh[rel_name].values)
+            rel_table[rel_tuple.n2]:LoadFromMemory(mesh[rel_name].values)
             rel_table:NewField('orientation', bool)
-            rel_table.orientation:loadFromMemory(terralib.cast(&bool, destdata))
+            rel_table.orientation:LoadFromMemory(terralib.cast(&bool, destdata))
             C.free(ordata)
         else
-            rel_table[rel_tuple.n2]:loadFromMemory(mesh[rel_name].values)
+            rel_table[rel_tuple.n2]:LoadFromMemory(mesh[rel_name].values)
         end
 
-        rel_table:loadIndexFromMemory(rel_tuple.n1, mesh[rel_name].row_idx)
+        rel_table:LoadIndexFromMemory(rel_tuple.n1, mesh[rel_name].row_idx)
     end
 
     for k, rel_tuple in pairs(mesh_rels_topo) do
@@ -299,10 +284,9 @@ local function initMeshRelations(mesh)
 
         local tsize = terralib.sizeof(rel_table[rel_tuple.n1].type)
 
-        f1:loadFromMemory(mesh[rel_name].values,2*tsize)
-        f2:loadFromMemory(mesh[rel_name].values,2*tsize, tsize)
+        f1:LoadFromMemory(mesh[rel_name].values,2*tsize)
+        f2:LoadFromMemory(mesh[rel_name].values,2*tsize, tsize)
     end
-
     return auto
 end
 
@@ -315,7 +299,7 @@ function L.initMeshRelationsFromFile(filename)
     local S = terralib.includec('runtime/single/liszt_runtime.h')
     local pos_data = S.lLoadPosition(ctx);
     rels.vertices:NewField("position", float[3])
-    rels.vertices.position:loadFromMemory(pos_data)
+    rels.vertices.position:LoadFromMemory(pos_data)
     C.free(pos_data)
     return rels
 end
