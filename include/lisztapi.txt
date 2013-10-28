@@ -5,9 +5,10 @@ Scalar = L.NewScalar([terratypeorvector],[initalvalue])
 function Scalar:setTo(val)
 function Scalar:value()
 
-table = L.NewTable(size, debugname)
-field = table:NewField(name,type)
-table:LoadIndexFromMemory(fieldname,row_idx)
+rtable = L.NewRelation(size, debugname)
+rtable:NewField(name,type)
+rtable.name:loadFromMemory(mem)
+table:loadIndexFromMemory(fieldname,row_idx)
 
 field:LoadFromMemory(mem)
 field:LoadWithCallback(luafunction) --e.g. 

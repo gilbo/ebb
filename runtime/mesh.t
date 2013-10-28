@@ -1,4 +1,5 @@
 local L = {}
+local runtime = terralib.includec("runtime/common/liszt_runtime.h")
 local mesh_h = terralib.includec("runtime/common/mesh_crs.h")
 local c      = terralib.includec("stdio.h")
 --
@@ -16,9 +17,15 @@ util.link_runtime()
 
 -- basic relations
 
-terra L.readMesh(filename : rawstring) : &mesh_h.Mesh
-    var mesh : &mesh_h.Mesh = mesh_h.lMeshInitFromFile(filename)
-    return mesh
+local terra loadMesh (filename : rawstring) : &runtime.lContext
+	var ctx : &runtime.lContext = runtime.lLoadContext(filename)
+	return ctx
+end
+
+L.loadMesh = function (filename)
+	local ctx = loadMesh(filename)
+	local mesh = runtime.lMeshFromContext(ctx)
+	return ctx, mesh
 end
 
 return L

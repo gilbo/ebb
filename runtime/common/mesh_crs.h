@@ -39,8 +39,6 @@ struct Mesh {
 	struct CRS ctoc;
 };
 
-struct Mesh* lMeshInitFromFile(const char *mesh_file);
-
 const unsigned int FLIP_DIRECTION_SHIFT = 31;
 const unsigned int FLIP_DIRECTION_BIT = 1u << FLIP_DIRECTION_SHIFT;
 

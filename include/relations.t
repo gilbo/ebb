@@ -1,4 +1,5 @@
 local R = terralib.require('runtime/mesh')
+local T = terralib.require('compiler/types')
 
 local L = {}
 
@@ -8,6 +9,9 @@ local C = terralib.includecstring [[
     #include <stdio.h>
     #include <math.h>
 ]]
+
+local RTYPE = uint32 -- terra type of a field that refers to another table row
+local OTYPE = uint8  -- terra type of an orientation field
 
 --[[
 - A table contains size, fields and _indexrelations, which point to tables
@@ -20,70 +24,91 @@ local C = terralib.includecstring [[
   data.
 --]]
 
-local table = {}
-table.__index = table
-function L.istable(t)
-    return getmetatable(t) == table
+--------------------------------------------------------------------------------
+--[[ Field prototype:                                                       ]]--
+--------------------------------------------------------------------------------
+local LField = {}
+LField.__index = LField
+
+
+function LField.isField(obj)
+    return getmetatable(obj) == LField
 end
 
-local key = {}
 
-function L.newtable(size, debugname)
+--------------------------------------------------------------------------------
+--[[ Relation prototype:                                                    ]]--
+--------------------------------------------------------------------------------
+local LRelation = {}
+LRelation.__index = LRelation
+
+function LRelation.is(t)
+    return getmetatable(t) == LRelation
+end
+
+-- Relation constructor
+function L.NewRelation(size, debugname)
     return setmetatable( {
         _size      = size,
         _fields    = terralib.newlist(),
         _debugname = debugname or "anon"
     },
-    table)
+    LRelation)
 end
 
-local field = {}
-
-field.__index = field
-function L.isfield(f)
-    return getmetatable(f) == field
-end
-
-function L.newfield(t)
-    return { type = t } 
-end
-
-function table:__newindex(fieldname,value)
-    local typ = value.type --TODO better error checking
-    local f = setmetatable({},field)
-    rawset(self,fieldname,f)
-    f.name     = fieldname
-    f.table    = self
-    f.type     = typ
-    f.realtype = L.istable(f.type) and uint32 or f.type
-    self._fields:insert(f)
+function LRelation:__newindex(fieldname,value)
+    error("Cannot assign members to LRelation object (did you mean to call self:NewField?)")
 end 
 
--- If default value is false,    field is initialized as 0 to tablesize - 1
--- If default value is true,     field is initialized to 0
--- If default value is a number, field is initialized to the given value
-function table:initializenumfield(fieldname, defaultval)
-    self[fieldname] = L.newfield(uint32)
-    local f = self[fieldname]
-    f.data = {}
-    if type(defaultval) == "boolean" then
-        if defaultval == false then
-            for i = 0, self._size - 1 do
-                f.data[i] = i
-            end
-        else
-            for i = 0, self._size - 1 do
-                f.data[i] = 0
-            end
-        end
-    else
-        assert(type(defaultval) == "number")
-        for i = 0, self._size -1 do
-            f.data[i] = defaultval
+function LRelation:NewField (name, typ)
+    local f = setmetatable({}, LField)
+    f.relation = LRelation.is(typ) and typ   or nil
+    f.type     = LRelation.is(typ) and RTYPE or typ
+
+    f.name  = name
+    f.table = self
+
+    rawset(self, name, f)
+    self._fields:insert(f)
+    return f
+end
+
+function LRelation:loadIndexFromMemory(name,row_idx)
+    assert(self._index == nil)
+    local f = self[name]
+    assert(f ~= nil)
+    assert(f.data == nil)
+    assert(f.relation ~= nil)
+
+    local tsize  = terralib.sizeof(f.type)
+    local nbytes = (f.relation._size + 1) * tsize
+
+    rawset(self, "_index", terralib.cast(&f.type,C.malloc(nbytes)))
+    local memT = terralib.typeof(row_idx)
+    assert(memT == &f.type)
+
+    C.memcpy(self._index,row_idx,nbytes)
+    f.data = terralib.cast(&f.type,C.malloc(self._size*tsize))
+    for i = 0, f.relation._size - 1 do
+        local b = self._index[i]
+        local e = self._index[i+1]
+        for j = b, e - 1 do
+            f.data[j] = i
         end
     end
 end
 
+function LRelation:dump()
+    print(self._debugname, "size: "..self._size)
+    for i,f in ipairs(self._fields) do
+        f:dump()
+    end
+end
+
+
+--------------------------------------------------------------------------------
+--[[ Field methods:                                                         ]]--
+--------------------------------------------------------------------------------
 terra copy_bytes (dest : &uint8, src : &uint8, length : uint, size : uint, stride : uint, offset : uint)
     src = src + offset
     for i = 0, length do
@@ -95,53 +120,43 @@ end
 
 -- specify stride, offset in bytes, default stride reads memory contiguously and default offset reads from mem ptr directly
 
-function field:loadfrommemory (mem, stride, offset)
-    if not stride then stride = terralib.sizeof(self.realtype) end
+function LField:allocate ()
+    self.data = terralib.cast(&self.realtype, C.malloc(self.table._size * terralib.sizeof(self.realtype)))
+end
+
+function LField:loadFromMemory (mem, stride, offset)
+    if not stride then stride = terralib.sizeof(self.type) end
     if not offset then offset = 0 end
 
-    assert(stride >= terralib.sizeof(self.realtype))
+    assert(stride >= terralib.sizeof(self.type))
     assert(self.data == nil)
 
-    local nbytes = self.table._size * terralib.sizeof(self.realtype)
+    local nbytes = self.table._size * terralib.sizeof(self.type)
     local bytes  = C.malloc(nbytes)
-    self.data    = terralib.cast(&self.realtype,bytes)
+    self.data    = terralib.cast(&self.type,bytes)
 
     -- cast mem to void* to avoid automatic conversion issues for pointers to non-primitive types
     mem = terralib.cast(&opaque, mem)
 
     -- If the array is laid out contiguously in memory, just do a memcpy
     -- otherwise, read with a stride
-    if (stride == terralib.sizeof(self.realtype)) then
+    if (stride == terralib.sizeof(self.type)) then
         C.memcpy(self.data,mem,nbytes)
     else
-        copy_bytes(bytes,mem,self.table._size,terralib.sizeof(self.realtype), stride, offset)
+        copy_bytes(bytes,mem,self.table._size,terralib.sizeof(self.type), stride, offset)
     end
 end
 
-function table:loadindexfrommemory(fieldname,row_idx)
-    assert(self._index == nil)
-    local f = self[fieldname]
-    assert (f)
-    assert(f.data == nil)
+function LField:loadFromCallback (callback)
+    local bytes  = C.malloc(self.table._size * terralib.sizeof(self.type))
+    self.data    = terralib.cast(&self.type,bytes)
 
-    assert(L.istable(f.type))
-    local realtypesize = terralib.sizeof(f.realtype)
-    local nbytes = (f.type._size + 1)*realtypesize
-    rawset(self, "_index", terralib.cast(&f.realtype,C.malloc(nbytes)))
-    local memT = terralib.typeof(row_idx)
-    assert(memT == &f.realtype)
-    C.memcpy(self._index,row_idx,nbytes)
-    f.data = terralib.cast(&f.realtype,C.malloc(self._size*realtypesize))
-    for i = 0, f.type._size - 1 do
-        local b = self._index[i]
-        local e = self._index[i+1]
-        for j = b, e - 1 do
-            f.data[j] = i
-        end
+    for i = 0, self.table._size do
+        callback(self.data + i, i)
     end
-end
+end    
 
-function field:dump()
+function LField:dump()
     print(self.name..":")
     if not self.data then
         print("...not initialized")
@@ -149,32 +164,30 @@ function field:dump()
     end
 
     local N = self.table._size
-    for i = 0,N - 1 do
-        print("",i, self.data[i])
+    if self.type.kind == 68 then
+        for i = 0,N-1 do
+            local s = ''
+            for k = 0, self.type.N-1 do
+                s = s .. tostring(tonumber(self.data[i][k])) .. ' '
+            end
+            print("", i, s)
+        end
+
+    else
+        for i = 0,N - 1 do
+            print("",i, self.data[i])
+        end
     end
 end
-
-function table:dump()
-    print(self._debugname, "size: "..self._size)
-    for i,f in ipairs(self._fields) do
-        f:dump()
-    end
-end
-
 
 -------------------------------------------------------------------------------
 --[[ Temporary code that loads all relations from mesh file formats:       ]]--
 -------------------------------------------------------------------------------
-local topo_elems = {
-    vertices = 'vertex',
-    edges    = 'edge',
-    faces    = 'face',
-    cells    = 'cell'
-}
+local topo_elems = { 'vertices', 'edges', 'faces', 'cells' }
 
 -- other mesh relations - we have a separate table for each of these relations
 local mesh_rels_new = {
-    {global = 'verticesofvertex', name = "vtov", orientation = false, t1 = "vertices", t2 = "vertices", n1 = "v1", n2 = "v2"},
+    {global = 'verticesofvertex', name = "vtov", orientation = false, t1 = "vertices", t2 = "vertices", n1 = "v1",      n2 = "v2"},
     {global = 'edgesofvertex',    name = "vtoe", orientation = true,  t1 = "vertices", t2 = "edges",    n1 = "vertex",  n2 = "edge"},
     {global = 'facesofvertex',    name = "vtof", orientation = false, t1 = "vertices", t2 = "faces",    n1 = "vertex",  n2 = "face"},
     {global = 'cellsofvertex',    name = "vtoc", orientation = false, t1 = "vertices", t2 = "cells",    n1 = "vertex",  n2 = "cell"},
@@ -194,15 +207,42 @@ local mesh_rels_topo = {
     {name = "ftoc", table = "faces", ft = "cells",    n1 = "outside", n2 ="inside"}
 }
 
+-- If default value is false,    field is initialized as 0 to tablesize - 1
+-- If default value is true,     field is initialized to 0
+-- If default value is a number, field is initialized to the given value
+local function initializeNumField(table, fieldname, defaultval)
+    local f = table:NewField(fieldname, RTYPE)
+    f.data = {}
+    if type(defaultval) == "boolean" then
+        if defaultval == false then
+            for i = 0, table._size - 1 do
+                f.data[i] = i
+            end
+        else
+            for i = 0, table._size - 1 do
+                f.data[i] = 0
+            end
+        end
+    else
+        assert(type(defaultval) == "number")
+        for i = 0, table._size -1 do
+            f.data[i] = defaultval
+        end
+    end
+end
+
+
+
 local function initMeshRelations(mesh)
     -- initialize list of relations
     local auto = {}
     -- basic element relations
 
-    for topo_elem, topo_str  in pairs(topo_elems) do
+    for _i, topo_elem in ipairs(topo_elems) do
         local tsize = tonumber(mesh["n"..topo_elem])
-        auto[topo_elem] = L.newtable(tsize, topo_elem)
-        auto[topo_elem]:initializenumfield(topo_str, false)
+        local t     = L.NewRelation(tsize, topo_elem)
+        auto[topo_elem] = t
+        initializeNumField(t, 'value', false)
     end
 
     -- other mesh relations
@@ -210,65 +250,73 @@ local function initMeshRelations(mesh)
         local globalname = rel_tuple.global
         local rel_name   = rel_tuple.name
         local tsize      = mesh[rel_name].row_idx[mesh["n"..rel_tuple.t1]]
-        local rel_table  = L.newtable(tsize, globalname)
+        local rel_table  = L.NewRelation(tsize, globalname)
 
         -- store table with name intended for global scope
         auto[globalname] = rel_table
 
-        local ftype = uint32
-        local otype = uint8
-
-        rel_table[rel_tuple.n1] = L.newfield(auto[rel_tuple.t1])
-        rel_table[rel_tuple.n2] = L.newfield(auto[rel_tuple.t2])
+        rel_table:NewField(rel_tuple.n1, auto[rel_tuple.t1])
+        rel_table:NewField(rel_tuple.n2, auto[rel_tuple.t2])
 
         -- if our lmesh field has orientation encoded into the relation, extract the
         -- orientation and load it as a separate field
         if rel_tuple.orientation then
-            local ordata   = C.malloc(rel_table._size * terralib.sizeof(otype))
-            local srcdata  = terralib.cast(&ftype, mesh[rel_name].values)
-            local destdata = terralib.cast(&otype, ordata)
+            local ordata   = C.malloc(rel_table._size * terralib.sizeof(OTYPE))
+            local destdata = terralib.cast(&OTYPE, ordata)
+            local srcdata  = terralib.cast(&RTYPE, mesh[rel_name].values)
 
             local terra extract_orientation()
-                var exp  : uint32 = 8 * [terralib.sizeof(ftype)] - 1
-                var mask : uint32 = C.pow(2,exp) - 1
+                var exp  : RTYPE = 8 * [terralib.sizeof(RTYPE)] - 1
+                var mask : RTYPE = C.pow(2,exp) - 1
 
-                var src  : &ftype = srcdata
-                var dest : &otype = destdata
+                var src  : &RTYPE = srcdata
+                var dest : &OTYPE = destdata
 
-                for i = 0, rel_table._size - 1 do
+                for i = 0, rel_table._size do
                     dest[i] = src[i] >> exp
                     src[i]  = src[i] and mask
                 end
             end
             extract_orientation()
 
-            rel_table[rel_tuple.n2]:loadfrommemory(mesh[rel_name].values)
-            rel_table.orientation = L.newfield(bool)
-            rel_table.orientation:loadfrommemory(terralib.cast(&bool, destdata))
+            rel_table[rel_tuple.n2]:loadFromMemory(mesh[rel_name].values)
+            rel_table:NewField('orientation', bool)
+            rel_table.orientation:loadFromMemory(terralib.cast(&bool, destdata))
             C.free(ordata)
         else
-            rel_table[rel_tuple.n2]:loadfrommemory(mesh[rel_name].values)
+            rel_table[rel_tuple.n2]:loadFromMemory(mesh[rel_name].values)
         end
 
-        rel_table:loadindexfrommemory(rel_tuple.n1, mesh[rel_name].row_idx)
+        rel_table:loadIndexFromMemory(rel_tuple.n1, mesh[rel_name].row_idx)
     end
 
     for k, rel_tuple in pairs(mesh_rels_topo) do
         local rel_name = rel_tuple.name
         local rel_table = auto[rel_tuple.table]
-        rel_table[rel_tuple.n1] = L.newfield(auto[rel_tuple.ft])
-        rel_table[rel_tuple.n2] = L.newfield(auto[rel_tuple.ft])
-        local bytesize = terralib.sizeof(rel_table[rel_tuple.n1].realtype)
-        rel_table[rel_tuple.n1]:loadfrommemory(mesh[rel_name].values,2*bytesize)
-        rel_table[rel_tuple.n2]:loadfrommemory(mesh[rel_name].values,2*bytesize, bytesize)
+
+        local f1 = rel_table:NewField(rel_tuple.n1, auto[rel_tuple.ft])
+        local f2 = rel_table:NewField(rel_tuple.n2, auto[rel_tuple.ft])
+
+        local tsize = terralib.sizeof(rel_table[rel_tuple.n1].type)
+
+        f1:loadFromMemory(mesh[rel_name].values,2*tsize)
+        f2:loadFromMemory(mesh[rel_name].values,2*tsize, tsize)
     end
+
     return auto
 end
 
 -- returns all relations from the given file
 function L.initMeshRelationsFromFile(filename)
-    local mesh = R.readMesh(filename)
-    local rels = initMeshRelations(mesh)
+    local ctx, mesh = R.loadMesh(filename)
+    local rels      = initMeshRelations(mesh)
+
+    -- load position data
+    local S = terralib.includec('runtime/single/liszt_runtime.h')
+    local pos_data = S.lLoadPosition(ctx);
+    rels.vertices:NewField("position", float[3])
+    rels.vertices.position:loadFromMemory(pos_data)
+    C.free(pos_data)
     return rels
 end
 
