@@ -4,17 +4,17 @@ require "tests/test"
 mesh  = LoadMesh("examples/mesh.lmesh")
 
 nf = mesh.faces:size()
-sf = mesh:scalar(float, 0.0)
-si = mesh:scalar(int,     0)
-sb = mesh:scalar(bool, true)
+sf = mesh:scalar(L.float, 0.0)
+si = mesh:scalar(L.int,     0)
+sb = mesh:scalar(L.bool, true)
 
-sf3 = mesh:scalar(Vector(float, 3), {0, 0, 0})
-si4 = mesh:scalar(Vector(int,   4), {1, 2, 3, 4})
-sb5 = mesh:scalar(Vector(bool,  5), {true, true, true, true, true})
+sf3 = mesh:scalar(L.vector(L.float, 3), {0, 0, 0})
+si4 = mesh:scalar(L.vector(L.int,   4), {1, 2, 3, 4})
+sb5 = mesh:scalar(L.vector(L.bool,  5), {true, true, true, true, true})
 
-vf  = Vector.new(float, {1, 2, 3})
-vi  = Vector.new(int,   {2, 2, 2, 2})
-vb  = Vector.new(bool,  {true, true, true, true, true})
+vf  = Vector.new(L.float, {1, 2, 3})
+vi  = Vector.new(L.int,   {2, 2, 2, 2})
+vb  = Vector.new(L.bool,  {true, true, true, true, true})
 
 two = global(int)
 terra set_two()

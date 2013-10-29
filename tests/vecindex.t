@@ -7,7 +7,7 @@ import "compiler/liszt"
 -- Kernel vector tests: --
 --------------------------
 mesh   = LoadMesh("examples/mesh.lmesh")
-pos    = mesh:fieldWithLabel(Vertex, Vector(float, 3), "position")
+pos    = mesh:fieldWithLabel(L.vertex, L.vector(L.float, 3), "position")
 
 ------------------
 -- Should pass: --
@@ -19,9 +19,9 @@ function test_vector_indexing ()
   end
   mesh.vertices:map(vk)
 
-  local x_out = mesh:scalar(float, 0.0)
-  local y_out = mesh:scalar(float, 0.0)
-  local y_idx = mesh:scalar(int, 1)
+  local x_out = mesh:scalar(L.float, 0.0)
+  local y_out = mesh:scalar(L.float, 0.0)
+  local y_idx = mesh:scalar(L.int, 1)
   local read_out = liszt_kernel(v)
     x_out = x_out + pos(v)[0]
     y_out = y_out + pos(v)[y_idx]

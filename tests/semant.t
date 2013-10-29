@@ -3,9 +3,9 @@ require "tests/test"
 
 -- Field and scalar objs
 mesh = LoadMesh("examples/mesh.lmesh")
-f1   = mesh:field(Cell, float, 0)
-f2   = mesh:field(Vertex, Vector(float, 3), {0, 0, 0})
-s1   = mesh:scalar(int, 0)
+f1   = mesh:field(L.cell,   L.float, 0)
+f2   = mesh:field(L.vertex, L.vector(L.float, 3), {0, 0, 0})
+s1   = mesh:scalar(L.int, 0)
 
 -- Global lua var
 checkthis1 = 1
@@ -124,7 +124,7 @@ function fail10()
 end
 
 function fail11()
-	local v = Vector.new(float, {1, 1, 1})
+	local v = Vector.new(L.float, {1, 1, 1})
 	local k = liszt_kernel (cell)
 		assert(v == 1)
 	end

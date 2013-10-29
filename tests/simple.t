@@ -1,15 +1,15 @@
 import "compiler/liszt"
 
 mesh  = LoadMesh("examples/mesh.lmesh")
-pos   = mesh:fieldWithLabel(Vertex, Vector(float, 3), "position")
-field = mesh:field(Face, float, 0.0)
+pos   = mesh:fieldWithLabel(L.vertex, L.vector(L.float, 3), "position")
+field = mesh:field(L.face, L.float, 0.0)
 
 local a = global(int, 43)
 
 function main ()
-	local com   = mesh:scalar(Vector(float, 3), {0, 0, 0})--Vector.new(float, {0.0, 0.0, 0.0})
+	local com   = mesh:scalar(L.vector(L.float, 3), {0, 0, 0})--Vector.new(float, {0.0, 0.0, 0.0})
 	local upval = 5
-	local vv    = Vector.new(float, {1,2,3})
+	local vv    = Vector.new(L.float, {1,2,3})
 
 	local test_bool = liszt_kernel (v)
 		var q = true

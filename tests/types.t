@@ -62,9 +62,7 @@ for ttype, ltype in pairs(ptypes) do
 		assert(ln == i)
 
 		-- user-exposed type constructor should return the correct liszt type
-		assert(Vector(ttype,i) == t.vector(ltype,i))
-		 -- verify terra type conversion
-		assert(tutil.ltype(vector(ttype,i)) == t.vector(ltype, i))	
+		assert(L.vector(ltype,i) == t.vector(ltype,i))
 	end
 end
 

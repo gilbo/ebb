@@ -26,6 +26,8 @@ Scope.liszt       = {}
 Type.kinds.int   = {string='int',   terratype=int,   runtimetype=runtime.L_INT}
 Type.kinds.float = {string='float', terratype=float, runtimetype=runtime.L_FLOAT}
 Type.kinds.bool  = {string='bool',  terratype=bool,  runtimetype=runtime.L_BOOL}
+Type.kinds.uint  = {string='uint',  terratype=uint}
+Type.kinds.uint8 = {string='uint8', terratype=uint8}
 
 Type.kinds.vertex = {string='vertex', runtimetype=runtime.L_VERTEX}
 Type.kinds.edge   = {string='edge',   runtimetype=runtime.L_EDGE}
@@ -155,7 +157,7 @@ end
 local complexTypes = {}
 
 local function vectorType (typ, len)
-	if not Type.isLisztType(typ) then error("invalid type argument to vectorType (is this a terra type?)") end
+	if not Type.isLisztType(typ) then error("invalid type argument to vector type constructor (is this a terra type?)", 2) end
 	local tpn = 'vector(' .. typ:toString() .. ',' .. tostring(len) .. ')'
 	if not complexTypes[tpn] then
 		local vt = Type:new(Type.kinds.vector,typ)
@@ -204,6 +206,8 @@ t.error     = Type:new(Type.kinds.error)
 
 -- Primitives
 t.int       = Type:new(Type.kinds.primitive,Type.kinds.int)
+t.uint      = Type:new(Type.kinds.primitive,Type.kinds.uint)
+t.uint8     = Type:new(Type.kinds.primitive,Type.kinds.uint8)
 t.float     = Type:new(Type.kinds.primitive,Type.kinds.float)
 t.bool      = Type:new(Type.kinds.primitive,Type.kinds.bool)
 

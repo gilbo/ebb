@@ -13,29 +13,29 @@ mesh = LoadMesh("examples/mesh.lmesh")
 -- check args --
 ----------------
 function fail_topo1()
-	local f = mesh:field(Vector(float, 3), 'abc', 4)
+	local f = mesh:field(L.vector(L.float, 3), 'abc', 4)
 end
 function fail_topo2()
-	local f = mesh:field(4, int, 3)
+	local f = mesh:field(4, L.int, 3)
 end
 
 test.fail_function(fail_topo1, "topological")
 test.fail_function(fail_topo2, "topological")
 
 function fail_type1()
-	local f = mesh:field(Vertex, 'table', {})
+	local f = mesh:field(L.vertex, 'table', {})
 end
 function fail_type2()
-	local f = mesh:field(Face, 3)
+	local f = mesh:field(L.face, 3)
 end
 test.fail_function(fail_type1, "data type")
 test.fail_function(fail_type2, "data type")
 
 function fail_init1()
-	local f = mesh:field(Face, Vector(float, 3), true)
+	local f = mesh:field(L.face, L.vector(L.float, 3), true)
 end
 function fail_init2()
-	local f = mesh:field(Face, float, {1, 3, 4})
+	local f = mesh:field(L.face, L.float, {1, 3, 4})
 end
 test.fail_function(fail_init1, "Initializer is not of type")
 test.fail_function(fail_init2, "Initializer is not of type")
@@ -44,15 +44,15 @@ test.fail_function(fail_init2, "Initializer is not of type")
 ------------------
 -- Test Codegen --
 ------------------
-pos    = mesh:fieldWithLabel(Vertex, Vector(float, 3), "position")
-field  = mesh:field(Face, float, 1.0)
-field2 = mesh:field(Face, float, 2.5)
-field3 = mesh:field(Face, float, 6.0)
-field4 = mesh:field(Cell, bool, false)
-field5 = mesh:field(Vertex, Vector(float, 4), {0.0, 0.0, 0.0, 0.0})
+pos    = mesh:fieldWithLabel(L.vertex, L.vector(L.float, 3), "position")
+field  = mesh:field(L.face,   L.float, 1.0)
+field2 = mesh:field(L.face,   L.float, 2.5)
+field3 = mesh:field(L.face,   L.float, 6.0)
+field4 = mesh:field(L.cell,   L.bool,  false)
+field5 = mesh:field(L.vertex, L.vector(L.float, 4), {0.0, 0.0, 0.0, 0.0})
 
 local a = global(int, 6)
-local b = Vector.new(float, {1, 3, 4, 5})
+local b = Vector.new(L.float, {1, 3, 4, 5})
 
 local reduce1 = liszt_kernel (f)
 	field(f) = field(f) - 3 + 1/6 * a
@@ -106,9 +106,9 @@ mesh.faces:map(check3)
 mesh.faces:map(write4)
 mesh.faces:map(check4)
 
-local  f = mesh:scalar(float, 0.0)
-local bv = mesh:scalar(bool, true)
-local f4 = mesh:scalar(Vector(float, 4), {0, 0, 0, 0})
+local  f = mesh:scalar(L.float, 0.0)
+local bv = mesh:scalar(L.bool, true)
+local f4 = mesh:scalar(L.vector(L.float, 4), {0, 0, 0, 0})
 
 local function check_write ()
 	-- should initialize each field element to {1, 3, 4, 5}
