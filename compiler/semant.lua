@@ -9,9 +9,9 @@ local type_meet = types.type_meet
 local Scope     = types.Scope
 
 -- Phases used in assignment statements
-_FIELD_WRITE   = 'FIELD_WRITE'
-_FIELD_REDUCE  = 'FIELD_REDUCE'
-_SCALAR_REDUCE = 'SCALAR_REDUCE'
+local _FIELD_WRITE   = 'FIELD_WRITE'
+local _FIELD_REDUCE  = 'FIELD_REDUCE'
+local _SCALAR_REDUCE = 'SCALAR_REDUCE'
 exports._FIELD_WRITE 		= _FIELD_WRITE
 exports._FIELD_REDUCE 	= _FIELD_REDUCE
 exports._SCALAR_REDUCE 	= _SCALAR_REDUCE
