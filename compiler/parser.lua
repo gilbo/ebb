@@ -48,12 +48,24 @@ local block_terminators = {
 }
 
 --[[ Generic expression operator parsing functions: ]]--
-local function leftbinary(P, lhs)
+local function leftbinaryimpl(P, lhs, isreductionop)
 	local node = ast.BinaryOp:New(P)
-	local op  = P:next().type
-	local rhs = P:exp(op)
-	node.lhs, node.op, node.rhs = lhs, op, rhs
-	return node
+	local op   = P:next().type
+	if isreductionop and P:matches("=") then 
+		node = ast.Reduce:New(P)
+		node.op, node.exp = op, lhs
+		return node
+	else
+		local rhs = P:exp(op)
+		node.lhs, node.op, node.rhs = lhs, op, rhs
+		return node
+	end
+end
+local function leftbinary(P, lhs)
+	return leftbinaryimpl(P, lhs, false)
+end
+local function leftbinaryred(P, lhs)
+	return leftbinaryimpl(P, lhs, true)
 end
 
 local function rightbinary(P, lhs)
@@ -82,8 +94,8 @@ lang.exp = pratt.Pratt() -- returns a pratt parser
 :prefix("-",   unary)
 :prefix("not", unary)
 
-:infix("or",  precedence["or"],  leftbinary)
-:infix("and", precedence["and"], leftbinary)
+:infix("or",  precedence["or"],  leftbinaryred)
+:infix("and", precedence["and"], leftbinaryred)
 
 :infix("<",   precedence["<"],   leftbinary)
 :infix(">",   precedence[">"],   leftbinary)
@@ -92,12 +104,12 @@ lang.exp = pratt.Pratt() -- returns a pratt parser
 :infix("==",  precedence["=="],  leftbinary)
 :infix("~=",  precedence["~="],  leftbinary)
 
-:infix("*",   precedence['*'],   leftbinary)
-:infix('/',   precedence['/'],   leftbinary)
+:infix("*",   precedence['*'],   leftbinaryred)
+:infix('/',   precedence['/'],   leftbinaryred)
 :infix('%',   precedence['%'],   leftbinary)
 
-:infix("+",   precedence["+"],   leftbinary)
-:infix("-",   precedence["-"],   leftbinary)
+:infix("+",   precedence["+"],   leftbinaryred)
+:infix("-",   precedence["-"],   leftbinaryred)
 :infix('^',   precedence['^'],   rightbinary)
 :prefix(pratt.default, function(P) return P:simpleexp() end)
 

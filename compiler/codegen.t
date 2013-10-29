@@ -177,36 +177,41 @@ function ast.PrintStatement:codegen(env)
     end
 end
 
-local mPhaseMap = {
-	['+']   = runtime.L_PLUS,
-	['-']   = runtime.L_MINUS,
-	['*']   = runtime.L_MULTIPLY,
-	['/']   = runtime.L_DIVIDE,
-	['and'] = runtime.L_BAND,
-	['or']  = runtime.L_BOR
+local phaseMap = {
+	['+']   	= runtime.L_PLUS,
+	['-']   	= runtime.L_MINUS,
+	['*']   	= runtime.L_MULTIPLY,
+	['/']   	= runtime.L_DIVIDE,
+	['and'] 	= runtime.L_BAND,
+	['or']  	= runtime.L_BOR,
+	['land']  = runtime.L_AND,
+	['lor'] 	= runtime.L_OR,
 }
 
-local bPhaseMap = {
-	['and'] = runtime.L_AND,
-	['or']  = runtime.L_OR
-}
-
-function ast.BinaryOp:phase()
-	-- for boolean types, return boolean reduction phases
-	if self.node_type:isLogical() then
-		return bPhaseMap[self.op]
-	else
-		return mPhaseMap[self.op]
-    end
-end
+--local bPhaseMap = {
+--	['and'] = runtime.L_AND,
+--	['or']  = runtime.L_OR
+--}
+--
+--function ast.BinaryOp:phase()
+--	-- for boolean types, return boolean reduction phases
+--	if self.node_type:isLogical() then
+--		return bPhaseMap[self.op]
+--	else
+--		return mPhaseMap[self.op]
+--    end
+--end
 
 function ast.Assignment:codegen (env)
+	local lval = self.lvalue.luaval
 	local ttype = self.lvalue.node_type:terraType()
-	if self.fieldop == semant._FIELD_WRITE or self.fieldop == semant._FIELD_REDUCE then
+--	if self.fieldop == semant._FIELD_WRITE or self.fieldop == semant._FIELD_REDUCE then
+	if Type.isFieldIndex(lval) then
 		local exp     = self.exp:codegen(env)
 		local field   = self.field
 		local topo    = self.topo:codegen(env)
-		local phase = self.fieldop == semant._FIELD_WRITE and runtime.L_ASSIGN or self.exp:phase()
+		local phase = self.reduceop and
+									phaseMap[self.reduceop] or runtime.L_ASSIGN
 		local element_type, element_length = self.lvalue.node_type:runtimeType()
 
 		return quote
@@ -214,10 +219,10 @@ function ast.Assignment:codegen (env)
 			runtime.lkFieldWrite([field.__lkfield], topo, phase, element_type, element_length, 0, element_length, &tmp)
 		end
 
-	elseif self.fieldop == semant._SCALAR_REDUCE then
-		local exp   = self.rexp:codegen(env)
+	elseif Type.isScalar(lval) then
+		local exp   = self.exp:codegen(env)
 		local lsc   = self.scalar
-		local phase = self.exp:phase()
+		local phase = phaseMap[self.reduceop]
 		local el_type, el_len = self.lvalue.node_type:runtimeType()
 		return quote
 			var tmp : ttype = [exp]

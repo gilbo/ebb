@@ -16,7 +16,7 @@ local l = liszt_kernel (v)
 		y = 0.0
 	end
 
-	red = red + y
+	red += y
 end
 
 mesh.vertices:map(l)

@@ -23,8 +23,8 @@ function test_vector_indexing ()
   local y_out = mesh:scalar(float, 0.0)
   local y_idx = mesh:scalar(int, 1)
   local read_out = liszt_kernel(v)
-    x_out = x_out + pos(v)[0]
-    y_out = y_out + pos(v)[y_idx]
+    x_out += pos(v)[0]
+    y_out += pos(v)[y_idx]
   end
   mesh.vertices:map(read_out)
 

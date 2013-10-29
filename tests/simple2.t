@@ -9,7 +9,7 @@ local com = mesh:scalar(Vector(float, 3), {0, 0, 0})
 function center_of_mass ()
 	com:setTo({0,0,0})
 	local sum_pos = liszt_kernel (v)
-		com = com + pos(v)
+		com += pos(v)
 	end
 	mesh.vertices:map(sum_pos)
 	return com:value() / mesh.vertices:size()

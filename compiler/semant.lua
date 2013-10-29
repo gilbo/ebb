@@ -175,6 +175,14 @@ function ast.ExprStatement:check(env, diag)
 	return expstmt
 end
 
+function ast.Reduce:check(env, diag)
+	local reduce = self:clone()
+	local typ
+	reduce.op  = self.op
+	reduce.exp, typ = self.exp:check_lhs(env, diag, true)
+	return reduce, typ
+end
+
 function ast.Assignment:check(env, diag)
 	local assignment = self:clone()
 
@@ -182,18 +190,20 @@ function ast.Assignment:check(env, diag)
 	assignment.lvalue = lhs
 	if ltype == t.error then return end
 
-	-- Only refactor the left binaryOp tree if we could potentially
-	-- be commiting a field/scalar write
-	if self.lvalue:isGlobalScope() and
-		 Type.isScalar(self.lvalue.luaval) or
-		 Type.isFieldIndex(self.lvalue.luaval) and
-	   ast.BinaryOp:is(self.exp) then
-		self.exp:refactorReduction()
-	end
-
 	local rhs, rtype = self.exp:check(env, diag)
 	assignment.exp   = rhs
 	if rtype == t.error then return end
+
+	if assignment.lvalue:is(ast.Reduce) then 
+		self.reduceop = self.lvalue.op
+		assignment.reduceop = assignment.lvalue.op
+		self.lvalue   = self.lvalue.exp
+		assignment.lvalue = assignment.lvalue.exp
+		if rtype:isLogical() then
+			self.reduceop = "l"..self.reduceop
+			assignment.reduceop = "l"..assignment.reduceop
+		end
+	end
 
 	-- is this the first use of a declared, but not defined, variable?
 	if ltype == t.unknown then
@@ -242,35 +252,15 @@ function ast.Assignment:check(env, diag)
 		local lfield = self.lvalue.func.luaval
 		self.field   = lfield -- lua object
 		self.topo    = self.lvalue.params.children[1] -- liszt ast node
-
-		if not ast.BinaryOp:is(rexp) or not Type:isFieldIndex(rexp.lhs.luaval) then
-			self.fieldop = _FIELD_WRITE
-		else
-			local rfield = rexp.lhs.func.luaval
-			self.fieldop = (lfield == rfield and rexp:operatorCommutes()) and _FIELD_REDUCE or _FIELD_WRITE
-			if self.fieldop == _FIELD_REDUCE then
-				self.rexp  = rexp.rhs -- liszt ast node
-			end
-		end
-	end
-
-	if Type.isScalar(lval) then
-		if not ast.BinaryOp:is(rexp) or not Type.isScalar(rexp.lhs.luaval) then
+	elseif Type.isScalar(lval) then
+		if not self.reduceop then
 			diag:reporterror(self, "Scalar variables can only be modified through reductions")
-
-		else
-			-- Make sure the scalar objects on the lhs and rhs match.  Otherwise, we are 
-			-- looking at a write to the lhs scalar, which is illegal.
-			local lsc = self.lvalue.luaval
-			local rsc = rexp.lhs.luaval
-
-			if lsc ~= rsc then
-				diag:reporterror(self, "Scalar variables can only be modified through reductions")
-			else
-				self.fieldop = _SCALAR_REDUCE
-				self.scalar  = lsc
-				self.rexp    = rexp.rhs
-			end
+		end
+		self.scalar = self.lvalue.luaval
+	else
+		if self.reduceop then
+			diag:reporterror(self, "attempting to reduce a value "..
+														 "that is not a field or scalar")
 		end
 	end
 end
@@ -430,61 +420,7 @@ local isBoolOp = {
 	['or']  = true
 }
 
-    -- can "(a <lop> b) <rop> c" be refactored into "a <lop'> (b <rop'> c)"?
-local function commutes (lop, rop)
-	local additive       = { ['+'] = true, ['-'] = true }
-	local multiplicative = { ['*'] = true, ['/'] = true }
-	if additive[lop]       and additive[rop]       then return true end
-	if multiplicative[lop] and multiplicative[rop] then return true end
-	if lop == 'and' and rop == 'and' then return true end
-	if lop == 'or'  and rop == 'or'  then return true end
-	return false
-end
-
-function ast.BinaryOp:refactorReduction ()
-	-- recursively refactor the left-hand child
-	if self.lhs.kind ~= 'binop' then return end
-	self.lhs:refactorReduction()
-
-	local rop   = self.op
-	local lop   = self.lhs.op
-
-	local simple = {['+'] = true, ['*'] = true, ['and'] = true, ['or'] = true}
-	if commutes(lop, rop) then
-		--[[ 
-		We want to pull up the left grandchild to be the left child of
-		this node.  Thus, we'll need to refactor the tree like so:
-
-		  self ->     *                  *
-		             / \                / \
-		            /   \              /   \
-		  left ->  *     C    ==>     A     *
-		          / \                      / \
-		         /   \                    /   \
-		        A     B                  B     C
-		]]--
-		local left = self.lhs
-		local A    = left.lhs
-		local B    = left.rhs
-		local C    = self.rhs
-		self.lhs = A
-		self.rhs = left
-		left.lhs = B
-		left.rhs = C
-
-		-- if the left operator is an inverse operator, we'll need to
-		-- change the right operator as well.
-		if not simple[lop] then
-    		-- switch the right operator to do the inverse operation
-    		local inv_map = { ['+'] = '-', ['-'] = '+', ['*'] = '/', ['/'] = '*' }
-    		rop         = inv_map[rop]
-			self.op     = lop
-			self.rhs.op = rop    			
-    	end
-    end
-end
-
-	-- binary expressions
+-- binary expressions
 function ast.BinaryOp:check(env, diag)
 	local binop = self:clone()
 	binop.op 		= self.op

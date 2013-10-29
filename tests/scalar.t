@@ -23,23 +23,23 @@ end
 set_two()
 
 -- test vector codegen:
-mesh.faces:map(liszt_kernel (f) sf3 = sf3 + vf end)
+mesh.faces:map(liszt_kernel (f) sf3 += vf end)
 test.fuzzy_aeq(sf3:value().data, {nf, 2*nf, 3*nf})
 
-mesh.faces:map(liszt_kernel (f) si4 = si4 - vi end)
+mesh.faces:map(liszt_kernel (f) si4 -= vi end)
 test.fuzzy_aeq(si4:value().data, {1-2*nf,2-2*nf,3-2*nf,4-2*nf})
 
 --mesh.faces:map(liszt_kernel(f) sb5 = sb5 and vb end)
 --test.aeq(sb5:value().data, {true, false, true, false, true})
 
 -- test simple type codegen:
-mesh.faces:map(liszt_kernel (f) sf = sf + 1 end)
+mesh.faces:map(liszt_kernel (f) sf += 1 end)
 test.eq(sf:value(), mesh.faces:size())
 
-mesh.faces:map(liszt_kernel (f) si = si - two end)
+mesh.faces:map(liszt_kernel (f) si -= two end)
 test.eq(si:value(), -2*nf)
 
-mesh.faces:map(liszt_kernel(f) sb = sb and false end)
+mesh.faces:map(liszt_kernel(f) sb and= false end)
 test.eq(sb:value(), false)
 
 

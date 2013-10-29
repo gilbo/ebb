@@ -19,6 +19,7 @@ local CondBlock = { kind = 'condblock' }
 local Expression      = { kind = 'expr'   } -- abstract
 local LValue          = { kind = 'lvalue' } -- abstract
 local BinaryOp        = { kind = 'binop'  }
+local Reduce 					= { kind = 'reduce' }
 local UnaryOp         = { kind = 'unop'   }
 local Tuple           = { kind = 'tuple'  }
 
@@ -78,6 +79,7 @@ inherit(Call,        LValue)
 inherit(TableLookup, LValue)
 inherit(VectorIndex, LValue)
 inherit(Name,        LValue)
+inherit(Reduce, 		 LValue)
 
 inherit(IfStatement,     Statement)
 inherit(WhileStatement,  Statement)
@@ -131,7 +133,7 @@ function LValue.isLValue ( ) return true  end
 function Tuple:size ( ) return #self.children end
 
 function AST:is (obj)
-	return self == getmetatable(obj)
+	return obj == getmetatable(self)
 end
 
 ---------------------------
@@ -169,6 +171,12 @@ function BinaryOp:pretty_print (indent)
 end
 
 function UnaryOp:pretty_print (indent)
+	indent = indent or ''
+	print(indent .. self.kind .. ": " .. self.op)
+	self.exp:pretty_print(indent .. indent_delta)
+end
+
+function Reduce:pretty_print(indent)
 	indent = indent or ''
 	print(indent .. self.kind .. ": " .. self.op)
 	self.exp:pretty_print(indent .. indent_delta)
@@ -345,6 +353,7 @@ for k,v in pairs({
 	LValue          = LValue,
 	BinaryOp        = BinaryOp,
 	UnaryOp         = UnaryOp,
+	Reduce 					= Reduce,
 	Tuple           = Tuple,
 	TableLookup     = TableLookup,
 	VectorIndex 		= VectorIndex,

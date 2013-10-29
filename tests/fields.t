@@ -76,6 +76,9 @@ end
 local write2 = liszt_kernel (f)
 	field5(f) = b
 end
+local red2 = liszt_kernel (f)
+	field5(f) += {1.0,1.0,1.0,1.0}
+end
 
 local write3 = liszt_kernel (f)
 	field4(f) = true
@@ -99,6 +102,7 @@ mesh.faces:map(reduce3)
 mesh.faces:map(read1)
 mesh.faces:map(write1)
 mesh.faces:map(write2)
+mesh.faces:map(red2)
 
 mesh.faces:map(write3)
 mesh.faces:map(check3)
@@ -113,15 +117,16 @@ local f4 = mesh:scalar(Vector(float, 4), {0, 0, 0, 0})
 local function check_write ()
 	-- should initialize each field element to {1, 3, 4, 5}
 	mesh.faces:map(write2)
+	mesh.faces:map(red2)
 
 	f4:setTo({0, 0, 0, 0})
 	mesh.faces:map(
 		liszt_kernel (f)
-			f4 = f4 + field5(f)
+			f4 += field5(f)
 		end
 	)
 	local avg = f4:value() / mesh.faces:size()
-	test.fuzzy_aeq(avg.data, {1, 3, 4, 5 })
+	test.fuzzy_aeq(avg.data, {2, 4, 5, 6})
 end
---check_write()
+check_write()
 

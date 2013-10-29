@@ -121,7 +121,7 @@ function test_vector_literals ()
 
 	local s = mesh:scalar(Vector(float, 3), {0.0, 0.0, 0.0})
 	local check = liszt_kernel(v)
-		s = s + pos(v)
+		s += pos(v)
 	end
 	mesh.vertices:map(check)
 	local f = s:value() / mesh.vertices:size()
