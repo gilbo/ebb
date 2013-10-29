@@ -1,6 +1,8 @@
 import "compiler/liszt"
 require "tests/test"
 
+local assert = L.assert
+
 -- Field and scalar objs
 mesh = LoadMesh("examples/mesh.lmesh")
 f1   = mesh:field(L.cell,   L.float, 0)

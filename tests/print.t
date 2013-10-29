@@ -1,5 +1,6 @@
 import "compiler/liszt"
 
+local print = L.print
 mesh  = LoadMesh("examples/mesh.lmesh")
 
 local v = Vector.new(L.float, {1, 2, 3}) 

@@ -227,6 +227,9 @@ t.field     = fieldType
 t.set       = setType
 t.scalar    = scalarType
 
+-- Type for macros
+t.func = Type:new(Type.kinds.functype)
+
 -- Support for table lookups / select operator
 t.table  = Type:new(Type.kinds.table)
 

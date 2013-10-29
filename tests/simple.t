@@ -4,6 +4,8 @@ mesh  = LoadMesh("examples/mesh.lmesh")
 pos   = mesh:fieldWithLabel(L.vertex, L.vector(L.float, 3), "position")
 field = mesh:field(L.face, L.float, 0.0)
 
+local assert = L.assert
+
 local a = global(int, 43)
 
 function main ()

@@ -44,8 +44,6 @@ local ExprStatement   = { kind = 'exprstmt'   }  -- e;
 local Assignment      = { kind = 'assnstmt'   }  -- "lvalue   = expr" 
 local InitStatement   = { kind = 'initstmt'   }  -- "var name = expr"
 local DeclStatement   = { kind = 'declstmt'   }  -- "var name"
-local AssertStatement = { kind = 'assertstmt' }  -- "assert(expr)"
-local PrintStatement  = { kind = 'printstmt'  }  -- "print(expr)" 
 local NumericFor      = { kind = 'numericfor' }
 local GenericFor      = { kind = 'genericfor' }
 local Break           = { kind = 'break'      }
@@ -87,8 +85,6 @@ inherit(ExprStatement,   Statement)
 inherit(Assignment,      Statement)
 inherit(DeclStatement,   Statement)
 inherit(InitStatement,   Statement)
-inherit(AssertStatement, Statement)
-inherit(PrintStatement,  Statement)
 inherit(NumericFor,      Statement)
 inherit(GenericFor,      Statement)
 inherit(Break,           Statement)
@@ -282,18 +278,6 @@ function Break:pretty_print (indent)
 	print(indent .. self.kind)
 end
 
-function AssertStatement:pretty_print (indent)
-	indent = indent or ''
-	print(indent .. self.kind)
-	self.test:pretty_print(indent .. indent_delta)
-end
-
-function PrintStatement:pretty_print (indent)
-	indent = indent or ''
-	print(indent .. self.kind)
-	self.output:pretty_print(indent .. indent_delta)
-end
-
 function NumericFor:pretty_print (indent)	
 	indent = indent or ''
 	if self.step then
@@ -352,8 +336,6 @@ for k,v in pairs({
 	Assignment      = Assignment,
 	InitStatement   = InitStatement,
 	DeclStatement   = DeclStatement,
-	AssertStatement = AssertStatement,
-	PrintStatement  = PrintStatement,
 	NumericFor      = NumericFor,
 	GenericFor      = GenericFor,
 	Break           = Break,

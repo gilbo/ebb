@@ -8,7 +8,7 @@ local pratt = terralib.require('compiler/pratt')
 local lisztlanguage = {
 	name        = "liszt", -- name for debugging
 	entrypoints = {"liszt_kernel"},
-	keywords    = {"var", "assert", "print"},
+	keywords    = {"var"},
 
 	expression = function(self, lexer)
 		local kernel_ast = pratt.Parse(parser.lang, lexer, "liszt_kernel")

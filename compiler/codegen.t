@@ -13,7 +13,7 @@ function ast.AST:codegen (env)
 end
 
 function ast.ExprStatement:codegen (env)
-	return quote end
+	return self.exp:codegen(env)
 end
 
 function ast.LisztKernel:codegen (env)
@@ -125,58 +125,6 @@ function ast.Break:codegen(env)
 	return quote break end
 end
 
-local c = terralib.includecstring([[
-#include <stdio.h>
-#include <stdlib.h>
-]])
-local terra lisztAssert(test : bool, file : rawstring, line : int)
-    if not test then
-        c.printf("%s:%d: assertion failed!\n", file, line)
-        c.exit(1)
-    end
-end
-
-function ast.AssertStatement:codegen(env)
-    local test = self.test:codegen(env)
-    return quote lisztAssert(test, self.filename, self.linenumber) end
-end
-
-function ast.PrintStatement:codegen(env)
-	local lt   = self.output.node_type
-    local tt   = lt:terraType()
-    local code = self.output:codegen(env)
-    if     lt == t.float then return quote c.printf("%f\n", [float](code)) end
-	elseif lt == t.int   then return quote c.printf("%d\n", code) end
-	elseif lt == t.bool  then
-        return quote c.printf("%s", terralib.select(code, "true\n", "false\n")) end
-	elseif lt:isVector() then
-        local printSpec = "{"
-        local sym = symbol()
-        local elemQuotes = {}
-        local bt = lt:baseType()
-        for i = 0, lt.N - 1 do
-            if bt == t.float then
-                printSpec = printSpec .. " %f"
-                table.insert(elemQuotes, `[float](sym[i]))
-            elseif bt == t.int then
-                printSpec = printSpec .. " %d"
-                table.insert(elemQuotes, `sym[i])
-            elseif bt == t.bool then
-                printSpec = printSpec .. " %s"
-                table.insert(elemQuotes, `terralib.select(sym[i], "true", "false"))
-            end
-        end
-        printSpec = printSpec .. " }\n"
-        return quote
-            var [sym] : tt = code
-        in
-            c.printf(printSpec, elemQuotes)
-        end
-    else
-        assert(false and "Printed object should always be number, bool, or vector")
-    end
-end
-
 local mPhaseMap = {
 	['+']   = runtime.L_PLUS,
 	['-']   = runtime.L_MINUS,
@@ -232,21 +180,26 @@ function ast.Assignment:codegen (env)
 end
 
 -- Call:codegen is called for field reads, when the field appears
--- in an expression, or on the rhs of an assignment.
+-- in an expression, or on the rhs of an assignment; and for builtin
+-- function calls.
 function ast.Call:codegen (env)
-	local field = self.func.luaval
-	local topo  = self.params.children[1]:codegen(env) -- Should return an lkElement
-	local read  = symbol()
+    if self.func.node_type:isField() then
+        local field = self.func.luaval
+        local topo  = self.params.children[1]:codegen(env) -- Should return an lkElement
+        local read  = symbol()
 
-	local typ = self.node_type:terraType()
-	local el_type, el_len = self.node_type:runtimeType()
+        local typ = self.node_type:terraType()
+        local el_type, el_len = self.node_type:runtimeType()
 
-	return quote
-		var [read] : typ
-		runtime.lkFieldRead([field.__lkfield], [topo], el_type, el_len, 0, el_len, &[read])
-		in
-		[read]
-	end
+        return quote
+            var [read] : typ
+            runtime.lkFieldRead([field.__lkfield], [topo], el_type, el_len, 0, el_len, &[read])
+            in
+            [read]
+        end
+    else
+        return self.func.luaval.codegen(self, env)
+    end
 end
 
 function ast.InitStatement:codegen (env)

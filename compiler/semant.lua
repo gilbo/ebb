@@ -243,20 +243,6 @@ function ast.DeclStatement:check(env, diag)
 	env:localenv()[self.ref.name] = self.ref
 end
 
-function ast.AssertStatement:check(env, diag)
-    local test_type = self.test:check(env, diag)
-    if test_type ~= t.error and test_type ~= t.bool then
-        diag:reporterror(self, "Expected a boolean as the test for assert statement")
-    end
-end
-
-function ast.PrintStatement:check(env, diag)
-    local outtype = self.output:check(env, diag)
-    if outtype ~= t.error and not outtype:isExpressionType() then
-        diag:reporterror(self, "Only numbers, bools, and vectors can be printed")
-    end
-end
-
 local function enforce_numeric_type (node, tp)
 	if tp ~= t.error and not tp:isNumeric() then
 		diag:reporterror(self, "Expected a numeric expression to define the iterator bounds/step (found " .. tp:toString() .. ')')
@@ -507,6 +493,9 @@ local function lua_to_liszt(luav)
 		elseif  Type.isSet(luav) then
 			error("Typechecking for TopoSets not yet implemented", 3)
 
+        elseif Type.isFunction(luav) then
+            return t.func
+
 		-- table does not represent a liszt type, but needs to be returned
 		-- since we support the select operator
 		-- terra globals
@@ -703,7 +692,7 @@ function ast.VectorIndex:check(env, diag)
 end
 
 function ast.Call:check(env, diag)
-	-- call name can be a field only in current implementation
+	-- call name can only be a field or macro in current implementation
 	local ftype = self.func:check(env, diag)
 	if ftype == t.error then
 		self.node_type = t.error
@@ -733,7 +722,9 @@ function ast.Call:check(env, diag)
 			self.node_type = t.error
 		end
 
-	else
+	elseif ftype:isFunction() then
+        self.node_type = self.func.luaval.check(self, env, diag)
+    else
 		diag:reporterror(self, "Invalid call")
 		self.node_type = t.error
 	end
@@ -741,7 +732,6 @@ function ast.Call:check(env, diag)
 	self:setGlobalScope()
 	return self.node_type
 end
-
 
 
 ------------------------------------------------------------------------------

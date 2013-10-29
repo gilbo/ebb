@@ -6,6 +6,7 @@
 import "compiler/liszt"
 require 'tests/test'
 
+local assert = L.assert
 mesh = LoadMesh("examples/mesh.lmesh")
 
 

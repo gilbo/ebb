@@ -1,4 +1,4 @@
--- Privately import from types module
+-- Privately import from types module 
 local types = terralib.require('compiler/types')
 local Type  = types.Type
 local t     = types.t
@@ -9,7 +9,6 @@ local _runtime = runtime
 terralib.require('runtime/liszt')
 local runtime = runtime
 _G.runtime    = _runtime
-
 
 -- Expose types
 L = { }
@@ -23,6 +22,8 @@ L.cell   = t.cell
 L.vertex = t.vertex
 L.edge   = t.edge
 L.face   = t.face
+
+terralib.require('include/builtins')
 
 -------------------------------------------------
 --[[ Liszt Objects ]]--
