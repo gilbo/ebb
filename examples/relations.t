@@ -15,9 +15,9 @@ local init_temp = terra (mem : &float, i : int)
 	end
 end
 
-M.vertices:NewField('flux',        float):LoadFromCallback(init_to_zero)
-M.vertices:NewField('jacobistep',  float):LoadFromCallback(init_to_zero)
-M.vertices:NewField('temperature', float):LoadFromCallback(init_temp)
+M.vertices:NewField('flux',        L.float):LoadFromCallback(init_to_zero)
+M.vertices:NewField('jacobistep',  L.float):LoadFromCallback(init_to_zero)
+M.vertices:NewField('temperature', L.float):LoadFromCallback(init_temp)
 
 local C = terralib.includecstring([[
 #include "stdio.h"
@@ -45,14 +45,10 @@ terra loop ()
 		var v1_i = M.edges.head.data[_i]
 		var v2_i = M.edges.tail.data[_i]
 
+		var v1p : vector(float, 3) = M.vertices.position.data[v1_i]
+		var v2p : vector(float, 3) = M.vertices.position.data[v2_i]
 
-		var v1p : float[3] = M.vertices.position.data[v1_i]
-		var v2p : float[3] = M.vertices.position.data[v2_i]
-
-		var dp : float[3]
-		dp[0] = v1p[0] - v2p[0]
-		dp[1] = v1p[1] - v2p[1]
-		dp[2] = v1p[2] - v2p[2]
+		var dp  = v1p - v2p
 
 		var t1 = M.vertices.temperature.data[v1_i]
 		var t2 = M.vertices.temperature.data[v2_i]
@@ -62,7 +58,6 @@ terra loop ()
 		length_dp = C.sqrt(length_dp)
 
 		var step = 1.0 / length_dp
-
 
 		M.vertices.flux.data[v1_i] = M.vertices.flux.data[v1_i] - dt * step
 		M.vertices.flux.data[v2_i] = M.vertices.flux.data[v2_i] + dt * step

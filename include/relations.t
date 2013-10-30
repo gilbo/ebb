@@ -10,10 +10,23 @@ local C = terralib.includecstring [[
     #include <math.h>
 ]]
 
-local RTYPE = uint32 -- terra type of a field that refers to another relation
-local OTYPE = uint8  -- terra type of an orientation field
+local RTYPE = T.t.uint  -- terra type of a field that refers to another relation
+local OTYPE = T.t.uint8 -- terra type of an orientation field
 
 
+--------------------------------------------------------------------------------
+--[[ Export Liszt types:                                                    ]]--
+--------------------------------------------------------------------------------
+L.int    = T.t.int
+L.uint   = T.t.uint
+L.float  = T.t.float
+L.bool   = T.t.bool
+L.vector = T.t.vector
+
+
+--------------------------------------------------------------------------------
+--[[ Liszt object prototypes:                                               ]]--
+--------------------------------------------------------------------------------
 local function make_prototype(tb)
    tb.__index = tb
    return tb
@@ -30,10 +43,11 @@ end
 --------------------------------------------------------------------------------
 --[[ Field prototype:                                                       ]]--
 --------------------------------------------------------------------------------
-local LRelation = make_prototype {}
+local LRelation = make_prototype {kind=T.Type.kinds.relation}
 local LField    = make_prototype {kind=T.Type.kinds.field}
 local LScalar   = make_prototype {kind=T.Type.kinds.scalar}
 local LVector   = make_prototype {kind=T.Type.kinds.vector}
+
 
 --------------------------------------------------------------------------------
 --[[ LRelation methods                                                      ]]--
@@ -54,8 +68,14 @@ end
 
 local function is_relation (obj) return getmetatable(obj) == LRelation end
 
-function LRelation:NewField (name, typ)
-    local f = setmetatable({}, LField)
+local function isValidFieldType (typ)
+    return is_relation(typ) or T.Type.isLisztType(typ) and typ:isExpressionType()
+end
+
+function LRelation:NewField (name, typ)    
+    assert(isValidFieldType(typ))
+
+    local f    = setmetatable({}, LField)
     f.relation = is_relation(typ) and typ   or nil
     f.type     = is_relation(typ) and RTYPE or typ
 
@@ -72,17 +92,18 @@ function LRelation:LoadIndexFromMemory(name,row_idx)
     local f = self[name]
     assert(f ~= nil)
     assert(f.data == nil)
-    assert(f.relation ~= nil)
+    assert(f.relation ~= nil) -- index field must be a relational type
 
-    local tsize  = terralib.sizeof(f.type)
+    local ttype  = f.type:terraType()
+    local tsize  = terralib.sizeof(ttype)
     local nbytes = (f.relation._size + 1) * tsize
 
-    rawset(self, "_index", terralib.cast(&f.type,C.malloc(nbytes)))
+    rawset(self, "_index", terralib.cast(&ttype,C.malloc(nbytes)))
     local memT = terralib.typeof(row_idx)
-    assert(memT == &f.type)
+    assert(memT == &ttype)
 
     C.memcpy(self._index,row_idx,nbytes)
-    f.data = terralib.cast(&f.type,C.malloc(self._size*tsize))
+    f.data = terralib.cast(&ttype,C.malloc(self._size*tsize))
     for i = 0, f.relation._size - 1 do
         local b = self._index[i]
         local e = self._index[i+1]
@@ -105,8 +126,13 @@ end
 --------------------------------------------------------------------------------
 local terra copy_bytes (dest : &uint8, src : &uint8, length : uint, size : uint, stride : uint, offset : uint)
     src = src + offset
+
+    -- don't potentially copy past the length of the source array:
+    var copy_len : int
+    if stride < size then copy_len = stride else copy_len = size end
+
     for i = 0, length do
-        C.memcpy(dest,src,size)
+        C.memcpy(dest,src,copy_len)
         src  = src  + stride
         dest = dest + size
     end
@@ -114,31 +140,39 @@ end
 
 -- specify stride, offset in bytes, default stride reads memory contiguously and default offset reads from mem ptr directly
 function LField:LoadFromMemory (mem, stride, offset)
-    if not stride then stride = terralib.sizeof(self.type) end
-    if not offset then offset = 0 end
+    local ttype = self.type:terraType()
+    local tsize = terralib.sizeof(ttype)
 
-    assert(stride >= terralib.sizeof(self.type))
+    -- Terra vectors are sized at a power of two bytes, whereas arrays are just N * sizeof(basetype)
+    -- so, if we are storing arrays as terra vectors, tsize is >= the size of the data for one field
+    -- entry in a contiguous array.
+    local dsize = ttype:isvector() and terralib.sizeof(ttype.type[ttype.N]) or tsize
+
+    if not stride then stride = dsize end
+    if not offset then offset = 0     end
+
+    assert(stride >= dsize)
     assert(self.data == nil)
 
-    local nbytes = self.table._size * terralib.sizeof(self.type)
+    local nbytes = self.table._size * tsize
     local bytes  = C.malloc(nbytes)
-    self.data    = terralib.cast(&self.type,bytes)
+    self.data    = terralib.cast(&ttype,bytes)
 
     -- cast mem to void* to avoid automatic conversion issues for pointers to non-primitive types
     mem = terralib.cast(&opaque, mem)
 
     -- If the array is laid out contiguously in memory, just do a memcpy
     -- otherwise, read with a stride
-    if (stride == terralib.sizeof(self.type)) then
+    if (stride == tsize) then
         C.memcpy(self.data,mem,nbytes)
     else
-        copy_bytes(bytes,mem,self.table._size,terralib.sizeof(self.type), stride, offset)
+        copy_bytes(bytes,mem,self.table._size, tsize, stride, offset)
     end
 end
 
 function LField:LoadFromCallback (callback)
-    local bytes  = C.malloc(self.table._size * terralib.sizeof(self.type))
-    self.data    = terralib.cast(&self.type,bytes)
+    local bytes  = C.malloc(self.table._size * terralib.sizeof(self.type:terraType()))
+    self.data    = terralib.cast(&self.type:terraType(),bytes)
 
     for i = 0, self.table._size-1 do
         callback(self.data + i, i)
@@ -153,8 +187,18 @@ function LField:dump()
     end
 
     local N = self.table._size
-    for i = 0,N - 1 do
-        print("",i, self.data[i])
+    if (self.type:isVector()) then
+        for i = 0, N - 1 do
+            local s = ''
+            for j = 0, self.type.N - 1 do
+                s = s .. tostring(self.data[i][j]) .. ' '
+            end
+            print("", i, s)
+        end
+    else
+        for i = 0,N - 1 do
+            print("",i, self.data[i])
+        end
     end
 end
 
@@ -166,7 +210,7 @@ function L.NewScalar ()
 end
 
 -------------------------------------------------------------------------------
---[[ Temporary code that loads all relations from mesh file formats:       ]]--
+--[[ Code that loads all relations from mesh file formats:                 ]]--
 -------------------------------------------------------------------------------
 local topo_elems = { 'vertices', 'edges', 'faces', 'cells' }
 
@@ -192,7 +236,6 @@ local mesh_rels_topo = {
     {name = "ftoc", table = "faces", ft = "cells",    n1 = "outside", n2 ="inside"}
 }
 
-
 local function initMeshRelations(mesh)
     -- initialize list of relations
     local auto = {}
@@ -203,7 +246,7 @@ local function initMeshRelations(mesh)
         local t     = L.NewRelation(tsize, topo_elem)
         auto[topo_elem] = t
         t:NewField('value', RTYPE)
-        local terra init (mem: &uint, i : int)
+        local terra init (mem: &RTYPE:terraType(), i : int)
             mem[0] = i
         end
         t.value:LoadFromCallback(init)
@@ -225,28 +268,29 @@ local function initMeshRelations(mesh)
         -- if our lmesh field has orientation encoded into the relation, extract the
         -- orientation and load it as a separate field
         if rel_tuple.orientation then
-            local ordata   = C.malloc(rel_table._size * terralib.sizeof(OTYPE))
-            local destdata = terralib.cast(&OTYPE, ordata)
-            local srcdata  = terralib.cast(&RTYPE, mesh[rel_name].values)
+            local rtype = RTYPE:terraType()
+            local otype = OTYPE:terraType()
+
+            local ordata   = terralib.cast(&otype, C.malloc(rel_table._size * terralib.sizeof(otype)))
+            local vdata    = terralib.cast(&rtype, C.malloc(rel_table._size * terralib.sizeof(rtype)))
+            local srcdata  = terralib.cast(&rtype, mesh[rel_name].values)
 
             local terra extract_orientation()
-                var exp  : RTYPE = 8 * [terralib.sizeof(RTYPE)] - 1
-                var mask : RTYPE = C.pow(2,exp) - 1
-
-                var src  : &RTYPE = srcdata
-                var dest : &OTYPE = destdata
+                var exp  : rtype = 8 * [terralib.sizeof(rtype)] - 1
+                var mask : rtype = C.pow(2,exp) - 1
 
                 for i = 0, rel_table._size do
-                    dest[i] = src[i] >> exp
-                    src[i]  = src[i] and mask
+                    ordata[i] = srcdata[i] >> exp
+                    vdata[i]  = srcdata[i] and mask
                 end
             end
             extract_orientation()
 
-            rel_table[rel_tuple.n2]:LoadFromMemory(mesh[rel_name].values)
-            rel_table:NewField('orientation', bool)
-            rel_table.orientation:LoadFromMemory(terralib.cast(&bool, destdata))
+            rel_table[rel_tuple.n2]:LoadFromMemory(vdata)
+            rel_table:NewField('orientation', L.bool)
+            rel_table.orientation:LoadFromMemory(terralib.cast(&bool, ordata))
             C.free(ordata)
+            C.free(vdata)
         else
             rel_table[rel_tuple.n2]:LoadFromMemory(mesh[rel_name].values)
         end
@@ -261,7 +305,7 @@ local function initMeshRelations(mesh)
         local f1 = rel_table:NewField(rel_tuple.n1, auto[rel_tuple.ft])
         local f2 = rel_table:NewField(rel_tuple.n2, auto[rel_tuple.ft])
 
-        local tsize = terralib.sizeof(rel_table[rel_tuple.n1].type)
+        local tsize = terralib.sizeof(rel_table[rel_tuple.n1].type:terraType())
 
         f1:LoadFromMemory(mesh[rel_name].values,2*tsize)
         f2:LoadFromMemory(mesh[rel_name].values,2*tsize, tsize)
@@ -276,8 +320,8 @@ function L.initMeshRelationsFromFile(filename)
 
     -- load position data
     local S = terralib.includec('runtime/single/liszt_runtime.h')
-    local pos_data = S.lLoadPosition(ctx);
-    rels.vertices:NewField("position", float[3])
+    local pos_data = terralib.cast(&float[3], S.lLoadPosition(ctx))
+    rels.vertices:NewField("position", L.vector(L.float,3))
     rels.vertices.position:LoadFromMemory(pos_data)
     C.free(pos_data)
     return rels
