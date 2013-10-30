@@ -88,7 +88,7 @@ function ast.DeclStatement:codegen (env)
 	-- since we don't know the type, we couldn't anyway.
 	if self.ref.node_type == t.unknown then return quote end end
 
-	local typ = self.ref.node_type:terraType()
+	local typ  = self.ref.node_type:terraType()
 	local name = self.ref.name
 	local sym  = symbol(typ)
 	env:localenv()[name] = sym
@@ -188,62 +188,50 @@ local phaseMap = {
 	['lor'] 	= runtime.L_OR,
 }
 
---local bPhaseMap = {
---	['and'] = runtime.L_AND,
---	['or']  = runtime.L_OR
---}
---
---function ast.BinaryOp:phase()
---	-- for boolean types, return boolean reduction phases
---	if self.node_type:isLogical() then
---		return bPhaseMap[self.op]
---	else
---		return mPhaseMap[self.op]
---    end
---end
-
 function ast.Assignment:codegen (env)
-	local lval = self.lvalue.luaval
-	local ttype = self.lvalue.node_type:terraType()
---	if self.fieldop == semant._FIELD_WRITE or self.fieldop == semant._FIELD_REDUCE then
-	if Type.isFieldIndex(lval) then
+	--local lval = self.lvalue.luaval
+	local lvalue = self.lvalue
+	local ttype  = self.lvalue.node_type:terraType()
+
+	if lvalue:is(ast.FieldAccess) then
 		local exp     = self.exp:codegen(env)
-		local field   = self.field
-		local topo    = self.topo:codegen(env)
-		local phase = self.reduceop and
-									phaseMap[self.reduceop] or runtime.L_ASSIGN
-		local element_type, element_length = self.lvalue.node_type:runtimeType()
+		local field   = lvalue.field
+		local topo    = lvalue.topo:codegen(env)
+		local phase   = self.reduceop and phaseMap[self.reduceop]
+		             or runtime.L_ASSIGN
+		local element_type, element_length = lvalue.node_type:runtimeType()
 
 		return quote
 			var tmp : ttype = [exp]
-			runtime.lkFieldWrite([field.__lkfield], topo, phase, element_type, element_length, 0, element_length, &tmp)
+			runtime.lkFieldWrite([field.__lkfield], topo, phase,
+													 element_type, element_length,
+													 0, element_length, &tmp)
 		end
 
-	elseif Type.isScalar(lval) then
-		local exp   = self.exp:codegen(env)
-		local lsc   = self.scalar
-		local phase = phaseMap[self.reduceop]
-		local el_type, el_len = self.lvalue.node_type:runtimeType()
+	elseif lvalue:is(ast.Scalar) then
+		local exp     = self.exp:codegen(env)
+		local scalar  = lvalue.scalar
+		local phase   = phaseMap[self.reduceop]
+		local el_type, el_len = lvalue.node_type:runtimeType()
 		return quote
 			var tmp : ttype = [exp]
-			runtime.lkScalarWrite([env.context], [lsc.__lkscalar], phase, el_type, el_len, 0, el_len, &tmp)
+			runtime.lkScalarWrite([env.context], [scalar.__lkscalar],
+														phase, el_type, el_len, 0, el_len, &tmp)
 		end
 
 	else
-		local lhs = self.lvalue:codegen_lhs(env)
+		local lhs = lvalue:codegen(env)
 		local rhs = self.exp:codegen(env)
 		return quote lhs = rhs end
 	end
 end
 
--- Call:codegen is called for field reads, when the field appears
--- in an expression, or on the rhs of an assignment.
-function ast.Call:codegen (env)
-	local field = self.func.luaval
-	local topo  = self.params.children[1]:codegen(env) -- Should return an lkElement
+function ast.FieldAccess:codegen (env)
+	local field = self.field
+	local topo  = self.topo:codegen(env)
 	local read  = symbol()
 
-	local typ = self.node_type:terraType()
+	local typ   = self.node_type:terraType()
 	local el_type, el_len = self.node_type:runtimeType()
 
 	return quote
@@ -264,9 +252,9 @@ function ast.InitStatement:codegen (env)
 	return quote var [varsym] = [exp] end
 end
 
-function ast.Name:codegen_lhs (env)
-	return `[env:combinedenv()[self.name]]
-end
+--function ast.Name:codegen_lhs (env)
+--	return `[env:combinedenv()[self.name]]
+--end
 
 function ast.VectorLiteral:codegen (env)
 	local ct = { }
@@ -312,43 +300,27 @@ local function codegen_scalar(node, env)
 	end
 end
 
+function ast.Scalar:codegen (env)
+	local read = symbol()
+	local el_type, el_len = self.node_type:runtimeType()
+	local lks  = self.scalar.__lkscalar
+	local typ  = self.node_type:terraType()
+
+	return quote
+		var [read] : typ
+		runtime.lkScalarRead([env.context], [lks], el_type, el_len, 0, el_len, &[read])
+		in
+		[read]
+	end
+	--return codegen_scalar(self, env)
+end
+
 -- Name:codegen only has to worry about returning r-values
 -- Name:codegen_lhs returns l-values
 function ast.Name:codegen (env)
 	local val = env:combinedenv()[self.name]
 
-	-- anything declared in the local scope will be stored in the environment as a symbol
-	if self:isLocalScope() then
-		return `[val] 
-
-	-- global scope, primitive type
-	elseif type(val) ~= 'table' then
-		return `[val]
-
-	-- Scalar read
-	elseif Type.isScalar(val) then
-		return codegen_scalar(self, env) 
-
-	elseif Type.isVector(val) then
-		return `[val:__codegen()]
-
-	elseif val.isglobal then
-		local terra get_global() return val end
-		local ret = get_global()
-		env:localenv()[self.name] = ret -- store this for later use
-		return `[ret]
-
-	else
-		return `[val]
-	end
-end
-
-function ast.TableLookup:codegen (env)
-	if Type.isScalar(self.luaval) then
-		return codegen_scalar(self, env)
-	else
-		return `[self.luaval]
-	end
+	return `[val]
 end
 
 function ast.VectorIndex:codegen (env)
@@ -425,16 +397,20 @@ end
 
 function exports.codegen (luaenv, kernel_ast)
 	local env = terralib.newenvironment(luaenv)
+
 	env:enterblock()
 	local kernel_body = kernel_ast:codegen(env)
 
-	return terra (ctx : runtime.lkContext)
+	local program = terra (ctx : runtime.lkContext)
 		var [env.context] = &ctx
 		var [env.param] : runtime.lkElement
 		if runtime.lkGetActiveElement([env.context], &[env.param]) > 0 then
 			kernel_body
 		end
 	end
+	env:leaveblock()
+
+	return program
 end
 
 

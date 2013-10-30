@@ -16,11 +16,12 @@ vf  = Vector.new(float, {1, 2, 3})
 vi  = Vector.new(int,   {2, 2, 2, 2})
 vb  = Vector.new(bool,  {true, true, true, true, true})
 
-two = global(int)
-terra set_two()
-	two = 2
-end
-set_two()
+--two = global(int)
+--terra set_two()
+--	two = 2
+--end
+--set_two()
+local two = 2
 
 -- test vector codegen:
 mesh.faces:map(liszt_kernel (f) sf3 += vf end)

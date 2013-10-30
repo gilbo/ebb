@@ -11,10 +11,6 @@ s1   = mesh:scalar(int, 0)
 checkthis1 = 1
 local checkthis2 = 2
 
--- Global terra vars
-gb  = global(float, 3)
-gb1 = global(int,   4)
-
 local a = {}
 a.b     = {}
 a.b.c   = {}
@@ -149,9 +145,10 @@ function fail13()
 	mesh.cells:map(k)
 end
 
-test.fail_function(fail1, "Global assignments only valid")
-test.fail_function(fail2, "Cannot update local variables")
-test.fail_function(fail3, "Global assignments only valid")
+-- need typechecker fail test
+test.fail_function(fail1, "The left side of an assignment must be an lvalue")
+test.fail_function(fail2, "The left side of an assignment must be an lvalue")
+test.fail_function(fail3, "The left side of an assignment must be an lvalue")
 test.fail_function(fail4, "Can only assign")
 test.fail_function(fail5, "Variable 'undefined' is not defined")
 test.fail_function(fail6, "invalid conversion from bool to float")
@@ -160,15 +157,14 @@ test.fail_function(fail8, "Variable 'local8' is not defined")
 test.fail_function(fail9, "invalid conversion from int to bool")
 test.fail_function(fail10, "invalid types for operator")
 test.fail_function(fail11, "Expected a boolean")
-test.fail_function(fail12, "Global assignments only valid")
+test.fail_function(fail12, "Cannot use lua tables as Liszt values")
 test.fail_function(fail13, "invalid conversion from int to bool")
 
 
 -- Nothing should fail in this kernel:
 local k = liszt_kernel (cell)
-    f1(cell) = gb
-    var lc = gb
-    lc = gb + 1
+    f1(cell) = 3.0
+    var lc = 4.0
 
 	var local1 = a.b.c.d
 	var local2 = 2.0

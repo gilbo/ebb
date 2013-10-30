@@ -15,7 +15,7 @@ pos    = mesh:fieldWithLabel(Vertex, Vector(float, 3), "position")
 function test_vector_indexing ()
   local vk = liszt_kernel (v)
     var x = {5, 4, 3}
-    pos(v) = pos(v) + x
+    pos(v) += x
   end
   mesh.vertices:map(vk)
 

@@ -4,7 +4,8 @@ mesh  = LoadMesh("examples/mesh.lmesh")
 pos   = mesh:fieldWithLabel(Vertex, Vector(float, 3), "position")
 field = mesh:field(Face, float, 0.0)
 
-local a = global(int, 43)
+--local a = global(int, 43)
+local a = 43
 
 function main ()
 	local com   = mesh:scalar(Vector(float, 3), {0, 0, 0})--Vector.new(float, {0.0, 0.0, 0.0})

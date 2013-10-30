@@ -25,13 +25,10 @@ function Kernel:acceptsType (param_type)
 end
 
 function Kernel:generate (param_type)
-	local new_ast = semant.check(self.env, self.ast)
-  -- Typechecker goal: get this following line to not break
-  --                   any tests
-  -- self.ast = new_ast
+  self.typed_ast = semant.check(self.env, self.ast)
 
 	if not self.__kernel then
-		self.__kernel = codegen.codegen(self.env, self.ast)
+		self.__kernel = codegen.codegen(self.env, self.typed_ast)
 	end
 	return self.__kernel
 end

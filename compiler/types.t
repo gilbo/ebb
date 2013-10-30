@@ -60,13 +60,24 @@ function Type:isPrimitive() return type(self) == 'table' and self.kind == Type.k
 function Type:isVector()    return type(self) == 'table' and self.kind == Type.kinds.vector    end
 
 -- of type integer or vectors of integers
-function Type:isIntegral () return (self.kind == Type.kinds.primitive or self.kind == Type.kinds.vector) and self.type == Type.kinds.int end
+function Type:isIntegral ()
+  return (self.kind == Type.kinds.primitive and
+          self.type == Type.kinds.int)
+      or (self.kind == Type.kinds.vector and self.type:isIntegral())
+end
 
 -- ints, floats, or vectors of either
-function Type:isNumeric  () return (self.kind == Type.kinds.primitive or self.kind == Type.kinds.vector) and self.type == Type.kinds.int or self.type == Type.kinds.float end
+function Type:isNumeric  ()
+  return (self.kind == Type.kinds.primitive and
+          self.type == Type.kinds.int or self.type == Type.kinds.float)
+      or (self.kind == Type.kinds.vector and self.type:isNumeric())
+end
 
 -- bools or vectors of bools
-function Type:isLogical  () return (self.kind == Type.kinds.primitive or self.kind == Type.kinds.vector) and self.type == Type.kinds.bool end
+function Type:isLogical  ()
+  return (self.kind == Type.kinds.primitive and self.type == Type.kinds.bool)
+      or (self.kind == Type.kinds.vector and self.type:isLogical())
+end
 
 -- any primitive or vector
 function Type:isExpressionType() return self:isPrimitive() or self:isVector() end

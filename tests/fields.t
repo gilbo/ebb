@@ -51,7 +51,8 @@ field3 = mesh:field(Face, float, 6.0)
 field4 = mesh:field(Cell, bool, false)
 field5 = mesh:field(Vertex, Vector(float, 4), {0.0, 0.0, 0.0, 0.0})
 
-local a = global(int, 6)
+--local a = global(int, 6)
+local a = 6
 local b = Vector.new(float, {1, 3, 4, 5})
 
 local reduce1 = liszt_kernel (f)
