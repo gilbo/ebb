@@ -140,7 +140,7 @@ function LField:LoadFromCallback (callback)
     local bytes  = C.malloc(self.table._size * terralib.sizeof(self.type))
     self.data    = terralib.cast(&self.type,bytes)
 
-    for i = 0, self.table._size do
+    for i = 0, self.table._size-1 do
         callback(self.data + i, i)
     end
 end    
@@ -192,31 +192,6 @@ local mesh_rels_topo = {
     {name = "ftoc", table = "faces", ft = "cells",    n1 = "outside", n2 ="inside"}
 }
 
--- If default value is false,    field is initialized as 0 to tablesize - 1
--- If default value is true,     field is initialized to 0
--- If default value is a number, field is initialized to the given value
-local function initializeNumField(table, fieldname, defaultval)
-    local f = table:NewField(fieldname, RTYPE)
-    f.data = {}
-    if type(defaultval) == "boolean" then
-        if defaultval == false then
-            for i = 0, table._size - 1 do
-                f.data[i] = i
-            end
-        else
-            for i = 0, table._size - 1 do
-                f.data[i] = 0
-            end
-        end
-    else
-        assert(type(defaultval) == "number")
-        for i = 0, table._size -1 do
-            f.data[i] = defaultval
-        end
-    end
-end
-
-
 
 local function initMeshRelations(mesh)
     -- initialize list of relations
@@ -227,7 +202,11 @@ local function initMeshRelations(mesh)
         local tsize = tonumber(mesh["n"..topo_elem])
         local t     = L.NewRelation(tsize, topo_elem)
         auto[topo_elem] = t
-        initializeNumField(t, 'value', false)
+        t:NewField('value', RTYPE)
+        local terra init (mem: &uint, i : int)
+            mem[0] = i
+        end
+        t.value:LoadFromCallback(init)
     end
 
     -- other mesh relations
