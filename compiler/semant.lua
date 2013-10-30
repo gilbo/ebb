@@ -42,6 +42,8 @@ function Context.new(env, diag)
 	local ctxt = setmetatable({
 		env = env,
 		diag = diag,
+		lhs_count = 0,
+		loop_count = 0,
 	}, Context)
 	return ctxt
 end
@@ -60,6 +62,26 @@ function Context:leaveblock()
 end
 function Context:error(ast, msg)
 	self.diag:reporterror(ast, msg)
+end
+function Context:in_lhs()
+	return self.lhs_count > 0
+end
+function Context:enterlhs()
+	self.lhs_count = self.lhs_count + 1
+end
+function Context:leavelhs()
+	self.lhs_count = self.lhs_count - 1
+	if self.lhs_count < 0 then self.lhs_count = 0 end
+end
+function Context:in_loop()
+	return self.loop_count > 0
+end
+function Context:enterloop()
+	self.loop_count = self.loop_count + 1
+end
+function Context:leaveloop()
+	self.loop_count = self.loop_count - 1
+	if self.loop_count < 0 then self.loop_count = 0 end
 end
 
 
@@ -121,7 +143,9 @@ function ast.WhileStatement:check(ctxt)
 	end
 
 	ctxt:enterblock()
+	ctxt:enterloop()
 	whilestmt.body = self.body:check(ctxt)
+	ctxt:leaveloop()
 	ctxt:leaveblock()
 
 	return whilestmt
@@ -139,18 +163,20 @@ end
 
 function ast.RepeatStatement:check(ctxt)
 	local repeatstmt = self:clone()
-	ctxt:enterblock()
 
+	ctxt:enterblock()
+	ctxt:enterloop()
+	repeatstmt.body = self.body:check(ctxt)
 	repeatstmt.cond = self.cond:check(ctxt)
 	local condtype  = repeatstmt.cond.node_type
-	repeatstmt.body = self.body:check(ctxt)
 
 	if condtype ~= t.error and condtype ~= t.bool then
 		ctxt:error(self, "Expected bool expression but found " ..
 										 condtype:toString())
 	end
-
+	ctxt:leaveloop()
 	ctxt:leaveblock()
+
 	return repeatstmt
 end
 
@@ -161,10 +187,9 @@ function ast.ExprStatement:check(ctxt)
 end
 
 function ast.Reduce:check(ctxt)
-	-- SHOULD CHECK whether or not this obj can be reduced...
-	local exp    = self.exp:check_lhs(ctxt)
+	local exp    = self.exp:check(ctxt)
 
-	-- A scalar can only be a lvalue when reduced
+	-- When reduced, a scalar can be an lvalue
 	if exp:is(ast.Scalar) then
 		exp.is_lvalue = true
 	end
@@ -182,7 +207,9 @@ end
 function ast.Assignment:check(ctxt)
 	local assignment = self:clone()
 
-	local lhs         = self.lvalue:check_lhs(ctxt)
+	ctxt:enterlhs()
+		local lhs         = self.lvalue:check(ctxt)
+	ctxt:leavelhs()
 	assignment.lvalue = lhs
 	local ltype       = lhs.node_type
 	if ltype == t.error then return assignment end
@@ -192,7 +219,7 @@ function ast.Assignment:check(ctxt)
 	local rtype       = rhs.node_type
 	if rtype == t.error then return assignment end
 
-	-- handle assignments that are reductions
+	-- If the left hand side was a reduction store the reduction operation
 	if self.lvalue:is(ast.Reduce) then
 		assignment.reduceop = self.lvalue.op
 		if rtype:isLogical() then
@@ -200,14 +227,14 @@ function ast.Assignment:check(ctxt)
 		end
 	end
 
-	-- is this the first use of a declared, but not defined, variable?
+	-- When the left hand side is declared, but uninitialized, set the type
 	if ltype == t.unknown then
 		ltype                            = rtype
 		lhs.node_type                    = rtype
 		ctxt:liszt()[lhs.name].node_type = rtype
 	end
 
-	-- enforce lvalues
+	-- enforce that the lhs is an lvalue
 	if not lhs.is_lvalue then
 		-- TODO: less cryptic error messages in this case
 		-- 			 Better error messages probably involes switching on kind of lhs
@@ -215,7 +242,7 @@ function ast.Assignment:check(ctxt)
 		return assignment
 	end
 
-	-- make sure the types on both sides agree
+	-- enforce type agreement b/w lhs and rhs
 	local derived = type_meet(ltype,rtype)
 	if derived == t.error or
 	   (ltype:isPrimitive() and rtype:isVector()) or
@@ -252,8 +279,8 @@ function ast.InitStatement:check(ctxt)
 end
 
 function ast.DeclStatement:check(ctxt)
-	local decl 			= self:clone()
-	decl.ref 			  = clone_name(self.ref)
+	local decl 			   = self:clone()
+	decl.ref 			     = clone_name(self.ref)
 	decl.ref.node_type = t.unknown
 	ctxt:liszt()[decl.ref.name] = decl.ref
 	return decl
@@ -315,9 +342,11 @@ function ast.NumericFor:check(ctxt)
 	end
 
 	ctxt:enterblock()
+	ctxt:enterloop()
 		local varname = numfor.iter.name
 		ctxt:liszt()[varname] = numfor.iter
 		numfor.body = self.body:check(ctxt)
+	ctxt:leaveloop()
 	ctxt:leaveblock()
 
 	return numfor
@@ -328,8 +357,9 @@ function ast.GenericFor:check(ctxt)
 end
 
 function ast.Break:check(ctxt)
-	-- TODO: Break should check whether or not it is contained
-	-- within a loop somehow.  If not, something should raise an error
+	if not ctxt:in_loop() then
+		ctxt:error(self, "Cannot have a break statement outside a loop")
+	end
 	return self:clone()
 end
 
@@ -551,16 +581,9 @@ local function luav_to_checked_ast(luav, src_node, ctxt, allow_lua_return)
 	return ast_node
 end
 
--- TODO: remove LValue type from the AST hierarchy...
-function ast.LValue:check_lhs(ctxt)
-	return self:check(ctxt)
-end
-
-function ast.Name:check_lhs(ctxt)
-	return self:check_maybe_lua(ctxt, false, true)
-end
 function ast.Name:check(ctxt)
-	return self:check_maybe_lua(ctxt, false, false)
+	local assign = ctxt:in_lhs()
+	return self:check_maybe_lua(ctxt, false, assign)
 end
 
 function ast.Name:check_maybe_lua(ctxt, allow_lua_return, assign)
@@ -696,10 +719,8 @@ function ast.Tuple:index_check(ctxt)
 end
 
 function ast.TableLookup:check(ctxt)
-	return self:check_maybe_lua(ctxt, false, false)
-end
-function ast.TableLookup:check_lhs(ctxt)
-	return self:check_maybe_lua(ctxt, false, true)
+	local assign = ctxt:in_lhs()
+	return self:check_maybe_lua(ctxt, false, assign)
 end
 
 function ast.TableLookup:check_maybe_lua(ctxt, allow_lua_return, assign)

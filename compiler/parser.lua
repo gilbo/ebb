@@ -405,9 +405,7 @@ lang.statement = function (P)
 			local node_asgn = ast.Assignment:New(P)
 			-- fix line # info for assignment statement
 			node_asgn:copy_location(expr)
-
-			-- check to make sure lhs is an LValue
-			if not expr.isLValue() then P:error("expected LValue before '='") end
+			
 			node_asgn.lvalue = expr
 			node_asgn.exp    = P:exp()
 			return node_asgn
