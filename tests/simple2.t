@@ -18,7 +18,7 @@ end
 local function displace_mesh (delta_x, delta_y, delta_z)
 	local d = Vector.new(float, {delta_x, delta_y, delta_z})
 	local dk = liszt_kernel (v)
-		pos(v) = pos(v) + d
+		pos(v) += d
 	end
 	mesh.vertices:map(dk)
 end

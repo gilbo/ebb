@@ -8,20 +8,20 @@ local Type   = {}
 exports.Type = Type
 Type.__index = Type
 Type.kinds   = {}
-Type.kinds.primitive   = {}
-Type.kinds.vector      = {}
-Type.kinds.field       = {}
-Type.kinds.set         = {}
-Type.kinds.topo        = {}
-Type.kinds.functype    = {}
-Type.kinds.scalar      = {}
-Type.kinds.table       = {}
-Type.kinds.error       = {}
+Type.kinds.primitive = {}
+Type.kinds.vector    = {}
+Type.kinds.field     = {}
+Type.kinds.set       = {}
+Type.kinds.topo      = {}
+Type.kinds.functype  = {}
+Type.kinds.scalar    = {}
+Type.kinds.table     = {}
+Type.kinds.error     = {}
 
-local Scope       = {}
-exports.Scope     = Scope
-Scope.lua         = {}
-Scope.liszt       = {}
+local Scope   = {}
+exports.Scope = Scope
+Scope.lua     = {}
+Scope.liszt   = {}
 
 Type.kinds.int   = {string='int',   terratype=int,   runtimetype=runtime.L_INT}
 Type.kinds.float = {string='float', terratype=float, runtimetype=runtime.L_FLOAT}
@@ -52,6 +52,7 @@ end
 function Type.isLisztType (obj)
 	return getmetatable(obj) == Type
 end
+
 
 -------------------------------------------------------------------------------
 --[[ These methods can only be called on liszt types                       ]]--
@@ -124,10 +125,10 @@ function Type:terraType()
 end
 
 function Type:terraBaseType()
-	if     self:isPrimitive()  then return self:terraType()
-	elseif self:isVector()     then return self.type:terraType()
-	elseif self:isField()      then return self.type:terraBaseType()
-	elseif self:isScalar()     then return self.type:terraBaseType()
+	if     self:isPrimitive() then return self:terraType()
+	elseif self:isVector()    then return self.type:terraType()
+	elseif self:isField()     then return self.type:terraBaseType()
+	elseif self:isScalar()    then return self.type:terraBaseType()
 	end
 	error("terraBaseType method not implemented for type " .. self:toString(), 2)
 end
@@ -209,33 +210,33 @@ end
 -------------------------------------------------------------------------------
 --[[ Type interface:                                                       ]]--
 -------------------------------------------------------------------------------
-local t     = {}
-exports.t   = t
-t.error     = Type:new(Type.kinds.error)
+local t   = {}
+exports.t = t
+t.error   = Type:new(Type.kinds.error)
 
 -- Primitives
-t.int       = Type:new(Type.kinds.primitive,Type.kinds.int)
-t.float     = Type:new(Type.kinds.primitive,Type.kinds.float)
-t.bool      = Type:new(Type.kinds.primitive,Type.kinds.bool)
+t.int   = Type:new(Type.kinds.primitive,Type.kinds.int)
+t.float = Type:new(Type.kinds.primitive,Type.kinds.float)
+t.bool  = Type:new(Type.kinds.primitive,Type.kinds.bool)
 
 -- Topo types
-t.topo      = Type:new(Type.kinds.topo)
-t.vertex    = Type:new(Type.kinds.topo,Type.kinds.vertex)
-t.edge      = Type:new(Type.kinds.topo,Type.kinds.edge)
-t.face      = Type:new(Type.kinds.topo,Type.kinds.face)
-t.cell      = Type:new(Type.kinds.topo,Type.kinds.cell)
+t.topo   = Type:new(Type.kinds.topo)
+t.vertex = Type:new(Type.kinds.topo,Type.kinds.vertex)
+t.edge   = Type:new(Type.kinds.topo,Type.kinds.edge)
+t.face   = Type:new(Type.kinds.topo,Type.kinds.face)
+t.cell   = Type:new(Type.kinds.topo,Type.kinds.cell)
 
 -- un-inferred type
-t.unknown   = Type:new()
+t.unknown = Type:new()
 
 -- Complex type constructors
-t.vector    = vectorType
-t.field     = fieldType
-t.set       = setType
-t.scalar    = scalarType
+t.vector = vectorType
+t.field  = fieldType
+t.set    = setType
+t.scalar = scalarType
 
 -- Support for table lookups / select operator
-t.table  = Type:new(Type.kinds.table)
+t.table = Type:new(Type.kinds.table)
 
 
 -------------------------------------------------------------------------------

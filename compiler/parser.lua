@@ -61,17 +61,19 @@ local function leftbinaryimpl(P, lhs, isreductionop)
 		return node
 	end
 end
+
 local function leftbinary(P, lhs)
 	return leftbinaryimpl(P, lhs, false)
 end
+
 local function leftbinaryred(P, lhs)
 	return leftbinaryimpl(P, lhs, true)
 end
 
 local function rightbinary(P, lhs)
 	local node = ast.BinaryOp:New(P)
-	local op  = P:next().type
-	local rhs = P:exp(op, "right")
+	local op   = P:next().type
+	local rhs  = P:exp(op, "right")
 	node.lhs, node.op, node.rhs = lhs, op, rhs
 	return node
 end
@@ -205,7 +207,6 @@ lang.vectorliteral = function (P)
 	return node
 end
 
-
 --[[  simpleexp is called when exp cannot parse the next token...
 we could be looking at an LValue, Value, or parenthetically
 enclosed expression  
@@ -232,7 +233,6 @@ lang.simpleexp = function(P)
 		P:expectmatch(")", "(", open.linenumber)
 		return v
 	end
-
 
 	if P:matches("{") then
 		return P:vectorliteral()
@@ -273,7 +273,6 @@ end
 - TODO: for statement
 --]]
 lang.statement = function (P)
-
 	-- check for initialization/declaration
 	if (P:nextif("var")) then
 		local name = P:lvalname()
@@ -443,6 +442,5 @@ end
 
 
 exports.lang = lang
-
 return exports
 

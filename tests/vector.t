@@ -114,8 +114,8 @@ pos    = mesh:fieldWithLabel(Vertex, Vector(float, 3), "position")
 ------------------
 function test_vector_literals ()
 	local k = liszt_kernel (v)
-		var x = {5, 5, 5}
-		pos(v) = pos(v) + x + {0, 1, 1}
+		var x   = {5, 5, 5}
+		pos(v) += x + {0, 1, 1}
 	end
 	mesh.vertices:map(k)
 

@@ -56,11 +56,11 @@ local a = 6
 local b = Vector.new(float, {1, 3, 4, 5})
 
 local reduce1 = liszt_kernel (f)
-	field(f) = field(f) - 3 + 1/6 * a
+	field(f) -= 3 - 1/6 * a
 end
 
 local reduce2 = liszt_kernel (f)
-	field2(f) = field2(f) * 3 * 7 / 3
+	field2(f) *= 3 * 7 / 3
 end
 
 local reduce3 = liszt_kernel (f)

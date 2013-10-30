@@ -183,7 +183,7 @@ local k = liszt_kernel (cell)
 
 	var local9 = 0
 	for i = 1, 4, 1 do
-		local9 = local9 + i * i
+		local9 += i * i
 	end
 end
 mesh.cells:map(k)

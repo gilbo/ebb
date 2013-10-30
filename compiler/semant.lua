@@ -1,6 +1,6 @@
-local exports   = {}
+local exports = {}
 
-ast = require("ast")
+local ast   = require("ast")
 local types = terralib.require("compiler/types")
 local tutil     = types.usertypes
 local Type      = types.Type
@@ -12,9 +12,9 @@ local type_meet = types.type_meet
 _FIELD_WRITE   = 'FIELD_WRITE'
 _FIELD_REDUCE  = 'FIELD_REDUCE'
 _SCALAR_REDUCE = 'SCALAR_REDUCE'
-exports._FIELD_WRITE 		= _FIELD_WRITE
-exports._FIELD_REDUCE 	= _FIELD_REDUCE
-exports._SCALAR_REDUCE 	= _SCALAR_REDUCE
+exports._FIELD_WRITE   = _FIELD_WRITE
+exports._FIELD_REDUCE  = _FIELD_REDUCE
+exports._SCALAR_REDUCE = _SCALAR_REDUCE
 
 
 --[[
@@ -22,13 +22,12 @@ exports._SCALAR_REDUCE 	= _SCALAR_REDUCE
 		These methods define type checking.
 		Each check() method is designed to accept a typing context (see below).
 		Once called, check() will construct and return a new type-checked
-	version of its subtree (new AST nodes)
+		version of its subtree (new AST nodes)
 ]]--
 
 
-
 ------------------------------------------------------------------------------
---[[ Context Definition   														                    ]]--
+--[[ Context Definition   	                                              ]]--
 ------------------------------------------------------------------------------
 -- A Context is passed through type-checking, keeping track of any kind of
 -- store or gadget we want to use, such as
@@ -40,9 +39,9 @@ Context.__index = Context
 
 function Context.new(env, diag)
 	local ctxt = setmetatable({
-		env = env,
-		diag = diag,
-		lhs_count = 0,
+		env        = env,
+		diag       = diag,
+		lhs_count  = 0,
 		loop_count = 0,
 	}, Context)
 	return ctxt
@@ -86,7 +85,7 @@ end
 
 
 ------------------------------------------------------------------------------
---[[ Small Helper Functions														                    ]]--
+--[[ Small Helper Functions                                               ]]--
 ------------------------------------------------------------------------------
 local function clone_name(name_node)
 	local copy = name_node:clone()
@@ -135,11 +134,10 @@ end
 function ast.WhileStatement:check(ctxt)
 	local whilestmt = self:clone()
 
-	whilestmt.cond 			 = self.cond:check(ctxt)
-	local condtype       = whilestmt.cond.node_type
+	whilestmt.cond = self.cond:check(ctxt)
+	local condtype = whilestmt.cond.node_type
 	if condtype ~= t.error and condtype ~= t.bool then
-		ctxt:error(self, "Expected bool expression but found " ..
-										 condtype:toString())
+		ctxt:error(self, "Expected bool expression but found " .. condtype:toString())
 	end
 
 	ctxt:enterblock()
@@ -187,7 +185,7 @@ function ast.ExprStatement:check(ctxt)
 end
 
 function ast.Reduce:check(ctxt)
-	local exp    = self.exp:check(ctxt)
+	local exp = self.exp:check(ctxt)
 
 	-- When reduced, a scalar can be an lvalue
 	if exp:is(ast.Scalar) then
@@ -379,6 +377,7 @@ function ast.CondBlock:check(ctxt)
 	return new_node
 end
 
+
 ------------------------------------------------------------------------------
 --[[                         Expression Checking:                         ]]--
 ------------------------------------------------------------------------------
@@ -496,6 +495,7 @@ function ast.UnaryOp:check(ctxt)
 
 	return unop
 end
+
 
 ------------------------------------------------------------------------------
 --[[                               Variables                              ]]--
@@ -687,6 +687,7 @@ function ast.Bool:check(ctxt)
 	return boolnode
 end
 
+
 ------------------------------------------------------------------------------
 --[[                         Miscellaneous nodes:                         ]]--
 ------------------------------------------------------------------------------
@@ -869,7 +870,6 @@ function ast.Field:check(ctxt)
 end
 
 
-
 ------------------------------------------------------------------------------
 --[[ Semantic checking called from here:                                  ]]--
 ------------------------------------------------------------------------------
@@ -907,5 +907,3 @@ end
 
 
 return exports
-
-
