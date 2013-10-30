@@ -128,10 +128,13 @@ end
 local c = terralib.includecstring([[
 #include <stdio.h>
 #include <stdlib.h>
+
+struct __sFILE *get_stderr () { return stderr; }
 ]])
+
 local terra lisztAssert(test : bool, file : rawstring, line : int)
     if not test then
-        c.printf("%s:%d: assertion failed!\n", file, line)
+        c.fprintf(c.get_stderr(), "%s:%d: assertion failed!\n", file, line)
         c.exit(1)
     end
 end
