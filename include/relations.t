@@ -36,7 +36,7 @@ end
 - An LRelation contains its size and fields as members.  The _index member
 - refers to an array of the compressed row values for the index field.
 
-- An LField stores it's fieldname, type, an array of data, and a pointer
+- An LField stores its fieldname, type, an array of data, and a pointer
 - to another LRelation if the field itself represents relational data.
 --]]
 
@@ -127,7 +127,7 @@ end
 local terra copy_bytes (dest : &uint8, src : &uint8, length : uint, size : uint, stride : uint, offset : uint)
     src = src + offset
 
-    -- don't potentially copy past the length of the source array:
+    -- dont potentially copy past the length of the source array:
     var copy_len : int
     if stride < size then copy_len = stride else copy_len = size end
 

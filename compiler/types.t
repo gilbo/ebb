@@ -11,8 +11,6 @@ Type.kinds   = {}
 Type.kinds.primitive = {string='primitive' }
 Type.kinds.vector    = {string='vector'    }
 Type.kinds.field     = {string='field'     }
-Type.kinds.set       = {string='set'       }
-Type.kinds.topo      = {string='topo'      }
 Type.kinds.functype  = {string='functype'  }
 Type.kinds.scalar    = {string='scalar'    }
 Type.kinds.table     = {string='table'     }
@@ -29,19 +27,10 @@ Type.kinds.bool  = {string='bool',  terratype=bool,  runtimetype=runtime.L_BOOL}
 Type.kinds.uint  = {string='uint',  terratype=uint}
 Type.kinds.uint8 = {string='uint8', terratype=uint8}
 
-Type.kinds.vertex = {string='vertex', runtimetype=runtime.L_VERTEX}
-Type.kinds.edge   = {string='edge',   runtimetype=runtime.L_EDGE}
-Type.kinds.face   = {string='face',   runtimetype=runtime.L_FACE}
-Type.kinds.cell   = {string='cell',   runtimetype=runtime.L_CELL}
-
-Type.kinds.fieldindex = {string="fieldindex"}
-
 Type.validKinds = {
 	[Type.kinds.primitive] = true,
 	[Type.kinds.vector]    = true,
 	[Type.kinds.field]     = true,
-	[Type.kinds.set]       = true,
-	[Type.kinds.topo]      = true,
 	[Type.kinds.functype]  = true,
 	[Type.kinds.scalar]    = true,
 	[Type.kinds.error]     = true
@@ -54,7 +43,6 @@ end
 function Type.isLisztType (obj)
 	return getmetatable(obj) == Type
 end
-
 
 -------------------------------------------------------------------------------
 --[[ These methods can only be called on liszt types                       ]]--
@@ -70,9 +58,16 @@ function Type:isIntegral ()
 end
 
 -- ints, floats, or vectors of either
+
+local numeric_kinds = {
+	[Type.kinds.int]   = true,
+	[Type.kinds.float] = true,
+	[Type.kinds.uint]  = true,
+	[Type.kinds.uint8] = true,
+}
+
 function Type:isNumeric  ()
-  return (self.kind == Type.kinds.primitive and
-          self.type == Type.kinds.int or self.type == Type.kinds.float)
+  return (self.kind == Type.kinds.primitive and numeric_kinds[self.type])
       or (self.kind == Type.kinds.vector and self.type:isNumeric())
 end
 
@@ -89,14 +84,13 @@ function Type:isExpressionType() return self:isPrimitive() or self:isVector() en
 -------------------------------------------------------------------------------
 --[[ These methods can be called on liszt types or liszt objects           ]]--
 -------------------------------------------------------------------------------
-function Type:isTopo()       return type(self) == 'table' and self.kind == Type.kinds.topo       end
-function Type:isField()      return type(self) == 'table' and self.kind == Type.kinds.field      end
-function Type:isScalar()     return type(self) == 'table' and self.kind == Type.kinds.scalar     end
-function Type:isSet()        return type(self) == 'table' and self.kind == Type.kinds.set        end
-function Type:isFunction()   return type(self) == 'table' and self.kind == Type.kinds.functype   end
-function Type:isFieldIndex() return type(self) == 'table' and self.kind == Type.kinds.fieldindex end
-function Type:isLuaTable()   return type(self) == 'table' and self.kind == Type.kinds.table      end
-function Type:isError()      return type(self) == 'table' and self.kind == Type.kinds.error      end
+function Type:isField()        return type(self) == 'table' and self.kind == Type.kinds.field       end
+function Type:isScalar()       return type(self) == 'table' and self.kind == Type.kinds.scalar      end
+function Type:isFunction()     return type(self) == 'table' and self.kind == Type.kinds.functype    end
+function Type:isLuaTable()     return type(self) == 'table' and self.kind == Type.kinds.table       end
+function Type:isError()        return type(self) == 'table' and self.kind == Type.kinds.error       end
+function Type:isRelation()     return type(self) == 'table' and self.kind == Type.kinds.relation    end
+function Type:isRelationRow()  return type(self) == 'table' and self.kind == Type.kinds.relationrow end
 
 -- currently isTable will return true if obj has kind fieldindex
 function Type.isTable(obj)   return type(obj)  == 'table' and not Type.validKinds[obj.kind]      end
@@ -109,15 +103,6 @@ function Type:baseType()
 	if self:isVector()    then return self.type end
 	if self:isPrimitive() then return self      end
 	error("baseType not implemented for " .. self:toString(),2)
-end
-
-function Type:runtimeType()
-	if     self:isPrimitive() then return self.type.runtimetype,   1      
-	elseif self:isVector()    then return self.type:runtimeType(), self.N
-	elseif self:isTopo()      then return self.type.runtimetype
-	elseif self:isField()     then return self.type:runtimeType()
-	end
-	error("runtimeType method not implemented for type " .. self:toString(), 2)
 end
 
 function Type:terraType()
@@ -139,12 +124,7 @@ function Type:terraBaseType()
 end
 
 function Type:dataType()
-	if self:isField() or self:isScalar() then return self.type end
-	error("dataType not implemented for type " .. self:toString(),2)
-end
-
-function Type:topoType()
-	if self:isField() then return self.topo end
+	if self:isScalar() then return self.type end
 	error("dataType not implemented for type " .. self:toString(),2)
 end
 
@@ -153,15 +133,15 @@ end
 --[[ Stringify types                                                       ]]--
 -------------------------------------------------------------------------------
 function Type:toString()
-	if     self:isPrimitive() then return self.type.string
-	elseif self:isTopo()      then return self.type.string
-	elseif self:isVector()    then return 'LVector(' .. self.type:toString() .. ',' .. tostring(self.N)     .. ')'
-	elseif self:isField()     then return 'LField('  .. self.topo:toString() .. ',' .. self.type:toString() .. ')'
-	elseif self:isSet()       then return 'LSet('    .. self.type:toString() .. ')'
-	elseif self:isScalar()    then return 'LScalar(' .. self.type:toString() .. ')'
-	elseif self:isFunction()  then return 'LFunction'
-	elseif self:isLuaTable()  then return "table"
-	elseif self:isError()     then return "error"
+	if     self:isPrimitive()   then return self.type.string
+	elseif self:isVector()      then return 'LVector(' .. self.type:toString() .. ',' .. tostring(self.N)     .. ')'
+	elseif self:isScalar()      then return 'LScalar(' .. self.type:toString() .. ')'
+	elseif self:isFunction()    then return 'LFunction'
+	elseif self:isRelation()    then return 'LRelation'
+	elseif self:isRelationRow() then return 'LRelationRow'
+    elseif self:isField()       then return 'LField'
+	elseif self:isLuaTable()    then return "table"
+	elseif self:isError()       then return "error"
 	end
 	error('toString method not implemented for this type!', 2)
 end
@@ -180,25 +160,6 @@ local function vectorType (typ, len)
 		local vt = Type:new(Type.kinds.vector,typ)
 		vt.N = len
 		complexTypes[tpn] = vt
-	end
-	return complexTypes[tpn]
-end
-
-local function fieldType(topo,typ)
-	local tpn = 'field(' .. topo:toString() .. ',' .. typ:toString() .. ')'
-	if not complexTypes[tpn] then
-		local ft = Type:new(Type.kinds.field,typ)
-		ft.topo  = topo
-		complexTypes[tpn] = ft
-	end
-	return complexTypes[tpn]
-end
-
-local function setType(typ)
-	local tpn = 'set(' .. typ:toString() .. ')'
-	if not complexTypes[tpn] then
-		local st = Type:new(Type.kinds.set,typ)
-		complexTypes[tpn] = st
 	end
 	return complexTypes[tpn]
 end
@@ -228,27 +189,22 @@ t.uint8     = Type:new(Type.kinds.primitive,Type.kinds.uint8)
 t.float     = Type:new(Type.kinds.primitive,Type.kinds.float)
 t.bool      = Type:new(Type.kinds.primitive,Type.kinds.bool)
 
--- Topo types
-t.topo   = Type:new(Type.kinds.topo)
-t.vertex = Type:new(Type.kinds.topo,Type.kinds.vertex)
-t.edge   = Type:new(Type.kinds.topo,Type.kinds.edge)
-t.face   = Type:new(Type.kinds.topo,Type.kinds.face)
-t.cell   = Type:new(Type.kinds.topo,Type.kinds.cell)
-
 -- un-inferred type
-t.unknown = Type:new()
+t.unknown   = Type:new()
 
 -- Complex type constructors
-t.vector = vectorType
-t.field  = fieldType
-t.set    = setType
-t.scalar = scalarType
+t.vector    = vectorType
+t.scalar    = scalarType
 
 -- Type for macros
 t.func = Type:new(Type.kinds.functype)
 
 -- Support for table lookups / select operator
-t.table = Type:new(Type.kinds.table)
+t.table  = Type:new(Type.kinds.table)
+
+-- Relations
+t.relation    = Type:new(Type.kinds.relation)
+t.relationrow = Type:new(Type.kinds.relationrow)
 
 
 -------------------------------------------------------------------------------
@@ -261,10 +217,6 @@ local terraToPrimitiveType = {
    [float] = t.float,
    [bool]  = t.bool
 }
-
-function usertypes.isTopoType (tp)
-	return type(tp) == 'table' and tp.type and tp.type.isTopo and tp.type:isTopo()
-end
 
 -- can be a vector base type
 function usertypes.isPrimitiveType (tp) 
@@ -281,7 +233,7 @@ function usertypes.isVectorType(tp)
 	return usertypes.isTVectorType(tp) or Type.isVector(tp)
 end
 
--- can be a field base type, or an acceptable expression type in a liszt kernel, generally
+-- can be a scalar base type, or an acceptable expression type in a liszt kernel, generally
 function usertypes.isDataType (tp)
 	return usertypes.isPrimitiveType(tp) or Type.isVector(tp)
 end
@@ -307,7 +259,7 @@ function usertypes.conformsToType (inst, tp)
       elseif type(inst) == 'table' then
          -- make sure array is of the correct length
          if #inst ~= tp.N then return false end
-         -- make sure each element conforms to the vector's data type
+         -- make sure each element conforms to the vector data type
          for i = 1, #inst do
             if not usertypes.conformsToType(inst[i], tp:baseType()) then return false end
          end
@@ -318,7 +270,6 @@ function usertypes.conformsToType (inst, tp)
 end
 
 function usertypes.ltype (dt)
-	if Type.isTopo(dt)               then return dt.type end
   	if usertypes.isPrimitiveType(dt) then return terraToPrimitiveType[dt] end
    	if Type.isVector(dt)             then return dt end -- vector type is already a liszt type
    	-- also accept and convert terra vector types to liszt vector types

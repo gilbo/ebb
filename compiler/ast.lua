@@ -39,6 +39,8 @@ local Field           = { kind = 'field'       }
 local FieldAccess     = { kind = 'fieldaccess' }
 local Function        = { kind = 'function'    }
 local Table           = { kind = 'table'       }
+local Relation        = { kind = 'relation'    }
+local RelationRow     = { kind = 'relationrow' }
 
 -- Statements:
 local Statement       = { kind = 'statement'  }  -- abstract
@@ -89,6 +91,8 @@ inherit(Field, 	       Expression)
 inherit(FieldAccess,   Expression)
 inherit(Function,      Expression)
 inherit(Table,         Expression)
+inherit(Relation,      Expression)
+inherit(RelationRow,   Expression)
 
 inherit(IfStatement,     Statement)
 inherit(WhileStatement,  Statement)
@@ -153,9 +157,10 @@ local indent_delta = '   '
 
 function LisztKernel:pretty_print (indent)
 	indent = indent or ''
-	print(indent .. self.kind .. ": (param, body)")
+	print(indent .. self.kind .. ": (iter, set, body)")
 	indent = indent .. indent_delta
-	self.param:pretty_print(indent)
+	self.iter:pretty_print(indent)
+	self.set:pretty_print(indent)
 	self.body:pretty_print(indent)
 end
 
@@ -248,6 +253,16 @@ function TableLookup:pretty_print (indent)
 	print(indent .. self.kind .. ": (table, member)")
 	self.table:pretty_print(indent .. indent_delta)
 	self.member:pretty_print(indent .. indent_delta)
+end
+
+function Relation:pretty_print (indent)
+    indent = indent or ''
+    print(indent .. self.kind .. ": " .. self.relation._debugname)
+end
+
+function RelationRow:pretty_print (indent)
+    indent = indent or ''
+    print(indent .. self.kind .. ": " .. self.relation._debugname)
 end
 
 function VectorIndex:pretty_print (indent)
@@ -386,6 +401,8 @@ for k,v in pairs({
 	FieldAccess     = FieldAccess,
 	Function        = Function,
 	Table           = Table,
+    Relation        = Relation,
+    RelationRow     = RelationRow,
 	Call            = Call,
 	Name            = Name,
 	Number          = Number,

@@ -494,10 +494,13 @@ local function luav_to_ast(luav, src_node)
 			node.elems[i] = luav_to_ast(v, src_node)
 		end
 
-	-- Field objects are replaced with special Field nodes
-	elseif Type.isField(luav) then
-		node        = ast.Field:DeriveFrom(src_node)
-		node.field  = luav
+    elseif Type.isRelation(luav) then
+        node           = ast.Relation:DeriveFrom(src_node)
+        node.relation  = luav
+    
+    elseif Type.isField(luav) then
+        node       = ast.Field:DeriveFrom(src_node)
+        node.field = luav
 
     elseif Type.isFunction(luav) then
 		node      = ast.Function:DeriveFrom(src_node)
@@ -506,7 +509,6 @@ local function luav_to_ast(luav, src_node)
 	elseif type(luav) == 'table' then
 		node       = ast.Table:DeriveFrom(src_node)
 		node.table = luav
-		return node
 
 	elseif type(luav) == 'number' then
 		node       = ast.Number:DeriveFrom(src_node)
@@ -555,22 +557,13 @@ function ast.Name:check(ctxt)
 	-- somewhere in the liszt kernel.  Thus, it has to be a primitive, a
 	-- bool, or a topological element.
 	if lisztv then
-		local new_node     = self:clone()
-		new_node.name      = self.name
-		local typ          = lisztv.node_type
-		new_node.node_type = typ
-
+		local typ = lisztv.node_type
 		-- check that we're not reading from an uninitialized variable
 		if typ == t.unknown and not ctxt:in_lhs() then
 			ctxt:error(self, "variable '" .. self.name .. "' is not initialized")
-			new_node.node_type = t.error
+            lisztv.node_type = t.error
 		end
-
-		-- check for conditions where the name can't be an lvalue
-		-- setting this flag prevents variables that refer to topological types from being reassigned
-		new_node.is_lvalue = not typ:isTopo()
-
-		return new_node
+        return lisztv:check(ctxt)
 	end
 
 	-- Otherwise, does the name exist in the lua scope?
@@ -679,34 +672,55 @@ function ast.TableLookup:check(ctxt)
 	local member = self.member
 	local ttype  = table.node_type
 
+    print("Line ", self.linenumber, table.kind, member.name)
+
 	if ttype == t.error then
 		return err(self, ctxt)
 	elseif table:is(ast.Scalar) then
 		return err(self, ctxt, "select operator not supported for non-table type L.Scalar")
 	elseif table:is(ast.Field) then
 		return err(self, ctxt, "select operator not supported for non-table type L.Field")
-	elseif not table:is(ast.Table) then
+    elseif table:is(ast.Relation) then
+        return err(self, ctxt, "select operator not supported for non-table type L.Relation")
+	elseif not table:is(ast.Table) or not table:is(ast.RelationRow) then
 		return err(self, ctxt, "select operator not supported for non-table type " .. ttype:toString())
 	end
 
-	self.name = table.name .. '.' .. member.name
+    if table:is(ast.Table) then
+        self.name = table.name .. '.' .. member.name
 
-	-- otherwise, we have a lua table in lookup.table
-	-- so we can perform the lookup in the lua table as namespace
-	local luaval = table.table[member.name]
-	if luaval == nil then
-		return err(self, ctxt, "lua table " .. table.name .. " does not have member '" .. member.name .. "'")
-	end
+        -- otherwise, we have a lua table in lookup.table
+        -- so we can perform the lookup in the lua table as namespace
+        local luaval = table.table[member.name]
+        if luaval == nil then
+            return err(self, ctxt, "lua table " .. table.name .. " does not have member '" .. member.name .. "'")
+        end
 
-	-- and then go ahead and convert the lua value into an ast node
-	local ast_node = luav_to_checked_ast(luaval, self, ctxt)
+        -- and then go ahead and convert the lua value into an ast node
+        local ast_node = luav_to_checked_ast(luaval, self, ctxt)
 
-	-- we set a name somewhat appropriately (could capture namespace...)
-	if ast_node:is(ast.Field) or ast_node:is(ast.Scalar) or ast_node:is(ast.Table) then
-		ast_node.name = table.name .. '.' .. member.name
-	end
+        -- we set a name somewhat appropriately (could capture namespace...)
+        if ast_node:is(ast.Field) or ast_node:is(ast.Scalar) or ast_node:is(ast.Table) then
+            ast_node.name = table.name .. '.' .. member.name
+        end
+        return ast_node
+    else
+        self.name = table.name .. '.' .. member.name
 
-	return ast_node
+        local luaval = table.relation[member.name]
+        if not Type.isField(luaval) then
+            return err(self, ctxt, "Relation " .. table.name .. " does not have field '" .. member.name .. "'")
+        end
+        if luaval.relation == nil then
+            local ast_node     = ast.FieldAccess:DeriveFrom(self.member)
+            ast_node.node_type = luaval.type
+            return ast_node
+        else
+            local ast_node    = ast.RelationRow:DeriveFrom(self.member)
+            ast_node.relation = luaval.relation
+            return ast_node:check()
+        end
+    end
 end
 
 function ast.VectorIndex:check(ctxt)
@@ -801,7 +815,6 @@ end
 function ast.Scalar:check(ctxt)
 	local new_node     = self:clone()
 	new_node.scalar    = self.scalar
-	new_node.name      = self.name
 	new_node.node_type = self.scalar.type
 	return new_node
 end
@@ -809,7 +822,6 @@ end
 function ast.Field:check(ctxt)
 	local new_node     = self:clone()
 	new_node.field     = self.field
-	new_node.name      = self.name
 	new_node.node_type = t.field(self.field.topo, self.field.type)
 	return new_node
 end
@@ -817,7 +829,6 @@ end
 function ast.Table:check(ctxt)
 	local new_node     = self:clone()
 	new_node.table     = self.table
-	new_node.name      = self.name
 	new_node.node_type = t.table
 	return new_node
 end
@@ -826,20 +837,41 @@ function ast.Function:check(ctxt)
 	local new_node     = self:clone()
 	new_node.func      = self.func
 	new_node.node_type = self.node_type
-	new_node.name      = self.name
 	return new_node
 end
+
+function ast.Relation:check(ctxt)
+    local new_node     = self:clone()
+    new_node.relation  = self.relation
+    new_node.node_type = t.relation
+    return new_node
+end
+
+function ast.RelationRow:check(ctxt)
+    local new_node    = self:clone()
+    new_node.relation = self.relation
+    new_node.node_type = t.relationrow
+    return new_node
+end
+
 
 ------------------------------------------------------------------------------
 --[[ Semantic checking called from here:                                  ]]--
 ------------------------------------------------------------------------------
-local function check_kernel_param(param, ctxt)
-	local new_param     = clone_name(param)
-	new_param.node_type	= t.topo
+function ast.LisztKernel:check(ctxt)
+	local new_kernel_ast = self:clone()
+    new_kernel_ast.set   = self.set:check(ctxt)
+    if not new_kernel_ast.set:is(ast.Relation) then
+        ctxt:error(new_kernel_ast.set, "Expected a relation")
+    end
 
-	ctxt:liszt()[param.name] = new_param
+    local iter          = ast.RelationRow:DeriveFrom(self.iter)
+    iter.relation       = new_kernel_ast.set.relation
+    new_kernel_ast.iter = iter:check()
+    ctxt:liszt()[self.iter.name] = iter
 
-	return new_param
+	new_kernel_ast.body = self.body:check(ctxt)
+    return new_kernel_ast
 end
 
 function exports.check(luaenv, kernel_ast)
@@ -851,16 +883,14 @@ function exports.check(luaenv, kernel_ast)
 
 	--------------------------------------------------------------------------
 
-	local new_kernel_ast = kernel_ast:clone()
-
 	diag:begin()
 	env:enterblock()
-
-	new_kernel_ast.param = check_kernel_param(kernel_ast.param, ctxt)
-	new_kernel_ast.body  = kernel_ast.body:check(ctxt)
-
+    local new_kernel_ast = kernel_ast:check(ctxt)
 	env:leaveblock()
 	diag:finishandabortiferrors("Errors during typechecking liszt", 1)
+
+    print("New kernel ast")
+    new_kernel_ast:pretty_print()
 
 	return new_kernel_ast
 end

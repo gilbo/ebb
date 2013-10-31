@@ -248,15 +248,16 @@ lang.liszt_kernel = function (P)
 
 	-- parse parameter
 	local open  = P:expect("(")
-	local param = ast.Name:New(P)
-	param.name  = P:expect(P.name).value
+	local iter  = P:lvalname()
+    P:expect("in")
+    local set   = P:lvalue()
 	P:expectmatch(")", "(", open.linenumber)
 
 	-- parse block
 	local block = P:block()
 	P:expect("end")
 
-	kernel_node.param, kernel_node.body = param, block
+	kernel_node.iter, kernel_node.set, kernel_node.body = iter, set, block
 	return kernel_node
 end
 
