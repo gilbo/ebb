@@ -129,7 +129,7 @@ local c = terralib.includecstring([[
 #include <stdio.h>
 #include <stdlib.h>
 
-struct __sFILE *get_stderr () { return stderr; }
+FILE *get_stderr () { return stderr; }
 ]])
 
 local terra lisztAssert(test : bool, file : rawstring, line : int)
