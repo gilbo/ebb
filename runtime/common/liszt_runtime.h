@@ -102,6 +102,7 @@ struct lsIterator;
 struct lsFunctionTable;
 
 struct lStencilData;
+struct Mesh;
 
 //Modifiers for runtime functions, GPU modifiers are set rather than in GPU specific code to simplify definition order for C code
 #ifdef __CUDACC__
@@ -133,6 +134,8 @@ struct lProgramArguments;
 
 // Load a context, which stores a bunch of necessary per-mesh instantiated objects
 L_RUNTIME_UNNESTED struct lContext *lLoadContext (char *mesh_file);
+L_RUNTIME_UNNESTED struct Mesh     *lMeshFromContext (struct lContext *ctx);
+L_RUNTIME_UNNESTED void *lLoadPosition(struct lContext *ctx);
 L_RUNTIME_UNNESTED struct lField   *lLoadField   (struct lContext *ctx, const char *key, enum lElementType key_type, enum lType val_type, size_t val_length);
 L_RUNTIME_UNNESTED struct lField   *lInitField   (struct lContext *ctx, enum lElementType key_type, enum lType val_type, size_t val_length);
 L_RUNTIME_UNNESTED struct lScalar  *lInitScalar  (struct lContext *ctx, enum lType val_type, size_t val_length);

@@ -1,4 +1,4 @@
--- Privately import from types module
+-- Privately import from types module 
 local types = terralib.require('compiler/types')
 local Type  = types.Type
 local t     = types.t
@@ -10,6 +10,20 @@ terralib.require('runtime/liszt')
 local runtime = runtime
 _G.runtime    = _runtime
 
+-- Expose types
+L = { }
+L.int    = t.int
+L.uint   = t.uint
+L.float  = t.float
+L.bool   = t.bool
+L.vector = t.vector
+
+L.cell   = t.cell
+L.vertex = t.vertex
+L.edge   = t.edge
+L.face   = t.face
+
+terralib.require('include/builtins')
 
 -------------------------------------------------
 --[[ Liszt Objects ]]--
@@ -35,27 +49,29 @@ Face   = setmetatable({type=t.face},   TopoElemMT)
 Edge   = setmetatable({type=t.edge},   TopoElemMT)
 Vertex = setmetatable({type=t.vertex}, TopoElemMT)
 
-local function VectorType (_vt, dt, N)
-   if not tutil.isPrimitiveType(dt) then error("First argument to Vector() should be a Liszt-supported terra data type", 2) end
-   if not tutil.isSize(N)           then error("Second argument to Vector() should be a non-negative integer", 2) end
-   return t.vector(tutil.ltype(dt),N)
-end
-Vector   = setmetatable({kind=Type.kinds.vector}, {__call=VectorType})
+Vector   = {kind=Type.kinds.vector}
 VectorMT = {__index=Vector}
+
+local topo_objs = {
+   [Cell]   = t.cell,
+   [Edge]   = t.edge,
+   [Face]   = t.face,
+   [Vertex] = t.vertex
+}
 
 
 -------------------------------------------------
 --[[ Field methods                           ]]--
 -------------------------------------------------
-function Field:setType(topo_obj, data_obj)
-   if not tutil.isTopoType(topo_obj) then
+function Field:setType(topo_tp, data_tp)
+   if not (Type.isLisztType(topo_tp) and topo_tp:isTopo()) then
       error("Field over unrecognized topological type", 3)
    end
-   if not tutil.isDataType(data_obj) then
+   if not (Type.isLisztType(data_tp) and data_tp:isExpressionType()) then
       error("Field over unsupported data type", 3)
    end
-   self.topo = tutil.ltype(topo_obj)
-   self.type = tutil.ltype(data_obj)
+   self.topo = topo_tp
+   self.type = data_tp
 end
 
 
@@ -66,7 +82,7 @@ function Scalar:setTo(val)
    if not tutil.conformsToType(val, self.type) then error("Cannot set scalar to value of incorrect type", 2) end
 
    -- compute expression for val expression contents
-   local v = self.type:isVector() and Vector.new(self.type:terraBaseType(), val):__codegen() or `val
+   local v = self.type:isVector() and Vector.new(self.type:baseType(), val):__codegen() or `val
    local sctype, sclen = self.type:runtimeType()
 
    local terra writeSc () 
@@ -89,7 +105,7 @@ function Scalar:value()
       for i = 1, self.type.N do
          data[i] = getSc(i-1)
       end
-      return Vector.new(self.type:terraBaseType(), data)
+      return Vector.new(self.type:baseType(), data)
    else
       local terra getSc ()
          var p : self.type:terraType()
@@ -106,10 +122,10 @@ end
 -------------------------------------------------
 
 function Vector.new(dt, init)
-   if not tutil.isPrimitiveType(dt)            then error("First argument to Vector.new() should be a Liszt-supported terra data type", 2) end
+   if not Type.isLisztType(dt) or not dt:isPrimitive() then error("First argument to Vector.new() should be a Liszt-supported terra data type", 2) end
    if not Vector.isVector(init) and #init == 0 then error("Second argument to Vector.new should be either a Vector or an array", 2) end
    local N = Vector.isVector(init) and init.N or #init
-   if not tutil.conformsToType(init, Vector(dt, N)) then
+   if not tutil.conformsToType(init, L.vector(dt, N)) then
       error("Second argument to Vector.new() does not conform to specified type", 2)
    end
 
@@ -119,7 +135,7 @@ function Vector.new(dt, init)
       data[i] = dt == int and init[i] - init[i] % 1 or init[i] -- convert to integer if necessary
    end
 
-   return setmetatable({N=N, type=t.vector(tutil.ltype(dt),N), data=data}, VectorMT)
+   return setmetatable({N=N, type=t.vector(dt,N), data=data}, VectorMT)
 end
 
 function Vector:__codegen ()
@@ -175,7 +191,7 @@ function VectorMT.__add (v1, v2)
    for i = 1, #v1.data do
       data[i] = v1.data[i] + v2.data[i]
    end
-   return Vector.new(tp:terraType(), data)
+   return Vector.new(tp, data)
 end
 
 function VectorMT.__sub (v1, v2)
@@ -196,7 +212,7 @@ function VectorMT.__sub (v1, v2)
       data[i] = v1.data[i] - v2.data[i]
    end
 
-   return Vector.new(tp:terraType(), data)
+   return Vector.new(tp, data)
 end
 
 function VectorMT.__mul (a1, a2)
@@ -208,8 +224,8 @@ function VectorMT.__mul (a1, a2)
    elseif type(a) ~= 'number' then error("Cannot multiply a vector by a non-numeric type", 2)
    end
 
-   local tm = float
-   if v.type == int and a % 1 == 0 then tm = int end
+   local tm = t.float
+   if v.type == int and a % 1 == 0 then tm = t.int end
 
    local data = {}
    for i = 1, #v.data do
@@ -228,7 +244,7 @@ function VectorMT.__div (v, a)
    for i = 1, #v.data do
       data[i] = v.data[i] / a
    end
-   return Vector.new(float, data)
+   return Vector.new(t.float, data)
 end
 
 function VectorMT.__mod (v1, a2)
@@ -238,7 +254,7 @@ function VectorMT.__mod (v1, a2)
       data[i] = v1.data[i] % a2
    end
    local tp = types.type_meet(v1.type:baseType(), t.float)
-   return Vector.new(tp:terraType(), data)
+   return Vector.new(tp, data)
 end
 
 function VectorMT.__unm (v1)
@@ -349,7 +365,7 @@ function Mesh:field (topo_type, data_type, initial_val)
 
    -- Vector type: use vector codegen functionality!
    else
-      local v = Vector.new(field.type:terraBaseType(), initial_val)
+      local v = Vector.new(field.type:baseType(), initial_val)
       local terra init_field () : {}
          var v : ttype  = [v:__codegen()]
          runtime.lFieldBroadcast([self.__ctx], [field.__lfield], eltype, valtype, vallen, &v)
@@ -370,12 +386,10 @@ function Mesh:fieldWithLabel (topo_type, data_type, label)
 end
 
 function Mesh:scalar (data_type, init)
-   if not tutil.isDataType(data_type) then error("First argument to mesh:scalar must be a Liszt-supported data type", 2) end
+   if not Type.isLisztType(data_type) or not data_type:isExpressionType() then error("First argument to mesh:scalar must be a Liszt-supported data type", 2) end
+   if not tutil.conformsToType(init, data_type) then error("Second argument to mesh:scalar must be an instance of the specified data type", 2) end
 
-   local ltype = tutil.ltype(data_type)
-   if not tutil.conformsToType(init, ltype) then error("Second argument to mesh:scalar must be an instance of the specified data type", 2) end
-
-   local sc = setmetatable({type=tutil.ltype(data_type)}, ScalarMT)
+   local sc = setmetatable({type=data_type}, ScalarMT)
    local sctype, sclen = sc.type:runtimeType()
    sc.__lscalar  = runtime.initScalar(self.__ctx, sctype, sclen)
    sc.__lkscalar = runtime.getlkScalar(sc.__lscalar)

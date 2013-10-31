@@ -7,19 +7,19 @@ local t = types.t
 ------------------
 -- Should pass: --
 ------------------
-local a  = Vector.new(float, {1,     2, 3.29})
-local z  = Vector.new(float, {4, 5.392,    6})
+local a  = Vector.new(L.float, {1,     2, 3.29})
+local z  = Vector.new(L.float, {4, 5.392,    6})
 
-local a4 = Vector.new(float, {3.4, 4.3, 5, 6.153})
-local ai = Vector.new(int,   {2, 3, 4})
-local ab = Vector.new(bool,  {true, false, true})
+local a4 = Vector.new(L.float, {3.4, 4.3, 5, 6.153})
+local ai = Vector.new(L.int,   {2, 3, 4})
+local ab = Vector.new(L.bool,  {true, false, true})
 
 local b  = 3 * a
 local b2 = a * 3
 local c  = a + b
 local d  = a + ai
 local e  = ai / 4.5
-local f  = c - Vector.new(float, {8, 8, 8})
+local f  = c - Vector.new(L.float, {8, 8, 8})
 local g  = a % 3
 local h  = a4 % -2
 
@@ -106,7 +106,7 @@ test.fail_function(type_fail5, "lengths")
 -- Kernel vector tests: --
 --------------------------
 mesh   = LoadMesh("examples/mesh.lmesh")
-pos    = mesh:fieldWithLabel(Vertex, Vector(float, 3), "position")
+pos    = mesh:fieldWithLabel(L.vertex, L.vector(L.float, 3), "position")
 
 
 ------------------
@@ -119,7 +119,7 @@ function test_vector_literals ()
 	end
 	mesh.vertices:map(k)
 
-	local s = mesh:scalar(Vector(float, 3), {0.0, 0.0, 0.0})
+	local s = mesh:scalar(L.vector(L.float, 3), {0.0, 0.0, 0.0})
 	local check = liszt_kernel(v)
 		s += pos(v)
 	end

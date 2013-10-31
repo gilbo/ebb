@@ -1,5 +1,6 @@
 import "compiler/liszt"
 
+local assert = L.assert
 mesh  = LoadMesh("examples/mesh.lmesh")
 
 local fail_assert = liszt_kernel(f)

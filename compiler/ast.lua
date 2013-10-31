@@ -25,7 +25,6 @@ local Tuple           = { kind = 'tuple'  }
 local TableLookup     = { kind = 'lookup' }
 local VectorIndex     = { kind = 'index'  }
 local Call            = { kind = 'call'   }
-local Table           = { kind = 'table'  }
 
 local Name            = { kind = 'name'   }
 local Number          = { kind = 'number' }
@@ -38,6 +37,8 @@ local VectorLiteral   = { kind = 'vecliteral' }
 local Scalar          = { kind = 'scalar'      }
 local Field           = { kind = 'field'       }
 local FieldAccess     = { kind = 'fieldaccess' }
+local Function        = { kind = 'function'    }
+local Table           = { kind = 'table'       }
 
 -- Statements:
 local Statement       = { kind = 'statement'  }  -- abstract
@@ -50,8 +51,6 @@ local ExprStatement   = { kind = 'exprstmt'   }  -- e;
 local Assignment      = { kind = 'assnstmt'   }  -- "lvalue   = expr" 
 local InitStatement   = { kind = 'initstmt'   }  -- "var name = expr"
 local DeclStatement   = { kind = 'declstmt'   }  -- "var name"
-local AssertStatement = { kind = 'assertstmt' }  -- "assert(expr)"
-local PrintStatement  = { kind = 'printstmt'  }  -- "print(expr)" 
 local NumericFor      = { kind = 'numericfor' }
 local GenericFor      = { kind = 'genericfor' }
 local Break           = { kind = 'break'      }
@@ -88,8 +87,8 @@ inherit(Reduce,        Expression)
 inherit(Scalar,        Expression)
 inherit(Field, 	       Expression)
 inherit(FieldAccess,   Expression)
-
-inherit(Table, AST)
+inherit(Function,      Expression)
+inherit(Table,         Expression)
 
 inherit(IfStatement,     Statement)
 inherit(WhileStatement,  Statement)
@@ -99,8 +98,6 @@ inherit(ExprStatement,   Statement)
 inherit(Assignment,      Statement)
 inherit(DeclStatement,   Statement)
 inherit(InitStatement,   Statement)
-inherit(AssertStatement, Statement)
-inherit(PrintStatement,  Statement)
 inherit(NumericFor,      Statement)
 inherit(GenericFor,      Statement)
 inherit(Break,           Statement)
@@ -205,6 +202,16 @@ function Field:pretty_print(indent)
 	indent = indent or ''
 	local name = self.name or ""
 	print(indent .. self.kind .. ": " .. name)
+end
+
+function Table:pretty_print (indent)
+	indent = indent or ''
+	print(indent .. self.kind .. ": " .. tostring(self.table))
+end
+
+function Function:pretty_print (indent)
+	indent = indent or ''
+	print(indent .. self.kind .. ": " .. tostring(self.func))
 end
 
 function FieldAccess:pretty_print(indent)
@@ -332,18 +339,6 @@ function Break:pretty_print (indent)
 	print(indent .. self.kind)
 end
 
-function AssertStatement:pretty_print (indent)
-	indent = indent or ''
-	print(indent .. self.kind)
-	self.test:pretty_print(indent .. indent_delta)
-end
-
-function PrintStatement:pretty_print (indent)
-	indent = indent or ''
-	print(indent .. self.kind)
-	self.output:pretty_print(indent .. indent_delta)
-end
-
 function NumericFor:pretty_print (indent)	
 	indent = indent or ''
 	if self.step then
@@ -389,6 +384,7 @@ for k,v in pairs({
 	Scalar 	        = Scalar,
 	Field           = Field,
 	FieldAccess     = FieldAccess,
+	Function        = Function,
 	Table           = Table,
 	Call            = Call,
 	Name            = Name,
@@ -405,8 +401,6 @@ for k,v in pairs({
 	Assignment      = Assignment,
 	InitStatement   = InitStatement,
 	DeclStatement   = DeclStatement,
-	AssertStatement = AssertStatement,
-	PrintStatement  = PrintStatement,
 	NumericFor      = NumericFor,
 	GenericFor      = GenericFor,
 	Break           = Break,

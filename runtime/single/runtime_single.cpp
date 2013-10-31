@@ -98,24 +98,8 @@ uint32_t lNumCells    (struct lContext *ctx) { return numberOfElementsOfType(ctx
 
 //Unnested Runtime Calls
 
-struct Mesh* lMeshInitFromFile(const char *mesh_file) {
-	lContext *ctx = new lContext;
-	FILE *file = NULL;
-	ctx->mesh_reader.init(mesh_file, &file);
-	ctx->mesh_writer.init(mesh_file, &file);
-
-	MeshIO::FileFacetEdge *ffe   = ctx->mesh_reader.facetEdges();
-	const MeshIO::LisztHeader &h = ctx->mesh_reader.header();
-	
-	MeshIO::FacetEdgeBuilder builder;
-	builder.init(h.nV,h.nE,h.nF,h.nC,h.nFE);
-	builder.insert(0,h.nFE,ffe);
-	//builder.validateFullMesh();
-	ctx->mesh_reader.free(ffe);
-	lMeshInitFromFacetEdgeBuilder(&ctx->mesh,&builder);
-	ctx->boundary_reader.init(h.nBoundaries,ctx->mesh_reader.boundaries());
-
-    return &(ctx->mesh);
+struct Mesh* lMeshFromContext(lContext *ctx) {
+	return &(ctx->mesh);
 }
 
 lContext *lLoadContext (char *mesh_file) {
@@ -136,6 +120,10 @@ lContext *lLoadContext (char *mesh_file) {
 	ctx->boundary_reader.init(h.nBoundaries,ctx->mesh_reader.boundaries());
 
 	return ctx;
+}
+
+void *lLoadPosition (lContext *ctx) {
+	return ctx->mesh_reader.fieldData(L_VERTEX, L_FLOAT, 3, "position");
 }
 
 lField *lLoadField(lContext *ctx, const char *key, lElementType key_type, lType val_type, size_t val_length) {

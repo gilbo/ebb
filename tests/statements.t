@@ -2,10 +2,10 @@ import "compiler/liszt"
 require "tests/test"
 
 mesh   = LoadMesh("examples/mesh.lmesh")
-pos    = mesh:fieldWithLabel(Vertex, Vector(float, 3), "position")
-val    = mesh:field(Vertex, float, 1.0)
+pos    = mesh:fieldWithLabel(L.vertex, L.vector(L.float, 3), "position")
+val    = mesh:field(L.vertex, L.float, 1.0)
 
-red = mesh:scalar(float, 0.0)
+red = mesh:scalar(L.float, 0.0)
 
 -- checking decl statement, if statement, proper scoping
 local l = liszt_kernel (v)

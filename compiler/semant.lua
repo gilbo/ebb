@@ -9,13 +9,12 @@ local type_meet = types.type_meet
 --local Scope     = types.Scope
 
 -- Phases used in assignment statements
-_FIELD_WRITE   = 'FIELD_WRITE'
-_FIELD_REDUCE  = 'FIELD_REDUCE'
-_SCALAR_REDUCE = 'SCALAR_REDUCE'
-exports._FIELD_WRITE   = _FIELD_WRITE
-exports._FIELD_REDUCE  = _FIELD_REDUCE
-exports._SCALAR_REDUCE = _SCALAR_REDUCE
-
+local _FIELD_WRITE   = 'FIELD_WRITE'
+local _FIELD_REDUCE  = 'FIELD_REDUCE'
+local _SCALAR_REDUCE = 'SCALAR_REDUCE'
+exports._FIELD_WRITE 		= _FIELD_WRITE
+exports._FIELD_REDUCE 	= _FIELD_REDUCE
+exports._SCALAR_REDUCE 	= _SCALAR_REDUCE
 
 --[[
 	AST:check(ctxt) type checking routines
@@ -211,6 +210,7 @@ function ast.Assignment:check(ctxt)
 	local lhs = self.lvalue:check(ctxt)
 	ctxt:leavelhs()
 
+
 	assignment.lvalue = lhs
 	local ltype       = lhs.node_type
 	if ltype == t.error then return assignment end
@@ -285,30 +285,6 @@ function ast.DeclStatement:check(ctxt)
 	decl.ref.node_type  = t.unknown
 	ctxt:liszt()[decl.ref.name] = decl.ref
 	return decl
-end
-
-function ast.AssertStatement:check(ctxt)
-	local assertstmt  = self:clone()
-	assertstmt.test   = self.test:check(ctxt)
-	local ttype       = assertstmt.test.node_type
-
-	if ttype ~= t.error and ttype ~= t.bool then
-		ctxt:error(self, "expected a boolean as the test for assert statement")
-	end
-
-	return assertstmt
-end
-
-function ast.PrintStatement:check(ctxt)
-	local printstmt    = self:clone()
-	printstmt.output   = self.output:check(ctxt)
-	local otype        = printstmt.output.node_type
-
-	if otype ~= t.error and not (otype:isExpressionType()) then
-		ctxt:error(self, "only numbers, bools, and vectors can be printed")
-	end
-
-	return printstmt
 end
 
 function ast.NumericFor:check(ctxt)
@@ -505,33 +481,32 @@ local function luav_to_ast(luav, src_node)
 	-- try to construct an ast node to return...
 	local node
 
-	-- If luav is a table, it may be a Liszt object like a Relation or Field
-	if type(luav) == 'table' then
-		-- Scalar objects are replaced with special Scalar nodes
-		if Type.isScalar(luav) then
-			node        = ast.Scalar:DeriveFrom(src_node)
-			node.scalar = luav
+	-- Scalar objects are replaced with special Scalar nodes
+	if Type.isScalar(luav) then
+		node        = ast.Scalar:DeriveFrom(src_node)
+		node.scalar = luav
 
-		-- Vector objects are expanded into literal AST trees
-		elseif Type.isVector(luav) then
-			node        = ast.VectorLiteral:DeriveFrom(src_node)
-			node.elems  = {}
-			for i,v in ipairs(luav.data) do
-				node.elems[i] = luav_to_ast(v, src_node)
-			end
-
-		-- Field objects are replaced with special Field nodes
-		elseif Type.isField(luav) then
-			node        = ast.Field:DeriveFrom(src_node)
-			node.field  = luav
-
-		-- failing all else, we'll assume this lua table is being used
-		-- as a namespace, so we need to return it for further expansion
-		else
-			node = ast.Table:DeriveFrom(src_node)
-			node.table = luav
-			return node
+	-- Vector objects are expanded into literal AST trees
+	elseif Type.isVector(luav) then
+		node        = ast.VectorLiteral:DeriveFrom(src_node)
+		node.elems  = {}
+		for i,v in ipairs(luav.data) do
+			node.elems[i] = luav_to_ast(v, src_node)
 		end
+
+	-- Field objects are replaced with special Field nodes
+	elseif Type.isField(luav) then
+		node        = ast.Field:DeriveFrom(src_node)
+		node.field  = luav
+
+    elseif Type.isFunction(luav) then
+		node      = ast.Function:DeriveFrom(src_node)
+		node.func = luav
+
+	elseif type(luav) == 'table' then
+		node       = ast.Table:DeriveFrom(src_node)
+		node.table = luav
+		return node
 
 	elseif type(luav) == 'number' then
 		node       = ast.Number:DeriveFrom(src_node)
@@ -773,14 +748,16 @@ function ast.Call:check(ctxt)
 	call.func   = self.func:check(ctxt)
 	local ftype = call.func.node_type
 
-	if ftype == t.error then
-		-- error fall through
-	elseif ftype:isField() then
+	if call.func:is(ast.Function) then
+        call.node_type = call.func.func.check(self, ctxt)
+        call.params    = self.params:check(ctxt)
+
+	elseif call.func:is(ast.Field) then
 		local ftopo = ftype:topoType()
 		local fdata = ftype:dataType()
 
-		local arg_ast  = self.params:index_check(ctxt)
-		local argtype  = arg_ast.node_type
+		local arg_ast = self.params:index_check(ctxt)
+		local argtype = arg_ast.node_type
 		if (argtype == t.error) then
 			-- error fall through
 
@@ -810,46 +787,48 @@ function ast.Call:check(ctxt)
 											 argtype:toString())
 		end
 
-	else
+	elseif ftype:isError() then
+		-- fall through (do not print error messages for errors already reported)
+
+    else
 		ctxt:error(self, "invalid call")
+
 	end
 
 	return call
 end
 
 function ast.Scalar:check(ctxt)
-	local new_node  = self:clone()
-	local scalar    = self.scalar
-	new_node.scalar = scalar
-	if self.name then new_node.name = self.name end
-
-	new_node.node_type = scalar.type
-
+	local new_node     = self:clone()
+	new_node.scalar    = self.scalar
+	new_node.name      = self.name
+	new_node.node_type = self.scalar.type
 	return new_node
 end
 
 function ast.Field:check(ctxt)
-	local new_node = self:clone()
-	local field    = self.field
-	new_node.field = field
-	if self.name then new_node.name = self.name end
-
-	new_node.node_type = t.field(field.topo, field.type)
-
+	local new_node     = self:clone()
+	new_node.field     = self.field
+	new_node.name      = self.name
+	new_node.node_type = t.field(self.field.topo, self.field.type)
 	return new_node
 end
 
 function ast.Table:check(ctxt)
-	local new_node = self:clone()
-	local table = self.table
-	new_node.table = table
-	if self.name then new_node.name = self.name end
-
+	local new_node     = self:clone()
+	new_node.table     = self.table
+	new_node.name      = self.name
 	new_node.node_type = t.table
-
 	return new_node
 end
 
+function ast.Function:check(ctxt)
+	local new_node     = self:clone()
+	new_node.func      = self.func
+	new_node.node_type = self.node_type
+	new_node.name      = self.name
+	return new_node
+end
 
 ------------------------------------------------------------------------------
 --[[ Semantic checking called from here:                                  ]]--

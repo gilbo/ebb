@@ -1,8 +1,9 @@
 import "compiler/liszt"
 
+local print = L.print
 mesh  = LoadMesh("examples/mesh.lmesh")
 
-local v = Vector.new(float, {1, 2, 3}) 
+local v = Vector.new(L.float, {1, 2, 3}) 
 local print_stuff = liszt_kernel(f)
     print(true)
     print(4)

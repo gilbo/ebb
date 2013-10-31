@@ -2,16 +2,17 @@ Vector = L.NewVector(...)
 --and vector math methods
 
 Scalar = L.NewScalar([terratypeorvector],[initalvalue])
-function Scalar:setTo(val)
-function Scalar:value()
+function Scalar:SetTo(val)
+function Scalar:Value()
 
-table = L.NewTable(size, debugname)
-field = table:NewField(name,type)
+rtable = L.NewRelation(size, debugname)
+rtable:NewField(name,type)
+rtable.name:LoadFromMemory(mem)
 table:LoadIndexFromMemory(fieldname,row_idx)
 
 field:LoadFromMemory(mem)
 field:LoadWithCallback(luafunction) --e.g. 
 
 --on-disk table representation
-table = L.LoadTable(ondiskname)
+table = L.LoadRelation(ondiskname)
 table:Save(ondisktablename)

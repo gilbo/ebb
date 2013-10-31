@@ -381,22 +381,6 @@ lang.statement = function (P)
 			return node_nf
 		end
 
-		-- TODO: when Liszt has functions/macros,
-		-- 			 these two should probably just be builtins
-	elseif P:nextif("assert") then
-		local node_assert = ast.AssertStatement:New(P)
-		P:expect('(')
-		node_assert.test = P:exp()
-		P:expect(')')
-		return node_assert
-
-	elseif P:nextif("print") then
-		local node_print = ast.PrintStatement:New(P)
-		P:expect('(')
-		node_print.output = P:exp()
-		P:expect(')')
-		return node_print
-		
 		--[[ expression statement / assignment statement ]]--
 	else
 		local expr = P:exp()

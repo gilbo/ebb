@@ -13,7 +13,7 @@ function ast.AST:codegen (env)
 end
 
 function ast.ExprStatement:codegen (env)
-	return quote end
+	return self.exp:codegen(env)
 end
 
 function ast.LisztKernel:codegen (env)
@@ -139,47 +139,6 @@ local terra lisztAssert(test : bool, file : rawstring, line : int)
     end
 end
 
-function ast.AssertStatement:codegen(env)
-    local test = self.test:codegen(env)
-    return quote lisztAssert(test, self.filename, self.linenumber) end
-end
-
-function ast.PrintStatement:codegen(env)
-	local lt   = self.output.node_type
-    local tt   = lt:terraType()
-    local code = self.output:codegen(env)
-    if     lt == t.float then return quote c.printf("%f\n", [float](code)) end
-	elseif lt == t.int   then return quote c.printf("%d\n", code) end
-	elseif lt == t.bool  then
-        return quote c.printf("%s", terralib.select(code, "true\n", "false\n")) end
-	elseif lt:isVector() then
-        local printSpec = "{"
-        local sym = symbol()
-        local elemQuotes = {}
-        local bt = lt:baseType()
-        for i = 0, lt.N - 1 do
-            if bt == t.float then
-                printSpec = printSpec .. " %f"
-                table.insert(elemQuotes, `[float](sym[i]))
-            elseif bt == t.int then
-                printSpec = printSpec .. " %d"
-                table.insert(elemQuotes, `sym[i])
-            elseif bt == t.bool then
-                printSpec = printSpec .. " %s"
-                table.insert(elemQuotes, `terralib.select(sym[i], "true", "false"))
-            end
-        end
-        printSpec = printSpec .. " }\n"
-        return quote
-            var [sym] : tt = code
-        in
-            c.printf(printSpec, elemQuotes)
-        end
-    else
-        assert(false and "Printed object should always be number, bool, or vector")
-    end
-end
-
 local phaseMap = {
 	['+']   	= runtime.L_PLUS,
 	['-']   	= runtime.L_MINUS,
@@ -187,8 +146,8 @@ local phaseMap = {
 	['/']   	= runtime.L_DIVIDE,
 	['and'] 	= runtime.L_BAND,
 	['or']  	= runtime.L_BOR,
-	['land']  = runtime.L_AND,
-	['lor'] 	= runtime.L_OR,
+	['land']    = runtime.L_AND,
+	['lor']     = runtime.L_OR,
 }
 
 function ast.Assignment:codegen (env)
@@ -240,9 +199,14 @@ function ast.FieldAccess:codegen (env)
 	return quote
 		var [read] : typ
 		runtime.lkFieldRead([field.__lkfield], [topo], el_type, el_len, 0, el_len, &[read])
-		in
+			in
 		[read]
 	end
+end
+
+-- By the time we make it to codegen, Call nodes are only used to represent builtin function calls.
+function ast.Call:codegen (env)
+	return self.func.func.codegen(self, env)
 end
 
 function ast.InitStatement:codegen (env)
@@ -270,20 +234,33 @@ function ast.VectorLiteral:codegen (env)
    -- These quotes give terra the opportunity to generate optimized assembly via the vectorof call
    -- when I dissassembled terra functions at the console, they seemed more likely to use vector
    -- ops for loading values if vectors are initialized this way.
-	if #ct == 3 then
-		return `vectorof([tp], [ct[1]], [ct[2]], [ct[3]])
+   local v1, v2, v3, v4, v5, v6 = ct[1], ct[2], ct[3], ct[4], ct[5], ct[6]
+	if #ct == 2 then
+		return `vectorof(tp, v1, v2)
+	elseif #ct == 3 then
+		return `vectorof(tp, v1, v2, v3)
 	elseif #ct == 4 then
-		return `vectorof([tp], [ct[1]], [ct[2]], [ct[3]], [ct[4]])
+		return `vectorof(tp, v1, v2, v3, v4)
 	elseif #ct == 5 then
-		return `vectorof([tp], [ct[1]], [ct[2]], [ct[3]], [ct[4]], [ct[5]])
+		return `vectorof(tp, v1, v2, v3, v4, v5)
+	elseif #ct == 6 then
+		return `vectorof(tp, v1, v2, v3, v4, v5, v6)
+
 	else
+		local s = symbol(self.node_type:terraType())
 		local t = symbol()
 		local q = quote
-			var [v] : vector(tp, #ct)
-			var [t] = &[tp](&s)
+			var [s]
+			var [t] = [&tp](&s)
 		end
+
 		for i = 1, #ct do
-			q = quote [q] @[t] = [ct[i]] t = t + 1 end
+			local val = ct[i]
+			q = quote 
+				[q] 
+				@[t] = [val]
+				t = t + 1
+			end
 		end
 		return quote [q] in [s] end
 	end
