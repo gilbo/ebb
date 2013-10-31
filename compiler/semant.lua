@@ -749,8 +749,8 @@ function ast.Call:check(ctxt)
 	local ftype = call.func.node_type
 
 	if call.func:is(ast.Function) then
-        call.node_type = call.func.func.check(self, ctxt)
         call.params    = self.params:check(ctxt)
+        call.node_type = call.func.func.check(call, ctxt)
 
 	elseif call.func:is(ast.Field) then
 		local ftopo = ftype:topoType()

@@ -25,7 +25,7 @@ function AssertCheck(ast, ctxt)
     end
 
     local test = args[1]
-    local test_type = test:check(ctxt).node_type
+    local test_type = test.node_type
     if test_type ~= t.error and test_type ~= t.bool then
         ctxt:error(ast, "expected a boolean as the test for assert statement")
     end
@@ -54,7 +54,7 @@ function PrintCheck(ast, ctxt)
     end
 
     local output = args[1]
-    local outtype = output:check(ctxt).node_type
+    local outtype = output.node_type
     if outtype ~= t.error and not outtype:isExpressionType() then
         ctxt:error(ast, "only numbers, bools, and vectors can be printed")
     end
@@ -103,8 +103,8 @@ function DotCheck(ast, ctxt)
         ctxt:error(ast, "dot expects exactly 2 arguments (instead got " .. #args .. ")")
         return
     end
-    local lt1 = args[1]:check(ctxt).node_type
-    local lt2 = args[2]:check(ctxt).node_type
+    local lt1 = args[1].node_type
+    local lt2 = args[2].node_type
     if not lt1:isVector() then
         ctxt:error(args[1], "first argument to dot must be a vector")
     end
