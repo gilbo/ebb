@@ -33,8 +33,6 @@ function test.fuzzy_eq (a, b)
 	if d > zero_diff then error(tostring(a) .. " ~= " .. tostring(b),2) end
 end
 
-
-
 function test.meq(a,...)
 	local lst = {...}
 	if #lst ~= #a then

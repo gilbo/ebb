@@ -145,21 +145,66 @@ function fail13()
 	mesh.cells:map(k)
 end
 
--- need typechecker fail test
-test.fail_function(fail1, "The left side of an assignment must be an lvalue")
-test.fail_function(fail2, "The left side of an assignment must be an lvalue")
-test.fail_function(fail3, "The left side of an assignment must be an lvalue")
-test.fail_function(fail4, "Can only assign")
-test.fail_function(fail5, "Variable 'undefined' is not defined")
-test.fail_function(fail6, "invalid conversion from bool to float")
-test.fail_function(fail7, "Variable 'local8' is not defined")
-test.fail_function(fail8, "Variable 'local8' is not defined")
-test.fail_function(fail9, "invalid conversion from int to bool")
-test.fail_function(fail10, "invalid types for operator")
-test.fail_function(fail11, "Expected a boolean")
-test.fail_function(fail12, "Cannot use lua tables as Liszt values")
-test.fail_function(fail13, "invalid conversion from int to bool")
+function fail14()
+	local tbl = {}
+	local k = liszt_kernel (cell)
+		var x = 3 + tbl
+	end
+	mesh.cells:map(k)
+end
 
+function fail15()
+	local tbl = {}
+	local k = liszt_kernel (cell)
+		var x = tbl
+	end
+	mesh.cells:map(k)
+end
+
+function fail16()
+	local tbl = {}
+	local k = liszt_kernel (cell)
+		tbl.x = 4
+	end
+	mesh.cells:map(k)
+end
+
+function fail17()
+	local tbl = {x={}}
+	local k = liszt_kernel (cell)
+		tbl.x.y = 4
+	end
+	mesh.cells:map(k)
+end
+
+function fail18()
+	local tbl = {x={y=4}}
+	local k = liszt_kernel (cell)
+		var x = tbl.x
+	end
+	mesh.cells:map(k)
+end
+
+
+-- need typechecker fail test
+test.fail_function(fail1,  "assignments in a Liszt kernel are only valid")
+test.fail_function(fail2,  "assignments in a Liszt kernel are only valid")
+test.fail_function(fail3,  "assignments in a Liszt kernel are only valid")
+test.fail_function(fail4,  "can only assign")
+test.fail_function(fail5,  "variable 'undefined' is not defined")
+test.fail_function(fail6,  "invalid conversion from bool to float")
+test.fail_function(fail7,  "variable 'local8' is not defined")
+test.fail_function(fail8,  "variable 'local8' is not defined")
+test.fail_function(fail9,  "invalid conversion from int to bool")
+test.fail_function(fail10, "invalid types for operator")
+test.fail_function(fail11, "expected a boolean")
+test.fail_function(fail12, "assignments in a Liszt kernel are only valid")
+test.fail_function(fail13, "invalid conversion from int to bool")
+test.fail_function(fail14, "invalid types")
+test.fail_function(fail15, "can only assign")
+test.fail_function(fail16, "lua table tbl does not have member 'x'")
+test.fail_function(fail17, "lua table tbl.x does not have member 'y'")
+test.fail_function(fail18, "can only assign")
 
 -- Nothing should fail in this kernel:
 local k = liszt_kernel (cell)

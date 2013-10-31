@@ -8,15 +8,15 @@ local Type   = {}
 exports.Type = Type
 Type.__index = Type
 Type.kinds   = {}
-Type.kinds.primitive = {}
-Type.kinds.vector    = {}
-Type.kinds.field     = {}
-Type.kinds.set       = {}
-Type.kinds.topo      = {}
-Type.kinds.functype  = {}
-Type.kinds.scalar    = {}
-Type.kinds.table     = {}
-Type.kinds.error     = {}
+Type.kinds.primitive = {string='primitive' }
+Type.kinds.vector    = {string='vector'    }
+Type.kinds.field     = {string='field'     }
+Type.kinds.set       = {string='set'       }
+Type.kinds.topo      = {string='topo'      }
+Type.kinds.functype  = {string='functype'  }
+Type.kinds.scalar    = {string='scalar'    }
+Type.kinds.table     = {string='table'     }
+Type.kinds.error     = {string='error'     }
 
 local Scope   = {}
 exports.Scope = Scope
@@ -77,7 +77,7 @@ end
 -- bools or vectors of bools
 function Type:isLogical  ()
   return (self.kind == Type.kinds.primitive and self.type == Type.kinds.bool)
-      or (self.kind == Type.kinds.vector and self.type:isLogical())
+      or (self.kind == Type.kinds.vector    and self.type:isLogical())
 end
 
 -- any primitive or vector
@@ -93,6 +93,9 @@ function Type:isScalar()     return type(self) == 'table' and self.kind == Type.
 function Type:isSet()        return type(self) == 'table' and self.kind == Type.kinds.set        end
 function Type:isFunction()   return type(self) == 'table' and self.kind == Type.kinds.functype   end
 function Type:isFieldIndex() return type(self) == 'table' and self.kind == Type.kinds.fieldindex end
+function Type:isLuaTable()   return type(self) == 'table' and self.kind == Type.kinds.table      end
+function Type:isError()      return type(self) == 'table' and self.kind == Type.kinds.error      end
+
 -- currently isTable will return true if obj has kind fieldindex
 function Type.isTable(obj)   return type(obj)  == 'table' and not Type.validKinds[obj.kind]      end
 
@@ -155,6 +158,7 @@ function Type:toString()
 	elseif self:isSet()       then return 'LSet('    .. self.type:toString() .. ')'
 	elseif self:isScalar()    then return 'LScalar(' .. self.type:toString() .. ')'
 	elseif self:isFunction()  then return 'LFunction'
+	elseif self:isLuaTable()  then return "table"
 	end
 	error('toString method not implemented for this type!', 2)
 end
@@ -304,7 +308,6 @@ function usertypes.conformsToType (inst, tp)
    end
    return false
 end
-
 
 function usertypes.ltype (dt)
 	if Type.isTopo(dt)               then return dt.type end
