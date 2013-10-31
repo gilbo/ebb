@@ -125,20 +125,6 @@ function ast.Break:codegen(env)
 	return quote break end
 end
 
-local c = terralib.includecstring([[
-#include <stdio.h>
-#include <stdlib.h>
-
-FILE *get_stderr () { return stderr; }
-]])
-
-local terra lisztAssert(test : bool, file : rawstring, line : int)
-    if not test then
-        c.fprintf(c.get_stderr(), "%s:%d: assertion failed!\n", file, line)
-        c.exit(1)
-    end
-end
-
 local phaseMap = {
 	['+']   	= runtime.L_PLUS,
 	['-']   	= runtime.L_MINUS,
