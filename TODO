@@ -1,9 +1,0 @@
- - integrate Will's assert code
- - modify parser to support integer constants
- - load boundary sets
- - add dot, length, builtin math functions for vectors, numbers
- - implement nested for loops over topological sets / implement syntax/semantics for loading and specifying relations
- - eventually: vector indexing in liszt kernels (allow arbitrary?), double type
-
- - how to implement built-in functions!
- - implement heat conduction using relational runtime!
