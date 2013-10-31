@@ -17,7 +17,7 @@ end
 ---------------------------------------------
 --[[ Builtin macros                      ]]--
 ---------------------------------------------
-function AssertCheck(ast, ctxt)
+local function AssertCheck(ast, ctxt)
     local args = ast.params.children
     if #args ~= 1 then
         ctxt:error(ast, "assert expects exactly 1 argument (instead got " .. #args .. ")")
@@ -35,6 +35,7 @@ end
 local c = terralib.includecstring([[
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
 
 FILE *get_stderr () { return stderr; }
 ]])
@@ -46,7 +47,7 @@ local terra lisztAssert(test : bool, file : rawstring, line : int)
     end
 end
 
-function AssertCodegen(ast, env)
+local function AssertCodegen(ast, env)
     local test = ast.params.children[1]
     local code = test:codegen(env)
     if test.node_type:isVector() then
@@ -63,7 +64,7 @@ function AssertCodegen(ast, env)
     end
 end
 
-function PrintCheck(ast, ctxt)
+local function PrintCheck(ast, ctxt)
     local args = ast.params.children
     if #args ~= 1 then
         ctxt:error(ast, "print expects exactly one argument (instead got " .. #args .. ")")
@@ -76,7 +77,7 @@ function PrintCheck(ast, ctxt)
     end
 end
 
-function PrintCodegen(ast, env)
+local function PrintCodegen(ast, env)
     local output = ast.params.children[1]
 	local lt   = output.node_type
     local tt   = lt:terraType()
@@ -113,7 +114,7 @@ function PrintCodegen(ast, env)
     end
 end
 
-function DotCheck(ast, ctxt)
+local function DotCheck(ast, ctxt)
     local args = ast.params.children
     if #args ~= 2 then
         ctxt:error(ast, "dot expects exactly 2 arguments (instead got " .. #args .. ")")
@@ -141,7 +142,7 @@ function DotCheck(ast, ctxt)
     return types.type_meet(lt1:baseType(), lt2:baseType())
 end
 
-function DotCodegen(ast, env)
+local function DotCodegen(ast, env)
     local args = ast.params.children
     local v1 = symbol()
     local v2 = symbol()
@@ -167,7 +168,7 @@ function DotCodegen(ast, env)
     end
 end
 
-function CrossCheck(ast, ctxt)
+local function CrossCheck(ast, ctxt)
     local args = ast.params.children
     if #args ~= 2 then
         ctxt:error(ast, "cross expects exactly 2 arguments (instead got " .. #args .. ")")
@@ -197,7 +198,7 @@ function CrossCheck(ast, ctxt)
     return types.type_meet(lt1, lt2)
 end
 
-function CrossCodegen(ast, env)
+local function CrossCodegen(ast, env)
     local args = ast.params.children
     local v1 = symbol()
     local v2 = symbol()
@@ -217,7 +218,48 @@ function CrossCodegen(ast, env)
     end
 end
 
+local function LengthCheck(ast, ctxt)
+    local args = ast.params.children
+    if #args ~= 1 then
+        ctxt:error(ast, "dot expects exactly 1 argument (instead got " .. #args .. ")")
+        return
+    end
+    local lt = args[1].node_type
+    if not lt:isVector() then
+        ctxt:error(args[1], "argument to length must be a vector")
+        return
+    end
+    if lt:baseType() == t.bool then
+        ctxt:error(args[1], "boolean vector passed as argument to length")
+    end
+    return t.float
+end
+
+local function LengthCodegen(ast, env)
+    local args = ast.params.children
+    local sq = symbol()
+    local N = args[1].node_type.N
+    if N == 0 then
+        return `0
+    end
+    local len2 = `sq[0]
+    -- TODO: make this codegen a Terra for loop for super-long vectors
+    for i = 1, N - 1 do
+        len2 = `len2 + sq[i]
+    end
+
+    local tt = args[1].node_type:terraType()
+    local code = args[1]:codegen(env)
+    return quote
+        var v : tt = code
+        var [sq] : tt = v * v
+    in
+        c.sqrt(len2)
+    end
+end
+
 L.print = Macro.new(PrintCheck, PrintCodegen)
 L.assert = Macro.new(AssertCheck, AssertCodegen)
 L.dot = Macro.new(DotCheck, DotCodegen)
 L.cross = Macro.new(CrossCheck, CrossCodegen)
+L.length = Macro.new(LengthCheck, LengthCodegen)
