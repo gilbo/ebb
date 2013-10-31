@@ -124,7 +124,7 @@ end
 function fail11()
 	local v = Vector.new(L.float, {1, 1, 1})
 	local k = liszt_kernel (cell)
-		assert(v == 1)
+		assert(v)
 	end
 	mesh.cells:map(k)
 end
