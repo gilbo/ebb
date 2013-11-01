@@ -258,6 +258,68 @@ local function LengthCodegen(ast, env)
     end
 end
 
+local function map(fn, list)
+    local result = {}
+    for i = 1, #list do
+        table.insert(result, fn(list[i]))
+    end
+    return result
+end
+
+local function GetTypedSymbol(arg)
+    return symbol(arg.node_type:terraType())
+end
+
+local function TerraCheck(func)
+    func:compile()
+    return function (ast, ctxt)
+        local args = ast.params.children 
+        local argsyms = map(GetTypedSymbol, args)
+        local rettype = nil
+        local try = function()
+            local terrafunc = terra([argsyms]) return func([argsyms]) end
+            terrafunc:compile()
+            rettype = terrafunc:getdefinitions()[1]:gettype().returns
+        end
+        local success, retval = pcall(try)
+        if not success then
+            ctxt:error(ast, "couldn't fit parameters to signature of terra function")
+            ctxt:error(ast, retval)
+            return t.error
+        end
+        if #rettype > 1 then
+            ctxt:error(ast, "terra function returns more than one value")
+            return t.error
+        end
+        if #rettype == 1 and not types.usertypes.isDataType(rettype[1]) then
+            ctxt:error(ast, "unable to use return type '" .. tostring(rettype[1]) .. "' of terra function in Liszt")
+            return t.error
+        end
+        return #rettype == 0 and t.error or types.usertypes.ltype(rettype[1])
+    end
+end
+
+local function TerraCodegen(func)
+    return function (ast, env)
+        local args = ast.params.children 
+        local argsyms = map(GetTypedSymbol, args)
+        local init_params = quote end
+        for i = 1, #args do
+            local code = args[i]:codegen(env)
+            init_params = quote
+                init_params
+                var [argsyms[i]] = code
+            end
+        end
+        return quote init_params in func(argsyms) end
+    end 
+end
+
+builtins = {}
+function builtins.terra_to_macro(terrafn)
+    return Macro.new(TerraCheck(terrafn), TerraCodegen(terrafn))
+end
+
 L.print = Macro.new(PrintCheck, PrintCodegen)
 L.assert = Macro.new(AssertCheck, AssertCodegen)
 L.dot = Macro.new(DotCheck, DotCodegen)

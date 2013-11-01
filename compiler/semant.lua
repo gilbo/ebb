@@ -503,6 +503,10 @@ local function luav_to_ast(luav, src_node)
 		node      = ast.Function:DeriveFrom(src_node)
 		node.func = luav
 
+    elseif terralib.isfunction(luav) then
+        node      = ast.Function:DeriveFrom(src_node)
+        node.func = builtins.terra_to_macro(luav)
+
 	elseif type(luav) == 'table' then
 		node       = ast.Table:DeriveFrom(src_node)
 		node.table = luav
@@ -744,7 +748,6 @@ end
 function ast.Call:check(ctxt)
 	local call = self:clone()
 	call.node_type = t.error -- default
-	-- call name can be a field only in current implementation
 	call.func   = self.func:check(ctxt)
 	local ftype = call.func.node_type
 

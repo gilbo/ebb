@@ -257,9 +257,10 @@ t.table = Type:new(Type.kinds.table)
 local usertypes = {}
 exports.usertypes = usertypes
 local terraToPrimitiveType = {
-   [int]   = t.int,
-   [float] = t.float,
-   [bool]  = t.bool
+   [int]    = t.int,
+   [float]  = t.float,
+   [double] = t.float, -- TODO: wire up double precision
+   [bool]   = t.bool
 }
 
 function usertypes.isTopoType (tp)
