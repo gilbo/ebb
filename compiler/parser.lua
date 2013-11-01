@@ -117,15 +117,19 @@ lang.exp = pratt.Pratt() -- returns a pratt parser
 
 -- tuples are used to represent a sequence of comma-seperated expressions that can
 -- be found in function calls and will perhaps be used in for statements
-lang.tuple = function (P, exprs)
+lang.tuple = function (P, exprs, terminator)
 	exprs = exprs or { }
-	exprs[#exprs + 1] = P:exp()
+    if terminator == nil or not P:matches(terminator) then
+        exprs[#exprs + 1] = P:exp()
+    end
 	if P:nextif(",") then
 		return P:tuple(exprs)
 	else 
 		local tuple    = ast.Tuple:New(P)
 		tuple.children = exprs
-		tuple:copy_location(exprs[1])
+        if #exprs ~= 0 then
+            tuple:copy_location(exprs[1])
+        end
 		return tuple
 	end
 end
@@ -151,7 +155,7 @@ lang.lvaluehelper = function (P, lhs)
 	local open_parens = P:nextif('(')
 	if open_parens then
 		local node = ast.Call:New(P)
-		local args = P:tuple()
+		local args = P:tuple({}, ')')
 		P:expectmatch(')', '(', open_parens.linenumber)
 		node.func, node.params = lhs, args
 		return P:lvaluehelper(node)

@@ -12,11 +12,15 @@ local terra print_int(val : int)
     printf('%d\n', val)
 end
 
+local terra say_hi()
+    printf('Hi!\n')
+end
+
 local terra square(val : int)
     return val * val
 end
 
-local test_sqrt = liszt_kernel(f)
+local test_terra = liszt_kernel(f)
     assert(square(5) == 25) -- call a user-defined Terra function
     assert(sqrt(5) == ans) -- call a built-in C function
 
@@ -24,7 +28,8 @@ local test_sqrt = liszt_kernel(f)
     assert(sq5 == 25)
 
     print_int(3) -- correctly handle a user-defined Terra function with no return value
+    say_hi() -- correctly handle a Terra function with no parameters
     srand(2) -- correctly handle a built-in C function with void return type
 end
 
-mesh.faces:map(test_sqrt)
+mesh.faces:map(test_terra)
