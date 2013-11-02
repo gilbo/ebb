@@ -7,26 +7,27 @@ local t = types.t
 ------------------
 -- Should pass: --
 ------------------
-local a  = Vector.new(L.float, {1,     2, 3.29})
-local z  = Vector.new(L.float, {4, 5.392,    6})
+local a  = L.NewVector(L.float, {1,     2, 3.29})
+local z  = L.NewVector(L.float, {4, 5.392,    6})
 
-local a4 = Vector.new(L.float, {3.4, 4.3, 5, 6.153})
-local ai = Vector.new(L.int,   {2, 3, 4})
-local ab = Vector.new(L.bool,  {true, false, true})
+local a4 = L.NewVector(L.float, {3.4, 4.3, 5, 6.153})
+local ai = L.NewVector(L.int,   {2, 3, 4})
+local ab = L.NewVector(L.bool,  {true, false, true})
 
 local b  = 3 * a
 local b2 = a * 3
 local c  = a + b
 local d  = a + ai
 local e  = ai / 4.5
-local f  = c - Vector.new(L.float, {8, 8, 8})
+local f  = c - L.NewVector(L.float, {8, 8, 8})
 local g  = a % 3
 local h  = a4 % -2
 
-test.eq(b.size,  a.size)
-test.eq(b2.size, a.size)
-test.eq(c.size,  a.size)
-test.eq(d.size,  a.size)
+
+test.eq(b.N,     a.N)
+test.eq(b2.N,    a.N)
+test.eq(c.N,     a.N)
+test.eq(d.N,     a.N)
 test.eq(d.type,  a.type)
 test.eq(b.type,  b2.type)
 test.eq(e.type:baseType(), t.float)
@@ -105,26 +106,22 @@ test.fail_function(type_fail5, "lengths")
 --------------------------
 -- Kernel vector tests: --
 --------------------------
-mesh   = LoadMesh("examples/mesh.lmesh")
-pos    = mesh:fieldWithLabel(L.vertex, L.vector(L.float, 3), "position")
-
+mesh = L.initMeshRelationsFromFile("examples/mesh.lmesh")
 
 ------------------
 -- Should pass: --
 ------------------
-function test_vector_literals ()
-	local k = liszt_kernel (v)
-		var x   = {5, 5, 5}
-		pos(v) += x + {0, 1, 1}
-	end
-	mesh.vertices:map(k)
-
-	local s = mesh:scalar(L.vector(L.float, 3), {0.0, 0.0, 0.0})
-	local check = liszt_kernel(v)
-		s += pos(v)
-	end
-	mesh.vertices:map(check)
-	local f = s:value() / mesh.vertices:size()
-	test.fuzzy_aeq(f.data, {5, 6, 6})
+local k = liszt_kernel (v in mesh.vertices)
+	var x       = {5, 5, 5}
+	v.position += x + {0, 1, 1}
 end
-test_vector_literals()
+k()
+
+local s = L.NewScalar(L.vector(L.float, 3), {0.0, 0.0, 0.0})
+local check = liszt_kernel(v in mesh.vertices)
+	s += v.position
+end
+check()
+
+local f = s:value() / mesh.vertices._size
+test.fuzzy_aeq(f.data, {5, 6, 6})

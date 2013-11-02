@@ -1,26 +1,24 @@
 import "compiler/liszt"
 require "tests/test"
 
-mesh   = LoadMesh("examples/mesh.lmesh")
-pos    = mesh:fieldWithLabel(L.vertex, L.vector(L.float, 3), "position")
-
-local com = mesh:scalar(L.vector(L.float, 3), {0, 0, 0})
+local mesh = L.initMeshRelationsFromFile("examples/mesh.lmesh")
+local com = L.NewScalar(L.vector(L.float, 3), {0, 0, 0})
 
 function center_of_mass ()
 	com:setTo({0,0,0})
-	local sum_pos = liszt_kernel (v)
-		com += pos(v)
+	local sum_pos = liszt_kernel (v in mesh.vertices)
+		com += v.position
 	end
-	mesh.vertices:map(sum_pos)
-	return com:value() / mesh.vertices:size()
+	sum_pos()
+	return com:value() / mesh.vertices._size
 end
 
 local function displace_mesh (delta_x, delta_y, delta_z)
-	local d = Vector.new(L.float, {delta_x, delta_y, delta_z})
-	local dk = liszt_kernel (v)
-		pos(v) += d
+	local d = L.NewVector(L.float, {delta_x, delta_y, delta_z})
+	local dk = liszt_kernel (v in mesh.vertices)
+		v.position += d
 	end
-	mesh.vertices:map(dk)
+	dk()
 end
 
 test.aeq(center_of_mass().data, {0, 0, 0})

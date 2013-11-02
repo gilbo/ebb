@@ -1,11 +1,8 @@
 import "compiler/liszt"
 
-local lassert = L.assert
-mesh  = LoadMesh("examples/mesh.lmesh")
+mesh  = L.initMeshRelationsFromFile("examples/mesh.lmesh")
 
-local pass_assert = liszt_kernel(f)
-    lassert(true)
+local pass_assert = liszt_kernel(f in mesh.faces)
+    L.assert(true)
 end
-
-mesh.faces:map(pass_assert)
-assert(true)
+pass_assert()

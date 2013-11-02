@@ -150,6 +150,15 @@ function DotCodegen(ast, env)
     end
 end
 
-L.print = Macro.new(PrintCheck, PrintCodegen)
-L.assert = Macro.new(AssertCheck, AssertCodegen)
-L.dot = Macro.new(DotCheck, DotCodegen)
+local B = {}
+B.print  = Macro.new(PrintCheck, PrintCodegen)
+B.assert = Macro.new(AssertCheck, AssertCodegen)
+B.dot    = Macro.new(DotCheck, DotCodegen)
+
+B.addBuiltinsToNamespace = function (L)
+    L.print  = B.print
+    L.assert = B.assert
+    L.dot    = B.dot
+end
+
+return B

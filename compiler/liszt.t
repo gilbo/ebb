@@ -1,7 +1,12 @@
 local parser  = require "compiler/parser"
 local kernel  = terralib.require "compiler/kernel"
-terralib.require "include/liszt" -- included for liszt programmer
 
+-- include liszt library for programmer
+L = terralib.require "include/liszt"
+
+-- export builtins into L namespace
+local builtins = terralib.require "include/builtins"
+builtins.addBuiltinsToNamespace(L)
 
 local pratt = terralib.require('compiler/pratt')
 

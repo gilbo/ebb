@@ -1,212 +1,216 @@
 import "compiler/liszt"
 
-mesh  = LoadMesh("examples/mesh.lmesh")
-pos   = mesh:fieldWithLabel(L.vertex, L.vector(L.float, 3), "position")
-field = mesh:field(L.face, L.float, 0.0)
+mesh = L.initMeshRelationsFromFile("examples/mesh.lmesh")
+mesh.faces:NewField('field', L.float)
+mesh.faces.field:LoadFromCallback(terra (mem: &float, i : uint) mem[0] = 0 end)
 
-local assert = L.assert
+local lassert = L.assert
 
---local a = global(int, 43)
-local a = 43
+local a     = 43
+local com   = L.NewScalar(L.vector(L.float, 3), {0, 0, 0})--Vector.new(float, {0.0, 0.0, 0.0})
+local upval = 5
+local vv    = L.NewVector(L.float, {1,2,3})
 
-function main ()
-	local com   = mesh:scalar(L.vector(L.float, 3), {0, 0, 0})--Vector.new(float, {0.0, 0.0, 0.0})
-	local upval = 5
-	local vv    = Vector.new(L.float, {1,2,3})
 
-	local test_bool = liszt_kernel (v)
-		var q = true
-		var x = q  -- Also, test re-declaring variables (symbols for 'x' should now be different)
-		var z = not q
-		var t = not not q
-		var y = z == false
-		assert(x == true)
-		assert(q == true)
-		assert(z == false)
-		assert(y == true)
-		assert(t == q)
-	end
-	mesh.vertices:map(test_bool)
-
-	local test_decls = liszt_kernel(v)
-		-- DeclStatement tests --
-		var c
-		c = 12
-
-		var x
-		x = true
-
-		var z
-		do z = true end
-		assert(z == true)
-
-		var z
-		do z = 4 end
-		assert(z == 4)
-
-		-- this should be fine
-		var y
-		var y
-
-		-- should be able to assign w/an expression after declaring,
-		-- checking with var e to make sure expressions are the same.
-		var zip = 43.3
-		var doo
-		doo = zip * c
-		var dah = zip * c
-		var x = doo == dah
-		assert(doo == dah)
-	end
-	mesh.vertices:map(test_decls)
-
-	local test_conditionals = liszt_kernel (v)
-		-- IfStatement tests
-		var q = true
-		var x = 3
-		var y = 4
-
-		if q then
-			var x = 5
-			assert(x == 5)
-			y = x
-			assert(y == 5)
-		else
-			y = 9
-			assert(y == 9)
-		end
-		assert(x == 3)
-		assert(y == 5)
-		y = x
-		assert(y == 3)
-
-		if y == x * 2 then
-			x = 4
-		elseif y == x then
-			x = 5
-		end
-		assert(x == 5)
-
-		if y == x * 2 then
-			x = 4
-		end
-		assert(x == 5)
-
-		var a = 3
-		if y == x * 2 then
-			x = 4
-			assert(false)
-		elseif y == x then
-			x = 5
-			assert(false)
-		else
-			var a = true
-			assert(a == true)
-		end
-		assert(a == 3)
-	end
-	mesh.vertices:map(test_conditionals)
-
-	local test_arith = liszt_kernel (v)
-		-- BinaryOp, UnaryOp, InitStatement, Number, Bool, and RValue codegen tests
-		var x = 9
-		assert(x == 9)
-		var xx = x - 4
-		assert(xx == 5)
-		var y = x + -(6 * 3)
-		assert(y == -9)
-		var z = upval
-		assert(z == 5)
-		var b = a
-		assert(b == 43)
-		var q = true
-		assert(q == true)
-		var x = q  -- Also, test re-declaring variables (symbols for 'x' should now be different)
-		assert(x == true)
-		var z = not x
-		assert(z == false)
-		var y = not z or x
-		assert(y == true)
-		var z = not true and false or true
-		assert(z == true)
-
-		-- Codegen for vectors (do types propogate correctly?)
-		var x = 3 * vv
-		var y = vv / 4.2
-		var z = x + y
-		var a = y - x
-
-		var a = 43.3
-		var d
-		d = a * vv
-		var e = a * vv
-		-- assert(d == e) -- vector equality not supported?
-	end
-	mesh.vertices:map(test_arith)
-
-	local test_while = liszt_kernel(v)
-		-- While Statement tests --
-		-- if either of these while statements doesn't terminate, then our codegen scoping is wrong!
-		var a = true
-		while a do
-			a = false
-		end
-
-		var b = true
-		while b ~= a do
-			a = true
-			var b = false
-		end
-	end
-	mesh.vertices:map(test_while)
-
-	local test_do = liszt_kernel (v)
-		var b = false
-		var x = true
-		var y = 3
-		do
-			var x = false
-			assert(x == false)
-			if x then
-				y = 5
-				assert(false)
-			else
-				y = 4
-				assert(y == 4)
-			end
-		end
-		assert(x == true)
-		assert(y == 4)
-	end
-	mesh.vertices:map(test_do)
-
-	local test_repeat = liszt_kernel (v)
-		-- RepeatStatement tests -- 
-		var x = 0
-		var y = 0
-		-- again, if this doesn't terminate, then our scoping is wrong
-		repeat
-			y = y + 1
-			var x = 5
-		until x == 5
-		assert(x == 0)
-
-		y = 0
-		repeat
-			y = y + 1
-		until y == 5
-		assert(y == 5)
-	end
-
-	local test_for = liszt_kernel (v)
-		-- Numeric for tests: --
-		var x = true
-		for i = 1, 5 do
-			var x = i
-			if x == 3 then break end
-		end
-		assert(x == true)
-	end
-	mesh.vertices:map(test_for)
+local test_bool = liszt_kernel (v in mesh.vertices)
+	var q = true
+	var x = q  -- Also, test re-declaring variables (symbols for 'x' should now be different)
+	var z = not q
+	var t = not not q
+	var y = z == false
+	lassert(x == true)
+	lassert(q == true)
+	lassert(z == false)
+	lassert(y == true)
+	lassert(t == q)
 end
+test_bool()
 
-main()
+
+local test_decls = liszt_kernel(v in mesh.vertices)
+	-- DeclStatement tests --
+	var c
+	c = 12
+
+	var x
+	x = true
+
+	var z
+	do z = true end
+	lassert(z == true)
+
+	var z
+	do z = 4 end
+	lassert(z == 4)
+
+	-- this should be fine
+	var y
+	var y
+
+	-- should be able to assign w/an expression after declaring,
+	-- checking with var e to make sure expressions are the same.
+	var zip = 43.3
+	var doo
+	doo = zip * c
+	var dah = zip * c
+	var x = doo == dah
+	lassert(doo == dah)
+end
+test_decls()
+
+
+local test_conditionals = liszt_kernel (v in mesh.vertices)
+	-- IfStatement tests
+	var q = true
+	var x = 3
+	var y = 4
+
+	if q then
+		var x = 5
+		lassert(x == 5)
+		y = x
+		lassert(y == 5)
+	else
+		y = 9
+		lassert(y == 9)
+	end
+	lassert(x == 3)
+	lassert(y == 5)
+	y = x
+	lassert(y == 3)
+
+	if y == x * 2 then
+		x = 4
+	elseif y == x then
+		x = 5
+	end
+	lassert(x == 5)
+
+	if y == x * 2 then
+		x = 4
+	end
+	lassert(x == 5)
+
+	var a = 3
+	if y == x * 2 then
+		x = 4
+		lassert(false)
+	elseif y == x then
+		x = 5
+		lassert(false)
+	else
+		var a = true
+		lassert(a == true)
+	end
+	lassert(a == 3)
+end
+test_conditionals()
+
+
+local test_arith = liszt_kernel (v in mesh.vertices)
+	-- BinaryOp, UnaryOp, InitStatement, Number, Bool, and RValue codegen tests
+	var x = 9
+	lassert(x == 9)
+	var xx = x - 4
+	lassert(xx == 5)
+	var y = x + -(6 * 3)
+	lassert(y == -9)
+	var z = upval
+	lassert(z == 5)
+	var b = a
+	lassert(b == 43)
+	var q = true
+	lassert(q == true)
+	var x = q  -- Also, test re-declaring variables (symbols for 'x' should now be different)
+	lassert(x == true)
+	var z = not x
+	lassert(z == false)
+	var y = not z or x
+	lassert(y == true)
+	var z = not true and false or true
+	lassert(z == true)
+
+	-- Codegen for vectors (do types propogate correctly?)
+	var x = 3 * vv
+	var y = vv / 4.2
+	var z = x + y
+	var a = y - x
+
+	var a = 43.3
+	var d
+	d = a * vv
+	var e = a * vv
+	-- assert(d == e) -- vector equality not supported?
+end
+test_arith()
+
+
+local test_while = liszt_kernel(v in mesh.vertices)
+	-- While Statement tests --
+	-- if either of these while statements doesn't terminate, then our codegen scoping is wrong!
+	var a = true
+	while a do
+		a = false
+	end
+
+	var b = true
+	while b ~= a do
+		a = true
+		var b = false
+	end
+end
+test_while()
+
+
+local test_do = liszt_kernel (v in mesh.vertices)
+	var b = false
+	var x = true
+	var y = 3
+	do
+		var x = false
+		lassert(x == false)
+		if x then
+			y = 5
+			lassert(false)
+		else
+			y = 4
+			lassert(y == 4)
+		end
+	end
+	lassert(x == true)
+	lassert(y == 4)
+end
+test_do()
+
+
+local test_repeat = liszt_kernel (v in mesh.vertices)
+	-- RepeatStatement tests -- 
+	var x = 0
+	var y = 0
+	-- again, if this doesn't terminate, then our scoping is wrong
+	repeat
+		y = y + 1
+		var x = 5
+	until x == 5
+	lassert(x == 0)
+
+	y = 0
+	repeat
+		y = y + 1
+	until y == 5
+	lassert(y == 5)
+end
+test_repeat()
+
+
+local test_for = liszt_kernel (v in mesh.vertices)
+	-- Numeric for tests: --
+	var x = true
+	for i = 1, 5 do
+		var x = i
+		if x == 3 then break end
+	end
+	lassert(x == true)
+end
+test_for()
+

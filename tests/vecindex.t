@@ -1,37 +1,32 @@
-package.path = package.path .. ";./tests/?.lua;?.lua"
-local test = require "test"
 import "compiler/liszt"
+local test = require "tests/test"
 
 
 --------------------------
 -- Kernel vector tests: --
 --------------------------
-mesh   = LoadMesh("examples/mesh.lmesh")
-pos    = mesh:fieldWithLabel(L.vertex, L.vector(L.float, 3), "position")
+mesh = L.initMeshRelationsFromFile("examples/mesh.lmesh")
 
 ------------------
 -- Should pass: --
 ------------------
-function test_vector_indexing ()
-  local vk = liszt_kernel (v)
+local vk = liszt_kernel (v in mesh.vertices)
     var x = {5, 4, 3}
-    pos(v) += x
-  end
-  mesh.vertices:map(vk)
-
-  local x_out = mesh:scalar(L.float, 0.0)
-  local y_out = mesh:scalar(L.float, 0.0)
-  local y_idx = mesh:scalar(L.int, 1)
-  local read_out = liszt_kernel(v)
-    x_out += pos(v)[0]
-    y_out += pos(v)[y_idx]
-  end
-  mesh.vertices:map(read_out)
-
-  local avgx = x_out:value() / mesh.vertices:size()
-  local avgy = y_out:value() / mesh.vertices:size()
-  test.fuzzy_eq(avgx, 5)
-  test.fuzzy_eq(avgy, 4)
+    v.position += x
 end
-test_vector_indexing()
+vk()
+
+local x_out = L.NewScalar(L.float, 0.0)
+local y_out = L.NewScalar(L.float, 0.0)
+local y_idx = L.NewScalar(L.int, 1)
+local read_out = liszt_kernel(v in mesh.vertices)
+    x_out += v.position[0]
+    y_out += v.position[y_idx]
+end
+read_out()
+
+local avgx = x_out:value() / mesh.vertices._size
+local avgy = y_out:value() / mesh.vertices._size
+test.fuzzy_eq(avgx, 5)
+test.fuzzy_eq(avgy, 4)
 

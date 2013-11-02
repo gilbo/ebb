@@ -1,4 +1,4 @@
-local L = terralib.require("include/relations")
+local L = terralib.require("include/liszt")
 
 -- Test code
 local M = L.initMeshRelationsFromFile("examples/rmesh.lmesh")

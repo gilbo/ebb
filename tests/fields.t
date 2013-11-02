@@ -7,129 +7,140 @@ import "compiler/liszt"
 require 'tests/test'
 
 local assert = L.assert
-mesh = LoadMesh("examples/mesh.lmesh")
-
+local mesh   = L.initMeshRelationsFromFile("examples/mesh.lmesh")
+local V      = mesh.vertices
+local F      = mesh.faces
 
 ----------------
 -- check args --
 ----------------
-function fail_topo1()
-	local f = mesh:field(L.vector(L.float, 3), 'abc', 4)
-end
-function fail_topo2()
-	local f = mesh:field(4, L.int, 3)
-end
-
-test.fail_function(fail_topo1, "topological")
-test.fail_function(fail_topo2, "topological")
-
 function fail_type1()
-	local f = mesh:field(L.vertex, 'table', {})
+	local f = V:NewField('field', 'asdf')
 end
 function fail_type2()
-	local f = mesh:field(L.face, 3)
+	local f = V:NewField('field', bool)
 end
-test.fail_function(fail_type1, "data type")
-test.fail_function(fail_type2, "data type")
 
-function fail_init1()
-	local f = mesh:field(L.face, L.vector(L.float, 3), true)
-end
-function fail_init2()
-	local f = mesh:field(L.face, L.float, {1, 3, 4})
-end
-test.fail_function(fail_init1, "Initializer is not of type")
-test.fail_function(fail_init2, "Initializer is not of type")
+test.fail_function(fail_type1, "type")
+test.fail_function(fail_type2, "type")
 
 
-------------------
--- Test Codegen --
-------------------
-pos    = mesh:fieldWithLabel(L.vertex, L.vector(L.float, 3), "position")
-field  = mesh:field(L.face,   L.float, 1.0)
-field2 = mesh:field(L.face,   L.float, 2.5)
-field3 = mesh:field(L.face,   L.float, 6.0)
-field4 = mesh:field(L.cell,   L.bool,  false)
-field5 = mesh:field(L.vertex, L.vector(L.float, 4), {0.0, 0.0, 0.0, 0.0})
+-------------------------------
+-- Create/initialize fields: --
+-------------------------------
+F:NewField('field1', L.float)
+F:NewField('field2', L.float)
+F:NewField('field3', L.float)
+F:NewField('field4', L.bool)
+F:NewField('field5', L.vector(L.float, 4))
 
+F.field1:LoadFromCallback(terra (mem : &float, i : uint) mem[0] = 1     end)
+F.field2:LoadFromCallback(terra (mem : &float, i : uint) mem[0] = 2.5   end)
+F.field3:LoadFromCallback(terra (mem : &float, i : uint) mem[0] = 6     end)
+F.field4:LoadFromCallback(terra (mem : &bool,  i : uint) mem[0] = false end)
+F.field5:LoadFromCallback(
+	terra (mem: &vector(float, 4), i : uint)
+		mem[0] = vectorof(float, 0, 0, 0, 0)
+	end
+)
+
+
+-----------------
+-- Local vars: --
+-----------------
 local a = 6
-local b = Vector.new(L.float, {1, 3, 4, 5})
+local b = L.NewVector(L.float, {1, 3, 4, 5})
 
-local reduce1 = liszt_kernel (f)
-	field(f) -= 3 - 1/6 * a
+
+-------------------
+-- Test kernels: --
+-------------------
+local reduce1 = liszt_kernel (f in F)
+	f.field1 -= 3 - 1/6 * a
 end
 
-local reduce2 = liszt_kernel (f)
-	field2(f) *= 3 * 7 / 3
+local reduce2 = liszt_kernel (f in F)
+	f.field2 *= 3 * 7 / 3
 end
 
-local reduce3 = liszt_kernel (f)
-	field3(f) = field3(f) 
+local read1 = liszt_kernel (f in F)
+	var tmp = f.field3 + 5
+	assert(tmp == 11)
 end
 
-local read1 = liszt_kernel (f)
-	var tmp = field3(f) + 5
+local write1 = liszt_kernel(f in F)
+	f.field3 = 0.0
 end
 
-local write1 = liszt_kernel(f)
-	field3(f) = 0.0
+local write2 = liszt_kernel (f in F)
+	f.field5 = b
 end
 
-local write2 = liszt_kernel (f)
-	field5(f) = b
+local reduce3 = liszt_kernel (f in F)
+	f.field5 += {1.0,1.0,1.0,1.0}
 end
 
-local red2 = liszt_kernel (f)
-	field5(f) += {1.0,1.0,1.0,1.0}
+local check2 = liszt_kernel (f in F)
+	assert(f.field5[0] == 2)
+	assert(f.field5[1] == 4)
+	assert(f.field5[2] == 5)
+	assert(f.field5[3] == 6)
 end
 
-local write3 = liszt_kernel (f)
-	field4(f) = true
+local write3 = liszt_kernel (f in F)
+	f.field4 = true
 end
 
-local check3 = liszt_kernel (f)
-	assert(field4(f))
+local check3 = liszt_kernel (f in F)
+	assert(f.field4)
 end
 
-local write4 = liszt_kernel (f)
-	field4(f) = false
+local write4 = liszt_kernel (f in F)
+	f.field4 = false
 end
 
-local check4 = liszt_kernel(f)
-	assert(not field4(f))
+local check4 = liszt_kernel(f in F)
+	assert(not f.field4)
 end
 
---mesh.faces:map(reduce1)
---mesh.faces:map(reduce2)
---mesh.faces:map(reduce3)
---mesh.faces:map(read1)
---mesh.faces:map(write1)
-mesh.faces:map(write2)
-mesh.faces:map(red2)
 
-mesh.faces:map(write3)
-mesh.faces:map(check3)
+-- execute!
+reduce1()
+reduce2()
 
-mesh.faces:map(write4)
-mesh.faces:map(check4)
+read1()
+write1()
+write2()
+reduce3()
+check2()
 
-local  f = mesh:scalar(L.float, 0.0)
-local bv = mesh:scalar(L.bool, true)
-local f4 = mesh:scalar(L.vector(L.float, 4), {0, 0, 0, 0})
+write3()
+check3()
+
+write4()
+check4()
+
+
+
+--------------------------------------
+-- Now the same thing with scalars: --
+--------------------------------------
+local  f = L.NewScalar(L.float, 0.0)
+local bv = L.NewScalar(L.bool, true)
+local f4 = L.NewScalar(L.vector(L.float, 4), {0, 0, 0, 0})
 
 local function check_write ()
-	-- should initialize each field element to {1, 3, 4, 5}
-	mesh.faces:map(write2)
-	mesh.faces:map(red2)
+	-- should initialize each field element to {2, 4, 5, 6}
+	write2()
+	reduce3()
 
 	f4:setTo({0, 0, 0, 0})
-	mesh.faces:map(
-		liszt_kernel (f)
-			f4 += field5(f)
-		end
-	)
-	local avg = f4:value() / mesh.faces:size()
+	local sum_positions = liszt_kernel (f in F)
+		f4 += f.field5
+	end
+	sum_positions()
+
+	local avg = f4:value() / F._size
 	test.fuzzy_aeq(avg.data, {2, 4, 5, 6})
 end
 check_write()
-

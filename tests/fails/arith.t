@@ -1,7 +1,7 @@
 import "compiler/liszt"
+mesh = L.initMeshRelationsFromFile("examples/mesh.lmesh")
 
-mesh = LoadMesh("examples/mesh.lmesh")
-local vk = liszt_kernel(v)
+local vk = liszt_kernel(v in mesh.vertices)
     var x = {1, 2, 3} ^ 4
 end
-mesh.vertices:map(vk)
+vk()

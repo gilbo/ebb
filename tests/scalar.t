@@ -1,47 +1,45 @@
 import "compiler/liszt"
 require "tests/test"
 
-mesh  = LoadMesh("examples/mesh.lmesh")
+mesh = L.initMeshRelationsFromFile("examples/mesh.lmesh")
 
-nf = mesh.faces:size()
-sf = mesh:scalar(L.float, 0.0)
-si = mesh:scalar(L.int,     0)
-sb = mesh:scalar(L.bool, true)
+nf = mesh.faces._size
+sf = L.NewScalar(L.float, 0.0)
+si = L.NewScalar(L.int,     0)
+sb = L.NewScalar(L.bool, true)
 
-sf3 = mesh:scalar(L.vector(L.float, 3), {0, 0, 0})
-si4 = mesh:scalar(L.vector(L.int,   4), {1, 2, 3, 4})
-sb5 = mesh:scalar(L.vector(L.bool,  5), {true, true, true, true, true})
+sf3 = L.NewScalar(L.vector(L.float, 3), {0, 0, 0})
+si4 = L.NewScalar(L.vector(L.int,   4), {1, 2, 3, 4})
+--sb5 = L.NewScalar(L.vector(L.bool,  5), {true, true, true, true, true})
 
-vf  = Vector.new(L.float, {1, 2, 3})
-vi  = Vector.new(L.int,   {2, 2, 2, 2})
-vb  = Vector.new(L.bool,  {true, true, true, true, true})
+vf  = L.NewVector(L.float, {1, 2, 3})
+vi  = L.NewVector(L.int,   {2, 2, 2, 2})
+--vb  = L.NewVector(L.bool,  {true, false, true, false, true})
 
---two = global(int)
---terra set_two()
---	two = 2
---end
---set_two()
 local two = 2
 
 -- test vector codegen:
-mesh.faces:map(liszt_kernel (f) sf3 += vf end)
+local f1 = liszt_kernel (f in mesh.faces) sf3 +=   vf    end
+local f2 = liszt_kernel (f in mesh.faces) si4 -=   vi    end
+--local f3 = liszt_kernel (f in mesh.faces) sb5 and= vb    end
+local f4 = liszt_kernel (f in mesh.faces) sf  +=   1     end
+local f5 = liszt_kernel (f in mesh.faces) si  -=   two   end
+local f6 = liszt_kernel (f in mesh.faces) sb  and= false end
+
+f1()
 test.fuzzy_aeq(sf3:value().data, {nf, 2*nf, 3*nf})
 
-mesh.faces:map(liszt_kernel (f) si4 -= vi end)
+f2()
 test.fuzzy_aeq(si4:value().data, {1-2*nf,2-2*nf,3-2*nf,4-2*nf})
 
---mesh.faces:map(liszt_kernel(f) sb5 = sb5 and vb end)
+--f3()
 --test.aeq(sb5:value().data, {true, false, true, false, true})
 
--- test simple type codegen:
-mesh.faces:map(liszt_kernel (f) sf += 1 end)
-test.eq(sf:value(), mesh.faces:size())
+f4()
+test.eq(sf:value(), mesh.faces._size)
 
-mesh.faces:map(liszt_kernel (f) si -= two end)
+f5()
 test.eq(si:value(), -2*nf)
 
-mesh.faces:map(liszt_kernel(f) sb and= false end)
+f6()
 test.eq(sb:value(), false)
-
-
--- todo: test scalar reads

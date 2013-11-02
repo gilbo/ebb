@@ -1,11 +1,8 @@
 import "compiler/liszt"
+mesh = L.initMeshRelationsFromFile("examples/mesh.lmesh")
 
-local assert = L.assert
-mesh  = LoadMesh("examples/mesh.lmesh")
-
-local fail_assert = liszt_kernel(f)
-    assert(2 + 2 == 5)
+local fail_assert = liszt_kernel(f in mesh.faces)
+    L.assert(2 + 2 == 5)
 end
-
-mesh.faces:map(fail_assert)
+fail_assert()
 

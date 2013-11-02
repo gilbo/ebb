@@ -1,9 +1,10 @@
 import "compiler/liszt"
 
-mesh = LoadMesh("examples/mesh.lmesh")
-sf = mesh:scalar(L.float, 0.0)
+mesh = L.initMeshRelationsFromFile("examples/mesh.lmesh")
+sf   = L.NewScalar(L.float, 0.0)
 
-local k = liszt_kernel (c)
+local k = liszt_kernel (c in mesh.cells)
 	sf.a = 1
 end
-mesh.cells:map(k)
+
+k()

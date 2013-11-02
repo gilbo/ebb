@@ -3,10 +3,13 @@ local exports = {}
 local ast    = require 'ast'
 local semant = require 'semant'
 terralib.require 'runtime/liszt'
-local types = terralib.require 'compiler/types'
-local Type = types.Type
-local t    = types.t
+local types   = terralib.require 'compiler/types'
+local Type    = types.Type
+local t       = types.t
 local runtime = package.loaded.runtime
+
+-- data type of row indexes
+local RITYPE = uint32
 
 function ast.AST:codegen (env)
 	error("Codegen not implemented for AST node " .. self.kind)
@@ -17,10 +20,22 @@ function ast.ExprStatement:codegen (env)
 end
 
 function ast.LisztKernel:codegen (env)
-	env.param   = symbol()
-	env:localenv()[self.param.name] = env.param -- symbol for kernel parameter
-	env.context = symbol() -- lkContext* argument for kernel function
-	return self.body:codegen(env)
+	local param = symbol(RITYPE)
+	env:localenv()[self.iter.name] = param
+
+	local set  = self.set:codegen(env)
+	local body = self.body:codegen(env)
+
+	return quote
+		for [param] = 0, [set]._size do
+			[body]
+		end
+	end
+end
+
+function ast.Relation:codegen(env)
+	local rel = self.relation
+	return `rel
 end
 
 function ast.Block:codegen (env)
@@ -125,18 +140,9 @@ function ast.Break:codegen(env)
 	return quote break end
 end
 
-local c = terralib.includecstring([[
-#include <stdio.h>
-#include <stdlib.h>
-
-FILE *get_stderr () { return stderr; }
-]])
-
-local terra lisztAssert(test : bool, file : rawstring, line : int)
-    if not test then
-        c.fprintf(c.get_stderr(), "%s:%d: assertion failed!\n", file, line)
-        c.exit(1)
-    end
+function ast.LocalVar:codegen(env)
+	local s = env:localenv()[self.name]
+	return `[s]
 end
 
 local phaseMap = {
@@ -150,49 +156,42 @@ local phaseMap = {
 	['lor']     = runtime.L_OR,
 }
 
+local function bin_exp (op, lhe, rhe)
+	if     op == '+'   then return `lhe +   rhe
+	elseif op == '-'   then return `lhe -   rhe
+	elseif op == '/'   then return `lhe /   rhe
+	elseif op == '*'   then return `lhe *   rhe
+	elseif op == '%'   then return `lhe %   rhe
+	elseif op == '^'   then return `lhe ^   rhe
+	elseif op == 'or'  then return `lhe or  rhe
+	elseif op == 'and' then return `lhe and rhe
+	elseif op == '<'   then return `lhe <   rhe
+	elseif op == '>'   then return `lhe >   rhe
+	elseif op == '<='  then return `lhe <=  rhe
+	elseif op == '>='  then return `lhe >=  rhe
+	elseif op == '=='  then return `lhe ==  rhe
+	elseif op == '~='  then return `lhe ~=  rhe
+	end
+end
+
 function ast.Assignment:codegen (env)
-	--local lval = self.lvalue.luaval
 	local lvalue = self.lvalue
 	local ttype  = self.lvalue.node_type:terraType()
+	local lhs = self.lvalue:codegen(env)
+	local rhs = self.exp:codegen(env)
 
-	if lvalue:is(ast.FieldAccess) then
-		local exp     = self.exp:codegen(env)
-		local field   = lvalue.field
-		local topo    = lvalue.topo:codegen(env)
-		local phase   = self.reduceop and phaseMap[self.reduceop]
-		             or runtime.L_ASSIGN
-		local element_type, element_length = lvalue.node_type:runtimeType()
-
-		return quote
-			var tmp : ttype = [exp]
-			runtime.lkFieldWrite([field.__lkfield], topo, phase,
-													 element_type, element_length,
-													 0, element_length, &tmp)
-		end
-
-	elseif lvalue:is(ast.Scalar) then
-		local exp     = self.exp:codegen(env)
-		local scalar  = lvalue.scalar
-		local phase   = phaseMap[self.reduceop]
-		local el_type, el_len = lvalue.node_type:runtimeType()
-		return quote
-			var tmp : ttype = [exp]
-			runtime.lkScalarWrite([env.context], [scalar.__lkscalar],
-														phase, el_type, el_len, 0, el_len, &tmp)
-		end
-
-	else
-		local lhs = lvalue:codegen(env)
-		local rhs = self.exp:codegen(env)
-		return quote lhs = rhs end
+	if self.reduceop then
+		rhs = bin_exp(self.reduceop, lhs, rhs)
 	end
+	return quote lhs = rhs end
 end
 
 function ast.FieldAccess:codegen (env)
 	local field = self.field
-	local topo  = self.topo:codegen(env)
-	local read  = symbol()
+	local index = env:localenv()[self.row]
+	return `@(field.data + [index])
 
+	--[[
 	local typ   = self.node_type:terraType()
 	local el_type, el_len = self.node_type:runtimeType()
 
@@ -202,6 +201,7 @@ function ast.FieldAccess:codegen (env)
 			in
 		[read]
 	end
+	]]
 end
 
 -- By the time we make it to codegen, Call nodes are only used to represent builtin function calls.
@@ -266,33 +266,10 @@ function ast.VectorLiteral:codegen (env)
 	end
 end
 
-local function codegen_scalar(node, env)
-	local read = symbol()
-	local el_type, el_len = node.node_type:runtimeType()
-	local lks = node.luaval.__lkscalar
-	local typ = node.node_type:terraType()
-
-	return quote
-		var [read] : typ
-		runtime.lkScalarRead([env.context], [lks], el_type, el_len, 0, el_len, &[read])
-		in
-		[read]
-	end
-end
-
 function ast.Scalar:codegen (env)
-	local read = symbol()
-	local el_type, el_len = self.node_type:runtimeType()
-	local lks  = self.scalar.__lkscalar
-	local typ  = self.node_type:terraType()
-
-	return quote
-		var [read] : typ
-		runtime.lkScalarRead([env.context], [lks], el_type, el_len, 0, el_len, &[read])
-		in
-		[read]
-	end
-	--return codegen_scalar(self, env)
+	local d = self.scalar.data
+	local s = symbol(&self.scalar.type:terraType())
+	return quote var [s] = d in @[s] end
 end
 
 -- Name:codegen only has to worry about returning r-values
@@ -329,28 +306,11 @@ function ast.UnaryOp:codegen (env)
 	end
 end
 
+
 function ast.BinaryOp:codegen (env)
 	local lhe = self.lhs:codegen(env)
 	local rhe = self.rhs:codegen(env)
-
-	-- TODO: special case equality, inequality operators for vectors!
-
-	if     self.op == '+'   then return `lhe +   rhe
-	elseif self.op == '-'   then return `lhe -   rhe
-	elseif self.op == '/'   then return `lhe /   rhe
-	elseif self.op == '*'   then return `lhe *   rhe
-	elseif self.op == '%'   then return `lhe %   rhe
-	elseif self.op == '^'   then return `lhe ^   rhe
-	elseif self.op == 'or'  then return `lhe or  rhe
-	elseif self.op == 'and' then return `lhe and rhe
-	elseif self.op == '<'   then return `lhe <   rhe
-	elseif self.op == '>'   then return `lhe >   rhe
-	elseif self.op == '<='  then return `lhe <=  rhe
-	elseif self.op == '>='  then return `lhe >=  rhe
-	elseif self.op == '=='  then return `lhe ==  rhe
-	elseif self.op == '~='  then return `lhe ~=  rhe
-	end
-
+	return bin_exp(self.op, lhe, rhe)
 end
 
 --[[
@@ -380,19 +340,12 @@ function exports.codegen (luaenv, kernel_ast)
 
 	env:enterblock()
 	local kernel_body = kernel_ast:codegen(env)
-
-	local program = terra (ctx : runtime.lkContext)
-		var [env.context] = &ctx
-		var [env.param] : runtime.lkElement
-		if runtime.lkGetActiveElement([env.context], &[env.param]) > 0 then
-			kernel_body
-		end
-	end
 	env:leaveblock()
 
-	return program
+	return terra ()
+		[kernel_body]
+	end
 end
-
 
 return exports
 

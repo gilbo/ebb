@@ -1,14 +1,12 @@
 import "compiler/liszt"
 
-local assert = L.assert
-local dot = L.dot
-mesh = LoadMesh("examples/mesh.lmesh")
+local assert, dot = L.assert, L.dot
+mesh = L.initMeshRelationsFromFile("examples/mesh.lmesh")
 
-local v1 = Vector.new(L.float, {1, 2, 3})
-local v2 = Vector.new(L.float, {5, 7})
+local v1 = L.NewVector(L.float, {1, 2, 3})
+local v2 = L.NewVector(L.float, {5, 7})
 
-local test_dot = liszt_kernel(f)
+local test_dot = liszt_kernel(f in mesh.faces)
     assert(dot(v1, v2) == 19)
 end
-
-mesh.faces:map(test_dot)
+test_dot()
