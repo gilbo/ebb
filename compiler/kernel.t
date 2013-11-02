@@ -24,8 +24,8 @@ function Kernel:acceptsType (param_type)
 	return true
 end
 
-function Kernel:generate (param_type)
-  self.typed_ast = semant.check(self.env, self.ast)
+function Kernel:generate (toposet)
+  self.typed_ast = semant.check(self.env, self.ast, toposet.__type.type)
 
 	if not self.__kernel then
 		self.__kernel = codegen.codegen(self.env, self.typed_ast)

@@ -61,16 +61,6 @@ end
 function Context:error(ast, msg)
 	self.diag:reporterror(ast, msg)
 end
-function Context:in_lhs()
-	return self.lhs_count > 0
-end
-function Context:enterlhs()
-	self.lhs_count = self.lhs_count + 1
-end
-function Context:leavelhs()
-	self.lhs_count = self.lhs_count - 1
-	if self.lhs_count < 0 then self.lhs_count = 0 end
-end
 function Context:in_loop()
 	return self.loop_count > 0
 end
@@ -206,10 +196,7 @@ end
 function ast.Assignment:check(ctxt)
 	local assignment = self:clone()
 
-	ctxt:enterlhs()
 	local lhs = self.lvalue:check(ctxt)
-	ctxt:leavelhs()
-
 
 	assignment.lvalue = lhs
 	local ltype       = lhs.node_type
@@ -226,13 +213,6 @@ function ast.Assignment:check(ctxt)
 		if rtype:isLogical() then
 			assignment.reduceop = "l"..assignment.reduceop
 		end
-	end
-
-	-- When the left hand side is declared, but uninitialized, set the type
-	if ltype == t.unknown then
-		ltype                            = rtype
-		lhs.node_type                    = rtype
-		ctxt:liszt()[lhs.name].node_type = rtype
 	end
 
 	-- enforce that the lhs is an lvalue
@@ -256,34 +236,67 @@ function ast.Assignment:check(ctxt)
 	return assignment
 end
 
-function ast.InitStatement:check(ctxt)
-	local initstmt  = self:clone()
-	initstmt.ref    = clone_name(self.ref)
-	initstmt.exp    = self.exp:check(ctxt)
-	local typ       = initstmt.exp.node_type
+local function exec_type_annotation(typexp, ast_node, ctxt)
+	local status, typ = pcall(function()
+		return types.usertypes.ltype(typexp(ctxt:lua()))
+	end)
 
-	if typ == t.error then return end
+	if not status then
+		ctxt:error(ast_node, "Error evaluating type annotation: "..typ)
+		typ = t.error
+	end
+	if not Type.isLisztType(typ) then
+		ctxt:error(ast_node, "Expected Liszt type annotation but found " ..
+											 type(typ))
+		typ = t.error
+	end
+	return typ
+end
 
-	-- Local temporaries can only refer to numeric/boolean/vector data or
-	-- topolocal element types, and variables referring to topo types can
-	-- never be re-assigned.  That way, we don't allow users to write
-	-- code that makes stencil analysis intractable.
-	if not typ:isLogical() and not typ:isNumeric() and not typ:isTopo() then
+function ast.DeclStatement:check(ctxt)
+	local decl    = self:clone()
+	decl.ref      = clone_name(self.ref)
+
+	-- catch syntactically invalid initializations
+	if not self.typeexpression and not self.initializer then
+		ctxt:error(self, "Variables must either be initialized or have "..
+										 "an explicitly annotated type.")
+		decl.ref.node_type = t.error
+		return decl
+	end
+
+	-- process any explicit type annotation
+	local typ
+	if self.typeexpression then
+		typ = exec_type_annotation(self.typeexpression, self, ctxt)
+	end
+	-- check the initialization against the annotation or infer type from init.
+	if self.initializer then
+		decl.initializer = self.initializer:check(ctxt)
+		local exptyp     = decl.initializer.node_type
+		-- if the type was annotated check consistency
+		if typ then
+			local mtyp = type_meet(exptyp,typ)
+			if typ ~= mtyp then
+				ctxt:error(self, "Cannot assign a value of type " ..
+												 exptyp .. " to type " .. typ)
+			end
+		-- or infer the type as the expression type
+		else
+			typ = exptyp
+		end
+	end
+	decl.ref.node_type = typ
+
+	if typ ~= t.error and
+		 not typ:isLogical() and not typ:isNumeric() and not typ:isTopo()
+	then
 		ctxt:error(self,"can only assign numbers, bools, " ..
 		                "or topological elements to local temporaries")
 	end
 
-	initstmt.ref.node_type          = typ
-	ctxt:liszt()[initstmt.ref.name] = initstmt.exp
+	ctxt:liszt()[decl.ref.name] = typ
 
-	return initstmt
-end
-
-function ast.DeclStatement:check(ctxt)
-	local decl 	        = self:clone()
-	decl.ref            = clone_name(self.ref)
-	decl.ref.node_type  = t.unknown
-	ctxt:liszt()[decl.ref.name] = decl.ref
 	return decl
 end
 
@@ -321,7 +334,7 @@ function ast.NumericFor:check(ctxt)
 	ctxt:enterblock()
 	ctxt:enterloop()
 		local varname = numfor.iter.name
-		ctxt:liszt()[varname] = numfor.iter
+		ctxt:liszt()[varname] = numfor.iter.node_type
 		numfor.body = self.body:check(ctxt)
 	ctxt:leaveloop()
 	ctxt:leaveblock()
@@ -553,25 +566,20 @@ end
 
 function ast.Name:check(ctxt)
 	-- try to find the name in the local Liszt scope
-	local lisztv = ctxt:liszt()[self.name]
+	local typ = ctxt:liszt()[self.name]
 
 	-- if the name is in the local scope, then it must have been declared
 	-- somewhere in the liszt kernel.  Thus, it has to be a primitive, a
 	-- bool, or a topological element.
-	if lisztv then
+	if typ then
 		local new_node     = self:clone()
 		new_node.name      = self.name
-		local typ          = lisztv.node_type
+		--local typ          = lisztv.node_type
 		new_node.node_type = typ
 
-		-- check that we're not reading from an uninitialized variable
-		if typ == t.unknown and not ctxt:in_lhs() then
-			ctxt:error(self, "variable '" .. self.name .. "' is not initialized")
-			new_node.node_type = t.error
-		end
-
 		-- check for conditions where the name can't be an lvalue
-		-- setting this flag prevents variables that refer to topological types from being reassigned
+		-- setting this flag prevents variables that refer
+		-- to topological types from being reassigned
 		new_node.is_lvalue = not typ:isTopo()
 
 		return new_node
@@ -671,9 +679,6 @@ function ast.Tuple:index_check(ctxt)
 	local arg_ast = self.children[1]:check(ctxt)
 	local argtype = arg_ast.node_type
 	assert(argtype ~= nil)
-	--if argtype == nil then
-	--	return nil
-	--end
 	self.node_type = argtype
 	return arg_ast
 end
@@ -685,6 +690,7 @@ function ast.TableLookup:check(ctxt)
 
 	if ttype == t.error then
 		return err(self, ctxt)
+	-- QUESTION: why do we need two special error branches here?
 	elseif table:is(ast.Scalar) then
 		return err(self, ctxt, "select operator not supported for non-table type L.Scalar")
 	elseif table:is(ast.Field) then
@@ -765,13 +771,6 @@ function ast.Call:check(ctxt)
 			-- error fall through
 
 		elseif argtype:isTopo() then
-			-- handle as yet un-typed topo variables
-			if argtype == t.topo then
-				-- set type for topological object
-				ctxt:liszt()[arg_ast.name].node_type = ftopo
-				argtype = ftopo
-			end
-
 			-- typecheck that the field is present on this kind of topo
 			if argtype == ftopo then
 				local access     = ast.FieldAccess:DeriveFrom(self)
@@ -793,7 +792,7 @@ function ast.Call:check(ctxt)
 	elseif ftype:isError() then
 		-- fall through (do not print error messages for errors already reported)
 
-    else
+	else
 		ctxt:error(self, "invalid call")
 
 	end
@@ -836,16 +835,16 @@ end
 ------------------------------------------------------------------------------
 --[[ Semantic checking called from here:                                  ]]--
 ------------------------------------------------------------------------------
-local function check_kernel_param(param, ctxt)
+local function check_kernel_param(param, ctxt, param_type)
 	local new_param     = clone_name(param)
-	new_param.node_type	= t.topo
+	new_param.node_type	= param_type
 
-	ctxt:liszt()[param.name] = new_param
+	ctxt:liszt()[param.name] = param_type
 
 	return new_param
 end
 
-function exports.check(luaenv, kernel_ast)
+function exports.check(luaenv, kernel_ast, param_type)
 
 	-- environment for checking variables and scopes
 	local env  = terralib.newenvironment(luaenv)
@@ -859,7 +858,7 @@ function exports.check(luaenv, kernel_ast)
 	diag:begin()
 	env:enterblock()
 
-	new_kernel_ast.param = check_kernel_param(kernel_ast.param, ctxt)
+	new_kernel_ast.param = check_kernel_param(kernel_ast.param, ctxt, param_type)
 	new_kernel_ast.body  = kernel_ast.body:check(ctxt)
 
 	env:leaveblock()

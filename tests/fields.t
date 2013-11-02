@@ -49,8 +49,8 @@ pos    = mesh:fieldWithLabel(L.vertex, L.vector(L.float, 3), "position")
 field  = mesh:field(L.face,   L.float, 1.0)
 field2 = mesh:field(L.face,   L.float, 2.5)
 field3 = mesh:field(L.face,   L.float, 6.0)
-field4 = mesh:field(L.cell,   L.bool,  false)
-field5 = mesh:field(L.vertex, L.vector(L.float, 4), {0.0, 0.0, 0.0, 0.0})
+field4 = mesh:field(L.face,   L.bool,  false)
+field5 = mesh:field(L.face,   L.vector(L.float, 4), {0.0, 0.0, 0.0, 0.0})
 
 local a = 6
 local b = Vector.new(L.float, {1, 3, 4, 5})

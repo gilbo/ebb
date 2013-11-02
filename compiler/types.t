@@ -235,9 +235,6 @@ t.edge   = Type:new(Type.kinds.topo,Type.kinds.edge)
 t.face   = Type:new(Type.kinds.topo,Type.kinds.face)
 t.cell   = Type:new(Type.kinds.topo,Type.kinds.cell)
 
--- un-inferred type
-t.unknown = Type:new()
-
 -- Complex type constructors
 t.vector = vectorType
 t.field  = fieldType

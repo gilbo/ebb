@@ -279,18 +279,15 @@ end
 lang.statement = function (P)
 	-- check for initialization/declaration
 	if (P:nextif("var")) then
-		local name = P:lvalname()
-		-- differentiate between initialization and declaration
-		if (P:nextif("=")) then
-			local node_init = ast.InitStatement:New(P)
-			local exp = P:exp()
-			node_init.ref, node_init.exp = name, exp
-			return node_init
-		else
-			local node_decl = ast.DeclStatement:New(P)
-			node_decl.ref = name
-			return node_decl
+		local node_decl = ast.DeclStatement:New(P)
+		node_decl.ref   = P:lvalname()
+		if P:nextif(":") then
+			node_decl.typeexpression = P:luaexpr()
 		end
+		if (P:nextif("=")) then
+			node_decl.initializer = P:exp()
+		end
+		return node_decl
 
 		--[[ if statement ]]--
 	elseif P:nextif("if") then

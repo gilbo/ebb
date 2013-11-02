@@ -9,7 +9,7 @@ red = mesh:scalar(L.float, 0.0)
 
 -- checking decl statement, if statement, proper scoping
 local l = liszt_kernel (v)
-	var y
+	var y : float
 	if val(v) == 1.0 then
 		y = 1.0
 	else

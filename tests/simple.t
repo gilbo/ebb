@@ -30,28 +30,28 @@ function main ()
 
 	local test_decls = liszt_kernel(v)
 		-- DeclStatement tests --
-		var c
+		var c : int
 		c = 12
 
-		var x
+		var x : bool
 		x = true
 
-		var z
+		var z : bool
 		do z = true end
 		assert(z == true)
 
-		var z
+		var z : int
 		do z = 4 end
 		assert(z == 4)
 
 		-- this should be fine
-		var y
-		var y
+		var y : int
+		var y : int
 
 		-- should be able to assign w/an expression after declaring,
 		-- checking with var e to make sure expressions are the same.
 		var zip = 43.3
-		var doo
+		var doo : float
 		doo = zip * c
 		var dah = zip * c
 		var x = doo == dah
@@ -136,7 +136,7 @@ function main ()
 		var a = y - x
 
 		var a = 43.3
-		var d
+		var d : Vector(float, 3)
 		d = a * vv
 		var e = a * vv
 		-- assert(d == e) -- vector equality not supported?

@@ -138,7 +138,7 @@ end
 
 function fail13()
 	local k = liszt_kernel (cell)
-		var v
+		var v : bool
 		if false then
 			v = true
 		end
