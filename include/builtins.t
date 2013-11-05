@@ -92,15 +92,17 @@ local function PrintCodegen(ast, env)
         local elemQuotes = {}
         local bt = lt:baseType()
         for i = 0, lt.N - 1 do
-            if bt == t.float then
+            if bt == t.float or bt == t.double then
                 printSpec = printSpec .. " %f"
-                table.insert(elemQuotes, `[float](sym[i]))
+                table.insert(elemQuotes, `[double](sym[i]))
             elseif bt == t.int then
                 printSpec = printSpec .. " %d"
                 table.insert(elemQuotes, `sym[i])
             elseif bt == t.bool then
                 printSpec = printSpec .. " %s"
                 table.insert(elemQuotes, `terralib.select(sym[i], "true", "false"))
+            else
+                error('Unrecognized type in print: ' .. tostring(bt:terraType()))
             end
         end
         printSpec = printSpec .. " }\n"

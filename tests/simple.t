@@ -4,7 +4,7 @@ mesh = L.initMeshRelationsFromFile("examples/mesh.lmesh")
 mesh.faces:NewField('field', L.float)
 mesh.faces.field:LoadFromCallback(terra (mem: &float, i : uint) mem[0] = 0 end)
 
-local lassert, lprint = L.assert, L.print
+local lassert, lprint, length = L.assert, L.print, L.length
 
 local a     = 43
 local com   = L.NewScalar(L.vector(L.float, 3), {0, 0, 0})--Vector.new(float, {0.0, 0.0, 0.0})
@@ -120,6 +120,8 @@ local test_arith = liszt_kernel (v in mesh.vertices)
 	lassert(z == 5)
 	var b = a
 	lassert(b == 43)
+    b += 5
+    lassert(b == 48)
 	var q = true
 	lassert(q == true)
 	var x = q  -- Also, test re-declaring variables (symbols for 'x' should now be different)
@@ -141,7 +143,11 @@ local test_arith = liszt_kernel (v in mesh.vertices)
 	var d : vector(float, 3)
 	d = a * vv
 	var e = a * vv
-	-- assert(d == e) -- vector equality not supported?
+	lassert(length(d - e) < 1e-04) -- d is float, e is double, so they won't be exact
+
+    var f : vector(double, 3)
+    f = a * vv
+    lassert(f == e)
 end
 test_arith()
 
