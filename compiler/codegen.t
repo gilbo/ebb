@@ -1,12 +1,11 @@
 local exports = {}
 
-local ast    = require 'ast'
-local semant = require 'semant'
-terralib.require 'runtime/liszt'
+local ast     = require 'ast'
+local semant  = require 'semant'
+local runtime = terralib.require 'runtime/liszt'
 local types   = terralib.require 'compiler/types'
 local Type    = types.Type
 local t       = types.t
-local runtime = package.loaded.runtime
 
 -- data type of row indexes
 local RITYPE = uint32

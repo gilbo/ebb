@@ -91,11 +91,6 @@ size_t numberOfElementsOfType(lContext * ctx, lElementType typ) {
 	return 0; //silence warnings
 }
 
-uint32_t lNumVertices (struct lContext *ctx) { return numberOfElementsOfType(ctx, L_VERTEX); }
-uint32_t lNumEdges    (struct lContext *ctx) { return numberOfElementsOfType(ctx, L_EDGE);   }
-uint32_t lNumFaces    (struct lContext *ctx) { return numberOfElementsOfType(ctx, L_FACE);   }
-uint32_t lNumCells    (struct lContext *ctx) { return numberOfElementsOfType(ctx, L_CELL);   }
-
 //Unnested Runtime Calls
 
 struct Mesh* lMeshFromContext(lContext *ctx) {
@@ -333,6 +328,21 @@ void lSetInitBoundary(lContext * ctx, lSet * set, lElementType type, const char 
 	}
 	int id;
 	ctx->boundary_reader.load(etyp,boundary_name,&id,&set->ranges,&set->size);
+}
+
+
+void *lLoadBoundarySet (lContext *ctx, lElementType type, const char *boundary_name, size_t *bsize) {
+	lSet set;
+	lSetInitBoundary(ctx, &set, type, boundary_name);
+	*bsize = set.size;
+
+	RTYPE *data = (RTYPE *) malloc(set.size * sizeof(RTYPE));
+	RTYPE *d    = data;
+	for (int i = 0; i < set.ranges.size(); i++)
+		for (int j = set.ranges[i].first; j < set.ranges[i].second; j++)
+			d[0] = j, d++;
+
+	return data;
 }
 
 L_ALWAYS_INLINE 

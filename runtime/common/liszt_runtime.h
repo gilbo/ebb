@@ -135,19 +135,13 @@ struct lProgramArguments;
 // Load a context, which stores a bunch of necessary per-mesh instantiated objects
 L_RUNTIME_UNNESTED struct lContext *lLoadContext (char *mesh_file);
 L_RUNTIME_UNNESTED struct Mesh     *lMeshFromContext (struct lContext *ctx);
-L_RUNTIME_UNNESTED void *lLoadPosition(struct lContext *ctx);
-L_RUNTIME_UNNESTED struct lField   *lLoadField   (struct lContext *ctx, const char *key, enum lElementType key_type, enum lType val_type, size_t val_length);
-L_RUNTIME_UNNESTED struct lField   *lInitField   (struct lContext *ctx, enum lElementType key_type, enum lType val_type, size_t val_length);
-L_RUNTIME_UNNESTED struct lScalar  *lInitScalar  (struct lContext *ctx, enum lType val_type, size_t val_length);
+L_RUNTIME_UNNESTED void            *lLoadPosition    (struct lContext *ctx);
+L_RUNTIME_UNNESTED struct lField   *lLoadField       (struct lContext *ctx, const char *key, enum lElementType key_type, enum lType val_type, size_t val_length);
+L_RUNTIME_UNNESTED struct lField   *lInitField       (struct lContext *ctx, enum lElementType key_type, enum lType val_type, size_t val_length);
+L_RUNTIME_UNNESTED struct lScalar  *lInitScalar      (struct lContext *ctx, enum lType val_type, size_t val_length);
 
 L_RUNTIME_UNNESTED struct lSet *lNewlSet ();
 L_RUNTIME_UNNESTED void lFreelSet (struct lSet *set);
-
-L_RUNTIME_UNNESTED uint32_t lNumVertices (struct lContext *ctx);
-L_RUNTIME_UNNESTED uint32_t lNumEdges    (struct lContext *ctx);
-L_RUNTIME_UNNESTED uint32_t lNumFaces    (struct lContext *ctx);
-L_RUNTIME_UNNESTED uint32_t lNumCells    (struct lContext *ctx);
-
 L_RUNTIME_UNNESTED void lFieldBroadcast (struct lContext * ctx, struct lField * field, enum lElementType key_type, enum lType val_type, size_t val_length, void * data);
 L_RUNTIME_UNNESTED void lFieldLoadData  (struct lContext * ctx, struct lField * field, enum lElementType key_type, enum lType val_type, size_t val_length, const char * key);
 L_RUNTIME_UNNESTED void lFieldSaveData  (struct lContext * ctx, struct lField * field, enum lElementType key_type, enum lType val_type, size_t val_length, const char * key);
@@ -162,7 +156,10 @@ L_RUNTIME_UNNESTED void lScalarWrite (struct lContext * ctx, struct lScalar * sc
 
 L_RUNTIME_UNNESTED void lScalarEnterPhase (struct lScalar * scalar, enum lType val_type, size_t val_length, enum lPhase phase);
 
+
+L_RUNTIME_UNNESTED void *lLoadBoundarySet (struct lContext * ctx, enum lElementType type, const char *boundary_name, size_t *size);
 // L_RUNTIME_UNNESTED void lSetInitBoundary(struct lContext * ctx, struct lSet * set, enum lElementType type, const char * boundary_name);
+
 L_RUNTIME_UNNESTED size_t lSetSize(struct lContext * ctx, struct lSet * set);
 
 L_RUNTIME_UNNESTED void lKernelRun (struct lContext * ctx,  struct lSet * set, enum lElementType typ, int id, void (*kernel)(struct lkContext));
@@ -175,10 +172,10 @@ void kernel_name(lkContext ctx_) {
 	}
 }*/
 
-L_RUNTIME_UNNESTED void lPrintBegin (struct lContext * ctx);
-L_RUNTIME_UNNESTED void lPrintEnd   (struct lContext * ctx);
-L_RUNTIME_UNNESTED void lPrintValue (struct lContext * ctx, enum lType typ, size_t r, size_t c, const void * value);
-L_RUNTIME_UNNESTED double lWallTime (struct lContext * ctx); //counter, time reported in seconds
+L_RUNTIME_UNNESTED void   lPrintBegin (struct lContext * ctx);
+L_RUNTIME_UNNESTED void   lPrintEnd   (struct lContext * ctx);
+L_RUNTIME_UNNESTED void   lPrintValue (struct lContext * ctx, enum lType typ, size_t r, size_t c, const void * value);
+L_RUNTIME_UNNESTED double lWallTime   (struct lContext * ctx); //counter, time reported in seconds
 
 //Nested Runtime Calls
 L_RUNTIME_NESTED void lkPrintBegin   (struct lkContext * ctx);

@@ -1,4 +1,5 @@
 local R = terralib.require('runtime/mesh')
+local O = terralib.require('runtime/liszt')
 local T = terralib.require('compiler/types')
 local t, Type = T.t, T.Type
 
@@ -117,7 +118,7 @@ function LRelation:LoadIndexFromMemory(name,row_idx)
 end
 
 function LRelation:dump()
-    print(self._debugname, "size: "..self._size)
+    print(self._debugname, "size: ".. tostring(self._size))
     for i,f in ipairs(self._fields) do
         f:dump()
     end
@@ -191,15 +192,15 @@ function LField:dump()
 
     local N = self.table._size
     if (self.type:isVector()) then
-        for i = 0, N - 1 do
+        for i = 0, N-1 do
             local s = ''
-            for j = 0, self.type.N - 1 do
+            for j = 0, self.type.N-1 do
                 s = s .. tostring(self.data[i][j]) .. ' '
             end
             print("", i, s)
         end
     else
-        for i = 0,N - 1 do
+        for i = 0, N-1 do
             print("",i, self.data[i])
         end
     end
@@ -506,15 +507,35 @@ end
 -- returns all relations from the given file
 function L.initMeshRelationsFromFile(filename)
     local ctx, mesh = R.loadMesh(filename)
-    local rels      = initMeshRelations(mesh)
+    local M         = initMeshRelations(mesh)
+
+    M.__mesh = mesh
+    M.__ctx  = ctx
 
     -- load position data
     local S = terralib.includec('runtime/single/liszt_runtime.h')
     local pos_data = terralib.cast(&float[3], S.lLoadPosition(ctx))
-    rels.vertices:NewField("position", L.vector(L.float,3))
-    rels.vertices.position:LoadFromMemory(pos_data)
+    M.vertices:NewField("position", L.vector(L.float,3))
+    M.vertices.position:LoadFromMemory(pos_data)
     C.free(pos_data)
-    return rels
+    return M
+end
+
+local el_types = {
+    vertices = O.L_VERTEX,
+    edges    = O.L_EDGE,
+    faces    = O.L_FACE,
+    cells    = O.L_CELL
+}
+
+function L.loadSetFromMesh(M, relation, name)
+    -- create a new relation singleton representing the boundary set
+    local data, size = O.loadBoundarySet(M.__ctx, el_types[relation._debugname], name)
+
+    local s = L.NewRelation(tonumber(size), name)
+    s:NewField('value', relation)
+    s.value:LoadFromMemory(data)
+    return s    
 end
 
 return L

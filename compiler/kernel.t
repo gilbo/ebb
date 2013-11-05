@@ -1,13 +1,10 @@
 local exports = {}
 
-local semant = require "semant"
-terralib.require "include/liszt"
+local semant  = require "semant"
 local codegen = terralib.require "compiler/codegen"
-terralib.require "runtime/liszt"
+local runtime = terralib.require "runtime/liszt"
 
 -- Keep imports from polluting global scope of any file that includes this module
-local runtime = runtime
-_G.runtime = nil
 
 local Kernel = { }
 Kernel.__index = Kernel

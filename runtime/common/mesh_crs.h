@@ -4,9 +4,11 @@
 #include "stdint.h"
 #include "stdlib.h"
 
+typedef uint32_t RTYPE;
+
 struct CRS {
-	uint32_t * row_idx;
-	uint32_t * values;
+	RTYPE * row_idx;
+	RTYPE * values;
 };
 
 struct CRSConst {
