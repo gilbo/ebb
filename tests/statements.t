@@ -8,7 +8,7 @@ red = L.NewScalar(L.float, 0.0)
 
 -- checking decl statement, if statement, proper scoping
 local l = liszt_kernel (v in mesh.vertices)
-	var y
+	var y : float
 	if v.val == 1.0 then
 		y = 1.0
 	else

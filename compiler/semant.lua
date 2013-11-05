@@ -1,10 +1,9 @@
 local exports = {}
 
-local ast   = require("ast")
-local types = terralib.require("compiler/types")
-local tutil     = types.usertypes
-local Type      = types.Type
-local t         = types.t
+local ast       = require("ast")
+local builtins  = terralib.require("include/builtins")
+local types     = terralib.require("compiler/types")
+local Type, t   = types.Type, types.t
 local type_meet = types.type_meet
 
 --[[
@@ -52,16 +51,6 @@ end
 function Context:error(ast, msg)
 	self.diag:reporterror(ast, msg)
 end
-function Context:in_lhs()
-	return self.lhs_count > 0
-end
-function Context:enterlhs()
-	self.lhs_count = self.lhs_count + 1
-end
-function Context:leavelhs()
-	self.lhs_count = self.lhs_count - 1
-	if self.lhs_count < 0 then self.lhs_count = 0 end
-end
 function Context:in_loop()
 	return self.loop_count > 0
 end
@@ -81,16 +70,6 @@ end
 function Context:leavequery()
 	self.query_count = self.query_count - 1
 	if self.query_count < 0 then self.query_count = 0 end
-end
-
-
-------------------------------------------------------------------------------
---[[ Small Helper Functions                                               ]]--
-------------------------------------------------------------------------------
-local function clone_name(name_node)
-	local copy = name_node:clone()
-	copy.name = name_node.name
-	return copy
 end
 
 
@@ -206,10 +185,7 @@ end
 
 function ast.Assignment:check(ctxt)
 	local assignment = self:clone()
-
-	ctxt:enterlhs()
 	local lhs = self.lvalue:check(ctxt)
-	ctxt:leavelhs()
 
 	assignment.lvalue = lhs
 	local ltype       = lhs.node_type
@@ -223,13 +199,6 @@ function ast.Assignment:check(ctxt)
 	-- If the left hand side was a reduction store the reduction operation
 	if self.lvalue:is(ast.Reduce) then
 		assignment.reduceop = self.lvalue.op
-	end
-
-	-- When the left hand side is declared, but uninitialized, set the type
-	if ltype == t.unknown then
-		ltype                            = rtype
-		lhs.node_type                    = rtype
-		ctxt:liszt()[lhs.name].node_type = rtype
 	end
 
 	-- enforce that the lhs is an lvalue
@@ -253,31 +222,64 @@ function ast.Assignment:check(ctxt)
 	return assignment
 end
 
-function ast.InitStatement:check(ctxt)
-	local initstmt  = self:clone()
-	initstmt.ref    = ast.LocalVar:DeriveFrom(self.ref)
-	initstmt.exp    = self.exp:check(ctxt)
-	local typ       = initstmt.exp.node_type
+local function exec_type_annotation(typexp, ast_node, ctxt)
+	local status, typ = pcall(function()
+		return types.terraToLisztType(typexp(ctxt:lua()))
+	end)
 
-	if typ == t.error then return initstmt end
-
-	-- Local temporaries can only refer to numeric/boolean/vector data or
-	-- topolocal element types, and variables referring to topo types can
-	-- never be re-assigned.  That way, we don't allow users to write
-	-- code that makes stencil analysis intractable.
-	if not typ:isExpressionType() then
-		ctxt:error(self,"can only assign numbers, bools, or vectors to local temporaries")
-	else
-		initstmt.ref.node_type          = typ
-		ctxt:liszt()[initstmt.ref.name] = initstmt.ref	
+	if not status then
+		ctxt:error(ast_node, "Error evaluating type annotation: "..typ)
+		typ = t.error
 	end
-	return initstmt
+	if not Type.isLisztType(typ) then
+		ctxt:error(ast_node, "Expected Liszt type annotation but found " ..
+											 type(typ))
+		typ = t.error
+	end
+	return typ
 end
 
 function ast.DeclStatement:check(ctxt)
-	local decl 	        = self:clone()
-	decl.ref            = ast.LocalVar:DeriveFrom(self.ref)
-	decl.ref.node_type  = t.unknown
+	local decl    = self:clone()
+	decl.ref      = ast.LocalVar:DeriveFrom(self.ref)
+
+	-- catch syntactically invalid initializations
+	if not self.typeexpression and not self.initializer then
+		ctxt:error(self, "Variables must either be initialized or have "..
+										 "an explicitly annotated type.")
+		decl.ref.node_type = t.error
+		return decl
+	end
+
+	-- process any explicit type annotation
+	local typ
+	if self.typeexpression then
+		typ = exec_type_annotation(self.typeexpression, self, ctxt)
+	end
+	-- check the initialization against the annotation or infer type from init.
+	if self.initializer then
+		decl.initializer = self.initializer:check(ctxt)
+		local exptyp     = decl.initializer.node_type
+		-- if the type was annotated check consistency
+		if typ then
+			local mtyp = type_meet(exptyp,typ)
+			if typ ~= mtyp then
+				ctxt:error(self, "Cannot assign a value of type " ..
+												 exptyp .. " to type " .. typ)
+			end
+		-- or infer the type as the expression type
+		else
+			typ = exptyp
+		end
+	end
+	decl.ref.node_type = typ
+
+	if typ ~= t.error and
+		 not typ:isLogical() and not typ:isNumeric()
+	then
+		ctxt:error(self,"can only assign numbers, bools, " ..
+		                "or topological elements to local temporaries")
+	end
 
 	ctxt:liszt()[decl.ref.name] = decl.ref
 
@@ -317,7 +319,6 @@ function ast.NumericFor:check(ctxt)
 
 	ctxt:enterblock()
 	ctxt:enterloop()
-
 	local varname = numfor.iter.name
 	ctxt:liszt()[varname] = numfor.iter
 	numfor.body = self.body:check(ctxt)
@@ -504,6 +505,10 @@ local function luav_to_ast(luav, src_node)
 		node      = ast.Function:DeriveFrom(src_node)
 		node.func = luav
 
+    elseif terralib.isfunction(luav) then
+        node      = ast.Function:DeriveFrom(src_node)
+        node.func = builtins.terra_to_macro(luav)
+
 	elseif type(luav) == 'table' then
 		node       = ast.Table:DeriveFrom(src_node)
 		node.table = luav
@@ -592,8 +597,8 @@ function ast.Number:check(ctxt)
 		self.node_type = t.int
 		number.node_type = t.int
 	else
-		self.node_type = t.float
-		number.node_type = t.float
+		self.node_type = t.double
+		number.node_type = t.double
 	end
 	return number
 end
@@ -657,9 +662,6 @@ function ast.Tuple:index_check(ctxt)
 	local arg_ast = self.children[1]:check(ctxt)
 	local argtype = arg_ast.node_type
 	assert(argtype ~= nil)
-	--if argtype == nil then
-	--	return nil
-	--end
 	self.node_type = argtype
 	return arg_ast
 end
@@ -673,6 +675,7 @@ function ast.TableLookup:check(ctxt)
 
 	if ttype == t.error then
 		return err(self, ctxt)
+	-- QUESTION: why do we need two special error branches here?
 	elseif table:is(ast.Scalar) then
 		return err(self, ctxt, "select operator not supported for non-table type L.Scalar")
 	elseif table:is(ast.Field) then
@@ -775,7 +778,6 @@ end
 function ast.Call:check(ctxt)
 	local call = self:clone()
 	call.node_type = t.error -- default
-	-- call name can be a field only in current implementation
 	call.func   = self.func:check(ctxt)
 	local ftype = call.func.node_type
 
@@ -793,13 +795,6 @@ function ast.Call:check(ctxt)
 			-- error fall through
 
 		elseif argtype:isTopo() then
-			-- handle as yet un-typed topo variables
-			if argtype == t.topo then
-				-- set type for topological object
-				ctxt:liszt()[arg_ast.name].node_type = ftopo
-				argtype = ftopo
-			end
-
 			-- typecheck that the field is present on this kind of topo
 			if argtype == ftopo then
 				local access     = ast.FieldAccess:DeriveFrom(self)
@@ -821,7 +816,7 @@ function ast.Call:check(ctxt)
 	elseif ftype:isError() then
 		-- fall through (do not print error messages for errors already reported)
 
-    else
+	else
 		ctxt:error(self, "invalid call")
 
 	end
@@ -901,7 +896,7 @@ function ast.LisztKernel:check(ctxt)
     return new_kernel_ast
 end
 
-function exports.check(luaenv, kernel_ast)
+function exports.check(luaenv, kernel_ast, param_type)
 
 	-- environment for checking variables and scopes
 	local env  = terralib.newenvironment(luaenv)

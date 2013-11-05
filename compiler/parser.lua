@@ -117,15 +117,19 @@ lang.exp = pratt.Pratt() -- returns a pratt parser
 
 -- tuples are used to represent a sequence of comma-seperated expressions that can
 -- be found in function calls and will perhaps be used in for statements
-lang.tuple = function (P, exprs)
+lang.tuple = function (P, exprs, terminator)
 	exprs = exprs or { }
-	exprs[#exprs + 1] = P:exp()
+    if terminator == nil or not P:matches(terminator) then
+        exprs[#exprs + 1] = P:exp()
+    end
 	if P:nextif(",") then
 		return P:tuple(exprs)
 	else 
 		local tuple    = ast.Tuple:New(P)
 		tuple.children = exprs
-		tuple:copy_location(exprs[1])
+        if #exprs ~= 0 then
+            tuple:copy_location(exprs[1])
+        end
 		return tuple
 	end
 end
@@ -151,7 +155,7 @@ lang.lvaluehelper = function (P, lhs)
 	local open_parens = P:nextif('(')
 	if open_parens then
 		local node = ast.Call:New(P)
-		local args = P:tuple()
+		local args = P:tuple({}, ')')
 		P:expectmatch(')', '(', open_parens.linenumber)
 		node.func, node.params = lhs, args
 		return P:lvaluehelper(node)
@@ -276,18 +280,15 @@ end
 lang.statement = function (P)
 	-- check for initialization/declaration
 	if (P:nextif("var")) then
-		local name = P:lvalname()
-		-- differentiate between initialization and declaration
-		if (P:nextif("=")) then
-			local node_init = ast.InitStatement:New(P)
-			local exp = P:exp()
-			node_init.ref, node_init.exp = name, exp
-			return node_init
-		else
-			local node_decl = ast.DeclStatement:New(P)
-			node_decl.ref = name
-			return node_decl
+		local node_decl = ast.DeclStatement:New(P)
+		node_decl.ref   = P:lvalname()
+		if P:nextif(":") then
+			node_decl.typeexpression = P:luaexpr()
 		end
+		if (P:nextif("=")) then
+			node_decl.initializer = P:exp()
+		end
+		return node_decl
 
 		--[[ if statement ]]--
 	elseif P:nextif("if") then

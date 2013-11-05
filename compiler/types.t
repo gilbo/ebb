@@ -7,28 +7,32 @@ local Type   = {}
 exports.Type = Type
 Type.__index = Type
 Type.kinds   = {}
-Type.kinds.primitive = {string='primitive' }
-Type.kinds.vector    = {string='vector'    }
-Type.kinds.field     = {string='field'     }
-Type.kinds.functype  = {string='functype'  }
-Type.kinds.scalar    = {string='scalar'    }
-Type.kinds.table     = {string='table'     }
-Type.kinds.error     = {string='error'     }
-Type.kinds.relation  = {string='relation'  }
+Type.kinds.primitive   = {string='primitive'  }
+Type.kinds.vector      = {string='vector'     }
+Type.kinds.field       = {string='field'      }
+Type.kinds.functype    = {string='functype'   }
+Type.kinds.scalar      = {string='scalar'     }
+Type.kinds.table       = {string='table'      }
+Type.kinds.error       = {string='error'      }
+Type.kinds.relation    = {string='relation'   }
+Type.kinds.relationrow = {string='relationrow'}
 
-Type.kinds.int   = {string='int',   terratype=int   }
-Type.kinds.float = {string='float', terratype=float }
-Type.kinds.bool  = {string='bool',  terratype=bool  }
-Type.kinds.uint  = {string='uint',  terratype=uint  }
-Type.kinds.uint8 = {string='uint8', terratype=uint8 }
+Type.kinds.int    = {string='int',    terratype=int   }
+Type.kinds.float  = {string='float',  terratype=float }
+Type.kinds.bool   = {string='bool',   terratype=bool  }
+Type.kinds.uint   = {string='uint',   terratype=uint  }
+Type.kinds.uint8  = {string='uint8',  terratype=uint8 }
+Type.kinds.double = {string='double', terratype=double}
 
 Type.validKinds = {
-	[Type.kinds.primitive] = true,
-	[Type.kinds.vector]    = true,
-	[Type.kinds.field]     = true,
-	[Type.kinds.functype]  = true,
-	[Type.kinds.scalar]    = true,
-	[Type.kinds.error]     = true
+	[Type.kinds.primitive]   = true,
+	[Type.kinds.vector]      = true,
+	[Type.kinds.field]       = true,
+	[Type.kinds.functype]    = true,
+	[Type.kinds.scalar]      = true,
+	[Type.kinds.error]       = true,
+	[Type.kinds.relation]    = true,
+	[Type.kinds.relationrow] = true,
 }
 
 function Type:new (kind,typ,scope)
@@ -55,10 +59,11 @@ end
 -- ints, floats, or vectors of either
 
 local numeric_kinds = {
-	[Type.kinds.int]   = true,
-	[Type.kinds.float] = true,
-	[Type.kinds.uint]  = true,
-	[Type.kinds.uint8] = true,
+	[Type.kinds.int]    = true,
+	[Type.kinds.float]  = true,
+	[Type.kinds.uint]   = true,
+	[Type.kinds.uint8]  = true,
+	[Type.kinds.double] = true,
 }
 
 function Type:isNumeric  ()
@@ -173,6 +178,7 @@ t.uint      = Type:new(Type.kinds.primitive,Type.kinds.uint)
 t.uint8     = Type:new(Type.kinds.primitive,Type.kinds.uint8)
 t.float     = Type:new(Type.kinds.primitive,Type.kinds.float)
 t.bool      = Type:new(Type.kinds.primitive,Type.kinds.bool)
+t.double    = Type:new(Type.kinds.primitive,Type.kinds.double)
 
 -- un-inferred type
 t.unknown   = Type:new()
@@ -209,11 +215,9 @@ local function type_meet(ltype, rtype)
 	elseif ltype:isLogical() then
 		return t.bool
 
-	elseif ltype == t.float or rtype == t.float then
-		return t.float
-
-	else
-		return t.int
+	elseif ltype == t.double or rtype == t.double then return t.double
+	elseif ltype == t.float  or rtype == t.float  then return t.float
+	else return t.int
 	end
 end
 
@@ -244,11 +248,36 @@ local function conformsToType (inst, tp)
    return false
 end
 
+local ttol = {
+	[int]    = t.int,
+	[float]  = t.float,
+	[double] = t.double,
+	[bool]   = t.bool,
+	[uint]   = t.uint,
+	[uint8]  = t.uint8
+}
+
+
+-- converts a terra vector or primitive type into a liszt type
+local function terra_to_liszt (tp)
+	-- return primitive type
+	if ttol[tp] then return ttol[tp] end
+
+	-- return vector type
+	if tp:isvector() then
+		local p = terra_to_liszt(tp.type)
+		if p == nil then return nil end
+		return t.vector(p,tp.N)
+	end
+	return nil
+end
+
 
 -------------------------------------------------------------------------------
 --[[ Return exports                                                        ]]--
 -------------------------------------------------------------------------------
 exports.type_meet      = type_meet
 exports.conformsToType = conformsToType
+exports.terraToLisztType = terra_to_liszt
 return exports
 

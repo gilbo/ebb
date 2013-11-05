@@ -18,7 +18,7 @@ for ttype, ltype in pairs(ptypes) do
 	-- verify runtime type enum conversions
 	assert(ltype:terraType() == ttype)
 
-
+	assert(T.terraToLisztType(ttype) == ltype)
 	--------------------------------
 	--[[ Test vector types:     ]]--
 	--------------------------------
@@ -37,6 +37,7 @@ for ttype, ltype in pairs(ptypes) do
 		assert(vtype:baseType()      == ltype)
 		assert(vtype:terraBaseType() == ttype)
 		assert(vtype:terraType()     == vector(ttype,i))
+		assert(T.terraToLisztType(vector(ttype, i)) == vtype)
 
 		-- cannot call type constructor with a terra type
 		local function fn()

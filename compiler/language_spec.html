@@ -58,8 +58,11 @@
 <tr><td>&nbsp;</td></tr>
 <tr><td>LValue                   </td><td>::</td><td> Call | Scalar | TableLookup | Name        </td></tr>
 <tr><td>TableLookup              </td><td>::</td><td> LValue '.' Name                           </td></tr>
-<tr><td>Call                     </td><td>::</td><td> LValue '(' Name ')'                       </td></tr>
+<tr><td>Call                     </td><td>::</td><td> LValue '(' Tuple ')'                      </td></tr>
 <tr><td>ScalarRead, ScalarWrite  </td><td>::</td><td> LValue                                    </td></tr>
+
+<tr><td>&nbsp;</td></tr>
+<tr><td>Tuple </td><td>::</td><td> (Expression (, Expression)* (,)?)?</td></tr>
 
 <tr><td>&nbsp;</td></tr>
 <tr><td>Op  </td><td>::</td><td> + | - | * | / | == | &lt;= | &gt;= | &lt; | &gt; | ~= | <b>and</b> | <b>or</b> | ^ </td></tr>

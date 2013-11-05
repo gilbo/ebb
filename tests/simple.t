@@ -4,7 +4,7 @@ mesh = L.initMeshRelationsFromFile("examples/mesh.lmesh")
 mesh.faces:NewField('field', L.float)
 mesh.faces.field:LoadFromCallback(terra (mem: &float, i : uint) mem[0] = 0 end)
 
-local lassert = L.assert
+local lassert, lprint = L.assert, L.print
 
 local a     = 43
 local com   = L.NewScalar(L.vector(L.float, 3), {0, 0, 0})--Vector.new(float, {0.0, 0.0, 0.0})
@@ -29,28 +29,28 @@ test_bool()
 
 local test_decls = liszt_kernel(v in mesh.vertices)
 	-- DeclStatement tests --
-	var c
+	var c : int
 	c = 12
 
-	var x
+	var x : bool
 	x = true
 
-	var z
+	var z : bool
 	do z = true end
 	lassert(z == true)
 
-	var z
+	var z : int
 	do z = 4 end
 	lassert(z == 4)
 
 	-- this should be fine
-	var y
-	var y
+	var y : vector(float, 4)
+	var y : int
 
 	-- should be able to assign w/an expression after declaring,
 	-- checking with var e to make sure expressions are the same.
 	var zip = 43.3
-	var doo
+	var doo : double
 	doo = zip * c
 	var dah = zip * c
 	var x = doo == dah
@@ -74,6 +74,7 @@ local test_conditionals = liszt_kernel (v in mesh.vertices)
 		y = 9
 		lassert(y == 9)
 	end
+
 	lassert(x == 3)
 	lassert(y == 5)
 	y = x
@@ -137,7 +138,7 @@ local test_arith = liszt_kernel (v in mesh.vertices)
 	var a = y - x
 
 	var a = 43.3
-	var d
+	var d : vector(float, 3)
 	d = a * vv
 	var e = a * vv
 	-- assert(d == e) -- vector equality not supported?

@@ -11,6 +11,7 @@ local t       = types.t
 local RITYPE = uint32
 
 function ast.AST:codegen (env)
+	print(debug.traceback())
 	error("Codegen not implemented for AST node " .. self.kind)
 end
 
@@ -95,18 +96,6 @@ function ast.RepeatStatement:codegen (env)
 	env:leaveblock()
 
 	return quote repeat [body] until [cond] end
-end
-
-function ast.DeclStatement:codegen (env)
-	-- if this var is never used, don't bother declaring it
-	-- since we don't know the type, we couldn't anyway.
-	if self.ref.node_type == t.unknown then return quote end end
-
-	local typ  = self.ref.node_type:terraType()
-	local name = self.ref.name
-	local sym  = symbol(typ)
-	env:localenv()[name] = sym
-	return quote var [sym] end
 end
 
 function ast.NumericFor:codegen (env)
@@ -208,14 +197,18 @@ function ast.Call:codegen (env)
 	return self.func.func.codegen(self, env)
 end
 
-function ast.InitStatement:codegen (env)
+function ast.DeclStatement:codegen (env)
 	local varname = self.ref.name
 	local tp      = self.ref.node_type:terraType()
 	local varsym  = symbol(tp)
-
 	env:localenv()[varname] = varsym
-	local exp = self.exp:codegen(env)
-	return quote var [varsym] = [exp] end
+
+	if self.initializer then
+		local exp = self.initializer:codegen(env)
+		return quote var [varsym] = [exp] end
+	else
+		return quote var [varsym] end
+	end
 end
 
 --function ast.Name:codegen_lhs (env)

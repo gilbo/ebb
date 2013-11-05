@@ -53,7 +53,6 @@ local DoStatement     = { kind = 'dostmt'     }  -- do block end
 local RepeatStatement = { kind = 'repeatstmt' }  -- repeat block until cond
 local ExprStatement   = { kind = 'exprstmt'   }  -- e;
 local Assignment      = { kind = 'assnstmt'   }  -- "lvalue   = expr" 
-local InitStatement   = { kind = 'initstmt'   }  -- "var name = expr"
 local DeclStatement   = { kind = 'declstmt'   }  -- "var name"
 local NumericFor      = { kind = 'numericfor' }
 local GenericFor      = { kind = 'genericfor' }
@@ -104,7 +103,6 @@ inherit(RepeatStatement, Statement)
 inherit(ExprStatement,   Statement)
 inherit(Assignment,      Statement)
 inherit(DeclStatement,   Statement)
-inherit(InitStatement,   Statement)
 inherit(NumericFor,      Statement)
 inherit(GenericFor,      Statement)
 inherit(Break,           Statement)
@@ -341,17 +339,16 @@ function RepeatStatement:pretty_print (indent)
 	self.cond:pretty_print(indent .. indent_delta)
 end
 
-function InitStatement:pretty_print (indent)
-	indent = indent or ''
-	print(indent .. self.kind .. ": (ref, exp)")
-	self.ref:pretty_print(indent .. indent_delta)
-	self.exp:pretty_print(indent .. indent_delta)
-end
-
 function DeclStatement:pretty_print (indent)
 	indent = indent or ''
-	print(indent .. self.kind)
-	self.ref:pretty_print(indent .. indent_delta)
+	print(indent .. self.kind.. ":(typeexpression,initializer)")
+	print(indent .. indent_delta .. self.name)
+  if self.typeexpression then
+      print(indent .. indent_delta ..self.typeexpression)
+  end
+  if self.initializer then
+      self.initializer:print_pretty(indent .. indent_delta)
+  end
 end
 
 function ExprStatement:pretty_print (indent)
@@ -435,7 +432,6 @@ for k,v in pairs({
 	RepeatStatement = RepeatStatement,
 	ExprStatement   = ExprStatement,
 	Assignment      = Assignment,
-	InitStatement   = InitStatement,
 	DeclStatement   = DeclStatement,
 	NumericFor      = NumericFor,
 	GenericFor      = GenericFor,

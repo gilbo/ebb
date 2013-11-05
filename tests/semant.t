@@ -113,7 +113,7 @@ end
 
 local v = L.NewVector(L.float, {1, 1, 1})
 local fail11 = liszt_kernel (cell in mesh.cells)
-	lassert(v == 1) -- assert fail, comparison returns a vector of bools
+	lassert(v) -- assert fail, comparison returns a vector of bools
 end
 
 local fail12 = liszt_kernel (cell in mesh.cells)
@@ -121,7 +121,7 @@ local fail12 = liszt_kernel (cell in mesh.cells)
 end
 
 local fail13 = liszt_kernel (cell in mesh.cells)
-	var v
+	var v : bool
 	if false then
 		v = true
 	end
@@ -157,7 +157,7 @@ test.fail_function(fail2,  "can only assign")
 test.fail_function(fail3,  "assignments in a Liszt kernel are only valid")
 test.fail_function(fail4,  "can only assign")
 test.fail_function(fail5,  "variable 'undefined' is not defined")
-test.fail_function(fail6,  "invalid conversion from bool to float")
+test.fail_function(fail6,  "invalid conversion from bool to double")
 test.fail_function(fail7,  "variable 'local8' is not defined")
 test.fail_function(fail8,  "variable 'local8' is not defined")
 test.fail_function(fail9,  "invalid conversion from int to bool")
