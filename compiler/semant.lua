@@ -510,9 +510,18 @@ local function luav_to_ast(luav, src_node)
 		node      = ast.Function:DeriveFrom(src_node)
 		node.func = luav
 
+    elseif Type.isMacro(luav) then
+        node = ast.Macro:DeriveFrom(src_node)
+        node.macro = luav
+
     elseif terralib.isfunction(luav) then
         node      = ast.Function:DeriveFrom(src_node)
         node.func = builtins.terra_to_macro(luav)
+
+    elseif type(luav) == 'table' and luav.is_liszt_ast then
+        -- For macro substitution: typed ASTs may be external and need to be inlined.
+        node = ast.QuoteExpr:DeriveFrom(src_node)
+        node.ast = luav
 
 	elseif type(luav) == 'table' then
 		node       = ast.Table:DeriveFrom(src_node)
@@ -786,6 +795,11 @@ function ast.Call:check(ctxt)
         call.params    = self.params:check(ctxt)
         call.node_type = call.func.func.check(call, ctxt)
 
+    elseif call.func:is(ast.Macro) then
+        call.params = self.params:check(ctxt)
+        -- replace the call node with the inlined AST
+        call = call.func.macro.genfunc(unpack(call.params.children)):check(ctxt)
+
 	elseif call.func.node_type:isError() then
 		-- fall through (do not print error messages for errors already reported)
 
@@ -808,6 +822,16 @@ function ast.Function:check(ctxt)
 	local n     = self:clone()
 	n.func      = self.func
 	return n
+end
+
+function ast.Macro:check(ctxt)
+    local n = self:clone()
+    n.macro = self.macro
+    return n
+end
+
+function ast.QuoteExpr:check(ctxt)
+    return self.ast
 end
 
 function ast.FieldAccess:check(ctxt)

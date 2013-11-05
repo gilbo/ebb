@@ -49,6 +49,7 @@ local LRelation = make_prototype {kind=T.Type.kinds.relation}
 local LField    = make_prototype {kind=T.Type.kinds.field}
 local LScalar   = make_prototype {kind=T.Type.kinds.scalar}
 local LVector   = make_prototype {kind=T.Type.kinds.vector}
+local LMacro    = make_prototype {kind=T.Type.kinds.macro}
 
 
 --------------------------------------------------------------------------------
@@ -397,6 +398,14 @@ function LVector.__eq (v1, v2)
         if v1.data[i] ~= v2.data[i] then return false end
     end
     return true
+end
+
+
+--------------------------------------------------------------------------------
+--[[ LMacros:                                                               ]]--
+--------------------------------------------------------------------------------
+function L.NewMacro(generator)
+    return setmetatable({genfunc=generator}, LMacro)    
 end
 
 

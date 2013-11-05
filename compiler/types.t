@@ -11,6 +11,8 @@ Type.kinds.primitive = {string='primitive' }
 Type.kinds.vector    = {string='vector'    }
 Type.kinds.field     = {string='field'     }
 Type.kinds.functype  = {string='functype'  }
+Type.kinds.macro     = {string='macro'     }
+Type.kinds.quoteexpr = {string='quoteexpr' }
 Type.kinds.scalar    = {string='scalar'    }
 Type.kinds.table     = {string='table'     }
 Type.kinds.error     = {string='error'     }
@@ -29,6 +31,8 @@ Type.validKinds = {
 	[Type.kinds.vector]    = true,
 	[Type.kinds.field]     = true,
 	[Type.kinds.functype]  = true,
+	[Type.kinds.macro]     = true,
+    [Type.kinds.quoteexpr] = true,
 	[Type.kinds.scalar]    = true,
 	[Type.kinds.error]     = true,
 	[Type.kinds.relation]  = true,
@@ -84,13 +88,15 @@ function Type:isExpressionType() return self:isPrimitive() or self:isVector() en
 -------------------------------------------------------------------------------
 --[[ These methods can be called on liszt types or liszt objects           ]]--
 -------------------------------------------------------------------------------
-function Type:isField()    return type(self) == 'table' and self.kind == Type.kinds.field    end
-function Type:isScalar()   return type(self) == 'table' and self.kind == Type.kinds.scalar   end
-function Type:isFunction() return type(self) == 'table' and self.kind == Type.kinds.functype end
-function Type:isLuaTable() return type(self) == 'table' and self.kind == Type.kinds.table    end
-function Type:isError()    return type(self) == 'table' and self.kind == Type.kinds.error    end
-function Type:isRelation() return type(self) == 'table' and self.kind == Type.kinds.relation end
-function Type:isRow()      return type(self) == 'table' and self.kind == Type.kinds.row      end
+function Type:isField()     return type(self) == 'table' and self.kind == Type.kinds.field     end
+function Type:isScalar()    return type(self) == 'table' and self.kind == Type.kinds.scalar    end
+function Type:isFunction()  return type(self) == 'table' and self.kind == Type.kinds.functype  end
+function Type:isMacro()     return type(self) == 'table' and self.kind == Type.kinds.macro     end
+function Type:isQuoteExpr() return type(self) == 'table' and self.kind == Type.kinds.quoteexpr end
+function Type:isLuaTable()  return type(self) == 'table' and self.kind == Type.kinds.table     end
+function Type:isError()     return type(self) == 'table' and self.kind == Type.kinds.error     end
+function Type:isRelation()  return type(self) == 'table' and self.kind == Type.kinds.relation  end
+function Type:isRow()       return type(self) == 'table' and self.kind == Type.kinds.row       end
 
 -- currently isTable will return true if obj has kind fieldindex
 function Type.isTable(obj) return type(obj) == 'table' and not Type.validKinds[obj.kind] end
@@ -138,6 +144,8 @@ function Type:toString()
 	elseif self:isVector()    then return 'LVector(' .. self.type:toString() .. ',' .. tostring(self.N)     .. ')'
 	elseif self:isScalar()    then return 'LScalar(' .. self.type:toString() .. ')'
 	elseif self:isFunction()  then return 'LFunction'
+    elseif self:isMacro()     then return 'LMacro'
+    elseif self:isQuoteExpr() then return 'LQuoteExpr'
 	elseif self:isRelation()  then return 'LRelation'
 	elseif self:isRow()       then return 'LRow'
     elseif self:isField()     then return 'LField'
@@ -189,12 +197,14 @@ t.vector    = vectorType
 
 -- These types are for ast nodes that can show up in expressions, but are not valid expression types
 -- we keep track of their type so that we can report type errors to the user.
-t.scalar   = Type:new(Type.kinds.scalar)
-t.field    = Type:new(Type.kinds.field)
-t.func     = Type:new(Type.kinds.functype) -- macro type
-t.table    = Type:new(Type.kinds.table)  -- lua tables
-t.relation = Type:new(Type.kinds.relation)
-t.row      = Type:new(Type.kinds.row)
+t.scalar    = Type:new(Type.kinds.scalar)
+t.field     = Type:new(Type.kinds.field)
+t.func      = Type:new(Type.kinds.functype) -- builtin function type
+t.macro     = Type:new(Type.kinds.macro)  -- macro type 
+t.quoteexpr = Type:new(Type.kinds.quoteexpr)  -- produced at Lua scope by "liszt `[expr]"
+t.table     = Type:new(Type.kinds.table)  -- lua tables
+t.relation  = Type:new(Type.kinds.relation)
+t.row       = Type:new(Type.kinds.row)
 
 
 -------------------------------------------------------------------------------

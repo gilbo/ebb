@@ -1,4 +1,5 @@
 local parser  = require "compiler/parser"
+local semant  = require "compiler/semant"
 local kernel  = terralib.require "compiler/kernel"
 
 -- include liszt library for programmer
@@ -12,16 +13,23 @@ local pratt = terralib.require('compiler/pratt')
 
 local lisztlanguage = {
 	name        = "liszt", -- name for debugging
-	entrypoints = {"liszt_kernel"},
-	keywords    = {"var"},
+	entrypoints = {"liszt_kernel", "liszt"},
+	keywords    = {"var", "kernel"},
 
 	expression = function(self, lexer)
-		local kernel_ast = pratt.Parse(parser.lang, lexer, "liszt_kernel")
+		local ast = pratt.Parse(parser.lang, lexer, "liszt")
 
-		return function (env_fn) 
-			local env = env_fn()
-			return kernel.Kernel.new(kernel_ast, env)
-		end
+        if ast.kind == 'kernel' then
+            return function (env_fn) 
+                local env = env_fn()
+                return kernel.Kernel.new(ast, env)
+            end
+        else
+            return function (env_fn)
+                local env = env_fn()
+                return semant.check(env, ast)
+            end
+        end
 	end
 }
 

@@ -246,8 +246,6 @@ lang.simpleexp = function(P)
 end
 
 lang.liszt_kernel = function (P)
-	-- parse liszt_kernel keyword and argument:
-	P:expect("liszt_kernel")
 	local kernel_node = ast.LisztKernel:New(P)
 
 	-- parse parameter
@@ -263,6 +261,20 @@ lang.liszt_kernel = function (P)
 
 	kernel_node.iter, kernel_node.set, kernel_node.body = iter, set, block
 	return kernel_node
+end
+
+lang.liszt = function (P)
+    local liszt_kw = P:nextif("liszt")
+    if liszt_kw and P:nextif("kernel") or P:nextif("liszt_kernel") then
+        return P:liszt_kernel()
+    else
+        assert(liszt_kw)
+        if P:nextif('`') then
+            return P:exp()
+        else
+            P:errorexpected("'kernel' or '`'")
+        end
+    end
 end
 
 --[[ Statement Parsing ]]--
