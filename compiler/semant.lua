@@ -207,6 +207,9 @@ function ast.Assignment:check(ctxt)
 		-- 			 Better error messages probably involves switching on kind of lhs
 		ctxt:error(self.lvalue, "assignments in a Liszt kernel are only valid to indexed fields or kernel variables")
 		return assignment
+	elseif lhs.node_type:isRow() then
+		ctxt:error(self.lvalue, "cannot re-assign variables of relational row type")
+		return assignment
 	end
 
 	-- enforce type agreement b/w lhs and rhs
@@ -275,13 +278,15 @@ function ast.DeclStatement:check(ctxt)
 	decl.ref.node_type = typ
 
 	if typ ~= t.error and
-		 not typ:isLogical() and not typ:isNumeric()
+		 not typ:isExpressionType() and not typ:isRow()
 	then
-		ctxt:error(self,"can only assign numbers, bools, " ..
-		                "or topological elements to local temporaries")
+		ctxt:error(self,"can only assign numbers, bools, or relational rows to local temporaries")
 	end
 
-	ctxt:liszt()[decl.ref.name] = decl.ref
+	local lv = decl.initializer or decl.ref
+	lv.is_lvalue = true
+	lv.node_type = typ
+	ctxt:liszt()[decl.ref.name] = lv
 
 	return decl
 end
@@ -291,7 +296,7 @@ function ast.NumericFor:check(ctxt)
 	local function check_num_type(tp)
 		if tp ~= t.error and not tp:isNumeric() then
 			ctxt:error(node, "expected a numeric expression to define the "..
-											 "iterator bounds/step (found "..tp:toString()..")")
+			                 "iterator bounds/step (found "..tp:toString()..")")
 		end
 	end
 
@@ -560,14 +565,17 @@ function ast.Name:check(ctxt)
 	-- somewhere in the liszt kernel.  Thus, it has to be a primitive, a
 	-- bool, or a topological element.
 	if lisztv then
-		local typ = lisztv.node_type
+		if lisztv.node_type:isExpressionType() then
+			local node = ast.LocalVar:DeriveFrom(lisztv)
+			node.node_type = lisztv.node_type
+			node.is_lvalue = lisztv.is_lvalue
+			node.name      = self.name
+			return node
+		else
+			lisztv.name = self.name
+			return lisztv:check(ctxt)
 		-- check that we're not reading from an uninitialized variable
-		if typ == t.unknown and not ctxt:in_lhs() then
-			ctxt:error(self, "variable '" .. self.name .. "' is not initialized")
-            lisztv.node_type = t.error
 		end
-		lisztv.name = self.name
-        return lisztv:check(ctxt)
 	end
 
 	-- Otherwise, does the name exist in the lua scope?
@@ -677,69 +685,63 @@ function ast.TableLookup:check(ctxt)
 		return err(self, ctxt)
 	-- QUESTION: why do we need two special error branches here?
 	elseif table:is(ast.Scalar) then
-		return err(self, ctxt, "select operator not supported for non-table type L.Scalar")
+		return err(self, ctxt, "select operator not supported for non-table type LScalar")
 	elseif table:is(ast.Field) then
-		return err(self, ctxt, "select operator not supported for non-table type L.Field")
+		return err(self, ctxt, "select operator not supported for non-table type LField")
 
 	-- Table lookups on these types are allowed
-	elseif table:is(ast.Table)       then
-	elseif table:is(ast.RelationRow) then
-	elseif table:is(ast.Relation)    then
-
+	elseif table:is(ast.Table)     then
+	elseif table:is(ast.Row)       then
+	elseif table:is(ast.Relation)  then
+	elseif table:is(ast.FieldAccess) and table.node_type:isRow() then
 	else
 		return err(self, ctxt, "select operator not supported for non-table type " .. ttype:toString())
 	end
 
     self.name = table.name .. '.' .. member.name
 
+    -- table is a lua table
     if table:is(ast.Table) then
-        -- otherwise, we have a lua table in lookup.table
-        -- so we can perform the lookup in the lua table as namespace
+        -- perform the lookup in the lua table as namespace
         local luaval = table.table[member.name]
 
         if luaval == nil then
             return err(self, ctxt, "lua table " .. table.name .. " does not have member '" .. member.name .. "'")
         end
 
-        -- and then go ahead and convert the lua value into an ast node
+        -- and then convert the lua value into an ast node
         local ast_node = luav_to_checked_ast(luaval, self, ctxt)
-
-        -- we set a name somewhat appropriately (could capture namespace...)
+        -- we set a name somewhat appropriately (for debug printing)
         ast_node.name = self.name
         return ast_node
 
-    -- Table is a Relation
+    -- table is a Relation, we expect indices to be fields
     elseif table:is(ast.Relation) then
     	local luaval = table.relation[member.name]
-    	if luaval == nil then
-    		return err(self, ctxt, "Relational table ´" .. self.name ..  " does not have member '" .. member.name .. '\'')
+    	-- relational table members must be fields
+    	if not Type.isField(luaval) then
+    		ctxt:error("relation " .. table.name .. ' does not have field member ' .. member.name)
+	    	local ast_node = self:clone()
+	    	ast_node.node_type = t.error
+    		return ast_node
     	end
+    	-- this will return an ast.Field node
+    	return luav_to_checked_ast(luaval, self, ctxt)
 
-    	local ast_node = luav_to_checked_ast(luaval, self, ctxt)
-    	ast_node.name = self.name
-    	return ast_node
-
-    -- table is a RelationRow
+    -- table is a Row, indices are field accesses
     else
         local luaval = table.relation[member.name]
         if not Type.isField(luaval) then
-            return err(self, ctxt, "Relation " .. table.name .. " does not have field '" .. member.name .. "'")
+            return err(self, ctxt, "Row " .. table.name .. " does not have field member '" .. member.name .. "'")
         end
 
-        -- This is a field over a primitive data type, so return a node of that datatype
-        if luaval.relation == nil then
-            local ast_node     = ast.FieldAccess:DeriveFrom(self.member)
-            ast_node.row       = self.table.name
-            ast_node.field     = luaval
-            ast_node.node_type = luaval.type
-            return ast_node
-
-        -- this field contains references to rows from another table, so return a RelationRow node
-        else
-            local ast_node    = ast.RelationRow:DeriveFrom(self.member)
-            ast_node.relation = luaval.relation
-            return ast_node:check()
-        end
+        local ast_node     = ast.FieldAccess:DeriveFrom(self.member)
+        ast_node.name      = self.name
+        ast_node.row       = self.table
+        ast_node.relation  = luaval.relation
+        ast_node.field     = luaval
+        ast_node.node_type = luaval.relation and t.row or luaval.type
+        return ast_node
     end
 end
 
@@ -776,44 +778,15 @@ function ast.VectorIndex:check(ctxt)
 end
 
 function ast.Call:check(ctxt)
-	local call = self:clone()
+	local call     = self:clone()
 	call.node_type = t.error -- default
-	call.func   = self.func:check(ctxt)
-	local ftype = call.func.node_type
+	call.func      = self.func:check(ctxt)
 
 	if call.func:is(ast.Function) then
         call.params    = self.params:check(ctxt)
         call.node_type = call.func.func.check(call, ctxt)
 
-	elseif call.func:is(ast.Field) then
-		local ftopo = ftype:topoType()
-		local fdata = ftype:dataType()
-
-		local arg_ast = self.params:index_check(ctxt)
-		local argtype = arg_ast.node_type
-		if (argtype == t.error) then
-			-- error fall through
-
-		elseif argtype:isTopo() then
-			-- typecheck that the field is present on this kind of topo
-			if argtype == ftopo then
-				local access     = ast.FieldAccess:DeriveFrom(self)
-				access.field     = call.func.field
-				access.topo      = arg_ast
-				access.node_type = fdata
-				access.is_lvalue = true -- can be an lvalue
-				return access
-			else
-				ctxt:error(self, ftype:toString() .. " indexed by incorrect type " ..
-												 argtype:toString())
-			end
-
-		else
-			ctxt:error(self, ftype:toString() .. " indexed by incorrect type " ..
-											 argtype:toString())
-		end
-
-	elseif ftype:isError() then
+	elseif call.func.node_type:isError() then
 		-- fall through (do not print error messages for errors already reported)
 
 	else
@@ -841,6 +814,7 @@ function ast.FieldAccess:check(ctxt)
 	local n     = self:clone()
 	n.field     = self.field
 	n.row       = self.row
+	n.relation  = self.relation
 	return n
 end
 
@@ -862,9 +836,11 @@ function ast.Relation:check(ctxt)
     return n
 end
 
-function ast.RelationRow:check(ctxt)
+function ast.Row:check(ctxt)
     local n    = self:clone()
     n.relation = self.relation
+    n.row      = self.row
+    n.field    = self.field
     return n
 end
 
@@ -880,7 +856,7 @@ function ast.LisztKernel:check(ctxt)
 	local new_kernel_ast = self:clone()
 
     local set           = self.set:check(ctxt)
-    local iter          = ast.RelationRow:DeriveFrom(self.iter)
+    local iter          = ast.Row:DeriveFrom(self.iter)
     new_kernel_ast.set  = set
     iter.name           = self.iter.name
     iter.relation       = new_kernel_ast.set.relation

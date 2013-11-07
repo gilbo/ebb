@@ -7,15 +7,15 @@ local Type   = {}
 exports.Type = Type
 Type.__index = Type
 Type.kinds   = {}
-Type.kinds.primitive   = {string='primitive'  }
-Type.kinds.vector      = {string='vector'     }
-Type.kinds.field       = {string='field'      }
-Type.kinds.functype    = {string='functype'   }
-Type.kinds.scalar      = {string='scalar'     }
-Type.kinds.table       = {string='table'      }
-Type.kinds.error       = {string='error'      }
-Type.kinds.relation    = {string='relation'   }
-Type.kinds.relationrow = {string='relationrow'}
+Type.kinds.primitive = {string='primitive' }
+Type.kinds.vector    = {string='vector'    }
+Type.kinds.field     = {string='field'     }
+Type.kinds.functype  = {string='functype'  }
+Type.kinds.scalar    = {string='scalar'    }
+Type.kinds.table     = {string='table'     }
+Type.kinds.error     = {string='error'     }
+Type.kinds.relation  = {string='relation'  }
+Type.kinds.row       = {string='row'       }
 
 Type.kinds.int    = {string='int',    terratype=int   }
 Type.kinds.float  = {string='float',  terratype=float }
@@ -25,14 +25,14 @@ Type.kinds.uint8  = {string='uint8',  terratype=uint8 }
 Type.kinds.double = {string='double', terratype=double}
 
 Type.validKinds = {
-	[Type.kinds.primitive]   = true,
-	[Type.kinds.vector]      = true,
-	[Type.kinds.field]       = true,
-	[Type.kinds.functype]    = true,
-	[Type.kinds.scalar]      = true,
-	[Type.kinds.error]       = true,
-	[Type.kinds.relation]    = true,
-	[Type.kinds.relationrow] = true,
+	[Type.kinds.primitive] = true,
+	[Type.kinds.vector]    = true,
+	[Type.kinds.field]     = true,
+	[Type.kinds.functype]  = true,
+	[Type.kinds.scalar]    = true,
+	[Type.kinds.error]     = true,
+	[Type.kinds.relation]  = true,
+	[Type.kinds.row]       = true,
 }
 
 function Type:new (kind,typ,scope)
@@ -84,16 +84,16 @@ function Type:isExpressionType() return self:isPrimitive() or self:isVector() en
 -------------------------------------------------------------------------------
 --[[ These methods can be called on liszt types or liszt objects           ]]--
 -------------------------------------------------------------------------------
-function Type:isField()        return type(self) == 'table' and self.kind == Type.kinds.field       end
-function Type:isScalar()       return type(self) == 'table' and self.kind == Type.kinds.scalar      end
-function Type:isFunction()     return type(self) == 'table' and self.kind == Type.kinds.functype    end
-function Type:isLuaTable()     return type(self) == 'table' and self.kind == Type.kinds.table       end
-function Type:isError()        return type(self) == 'table' and self.kind == Type.kinds.error       end
-function Type:isRelation()     return type(self) == 'table' and self.kind == Type.kinds.relation    end
-function Type:isRelationRow()  return type(self) == 'table' and self.kind == Type.kinds.relationrow end
+function Type:isField()    return type(self) == 'table' and self.kind == Type.kinds.field    end
+function Type:isScalar()   return type(self) == 'table' and self.kind == Type.kinds.scalar   end
+function Type:isFunction() return type(self) == 'table' and self.kind == Type.kinds.functype end
+function Type:isLuaTable() return type(self) == 'table' and self.kind == Type.kinds.table    end
+function Type:isError()    return type(self) == 'table' and self.kind == Type.kinds.error    end
+function Type:isRelation() return type(self) == 'table' and self.kind == Type.kinds.relation end
+function Type:isRow()      return type(self) == 'table' and self.kind == Type.kinds.row      end
 
 -- currently isTable will return true if obj has kind fieldindex
-function Type.isTable(obj)   return type(obj)  == 'table' and not Type.validKinds[obj.kind]      end
+function Type.isTable(obj) return type(obj) == 'table' and not Type.validKinds[obj.kind] end
 
 
 -------------------------------------------------------------------------------
@@ -110,6 +110,7 @@ function Type:terraType()
 	elseif self:isVector()    then return vector(self.type:terraType(), self.N)
 	elseif self:isField()     then return self.type:terraType()
 	elseif self:isScalar()    then return self.type:terraType()
+	elseif self:isRow()       then return uint32
 	end
 	error("terraType method not implemented for type " .. self:toString(), 2)
 end
@@ -133,15 +134,15 @@ end
 --[[ Stringify types                                                       ]]--
 -------------------------------------------------------------------------------
 function Type:toString()
-	if     self:isPrimitive()   then return self.type.string
-	elseif self:isVector()      then return 'LVector(' .. self.type:toString() .. ',' .. tostring(self.N)     .. ')'
-	elseif self:isScalar()      then return 'LScalar(' .. self.type:toString() .. ')'
-	elseif self:isFunction()    then return 'LFunction'
-	elseif self:isRelation()    then return 'LRelation'
-	elseif self:isRelationRow() then return 'LRelationRow'
-    elseif self:isField()       then return 'LField'
-	elseif self:isLuaTable()    then return 'table'
-	elseif self:isError()       then return 'error'
+	if     self:isPrimitive() then return self.type.string
+	elseif self:isVector()    then return 'LVector(' .. self.type:toString() .. ',' .. tostring(self.N)     .. ')'
+	elseif self:isScalar()    then return 'LScalar(' .. self.type:toString() .. ')'
+	elseif self:isFunction()  then return 'LFunction'
+	elseif self:isRelation()  then return 'LRelation'
+	elseif self:isRow()       then return 'LRow'
+    elseif self:isField()     then return 'LField'
+	elseif self:isLuaTable()  then return 'table'
+	elseif self:isError()     then return 'error'
 	end
 	error('toString method not implemented for this type!', 2)
 end
@@ -188,12 +189,12 @@ t.vector    = vectorType
 
 -- These types are for ast nodes that can show up in expressions, but are not valid expression types
 -- we keep track of their type so that we can report type errors to the user.
-t.scalar      = Type:new(Type.kinds.scalar)
-t.field       = Type:new(Type.kinds.field)
-t.func        = Type:new(Type.kinds.functype) -- macro type
-t.table       = Type:new(Type.kinds.table)  -- lua tables
-t.relation    = Type:new(Type.kinds.relation)
-t.relationrow = Type:new(Type.kinds.relationrow)
+t.scalar   = Type:new(Type.kinds.scalar)
+t.field    = Type:new(Type.kinds.field)
+t.func     = Type:new(Type.kinds.functype) -- macro type
+t.table    = Type:new(Type.kinds.table)  -- lua tables
+t.relation = Type:new(Type.kinds.relation)
+t.row      = Type:new(Type.kinds.row)
 
 
 -------------------------------------------------------------------------------

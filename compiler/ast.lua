@@ -42,7 +42,7 @@ local LocalVar        = { kind = 'localvar',    is_lvalue = true            }
 local Field           = { kind = 'field',       node_type = T.t.field       }
 local Table           = { kind = 'table',       node_type = T.t.table       }
 local Relation        = { kind = 'relation',    node_type = T.t.relation    }
-local RelationRow     = { kind = 'relationrow', node_type = T.t.relationrow }
+local Row             = { kind = 'row',         node_type = T.t.row }
 
 -- Statements:
 local Statement       = { kind = 'statement'  }  -- abstract
@@ -93,7 +93,7 @@ inherit(FieldAccess,   Expression)
 inherit(Function,      Expression)
 inherit(Table,         Expression)
 inherit(Relation,      Expression)
-inherit(RelationRow,   Expression)
+inherit(Row,           Expression)
 inherit(LocalVar,      Expression)
 
 inherit(IfStatement,     Statement)
@@ -276,7 +276,7 @@ function Relation:pretty_print (indent)
     print(indent .. self.kind .. ": " .. self.relation._debugname)
 end
 
-function RelationRow:pretty_print (indent)
+function Row:pretty_print (indent)
     indent = indent or ''
     print(indent .. self.kind .. ": " .. self.relation._debugname)
 end
@@ -417,7 +417,7 @@ for k,v in pairs({
 	Function        = Function,
 	Table           = Table,
     Relation        = Relation,
-    RelationRow     = RelationRow,
+    Row             = Row,
     LocalVar        = LocalVar,
 	Call            = Call,
 	Name            = Name,

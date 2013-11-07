@@ -151,9 +151,16 @@ local fail18 = liszt_kernel (cell in mesh.cells)
 	var x = tbl.x
 end
 
+local fail19 = liszt_kernel (cell in mesh.cells)
+	for i = 1, 4, 1 do
+		var x = 3
+	end
+	var g = i
+end
+
 -- need typechecker fail test
 test.fail_function(fail1,  "assignments in a Liszt kernel are only valid")
-test.fail_function(fail2,  "can only assign")
+test.fail_function(fail2,  "cannot re-assign")
 test.fail_function(fail3,  "assignments in a Liszt kernel are only valid")
 test.fail_function(fail4,  "can only assign")
 test.fail_function(fail5,  "variable 'undefined' is not defined")
@@ -170,6 +177,7 @@ test.fail_function(fail15, "can only assign")
 test.fail_function(fail16, "lua table tbl does not have member 'x'")
 test.fail_function(fail17, "lua table tbl.x does not have member 'y'")
 test.fail_function(fail18, "can only assign")
+test.fail_function(fail19, "variable 'i' is not defined")
 
 -- Nothing should fail in this kernel:
 local good = liszt_kernel (cell in mesh.cells)

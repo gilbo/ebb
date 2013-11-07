@@ -145,38 +145,45 @@ local phaseMap = {
 }
 
 local function bin_exp (op, lhe, rhe)
-	if     op == '+'   then return `lhe +   rhe
-	elseif op == '-'   then return `lhe -   rhe
-	elseif op == '/'   then return `lhe /   rhe
-	elseif op == '*'   then return `lhe *   rhe
-	elseif op == '%'   then return `lhe %   rhe
-	elseif op == '^'   then return `lhe ^   rhe
-	elseif op == 'or'  then return `lhe or  rhe
-	elseif op == 'and' then return `lhe and rhe
-	elseif op == '<'   then return `lhe <   rhe
-	elseif op == '>'   then return `lhe >   rhe
-	elseif op == '<='  then return `lhe <=  rhe
-	elseif op == '>='  then return `lhe >=  rhe
-	elseif op == '=='  then return `lhe ==  rhe
-	elseif op == '~='  then return `lhe ~=  rhe
+	if     op == '+'   then return `[lhe] +   [rhe]
+	elseif op == '-'   then return `[lhe] -   [rhe]
+	elseif op == '/'   then return `[lhe] /   [rhe]
+	elseif op == '*'   then return `[lhe] *   [rhe]
+	elseif op == '%'   then return `[lhe] %   [rhe]
+	elseif op == '^'   then return `[lhe] ^   [rhe]
+	elseif op == 'or'  then return `[lhe] or  [rhe]
+	elseif op == 'and' then return `[lhe] and [rhe]
+	elseif op == '<'   then return `[lhe] <   [rhe]
+	elseif op == '>'   then return `[lhe] >   [rhe]
+	elseif op == '<='  then return `[lhe] <=  [rhe]
+	elseif op == '>='  then return `[lhe] >=  [rhe]
+	elseif op == '=='  then return `[lhe] ==  [rhe]
+	elseif op == '~='  then return `[lhe] ~=  [rhe]
 	end
 end
 
 function ast.Assignment:codegen (env)
-	local lvalue = self.lvalue
-	local ttype  = self.lvalue.node_type:terraType()
-	local lhs = self.lvalue:codegen(env)
-	local rhs = self.exp:codegen(env)
+	-- if lhs is local, there will be a symbol stored in env
+	-- If it is global, we will not have a symbol stored,
+	-- and we will need to codegen to get the reference
+	local lhs   = env:localenv()[self.lvalue.name] or self.lvalue:codegen(env)
+	local ttype = self.lvalue.node_type:terraType()
+	local rhs   = self.exp:codegen(env)
 
 	if self.reduceop then
 		rhs = bin_exp(self.reduceop, lhs, rhs)
 	end
-	return quote lhs = rhs end
+	return quote [lhs] = rhs end
+end
+
+function ast.Row:codegen (env)
+	local e = env:localenv()[self.name]
+	return `[e]
 end
 
 function ast.FieldAccess:codegen (env)
 	local field = self.field
-	local index = env:localenv()[self.row]
+	local index = self.row:codegen(env)
 	return `@(field.data + [index])
 
 	--[[
@@ -210,10 +217,6 @@ function ast.DeclStatement:codegen (env)
 		return quote var [varsym] end
 	end
 end
-
---function ast.Name:codegen_lhs (env)
---	return `[env:combinedenv()[self.name]]
---end
 
 function ast.VectorLiteral:codegen (env)
 	local ct = { }

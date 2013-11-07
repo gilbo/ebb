@@ -72,7 +72,7 @@ local function PrintCheck(ast, ctxt)
 
     local output = args[1]
     local outtype = output.node_type
-    if outtype ~= t.error and not outtype:isExpressionType() then
+    if outtype ~= t.error and not outtype:isExpressionType() and not outtype:isRow() then
         ctxt:error(ast, "only numbers, bools, and vectors can be printed")
     end
 end
@@ -83,7 +83,7 @@ local function PrintCodegen(ast, env)
     local tt   = lt:terraType()
     local code = output:codegen(env)
     if     lt == t.float or lt == t.double then return quote c.printf("%f\n", [double](code)) end
-	elseif lt == t.int   then return quote c.printf("%d\n", code) end
+	elseif lt == t.int   or lt == t.row    then return quote c.printf("%d\n", code) end
 	elseif lt == t.bool  then
         return quote c.printf("%s", terralib.select(code, "true\n", "false\n")) end
 	elseif lt:isVector() then
@@ -224,12 +224,12 @@ local function LengthCheck(ast, ctxt)
     local args = ast.params.children
     if #args ~= 1 then
         ctxt:error(ast, "dot expects exactly 1 argument (instead got " .. #args .. ")")
-        return
+        return t.error
     end
     local lt = args[1].node_type
     if not lt:isVector() then
         ctxt:error(args[1], "argument to length must be a vector")
-        return
+        return t.error
     end
     if lt:baseType() == t.bool then
         ctxt:error(args[1], "boolean vector passed as argument to length")
