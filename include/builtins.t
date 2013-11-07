@@ -73,7 +73,7 @@ local function PrintCheck(ast, ctxt)
     local output = args[1]
     local outtype = output.node_type
     if outtype ~= t.error and not outtype:isExpressionType() and not outtype:isRow() then
-        ctxt:error(ast, "only numbers, bools, and vectors can be printed")
+        ctxt:error(ast, "only numbers, bools, vectors and rows can be printed")
     end
 end
 
