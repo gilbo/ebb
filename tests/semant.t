@@ -160,7 +160,7 @@ end
 
 -- need typechecker fail test
 test.fail_function(fail1,  "assignments in a Liszt kernel are only valid")
-test.fail_function(fail2,  "cannot re-assign")
+test.fail_function(fail2,  "cannot re%-assign")
 test.fail_function(fail3,  "assignments in a Liszt kernel are only valid")
 test.fail_function(fail4,  "can only assign")
 test.fail_function(fail5,  "variable 'undefined' is not defined")

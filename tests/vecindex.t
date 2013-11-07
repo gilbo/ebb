@@ -30,3 +30,12 @@ local avgy = y_out:value() / mesh.vertices._size
 test.fuzzy_eq(avgx, 5)
 test.fuzzy_eq(avgy, 4)
 
+------------------
+-- Should fail: --
+------------------
+idx = 3.5
+local vk2 = liszt_kernel(v in mesh.vertices)
+    v.position[idx] = 5
+end
+test.fail_function(vk2, "expected an integer")
+

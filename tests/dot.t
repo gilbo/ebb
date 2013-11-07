@@ -1,4 +1,5 @@
 import "compiler/liszt"
+require "tests/test"
 
 local assert, dot = L.assert, L.dot
 mesh = L.initMeshRelationsFromFile("examples/mesh.lmesh")
@@ -23,3 +24,14 @@ local test_dot = liszt_kernel(f in mesh.faces)
     assert(dot(v1, v1 + v2) == 6 + 18 + 42) -- test working with expressions
 end
 test_dot()
+
+local test_bad_len = liszt_kernel(f in mesh.faces)
+    assert(dot(v1, v3) == 7)
+end
+test.fail_function(test_bad_len, "differing lengths")
+
+local vb = L.NewVector(L.bool, {true, true, false})
+local test_bad_bool = liszt_kernel(f in mesh.faces)
+    assert(dot(v1, vb) == 52)
+end
+test.fail_function(test_bad_bool, "boolean vector")
