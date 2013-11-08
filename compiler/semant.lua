@@ -516,7 +516,7 @@ local function luav_to_ast(luav, src_node)
 
     elseif terralib.isfunction(luav) then
         node      = ast.Function:DeriveFrom(src_node)
-        node.func = builtins.terra_to_macro(luav)
+        node.func = builtins.terra_to_func(luav)
 
     elseif type(luav) == 'table' and luav.is_liszt_ast then
         -- For macro substitution: typed ASTs may be external and need to be inlined.

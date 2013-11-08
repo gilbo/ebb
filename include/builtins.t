@@ -7,17 +7,23 @@ local function make_prototype(tb)
    return tb
 end
 
-local Macro = make_prototype {kind=Type.kinds.functype}
-local MacroMT = {__index=Macro}
+local Func = make_prototype {kind=Type.kinds.functype}
 
-function Macro.new(check, codegen)
-    return setmetatable({check=check, codegen=codegen}, MacroMT)
+function Func.new(luafunc)
+    local check = function(ast, ctxt) error('unimplemented builtin function typechecking') end
+    local codegen = function(ast, env) error('unimplemented builtin function codegen') end
+    local call = luafunc and (function(self, ...) return luafunc(...) end) or nil
+    return setmetatable({check=check, codegen=codegen}, {__index=Func, __call=call})
 end
 
 ---------------------------------------------
---[[ Builtin macros                      ]]--
+--[[ Builtin functions                   ]]--
 ---------------------------------------------
-local function AssertCheck(ast, ctxt)
+local B = {}
+
+B.assert = Func.new(assert)
+
+function B.assert.check(ast, ctxt)
     local args = ast.params.children
     if #args ~= 1 then
         ctxt:error(ast, "assert expects exactly 1 argument (instead got " .. #args .. ")")
@@ -47,7 +53,7 @@ local terra lisztAssert(test : bool, file : rawstring, line : int)
     end
 end
 
-local function AssertCodegen(ast, env)
+function B.assert.codegen(ast, env)
     local test = ast.params.children[1]
     local code = test:codegen(env)
     if test.node_type:isVector() then
@@ -64,7 +70,10 @@ local function AssertCodegen(ast, env)
     end
 end
 
-local function PrintCheck(ast, ctxt)
+
+B.print = Func.new(print)
+
+function B.print.check(ast, ctxt)
     local args = ast.params.children
     if #args ~= 1 then
         ctxt:error(ast, "print expects exactly one argument (instead got " .. #args .. ")")
@@ -77,7 +86,7 @@ local function PrintCheck(ast, ctxt)
     end
 end
 
-local function PrintCodegen(ast, env)
+function B.print.codegen(ast, env)
     local output = ast.params.children[1]
 	local lt   = output.node_type
     local tt   = lt:terraType()
@@ -116,7 +125,28 @@ local function PrintCodegen(ast, env)
     end
 end
 
-local function DotCheck(ast, ctxt)
+
+local function dot(a, b)
+    if not a.type:isVector() then
+        error("first argument to dot must be a vector", 2)
+    end
+    if not b.type:isVector() then
+        error("second argument to dot must be a vector", 2)
+    end
+    if #a.data ~= #b.data then
+        error("cannot dot vectors of differing lengths (" ..
+                #a.data .. " and " .. #b.data .. ")")
+    end
+    local sum = 0
+    for i = 1, #a.data do
+        sum = sum + a.data[i] * b.data[i]
+    end
+    return sum
+end
+
+B.dot = Func.new(dot)
+
+function B.dot.check(ast, ctxt)
     local args = ast.params.children
     if #args ~= 2 then
         ctxt:error(ast, "dot expects exactly 2 arguments (instead got " .. #args .. ")")
@@ -144,7 +174,7 @@ local function DotCheck(ast, ctxt)
     return types.type_meet(lt1:baseType(), lt2:baseType())
 end
 
-local function DotCodegen(ast, env)
+function B.dot.codegen(ast, env)
     local args = ast.params.children
     local v1 = symbol()
     local v2 = symbol()
@@ -170,7 +200,34 @@ local function DotCodegen(ast, env)
     end
 end
 
-local function CrossCheck(ast, ctxt)
+
+local function cross(a, b)
+    if not a.type:isVector() then
+        error("first argument to cross must be a vector", 2)
+    end
+    if not b.type:isVector() then
+        error("second argument to cross must be a vector", 2)
+    end
+    local av = a.data
+    if #av ~= 3 then
+        error("arguments to cross must be vectors of length 3 (first argument is length " ..
+                #av .. ")")
+    end
+    local bv = b.data
+    if #bv ~= 3 then
+        error("arguments to cross must be vectors of length 3 (second argument is length " ..
+                #bv .. ")")
+    end
+    return L.NewVector(types.type_meet(a.type:baseType(), b.type:baseType()), {
+        av[2] * bv[3] - av[3] * bv[2],
+        av[3] * bv[1] - av[1] * bv[3],
+        av[1] * bv[2] - av[2] * bv[1]
+    })
+end 
+
+B.cross = Func.new(cross)
+
+function B.cross.check(ast, ctxt)
     local args = ast.params.children
     if #args ~= 2 then
         ctxt:error(ast, "cross expects exactly 2 arguments (instead got " .. #args .. ")")
@@ -200,19 +257,20 @@ local function CrossCheck(ast, ctxt)
     return types.type_meet(lt1, lt2)
 end
 
-local function CrossCodegen(ast, env)
+function B.cross.codegen(ast, env)
     local args = ast.params.children
-    local v1 = symbol()
-    local v2 = symbol()
 
     local tt1 = args[1].node_type:terraType()
     local tt2 = args[2].node_type:terraType()
+    local v1 = symbol(tt1)
+    local v2 = symbol(tt2)
+
     local tp = types.type_meet(args[1].node_type:baseType(), args[2].node_type:baseType()):terraType()
     local code1 = args[1]:codegen(env)
     local code2 = args[2]:codegen(env)
     return quote
-        var [v1] : tt1 = code1
-        var [v2] : tt2 = code2
+        var [v1] = code1
+        var [v2] = code2
     in
         vectorof(tp, v1[1] * v2[2] - v1[2] * v2[1],
                      v1[2] * v2[0] - v1[0] * v2[2],
@@ -220,10 +278,20 @@ local function CrossCodegen(ast, env)
     end
 end
 
-local function LengthCheck(ast, ctxt)
+
+local function length(v)
+    if not v.type:isVector() then
+        error("argument to length must be a vector", 2)
+    end
+    return c.sqrt(dot(v, v))
+end
+
+B.length = Func.new(length)
+
+function B.length.check(ast, ctxt)
     local args = ast.params.children
     if #args ~= 1 then
-        ctxt:error(ast, "dot expects exactly 1 argument (instead got " .. #args .. ")")
+        ctxt:error(ast, "length expects exactly 1 argument (instead got " .. #args .. ")")
         return t.error
     end
     local lt = args[1].node_type
@@ -237,7 +305,7 @@ local function LengthCheck(ast, ctxt)
     return t.float
 end
 
-local function LengthCodegen(ast, env)
+function B.length.codegen(ast, env)
     local args = ast.params.children
     local sq = symbol()
     local N = args[1].node_type.N
@@ -259,6 +327,7 @@ local function LengthCodegen(ast, env)
         c.sqrt(len2)
     end
 end
+
 
 local function map(fn, list)
     local result = {}
@@ -318,17 +387,11 @@ local function TerraCodegen(func)
 end
 
 
-local B = {}
-
-function B.terra_to_macro(terrafn)
-    return Macro.new(TerraCheck(terrafn), TerraCodegen(terrafn))
+function B.terra_to_func(terrafn)
+    local newfunc = Func.new()
+    newfunc.check, newfunc.codegen = TerraCheck(terrafn), TerraCodegen(terrafn)
+    return newfunc
 end
-
-B.print  = Macro.new(PrintCheck,  PrintCodegen)
-B.assert = Macro.new(AssertCheck, AssertCodegen)
-B.dot    = Macro.new(DotCheck,    DotCodegen)
-B.cross  = Macro.new(CrossCheck,  CrossCodegen)
-B.length = Macro.new(LengthCheck, LengthCodegen)
 
 B.addBuiltinsToNamespace = function (L)
     L.print  = B.print
@@ -339,5 +402,3 @@ B.addBuiltinsToNamespace = function (L)
 end
 
 return B
-
-

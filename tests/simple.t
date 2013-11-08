@@ -133,7 +133,7 @@ local test_arith = liszt_kernel (v in mesh.vertices)
 	var z = not true and false or true
 	lassert(z == true)
 
-	-- Codegen for vectors (do types propogate correctly?)
+	-- Codegen for vectors (do types propagate correctly?)
 	var x = 3 * vv
 	var y = vv / 4.2
 	var z = x + y

@@ -31,7 +31,7 @@ local compute_step = liszt_kernel(e in M.edges)
 	v2.jacobistep = v2.jacobistep + step
 end
 
-local propogate_temp = liszt_kernel (p in M.vertices)
+local propagate_temp = liszt_kernel (p in M.vertices)
 	p.temperature = p.temperature + .01 * p.flux / p.jacobistep
 end
 
@@ -42,7 +42,7 @@ end
 
 for i = 1, 1000 do
 	compute_step()
-	propogate_temp()
+	propagate_temp()
 	clear()
 end
 
