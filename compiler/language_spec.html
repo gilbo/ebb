@@ -10,11 +10,11 @@
 
 <body>
 
-<h1> (Approximate) Language Grammar</h1>
+<h1> (Approximate) Language Grammar </h1>
 
 <code class="code-block">
 <table>
-<tr><td>LisztKernel </td><td>::</td><td> "(" Name ")" Block <b>end</b> </td></tr>
+<tr><td>LisztKernel </td><td>::</td><td> "(" Name in Expression ")" Block <b>end</b> </td></tr>
 <tr><td>Block       </td><td>::</td><td> Statement*  <b>break</b>?     </td></tr>
 </table>
 </code>
@@ -24,7 +24,7 @@
 <table>
 <tr><td> Statement       </td><td>::</td><td> IfStatement | WhileStatement |
                                               RepeatStatement | DoStatement | ForStatement | ExprStatement |
-                                              Assignment  | DeclStatement  | InitStatment            </td></tr>
+                                              Assignment  | DeclStatement  | InitStatment              </td></tr>
 <tr><td> IfStatement     </td><td>::</td><td> <b>if</b> Expression <b>then</b> Block (<b>elseif</b> 
 	                                          Expression <b>then</b> Block)* (<b>else</b> Block)? 
 	                                          <b>end</b>                                               </td></tr>
@@ -37,9 +37,9 @@
 <tr><td> RepeatStatement </td><td>::</td><td> <b>repeat</b> Block <b> until</b> Expression             </td></tr>
 <tr><td> DoStatement     </td><td>::</td><td> <b>do</b> Block <b>end</b>                               </td></tr>
 <tr><td> ExprStatement   </td><td>::</td><td> Expression                                               </td></tr>
-<tr><td> Assignment      </td><td>::</td><td> LValue = Expression                                      </td></tr>
-<tr><td> DeclStatement   </td><td>::</td><td> <b>var</b> Name                                          </td></tr>
-<tr><td> InitStatement   </td><td>::</td><td> <b>var</b> Name = Expression                             </td></tr>
+<tr><td> Assignment      </td><td>::</td><td> Expression = Expression | ReductionExp Expression        </td></tr>
+<tr><td> DeclStatement   </td><td>::</td><td> <b>var</b> Name : Type  |
+		<b>var</b> Name = Expression | <b>var</b> Name : Type = Expression                             </td></tr>
 </table>
 </code>
 
@@ -48,30 +48,36 @@
 <code class="code-block">
 <table>
 
-<tr><td>Expression </td><td>::</td><td> BinaryOp | UnaryOp | LValue | Value | '(' Expression ')' </td></tr>
-<tr><td>Value      </td><td>::</td><td> Number | String | Bool                                   </td></tr>
+<tr><td>Expression </td><td>::</td><td> BinaryExp | UnaryExp | ReductionExp |
+		LValue | Value | '(' Expression ')'														           </td></tr>
 
 <tr><td>&nbsp;</td></tr>
-<tr><td>BinaryOp </td><td>::</td><td> Expression Op Expression </td></tr>
-<tr><td>UnaryOp  </td><td>::</td><td> Uop Expression           </td></tr>
+<tr><td>BinaryExp     </td><td>::</td><td> Expression BinOp Expression                                     </td></tr>
+<tr><td>UnaryExp      </td><td>::</td><td> Uop Expression                                                  </td></tr>
+<tr><td>ReductionExp  </td><td>::</td><td> Expression BinRedOp                                             </td></tr>
+
+<tr><td>&nbsp;    </td></tr>
+<tr><td>BinOp     </td><td>::</td><td>  + | - | * | / | <b>and</b> | <b>or</b>
+		| == | &lt;= | &gt;= | &lt; | &gt; | ~= | ^                                                        </td></tr>
+<tr><td>RedOp  </td><td>::</td><td> += | -= | *= | /= | <b>and</b>= | <b>or</b>=                           </td></tr>
+<tr><td>Uop       </td><td>::</td><td> - | <b>not</b>                                                      </td></tr>
 
 <tr><td>&nbsp;</td></tr>
-<tr><td>LValue                   </td><td>::</td><td> Call | Scalar | TableLookup | Name        </td></tr>
-<tr><td>TableLookup              </td><td>::</td><td> LValue '.' Name                           </td></tr>
-<tr><td>Call                     </td><td>::</td><td> LValue '(' Tuple ')'                      </td></tr>
-<tr><td>ScalarRead, ScalarWrite  </td><td>::</td><td> LValue                                    </td></tr>
+<tr><td>LValue                   </td><td>::</td><td> Call | TableLookup | VectorIndex | Name          </td></tr>
+<tr><td>Call                     </td><td>::</td><td> LValue '(' Tuple ')'                             </td></tr>
+<tr><td>TableLookup              </td><td>::</td><td> LValue '.' Name                                  </td></tr>
+<tr><td>VectorIndex              </td><td>::</td><td> LValue '[' Expression ']'                        </td></tr>
+<tr><td>ScalarRead, ScalarWrite  </td><td>::</td><td> LValue                                           </td></tr>
 
 <tr><td>&nbsp;</td></tr>
-<tr><td>Tuple </td><td>::</td><td> (Expression (, Expression)* (,)?)?</td></tr>
+<tr><td>Tuple </td><td>::</td><td> '(' Expression (, Expression)* (,)? ')'                             </td></tr>
 
 <tr><td>&nbsp;</td></tr>
-<tr><td>Op  </td><td>::</td><td> + | - | * | / | == | &lt;= | &gt;= | &lt; | &gt; | ~= | <b>and</b> | <b>or</b> | ^ </td></tr>
-<tr><td>Uop </td><td>::</td><td> - | <b>not</b>                                                                     </td></tr>
-
-<tr><td>&nbsp;</td></tr>
-<tr><td>Name   </td><td>::</td><td> (string that Lua lexes as a name)   </td></tr>
-<tr><td>Number </td><td>::</td><td> (string that Lua lexes as a number) </td></tr>
-<tr><td>Bool   </td><td>::</td><td> <b> true </b> | <b>false</b>        </td></tr>
+<tr><td>Name             </td><td>::</td><td> (string that Lua lexes as a name)                        </td></tr>
+<tr><td>Value            </td><td>::</td><td> Number | Bool | VectorLiteral                            </td></tr>
+<tr><td>Number           </td><td>::</td><td> (string that Lua lexes as a number)                      </td></tr>
+<tr><td>Bool             </td><td>::</td><td> <b> true </b> | <b>false</b>                             </td></tr>
+<tr><td>VectorLiteral    </td><td>::</td><td> '{' Expression (, Expression)* '}'                       </td></tr>
 
 </table>
 </code>
@@ -80,25 +86,38 @@
 <h1>Language Syntax/Semantics</h1>
 
 <h2>LisztKernel</h2>
-<p> The single parameter of the Liszt kernel always refers to an object of topological element type. The type of this object depends on set that the Liszt kernel is mapped over.</p>
-<p>Global variables cannot be declared inside of a Liszt kernel, and references to upvalues can be written to only if they are liszt fields or scalars (which we perform phase analysis on to prevent R/W dependencies).</p>
+<p> The single parameter of the Liszt kernel has two arguments, the second one
+specifying the relation over which we are mapping the kernel, and the first one
+evaluates to a row within this relation. </p>
+<p>Global variables cannot be declared inside of a Liszt kernel, and references
+to upvalues can be written to only if they are liszt fields or scalars (which
+we perform phase analysis on to prevent R/W dependencies).</p>
 
 <h2>Global Variables</h2>
 
 <h3> Phasing </h3>
-	<p> Global variables appearing in a liszt kernel can only be used in one of three ways:
+	<p> Global variables appearing in a liszt kernel can only be used in one of
+	three ways:
 <ul>
   <li><b>Read</b> state - we can read the value of the variable.</li>
   <li><b>Save</b> state - we can make assignments to the value of the variable.</li>
-  <li><b>Write</b> state - we can perform associative operations on the value of the variable (e.g. <code> sum += tmp </code>) </li>
+  <li><b>Write</b> state - we can perform associative operations on the value
+  of the variable (e.g. <code> sum += tmp </code>) </li>
 </ul>
 
+<h3>Relations</h3>
+<p> A table lookup on a relation, to get a field, can be done only within the
+liszt kernel declaration or for-where statement. Access to a row of a relation, and 
+field elements is through the first argument in these statements.
+</p>
 
 <h3>Fields</h3>
-<p> Fields are always indexed by Names referring to objects that are Liszt topological elements -- attempting to index by any other object type is always an error.</p>
+<p> A field f is indexed by peforming a table lookup on a row r belonging to a
+relation that contains the field, as r . f .</p>
 
-
-<p>A field write is an associative reduction (e.g. <code>field(topo) = field(topo) + 3</code>) Currently, field writes are detected through checking the tree of the assigned expression, since terra does not yet parse associative operators like <code>+=</code>. The field must be used in the left-most side of the top-level binary expression in an Assignment statement in order for the compiler to recognize a reduction.  A field save occurs when the kernel contains a direct write to the field value (e.g. <code>field(topo) = 3</code>)
+<p>A field write is an associative reduction (e.g. <code>row.field +=
+3</code>). A reduction operator must be used to perform reduction on a
+field.
 
 
 
