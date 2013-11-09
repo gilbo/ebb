@@ -70,19 +70,31 @@ function LRelation:__newindex(fieldname,value)
 end 
 
 local function is_relation (obj) return getmetatable(obj) == LRelation end
+local function is_macro (obj) return getmetatable(obj) == LMacro end
 
 local function isValidFieldType (typ)
-    return is_relation(typ) or T.Type.isLisztType(typ) and typ:isExpressionType()
+    return is_relation(typ) or is_macro(typ) or T.Type.isLisztType(typ) and typ:isExpressionType()
 end
 
 function LRelation:NewField (name, typ)    
     if not isValidFieldType(typ) then
-        error("NewField expects a Liszt type or a Relation as the 2nd argument", 2)
+        error("NewField expects a Liszt type, Relation, or Macro as the 2nd argument", 2)
     end
 
     local f    = setmetatable({}, LField)
-    f.relation = is_relation(typ) and typ   or nil
-    f.type     = is_relation(typ) and RTYPE or typ
+    if is_relation(typ) then
+        f.relation = typ
+        f.type = RTYPE
+        f.macro = nil
+    elseif is_macro(typ) then
+        f.relation = nil
+        f.type = LMacro
+        f.macro = typ
+    else
+        f.relation = nil
+        f.type = typ
+        f.macro = nil
+    end
     f.name     = name
     f.table    = self
 

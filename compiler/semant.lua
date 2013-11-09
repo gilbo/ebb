@@ -744,13 +744,23 @@ function ast.TableLookup:check(ctxt)
             return err(self, ctxt, "Row " .. table.name .. " does not have field member '" .. member.name .. "'")
         end
 
-        local ast_node     = ast.FieldAccess:DeriveFrom(self.member)
-        ast_node.name      = self.name
-        ast_node.row       = self.table
-        ast_node.relation  = luaval.relation
-        ast_node.field     = luaval
-        ast_node.node_type = luaval.relation and t.row or luaval.type
-        return ast_node
+        if luaval.macro then
+            -- for row.fieldmacro, desugar to fieldmacro(row)
+            local macro_node = ast.Call:DeriveFrom(self)
+            macro_node.func = ast.Macro:DeriveFrom(self.member)
+            macro_node.func.macro = luaval.macro
+            macro_node.params = ast.Tuple:DeriveFrom(self.table)
+            macro_node.params.children = {self.table}
+            return macro_node:check(ctxt)
+        else
+            local ast_node     = ast.FieldAccess:DeriveFrom(self.member)
+            ast_node.name      = self.name
+            ast_node.row       = self.table
+            ast_node.relation  = luaval.relation
+            ast_node.field     = luaval
+            ast_node.node_type = luaval.relation and t.row or luaval.type
+            return ast_node
+        end
     end
 end
 
