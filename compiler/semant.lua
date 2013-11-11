@@ -209,9 +209,9 @@ function ast.Assignment:check(ctxt)
         ctxt:error(self.lvalue, "assignments in a Liszt kernel are only "..
                                 "valid to indexed fields or kernel variables")
         return assignment
-    elseif lhs.node_type:isRow() then
+    elseif lhs.node_type:isRef() then
         ctxt:error(self.lvalue, "cannot re-assign variables of "..
-                                "relational row type")
+                                "reference type")
         return assignment
     end
 
@@ -282,10 +282,10 @@ function ast.DeclStatement:check(ctxt)
     decl.ref.node_type = typ
 
     if typ ~= t.error and
-         not typ:isExpressionType() and not typ:isRow()
+         not typ:isExpressionType() and not typ:isRef()
     then
         ctxt:error(self,"can only assign numbers, bools, "..
-                        "or relational rows to local temporaries")
+                        "or references to local temporaries")
     end
 
     local lv = decl.initializer or decl.ref
@@ -372,7 +372,7 @@ end
 ------------------------------------------------------------------------------
 function ast.Expression:check(ctxt)
     error("Semantic checking has not been implemented for "..
-          "expression type " .. self.kind)
+          "expression type " .. self.kind, 2)
 end
 
 --[[ Logic tables for binary expression checking: ]]--
@@ -495,31 +495,31 @@ local function luav_to_ast(luav, src_node)
     local node
 
     -- Scalar objects are replaced with special Scalar nodes
-    if Type.isScalar(luav) then
+    if L.is_scalar(luav) then
         node        = ast.Scalar:DeriveFrom(src_node)
         node.scalar = luav
 
     -- Vector objects are expanded into literal AST trees
-    elseif Type.isVector(luav) then
+    elseif L.is_vector(luav) then
         node        = ast.VectorLiteral:DeriveFrom(src_node)
         node.elems  = {}
         for i,v in ipairs(luav.data) do
             node.elems[i] = luav_to_ast(v, src_node)
         end
 
-    elseif Type.isRelation(luav) then
-        node           = ast.Relation:DeriveFrom(src_node)
-        node.relation  = luav
-    
-    elseif Type.isField(luav) then
-        node       = ast.Field:DeriveFrom(src_node)
-        node.field = luav
-
-    elseif Type.isFunction(luav) then
+    elseif L.is_function(luav) then
         node      = ast.Function:DeriveFrom(src_node)
         node.func = luav
 
-    elseif Type.isMacro(luav) then
+    elseif L.is_relation(luav) then
+        node           = ast.Relation:DeriveFrom(src_node)
+        node.relation  = luav
+    
+    elseif L.is_field(luav) then
+        node       = ast.Field:DeriveFrom(src_node)
+        node.field = luav
+
+    elseif L.is_macro(luav) then
         node = ast.Macro:DeriveFrom(src_node)
         node.macro = luav
 
@@ -591,6 +591,7 @@ function ast.Name:check(ctxt)
             node.name      = self.name
             return node
         else
+            -- WARNING this name over-writing seems problematic...
             lisztv.name = self.name
             return lisztv:check(ctxt)
         -- check that we're not reading from an uninitialized variable
@@ -694,37 +695,20 @@ function ast.Tuple:index_check(ctxt)
 end
 
 function ast.TableLookup:check(ctxt)
-    local table  = self.table:check(ctxt)
-    local member = self.member
-    local ttype  = table.node_type
+    local table     = self.table:check(ctxt)
+    local member    = self.member
+    local ttype     = table.node_type
 
-    self.name = table.name .. '.' .. member.name
+    local fullname  = table.name .. '.' .. member.name
 
     if ttype == t.error then
         return err(self, ctxt)
-    elseif table:is(ast.Scalar) then
-        return err(self, ctxt,"select operator not supported "..
-                              "for non-table type LScalar")
-    elseif table:is(ast.Field) then
-        return err(self, ctxt, "select operator not supported "..
-                               "for non-table type LField")
-
-    -- Table lookups on these types are allowed
-    elseif table:is(ast.Table)     then
-    elseif table:is(ast.Row)       then
-    elseif table:is(ast.Relation)  then
-    elseif table:is(ast.FieldAccess) and table.node_type:isRow() then
-    else
-        return err(self, ctxt, "select operator not "..
-                               "supported for non-table type "..
-                               ttype:toString())
     end
-
-    self.name = table.name .. '.' .. member.name
 
     -- table is a lua table
     if table:is(ast.Table) then
-        -- perform the lookup in the lua table as namespace
+        -- perform the lookup in the lua table,
+        -- which we assume is acting as a namespace
         local luaval = table.table[member.name]
 
         if luaval == nil then
@@ -734,50 +718,67 @@ function ast.TableLookup:check(ctxt)
 
         -- and then convert the lua value into an ast node
         local ast_node = luav_to_checked_ast(luaval, self, ctxt)
-        -- we set a name somewhat appropriately (for debug printing)
-        ast_node.name = self.name
+        -- we set a name (for debug printing)
+        ast_node.name = fullname
         return ast_node
 
-    -- table is a Relation, we expect indices to be fields
+    -- table is a Relation, we expect index to be a field or field-macro
     elseif table:is(ast.Relation) then
         local luaval = table.relation[member.name]
         -- relational table members must be fields
-        if not Type.isField(luaval) then
-            ctxt:error("relation " .. table.name ..
-                       ' does not have field member ' .. member.name)
-            local ast_node = self:clone()
-            ast_node.node_type = t.error
-            return ast_node
+        if not L.is_field(luaval) and not L.is_macro(luaval) then
+            return err(self, ctxt,
+                       "relation ".. table.name .." does not have "..
+                       "field or macro-field member " .. member.name)
         end
-        -- this will return an ast.Field node
+        -- this will return an ast.Field or ast.Macro node
         return luav_to_checked_ast(luaval, self, ctxt)
 
-    -- table is a Row, indices are field accesses
-    else
-        local luaval = table.relation[member.name]
-        if not Type.isField(luaval) then
-            return err(self, ctxt, "Row "..table.name.." does not have "..
-                                   "field member '"..member.name.."'")
+    -- table is a Reference, index is a field or field-macro
+    elseif ttype:isRef() then
+        local luaval = ttype.relation[member.name]
+
+        -- create a field access normally
+        if L.is_field(luaval) then
+            local field         = luaval
+            local ast_node      = ast.FieldAccess:DeriveFrom(member)
+            ast_node.name       = fullname
+            ast_node.ref        = table
+            ast_node.field      = field
+            ast_node.node_type  = field.type
+            return ast_node
+
+        -- desugar macro-fields from ref.macro to macro(ref)
+        elseif L.is_macro(luaval) then
+            local macro             = luaval
+            local call              = ast.Call:DeriveFrom(self)
+            call.func               = ast.Macro:DeriveFrom(member)
+            call.func.macro         = macro
+            call.params             = ast.Tuple:DeriveFrom(table)
+            call.params.children    = {table}
+
+            call                    = call:check(ctxt)
+            call.name               = fullname
+            return call
+
+        else
+            return err(self, ctxt, "Reference "..table.name.." does not "..
+                                   "have field or macro-field "..
+                                   "'"..member.name.."'")
         end
 
-        if luaval.macro then
-            -- for row.fieldmacro, desugar to fieldmacro(row)
-            local macro_node = ast.Call:DeriveFrom(self)
-            macro_node.func = ast.Macro:DeriveFrom(self.member)
-            macro_node.func.macro = luaval.macro
-            macro_node.params = ast.Tuple:DeriveFrom(self.table)
-            macro_node.params.children = {self.table}
-            return macro_node:check(ctxt)
-        else
-            local ast_node     = ast.FieldAccess:DeriveFrom(self.member)
-            ast_node.name      = self.name
-            ast_node.row       = self.table
-            ast_node.relation  = luaval.relation
-            ast_node.field     = luaval
-            ast_node.node_type = luaval.relation and t.row or luaval.type
-            return ast_node
-        end
+    elseif table:is(ast.Scalar) then
+        return err(self, ctxt,"select operator not supported "..
+                              "for LScalar")
+    elseif table:is(ast.Field) then
+        return err(self, ctxt, "select operator not supported "..
+                               "for LField")
+    else
+        return err(self, ctxt, "select operator not "..
+                               "supported for "..
+                               ttype:toString())
     end
+
 end
 
 function ast.VectorIndex:check(ctxt)
@@ -832,7 +833,7 @@ function ast.Call:check(ctxt)
         -- (do not print error messages for errors already reported)
 
     else
-        ctxt:error(self, "invalid call")
+        ctxt:error(self, "This call was neither a function nor macro.")
 
     end
 
@@ -865,8 +866,7 @@ end
 function ast.FieldAccess:check(ctxt)
     local n     = self:clone()
     n.field     = self.field
-    n.row       = self.row
-    n.relation  = self.relation
+    n.ref       = self.ref
     return n
 end
 
@@ -888,12 +888,12 @@ function ast.Relation:check(ctxt)
     return n
 end
 
-function ast.Row:check(ctxt)
-    local n    = self:clone()
-    n.relation = self.relation
-    n.row      = self.row
-    n.field    = self.field
-    return n
+
+function ast.Ref:check(ctxt)
+    local ref = self:clone()
+    assert(self.node_type)
+    ref.node_type = self.node_type
+    return ref
 end
 
 function ast.LocalVar:check(ctxt)
@@ -905,23 +905,22 @@ end
 --[[ Semantic checking called from here:                                  ]]--
 ------------------------------------------------------------------------------
 function ast.LisztKernel:check(ctxt)
-    local new_kernel_ast = self:clone()
+    local kernel            = self:clone()
 
-    local set           = self.set:check(ctxt)
-    local iter          = ast.Row:DeriveFrom(self.iter)
-    new_kernel_ast.set  = set
-    iter.name           = self.iter.name
-    iter.relation       = new_kernel_ast.set.relation
-    new_kernel_ast.iter = iter:check()
+    kernel.set              = self.set:check(ctxt)
 
-    if not set:is(ast.Relation) then
-        ctxt:error(new_kernel_ast.set, "Expected a relation")
+    if not kernel.set:is(ast.Relation) then
+        ctxt:error(kernel.set, "Expected a relation")
     else
-        ctxt:liszt()[self.iter.name] = iter
+        kernel.iter             = ast.Ref:DeriveFrom(self.iter)
+        kernel.iter.name        = self.iter.name
+        kernel.iter.node_type   = t.ref(kernel.set.relation)
+
+        ctxt:liszt()[kernel.iter.name] = kernel.iter
+        kernel.body = self.body:check(ctxt)
     end
 
-    new_kernel_ast.body = self.body:check(ctxt)
-    return new_kernel_ast
+    return kernel
 end
 
 function exports.check(luaenv, kernel_ast, param_type)

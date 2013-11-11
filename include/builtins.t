@@ -10,16 +10,27 @@ end
 local Func = make_prototype {kind=Type.kinds.functype}
 
 function Func.new(luafunc)
-    local check = function(ast, ctxt) error('unimplemented builtin function typechecking') end
-    local codegen = function(ast, env) error('unimplemented builtin function codegen') end
-    local call = luafunc and (function(self, ...) return luafunc(...) end) or nil
-    return setmetatable({check=check, codegen=codegen}, {__index=Func, __call=call})
+    local check = function(ast, ctxt)
+        error('unimplemented builtin function typechecking')
+    end
+    local codegen = function(ast, env)
+        error('unimplemented builtin function codegen')
+    end
+    local call = nil
+    if luafunc then
+        call = (function(self, ...) return luafunc(...) end)
+    end
+    return setmetatable({check=check, codegen=codegen},
+                        {__index=Func, __call=call})
 end
 
 ---------------------------------------------
 --[[ Builtin functions                   ]]--
 ---------------------------------------------
 local B = {}
+function B.is_function(obj)
+    return getmetatable(obj) and getmetatable(obj).__index == Func
+end
 
 B.assert = Func.new(assert)
 
@@ -399,6 +410,7 @@ B.addBuiltinsToNamespace = function (L)
     L.dot    = B.dot
     L.cross  = B.cross
     L.length = B.length
+    L.is_function = B.is_function
 end
 
 return B

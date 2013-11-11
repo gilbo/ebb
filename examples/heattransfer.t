@@ -46,5 +46,5 @@ for i = 1, 1000 do
 	clear()
 end
 
-M.vertices.temperature:dump()
+M.vertices.temperature:print()
 
