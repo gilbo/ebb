@@ -46,7 +46,6 @@ local LocalVar        = { kind = 'localvar',    is_lvalue = true            }
 local Field           = { kind = 'field',       node_type = T.t.field       }
 local Table           = { kind = 'table',       node_type = T.t.table       }
 local Relation        = { kind = 'relation',    node_type = T.t.relation    }
---local Row             = { kind = 'row',         node_type = T.t.row }
 
 -- Statements:
 local Statement       = { kind = 'statement'  }  -- abstract
@@ -293,11 +292,6 @@ function Relation:pretty_print (indent)
     print(indent .. self.kind .. ": " .. self.relation._debugname)
 end
 
---function Row:pretty_print (indent)
---    indent = indent or ''
---    print(indent .. self.kind .. ": " .. self.relation._debugname)
---end
-
 function Ref:pretty_print (indent)
 	indent = indent or ''
 	print(indent .. self.kind)
@@ -441,7 +435,6 @@ for k,v in pairs({
     QuoteExpr       = QuoteExpr,
 	Table           = Table,
     Relation        = Relation,
---    Row             = Row,
     Ref 						= Ref,
     LocalVar        = LocalVar,
 	Call            = Call,
