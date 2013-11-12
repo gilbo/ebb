@@ -28,7 +28,7 @@ end)()
 ----------------------------------------
 --Test macro that behaves like a field--
 ----------------------------------------
-mesh.vertices:NewField('scaledposition', L.NewMacro(function(v)
+mesh.vertices:NewFieldMacro('scaledposition', L.NewMacro(function(v)
     return liszt `2*v.position 
 end))
 (liszt kernel(v in mesh.vertices)

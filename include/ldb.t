@@ -5,7 +5,7 @@
 -- currently present in the runtime.  This helps us view
 -- relations from a closed rather than open-world perspective,
 -- so it's easy to ask "Does a relation named XXX exist?" or
--- Are all references currently in the relation tables valid?
+-- Are all row types currently in the relation tables valid?
 
 -- If we eventually implement some form of garbage collector or
 -- other auto memory manager, this database will give the needed
@@ -31,9 +31,8 @@ local C = terralib.includecstring [[
 ]]
 
 
--- terra type of a field that refers to another relation
---local REF_ENCODING_TYPE    = T.t.uint
-local REF_TERRA_TYPE       = T.t.uint:terraType()
+-- terra type of a field that represents a row in another relation
+local ROW_TERRA_TYPE       = T.t.uint:terraType()
 -- terra type of an orientation field
 local ORIENT_TYPE = T.t.uint8
 
@@ -97,12 +96,6 @@ function LRelation:__newindex(fieldname,value)
           "(did you mean to call self:NewField?)", 2)
 end
 
-local function isValidFieldType (typ)
-    return DECL.is_macro(typ) or
-           (T.Type.isLisztType(typ) and 
-            (typ:isExpressionType() or typ:isRef() ))
-end
-
 function LRelation:NewField (name, typ)  
     if not name or type(name) ~= "string" then
         error("NewField() expects a string as the first argument", 2)
@@ -115,25 +108,40 @@ function LRelation:NewField (name, typ)
               "That name is already being used.", 2)
     end
 
-    if not isValidFieldType(typ) then
-        error("NewField() expects a Liszt type, "..
-              "or Macro as the 2nd argument", 2)
+    if not T.Type.isLisztType(typ) or
+       not (typ:isExpressionType() or typ:isRow())
+    then
+        error("NewField() expects a Liszt type as the 2nd argument", 2)
     end
 
-    if DECL.is_macro(typ) then
-        local macro = typ
-        rawset(self, name, macro)
-        self._macros:insert(macro)
-        return macro
-    else
-        local field = setmetatable({}, LField)
-        field.type  = typ
-        field.name  = name
-        field.owner = self
-        rawset(self, name, field)
-        self._fields:insert(field)
-        return field
+    local field = setmetatable({}, LField)
+    field.type  = typ
+    field.name  = name
+    field.owner = self
+    rawset(self, name, field)
+    self._fields:insert(field)
+    return field
+end
+
+function LRelation:NewFieldMacro (name, macro)  
+    if not name or type(name) ~= "string" then
+        error("NewFieldMacro() expects a string as the first argument", 2)
     end
+    if not is_valid_lua_identifier(name) then
+        error(valid_fieldName_err_msg, 2)
+    end
+    if self[name] then
+        error("Cannot create a new field-macro with name '"..name.."'  "..
+              "That name is already being used.", 2)
+    end
+
+    if not DECL.is_macro(macro) then
+        error("NewFieldMacro() expects a Macro as the 2nd argument", 2)
+    end
+
+    rawset(self, name, macro)
+    self._macros:insert(macro)
+    return macro
 end
 
 function LRelation:LoadIndexFromMemory(name, row_idx)
@@ -143,11 +151,11 @@ function LRelation:LoadIndexFromMemory(name, row_idx)
     assert(DECL.is_field(f))
     assert(f.data == nil)
     assert(f.type)
-    assert(f.type:isRef())
+    assert(f.type:isRow())
     --assert(f.relation ~= nil) -- index field must be a relational type
 
     local target_relation = f.type.relation
-    local ttype  = REF_TERRA_TYPE
+    local ttype  = ROW_TERRA_TYPE
     local tsize  = terralib.sizeof(ttype)
     -- Why is this +1?
     local nbytes = (target_relation._size + 1) * tsize
@@ -186,7 +194,7 @@ end
 
 -- we split de-serialization into two phases so that all of the
 -- Relations can be reconstructed before any of the Fields.
--- This ensures that Reference Fields will safely match some existing
+-- This ensures that Row Fields will safely match some existing
 -- Relation when deserialized.
 function LRelation.json_deserialize_rel(json_tbl)
     local relation = LDB.NewRelation(json_tbl.size, json_tbl.name)

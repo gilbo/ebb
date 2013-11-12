@@ -327,8 +327,8 @@ local function initMeshRelations(mesh)
         -- store table with name intended for global scope
         relations[name] = rel
 
-        rel:NewField(xtoy.n1, t.ref(relations[xtoy.t1]))
-        rel:NewField(xtoy.n2, t.ref(relations[xtoy.t2]))
+        rel:NewField(xtoy.n1, t.row(relations[xtoy.t1]))
+        rel:NewField(xtoy.n2, t.row(relations[xtoy.t2]))
 
         -- if our lmesh field has orientation encoded into the relation,
         -- extract the orientation and load it as a separate field
@@ -364,13 +364,13 @@ local function initMeshRelations(mesh)
 
         rel:LoadIndexFromMemory(xtoy.n1, mesh[old_name].row_idx)
     end
-    
+
     for k, xtoy in pairs(mesh_rels_topo) do
         local old_name  = xtoy.old_name
         local rel       = relations[xtoy.dest]
 
-        local f1 = rel:NewField(xtoy.n1, t.ref(relations[xtoy.ft]))
-        local f2 = rel:NewField(xtoy.n2, t.ref(relations[xtoy.ft]))
+        local f1 = rel:NewField(xtoy.n1, t.row(relations[xtoy.ft]))
+        local f2 = rel:NewField(xtoy.n2, t.row(relations[xtoy.ft]))
 
         local tsize = terralib.sizeof(rel[xtoy.n1].type:terraType())
 

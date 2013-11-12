@@ -10,10 +10,6 @@
 ]]--
 local DECL = {}
 
-if not terralib then
-    error('sadf;adf')
-end
-
 
 local function make_prototype(tb)
     tb.__index = tb

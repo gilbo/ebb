@@ -176,14 +176,14 @@ function ast.Assignment:codegen (env)
 	return quote [lhs] = rhs end
 end
 
-function ast.Ref:codegen (env)
+function ast.Row:codegen (env)
 	local e = env:localenv()[self.name]
 	return `[e]
 end
 
 function ast.FieldAccess:codegen (env)
 	local field = self.field
-	local index = self.ref:codegen(env)
+	local index = self.row:codegen(env)
 	return `@(field.data + [index])
 
 	--[[

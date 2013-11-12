@@ -23,7 +23,7 @@ local Reduce          = { kind = 'reduce' }
 local UnaryOp         = { kind = 'unop'   }
 local Tuple           = { kind = 'tuple'  }
 
-local Ref 						= { kind = 'ref'    }
+local Row 						= { kind = 'row'    }
 
 local TableLookup     = { kind = 'lookup' }
 local VectorIndex     = { kind = 'index'  }
@@ -90,7 +90,7 @@ inherit(VectorIndex,   Expression)
 inherit(Name,          Expression)
 inherit(Reduce,        Expression)
 
-inherit(Ref,					 Expression)
+inherit(Row,					 Expression)
 
 inherit(Scalar,        Expression)
 inherit(Field, 	       Expression)
@@ -292,7 +292,7 @@ function Relation:pretty_print (indent)
     print(indent .. self.kind .. ": " .. self.relation._debugname)
 end
 
-function Ref:pretty_print (indent)
+function Row:pretty_print (indent)
 	indent = indent or ''
 	print(indent .. self.kind)
 end
@@ -435,7 +435,7 @@ for k,v in pairs({
     QuoteExpr       = QuoteExpr,
 	Table           = Table,
     Relation        = Relation,
-    Ref 						= Ref,
+    Row 						= Row,
     LocalVar        = LocalVar,
 	Call            = Call,
 	Name            = Name,

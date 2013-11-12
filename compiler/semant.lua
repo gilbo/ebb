@@ -209,9 +209,9 @@ function ast.Assignment:check(ctxt)
         ctxt:error(self.lvalue, "assignments in a Liszt kernel are only "..
                                 "valid to indexed fields or kernel variables")
         return assignment
-    elseif lhs.node_type:isRef() then
+    elseif lhs.node_type:isRow() then
         ctxt:error(self.lvalue, "cannot re-assign variables of "..
-                                "reference type")
+                                "row type")
         return assignment
     end
 
@@ -282,10 +282,10 @@ function ast.DeclStatement:check(ctxt)
     decl.ref.node_type = typ
 
     if typ ~= t.error and
-         not typ:isExpressionType() and not typ:isRef()
+         not typ:isExpressionType() and not typ:isRow()
     then
         ctxt:error(self,"can only assign numbers, bools, "..
-                        "or references to local temporaries")
+                        "or rows to local temporaries")
     end
 
     local lv = decl.initializer or decl.ref
@@ -734,8 +734,8 @@ function ast.TableLookup:check(ctxt)
         -- this will return an ast.Field or ast.Macro node
         return luav_to_checked_ast(luaval, self, ctxt)
 
-    -- table is a Reference, index is a field or field-macro
-    elseif ttype:isRef() then
+    -- table is a Row, index is a field or field-macro
+    elseif ttype:isRow() then
         local luaval = ttype.relation[member.name]
 
         -- create a field access normally
@@ -743,12 +743,12 @@ function ast.TableLookup:check(ctxt)
             local field         = luaval
             local ast_node      = ast.FieldAccess:DeriveFrom(member)
             ast_node.name       = fullname
-            ast_node.ref        = table
+            ast_node.row        = table
             ast_node.field      = field
             ast_node.node_type  = field.type
             return ast_node
 
-        -- desugar macro-fields from ref.macro to macro(ref)
+        -- desugar macro-fields from row.macro to macro(row)
         elseif L.is_macro(luaval) then
             local macro             = luaval
             local call              = ast.Call:DeriveFrom(self)
@@ -762,7 +762,7 @@ function ast.TableLookup:check(ctxt)
             return call
 
         else
-            return err(self, ctxt, "Reference "..table.name.." does not "..
+            return err(self, ctxt, "Row "..table.name.." does not "..
                                    "have field or macro-field "..
                                    "'"..member.name.."'")
         end
@@ -866,7 +866,7 @@ end
 function ast.FieldAccess:check(ctxt)
     local n     = self:clone()
     n.field     = self.field
-    n.ref       = self.ref
+    n.row       = self.row
     return n
 end
 
@@ -889,11 +889,11 @@ function ast.Relation:check(ctxt)
 end
 
 
-function ast.Ref:check(ctxt)
-    local ref = self:clone()
+function ast.Row:check(ctxt)
+    local row = self:clone()
     assert(self.node_type)
-    ref.node_type = self.node_type
-    return ref
+    row.node_type = self.node_type
+    return row
 end
 
 function ast.LocalVar:check(ctxt)
@@ -912,9 +912,9 @@ function ast.LisztKernel:check(ctxt)
     if not kernel.set:is(ast.Relation) then
         ctxt:error(kernel.set, "Expected a relation")
     else
-        kernel.iter             = ast.Ref:DeriveFrom(self.iter)
+        kernel.iter             = ast.Row:DeriveFrom(self.iter)
         kernel.iter.name        = self.iter.name
-        kernel.iter.node_type   = t.ref(kernel.set.relation)
+        kernel.iter.node_type   = t.row(kernel.set.relation)
 
         ctxt:liszt()[kernel.iter.name] = kernel.iter
         kernel.body = self.body:check(ctxt)

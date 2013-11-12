@@ -21,7 +21,7 @@ Type.kinds.scalar    = {string='scalar'    }
 Type.kinds.table     = {string='table'     }
 Type.kinds.error     = {string='error'     }
 Type.kinds.relation  = {string='relation'  }
-Type.kinds.reference = {string='reference' }
+Type.kinds.row       = {string='row'       }
 
 Type.kinds.int    = {string='int',    terratype=int   }
 Type.kinds.float  = {string='float',  terratype=float }
@@ -88,7 +88,7 @@ function Type:isLuaTable()  return self.kind == Type.kinds.table     end
 function Type:isError()     return self.kind == Type.kinds.error     end
 function Type:isRelation()  return self.kind == Type.kinds.relation  end
 function Type:isTable()     return self.kind == Type.kinds.table     end
-function Type:isRef()       return self.kind == Type.kinds.reference end
+function Type:isRow()       return self.kind == Type.kinds.row       end
 
 
 -------------------------------------------------------------------------------
@@ -105,7 +105,7 @@ function Type:terraType()
   elseif self:isVector()    then return vector(self.type:terraType(), self.N)
   elseif self:isField()     then return self.type:terraType()
   elseif self:isScalar()    then return self.type:terraType()
-  elseif self:isRef()       then return uint32
+  elseif self:isRow()       then return uint32
   end
   error("terraType method not implemented for type " .. self:toString(), 2)
 end
@@ -139,7 +139,7 @@ function Type:toString()
     elseif self:isField()     then return 'LField'
   elseif self:isLuaTable()  then return 'table'
   elseif self:isError()     then return 'error'
-  elseif self:isRef()       then return 'Ref('..self.relation:name()..')'
+  elseif self:isRow()       then return 'Row('..self.relation:name()..')'
   end
   print(debug.traceback())
   error('toString method not implemented for this type!', 2)
@@ -175,19 +175,19 @@ local function vectorType (typ, len)
   return complexTypes[tpn]
 end
 
-local refTypes = {}
+local row_type_table = {}
 
-local function referenceType (relation)
+local function rowType (relation)
   if not DECL.is_relation(relation) then
-    error("invalid argument to reference type constructor. A relation "..
+    error("invalid argument to row type constructor. A relation "..
           "must be provided", 2)
   end
-  if not refTypes[relation:name()] then
-    local rt = Type:new(Type.kinds.reference)
+  if not row_type_table[relation:name()] then
+    local rt = Type:new(Type.kinds.row)
     rt.relation = relation
-    refTypes[relation:name()] = rt
+    row_type_table[relation:name()] = rt
   end
-  return refTypes[relation:name()]
+  return row_type_table[relation:name()]
 end
 
 -------------------------------------------------------------------------------
@@ -207,7 +207,7 @@ t.double    = Type:new(Type.kinds.primitive,Type.kinds.double)
 
 -- Complex type constructors
 t.vector    = vectorType
-t.ref       = referenceType
+t.row       = rowType
 
 t.macro     = Type:new(Type.kinds.macro)
 
