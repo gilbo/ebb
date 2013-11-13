@@ -7,7 +7,10 @@ local L = {}
 local LDB = terralib.require('include/ldb')
 L.LDB = LDB
 
-local C = terralib.includecstring [[
+local DECL = terralib.require('include/decl')
+
+
+local C = DECL.C --[[terralib.includecstring [[
     #include <stdlib.h>
     #include <string.h>
     #include <stdio.h>
@@ -33,8 +36,6 @@ L.vector = t.vector
 -------------------------------------------------------------------------------
 --[[ Liszt object prototypes:                                              ]]--
 -------------------------------------------------------------------------------
-
-local DECL = terralib.require('include/decl')
 
 -- export object testing routines
 L.is_relation = DECL.is_relation
@@ -63,8 +64,8 @@ local LMacro  = DECL.LMacro
 --[[ LScalars:                                                             ]]--
 -------------------------------------------------------------------------------
 function L.NewScalar (typ, init)
-    if not T.Type.isLisztType(typ) or not typ:isExpressionType() then error("First argument to L.NewScalar must be a Liszt expression type", 2) end
-    if not T.conformsToType(init, typ) then error("Second argument to L.NewScalar must be an instance of type " .. typ:toString(), 2) end
+    if not T.Type.isLisztType(typ) or not typ:isValueType() then error("First argument to L.NewScalar must be a Liszt expression type", 2) end
+    if not T.luaValConformsToType(init, typ) then error("Second argument to L.NewScalar must be an instance of type " .. typ:toString(), 2) end
 
     local s  = setmetatable({type=typ}, LScalar)
     local tt = typ:terraType()
@@ -75,7 +76,7 @@ end
 
 
 function LScalar:setTo(val)
-   if not T.conformsToType(val, self.type) then error("value does not conform to scalar type " .. self.type:toString(), 2) end
+   if not T.luaValConformsToType(val, self.type) then error("value does not conform to scalar type " .. self.type:toString(), 2) end
       if self.type:isVector() then
           local v     = is_vector(val) and val or L.NewVector(self.type:baseType(), val)
           local sdata = terralib.cast(&self.type:terraBaseType(), self.data)
@@ -112,7 +113,7 @@ function L.NewVector(dt, init)
               "an LVector or an array", 2)
     end
     local N = is_vector(init) and init.N or #init
-    if not T.conformsToType(init, L.vector(dt, N)) then
+    if not T.luaValConformsToType(init, L.vector(dt, N)) then
         error("Second argument to L.NewVector() does not "..
               "conform to specified type", 2)
     end
@@ -301,14 +302,86 @@ local mesh_rels_topo = {
     {old_name = "ftoc", dest = "faces", ft = "cells",    n1 = "outside", n2 = "inside"}
 }
 
+-- TEMP NOTE:
+-- This code was removed from the fields/relations themselves
+-- in order to keep their interface cleaner.
+-- Most of this grunginess makes various assumptions about
+-- how the LMesh is laid out.
+--  I assume that this code will be factored out into a
+-- separate LMesh -> Relational Mesh converter at some point
+
+-- generic initialization from memory
+-- will do Terra type coercions
+local function initFieldViaCopy(field, src)
+    assert(field.data == nil)
+
+    local ftype = field.type:terraType()
+
+    field:LoadFromCallback(terra( dst : &ftype, i : int )
+        @dst = src[i]
+    end)
+end
+
+-- we assume srcmem has terra type &uint32
+-- TODO: it would be good to assert this; don't know how
+-- have a type error on offset function now at least...
+local function row32_copy_callback(srcmem, stride, offset)
+    stride = stride or 1
+    offset = offset or 0
+    srcmem = (terra() : &uint32 return srcmem + offset end)()
+
+    return terra(dst : &uint64, i : int)
+        @dst = srcmem[stride * i]
+    end
+end
+local function initRowFromMemory32(field, srcmem, stride, offset)
+    if not field.type:isRow() then
+        error('can only call initRowFromMemory32 on row fields', 2)
+    end
+
+    stride      = stride or 1
+    offset      = offset or 0
+    assert(field.data == nil)
+
+    field:LoadFromCallback(row32_copy_callback(srcmem, stride, offset))
+end
+
+-- used to load the more irregular first index from a CRS array
+local function initRowFromCRSindex32(field, row_idx)
+    if not field.type:isRow() then
+        error('can only call initRowFromCRSindex32 on row fields', 2)
+    end
+
+    assert(field.data == nil)
+
+    -- we create a temporary array with exactly the data we'd like to copy in
+    local N         = field.owner._size
+    local tmp_mem   =
+        terralib.cast(&uint64,C.malloc(N * terralib.sizeof(uint64)))
+    local idxN      = field.type.relation._size
+
+    -- note: rows_idx is size idxN + 1 to hold the final stop
+    for i = 0, idxN-1 do
+        local start = row_idx[i]
+        local stop  = row_idx[i]
+        for j = start, stop-1 do
+            tmp_mem[j] = i
+        end
+    end
+
+    -- having constructed the temp, we copy it over and delete the temp
+    initFieldViaCopy(field, tmp_mem)
+    C.free(tmp_mem)
+end
+
 local function initMeshRelations(mesh)
     -- initialize list of relations
     local relations = {}
     -- basic element relations
 
     for _i, name in ipairs(topo_elems) do
-        local rsize             = tonumber(mesh["n"..name])
-        relations[name]    = LDB.NewRelation(rsize, name)
+        local n_rows       = tonumber(mesh["n"..name])
+        relations[name]    = LDB.NewRelation(n_rows, name)
         --relations[name]:NewField('value', REF_TYPE)
         --local terra init (mem: &REF_TYPE:terraType(), i : int)
         --    mem[0] = i
@@ -321,8 +394,8 @@ local function initMeshRelations(mesh)
         local name       = xtoy.name
         local old_name   = xtoy.old_name
         local n_t1       = relations[xtoy.t1]:size()
-        local rsize      = mesh[old_name].row_idx[n_t1]
-        local rel        = LDB.NewRelation(rsize, name)
+        local n_rows     = mesh[old_name].row_idx[n_t1]
+        local rel        = LDB.NewRelation(n_rows, name)
 
         -- store table with name intended for global scope
         relations[name] = rel
@@ -330,39 +403,36 @@ local function initMeshRelations(mesh)
         rel:NewField(xtoy.n1, t.row(relations[xtoy.t1]))
         rel:NewField(xtoy.n2, t.row(relations[xtoy.t2]))
 
+        initRowFromCRSindex32(rel[xtoy.n1], mesh[old_name].row_idx)
+
         -- if our lmesh field has orientation encoded into the relation,
         -- extract the orientation and load it as a separate field
         if xtoy.orientation then
-            local ref_type    = t.uint:terraType()
-            local orient_type = t.uint8:terraType()
+            local function alloc(n, typ)
+                return terralib.cast(&typ, C.malloc(n * terralib.sizeof(typ)))
+            end
+            local ordata   = alloc(n_rows, bool)
+            local vdata    = alloc(n_rows, uint32)
+            local srcdata  = terralib.cast(&uint32, mesh[old_name].values)
 
-            local ordata   = terralib.cast(&orient_type,
-                    C.malloc(rel._size * terralib.sizeof(orient_type)))
-            local vdata    = terralib.cast(&ref_type,
-                    C.malloc(rel._size * terralib.sizeof(ref_type)))
-            local srcdata  = terralib.cast(&ref_type, mesh[old_name].values)
-
-            local terra extract_orientation()
-                var exp  : ref_type = 8 * [terralib.sizeof(ref_type)] - 1
-                var mask : ref_type = C.pow(2,exp) - 1
+            (terra ()
+                var exp  : uint32 = 8 * [terralib.sizeof(uint32)] - 1
+                var mask : uint32 = C.pow(2,exp) - 1
 
                 for i = 0, rel._size do
-                    ordata[i] = srcdata[i] >> exp
+                    ordata[i] = bool(srcdata[i] >> exp)
                     vdata[i]  = srcdata[i] and mask
                 end
-            end
-            extract_orientation()
+            end)()
 
-            rel[xtoy.n2]:LoadFromMemory(vdata)
             rel:NewField('orientation', L.bool)
-            rel.orientation:LoadFromMemory(terralib.cast(&bool, ordata))
+            initFieldViaCopy(rel.orientation, ordata)
+            initRowFromMemory32(rel[xtoy.n2], vdata)
             C.free(ordata)
             C.free(vdata)
         else
-            rel[xtoy.n2]:LoadFromMemory(mesh[old_name].values)
+            initRowFromMemory32(rel[xtoy.n2], mesh[old_name].values)
         end
-
-        rel:LoadIndexFromMemory(xtoy.n1, mesh[old_name].row_idx)
     end
 
     for k, xtoy in pairs(mesh_rels_topo) do
@@ -372,10 +442,9 @@ local function initMeshRelations(mesh)
         local f1 = rel:NewField(xtoy.n1, t.row(relations[xtoy.ft]))
         local f2 = rel:NewField(xtoy.n2, t.row(relations[xtoy.ft]))
 
-        local tsize = terralib.sizeof(rel[xtoy.n1].type:terraType())
-
-        f1:LoadFromMemory(mesh[old_name].values,2*tsize)
-        f2:LoadFromMemory(mesh[old_name].values,2*tsize, tsize)
+        local values = terralib.cast(&uint32, mesh[old_name].values)
+        initRowFromMemory32(f1, values, 2)
+        initRowFromMemory32(f2, values, 2, 1)
     end
     return relations
 end
@@ -392,10 +461,17 @@ function L.initMeshRelationsFromFile(filename)
     local S = terralib.includec('runtime/single/liszt_runtime.h')
     local pos_data = terralib.cast(&float[3], S.lLoadPosition(ctx))
     M.vertices:NewField("position", L.vector(L.float,3))
-    M.vertices.position:LoadFromMemory(pos_data)
+    M.vertices.position:LoadFromCallback(
+        terra( dst : &vector(float,3), i : int)
+            @dst = vector(pos_data[i][0], pos_data[i][1], pos_data[i][2])
+        end)
     C.free(pos_data)
     return M
 end
+
+
+-- TODO: can we get rid of the following stuff somehow or design for it?
+-- The code below is almost certainly broken
 
 local el_types = {
     vertices = O.L_VERTEX,
@@ -408,11 +484,12 @@ function L.loadSetFromMesh(M, relation, name)
     -- create a new relation singleton representing the boundary set
     local data, size =
         O.loadBoundarySet(M.__ctx, el_types[relation._name], name)
+    data = terralib.cast(&uint32, data)
 
     local s = LDB.NewRelation(tonumber(size), name)
-    s:NewField('value', relation)
-    s.value:LoadFromMemory(data)
-    return s    
+    s:NewField('value', t.row(relation))
+    initRowFromMemory32(s.value, data)
+    return s
 end
 
 return L

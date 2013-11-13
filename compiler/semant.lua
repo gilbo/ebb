@@ -282,7 +282,7 @@ function ast.DeclStatement:check(ctxt)
     decl.ref.node_type = typ
 
     if typ ~= t.error and
-         not typ:isExpressionType() and not typ:isRow()
+         not typ:isValueType() and not typ:isRow()
     then
         ctxt:error(self,"can only assign numbers, bools, "..
                         "or rows to local temporaries")
@@ -419,7 +419,7 @@ function ast.BinaryOp:check(ctxt)
     local op_err   = 'invalid types for operator \'' .. binop.op .. '\': ' ..
                      ltype:toString() .. ' and ' .. rtype:toString()
 
-    if not ltype:isExpressionType() or not rtype:isExpressionType() then
+    if not ltype:isValueType() or not rtype:isValueType() then
         return err(self, ctxt, op_err)
     end
 
@@ -584,7 +584,7 @@ function ast.Name:check(ctxt)
     -- somewhere in the liszt kernel.  Thus, it has to be a primitive, a
     -- bool, or a topological element.
     if lisztv then
-        if lisztv.node_type:isExpressionType() then
+        if lisztv.node_type:isValueType() then
             local node = ast.LocalVar:DeriveFrom(lisztv)
             node.node_type = lisztv.node_type
             node.is_lvalue = lisztv.is_lvalue

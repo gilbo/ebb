@@ -2,6 +2,9 @@ local types   = terralib.require('compiler/types')
 local Type    = types.Type
 local t       = types.t
 
+local DECL    = terralib.require('include/decl')
+local C       = DECL.C
+
 local function make_prototype(tb)
    tb.__index = tb
    return tb
@@ -49,18 +52,10 @@ function B.assert.check(ast, ctxt)
     end
 end
 
-local c = terralib.includecstring([[
-#include <stdio.h>
-#include <stdlib.h>
-#include <math.h>
-
-FILE *get_stderr () { return stderr; }
-]])
-
 local terra lisztAssert(test : bool, file : rawstring, line : int)
     if not test then
-        c.fprintf(c.get_stderr(), "%s:%d: assertion failed!\n", file, line)
-        c.exit(1)
+        C.fprintf(C.get_stderr(), "%s:%d: assertion failed!\n", file, line)
+        C.exit(1)
     end
 end
 
@@ -92,7 +87,9 @@ function B.print.check(ast, ctxt)
 
     local output = args[1]
     local outtype = output.node_type
-    if outtype ~= t.error and not outtype:isExpressionType() and not outtype:isRow() then
+    if outtype ~= t.error and
+       not outtype:isValueType() and not outtype:isRow()
+    then
         ctxt:error(ast, "only numbers, bools, vectors and rows can be printed")
     end
 end
@@ -102,10 +99,10 @@ function B.print.codegen(ast, env)
 	local lt   = output.node_type
     local tt   = lt:terraType()
     local code = output:codegen(env)
-    if     lt == t.float or lt == t.double then return quote c.printf("%f\n", [double](code)) end
-	elseif lt == t.int   or lt == t.row    then return quote c.printf("%d\n", code) end
+    if     lt == t.float or lt == t.double then return quote C.printf("%f\n", [double](code)) end
+	elseif lt == t.int   or lt == t.row    then return quote C.printf("%d\n", code) end
 	elseif lt == t.bool  then
-        return quote c.printf("%s", terralib.select(code, "true\n", "false\n")) end
+        return quote C.printf("%s", terralib.select(code, "true\n", "false\n")) end
 	elseif lt:isVector() then
         local printSpec = "{"
         local sym = symbol()
@@ -129,7 +126,7 @@ function B.print.codegen(ast, env)
         return quote
             var [sym] : tt = code
         in
-            c.printf(printSpec, elemQuotes)
+            C.printf(printSpec, elemQuotes)
         end
     else
         assert(false and "printed object should always be number, bool, or vector")
@@ -294,7 +291,7 @@ local function length(v)
     if not v.type:isVector() then
         error("argument to length must be a vector", 2)
     end
-    return c.sqrt(dot(v, v))
+    return C.sqrt(dot(v, v))
 end
 
 B.length = Func.new(length)
@@ -335,7 +332,7 @@ function B.length.codegen(ast, env)
         var v : tt = code
         var [sq] : tt = v * v
     in
-        c.sqrt(len2)
+        C.sqrt(len2)
     end
 end
 

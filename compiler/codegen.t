@@ -7,9 +7,6 @@ local types   = terralib.require 'compiler/types'
 local Type    = types.Type
 local t       = types.t
 
--- data type of row indexes
-local RITYPE = uint32
-
 function ast.AST:codegen (env)
 	print(debug.traceback())
 	error("Codegen not implemented for AST node " .. self.kind)
@@ -20,7 +17,7 @@ function ast.ExprStatement:codegen (env)
 end
 
 function ast.LisztKernel:codegen (env)
-	local param = symbol(RITYPE)
+	local param = symbol(t.addr:terraType())
 	env:localenv()[self.iter.name] = param
 
 	local set  = self.set:codegen(env)

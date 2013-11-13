@@ -19,16 +19,9 @@ local T = terralib.require('compiler/types')
 local DECL = terralib.require('include/decl')
 local LRelation = DECL.LRelation
 local LField    = DECL.LField
---local LScalar   = DECL.LScalar
---local 
 local LMacro    = DECL.LMacro
 
-local C = terralib.includecstring [[
-    #include <stdlib.h>
-    #include <string.h>
-    #include <stdio.h>
-    #include <math.h>
-]]
+local C = DECL.C
 
 
 -- terra type of a field that represents a row in another relation
@@ -109,7 +102,7 @@ function LRelation:NewField (name, typ)
     end
 
     if not T.Type.isLisztType(typ) or
-       not (typ:isExpressionType() or typ:isRow())
+       not (typ:isValueType() or typ:isRow())
     then
         error("NewField() expects a Liszt type as the 2nd argument", 2)
     end
@@ -143,39 +136,6 @@ function LRelation:NewFieldMacro (name, macro)
     self._macros:insert(macro)
     return macro
 end
-
-function LRelation:LoadIndexFromMemory(name, row_idx)
-    assert(self._index == nil)
-    local f = self[name]
-    assert(f ~= nil)
-    assert(DECL.is_field(f))
-    assert(f.data == nil)
-    assert(f.type)
-    assert(f.type:isRow())
-    --assert(f.relation ~= nil) -- index field must be a relational type
-
-    local target_relation = f.type.relation
-    local ttype  = ROW_TERRA_TYPE
-    local tsize  = terralib.sizeof(ttype)
-    -- Why is this +1?
-    local nbytes = (target_relation._size + 1) * tsize
-
-    local mem = terralib.cast(&ttype,C.malloc(nbytes))
-    rawset(self, "_index", mem)
-    local memT = terralib.typeof(row_idx)
-    assert(memT == &ttype)
-
-    C.memcpy(self._index,row_idx,nbytes)
-    f.data = terralib.cast(&ttype,C.malloc(self._size*tsize))
-    for i = 0, f.type.relation._size - 1 do
-        local b = self._index[i]
-        local e = self._index[i+1]
-        for j = b, e - 1 do
-            f.data[j] = i
-        end
-    end
-end
-
 
 function LRelation:json_serialize()
     local json = {
@@ -222,54 +182,10 @@ end
 --[[ LField methods:                                                       ]]--
 -------------------------------------------------------------------------------
 
-local terra copy_bytes (dest : &uint8, src : &uint8, length : uint, size : uint, stride : uint, offset : uint)
-    src = src + offset
-
-    -- dont potentially copy past the length of the source array:
-    var copy_len : int
-    if stride < size then copy_len = stride else copy_len = size end
-
-    for i = 0, length do
-        C.memcpy(dest,src,copy_len)
-        src  = src  + stride
-        dest = dest + size
-    end
-end
-
--- specify stride, offset in bytes, default stride reads memory contiguously and default offset reads from mem ptr directly
-function LField:LoadFromMemory (mem, stride, offset)
-    local ttype = self.type:terraType()
-    local tsize = terralib.sizeof(ttype)
-
-    -- Terra vectors are sized at a power of two bytes, whereas arrays are just N * sizeof(basetype)
-    -- so, if we are storing arrays as terra vectors, tsize is >= the size of the data for one field
-    -- entry in a contiguous array.
-    local dsize = ttype:isvector() and terralib.sizeof(ttype.type[ttype.N]) or tsize
-
-    if not stride then stride = dsize end
-    if not offset then offset = 0     end
-
-    assert(stride >= dsize)
-    assert(self.data == nil)
-
-    local nbytes = self.owner._size * tsize
-    local bytes  = C.malloc(nbytes)
-    self.data    = terralib.cast(&ttype,bytes)
-
-    -- cast mem to void* to avoid automatic conversion issues for pointers to non-primitive types
-    mem = terralib.cast(&opaque, mem)
-
-    -- If the array is laid out contiguously in memory, just do a memcpy
-    -- otherwise, read with a stride
-    if (stride == tsize) then
-        C.memcpy(self.data,mem,nbytes)
-    else
-        copy_bytes(bytes,mem,self.owner._size, tsize, stride, offset)
-    end
-end
-
 function LField:LoadFromCallback (callback)
-    local bytes  = C.malloc(self.owner._size * terralib.sizeof(self.type:terraType()))
+    -- TODO: It would be nice to typecheck the callback's type signature...
+    local bytes  =
+        C.malloc(self.owner._size * terralib.sizeof(self.type:terraType()))
     self.data    = terralib.cast(&self.type:terraType(),bytes)
 
     for i = 0, self.owner._size-1 do

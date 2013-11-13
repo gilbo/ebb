@@ -44,7 +44,7 @@ local Macro           = { kind = 'macro'       } -- type determined in context b
 local QuoteExpr       = { kind = 'quoteexpr'   } -- type already checked, just return checked AST
 local LocalVar        = { kind = 'localvar',    is_lvalue = true            }
 local Field           = { kind = 'field',       node_type = T.t.field       }
-local Table           = { kind = 'table',       node_type = T.t.table       }
+local Table           = { kind = 'table',       node_type = T.t.luatable    }
 local Relation        = { kind = 'relation',    node_type = T.t.relation    }
 
 -- Statements:

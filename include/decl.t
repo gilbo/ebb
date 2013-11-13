@@ -11,6 +11,16 @@
 local DECL = {}
 
 
+DECL.C = terralib.includecstring [[
+    #include <stdlib.h>
+    #include <string.h>
+    #include <stdio.h>
+    #include <math.h>
+
+    FILE *get_stderr () { return stderr; }
+]]
+
+
 local function make_prototype(tb)
     tb.__index = tb
     return tb
