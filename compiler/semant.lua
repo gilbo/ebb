@@ -699,11 +699,11 @@ function ast.TableLookup:check(ctxt)
     local member    = self.member
     local ttype     = table.node_type
 
-    local fullname  = table.name .. '.' .. member.name
-
     if ttype == t.error then
         return err(self, ctxt)
     end
+
+    local fullname  = table.name .. '.' .. member.name
 
     -- table is a lua table
     if table:is(ast.Table) then

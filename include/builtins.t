@@ -100,7 +100,7 @@ function B.print.codegen(ast, env)
     local tt   = lt:terraType()
     local code = output:codegen(env)
     if     lt == t.float or lt == t.double then return quote C.printf("%f\n", [double](code)) end
-	elseif lt == t.int   or lt == t.row    then return quote C.printf("%d\n", code) end
+	elseif lt == t.int   or lt:isRow() then return quote C.printf("%d\n", code) end
 	elseif lt == t.bool  then
         return quote C.printf("%s", terralib.select(code, "true\n", "false\n")) end
 	elseif lt:isVector() then

@@ -10,6 +10,7 @@ local print_stuff = liszt_kernel(f in mesh.faces)
     var x = 2 + 3
     L.print(x)
     L.print(v)
+    L.print(f)
 end
 
 print_stuff()

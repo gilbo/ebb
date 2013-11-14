@@ -479,15 +479,16 @@ local el_types = {
     cells    = O.L_CELL
 }
 
-function L.loadSetFromMesh(M, relation, name)
+function L.loadSetFromMesh(M, relation, name, fieldname)
+    if not fieldname then fieldname = 'value' end
     -- create a new relation singleton representing the boundary set
     local data, size =
         O.loadBoundarySet(M.__ctx, el_types[relation._name], name)
     data = terralib.cast(&uint32, data)
 
     local s = LDB.NewRelation(tonumber(size), name)
-    s:NewField('value', relation)
-    initRowFromMemory32(s.value, data)
+    s:NewField(fieldname, relation)
+    initRowFromMemory32(s[fieldname], data)
     return s
 end
 
