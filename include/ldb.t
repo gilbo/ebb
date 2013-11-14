@@ -197,7 +197,7 @@ function LField:LoadFromCallback (callback)
 end    
 
 function LField:print()
-    print(self.name..":")
+    print(self.name..": <" .. tostring(self.type:terraType()) .. '>')
     if not self.data then
         print("...not initialized")
         return
@@ -208,13 +208,15 @@ function LField:print()
         for i = 0, N-1 do
             local s = ''
             for j = 0, self.type.N-1 do
-                s = s .. tostring(self.data[i][j]) .. ' '
+                local t = tostring(self.data[i][j]):gsub('ULL','')
+                s = s .. t .. ' '
             end
             print("", i, s)
         end
     else
         for i = 0, N-1 do
-            print("",i, self.data[i])
+            local t = tostring(self.data[i]):gsub('ULL', '')
+            print("", i, t)
         end
     end
 end

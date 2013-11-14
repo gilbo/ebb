@@ -363,7 +363,7 @@ local function initRowFromCRSindex32(field, row_idx)
     -- note: rows_idx is size idxN + 1 to hold the final stop
     for i = 0, idxN-1 do
         local start = row_idx[i]
-        local stop  = row_idx[i]
+        local stop  = row_idx[i+1]
         for j = start, stop-1 do
             tmp_mem[j] = i
         end
