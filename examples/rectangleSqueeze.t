@@ -1,5 +1,21 @@
-import 'compiler/liszt'
+--------------------------------------------------------------------------------
+--[[
+   ... CENTRAL DIFFERENCE TIME LOOP
 
+   DESCRIPTION: this routine implements the explicit central difference time-integrator
+                for the solution of the second-order differential equation:
+                (a) LINEAR mech or acou: M*(d^2u/dt^2) + C*(du/dt) + K*u = fext(u)
+                (b) NONLINEAR mech: M*(d^2u/dt^2) + C*(du/dt) + fint(u) = fext(u)
+  
+   WARNINGS:    1. Viscous damping is supported, but to keep the scheme explicit the equilibrium 
+                   condition is expressed as M*a^{n+1} + C*v^{n+1/2} + K*u^{n+1} = fext^{n+1}
+                   where v^{n+1/2} = v^n + dt/2*a^n
+                2. Velocity and/or acceleration controls (ACTUATORS) are not strictly correct since we
+                   use v^n and a^n to compute fext^{n+1}
+]]--
+--------------------------------------------------------------------------------
+
+import 'compiler/liszt'
 
 --------------------------------------------------------------------------------
 --[[ Load relations from lmesh                                              ]]--
@@ -22,6 +38,24 @@ end
 local float3_zero = terra (mem : &vector(float, 3), i : uint)
 	mem[0] = vectorof(float, 0, 0, 0)
 end
+
+
+--------------------------------------------------------------------------------
+--[[ FEM field allocation                                                   ]]--
+--------------------------------------------------------------------------------
+V:NewField('v_n',   L.vector(L.float, 3)):LoadFromCallback(float3_zero)
+V:NewField('v_p',   L.vector(L.float, 3)):LoadFromCallback(float3_zero)
+V:NewField('d_n',   L.vector(L.float, 3)):LoadFromCallback(float3_zero)
+V:NewField('a_n',   L.vector(L.float, 3)):LoadFromCallback(float3_zero)
+V:NewField('v_n_h', L.vector(L.float, 3)):LoadFromCallback(float3_zero)
+V:NewField('fext',  L.vector(L.float, 3)):LoadFromCallback(float3_zero)
+V:NewField('fint',  L.vector(L.float, 3)):LoadFromCallback(float3_zero)
+
+V:NewField('mass', L.float):LoadFromCallback(init(1.0))
+
+C:NewField('springConstant',    L.float):LoadFromCallback(init(0.3))
+E:NewField('initialEdgeLength', L.float):LoadFromCallback(init(0.0))
+E:NewField('currEdgeLength',    L.float):LoadFromCallback(init(0.0))
 
 
 --------------------------------------------------------------------------------
@@ -78,25 +112,6 @@ end
 E:NewField('c1', C):LoadFromCallback(ccall(1))
 
 
--------------
--------------------------------------------------------------------
---[[ FEM field allocation                                                   ]]--
---------------------------------------------------------------------------------
-V:NewField('v_n',   L.vector(L.float, 3)):LoadFromCallback(float3_zero)
-V:NewField('v_p',   L.vector(L.float, 3)):LoadFromCallback(float3_zero)
-V:NewField('d_n',   L.vector(L.float, 3)):LoadFromCallback(float3_zero)
-V:NewField('a_n',   L.vector(L.float, 3)):LoadFromCallback(float3_zero)
-V:NewField('v_n_h', L.vector(L.float, 3)):LoadFromCallback(float3_zero)
-V:NewField('fext',  L.vector(L.float, 3)):LoadFromCallback(float3_zero)
-V:NewField('fint',  L.vector(L.float, 3)):LoadFromCallback(float3_zero)
-
-V:NewField('mass', L.float):LoadFromCallback(init(1.0))
-
-C:NewField('springConstant',    L.float):LoadFromCallback(init(0.3))
-E:NewField('initialEdgeLength', L.float):LoadFromCallback(init(0.0))
-E:NewField('currEdgeLength',    L.float):LoadFromCallback(init(0.0))
-
-
 --------------------------------------------------------------------------------
 --[[ Constants                                                              ]]--
 --------------------------------------------------------------------------------
@@ -106,18 +121,57 @@ local tmax   = 1000
 
 
 --------------------------------------------------------------------------------
---[[ Main                                                                   ]]--
+--[[ Global kernels                                                         ]]--
 --------------------------------------------------------------------------------
-local function print_six ()
-	local pdata = M.vertices.position.data
-	local vdata = M.vertices.v_n.data
-	local adata = M.vertices.a_n.data
-	local i = 6
-	print("liszt: Position: ("   .. tostring(pdata[i][0]) .. ',' .. tostring(pdata[i][1]) .. ',' .. tostring(pdata[i][2]) .. ')')
-	print("liszt: Velocity("     .. tostring(vdata[i][0]) .. ',' .. tostring(vdata[i][1]) .. ',' .. tostring(vdata[i][2]) .. ')')
-	print("liszt: Acceleration(" .. tostring(adata[i][0]) .. ',' .. tostring(adata[i][1]) .. ',' .. tostring(adata[i][2]) .. ')')
+local reset_internal_forces = liszt_kernel (v in M.vertices)
+   	v.fint = {0, 0, 0} 
 end
 
+-- Update the displacement at t^(n+1): d^{n+1} = d^n + dt^{n+1/2}*v^{n+1/2}
+local update_pos_and_disp = liszt_kernel (v in M.vertices)
+	v.d_n      += dt_n_h * v.v_n_h
+	v.position += dt_n_h * v.v_n_h
+end
+
+-- calculate edge length displacement
+local calc_edge_disp = liszt_kernel (e in M.edges)
+	var v1 = e.head
+	var v2 = e.tail
+
+	var dist = v1.position - v2.position
+	e.currEdgeLength = L.length(dist)
+end
+
+local calc_internal_force = liszt_kernel (e in M.edges)
+	var edgeLengthDisplacement = e.currEdgeLength - e.initialEdgeLength
+		
+	var v1 = e.head
+	var v2 = e.tail
+
+	var disp = v1.position - v2.position
+	var len  = L.length(disp)
+	var norm = disp / len
+
+	v1.fint += -e.c1.springConstant * edgeLengthDisplacement * norm
+	v2.fint -= -e.c1.springConstant * edgeLengthDisplacement * norm
+end
+
+-- Compute the acceleration at t^{n+1}: a^{n+1} = M^{-1}(fext^{n+1}-fint^{n+1}-C*v^{n+1/2})
+local compute_accel = liszt_kernel (v in M.vertices)
+	v.a_n = v.fext + v.fint / v.mass
+end
+
+local update_previous_velocity = liszt_kernel (v in M.vertices) v.v_p = v.v_n end
+
+-- Update the velocity at t^{n+1}: v^{n+1} = v^{n+1/2}+dt^{n+1/2}/2*a^n
+local update_velocity = liszt_kernel (v in M.vertices)
+	v.v_n = v.v_n_h + .5 * dt_n_h * v.a_n
+end
+
+
+--------------------------------------------------------------------------------
+--[[ Main                                                                   ]]--
+--------------------------------------------------------------------------------
 local function main()
 
 	--[[ Initialize external forces: ]]--
@@ -152,7 +206,6 @@ local function main()
 		e.currEdgeLength    = length
 	end)()
 
-
 	--[[ MAIN LOOP: ]]--
 	local t_n = 0
 
@@ -161,66 +214,16 @@ local function main()
 		--Update half time:  t^{n+1/2} = t^n + 1/2*deltat^{n+1/2}
 	  	t_n_h = t_n + dt_n_h/2 
 
-		--[[ Define Kernels: ]]--
-		local reset_internal_forces = liszt_kernel (v in M.vertices)
-	    	v.fint = {0, 0, 0} 
-		end
-
+		-- nodal velocity kernel depends on changing t_n
 		local update_nodal_velocities = liszt_kernel (v in M.vertices)
 			v.v_n_h = v.v_n + (t_n_h - t_n) * v.a_n
 		end
-
-		-- Update the displacement at t^(n+1): d^{n+1} = d^n + dt^{n+1/2}*v^{n+1/2}
-		local update_displacement = liszt_kernel (v in M.vertices)
-			v.d_n += dt_n_h * v.v_n_h
-		end
-
-		local update_position = liszt_kernel (v in M.vertices)
-			v.position += dt_n_h * v.v_n_h
-		end
-
-		-- calculate edge length displacement
-		local calc_edge_disp = liszt_kernel (e in M.edges)
-			var v1 = e.head
-			var v2 = e.tail
-
-			var dist = v1.position - v2.position
-			e.currEdgeLength = L.length(dist)
-		end
-
-		local calc_internal_force = liszt_kernel (e in M.edges)
-			var edgeLengthDisplacement = e.currEdgeLength - e.initialEdgeLength
-
-			var v1 = e.head
-			var v2 = e.tail
-
-			var disp = v1.position - v2.position
-			var len  = L.length(disp)
-			var norm = disp / len
-
-			v1.fint += -e.c1.springConstant * edgeLengthDisplacement * norm
-			v2.fint -= -e.c1.springConstant * edgeLengthDisplacement * norm
-		end
-
-		-- Compute the acceleration at t^{n+1}: a^{n+1} = M^{-1}(fext^{n+1}-fint^{n+1}-C*v^{n+1/2})
-		local compute_accel = liszt_kernel (v in M.vertices)
-			v.a_n = v.fext + v.fint / v.mass
-		end
-
-		local update_previous_velocity = liszt_kernel (v in M.vertices) v.v_p = v.v_n end
-
-		-- Update the velocity at t^{n+1}: v^{n+1} = v^{n+1/2}+dt^{n+1/2}/2*a^n
-		local update_velocity = liszt_kernel (v in M.vertices)
-			v.v_n = v.v_n_h + .5 * dt_n_h * v.a_n
-		end
-
 
 		--[[ Execute! ]]--
 		reset_internal_forces()
 
 		update_nodal_velocities()
-		update_displacement()
-		update_position()
+		update_pos_and_disp()
 
 		calc_edge_disp()
 		calc_internal_force()
