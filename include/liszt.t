@@ -400,8 +400,8 @@ local function initMeshRelations(mesh)
         -- store table with name intended for global scope
         relations[name] = rel
 
-        rel:NewField(xtoy.n1, t.row(relations[xtoy.t1]))
-        rel:NewField(xtoy.n2, t.row(relations[xtoy.t2]))
+        rel:NewField(xtoy.n1, relations[xtoy.t1])
+        rel:NewField(xtoy.n2, relations[xtoy.t2])
 
         initRowFromCRSindex32(rel[xtoy.n1], mesh[old_name].row_idx)
 
@@ -439,8 +439,8 @@ local function initMeshRelations(mesh)
         local old_name  = xtoy.old_name
         local rel       = relations[xtoy.dest]
 
-        local f1 = rel:NewField(xtoy.n1, t.row(relations[xtoy.ft]))
-        local f2 = rel:NewField(xtoy.n2, t.row(relations[xtoy.ft]))
+        local f1 = rel:NewField(xtoy.n1, relations[xtoy.ft])
+        local f2 = rel:NewField(xtoy.n2, relations[xtoy.ft])
 
         local values = terralib.cast(&uint32, mesh[old_name].values)
         initRowFromMemory32(f1, values, 2)
@@ -472,7 +472,6 @@ end
 
 -- TODO: can we get rid of the following stuff somehow or design for it?
 -- The code below is almost certainly broken
-
 local el_types = {
     vertices = O.L_VERTEX,
     edges    = O.L_EDGE,
@@ -487,7 +486,7 @@ function L.loadSetFromMesh(M, relation, name)
     data = terralib.cast(&uint32, data)
 
     local s = LDB.NewRelation(tonumber(size), name)
-    s:NewField('value', t.row(relation))
+    s:NewField('value', relation)
     initRowFromMemory32(s.value, data)
     return s
 end

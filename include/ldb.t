@@ -101,10 +101,14 @@ function LRelation:NewField (name, typ)
               "That name is already being used.", 2)
     end
 
-    if not T.Type.isLisztType(typ) or
-       not (typ:isValueType() or typ:isRow())
+    if not (T.Type.isLisztType(typ) and typ:isValueType()) and
+       not DECL.is_relation(typ)
     then
         error("NewField() expects a Liszt type as the 2nd argument", 2)
+    end
+
+    if DECL.is_relation(typ) then
+        typ = T.t.row(typ)
     end
 
     local field = setmetatable({}, LField)
@@ -170,13 +174,12 @@ function LRelation:json_deserialize_fields(json_tbl)
     end
 end
 
-
---function LRelation:dump()
---    print(self._name, "size: ".. tostring(self._size))
---    for i,f in ipairs(self._fields) do
---        f:dump()
---    end
---end
+function LRelation:print()
+    print(self._name, "size: ".. tostring(self._size))
+    for i,f in ipairs(self._fields) do
+        f:print()
+    end
+end
 
 -------------------------------------------------------------------------------
 --[[ LField methods:                                                       ]]--
