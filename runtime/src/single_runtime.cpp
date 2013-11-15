@@ -5,7 +5,7 @@
 #include <assert.h>
 
 extern "C" {
-#include "single/liszt_runtime.h"
+#include "single_runtime.h"
 }
 
 struct lProgramArguments {
@@ -13,13 +13,13 @@ struct lProgramArguments {
 	bool redirect_output_to_log;
 };
 
-#include "common/boundary_set_reader.h"
-#include "common/mesh.h"
-#include "common/print_context.h"
-#include "common/runtime_util.h"
-#include "common/nested_topology.h"
-#include "common/MeshIO/LisztFileReader.h"
-#include "common/MeshIO/LisztFileWriter.h"
+#include "boundary_set_reader.h"
+#include "mesh.h"
+#include "print_context.h"
+#include "runtime_util.h"
+#include "nested_topology.h"
+#include "MeshIO/LisztFileReader.h"
+#include "MeshIO/LisztFileWriter.h"
 
 #define L_KERNEL L_ALWAYS_INLINE
 #define L_NESTED L_ALWAYS_INLINE
@@ -561,7 +561,7 @@ void lCellsOfMesh(lContext * ctx, lSet * set) {
 
 #define NESTED_TOPOLOGY_GET_MESH(ctx) (&unnested(ctx)->mesh)
 #define NESTED_TOPOLOGY_GET_SET(set) (set->set)
-#include "common/nested_topology_functions.inc"
+#include "nested_topology_functions.inc"
 
 
 int lkIDOfVertex(lkContext * ctx, lkElement e) {
@@ -577,9 +577,9 @@ int lkIDOfCell(lkContext * ctx, lkElement e) {
 	return elementID(e);
 }
 
-#include "common/vector.h"
-#include "common/matrix.h"
-#include "common/liszt_math.h"
+#include "vector.h"
+#include "matrix.h"
+#include "liszt_math.h"
 
 
 //code generated from the liszt compiler is now included here after runtime-specific

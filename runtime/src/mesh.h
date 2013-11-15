@@ -2,9 +2,9 @@
 #define _LISZT_MESH_H
 
 extern "C" {
-#include "common/mesh_crs.h"
+#include "mesh_crs.h"
 }
-#include "common/MeshIO/FacetEdgeBuilder.h"
+#include "MeshIO/FacetEdgeBuilder.h"
 
 namespace MeshIO {
 	struct FacetEdgeBuilder;

@@ -458,7 +458,7 @@ function L.initMeshRelationsFromFile(filename)
     M.__ctx  = ctx
 
     -- load position data
-    local S = terralib.includec('runtime/single/liszt_runtime.h')
+    local S = terralib.includec('runtime/src/single_runtime.h')
     local pos_data = terralib.cast(&float[3], S.lLoadPosition(ctx))
     M.vertices:NewField("position", L.vector(L.float,3))
     M.vertices.position:LoadFromCallback(

@@ -1,6 +1,6 @@
 local L = {}
-local runtime = terralib.includec("runtime/common/liszt_runtime.h")
-local mesh_h = terralib.includec("runtime/common/mesh_crs.h")
+local runtime = terralib.includec("runtime/src/liszt_runtime.h")
+local mesh_h = terralib.includec("runtime/src/mesh_crs.h")
 local c      = terralib.includec("stdio.h")
 --
 local util   = terralib.require("runtime/util")

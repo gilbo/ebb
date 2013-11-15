@@ -1,8 +1,8 @@
 #ifndef LISZTFILEREADER_H_
 #define LISZTFILEREADER_H_
-#include "common/MeshIO/Common.h"
-#include "common/MeshIO/LisztFormat.h"
-#include "common/runtime_util.h"
+#include "Common.h"
+#include "LisztFormat.h"
+#include "../runtime_util.h"
 
 namespace MeshIO {
 

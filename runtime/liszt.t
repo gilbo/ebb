@@ -2,7 +2,7 @@
 
 local R = {}
 
-local runtime = terralib.includec("runtime/single/liszt_runtime.h")
+local runtime = terralib.includec("runtime/src/single_runtime.h")
 local util    = terralib.require("runtime/util")
 util.link_runtime()
 
