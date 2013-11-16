@@ -270,9 +270,9 @@ function ast.DeclStatement:check(ctxt)
         -- if the type was annotated check consistency
         if typ then
             local mtyp = type_meet(exptyp,typ)
-            if typ ~= mtyp then
+            if typ ~= mtyp and exptyp ~= t.error then
                 ctxt:error(self, "Cannot assign a value of type " ..
-                                 exptyp .. " to type " .. typ)
+                                 exptyp:toString() .. " to type " .. typ:toString())
             end
         -- or infer the type as the expression type
         else
