@@ -1,6 +1,8 @@
 import "compiler/liszt"
 
-mesh = L.initMeshRelationsFromFile("examples/mesh.lmesh")
+local LMesh = terralib.require("compiler/liblmesh")
+local mesh = LMesh.Load("examples/mesh.lmesh")
+
 mesh.faces:NewField('field', L.float)
 mesh.faces.field:LoadFromCallback(terra (mem: &float, i : uint) mem[0] = 0 end)
 
@@ -29,28 +31,28 @@ test_bool()
 
 local test_decls = liszt_kernel(v in mesh.vertices)
 	-- DeclStatement tests --
-	var c : int
+	var c : L.int
 	c = 12
 
-	var x : bool
+	var x : L.bool
 	x = true
 
-	var z : bool
+	var z : L.bool
 	do z = true end
 	lassert(z == true)
 
-	var z : int
+	var z : L.int
 	do z = 4 end
 	lassert(z == 4)
 
 	-- this should be fine
-	var y : vector(float, 4)
-	var y : int
+	var y : L.vector(L.float, 4)
+	var y : L.int
 
 	-- should be able to assign w/an expression after declaring,
 	-- checking with var e to make sure expressions are the same.
 	var zip = 43.3
-	var doo : double
+	var doo : L.double
 	doo = zip * c
 	var dah = zip * c
 	var x = doo == dah
@@ -140,12 +142,12 @@ local test_arith = liszt_kernel (v in mesh.vertices)
 	var a = y - x
 
 	var a = 43.3
-	var d : vector(float, 3)
+	var d : L.vector(L.float, 3)
 	d = a * vv
 	var e = a * vv
 	lassert(length(d - e) < 1e-04) -- d is float, e is double, so they won't be exact
 
-    var f : vector(double, 3)
+    var f : L.vector(L.double, 3)
     f = a * vv
     lassert(f == e)
 end

@@ -48,8 +48,8 @@ end
 function Context:leaveblock()
     self.env:leaveblock()
 end
-function Context:error(ast, msg)
-    self.diag:reporterror(ast, msg)
+function Context:error(ast, ...)
+    self.diag:reporterror(ast, ...)
 end
 function Context:in_loop()
     return self.loop_count > 0
@@ -231,7 +231,7 @@ end
 
 local function exec_type_annotation(typexp, ast_node, ctxt)
     local status, typ = pcall(function()
-        return types.terraToLisztType(typexp(ctxt:lua()))
+        return typexp(ctxt:lua())
     end)
 
     if not status then
@@ -271,8 +271,8 @@ function ast.DeclStatement:check(ctxt)
         if typ then
             local mtyp = type_meet(exptyp,typ)
             if typ ~= mtyp then
-                ctxt:error(self, "Cannot assign a value of type " ..
-                                 exptyp .. " to type " .. typ)
+                ctxt:error(self, "Cannot assign a value of type ",
+                                  exptyp, " to type ", typ)
             end
         -- or infer the type as the expression type
         else

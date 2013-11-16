@@ -5,10 +5,10 @@
 UNAME = $(shell uname)
 CXX = clang++
 
-COMMON_SRC = src/mesh.cpp
+COMMON_SRC = src/mesh.cpp src/lmeshloader.cpp
 COMMON_OBJ = $(patsubst src/%.cpp,build/%.o,$(COMMON_SRC))
 
-FLAGS = -I. -O3 -fPIC -Wno-deprecated
+FLAGS = -I. -g -fPIC -Wno-deprecated
 
 ifeq ($(UNAME),Darwin)
 	LFLAGS += -dynamiclib
@@ -29,8 +29,8 @@ build/%.o:	src/%.cpp
 clean:
 	rm -rf $(LIBRARIES) build/*
 
-OBJS = $(wildcard src/*.cpp:.cpp=.o)
-DEPENDENCIES = $(patsubst %.o,build/%.d,$(OBJS))
+SRCS = $(wildcard src/*.cpp)
+DEPENDENCIES = $(patsubst src/%.cpp,build/%.d,$(SRCS))
 build/%.d:	src/%.cpp
 	@g++ $(FLAGS) -w -MM -MT '$@ $(@:.d=.o)' $< -o $@
 	

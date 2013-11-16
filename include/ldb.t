@@ -185,16 +185,39 @@ end
 --[[ LField methods:                                                       ]]--
 -------------------------------------------------------------------------------
 
+
+function LField:Size()
+    return self.owner._size
+end
+local bit = require("bit")
+
+
+--vector(double,4) requires 32-byte alignment
+--WARNING: this will need more bookkeeping since you cannot call
+-- free on the returned pointer
+local terra allocateAligned32(size : uint64)
+    var r = [uint64](C.malloc(size + 32))
+    r = (r + 31) and not 31
+    return [&opaque](r)
+end
+function LField:Allocate()
+    local bytes  =
+        allocateAligned32(self:Size() * terralib.sizeof(self.type:terraType()))
+    self.data    = terralib.cast(&self.type:terraType(),bytes)
+end
+
 function LField:LoadFromCallback (callback)
     -- TODO: It would be nice to typecheck the callback's type signature...
-    local bytes  =
-        C.malloc(self.owner._size * terralib.sizeof(self.type:terraType()))
-    self.data    = terralib.cast(&self.type:terraType(),bytes)
-
-    for i = 0, self.owner._size-1 do
+    self:Allocate()
+    for i = 0, self:Size() - 1 do
         callback(self.data + i, i)
     end
-end    
+end
+
+function LField:LoadFromMemory(mem)
+    self:Allocate()
+    C.memcpy(self.data,mem, self:Size() * terralib.sizeof(self.type:terraType()))
+end
 
 function LField:print()
     print(self.name..": <" .. tostring(self.type:terraType()) .. '>')

@@ -1,5 +1,7 @@
 import "compiler/liszt"
-local M = L.initMeshRelationsFromFile("examples/mesh.lmesh")
+local LMesh = terralib.require("compiler/liblmesh")
+local M = LMesh.Load("examples/mesh.lmesh")
+
 local V = M.vertices
 local P = V.position
 

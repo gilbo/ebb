@@ -1,5 +1,7 @@
 import "compiler/liszt"
-local M = L.initMeshRelationsFromFile("examples/mesh.lmesh")
+local LMesh = terralib.require("compiler/liblmesh")
+local M = LMesh.Load("examples/mesh.lmesh")
+
 
 function shift(x,y,z)
 	local pass_kernel = liszt_kernel(v in M.vertices)

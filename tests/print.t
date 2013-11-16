@@ -1,5 +1,6 @@
 import "compiler/liszt"
-local mesh = L.initMeshRelationsFromFile("examples/mesh.lmesh")
+local LMesh = terralib.require("compiler/liblmesh")
+local mesh = LMesh.Load("examples/mesh.lmesh")
 
 local v = L.NewVector(L.float, {1, 2, 3}) 
 

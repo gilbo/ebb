@@ -5,7 +5,8 @@ local test = require "tests/test"
 --------------------------
 -- Kernel vector tests: --
 --------------------------
-mesh = L.initMeshRelationsFromFile("examples/mesh.lmesh")
+local LMesh = terralib.require("compiler/liblmesh")
+local mesh = LMesh.Load("examples/mesh.lmesh")
 
 ------------------
 -- Should pass: --

@@ -119,7 +119,10 @@ struct Mesh;
 
 //Unnested Runtime Calls
 
-struct lProgramArguments;
+struct lProgramArguments {
+	const char * mesh_file;
+	bool redirect_output_to_log;
+};
 
 // void lExec(void (*entry_point)(struct lContext*),void (*entry_stencil)(struct lsFunctionTable*, struct lsContext*), struct lProgramArguments * arguments, size_t n_fields, size_t n_sets, size_t n_scalars);
 

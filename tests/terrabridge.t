@@ -1,7 +1,8 @@
 import "compiler/liszt"
 
 local assert = L.assert
-local mesh   = L.initMeshRelationsFromFile("examples/mesh.lmesh")
+local LMesh = terralib.require("compiler/liblmesh")
+local mesh = LMesh.Load("examples/mesh.lmesh")
 
 local sqrt   = terralib.includec('math.h').sqrt
 local srand  = terralib.includec('stdlib.h').srand -- just looking for a void function somewhere

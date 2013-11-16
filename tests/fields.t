@@ -7,7 +7,9 @@ import "compiler/liszt"
 require 'tests/test'
 
 local assert = L.assert
-local mesh   = L.initMeshRelationsFromFile("examples/mesh.lmesh")
+local LMesh = terralib.require("compiler/liblmesh")
+local mesh = LMesh.Load("examples/mesh.lmesh")
+
 local V      = mesh.vertices
 local F      = mesh.faces
 

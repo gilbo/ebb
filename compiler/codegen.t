@@ -2,7 +2,6 @@ local exports = {}
 
 local ast     = require 'ast'
 local semant  = require 'semant'
-local runtime = terralib.require 'runtime/liszt'
 local types   = terralib.require 'compiler/types'
 local Type    = types.Type
 local t       = types.t
@@ -129,17 +128,6 @@ function ast.LocalVar:codegen(env)
 	local s = env:localenv()[self.name]
 	return `[s]
 end
-
-local phaseMap = {
-	['+']   	= runtime.L_PLUS,
-	['-']   	= runtime.L_MINUS,
-	['*']   	= runtime.L_MULTIPLY,
-	['/']   	= runtime.L_DIVIDE,
-	['and'] 	= runtime.L_BAND,
-	['or']  	= runtime.L_BOR,
-	['land']    = runtime.L_AND,
-	['lor']     = runtime.L_OR,
-}
 
 local function bin_exp (op, lhe, rhe)
 	if     op == '+'   then return `[lhe] +   [rhe]

@@ -2,7 +2,9 @@ import "compiler/liszt"
 
 local assert = L.assert
 local cross  = L.cross
-local mesh   = L.initMeshRelationsFromFile("examples/mesh.lmesh")
+local LMesh = terralib.require("compiler/liblmesh")
+local mesh = LMesh.Load("examples/mesh.lmesh")
+
 
 local v1 = L.NewVector(L.float, {1, 2, 3})
 local v2 = L.NewVector(L.float, {5, 7, 11})

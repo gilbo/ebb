@@ -2,7 +2,6 @@ local exports = {}
 
 local semant  = require "semant"
 local codegen = terralib.require "compiler/codegen"
-local runtime = terralib.require "runtime/liszt"
 
 -- Keep imports from polluting global scope of any file that includes this module
 

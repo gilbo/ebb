@@ -186,6 +186,7 @@ function Type:toString()
   print(debug.traceback())
   error('toString method not implemented for this type!', 2)
 end
+Type.__tostring = Type.toString
 
 
 -- THIS DOES NOT EMIT A STRING

@@ -20,9 +20,10 @@ import 'compiler/liszt'
 --------------------------------------------------------------------------------
 --[[ Load relations from lmesh                                              ]]--
 --------------------------------------------------------------------------------
-local M  = L.initMeshRelationsFromFile("examples/fem_mesh.lmesh")
-M.left   = L.loadSetFromMesh(M, M.faces, 'inlet',  'face')
-M.right  = L.loadSetFromMesh(M, M.faces, 'outlet', 'face')
+local LMesh = terralib.require("compiler/liblmesh")
+local M  = LMesh.Load("examples/fem_mesh.lmesh")
+M.left   = M.inlet
+M.right  = M.outlet
 local C, V, F, E = M.cells, M.vertices, M.faces, M.edges
 
 
@@ -176,17 +177,17 @@ local function main()
 
 	--[[ Initialize external forces: ]]--
 	(liszt_kernel (f in M.left)
-		f.face.v0.fext = {.01, 0, 0}
-		f.face.v1.fext = {.01, 0, 0}
-		f.face.v2.fext = {.01, 0, 0}
-		f.face.v3.fext = {.01, 0, 0}
+		f.value.v0.fext = {.01, 0, 0}
+		f.value.v1.fext = {.01, 0, 0}
+		f.value.v2.fext = {.01, 0, 0}
+		f.value.v3.fext = {.01, 0, 0}
 	end)()
 
 	(liszt_kernel (f in M.right)
-		f.face.v0.fext = {-.01, 0, 0}
-		f.face.v1.fext = {-.01, 0, 0}
-		f.face.v2.fext = {-.01, 0, 0}
-		f.face.v3.fext = {-.01, 0, 0}
+		f.value.v0.fext = {-.01, 0, 0}
+		f.value.v1.fext = {-.01, 0, 0}
+		f.value.v2.fext = {-.01, 0, 0}
+		f.value.v3.fext = {-.01, 0, 0}
 	end)()
 
 	--[[ Initialize acceleration based on initial forces ]]--

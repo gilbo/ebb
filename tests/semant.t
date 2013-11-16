@@ -7,7 +7,8 @@ local lassert, lprint = L.assert, L.print
 ---------------------------
 -- Field and scalar objs --
 ---------------------------
-mesh = L.initMeshRelationsFromFile("examples/mesh.lmesh")
+local LMesh = terralib.require("compiler/liblmesh")
+local mesh = LMesh.Load("examples/mesh.lmesh")
 mesh.cells:NewField('f1', L.float)
 mesh.cells:NewField('f2', L.vector(L.float, 3))
 s1 = L.NewScalar(L.int, 0)
@@ -121,7 +122,7 @@ local fail12 = liszt_kernel (cell in mesh.cells)
 end
 
 local fail13 = liszt_kernel (cell in mesh.cells)
-	var v : bool
+	var v : L.bool
 	if false then
 		v = true
 	end
