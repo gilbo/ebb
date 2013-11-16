@@ -208,7 +208,7 @@ function ast.VectorLiteral:codegen (env)
 	local v = symbol()
 	local tp = self.node_type:terraBaseType()
 	for i = 1, #self.elems do
-		ct[i] = self.elems[i]:codegen()
+		ct[i] = self.elems[i]:codegen(env)
 	end
 
    -- These quotes give terra the opportunity to generate optimized assembly via the vectorof call
