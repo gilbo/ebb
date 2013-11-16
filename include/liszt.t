@@ -6,9 +6,7 @@ local LDB = terralib.require('include/ldb')
 L.LDB = LDB
 
 local DECL = terralib.require('include/decl')
-
-
-local C = DECL.C
+local C = terralib.require('compiler/c')
 
 -- terra type of a field that refers to another relation
 local REF_TYPE    = t.uint

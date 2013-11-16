@@ -1,9 +1,7 @@
 local types   = terralib.require('compiler/types')
 local Type    = types.Type
 local t       = types.t
-
-local DECL    = terralib.require('include/decl')
-local C       = DECL.C
+local C       = terralib.require('compiler/c')
 
 local function make_prototype(tb)
    tb.__index = tb

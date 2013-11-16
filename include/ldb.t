@@ -20,8 +20,7 @@ local DECL = terralib.require('include/decl')
 local LRelation = DECL.LRelation
 local LField    = DECL.LField
 local LMacro    = DECL.LMacro
-
-local C = DECL.C
+local C = terralib.require('compiler/c')
 
 
 -- terra type of a field that represents a row in another relation

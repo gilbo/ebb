@@ -1,10 +1,6 @@
 local exports = {}
 
 local ast     = require 'ast'
-local semant  = require 'semant'
-local types   = terralib.require 'compiler/types'
-local Type    = types.Type
-local t       = types.t
 
 function ast.AST:codegen (env)
 	print(debug.traceback())
@@ -16,7 +12,7 @@ function ast.ExprStatement:codegen (env)
 end
 
 function ast.LisztKernel:codegen (env)
-	local param = symbol(t.addr:terraType())
+	local param = symbol(self.iter.node_type:terraType())
 	env:localenv()[self.iter.name] = param
 
 	local set  = self.set:codegen(env)

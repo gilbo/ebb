@@ -10,10 +10,6 @@
 ]]--
 local DECL = {}
 
-
-DECL.C = terralib.require("compiler/c")
-
-
 local function make_prototype(tb)
     tb.__index = tb
     return tb
