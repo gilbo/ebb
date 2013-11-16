@@ -3,10 +3,7 @@ local LDB = terralib.require("include/ldb")
 terralib.linklibrary("runtime/libsingle_runtime.so")
 local LMesh = {}
 
-local C = terralib.includecstring [[ 
-#include "runtime/src/lmeshloader.h"
-#include <math.h>
-]]
+local C = terralib.require("compiler/c")
 -------------------------------------------------------------------------------
 --[[ Code that loads all relations from mesh file formats:                 ]]--
 -------------------------------------------------------------------------------
