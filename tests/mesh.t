@@ -1,6 +1,6 @@
-import "compiler/liszt"
+import "compiler.liszt"
 
-local LMesh = terralib.require("compiler/liblmesh")
+local LMesh = terralib.require "compiler.lmesh"
 local M = LMesh.Load("examples/mesh.lmesh")
 
 M.vertices:print()

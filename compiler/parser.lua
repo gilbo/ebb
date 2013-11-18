@@ -1,15 +1,12 @@
 --[[ Module defines all of the parsing functions used to generate
 an AST for Liszt code 
 ]]--
-local exports = {}
-
--- Imports
-package.path = package.path .. ";./compiler/?.lua;./compiler/?.t"
+local P = {}
+package.loaded["compiler.parser"] = P
 
 -- Import ast nodes, keeping out of global scope
-local ast = require "ast"
-
-local pratt = terralib.require('compiler/pratt')
+local ast = require "compiler.ast"
+local pratt = terralib.require "compiler.pratt"
 
 -- Global precedence table
 local precedence = {
@@ -439,6 +436,6 @@ lang.block = function (P)
 end
 
 
-exports.lang = lang
-return exports
-
+function P.Parse(lexer)
+    return pratt.Parse(lang, lexer, "liszt")
+end

@@ -1,13 +1,13 @@
 --------------------------------------------------------------------------------
 --[[ Test implementation of type system for consistency                     ]]--
 --------------------------------------------------------------------------------
-local T = terralib.require("compiler/types")
-local L = terralib.require("include/liszt")
-require 'tests/test'
+local T = terralib.require "compiler.types"
+local L = terralib.require "compiler.liszt"
+require "tests.test"
 
-local ptypes = { [int]   = T.t.int, 
-	             [float] = T.t.float, 
-	             [bool]  = T.t.bool   }
+local ptypes = { [int]   = L.int, 
+	             [float] = L.float, 
+	             [bool]  = L.bool   }
 
 for ttype, ltype in pairs(ptypes) do
 	--------------------------------

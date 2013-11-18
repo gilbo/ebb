@@ -1,6 +1,7 @@
-local exports = {}
+local C = {}
+package.loaded["compiler.codegen"] = C
 
-local ast     = require 'ast'
+local ast     = require "compiler.ast"
 
 function ast.AST:codegen (env)
 	print(debug.traceback())
@@ -311,7 +312,7 @@ function ast.GenericFor:codegen (env)
 end
 ]]--
 
-function exports.codegen (luaenv, kernel_ast)
+function C.codegen (luaenv, kernel_ast)
 	local env = terralib.newenvironment(luaenv)
 
 	env:enterblock()
@@ -322,6 +323,3 @@ function exports.codegen (luaenv, kernel_ast)
 		[kernel_body]
 	end
 end
-
-return exports
-

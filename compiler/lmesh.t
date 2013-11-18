@@ -1,9 +1,10 @@
-terralib.require("compiler.liszt") -- create L
-local LDB = terralib.require("include/ldb")
-terralib.linklibrary("runtime/libsingle_runtime.so")
 local LMesh = {}
+package.loaded["compiler.lmesh"] = LMesh
+local L = terralib.require "compiler.lisztlib"
+local LDB = terralib.require "compiler.ldb"
+terralib.linklibrary("runtime/libsingle_runtime.so")
 
-local C = terralib.require("compiler/c")
+local C = terralib.require "compiler.c"
 -------------------------------------------------------------------------------
 --[[ Code that loads all relations from mesh file formats:                 ]]--
 -------------------------------------------------------------------------------
@@ -170,7 +171,7 @@ local function initMeshRelations(mesh)
     return relations
 end
 
-local ffi = require("ffi")
+local ffi = require "ffi"
 local function sanitizeName(name)
     return name:gsub("[^%w]","_"):gsub("^[^%a]","_")
 end
@@ -225,5 +226,3 @@ function LMesh.Load(filename)
     end
     return M
 end
-
-return LMesh

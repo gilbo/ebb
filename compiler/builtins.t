@@ -1,14 +1,19 @@
-local types   = terralib.require('compiler/types')
-local Type    = types.Type
-local t       = types.t
-local C       = terralib.require('compiler/c')
+local B = {}
+package.loaded["compiler.builtins"] = B
 
-local function make_prototype(tb)
-   tb.__index = tb
-   return tb
+local L = terralib.require "compiler.lisztlib"
+local T = terralib.require "compiler.types"
+local C = terralib.require "compiler.c"
+
+
+---------------------------------------------
+--[[ Builtin functions                   ]]--
+---------------------------------------------
+local Func = {}
+Func.__index = Func
+Func.__call = function(self,...)
+    return self.luafunc(...)
 end
-
-local Func = make_prototype {kind=Type.kinds.functype}
 
 function Func.new(luafunc)
     local check = function(ast, ctxt)
@@ -17,21 +22,13 @@ function Func.new(luafunc)
     local codegen = function(ast, env)
         error('unimplemented builtin function codegen')
     end
-    local call = nil
-    if luafunc then
-        call = (function(self, ...) return luafunc(...) end)
-    end
-    return setmetatable({check=check, codegen=codegen},
-                        {__index=Func, __call=call})
+    return setmetatable({check=check, codegen=codegen, luafunc = luafunc},
+                        Func)
+end
+function B.isFunc(f)
+    return getmetatable(f) == Func
 end
 
----------------------------------------------
---[[ Builtin functions                   ]]--
----------------------------------------------
-local B = {}
-function B.is_function(obj)
-    return getmetatable(obj) and getmetatable(obj).__index == Func
-end
 
 B.assert = Func.new(assert)
 
@@ -45,7 +42,7 @@ function B.assert.check(ast, ctxt)
     local test = args[1]
     local test_type = test.node_type
     if test_type:isVector() then test_type = test_type:baseType() end
-    if test_type ~= t.error and test_type ~= t.bool then
+    if test_type ~= L.error and test_type ~= L.bool then
         ctxt:error(ast, "expected a boolean or vector of booleans as the test for assert statement")
     end
 end
@@ -85,7 +82,7 @@ function B.print.check(ast, ctxt)
 
     local output = args[1]
     local outtype = output.node_type
-    if outtype ~= t.error and
+    if outtype ~= L.error and
        not outtype:isValueType() and not outtype:isRow()
     then
         ctxt:error(ast, "only numbers, bools, vectors and rows can be printed")
@@ -97,9 +94,9 @@ function B.print.codegen(ast, env)
 	local lt   = output.node_type
     local tt   = lt:terraType()
     local code = output:codegen(env)
-    if     lt == t.float or lt == t.double then return quote C.printf("%f\n", [double](code)) end
-	elseif lt == t.int   or lt:isRow() then return quote C.printf("%d\n", code) end
-	elseif lt == t.bool  then
+    if     lt == L.float or lt == L.double then return quote C.printf("%f\n", [double](code)) end
+	elseif lt == L.int   or lt:isRow() then return quote C.printf("%d\n", code) end
+	elseif lt == L.bool  then
         return quote C.printf("%s", terralib.select(code, "true\n", "false\n")) end
 	elseif lt:isVector() then
         local printSpec = "{"
@@ -107,13 +104,13 @@ function B.print.codegen(ast, env)
         local elemQuotes = {}
         local bt = lt:baseType()
         for i = 0, lt.N - 1 do
-            if bt == t.float or bt == t.double then
+            if bt == L.float or bt == L.double then
                 printSpec = printSpec .. " %f"
                 table.insert(elemQuotes, `[double](sym[i]))
-            elseif bt == t.int then
+            elseif bt == L.int then
                 printSpec = printSpec .. " %d"
                 table.insert(elemQuotes, `sym[i])
-            elseif bt == t.bool then
+            elseif bt == L.bool then
                 printSpec = printSpec .. " %s"
                 table.insert(elemQuotes, `terralib.select(sym[i], "true", "false"))
             else
@@ -171,13 +168,13 @@ function B.dot.check(ast, ctxt)
         ctxt:error(ast, "cannot dot vectors of differing lengths (" ..
                 lt1.N .. " and " .. lt2.N .. ")")
     end
-    if lt1:baseType() == t.bool then
+    if lt1:baseType() == L.bool then
         ctxt:error(args[1], "boolean vector passed as first argument to dot")
     end
-    if lt2:baseType() == t.bool then 
+    if lt2:baseType() == L.bool then 
         ctxt:error(args[2], "boolean vector passed as second argument to dot")
     end
-    return types.type_meet(lt1:baseType(), lt2:baseType())
+    return T.type_meet(lt1:baseType(), lt2:baseType())
 end
 
 function B.dot.codegen(ast, env)
@@ -224,7 +221,7 @@ local function cross(a, b)
         error("arguments to cross must be vectors of length 3 (second argument is length " ..
                 #bv .. ")")
     end
-    return L.NewVector(types.type_meet(a.type:baseType(), b.type:baseType()), {
+    return L.NewVector(T.type_meet(a.type:baseType(), b.type:baseType()), {
         av[2] * bv[3] - av[3] * bv[2],
         av[3] * bv[1] - av[1] * bv[3],
         av[1] * bv[2] - av[2] * bv[1]
@@ -254,13 +251,13 @@ function B.cross.check(ast, ctxt)
     if lt2.N ~= 3 then
         ctxt:error(ast, "arguments to cross must be vectors of length 3 (second argument is of length" ..  lt1.N .. ")")
     end
-    if lt1:baseType() == t.bool then
+    if lt1:baseType() == L.bool then
         ctxt:error(args[1], "boolean vector passed as first argument to cross")
     end
-    if lt2:baseType() == t.bool then 
+    if lt2:baseType() == L.bool then 
         ctxt:error(args[2], "boolean vector passed as second argument to cross")
     end
-    return types.type_meet(lt1, lt2)
+    return T.type_meet(lt1, lt2)
 end
 
 function B.cross.codegen(ast, env)
@@ -271,7 +268,7 @@ function B.cross.codegen(ast, env)
     local v1 = symbol(tt1)
     local v2 = symbol(tt2)
 
-    local tp = types.type_meet(args[1].node_type:baseType(), args[2].node_type:baseType()):terraType()
+    local tp = T.type_meet(args[1].node_type:baseType(), args[2].node_type:baseType()):terraType()
     local code1 = args[1]:codegen(env)
     local code2 = args[2]:codegen(env)
     return quote
@@ -298,17 +295,17 @@ function B.length.check(ast, ctxt)
     local args = ast.params.children
     if #args ~= 1 then
         ctxt:error(ast, "length expects exactly 1 argument (instead got " .. #args .. ")")
-        return t.error
+        return L.error
     end
     local lt = args[1].node_type
     if not lt:isVector() then
         ctxt:error(args[1], "argument to length must be a vector")
-        return t.error
+        return L.error
     end
-    if lt:baseType() == t.bool then
+    if lt:baseType() == L.bool then
         ctxt:error(args[1], "boolean vector passed as argument to length")
     end
-    return t.float
+    return L.float
 end
 
 function B.length.codegen(ast, env)
@@ -362,17 +359,17 @@ local function TerraCheck(func)
         if not success then
             ctxt:error(ast, "couldn't fit parameters to signature of terra function")
             ctxt:error(ast, retval)
-            return t.error
+            return L.error
         end
         if #rettype > 1 then
             ctxt:error(ast, "terra function returns more than one value")
-            return t.error
+            return L.error
         end
-        if #rettype == 1 and not types.terraToLisztType(rettype[1]) then
+        if #rettype == 1 and not T.terraToLisztType(rettype[1]) then
             ctxt:error(ast, "unable to use return type '" .. tostring(rettype[1]) .. "' of terra function in Liszt")
-            return t.error
+            return L.error
         end
-        return #rettype == 0 and t.error or types.terraToLisztType(rettype[1])
+        return #rettype == 0 and L.error or T.terraToLisztType(rettype[1])
     end
 end
 
@@ -399,13 +396,9 @@ function B.terra_to_func(terrafn)
     return newfunc
 end
 
-B.addBuiltinsToNamespace = function (L)
-    L.print  = B.print
-    L.assert = B.assert
-    L.dot    = B.dot
-    L.cross  = B.cross
-    L.length = B.length
-    L.is_function = B.is_function
-end
-
-return B
+L.print  = B.print
+L.assert = B.assert
+L.dot    = B.dot
+L.cross  = B.cross
+L.length = B.length
+L.is_function = B.is_function

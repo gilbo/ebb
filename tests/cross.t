@@ -1,8 +1,8 @@
-import "compiler/liszt"
+import "compiler.liszt"
 
 local assert = L.assert
 local cross  = L.cross
-local LMesh = terralib.require("compiler/liblmesh")
+local LMesh = terralib.require "compiler.lmesh"
 local mesh = LMesh.Load("examples/mesh.lmesh")
 
 

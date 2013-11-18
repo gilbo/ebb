@@ -1,8 +1,8 @@
-import 'compiler/liszt'
+import 'compiler.liszt'
 local length, lprint = L.length, L.print
 
 -- Test code
-local LMesh = terralib.require("compiler/liblmesh")
+local LMesh = terralib.require "compiler.lmesh"
 local M = LMesh.Load("examples/mesh.lmesh")
 
 local init_to_zero = terra (mem : &float, i : int) mem[0] = 0 end

@@ -1,7 +1,7 @@
-import "compiler/liszt"
-require "tests/test"
+import "compiler.liszt"
+require "tests.test"
 
-local LMesh = terralib.require("compiler/liblmesh")
+local LMesh = terralib.require "compiler.lmesh"
 mesh = LMesh.Load("examples/mesh.lmesh")
 
 local vk = liszt_kernel(v in mesh.vertices)

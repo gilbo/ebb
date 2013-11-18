@@ -15,12 +15,12 @@
 ]]--
 --------------------------------------------------------------------------------
 
-import 'compiler/liszt'
+import 'compiler.liszt'
 
 --------------------------------------------------------------------------------
 --[[ Load relations from lmesh                                              ]]--
 --------------------------------------------------------------------------------
-local LMesh = terralib.require("compiler/liblmesh")
+local LMesh = terralib.require "compiler.lmesh"
 local M  = LMesh.Load("examples/fem_mesh.lmesh")
 M.left   = M.inlet
 M.right  = M.outlet

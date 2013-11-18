@@ -1,11 +1,11 @@
-import "compiler/liszt"
+import "compiler.liszt"
 local test = require "tests/test"
 
 
 --------------------------
 -- Kernel vector tests: --
 --------------------------
-local LMesh = terralib.require("compiler/liblmesh")
+local LMesh = terralib.require "compiler.lmesh"
 local mesh = LMesh.Load("examples/mesh.lmesh")
 
 ------------------

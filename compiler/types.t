@@ -1,20 +1,17 @@
-local JSON = require('lib/JSON')
+local T = {}
+package.loaded["compiler.types"] = T
 
-local DECL = terralib.require('include/decl')
+local JSON = require "compiler.JSON"
 
-local exports = {}
-
--- forward declaration of the type interface
-local t   = {}
-exports.t = t
+local L = terralib.require "compiler.lisztlib"
 
 -------------------------------------------------------------------------------
 --[[ Liszt type prototype:                                                 ]]--
 -------------------------------------------------------------------------------
 local Type   = {}
-exports.Type = Type
 Type.__index = Type
 Type.kinds   = {}
+
 -- There are four basic kinds of types, plus a fifth: ERROR
 Type.kinds.primitive    = {string='primitive' }
   Type.kinds.int        = {string='int',    terratype=int   }
@@ -52,7 +49,7 @@ function Type:new (kind,typ,scope)
   return setmetatable({kind=kind,type=typ,scope=scope}, self)
 end
 
-function Type.isLisztType (obj)
+function T.isLisztType (obj)
   return getmetatable(obj) == Type
 end
 
@@ -153,7 +150,7 @@ end
 function Type:terraType()
   if     self:isPrimitive() then return self.type.terratype
   elseif self:isVector()    then return vector(self.type:terraType(), self.N)
-  elseif self:isRow()       then return t.addr:terraType()
+  elseif self:isRow()       then return L.addr:terraType()
   end
   error("terraType method not implemented for type " .. self:toString(), 2)
 end
@@ -207,7 +204,7 @@ end
 
 local vector_types = {}
 local function vectorType (typ, len)
-  if not Type.isLisztType(typ) or not typ:isPrimitive() then error("invalid type argument to vector type constructor (is this a terra type?)", 2) end
+  if not T.isLisztType(typ) or not typ:isPrimitive() then error("invalid type argument to vector type constructor (is this a terra type?)", 2) end
   local tpn = 'vector(' .. typ:toString() .. ',' .. tostring(len) .. ')'
   if not vector_types[tpn] then
     local vt = Type:new(Type.kinds.vector,typ)
@@ -219,7 +216,7 @@ end
 
 local row_type_table = {}
 local function rowType (relation)
-  if not DECL.is_relation(relation) then
+  if not L.is_relation(relation) then
     error("invalid argument to row type constructor. A relation "..
           "must be provided", 2)
   end
@@ -237,38 +234,38 @@ end
 -------------------------------------------------------------------------------
 
 -- Primitives
-t.int       = Type:new(Type.kinds.primitive,Type.kinds.int)
---t.int8      = Type:new(Type.kinds.primitive,Type.kinds.int8)
---t.int16     = Type:new(Type.kinds.primitive,Type.kinds.int16)
---t.int32     = Type:new(Type.kinds.primitive,Type.kinds.int32)
---t.int64     = Type:new(Type.kinds.primitive,Type.kinds.int64)
-t.uint      = Type:new(Type.kinds.primitive,Type.kinds.uint)
-t.uint8     = Type:new(Type.kinds.primitive,Type.kinds.uint8)
---t.uint16    = Type:new(Type.kinds.primitive,Type.kinds.uint16)
---t.uint32    = Type:new(Type.kinds.primitive,Type.kinds.uint32)
-t.uint64    = Type:new(Type.kinds.primitive,Type.kinds.uint64)
-t.bool      = Type:new(Type.kinds.primitive,Type.kinds.bool)
-t.float     = Type:new(Type.kinds.primitive,Type.kinds.float)
-t.double    = Type:new(Type.kinds.primitive,Type.kinds.double)
+L.int       = Type:new(Type.kinds.primitive,Type.kinds.int)
+--L.int8      = Type:new(Type.kinds.primitive,Type.kinds.int8)
+--L.int16     = Type:new(Type.kinds.primitive,Type.kinds.int16)
+--L.int32     = Type:new(Type.kinds.primitive,Type.kinds.int32)
+--L.int64     = Type:new(Type.kinds.primitive,Type.kinds.int64)
+L.uint      = Type:new(Type.kinds.primitive,Type.kinds.uint)
+L.uint8     = Type:new(Type.kinds.primitive,Type.kinds.uint8)
+--L.uint16    = Type:new(Type.kinds.primitive,Type.kinds.uint16)
+--L.uint32    = Type:new(Type.kinds.primitive,Type.kinds.uint32)
+L.uint64    = Type:new(Type.kinds.primitive,Type.kinds.uint64)
+L.bool      = Type:new(Type.kinds.primitive,Type.kinds.bool)
+L.float     = Type:new(Type.kinds.primitive,Type.kinds.float)
+L.double    = Type:new(Type.kinds.primitive,Type.kinds.double)
 
 -- Complex type constructors
-t.vector    = vectorType
-t.row       = rowType
+L.vector    = vectorType
+L.row       = rowType
 
 -- Errors
-t.error     = Type:new(Type.kinds.error)
+L.error     = Type:new(Type.kinds.error)
 
 -- Internals
-t.relation  = Type:new(Type.kinds.internal, Type.kinds.relation)
-t.field     = Type:new(Type.kinds.internal, Type.kinds.field)
-t.scalar    = Type:new(Type.kinds.internal, Type.kinds.scalar)
-t.macro     = Type:new(Type.kinds.internal, Type.kinds.macro)
-t.func      = Type:new(Type.kinds.internal, Type.kinds.functype)
-t.quoteexpr = Type:new(Type.kinds.internal, Type.kinds.quoteexpr)
-t.luatable  = Type:new(Type.kinds.internal, Type.kinds.luatable)
+L.relation  = Type:new(Type.kinds.internal, Type.kinds.relation)
+L.field     = Type:new(Type.kinds.internal, Type.kinds.field)
+L.scalar    = Type:new(Type.kinds.internal, Type.kinds.scalar)
+L.macro     = Type:new(Type.kinds.internal, Type.kinds.macro)
+L.func      = Type:new(Type.kinds.internal, Type.kinds.functype)
+L.quoteexpr = Type:new(Type.kinds.internal, Type.kinds.quoteexpr)
+L.luatable  = Type:new(Type.kinds.internal, Type.kinds.luatable)
 
 -- terra type for address/index encoding of row identifiers
-t.addr      = t.uint64
+L.addr      = L.uint64
 
 
 -------------------------------------------------------------------------------
@@ -277,22 +274,22 @@ t.addr      = t.uint64
 
 -- num_meet defines a hierarchy of numeric coercions
 local function num_meet(ltype, rtype)
-      if ltype == t.double or rtype == t.double then return t.double
-  elseif ltype == t.float  or rtype == t.float  then return t.float
-  elseif ltype == t.uint64 or rtype == t.uint64 then return t.uint64
-  --elseif ltype == t.int64  or rtype == t.int64  then return t.int64
-  --elseif ltype == t.uint32 or rtype == t.uint32 then return t.uint32
-  --elseif ltype == t.int32  or rtype == t.int32  then return t.int32
+      if ltype == L.double or rtype == L.double then return L.double
+  elseif ltype == L.float  or rtype == L.float  then return L.float
+  elseif ltype == L.uint64 or rtype == L.uint64 then return L.uint64
+  --elseif ltype == L.int64  or rtype == L.int64  then return L.int64
+  --elseif ltype == L.uint32 or rtype == L.uint32 then return L.uint32
+  --elseif ltype == L.int32  or rtype == L.int32  then return L.int32
   -- note: this is assuming that int and uint get mapped to
   -- 32 bit numbers, which is probably wrong somewhere...
-  elseif ltype == t.uint   or rtype == t.uint   then return t.uint
-  elseif ltype == t.int    or rtype == t.int    then return t.int
-  --elseif ltype == t.uint16 or rtype == t.uint16 then return t.uint16
-  --elseif ltype == t.int16  or rtype == t.int16  then return t.int16
-  elseif ltype == t.uint8  or rtype == t.uint8  then return t.uint8
-  --elseif ltype == t.int8   or rtype == t.int8   then return t.int8
+  elseif ltype == L.uint   or rtype == L.uint   then return L.uint
+  elseif ltype == L.int    or rtype == L.int    then return L.int
+  --elseif ltype == L.uint16 or rtype == L.uint16 then return L.uint16
+  --elseif ltype == L.int16  or rtype == L.int16  then return L.int16
+  elseif ltype == L.uint8  or rtype == L.uint8  then return L.uint8
+  --elseif ltype == L.int8   or rtype == L.int8   then return L.int8
   else
-    return t.error
+    return L.error
   end
 end
 
@@ -300,13 +297,13 @@ local function type_meet(ltype, rtype)
   -- helper
   local function vec_meet(ltype, rtype, N)
     local btype = type_meet(ltype:baseType(), rtype:baseType())
-    if btype == t.error then return t.error
-    else                     return t.vector(btype, N) end
+    if btype == L.error then return L.error
+    else                     return L.vector(btype, N) end
   end
 
   -- vector meets
   if ltype:isVector() and rtype:isVector() then
-    if ltype.N ~= rtype.N then return t.error
+    if ltype.N ~= rtype.N then return L.error
     else                       return vec_meet(ltype, rtype, ltype.N) end
 
   elseif ltype:isVector() and rtype:isPrimitive() then
@@ -321,13 +318,13 @@ local function type_meet(ltype, rtype)
       return num_meet(ltype, rtype)
 
     elseif ltype:isLogical() and rtype:isLogical() then
-      return t.bool
+      return L.bool
 
     end
   end
 
   -- default is to error
-  return t.error
+  return L.error
 end
 
 
@@ -343,7 +340,7 @@ local function luaValConformsToType (luaval, tp)
   -- vectors
   elseif tp:isVector()  then
     -- accept an instance of an LVector:
-    if DECL.is_vector(luaval) then 
+    if L.is_vector(luaval) then 
       return (tp:isLogical() and luaval.type:isLogical()) or
              (tp:isNumeric() and luaval.type:isNumeric())
 
@@ -364,42 +361,43 @@ local function luaValConformsToType (luaval, tp)
 end
 
 local ttol = {
-  [bool]   = t.bool,
-  [double] = t.double,
-  [float]  = t.float,
-  [int]    = t.int,
-  --[int8]   = t.int8,
-  --[int16]  = t.int16,
-  --[int32]  = t.int32,
-  --[int64]  = t.int64,
-  [uint]   = t.uint,
-  [uint8]  = t.uint8,
-  --[uint16] = t.uint16,
-  --[uint32] = t.uint32,
-  [uint64] = t.uint64,
+  [bool]   = L.bool,
+  [double] = L.double,
+  [float]  = L.float,
+  [int]    = L.int,
+  --[int8]   = L.int8,
+  --[int16]  = L.int16,
+  --[int32]  = L.int32,
+  --[int64]  = L.int64,
+  [uint]   = L.uint,
+  [uint8]  = L.uint8,
+  --[uint16] = L.uint16,
+  --[uint32] = L.uint32,
+  [uint64] = L.uint64,
 }
 
 
 -- converts a terra vector or primitive type into a liszt type
-local function terra_to_liszt (tp)
+local function terraToLisztType (tp)
   -- return primitive type
   if ttol[tp] then return ttol[tp] end
 
   -- return vector type
   if tp:isvector() then
-    local p = terra_to_liszt(tp.type)
+    local p = terraToLisztType(tp.type)
     if p == nil then return nil end
-    return t.vector(p,tp.N)
+    return L.vector(p,tp.N)
   end
   return nil
 end
 
 
 -------------------------------------------------------------------------------
---[[ Return exports                                                        ]]--
+--[[ export type api                                                        ]]--
 -------------------------------------------------------------------------------
-exports.type_meet             = type_meet
-exports.luaValConformsToType  = luaValConformsToType
-exports.terraToLisztType      = terra_to_liszt
-return exports
+T.type_meet             = type_meet
+T.luaValConformsToType  = luaValConformsToType
+T.terraToLisztType      = terraToLisztType
+T.Type = Type
+
 

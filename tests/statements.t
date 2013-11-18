@@ -1,7 +1,7 @@
-import "compiler/liszt"
+import "compiler.liszt"
 require "tests/test"
 
-local LMesh = terralib.require("compiler/liblmesh")
+local LMesh = terralib.require "compiler.lmesh"
 local mesh = LMesh.Load("examples/mesh.lmesh")
 mesh.vertices:NewField('val', L.float)
 mesh.vertices.val:LoadFromCallback(terra (mem : &float, i : uint) mem[0] = 1 end)

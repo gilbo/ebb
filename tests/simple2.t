@@ -1,7 +1,7 @@
-import "compiler/liszt"
+import "compiler.liszt"
 require "tests/test"
 
-local LMesh = terralib.require("compiler/liblmesh")
+local LMesh = terralib.require "compiler.lmesh"
 local mesh = LMesh.Load("examples/mesh.lmesh")
 local com = L.NewScalar(L.vector(L.float, 3), {0, 0, 0})
 

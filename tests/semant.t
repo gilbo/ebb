@@ -1,4 +1,4 @@
-import "compiler/liszt"
+import "compiler.liszt"
 require "tests/test"
 
 local lassert, lprint = L.assert, L.print
@@ -7,7 +7,7 @@ local lassert, lprint = L.assert, L.print
 ---------------------------
 -- Field and scalar objs --
 ---------------------------
-local LMesh = terralib.require("compiler/liblmesh")
+local LMesh = terralib.require "compiler.lmesh"
 local mesh = LMesh.Load("examples/mesh.lmesh")
 mesh.cells:NewField('f1', L.float)
 mesh.cells:NewField('f2', L.vector(L.float, 3))
