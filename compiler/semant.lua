@@ -198,8 +198,8 @@ function ast.Assignment:check(ctxt)
                                 "valid to indexed fields or kernel variables")
         return assignment
     elseif lhs.node_type:isRow() then
-        ctxt:error(self.lvalue, "cannot re-assign variables of "..
-                                "row type")
+        -- ctxt:error(self.lvalue, "cannot re-assign variables of "..
+        --                        "row type") -- temporarily disable for particles hack
         return assignment
     end
 
