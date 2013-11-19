@@ -1,7 +1,6 @@
+
 local T = {}
 package.loaded["compiler.types"] = T
-
-local JSON = require "compiler.JSON"
 
 local L = terralib.require "compiler.lisztlib"
 
@@ -116,7 +115,6 @@ end
 function Type.json_deserialize(json_tbl)
 end
 
-
 -------------------------------------------------------------------------------
 --[[ Type constructors:                                                    ]]--
 -------------------------------------------------------------------------------
@@ -183,6 +181,79 @@ L.error     = Type:new("error")
 
 -- terra type for address/index encoding of row identifiers
 L.addr      = L.uint64
+
+
+
+-------------------------------------------------------------------------------
+--[[ Stringify types                                                       ]]--
+-------------------------------------------------------------------------------
+function Type:toString()
+  if     self:isPrimitive() then return self.name
+  elseif self:isVector()    then return 'Vector('..self.type:toString()..
+                                        ','..tostring(self.N)..')'
+  elseif self:isRow()       then return 'Row('..self.relation:Name()..')'
+  elseif self:isInternal()  then return 'Internal('..tostring(self.value)..')'
+  elseif self:isError()     then return 'error'
+  end
+  print(debug.traceback())
+  error('toString method not implemented for this type!', 2)
+end
+
+-- THIS DOES NOT EMIT A STRING
+-- It outputs a LUA table which can be JSON stringified safely
+function Type:json_serialize(rel_to_name)
+  rel_to_name = rel_to_name or {}
+  if     self:isPrimitive() then
+    return { basic_kind = 'primitive',
+             primitive = self.name }
+
+  elseif self:isVector()    then
+    return { basic_kind = 'vector',
+             base = self.type:json_serialize(),
+             n = self.N }
+
+  elseif self:isRow()       then
+    local relname = rel_to_name[self.relation]
+    if not relname then
+      error('Could not find a relation name when attempting to '..
+            'JSON serialize a Row type', 2)
+    end
+    return { basic_kind = 'row',
+             relation   = relname }
+
+  else
+    error('Cannot serialize type: '..self:toString(), 2)
+  end
+end
+
+-- given a table output by json_serialize, deserialize reconstructs
+-- the correct Type object with correct metatable, etc.
+function Type.json_deserialize(json, name_to_rel)
+  name_to_rel = name_to_rel or {}
+  if not type(json) == 'table' then
+    error('Tried to deserialize type, but found a non.', 2)
+  end
+  if json.basic_kind == 'primitive' then
+    local primitive = L[json.primitive]
+    if not primitive then
+      error('Tried to deserialize primitive but type "'..json.primitive..
+            '" is not supported.', 2)
+    end
+    return primitive
+
+  elseif json.basic_kind == 'vector' then
+    local baseType = Type.json_deserialize(json.base)
+    return L.vector(baseType, json.n)
+
+  elseif json.basic_kind == 'row' then
+    local relation = name_to_rel[json.relation]
+    return L.row(relation)
+
+  else
+    error('Cannot deserialize type, could not find basic kind of type', 2)
+  end
+end
+
 
 
 -------------------------------------------------------------------------------
@@ -294,11 +365,10 @@ end
 
 
 -------------------------------------------------------------------------------
---[[ export type api                                                        ]]--
+--[[ export type api                                                       ]]--
 -------------------------------------------------------------------------------
 T.type_meet             = type_meet
 T.luaValConformsToType  = luaValConformsToType
 T.terraToLisztType      = terraToLisztType
 T.Type = Type
-
 
