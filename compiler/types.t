@@ -87,33 +87,6 @@ function Type:terraBaseType()
     return self:baseType():terraType()
 end
 
--------------------------------------------------------------------------------
---[[ Stringify types                                                       ]]--
--------------------------------------------------------------------------------
-function Type:toString()
-  if     self:isPrimitive() then return self.name
-  elseif self:isVector()    then return 'LVector('..self.type:toString()..
-                                        ','..tostring(self.N)..')'
-  elseif self:isRow()       then return 'Row('..self.relation:Name()..')'
-  elseif self:isInternal()  then return 'Internal('..tostring(self.value)..')'
-  elseif self:isError()     then return 'error'
-  end
-  print(debug.traceback())
-  error('toString method not implemented for this type!', 2)
-end
-Type.__tostring = Type.toString
-
-
--- THIS DOES NOT EMIT A STRING
--- It outputs a LUA table which can be JSON stringified safely
-function Type:json_serialize()
-  local json = {}
-  return json
-end
--- given a table output by json_serialize, deserialize reconstructs
--- a proper Type object with correct metatable, etc.
-function Type.json_deserialize(json_tbl)
-end
 
 -------------------------------------------------------------------------------
 --[[ Type constructors:                                                    ]]--
@@ -198,6 +171,7 @@ function Type:toString()
   print(debug.traceback())
   error('toString method not implemented for this type!', 2)
 end
+Type.__tostring = Type.toString
 
 -- THIS DOES NOT EMIT A STRING
 -- It outputs a LUA table which can be JSON stringified safely
