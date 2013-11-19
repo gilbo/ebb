@@ -141,10 +141,7 @@ lang.lvaluehelper = function (P, lhs)
 		local node = ast.TableLookup:New(P)
 		local op = P:next().type
 		-- check to make sure the table is being indexed by a valid name
-		if not P:matches(P.name) then P:error("expected name after '.'") end
-		local nodename = ast.Name:New(P)
-		nodename.name = P:next().value
-		node.table, node.member = lhs, nodename
+		node.table, node.member = lhs, P:expect(P.name).value
 		return P:lvaluehelper(node)
 	end
 		
@@ -182,17 +179,6 @@ lang.lvalue = function (P)
 	node.name = P:next().value
 	P:ref(node.name)
 	return P:lvaluehelper(node)
-end
-
-lang.lvalname = function (P)
-	if not P:matches(P.name) then
-		local token = P:next()
-		P:error("Expected name at " .. token.linenumber .. ":" .. token.offset)
-	end
-	local node = ast.Name:New(P)
-	node.name  = P:next().value
-	P:ref(node.name)
-	return node
 end
 
 lang.vectorliteral = function (P)
@@ -247,7 +233,7 @@ lang.liszt_kernel = function (P)
 
 	-- parse parameter
 	local open  = P:expect("(")
-	local iter  = P:lvalname()
+	local iter  = P:expect(P.name).value
     P:expect("in")
     local set   = P:lvalue()
 	P:expectmatch(")", "(", open.linenumber)
@@ -256,7 +242,7 @@ lang.liszt_kernel = function (P)
 	local block = P:block()
 	P:expect("end")
 
-	kernel_node.iter, kernel_node.set, kernel_node.body = iter, set, block
+	kernel_node.name, kernel_node.set, kernel_node.body = iter, set, block
 	return kernel_node
 end
 
@@ -290,7 +276,7 @@ lang.statement = function (P)
 	-- check for initialization/declaration
 	if (P:nextif("var")) then
 		local node_decl = ast.DeclStatement:New(P)
-		node_decl.ref   = P:lvalname()
+		node_decl.name = P:expect(P.name).value
 		if P:nextif(":") then
 			node_decl.typeexpression = P:luaexpr()
 		end
@@ -362,7 +348,7 @@ lang.statement = function (P)
 		-- GenericFor loops may be of different types.
 		-- What for loops to support within the DSL?
 	elseif P:nextif("for") then
-		local iterator = P:lvalname()
+		local iterator = P:expect(P.name).value
 		if (P:nextif("in")) then
 			local node_gf = ast.GenericFor:New(P)
 			local set = P:lvalue()
@@ -370,12 +356,12 @@ lang.statement = function (P)
 			local body = P:block()
 			P:expect("end")
 			-- ?? what kinds should these be
-			node_gf.iter, node_gf.set, node_gf.body = iterator, set, body
+			node_gf.name, node_gf.set, node_gf.body = iterator, set, body
 			return node_gf
 		else
 			P:expect("=")
 			local node_nf = ast.NumericFor:New(P)
-			node_nf.iter = iterator
+			node_nf.name = iterator
 			node_nf.lower = P:exp()
 			P:expect(',')
 			node_nf.upper = P:exp()

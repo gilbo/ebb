@@ -64,10 +64,10 @@ function LDB.NewRelation(size, name)
     return rel
 end
 
-function L.LRelation:size()
+function L.LRelation:Size()
     return self._size
 end
-function L.LRelation:name()
+function L.LRelation:Name()
     return self._name
 end
 
@@ -88,7 +88,7 @@ function L.LRelation:NewField (name, typ)
         error("Cannot create a new field with name '"..name.."'  "..
               "That name is already being used.", 2)
     end
-
+    
     if not (T.isLisztType(typ) and typ:isValueType()) and
        not L.is_relation(typ)
     then

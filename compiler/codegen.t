@@ -13,10 +13,10 @@ function ast.ExprStatement:codegen (env)
 end
 
 function ast.LisztKernel:codegen (env)
-	local param = symbol(self.iter.node_type:terraType())
-	env:localenv()[self.iter.name] = param
+	local param = symbol(self.node_type:terraType())
+	env:localenv()[self.name] = param
 
-	local set  = self.set:codegen(env)
+	local set  = self.relation
 	local body = self.body:codegen(env)
 
 	return quote
@@ -24,11 +24,6 @@ function ast.LisztKernel:codegen (env)
 			[body]
 		end
 	end
-end
-
-function ast.Relation:codegen(env)
-	local rel = self.relation
-	return `rel
 end
 
 function ast.Block:codegen (env)
@@ -101,7 +96,7 @@ function ast.NumericFor:codegen (env)
 	local stepexp = self.step and self.step:codegen(env) or nil
 
 	env:enterblock()
-	local iterstr = self.iter.name
+	local iterstr = self.name
 	local itersym = symbol()
 	env:localenv()[iterstr] = itersym
 
@@ -121,7 +116,7 @@ function ast.Break:codegen(env)
 	return quote break end
 end
 
-function ast.LocalVar:codegen(env)
+function ast.Name:codegen(env)
 	local s = env:localenv()[self.name]
 	return `[s]
 end
@@ -148,7 +143,7 @@ function ast.Assignment:codegen (env)
 	-- if lhs is local, there will be a symbol stored in env
 	-- If it is global, we will not have a symbol stored,
 	-- and we will need to codegen to get the reference
-	local lhs   = env:localenv()[self.lvalue.name] or self.lvalue:codegen(env)
+	local lhs   = self.lvalue:codegen(env)
 	local ttype = self.lvalue.node_type:terraType()
 	local rhs   = self.exp:codegen(env)
 
@@ -156,11 +151,6 @@ function ast.Assignment:codegen (env)
 		rhs = bin_exp(self.reduceop, lhs, rhs)
 	end
 	return quote [lhs] = rhs end
-end
-
-function ast.Row:codegen (env)
-	local e = env:localenv()[self.name]
-	return `[e]
 end
 
 function ast.FieldAccess:codegen (env)
@@ -183,12 +173,12 @@ end
 
 -- By the time we make it to codegen, Call nodes are only used to represent builtin function calls.
 function ast.Call:codegen (env)
-	return self.func.func.codegen(self, env)
+    return self.func.codegen(self, env)
 end
 
 function ast.DeclStatement:codegen (env)
-	local varname = self.ref.name
-	local tp      = self.ref.node_type:terraType()
+	local varname = self.name
+	local tp      = self.node_type:terraType()
 	local varsym  = symbol(tp)
 	env:localenv()[varname] = varsym
 
@@ -246,15 +236,7 @@ end
 function ast.Scalar:codegen (env)
 	local d = self.scalar.data
 	local s = symbol(&self.scalar.type:terraType())
-	return quote var [s] = d in @[s] end
-end
-
--- Name:codegen only has to worry about returning r-values
--- Name:codegen_lhs returns l-values
-function ast.Name:codegen (env)
-	local val = env:combinedenv()[self.name]
-
-	return `[val]
+	return `@d
 end
 
 function ast.VectorIndex:codegen (env)
@@ -283,13 +265,15 @@ function ast.UnaryOp:codegen (env)
 	end
 end
 
-
 function ast.BinaryOp:codegen (env)
 	local lhe = self.lhs:codegen(env)
 	local rhe = self.rhs:codegen(env)
 	return bin_exp(self.op, lhe, rhe)
 end
 
+function ast.LuaObject:codegen (env)
+    return `{}
+end
 --[[
 function ast.GenericFor:codegen (env)
 	env:enterblock()

@@ -401,4 +401,4 @@ L.assert = B.assert
 L.dot    = B.dot
 L.cross  = B.cross
 L.length = B.length
-L.is_function = B.is_function
+L.is_function = B.isFunc

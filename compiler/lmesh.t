@@ -115,7 +115,7 @@ local function initMeshRelations(mesh)
     for k, xtoy in pairs(mesh_rels_new) do
         local name       = xtoy.name
         local old_name   = xtoy.old_name
-        local n_t1       = relations[xtoy.t1]:size()
+        local n_t1       = relations[xtoy.t1]:Size()
         local n_rows     = mesh[old_name].row_idx[n_t1]
         local rel        = LDB.NewRelation(n_rows, name)
 

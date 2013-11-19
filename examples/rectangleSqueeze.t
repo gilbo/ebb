@@ -97,10 +97,10 @@ local cd = M.cellsofedge.cell.data
 local ed = M.cellsofedge.edge.data
 
 local Clib   = terralib.includec("stdlib.h")
-local offset = terralib.cast(&uint64, Clib.malloc(terralib.sizeof(uint64) * (M.edges:size() + 1)))
+local offset = terralib.cast(&uint64, Clib.malloc(terralib.sizeof(uint64) * (M.edges:Size() + 1)))
 
 local edge_no = -1
-for i = 0, M.cellsofedge:size() do
+for i = 0, M.cellsofedge:Size() do
 	if ed[i] ~= edge_no then
 		edge_no = edge_no + 1
 		offset[edge_no] = i

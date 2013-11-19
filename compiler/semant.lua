@@ -60,17 +60,6 @@ function Context:leaveloop()
     self.loop_count = self.loop_count - 1
     if self.loop_count < 0 then self.loop_count = 0 end
 end
-function Context:in_query ()
-    return self.query_count > 0 
-end
-function Context:enterquery()
-    self.query_count = self.query_count + 1
-end
-function Context:leavequery()
-    self.query_count = self.query_count - 1
-    if self.query_count < 0 then self.query_count = 0 end
-end
-
 
 ------------------------------------------------------------------------------
 --[[ AST semantic checking methods:                                       ]]--
@@ -247,13 +236,13 @@ end
 
 function ast.DeclStatement:check(ctxt)
     local decl    = self:clone()
-    decl.ref      = ast.LocalVar:DeriveFrom(self.ref)
+    decl.name     = self.name
 
     -- catch syntactically invalid initializations
     if not self.typeexpression and not self.initializer then
         ctxt:error(self, "Variables must either be initialized or have "..
                          "an explicitly annotated type.")
-        decl.ref.node_type = L.error
+        decl.node_type = L.error
         return decl
     end
 
@@ -278,7 +267,7 @@ function ast.DeclStatement:check(ctxt)
             typ = exptyp
         end
     end
-    decl.ref.node_type = typ
+    decl.node_type = typ
 
     if typ ~= L.error and
          not typ:isValueType() and not typ:isRow()
@@ -287,10 +276,7 @@ function ast.DeclStatement:check(ctxt)
                         "or rows to local temporaries")
     end
 
-    local lv = decl.initializer or decl.ref
-    lv.is_lvalue = true
-    lv.node_type = typ
-    ctxt:liszt()[decl.ref.name] = lv
+    ctxt:liszt()[decl.name] = typ
 
     return decl
 end
@@ -308,6 +294,7 @@ function ast.NumericFor:check(ctxt)
     local numfor     = self:clone()
     numfor.lower     = self.lower:check(ctxt)
     numfor.upper     = self.upper:check(ctxt)
+    numfor.name      = self.name
     local lower_type = numfor.lower.node_type
     local upper_type = numfor.upper.node_type
     check_num_type(lower_type)
@@ -321,20 +308,18 @@ function ast.NumericFor:check(ctxt)
     end
 
     -- infer iterator type
-    numfor.iter           = ast.LocalVar:DeriveFrom(self.iter)
-    numfor.iter.node_type = T.type_meet(lower_type, upper_type)
+    numfor.name           = self.name
+    numfor.node_type = T.type_meet(lower_type, upper_type)
     if step_type then
-        numfor.iter.node_type = T.type_meet(numfor.iter.node_type, step_type)
+        numfor.node_type = T.type_meet(numfor.node_type, step_type)
     end
 
     ctxt:enterblock()
     ctxt:enterloop()
-    local varname = numfor.iter.name
-    ctxt:liszt()[varname] = numfor.iter
+    ctxt:liszt()[numfor.name] = numfor.node_type
     numfor.body = self.body:check(ctxt)
     ctxt:leaveloop()
     ctxt:leaveblock()
-
     return numfor
 end
 
@@ -483,6 +468,11 @@ function ast.UnaryOp:check(ctxt)
     return unop
 end
 
+local function NewLuaObject(anchor, obj)
+    local lo = ast.LuaObject:DeriveFrom(anchor)
+    lo.node_type = L.internal(obj)
+    return lo
+end
 
 ------------------------------------------------------------------------------
 --[[                               Variables                              ]]--
@@ -505,48 +495,27 @@ local function luav_to_ast(luav, src_node)
         for i,v in ipairs(luav.data) do
             node.elems[i] = luav_to_ast(v, src_node)
         end
-
     elseif B.isFunc(luav) then
-        node      = ast.Function:DeriveFrom(src_node)
-        node.func = luav
-
+        node = NewLuaObject(src_node,luav)
     elseif L.is_relation(luav) then
-        node           = ast.Relation:DeriveFrom(src_node)
-        node.relation  = luav
-        node.node_type = L.relation
-        
-    elseif L.is_field(luav) then
-        node       = ast.Field:DeriveFrom(src_node)
-        node.field = luav
-        node.node_type = L.field
-
+        node = NewLuaObject(src_node,luav)
     elseif L.is_macro(luav) then
-        node = ast.Macro:DeriveFrom(src_node)
-        node.macro = luav
-
+        node = NewLuaObject(src_node,luav)
     elseif terralib.isfunction(luav) then
-        node      = ast.Function:DeriveFrom(src_node)
-        node.func = B.terra_to_func(luav)
-
+        node = NewLuaObject(src_node,B.terra_to_func(luav))
     elseif type(luav) == 'table' and luav.is_liszt_ast then
         -- For macro substitution: typed ASTs
         -- may be external and need to be inlined.
         node = ast.QuoteExpr:DeriveFrom(src_node)
         node.ast = luav
-
     elseif type(luav) == 'table' then
-        node       = ast.Table:DeriveFrom(src_node)
-        node.table = luav
-        node.node_type = L.luatable
-
+        node = NewLuaObject(src_node, luav)
     elseif type(luav) == 'number' then
         node       = ast.Number:DeriveFrom(src_node)
         node.value = luav
-
     elseif type(luav) == 'boolean' then
         node       = ast.Bool:DeriveFrom(src_node)
         node.value = luav
-
     else
         return nil
     end
@@ -580,24 +549,16 @@ end
 
 function ast.Name:check(ctxt)
     -- try to find the name in the local Liszt scope
-    local lisztv = ctxt:liszt()[self.name]
+    local typ = ctxt:liszt()[self.name]
 
     -- if the name is in the local scope, then it must have been declared
     -- somewhere in the liszt kernel.  Thus, it has to be a primitive, a
     -- bool, or a topological element.
-    if lisztv then
-        if lisztv.node_type:isValueType() then
-            local node = ast.LocalVar:DeriveFrom(lisztv)
-            node.node_type = lisztv.node_type
-            node.is_lvalue = lisztv.is_lvalue
-            node.name      = self.name
-            return node
-        else
-            -- WARNING this name over-writing seems problematic...
-            lisztv.name = self.name
-            return lisztv:check(ctxt)
-        -- check that we're not reading from an uninitialized variable
-        end
+    if typ then
+        local node = ast.Name:DeriveFrom(self)
+        node.node_type = typ
+        node.name      = self.name
+        return node
     end
 
     -- Otherwise, does the name exist in the lua scope?
@@ -696,6 +657,11 @@ function ast.Tuple:index_check(ctxt)
     return arg_ast
 end
 
+
+local function RunMacro(ctxt,src_node,v,params)
+  local r = v.genfunc(unpack(params))
+  return luav_to_checked_ast(r, src_node, ctxt)
+end
 function ast.TableLookup:check(ctxt)
     local table     = self.table:check(ctxt)
     local member    = self.member
@@ -705,46 +671,27 @@ function ast.TableLookup:check(ctxt)
         return err(self, ctxt)
     end
 
-    local fullname  = table.name .. '.' .. member.name
-
     -- table is a lua table
-    if table:is(ast.Table) then
+    if ttype:isInternal() then
+        local thetable = ttype.value
         -- perform the lookup in the lua table,
         -- which we assume is acting as a namespace
-        local luaval = table.table[member.name]
+        local luaval = thetable[member]
 
         if luaval == nil then
-            return err(self, ctxt, "lua table " .. table.name ..
-                       " does not have member '" .. member.name .. "'")
+            return err(self, ctxt, "lua table " ..
+                       "does not have member '" .. member .. "'")
         end
 
         -- and then convert the lua value into an ast node
-        local ast_node = luav_to_checked_ast(luaval, self, ctxt)
-        -- we set a name (for debug printing)
-        ast_node.name = fullname
-        return ast_node
-
-    -- table is a Relation, we expect index to be a field or field-macro
-    elseif table:is(ast.Relation) then
-        local luaval = table.relation[member.name]
-        -- relational table members must be fields
-        if not L.is_field(luaval) and not L.is_macro(luaval) then
-            return err(self, ctxt,
-                       "relation ".. table.name .." does not have "..
-                       "field or macro-field member " .. member.name)
-        end
-        -- this will return an ast.Field or ast.Macro node
         return luav_to_checked_ast(luaval, self, ctxt)
-
-    -- table is a Row, index is a field or field-macro
     elseif ttype:isRow() then
-        local luaval = ttype.relation[member.name]
+        local luaval = ttype.relation[member]
 
         -- create a field access normally
         if L.is_field(luaval) then
             local field         = luaval
             local ast_node      = ast.FieldAccess:DeriveFrom(member)
-            ast_node.name       = fullname
             ast_node.row        = table
             ast_node.field      = field
             ast_node.node_type  = field.type
@@ -752,29 +699,12 @@ function ast.TableLookup:check(ctxt)
 
         -- desugar macro-fields from row.macro to macro(row)
         elseif L.is_macro(luaval) then
-            local macro             = luaval
-            local call              = ast.Call:DeriveFrom(self)
-            call.func               = ast.Macro:DeriveFrom(member)
-            call.func.macro         = macro
-            call.params             = ast.Tuple:DeriveFrom(table)
-            call.params.children    = {table}
-
-            call                    = call:check(ctxt)
-            call.name               = fullname
-            return call
-
+            return RunMacro(ctxt,self,luaval,{table})
         else
             return err(self, ctxt, "Row "..table.name.." does not "..
                                    "have field or macro-field "..
                                    "'"..member.name.."'")
         end
-
-    elseif table:is(ast.Scalar) then
-        return err(self, ctxt,"select operator not supported "..
-                              "for LScalar")
-    elseif table:is(ast.Field) then
-        return err(self, ctxt, "select operator not supported "..
-                               "for LField")
     else
         return err(self, ctxt, "select operator not "..
                                "supported for "..
@@ -817,23 +747,22 @@ end
 
 function ast.Call:check(ctxt)
     local call     = self:clone()
+    
     call.node_type = L.error -- default
-    call.func      = self.func:check(ctxt)
-
-    if call.func:is(ast.Function) then
-        call.params    = self.params:check(ctxt)
-        call.node_type = call.func.func.check(call, ctxt)
-
-    elseif call.func:is(ast.Macro) then
-        call.params = self.params:check(ctxt)
+    local func      = self.func:check(ctxt)
+    call.params = self.params:check(ctxt)
+        
+    local isinternal = func.node_type:isInternal()
+    local v = isinternal and func.node_type.value
+    if v and L.is_function(v) then
+        call.func = v
+        call.node_type = v.check(call, ctxt)
+    elseif v and L.is_macro(v) then
         -- replace the call node with the inlined AST
-        call = call.func.macro.genfunc(
-                        unpack(call.params.children)):check(ctxt)
-
+        call = RunMacro(ctxt, self, v, call.params.children)
     elseif call.func.node_type:isError() then
         -- fall through
         -- (do not print error messages for errors already reported)
-
     else
         ctxt:error(self, "This call was neither a function nor macro.")
 
@@ -849,18 +778,6 @@ function ast.Scalar:check(ctxt)
     return n
 end
 
-function ast.Function:check(ctxt)
-    local n     = self:clone()
-    n.func      = self.func
-    return n
-end
-
-function ast.Macro:check(ctxt)
-    local n = self:clone()
-    n.macro = self.macro
-    return n
-end
-
 function ast.QuoteExpr:check(ctxt)
     return self.ast
 end
@@ -872,53 +789,24 @@ function ast.FieldAccess:check(ctxt)
     return n
 end
 
-function ast.Field:check(ctxt)
-    local n = self:clone()
-    n.field = self.field
-    return n
+function ast.LuaObject:check(ctxt)
+    assert(self.node_type and self.node_type:isInternal())
+    return self
 end
-
-function ast.Table:check(ctxt)
-    local n = self:clone()
-    n.table = self.table
-    return n
-end
-
-function ast.Relation:check(ctxt)
-    local n    = self:clone()
-    n.relation = self.relation
-    return n
-end
-
-
-function ast.Row:check(ctxt)
-    local row = self:clone()
-    assert(self.node_type)
-    row.node_type = self.node_type
-    return row
-end
-
-function ast.LocalVar:check(ctxt)
-    return self:clone()
-end
-
 
 ------------------------------------------------------------------------------
 --[[ Semantic checking called from here:                                  ]]--
 ------------------------------------------------------------------------------
 function ast.LisztKernel:check(ctxt)
     local kernel            = self:clone()
-
-    kernel.set              = self.set:check(ctxt)
-
-    if not kernel.set:is(ast.Relation) then
+    local set = self.set:check(ctxt)
+    if not set.node_type:isInternal() or not L.is_relation(set.node_type.value) then
         ctxt:error(kernel.set, "Expected a relation")
-    else
-        kernel.iter             = ast.Row:DeriveFrom(self.iter)
-        kernel.iter.name        = self.iter.name
-        kernel.iter.node_type   = L.row(kernel.set.relation)
-
-        ctxt:liszt()[kernel.iter.name] = kernel.iter
+    else 
+        kernel.name      = self.name
+        kernel.relation  = set.node_type.value
+        kernel.node_type = L.row(kernel.relation)
+        ctxt:liszt()[kernel.name] = kernel.node_type
         kernel.body = self.body:check(ctxt)
     end
 
