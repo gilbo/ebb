@@ -19,6 +19,7 @@ local L = terralib.require "compiler.lisztlib"
 local T = terralib.require "compiler.types"
 local C = terralib.require "compiler.c"
 
+local JSON = require('compiler.JSON')
 
 -------------------------------------------------------------------------------
 --[[ LRelation methods                                                     ]]--
@@ -255,7 +256,7 @@ function L.LField:print()
 end
 
 
-function LDB.SaveRelationIndex(params)
+function L.SaveRelationIndex(params)
 local interface_description =
 [[
     SaveRelationIndex assumes that it will be passed named arguments
@@ -322,7 +323,7 @@ local interface_description =
     end
 end
 
-function LDB.LoadRelationIndex(params)
+function L.LoadRelationIndex(params)
 local interface_description = [[
     LoadRelationIndex assumes that it will be passed named arguments
     Arguments are as follows:

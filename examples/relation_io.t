@@ -2,8 +2,8 @@ import 'compiler/liszt'
 local length, lprint = L.length, L.print
 
 -- Test code
-local M = L.initMeshRelationsFromFile("examples/rmesh.lmesh")
-
+local LMesh = terralib.require "compiler.lmesh"
+local M = LMesh.Load("examples/rmesh.lmesh")
 
 
 local relation_list = {}
@@ -13,13 +13,13 @@ for k,v in pairs(M) do
   end
 end
 
-local err_msg = L.LDB.SaveRelationIndex {
+local err_msg = L.SaveRelationIndex {
   relations = relation_list,
   filename = "./blah/index.json",
   notes    = "these are some notes",
 }
 
-local relations, err_msg = L.LDB.LoadRelationIndex {
+local relations, err_msg = L.LoadRelationIndex {
   filename = "./blah/index.json",
 }
 
