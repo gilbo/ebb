@@ -1,5 +1,6 @@
-import "compiler/liszt"
-local mesh = L.initMeshRelationsFromFile("examples/mesh.lmesh")
+import "compiler.liszt"
+local LMesh = terralib.require "compiler.lmesh"
+local mesh = LMesh.Load("examples/mesh.lmesh")
 
 local v = L.NewVector(L.float, {1, 2, 3}) 
 
@@ -10,6 +11,7 @@ local print_stuff = liszt_kernel(f in mesh.faces)
     var x = 2 + 3
     L.print(x)
     L.print(v)
+    L.print(f)
 end
 
 print_stuff()

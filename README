@@ -3,8 +3,7 @@ This project is a port of the Liszt DSL, which was originally embedded in Scala,
  - particles
  - mesh data will be stored on a generic OP2-like graph structure that will allow us to represent fields and sparse matrices with the same data structure.
 
-compiler/ - liszt code parsing, semantic checking and code gen
+compiler/ - liszt compiler implementation
 examples/ - example liszt programs, and applications written in terra that use the liszt runtime
-include/ - interface for liszt application programmers
-runtime/ - C++ liszt runtime and terra runtime interface
+runtime/ - C++ liszt runtime interface used by the compiler
 spec/ - contains example programs written in the Scala version of Liszt, paired with their Liszt-in-Terra equivalents.

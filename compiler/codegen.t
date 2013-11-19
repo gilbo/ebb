@@ -1,11 +1,7 @@
-local exports = {}
+local C = {}
+package.loaded["compiler.codegen"] = C
 
-local ast     = require 'ast'
-local semant  = require 'semant'
-local runtime = terralib.require 'runtime/liszt'
-local types   = terralib.require 'compiler/types'
-local Type    = types.Type
-local t       = types.t
+local ast     = require "compiler.ast"
 
 function ast.AST:codegen (env)
 	print(debug.traceback())
@@ -17,7 +13,7 @@ function ast.ExprStatement:codegen (env)
 end
 
 function ast.LisztKernel:codegen (env)
-	local param = symbol(t.addr:terraType())
+	local param = symbol(self.iter.node_type:terraType())
 	env:localenv()[self.iter.name] = param
 
 	local set  = self.set:codegen(env)
@@ -130,17 +126,6 @@ function ast.LocalVar:codegen(env)
 	return `[s]
 end
 
-local phaseMap = {
-	['+']   	= runtime.L_PLUS,
-	['-']   	= runtime.L_MINUS,
-	['*']   	= runtime.L_MULTIPLY,
-	['/']   	= runtime.L_DIVIDE,
-	['and'] 	= runtime.L_BAND,
-	['or']  	= runtime.L_BOR,
-	['land']    = runtime.L_AND,
-	['lor']     = runtime.L_OR,
-}
-
 local function bin_exp (op, lhe, rhe)
 	if     op == '+'   then return `[lhe] +   [rhe]
 	elseif op == '-'   then return `[lhe] -   [rhe]
@@ -220,7 +205,7 @@ function ast.VectorLiteral:codegen (env)
 	local v = symbol()
 	local tp = self.node_type:terraBaseType()
 	for i = 1, #self.elems do
-		ct[i] = self.elems[i]:codegen()
+		ct[i] = self.elems[i]:codegen(env)
 	end
 
    -- These quotes give terra the opportunity to generate optimized assembly via the vectorof call
@@ -327,7 +312,7 @@ function ast.GenericFor:codegen (env)
 end
 ]]--
 
-function exports.codegen (luaenv, kernel_ast)
+function C.codegen (luaenv, kernel_ast)
 	local env = terralib.newenvironment(luaenv)
 
 	env:enterblock()
@@ -338,6 +323,3 @@ function exports.codegen (luaenv, kernel_ast)
 		[kernel_body]
 	end
 end
-
-return exports
-

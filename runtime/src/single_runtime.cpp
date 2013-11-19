@@ -5,21 +5,16 @@
 #include <assert.h>
 
 extern "C" {
-#include "single/liszt_runtime.h"
+#include "single_runtime.h"
 }
 
-struct lProgramArguments {
-	const char * mesh_file;
-	bool redirect_output_to_log;
-};
-
-#include "common/boundary_set_reader.h"
-#include "common/mesh.h"
-#include "common/print_context.h"
-#include "common/runtime_util.h"
-#include "common/nested_topology.h"
-#include "common/MeshIO/LisztFileReader.h"
-#include "common/MeshIO/LisztFileWriter.h"
+#include "boundary_set_reader.h"
+#include "mesh.h"
+#include "print_context.h"
+#include "runtime_util.h"
+#include "nested_topology.h"
+#include "MeshIO/LisztFileReader.h"
+#include "MeshIO/LisztFileWriter.h"
 
 #define L_KERNEL L_ALWAYS_INLINE
 #define L_NESTED L_ALWAYS_INLINE
@@ -117,21 +112,14 @@ lContext *lLoadContext (char *mesh_file) {
 	return ctx;
 }
 
-void *lLoadPosition (lContext *ctx) {
-	return ctx->mesh_reader.fieldData(L_VERTEX, L_FLOAT, 3, "position");
+void * lLoadPosition (lContext *ctx)  {
+    assert(!"NOT IMPLEMENTED - lLoadPosition");
+    return NULL;
 }
 
 lField *lLoadField(lContext *ctx, const char *key, lElementType key_type, lType val_type, size_t val_length) {
-	size_t n_elems = numberOfElementsOfType(ctx, key_type);
-	lField *field = (lField*) malloc(sizeof(lField));
-	// field->data   = (byte*)   malloc(n_elems * val_length * lUtilTypeSize(val_type));
-    if (!strcmp(key, "position")) {
-        assert(key_type == L_VERTEX);
-        assert(val_type == L_DOUBLE || val_type == L_FLOAT);
-    }
-    field->data = (byte *) ctx->mesh_reader.fieldData(key_type, val_type, val_length, key);
-    field->lkfield = (lkField *) field;
-	return field;
+    assert(!"NOT IMPLEMENTED - lLoadField");
+	return NULL;
 }
 
 lField *lInitField (lContext *ctx, lElementType key_type, lType val_type, size_t val_length) {
@@ -203,86 +191,7 @@ void lFieldBroadcast(lContext * ctx, lField * field, lElementType key_type, lTyp
 }
 
 L_RUNTIME_UNNESTED void lFieldSaveData(lContext * ctx, lField * field, lElementType key_type, lType val_type, size_t val_length, const char * key) {
-	lFieldEnterPhase(field,val_type, val_length, L_READ_ONLY);
-
-//	printf("TODO: save field %s\n",key);
-
-  // fill in the field with the data passed in
-//  printf("   initialize write field\n");
-  MeshIO::FileField write_field;
-  write_field.range.type   = val_type;
-  write_field.range.flags = 0;
-  if(val_length > 1) {
-    write_field.range.flags  = MeshIO::LISZT_VEC_FLAG;
-    write_field.range.data[0]   = val_length;
-  }
-
-  // find out how many bytes we will need to write
-  MeshIO::LisztHeader *write_header = &ctx->mesh_writer.header;
-  *write_header = ctx->mesh_reader.header();
-  if(key_type == L_VERTEX) {
-    write_field.domain = MeshIO::VERTEX_T;
-    write_field.nElems = write_header->nV;
-//    printf("   vertex\n");
-  } else if(key_type == L_CELL) {
-    write_field.domain = MeshIO::CELL_T;
-    write_field.nElems = write_header->nC;
-  } else if(key_type == L_EDGE) {
-    write_field.domain = MeshIO::EDGE_T;
-    write_field.nElems = write_header->nE;
-  } else if(key_type == L_FACE) {
-    write_field.domain = MeshIO::FACE_T;
-    write_field.nElems = write_header->nF;
-  }
-  int currentSize = (int)MeshIO::lMeshTypeSize(val_type)*(int)val_length*write_field.nElems;
-
-  //see if field is already in file
-  MeshIO::FileField *old_field = (MeshIO::FileField *)malloc(sizeof(MeshIO::FileField));
-  int found = ctx->mesh_reader.findField(key, old_field);
-
-  if(found != -1){
-    //if the field is already there, make sure the size for the old data is smaller than the size of the new data and the right over the old data.  
-    write_field.name = old_field->name;
-    int oldSize = old_field->nElems * MeshIO::lMeshTypeSize(old_field->range.type);
-    if(old_field->range.flags == MeshIO::LISZT_VEC_FLAG)
-      oldSize *= old_field->range.data[0];
-    else if(old_field->range.flags == MeshIO::LISZT_MAT_FLAG)
-      oldSize *= old_field->range.data[0]*old_field->range.data[1];
-
-    if(currentSize <= oldSize){
-      // find where to write the data 
-      ctx->mesh_writer.setPosition(old_field->data);
-    } else {
-      ctx->mesh_writer.setEnd();
-    }
-    //write the data
-    write_field.data = ctx->mesh_writer.currentPosition();
-    ctx->mesh_writer.write(currentSize, field->data);
-    // update the fileField with the new info
-    ctx->mesh_writer.setPosition(ctx->mesh_reader.findFieldPositionInTable(key));
-    ctx->mesh_writer.writeValue(write_field);
-  } else {
-    // if the field does not exist then go here
-    MeshIO::FileField *fields;
-    uint32_t nfields = ctx->mesh_reader.findFieldTable(&fields);
-
-    ctx->mesh_writer.setEnd();
-    write_field.name = ctx->mesh_writer.currentPosition();
-    ctx->mesh_writer.writeString(key);
-    write_field.data = ctx->mesh_writer.currentPosition();
-    ctx->mesh_writer.write(currentSize, field->data);
-    
-    write_header->field_table_index = ctx->mesh_writer.currentPosition();
-    ctx->mesh_writer.writeValue(nfields+1);
-    for(int i = 0; i < nfields; i++){
-      ctx->mesh_writer.writeValue(fields[i]);
-    }
-    ctx->mesh_writer.writeValue(write_field);
-    ctx->mesh_writer.writeHeader();
-    std::free(fields);
-  }
-
-  std::free(old_field);  
+    assert(!"NOT IMPLEMENTED - lFieldSaveData");
 }
 
 void lFieldEnterPhase(lField * field, lType val_type, size_t val_length, lPhase phase) {
@@ -311,23 +220,7 @@ void lScalarEnterPhase(lScalar * scalar, lType val_type, size_t val_length, lPha
 }
 
 void lSetInitBoundary(lContext * ctx, lSet * set, lElementType type, const char * boundary_name) {
-	MeshIO::IOElemType etyp;
-	switch(type) {
-		case L_VERTEX:
-			etyp = MeshIO::VERTEX_T;
-			break;
-		case L_EDGE:
-			etyp = MeshIO::EDGE_T;
-			break;
-		case L_FACE:
-			etyp = MeshIO::FACE_T;
-			break;
-		case L_CELL:
-			etyp = MeshIO::CELL_T;
-			break;
-	}
-	int id;
-	ctx->boundary_reader.load(etyp,boundary_name,&id,&set->ranges,&set->size);
+    assert(!"NOT IMPLEMENTED - lSetInitBoundary");
 }
 
 
@@ -561,7 +454,7 @@ void lCellsOfMesh(lContext * ctx, lSet * set) {
 
 #define NESTED_TOPOLOGY_GET_MESH(ctx) (&unnested(ctx)->mesh)
 #define NESTED_TOPOLOGY_GET_SET(set) (set->set)
-#include "common/nested_topology_functions.inc"
+#include "nested_topology_functions.inc"
 
 
 int lkIDOfVertex(lkContext * ctx, lkElement e) {
@@ -577,9 +470,9 @@ int lkIDOfCell(lkContext * ctx, lkElement e) {
 	return elementID(e);
 }
 
-#include "common/vector.h"
-#include "common/matrix.h"
-#include "common/liszt_math.h"
+#include "vector.h"
+#include "matrix.h"
+#include "liszt_math.h"
 
 
 //code generated from the liszt compiler is now included here after runtime-specific

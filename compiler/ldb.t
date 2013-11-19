@@ -13,25 +13,11 @@
 
 -- file/module namespace table
 local LDB = {}
+package.loaded["compiler.ldb"] = LDB
 
-local T = terralib.require('compiler/types')
-
-local DECL = terralib.require('include/decl')
-local LRelation = DECL.LRelation
-local LField    = DECL.LField
-local LMacro    = DECL.LMacro
-
-local C = DECL.C
-
-local JSON = require('lib/JSON')
-
-
--- terra type of a field that represents a row in another relation
-local ROW_TERRA_TYPE       = T.t.uint:terraType()
--- terra type of an orientation field
-local ORIENT_TYPE = T.t.uint8
-
-
+local L = terralib.require "compiler.lisztlib"
+local T = terralib.require "compiler.types"
+local C = terralib.require "compiler.c"
 
 
 -------------------------------------------------------------------------------
@@ -69,24 +55,24 @@ function LDB.NewRelation(size, name)
         _macros    = terralib.newlist(),
         _name      = name,
     },
-    LRelation)
+    L.LRelation)
     return rel
 end
 
-function LRelation:size()
+function L.LRelation:size()
     return self._size
 end
-function LRelation:name()
+function L.LRelation:name()
     return self._name
 end
 
 -- prevent user from modifying the lua table
-function LRelation:__newindex(fieldname,value)
+function L.LRelation:__newindex(fieldname,value)
     error("Cannot assign members to LRelation object "..
           "(did you mean to call self:NewField?)", 2)
 end
 
-function LRelation:NewField (name, typ)  
+function L.LRelation:NewField (name, typ)  
     if not name or type(name) ~= "string" then
         error("NewField() expects a string as the first argument", 2)
     end
@@ -98,13 +84,17 @@ function LRelation:NewField (name, typ)
               "That name is already being used.", 2)
     end
 
-    if not T.Type.isLisztType(typ) or
-       not (typ:isValueType() or typ:isRow())
+    if not (T.isLisztType(typ) and typ:isValueType()) and
+       not L.is_relation(typ)
     then
         error("NewField() expects a Liszt type as the 2nd argument", 2)
     end
 
-    local field = setmetatable({}, LField)
+    if L.is_relation(typ) then
+        typ = L.row(typ)
+    end
+
+    local field = setmetatable({}, L.LField)
     field.type  = typ
     field.name  = name
     field.owner = self
@@ -113,7 +103,7 @@ function LRelation:NewField (name, typ)
     return field
 end
 
-function LRelation:NewFieldMacro (name, macro)  
+function L.LRelation:NewFieldMacro (name, macro)  
     if not name or type(name) ~= "string" then
         error("NewFieldMacro() expects a string as the first argument", 2)
     end
@@ -125,7 +115,7 @@ function LRelation:NewFieldMacro (name, macro)
               "That name is already being used.", 2)
     end
 
-    if not DECL.is_macro(macro) then
+    if not L.is_macro(macro) then
         error("NewFieldMacro() expects a Macro as the 2nd argument", 2)
     end
 
@@ -134,7 +124,7 @@ function LRelation:NewFieldMacro (name, macro)
     return macro
 end
 
-function LRelation:json_serialize(rel_to_name)
+function L.LRelation:json_serialize(rel_to_name)
     local json = {
         size      = self._size,
         fields    = {},
@@ -147,7 +137,7 @@ function LRelation:json_serialize(rel_to_name)
     return json
 end
 
-function LField:json_serialize(rel_to_name)
+function L.LField:json_serialize(rel_to_name)
     local json = {
         type = self.type:json_serialize(rel_to_name)
     }
@@ -158,7 +148,7 @@ end
 -- Relations can be reconstructed before any of the Fields.
 -- This ensures that Row Fields will safely match some existing
 -- Relation when deserialized.
-function LRelation.json_deserialize_stub(json_tbl, relation_name)
+function L.LRelation.json_deserialize_stub(json_tbl, relation_name)
     if not type(json_tbl.size) == 'number' then
         error('tried to deserialize relation missing size', 2)
     end
@@ -168,10 +158,10 @@ function LRelation.json_deserialize_stub(json_tbl, relation_name)
     return relation
 end
 -- the second call should supply the actual relation object...
-function LRelation:json_deserialize_fields(json_tbl, name_to_rel)
+function L.LRelation:json_deserialize_fields(json_tbl, name_to_rel)
     for field_name, field_json in pairs(json_tbl.fields) do
 
-        local field = LField.json_deserialize(field_json, name_to_rel)
+        local field = L.LField.json_deserialize(field_json, name_to_rel)
 
         field.owner = self -- i.e. the relation
         field.name  = field_name
@@ -180,7 +170,7 @@ function LRelation:json_deserialize_fields(json_tbl, name_to_rel)
     end
 end
 
-function LField.json_deserialize(json_tbl, name_to_rel)
+function L.LField.json_deserialize(json_tbl, name_to_rel)
     if not json_tbl.type then
         error('could not find field type', 2)
     end
@@ -188,13 +178,13 @@ function LField.json_deserialize(json_tbl, name_to_rel)
     local typ = T.Type.json_deserialize(json_tbl.type, name_to_rel)
     local field = setmetatable({
         type = typ
-    }, LField)
+    }, L.LField)
     return field
 end
 
 
 
-function LRelation:print()
+function L.LRelation:print()
     print(self._name, "size: ".. tostring(self._size))
     for i,f in ipairs(self._fields) do
         f:print()
@@ -205,19 +195,42 @@ end
 --[[ LField methods:                                                       ]]--
 -------------------------------------------------------------------------------
 
-function LField:LoadFromCallback (callback)
-    -- TODO: It would be nice to typecheck the callback's type signature...
-    local bytes  =
-        C.malloc(self.owner._size * terralib.sizeof(self.type:terraType()))
-    self.data    = terralib.cast(&self.type:terraType(),bytes)
 
-    for i = 0, self.owner._size-1 do
+function L.LField:Size()
+    return self.owner._size
+end
+local bit = require "bit"
+
+
+--vector(double,4) requires 32-byte alignment
+--WARNING: this will need more bookkeeping since you cannot call
+-- free on the returned pointer
+local terra allocateAligned32(size : uint64)
+    var r = [uint64](C.malloc(size + 32))
+    r = (r + 31) and not 31
+    return [&opaque](r)
+end
+function L.LField:Allocate()
+    local bytes  =
+        allocateAligned32(self:Size() * terralib.sizeof(self.type:terraType()))
+    self.data    = terralib.cast(&self.type:terraType(),bytes)
+end
+
+function L.LField:LoadFromCallback (callback)
+    -- TODO: It would be nice to typecheck the callback's type signature...
+    self:Allocate()
+    for i = 0, self:Size() - 1 do
         callback(self.data + i, i)
     end
-end    
+end
 
-function LField:print()
-    print(self.name.." :  "..self.type:toString())
+function L.LField:LoadFromMemory(mem)
+    self:Allocate()
+    C.memcpy(self.data,mem, self:Size() * terralib.sizeof(self.type:terraType()))
+end
+
+function L.LField:print()
+    print(self.name..": <" .. tostring(self.type:terraType()) .. '>')
     if not self.data then
         print("...not initialized")
         return
@@ -228,13 +241,15 @@ function LField:print()
         for i = 0, N-1 do
             local s = ''
             for j = 0, self.type.N-1 do
-                s = s .. tostring(self.data[i][j]) .. ' '
+                local t = tostring(self.data[i][j]):gsub('ULL','')
+                s = s .. t .. ' '
             end
             print("", i, s)
         end
     else
         for i = 0, N-1 do
-            print("",i, self.data[i])
+            local t = tostring(self.data[i]):gsub('ULL', '')
+            print("", i, t)
         end
     end
 end
@@ -358,7 +373,7 @@ local interface_description = [[
             return {}, valid_relation_name_err_msg
         end
 
-        relations[id] = LRelation.json_deserialize_stub(json_val, id)
+        relations[id] = L.LRelation.json_deserialize_stub(json_val, id)
     end
     -- then we make a second pass to actually recover the fields
     for id, relation in pairs(relations) do
@@ -387,6 +402,3 @@ end
 
 
 
-
-
-return LDB

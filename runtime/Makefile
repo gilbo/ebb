@@ -1,51 +1,40 @@
 .PHONY= all single clean
+.SUFFIXES:
+.SECONDARY:
 
 UNAME = $(shell uname)
-CXX = clang
+CXX = clang++
 
-SINGLE_LIB =
+COMMON_SRC = src/mesh.cpp src/lmeshloader.cpp
+COMMON_OBJ = $(patsubst src/%.cpp,build/%.o,$(COMMON_SRC))
 
-SINGLE_DEP =
-SINGLE_SRC =
-
-COMMON_DEP =
-COMMON_SRC =
-
-CXXFLAGS_LIB =
-CXXFLAGS_OBJ =
-CXXFLAGS_INC = -I.. -I.
+FLAGS = -I. -g -fPIC -Wno-deprecated
 
 ifeq ($(UNAME),Darwin)
-	SINGLE_LIB += single/runtime_single.dylib
-	SINGLE_DEP += single/runtime_single.cpp
-	COMMON_DEP += common/mesh.cpp
-	CXXFLAGS_LIB += -dynamiclib
+	LFLAGS += -dynamiclib
+else
+	LFLAGS += -shared
 endif
 
-ifeq ($(UNAME),Linux)
-	SINGLE_LIB += single/libruntime_single.so
-	SINGLE_DEP += single/runtime_single.o
-	SINGLE_SRC += single/runtime_single.cpp
-	COMMON_DEP += common/mesh.o
-	COMMON_SRC += common/mesh.cpp
-	CXXFLAGS_LIB += -shared
-	CXXFLAGS_OBJ += -c -fPIC -Wno-deprecated
-endif
+LIBRARIES = libsingle_runtime.so
 
-all: $(SINGLE_LIB)
+all: $(LIBRARIES)
 
-$(SINGLE_LIB): $(SINGLE_DEP) $(COMMON_DEP)
-	$(CXX) $(CXXFLAGS_LIB) $(CXXFLAGS_INC) -lstdc++ $(SINGLE_DEP) $(COMMON_DEP) -o $(SINGLE_LIB)
-
-$(SINGLE_DEP): $(SINGLE_SRC)
-ifeq ($(UNAME),Linux)
-	$(CXX) $(CXXFLAGS_OBJ) $(CXXFLAGS_INC) $(SINGLE_SRC) -o $(SINGLE_DEP)
-endif
-
-$(COMMON_DEP): $(COMMON_SRC)
-ifeq ($(UNAME),Linux)
-	$(CXX) $(CXXFLAGS_OBJ) $(CXXFLAGS_INC) $(COMMON_SRC) -o $(COMMON_DEP)
-endif
-
+lib%.so:   build/%.o $(COMMON_OBJ)
+	$(CXX) $(LFLAGS) $< $(COMMON_OBJ) -o $@
+    
+build/%.o:	src/%.cpp 
+	$(CXX) $(FLAGS) $< -c -o $@
+	
 clean:
-	rm -rf *~ \#* single/*.o common/*.o single/*.dylib single/*.so
+	rm -rf $(LIBRARIES) build/*
+
+SRCS = $(wildcard src/*.cpp)
+DEPENDENCIES = $(patsubst src/%.cpp,build/%.d,$(SRCS))
+build/%.d:	src/%.cpp
+	@g++ $(FLAGS) -w -MM -MT '$@ $(@:.d=.o)' $< -o $@
+	
+#if we are cleaning, then don't include dependencies (which would require the header files are built)	
+ifeq ($(findstring $(MAKECMDGOALS),purge clean),)
+-include $(DEPENDENCIES)
+endif

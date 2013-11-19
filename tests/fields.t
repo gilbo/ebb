@@ -3,11 +3,13 @@
 	 produces something that can compile.
 ]]
 
-import "compiler/liszt"
-require 'tests/test'
+import "compiler.liszt"
+require "tests.test"
 
 local assert = L.assert
-local mesh   = L.initMeshRelationsFromFile("examples/mesh.lmesh")
+local LMesh = terralib.require "compiler.lmesh"
+local mesh = LMesh.Load("examples/mesh.lmesh")
+
 local V      = mesh.vertices
 local F      = mesh.faces
 

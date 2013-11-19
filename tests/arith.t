@@ -1,6 +1,8 @@
-import "compiler/liszt"
-require "tests/test"
-mesh = L.initMeshRelationsFromFile("examples/mesh.lmesh")
+import "compiler.liszt"
+require "tests.test"
+
+local LMesh = terralib.require "compiler.lmesh"
+mesh = LMesh.Load("examples/mesh.lmesh")
 
 local vk = liszt_kernel(v in mesh.vertices)
     var x = {1, 2, 3} ^ 4

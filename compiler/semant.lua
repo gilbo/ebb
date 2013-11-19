@@ -1,10 +1,9 @@
-local exports = {}
+local S = {}
+package.loaded["compiler.semant"] = S
 
-local ast       = require("ast")
-local builtins  = terralib.require("include/builtins")
-local types     = terralib.require("compiler/types")
-local Type, t   = types.Type, types.t
-local type_meet = types.type_meet
+local ast = require "compiler.ast"
+local B = terralib.require "compiler.builtins"
+local T = terralib.require "compiler.types"
 
 --[[
     AST:check(ctxt) type checking routines
@@ -48,8 +47,8 @@ end
 function Context:leaveblock()
     self.env:leaveblock()
 end
-function Context:error(ast, msg)
-    self.diag:reporterror(ast, msg)
+function Context:error(ast, ...)
+    self.diag:reporterror(ast, ...)
 end
 function Context:in_loop()
     return self.loop_count > 0
@@ -115,7 +114,7 @@ function ast.WhileStatement:check(ctxt)
 
     whilestmt.cond = self.cond:check(ctxt)
     local condtype = whilestmt.cond.node_type
-    if condtype ~= t.error and condtype ~= t.bool then
+    if condtype ~= L.error and condtype ~= L.bool then
         ctxt:error(self, "expected bool expression but found " ..
                          condtype:toString())
     end
@@ -148,7 +147,7 @@ function ast.RepeatStatement:check(ctxt)
     repeatstmt.cond = self.cond:check(ctxt)
     local condtype  = repeatstmt.cond.node_type
 
-    if condtype ~= t.error and condtype ~= t.bool then
+    if condtype ~= L.error and condtype ~= L.bool then
         ctxt:error(self, "expected bool expression but found " ..
                          condtype:toString())
     end
@@ -179,7 +178,7 @@ function ast.Reduce:check(ctxt)
     else
         ctxt:error(self, "only lvalues can be reduced.")
         local errnode = self:clone()
-        errnode.node_type = t.error
+        errnode.node_type = L.error
         return errnode
     end
 end
@@ -190,12 +189,12 @@ function ast.Assignment:check(ctxt)
 
     assignment.lvalue = lhs
     local ltype       = lhs.node_type
-    if ltype == t.error then return assignment end
+    if ltype == L.error then return assignment end
 
     local rhs         = self.exp:check(ctxt)
     assignment.exp    = rhs
     local rtype       = rhs.node_type
-    if rtype == t.error then return assignment end
+    if rtype == L.error then return assignment end
 
     -- If the left hand side was a reduction store the reduction operation
     if self.lvalue:is(ast.Reduce) then
@@ -216,8 +215,8 @@ function ast.Assignment:check(ctxt)
     end
 
     -- enforce type agreement b/w lhs and rhs
-    local derived = type_meet(ltype,rtype)
-    if derived == t.error or
+    local derived = T.type_meet(ltype,rtype)
+    if derived == L.error or
        (ltype:isPrimitive() and rtype:isVector()) or
        (ltype:isVector()    and rtype:isVector() and ltype.N ~= rtype.N)
     then
@@ -231,17 +230,17 @@ end
 
 local function exec_type_annotation(typexp, ast_node, ctxt)
     local status, typ = pcall(function()
-        return types.terraToLisztType(typexp(ctxt:lua()))
+        return typexp(ctxt:lua())
     end)
 
     if not status then
         ctxt:error(ast_node, "Error evaluating type annotation: "..typ)
-        typ = t.error
+        typ = L.error
     end
-    if not Type.isLisztType(typ) then
+    if not T.isLisztType(typ) then
         ctxt:error(ast_node, "Expected Liszt type annotation but found " ..
                              type(typ))
-        typ = t.error
+        typ = L.error
     end
     return typ
 end
@@ -254,7 +253,7 @@ function ast.DeclStatement:check(ctxt)
     if not self.typeexpression and not self.initializer then
         ctxt:error(self, "Variables must either be initialized or have "..
                          "an explicitly annotated type.")
-        decl.ref.node_type = t.error
+        decl.ref.node_type = L.error
         return decl
     end
 
@@ -269,10 +268,10 @@ function ast.DeclStatement:check(ctxt)
         local exptyp     = decl.initializer.node_type
         -- if the type was annotated check consistency
         if typ then
-            local mtyp = type_meet(exptyp,typ)
+            local mtyp = T.type_meet(exptyp,typ)
             if typ ~= mtyp then
-                ctxt:error(self, "Cannot assign a value of type " ..
-                                 exptyp .. " to type " .. typ)
+                ctxt:error(self, "Cannot assign a value of type ",
+                                  exptyp, " to type ", typ)
             end
         -- or infer the type as the expression type
         else
@@ -281,7 +280,7 @@ function ast.DeclStatement:check(ctxt)
     end
     decl.ref.node_type = typ
 
-    if typ ~= t.error and
+    if typ ~= L.error and
          not typ:isValueType() and not typ:isRow()
     then
         ctxt:error(self,"can only assign numbers, bools, "..
@@ -299,7 +298,7 @@ end
 function ast.NumericFor:check(ctxt)
     local node = self
     local function check_num_type(tp)
-        if tp ~= t.error and not tp:isNumeric() then
+        if tp ~= L.error and not tp:isNumeric() then
             ctxt:error(node, "expected a numeric expression to define the "..
                              "iterator bounds/step (found "..
                              tp:toString()..")")
@@ -323,9 +322,9 @@ function ast.NumericFor:check(ctxt)
 
     -- infer iterator type
     numfor.iter           = ast.LocalVar:DeriveFrom(self.iter)
-    numfor.iter.node_type = type_meet(lower_type, upper_type)
+    numfor.iter.node_type = T.type_meet(lower_type, upper_type)
     if step_type then
-        numfor.iter.node_type = type_meet(numfor.iter.node_type, step_type)
+        numfor.iter.node_type = T.type_meet(numfor.iter.node_type, step_type)
     end
 
     ctxt:enterblock()
@@ -354,7 +353,7 @@ function ast.CondBlock:check(ctxt)
     local new_node  = self:clone()
     new_node.cond   = self.cond:check(ctxt)
     local condtype  = new_node.cond.node_type
-    if condtype ~= t.error and condtype ~= t.bool then
+    if condtype ~= L.error and condtype ~= L.bool then
         ctxt:error(self, "conditional expression type should be"..
                          "boolean (found " .. condtype:toString() .. ")")
     end
@@ -398,7 +397,7 @@ local isBoolOp = {
 }
 
 local function err (node, ctx, msg)
-    node.node_type = t.error
+    node.node_type = L.error
     if msg then ctx:error(node, msg) end
     return node
 end
@@ -412,7 +411,7 @@ function ast.BinaryOp:check(ctxt)
     local ltype, rtype = binop.lhs.node_type, binop.rhs.node_type
 
     -- Silently ignore/propagate errors
-    if ltype == t.error or rtype == t.error then return err(self, ctxt) end
+    if ltype == L.error or rtype == L.error then return err(self, ctxt) end
 
     local type_err = 'incompatible types: ' .. ltype:toString() ..
                      ' and ' .. rtype:toString()
@@ -423,7 +422,7 @@ function ast.BinaryOp:check(ctxt)
         return err(self, ctxt, op_err)
     end
 
-    local derived = type_meet(ltype, rtype)
+    local derived = T.type_meet(ltype, rtype)
 
     -- Numeric op operands cannot be vectors
     if isNumOp[binop.op] then
@@ -434,13 +433,13 @@ function ast.BinaryOp:check(ctxt)
             return err(binop, ctxt, op_err)
 
         -- if the type_meet failed, types are incompatible
-        elseif derived == t.error then
+        elseif derived == L.error then
             return err(binop, ctxt, type_err)
 
         -- otherwise, we need to return a logical type
         else
             binop.node_type =
-              derived:isPrimitive() and t.bool or t.vector(t.bool, derived.N)
+              derived:isPrimitive() and L.bool or L.vector(L.bool, derived.N)
             return binop
         end
 
@@ -450,7 +449,7 @@ function ast.BinaryOp:check(ctxt)
         end
     end
 
-    if derived == t.error then
+    if derived == L.error then
         ctxt:error(self, type_err)
     end
 
@@ -463,7 +462,7 @@ function ast.UnaryOp:check(ctxt)
     unop.op        = self.op
     unop.exp       = self.exp:check(ctxt)
     local exptype  = unop.exp.node_type
-    unop.node_type = t.error -- default
+    unop.node_type = L.error -- default
 
     if unop.op == 'not' then
         if exptype:isLogical() then
@@ -507,17 +506,19 @@ local function luav_to_ast(luav, src_node)
             node.elems[i] = luav_to_ast(v, src_node)
         end
 
-    elseif L.is_function(luav) then
+    elseif B.isFunc(luav) then
         node      = ast.Function:DeriveFrom(src_node)
         node.func = luav
 
     elseif L.is_relation(luav) then
         node           = ast.Relation:DeriveFrom(src_node)
         node.relation  = luav
-    
+        node.node_type = L.relation
+        
     elseif L.is_field(luav) then
         node       = ast.Field:DeriveFrom(src_node)
         node.field = luav
+        node.node_type = L.field
 
     elseif L.is_macro(luav) then
         node = ast.Macro:DeriveFrom(src_node)
@@ -525,7 +526,7 @@ local function luav_to_ast(luav, src_node)
 
     elseif terralib.isfunction(luav) then
         node      = ast.Function:DeriveFrom(src_node)
-        node.func = builtins.terra_to_func(luav)
+        node.func = B.terra_to_func(luav)
 
     elseif type(luav) == 'table' and luav.is_liszt_ast then
         -- For macro substitution: typed ASTs
@@ -536,6 +537,7 @@ local function luav_to_ast(luav, src_node)
     elseif type(luav) == 'table' then
         node       = ast.Table:DeriveFrom(src_node)
         node.table = luav
+        node.node_type = L.luatable
 
     elseif type(luav) == 'number' then
         node       = ast.Number:DeriveFrom(src_node)
@@ -566,7 +568,7 @@ local function luav_to_checked_ast(luav, src_node, ctxt)
     if not ast_node then
         ctxt:error(src_node, "could not convert Lua value to a Liszt value")
         ast_node = src_node:clone()
-        ast_node.node_type = t.error
+        ast_node.node_type = L.error
 
     -- on successful conversion to an ast node
     else
@@ -614,7 +616,7 @@ function ast.Name:check(ctxt)
     ctxt:error(self, "variable '" .. self.name .. "' is not defined")
     local err_node = self:clone()
     err_node.name  = self.name
-    err_node.node_type = t.error
+    err_node.node_type = L.error
     return err_node
 end
 
@@ -622,11 +624,11 @@ function ast.Number:check(ctxt)
     local number = self:clone()
     number.value = self.value
     if tonumber(self.value) % 1 == 0 then
-        self.node_type = t.int
-        number.node_type = t.int
+        self.node_type = L.int
+        number.node_type = L.int
     else
-        self.node_type = t.double
-        number.node_type = t.double
+        self.node_type = L.double
+        number.node_type = L.double
     end
     return number
 end
@@ -641,7 +643,7 @@ function ast.VectorLiteral:check(ctxt)
                      "of boolean or numeric type"
     local mt_error = "vector entries must be of the same type"
 
-    if type_so_far == t.error then return err(self, ctxt) end
+    if type_so_far == L.error then return err(self, ctxt) end
     if not type_so_far:isPrimitive() then return err(self, ctxt, tp_error) end
 
     for i = 2, #self.elems do
@@ -650,18 +652,18 @@ function ast.VectorLiteral:check(ctxt)
 
         if not tp:isPrimitive() then return err(self, ctxt, tp_error) end
 
-        type_so_far = type_meet(type_so_far, tp)
+        type_so_far = T.type_meet(type_so_far, tp)
         if type_so_far:isError() then return err(self, ctxt, mt_error) end
     end
 
-    veclit.node_type = t.vector(type_so_far, #veclit.elems)
+    veclit.node_type = L.vector(type_so_far, #veclit.elems)
     return veclit
 end
 
 function ast.Bool:check(ctxt)
     local boolnode = self:clone()
     boolnode.value = self.value
-    boolnode.node_type = t.bool
+    boolnode.node_type = L.bool
     return boolnode
 end
 
@@ -684,7 +686,7 @@ function ast.Tuple:index_check(ctxt)
     if #self.children ~= 1 then
         ctxt:error(self, "can use exactly one argument to index here")
         local errnode = self:clone()
-        errnode.node_type = t.error
+        errnode.node_type = L.error
         return errnode
     end
     local arg_ast = self.children[1]:check(ctxt)
@@ -699,11 +701,11 @@ function ast.TableLookup:check(ctxt)
     local member    = self.member
     local ttype     = table.node_type
 
-    local fullname  = table.name .. '.' .. member.name
-
-    if ttype == t.error then
+    if ttype == L.error then
         return err(self, ctxt)
     end
+
+    local fullname  = table.name .. '.' .. member.name
 
     -- table is a lua table
     if table:is(ast.Table) then
@@ -790,19 +792,19 @@ function ast.VectorIndex:check(ctxt)
 
     -- RHS is an expression of integral type
     -- (make sure this check always runs)
-    if idxtype ~= t.error and not idxtype:isIntegral() then
+    if idxtype ~= L.error and not idxtype:isIntegral() then
         ctxt:error(self, "expected an integer expression to index into "..
                          "the vector (found ".. idxtype:toString() ..')')
     end
 
     -- LHS should be a vector
-    if vectype ~= t.error and not vectype:isVector() then
+    if vectype ~= L.error and not vectype:isVector() then
         ctxt:error(self, "indexing operator [] not supported for "..
                          "non-vector type " .. vectype:toString())
-        vectype = t.error
+        vectype = L.error
     end
-    if vectype == t.error then
-        vidx.node_type = t.error
+    if vectype == L.error then
+        vidx.node_type = L.error
         return vidx
     end
 
@@ -815,7 +817,7 @@ end
 
 function ast.Call:check(ctxt)
     local call     = self:clone()
-    call.node_type = t.error -- default
+    call.node_type = L.error -- default
     call.func      = self.func:check(ctxt)
 
     if call.func:is(ast.Function) then
@@ -914,7 +916,7 @@ function ast.LisztKernel:check(ctxt)
     else
         kernel.iter             = ast.Row:DeriveFrom(self.iter)
         kernel.iter.name        = self.iter.name
-        kernel.iter.node_type   = t.row(kernel.set.relation)
+        kernel.iter.node_type   = L.row(kernel.set.relation)
 
         ctxt:liszt()[kernel.iter.name] = kernel.iter
         kernel.body = self.body:check(ctxt)
@@ -923,7 +925,7 @@ function ast.LisztKernel:check(ctxt)
     return kernel
 end
 
-function exports.check(luaenv, kernel_ast, param_type)
+function S.check(luaenv, kernel_ast, param_type)
 
     -- environment for checking variables and scopes
     local env  = terralib.newenvironment(luaenv)
@@ -939,6 +941,3 @@ function exports.check(luaenv, kernel_ast, param_type)
     diag:finishandabortiferrors("Errors during typechecking liszt", 1)
     return new_kernel_ast
 end
-
-
-return exports

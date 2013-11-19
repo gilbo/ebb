@@ -1,6 +1,6 @@
-import "compiler/liszt"
-
-mesh = L.initMeshRelationsFromFile("examples/mesh.lmesh")
+import "compiler.liszt"
+local LMesh = terralib.require "compiler.lmesh"
+local mesh = LMesh.Load("examples/mesh.lmesh")
 
 local assert, length, print, dot = L.assert, L.length, L.print, L.dot
 

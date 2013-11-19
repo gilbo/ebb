@@ -58,9 +58,9 @@ public: //mesh adapter needs to get the ranges directly
 			return it->second;
 	}
 
-	bool load(MeshIO::IOElemType value,
-	           const char * name,
+	bool load( const char * name,
 	           int * id,
+	           MeshIO::IOElemType * value,
 	           range_list_t * ranges, 
 	           size_t * size) {
 		*size = 0;
@@ -72,11 +72,6 @@ public: //mesh adapter needs to get the ranges directly
 		}
 		*id = (e - entries);
 		MeshIO::IOElemType typ = (MeshIO::IOElemType)(e->type & ~MeshIO::AGG_FLAG);
-		if(value != typ) {
-			printf("boundary set has wrong type: %d, expected %d",typ,value);
-			exit(1);
-			return false;
-		}
 		std::vector<MeshIO::id_t> points;
 		if(!addSet(typ,e,&points)) {
 			exit(1);

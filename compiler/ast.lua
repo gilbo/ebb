@@ -1,9 +1,8 @@
 --[[ Module defines all of the AST nodes used to represent the Liszt 
      language.
 ]]--
-
-local exports = {}
-local T = terralib.require "compiler/types"
+local A = {}
+package.loaded["compiler.ast"] = A
 
 ---------------------------
 --[[ Declare AST types ]]--
@@ -42,10 +41,10 @@ local Scalar          = { kind = 'scalar'      } -- type determined by scalar ty
 local Function        = { kind = 'function'    } -- type determined by custom check function
 local Macro           = { kind = 'macro'       } -- type determined in context by inlining
 local QuoteExpr       = { kind = 'quoteexpr'   } -- type already checked, just return checked AST
-local LocalVar        = { kind = 'localvar',    is_lvalue = true            }
-local Field           = { kind = 'field',       node_type = T.t.field       }
-local Table           = { kind = 'table',       node_type = T.t.luatable    }
-local Relation        = { kind = 'relation',    node_type = T.t.relation    }
+local LocalVar        = { kind = 'localvar',     is_lvalue = true            }
+local Field           = { kind = 'field'       }
+local Table           = { kind = 'table'       }
+local Relation        = { kind = 'relation'    }
 
 -- Statements:
 local Statement       = { kind = 'statement'  }  -- abstract
@@ -456,7 +455,6 @@ for k,v in pairs({
 	Break           = Break,
 	CondBlock       = CondBlock,
 
-}) do exports[k] = v end
+}) do A[k] = v end
 
-return exports
 
