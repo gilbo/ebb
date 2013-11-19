@@ -1,8 +1,14 @@
-all:
-	(cd runtime; make)
+TERRADIR = "../terra"
 
+all:    terra
+	make -C runtime;
+
+terra:
+	ln -s $(TERRADIR) $@
+    
 clean:
-	(cd runtime; make clean)
-
-test:
-	./run_tests.lua
+	make -C runtime clean
+	rm -f terra
+	
+test:   all
+	terra/terra run_tests.lua
