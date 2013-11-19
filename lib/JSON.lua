@@ -398,8 +398,10 @@ function Parser:object()
   end
 
   -- read first entry
-  keyval(self)
-  self:whitespace()
+  if self:peek() ~= '}' then
+    keyval(self)
+    self:whitespace()
+  end
 
   -- and the rest
   while self:peek() ~= '}' do

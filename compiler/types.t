@@ -1,4 +1,3 @@
-local JSON = require('lib/JSON')
 
 local DECL = terralib.require('include/decl')
 
@@ -172,33 +171,6 @@ end
 --end
 
 
--------------------------------------------------------------------------------
---[[ Stringify types                                                       ]]--
--------------------------------------------------------------------------------
-function Type:toString()
-  if     self:isPrimitive() then return self.type.string
-  elseif self:isVector()    then return 'LVector('..self.type:toString()..
-                                        ','..tostring(self.N)..')'
-  elseif self:isRow()       then return 'Row('..self.relation._name..')'
-  elseif self:isInternal()  then return 'Internal('..self.type.string..')'
-  elseif self:isError()     then return 'error'
-  end
-  print(debug.traceback())
-  error('toString method not implemented for this type!', 2)
-end
-
-
--- THIS DOES NOT EMIT A STRING
--- It outputs a LUA table which can be JSON stringified safely
-function Type:json_serialize()
-  local json = {}
-  return json
-end
--- given a table output by json_serialize, deserialize reconstructs
--- a proper Type object with correct metatable, etc.
-function Type.json_deserialize(json_tbl)
-end
-
 
 -------------------------------------------------------------------------------
 --[[ Type constructors:                                                    ]]--
@@ -268,6 +240,96 @@ t.luatable  = Type:new(Type.kinds.internal, Type.kinds.luatable)
 
 -- terra type for address/index encoding of row identifiers
 t.addr      = t.uint64
+
+
+
+-------------------------------------------------------------------------------
+--[[ Stringify types                                                       ]]--
+-------------------------------------------------------------------------------
+function Type:toString()
+  if     self:isPrimitive() then return self.type.string
+  elseif self:isVector()    then return 'Vector('..self.type:toString()..
+                                        ','..tostring(self.N)..')'
+  elseif self:isRow()       then return 'Row('..self.relation._name..')'
+  elseif self:isInternal()  then return 'Internal('..self.type.string..')'
+  elseif self:isError()     then return 'error'
+  end
+  print(debug.traceback())
+  error('toString method not implemented for this type!', 2)
+end
+
+
+local str_to_primitive = {
+  int    = t.int,
+  --int8   = t.int8,
+  --int16  = t.int16,
+  --int32  = t.int32,
+  --int64  = t.int64,
+  uint   = t.uint,
+  uint8  = t.uint8,
+  --uint16 = t.uint16,
+  --uint32 = t.uint32,
+  uint64 = t.uint64,
+  bool   = t.bool,
+  float  = t.float,
+  double = t.double,
+}
+
+-- THIS DOES NOT EMIT A STRING
+-- It outputs a LUA table which can be JSON stringified safely
+function Type:json_serialize(rel_to_name)
+  rel_to_name = rel_to_name or {}
+  if     self:isPrimitive() then
+    return { basic_kind = 'primitive',
+             primitive = self.type.string }
+
+  elseif self:isVector()    then
+    return { basic_kind = 'vector',
+             base = self.type:json_serialize(),
+             n = self.N }
+
+  elseif self:isRow()       then
+    local relname = rel_to_name[self.relation]
+    if not relname then
+      error('Could not find a relation name when attempting to '..
+            'JSON serialize a Row type', 2)
+    end
+    return { basic_kind = 'row',
+             relation   = relname }
+
+  else
+    error('Cannot serialize type: '..self:toString(), 2)
+  end
+end
+
+-- given a table output by json_serialize, deserialize reconstructs
+-- the correct Type object with correct metatable, etc.
+function Type.json_deserialize(json, name_to_rel)
+  name_to_rel = name_to_rel or {}
+  if not type(json) == 'table' then
+    error('Tried to deserialize type, but found a non.', 2)
+  end
+  if json.basic_kind == 'primitive' then
+    local primitive = str_to_primitive[json.primitive]
+    if not primitive then
+      error('Tried to deserialize primitive but type "'..json.primitive..
+            '" is not supported.', 2)
+    end
+    return primitive
+
+  elseif json.basic_kind == 'vector' then
+    local baseType = Type.json_deserialize(json.base)
+    return t.vector(baseType, json.n)
+
+  elseif json.basic_kind == 'row' then
+    local relation = name_to_rel[json.relation]
+    return t.row(relation)
+
+  else
+    error('Cannot deserialize type, could not find basic kind of type', 2)
+  end
+end
+
 
 
 -------------------------------------------------------------------------------
