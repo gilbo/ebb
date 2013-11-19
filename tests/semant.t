@@ -1,4 +1,4 @@
-import "compiler/liszt"
+import "compiler.liszt"
 require "tests/test"
 
 local lassert, lprint = L.assert, L.print
@@ -7,7 +7,8 @@ local lassert, lprint = L.assert, L.print
 ---------------------------
 -- Field and scalar objs --
 ---------------------------
-mesh = L.initMeshRelationsFromFile("examples/mesh.lmesh")
+local LMesh = terralib.require "compiler.lmesh"
+local mesh = LMesh.Load("examples/mesh.lmesh")
 mesh.cells:NewField('f1', L.float)
 mesh.cells:NewField('f2', L.vector(L.float, 3))
 s1 = L.NewScalar(L.int, 0)
@@ -121,7 +122,7 @@ local fail12 = liszt_kernel (cell in mesh.cells)
 end
 
 local fail13 = liszt_kernel (cell in mesh.cells)
-	var v : bool
+	var v : L.bool
 	if false then
 		v = true
 	end
@@ -174,8 +175,8 @@ test.fail_function(fail12, "assignments in a Liszt kernel are only valid")
 test.fail_function(fail13, "invalid conversion from int to bool")
 test.fail_function(fail14, "invalid types")
 test.fail_function(fail15, "can only assign")
-test.fail_function(fail16, "lua table tbl does not have member 'x'")
-test.fail_function(fail17, "lua table tbl.x does not have member 'y'")
+test.fail_function(fail16, "lua table does not have member 'x'")
+test.fail_function(fail17, "lua table does not have member 'y'")
 test.fail_function(fail18, "can only assign")
 test.fail_function(fail19, "variable 'i' is not defined")
 

@@ -1,8 +1,7 @@
 package.path = package.path .. ";./tests/?.lua;?.lua"
 local test = require "test"
-import "compiler/liszt"
-local types = terralib.require "compiler/types"
-local t = types.t
+import "compiler.liszt"
+local types = terralib.require "compiler.types"
 
 ------------------
 -- Should pass: --
@@ -30,7 +29,7 @@ test.eq(c.N,     a.N)
 test.eq(d.N,     a.N)
 test.eq(d.type,  a.type)
 test.eq(b.type,  b2.type)
-test.eq(e.type:baseType(), t.float)
+test.eq(e.type:baseType(), L.float)
 
 test.aeq(a.data, {1, 2, 3.29})
 test.aeq(b.data, {3*1, 3*2, 3*3.29})
@@ -106,7 +105,8 @@ test.fail_function(type_fail5, "lengths")
 --------------------------
 -- Kernel vector tests: --
 --------------------------
-mesh = L.initMeshRelationsFromFile("examples/mesh.lmesh")
+local LMesh = terralib.require "compiler.lmesh"
+local mesh = LMesh.Load("examples/mesh.lmesh")
 
 ------------------
 -- Should pass: --

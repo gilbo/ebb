@@ -1,4 +1,4 @@
-#include "common/mesh.h"
+#include "mesh.h"
 
 //class used to wrap initialization of a CRS
 class CRSInit {

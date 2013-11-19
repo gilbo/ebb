@@ -1,4 +1,4 @@
-import 'compiler/liszt'
+import 'compiler.liszt'
 local length, lprint = L.length, L.print
 
 -- Test code

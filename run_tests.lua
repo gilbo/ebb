@@ -1,5 +1,5 @@
 #!/usr/bin/env luajit
-local ffi = require("ffi")
+local ffi = require "ffi"
 
 local lscmd
 if ffi.os == "Windows" then

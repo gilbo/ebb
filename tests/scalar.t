@@ -1,7 +1,7 @@
-import "compiler/liszt"
+import "compiler.liszt"
 require "tests/test"
-
-mesh = L.initMeshRelationsFromFile("examples/mesh.lmesh")
+local LMesh = terralib.require "compiler.lmesh"
+local mesh = LMesh.Load("examples/mesh.lmesh")
 
 nf = mesh.faces._size
 sf = L.NewScalar(L.float, 0.0)

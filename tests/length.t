@@ -1,9 +1,10 @@
-import "compiler/liszt"
+import "compiler.liszt"
 
 local assert = L.assert
 local dot = L.dot
 local length = L.length
-local M = L.initMeshRelationsFromFile("examples/mesh.lmesh")
+local LMesh = terralib.require "compiler.lmesh"
+local M = LMesh.Load("examples/mesh.lmesh")
 
 
 local v1 = L.NewVector(L.float, {1, 2, 3})

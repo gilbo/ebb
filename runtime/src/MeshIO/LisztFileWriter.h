@@ -1,8 +1,8 @@
 #ifndef _LISZT_FILE_WRITER_H_
 #define _LISZT_FILE_WRITER_H_
 
-#include "common/MeshIO/Common.h"
-#include "common/MeshIO/LisztFormat.h"
+#include "Common.h"
+#include "LisztFormat.h"
 
 namespace MeshIO {
 

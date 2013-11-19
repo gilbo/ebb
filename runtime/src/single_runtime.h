@@ -1,7 +1,7 @@
 #ifndef __SINGLE_LISZT_RUNTIME_H
 #define __SINGLE_LISZT_RUNTIME_H
 
-#include "runtime/common/liszt_runtime.h"
+#include "liszt_runtime.h"
 
 typedef unsigned char byte;
 

@@ -1,6 +1,7 @@
-import "compiler/liszt"
+import "compiler.liszt"
 
-mesh  = L.initMeshRelationsFromFile("examples/mesh.lmesh")
+local LMesh = terralib.require "compiler.lmesh"
+local mesh = LMesh.Load("examples/mesh.lmesh")
 
 local pass_assert = liszt_kernel(f in mesh.faces)
     L.assert(true)

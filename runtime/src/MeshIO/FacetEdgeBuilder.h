@@ -1,8 +1,8 @@
 #ifndef _FACET_EDGE_BUILDER
 #define _FACET_EDGE_BUILDER
 #include <stdint.h>
-#include "common/MeshIO/Common.h"
-#include "common/MeshIO/LisztFormat.h"
+#include "Common.h"
+#include "LisztFormat.h"
 #include <iostream>
 //Warning: Silly pointer hacks to make these structures 64 bytes
 //vert_cell[0]'s high bit holds if it is hf 1 or one.
