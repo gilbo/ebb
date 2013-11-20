@@ -40,6 +40,19 @@ local function is_valid_lua_identifier(name)
     return true
 end
 
+
+--vector(double,4) requires 32-byte alignment
+--WARNING: this will need more bookkeeping since you cannot call
+-- free on the returned pointer
+local terra allocateAligned32(size : uint64)
+    var r = [uint64](C.malloc(size + 32))
+    r = (r + 31) and not 31
+    return [&opaque](r)
+end
+local function MallocArray(T,N)
+    return terralib.cast(&T,allocateAligned32( N * terralib.sizeof(T) ))
+end
+
 function LDB.NewRelation(size, name)
     -- error check
     if not name or type(name) ~= "string" then
@@ -125,6 +138,33 @@ function L.LRelation:NewFieldMacro (name, macro)
     return macro
 end
 
+function L.LRelation:LoadIndexFromMemory(name, key, row_idx)
+    if not L.is_relation(key) then
+        error("LoadIndexFromMemory(): Key must be a relation")
+    end
+    if self._index then
+        error("LoadIndexFromMemory(): Relation already has an index")
+    end
+    self:NewField(name, key)
+    local f = self[name]
+    rawset(self,"_index",f)
+    local numindices = key:Size()
+    rawset(self,"_indexdata",MallocArray(uint64,numindices+1))
+    f:Allocate()
+    local fsize = f:Size()
+    for i = 0, numindices-1 do
+        local start = row_idx[i]
+        local finish = row_idx[i+1]
+        assert(start >= 0 and start < fsize)
+        assert(finish >= start and finish <= fsize)
+        for j = start, finish - 1 do
+            f.data[j] = i
+        end
+        self._indexdata[i] = start
+    end
+    self._indexdata[numindices] = row_idx[numindices]
+end
+
 function L.LRelation:json_serialize(rel_to_name)
     local json = {
         size      = self._size,
@@ -202,19 +242,8 @@ function L.LField:Size()
 end
 local bit = require "bit"
 
-
---vector(double,4) requires 32-byte alignment
---WARNING: this will need more bookkeeping since you cannot call
--- free on the returned pointer
-local terra allocateAligned32(size : uint64)
-    var r = [uint64](C.malloc(size + 32))
-    r = (r + 31) and not 31
-    return [&opaque](r)
-end
 function L.LField:Allocate()
-    local bytes  =
-        allocateAligned32(self:Size() * terralib.sizeof(self.type:terraType()))
-    self.data    = terralib.cast(&self.type:terraType(),bytes)
+    self.data = MallocArray(self.type:terraType(),self:Size())
 end
 
 function L.LField:LoadFromCallback (callback)

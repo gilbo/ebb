@@ -324,7 +324,20 @@ function ast.NumericFor:check(ctxt)
 end
 
 function ast.GenericFor:check(ctxt)
-    ctxt:error(self, "generic for statement not yet implemented", 2)
+    local r = self:clone()
+    r.name = self.name
+    r.set = self.set:check(ctxt)
+    if not r.set.node_type:isSet() then
+        ctxt:error(self,"for statement expects a set but found type ",r.set.node_type)
+    end
+    local rowType = L.row(r.set.node_type.relation)
+    ctxt:enterblock()
+    ctxt:enterloop()
+    ctxt:liszt()[r.name] = rowType
+    r.body = self.body:check(ctxt)
+    ctxt:leaveloop()
+    ctxt:leaveblock()
+    return r
 end
 
 function ast.Break:check(ctxt)
@@ -703,7 +716,7 @@ function ast.TableLookup:check(ctxt)
         else
             return err(self, ctxt, "Row "..table.name.." does not "..
                                    "have field or macro-field "..
-                                   "'"..member.name.."'")
+                                   "'"..member.."'")
         end
     else
         return err(self, ctxt, "select operator not "..
@@ -760,7 +773,7 @@ function ast.Call:check(ctxt)
     elseif v and L.is_macro(v) then
         -- replace the call node with the inlined AST
         call = RunMacro(ctxt, self, v, call.params.children)
-    elseif call.func.node_type:isError() then
+    elseif func.node_type:isError() then
         -- fall through
         -- (do not print error messages for errors already reported)
     else
@@ -792,6 +805,26 @@ end
 function ast.LuaObject:check(ctxt)
     assert(self.node_type and self.node_type:isInternal())
     return self
+end
+function ast.Where:check(ctxt)
+    --note: where is generated in a macro, so its fields are already type-checked
+    local fieldobj = self.field.node_type
+    local keytype = self.key.node_type
+    if not fieldobj:isInternal() or not L.is_field(fieldobj.value) then
+        ctxt:error(self,"Expected a field as the first argument but found ",fieldobj)
+    end
+    local field = fieldobj.value
+    if keytype ~= field.type then
+        ctxt:error(self,"Key of where is type ",keytype," but expected type ",field.type)
+    end
+    if field.owner._index ~= field then
+        ctxt:error(self,"Field ",field.name, " is not an index of ",field.owner:Name())
+    end
+    local w = self:clone()
+    w.relation = field.owner
+    w.key = self.key
+    w.node_type = L.set(w.relation)
+    return w
 end
 
 ------------------------------------------------------------------------------

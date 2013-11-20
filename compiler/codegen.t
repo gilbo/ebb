@@ -274,27 +274,35 @@ end
 function ast.LuaObject:codegen (env)
     return `{}
 end
---[[
+function ast.Where:codegen(env)
+    local key = self.key:codegen(env)
+    local sType = self.node_type:terraType()
+    local index = self.relation._indexdata
+    return quote
+        var k = [key]
+        var idx = [index]
+    in 
+        sType { idx[k], idx[k+1] }
+    end
+end
+
 function ast.GenericFor:codegen (env)
-	env:enterblock()
-
-	local varname = self.children[1].children[1]
-	local varsym = symbol()
-	local ctx    = env.context
-	env:localenv()[varname] = varsym
-
-	local code = quote
-		var [varsym] : runtime.lkElement
-		if (runtime.lkGetActiveElement(&[ctx], [varsym]) > 0) then
-			-- run block!
-		end
+	local rowType = L.row(self.set.node_type.relation)
+	local sym = symbol(rowType:terraType())
+    local set = self.set:codegen(env)
+    env:enterblock()
+	env:localenv()[self.name] = sym
+	local body = self.body:codegen(env)
+    env:leaveblock()
+    local code = quote
+	    var s = [set]
+	    for i = s.start,s.finish do
+	        var [sym] = i
+	        [body]
+	    end
 	end
-
-
-	env:leaveblock()
 	return code
 end
-]]--
 
 function C.codegen (luaenv, kernel_ast)
 	local env = terralib.newenvironment(luaenv)
@@ -303,7 +311,8 @@ function C.codegen (luaenv, kernel_ast)
 	local kernel_body = kernel_ast:codegen(env)
 	env:leaveblock()
 
-	return terra ()
+	local r = terra ()
 		[kernel_body]
 	end
+	return r
 end

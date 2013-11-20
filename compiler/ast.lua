@@ -39,7 +39,7 @@ local Scalar          = { kind = 'scalar'      } -- type determined by scalar ty
 
 local QuoteExpr       = { kind = 'quoteexpr'   } -- type already checked, just return checked AST
 local LuaObject       = { kind = 'luaobject' } --reference to a special Lua object, type is already provided
-
+local Where           = { kind = 'where'     }
 
 -- Statements:
 local Statement       = { kind = 'statement'  }  -- abstract
@@ -88,6 +88,7 @@ inherit(Scalar,        Expression)
 inherit(FieldAccess,   Expression)
 inherit(QuoteExpr,     Expression)
 inherit(LuaObject,     Expression)
+inherit(Where,         Expression)
 
 inherit(IfStatement,     Statement)
 inherit(WhileStatement,  Statement)
@@ -400,6 +401,7 @@ for k,v in pairs({
 	GenericFor      = GenericFor,
 	Break           = Break,
 	CondBlock       = CondBlock,
-	LuaObject       = LuaObject
+	LuaObject       = LuaObject,
+	Where           = Where
 }) do A[k] = v end
 

@@ -21,7 +21,7 @@ end
 -------------------------------------------------------------------------------
 --[[ Basic Type Methods                                                    ]]--
 -------------------------------------------------------------------------------
--- There are 5 basic kinds of types:
+-- There are 6 basic kinds of types:
 function Type:isPrimitive()
   return self.kind == "primitive"
 end
@@ -36,6 +36,9 @@ function Type:isInternal()
 end
 function Type:isError()
   return self.kind == "error"
+end
+function Type:isSet()
+  return self.kind == "set"
 end
 
 -- Can this type of AST represent a Liszt value
@@ -73,11 +76,15 @@ function Type:baseType()
 end
 
 local struct emptyStruct {}
-
+local struct  SetType {
+    start : uint64;
+    finish : uint64;
+}
 function Type:terraType()
   if     self:isPrimitive() then return self.terratype
   elseif self:isVector()    then return vector(self.type:terraType(), self.N)
   elseif self:isRow()       then return L.addr:terraType()
+  elseif self:isSet()       then return SetType
   elseif self:isInternal()  then return emptyStruct
   end
   error("terraType method not implemented for type " .. self:toString(), 2)
@@ -86,7 +93,6 @@ end
 function Type:terraBaseType()
     return self:baseType():terraType()
 end
-
 
 -------------------------------------------------------------------------------
 --[[ Type constructors:                                                    ]]--
@@ -105,29 +111,39 @@ local function vectorType (typ, len)
   return vector_types[tpn]
 end
 
-local row_type_table = {}
-local function rowType (relation)
-  if not L.is_relation(relation) then
-    error("invalid argument to row type constructor. A relation "..
-          "must be provided", 2)
-  end
-  if not row_type_table[relation] then
+local function cached(ctor)
+    local cache = {}
+    return function(param)
+        local t = cache[param]
+        if not t then
+            t = ctor(param)
+            cache[param] = t
+        end
+        return t
+    end
+end
+local function checkrelation(relation)
+    if not L.is_relation(relation) then
+        error("invalid argument to type constructor. A relation must be provided", 3)
+    end
+end
+local rowType = cached(function(relation)
+    checkrelation(relation)
     local rt = Type:new("row")
     rt.relation = relation
-    row_type_table[relation:Name()] = rt
-  end
-  return row_type_table[relation:Name()]
-end
-local internal_types = {}
-local function internalType(obj)
-    local t = internal_types[obj]
-    if not t then
-        t = Type:new("internal")
-        t.value = obj
-        internal_types[obj] = t
-    end
+    return rt
+end)
+local setType = cached(function(relation)
+    checkrelation(relation)
+    local t = Type:new("set")
+    t.relation = relation
     return t
-end
+end)
+local internalType = cached(function(obj)
+    local t = Type:new("internal")
+    t.value = obj
+    return t
+end)
 
 -------------------------------------------------------------------------------
 --[[ Type interface:                                                       ]]--
@@ -148,7 +164,7 @@ end
 L.vector    = vectorType
 L.row       = rowType
 L.internal  = internalType
-
+L.set       = setType
 -- Errors
 L.error     = Type:new("error")
 
@@ -165,6 +181,7 @@ function Type:toString()
   elseif self:isVector()    then return 'Vector('..self.type:toString()..
                                         ','..tostring(self.N)..')'
   elseif self:isRow()       then return 'Row('..self.relation:Name()..')'
+  elseif self:isSet()       then return 'Set('..self.relation:Name()..')' 
   elseif self:isInternal()  then return 'Internal('..tostring(self.value)..')'
   elseif self:isError()     then return 'error'
   end

@@ -68,34 +68,6 @@ local function initRowFromMemory32(field, srcmem, stride, offset)
     field:LoadFromCallback(row32_copy_callback(srcmem, stride, offset))
 end
 
--- used to load the more irregular first index from a CRS array
-local function initRowFromCRSindex32(field, row_idx)
-    if not field.type:isRow() then
-        error('can only call initRowFromCRSindex32 on row fields', 2)
-    end
-
-    assert(field.data == nil)
-
-    -- we create a temporary array with exactly the data we'd like to copy in
-    local N         = field.owner._size
-    local tmp_mem   =
-        terralib.cast(&uint64,C.malloc(N * terralib.sizeof(uint64)))
-    local idxN      = field.type.relation._size
-
-    -- note: rows_idx is size idxN + 1 to hold the final stop
-    for i = 0, idxN-1 do
-        local start = row_idx[i]
-        local stop  = row_idx[i+1]
-        for j = start, stop-1 do
-            tmp_mem[j] = i
-        end
-    end
-
-    -- having constructed the temp, we copy it over and delete the temp
-    initFieldViaCopy(field, tmp_mem)
-    C.free(tmp_mem)
-end
-
 local function initMeshRelations(mesh)
     -- initialize list of relations
     local relations = {}
@@ -122,10 +94,8 @@ local function initMeshRelations(mesh)
         -- store table with name intended for global scope
         relations[name] = rel
 
-        rel:NewField(xtoy.n1, relations[xtoy.t1])
+        rel:LoadIndexFromMemory(xtoy.n1, relations[xtoy.t1], mesh[old_name].row_idx)
         rel:NewField(xtoy.n2, relations[xtoy.t2])
-
-        initRowFromCRSindex32(rel[xtoy.n1], mesh[old_name].row_idx)
 
         -- if our lmesh field has orientation encoded into the relation,
         -- extract the orientation and load it as a separate field
