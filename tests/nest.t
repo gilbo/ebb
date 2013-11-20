@@ -14,11 +14,11 @@ local upval = 5
 local vv    = L.NewVector(L.float, {1,2,3})
 
 mesh.faces:NewFieldMacro("vertices",L.NewMacro(function(f)
-    return liszt `L.Where(mesh.verticesofface.face,f)
+    return liszt `L.Where(mesh.verticesofface.face,f).vertex
 end))
 
 local test_for = liszt_kernel (f in mesh.faces)
-	for v in f.vertices.vertex do
+	for v in f.vertices do
 	    lprint(f,v)
 	end
 end

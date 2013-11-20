@@ -8,34 +8,6 @@ package.loaded["compiler.parser"] = P
 local ast = require "compiler.ast"
 local pratt = terralib.require "compiler.pratt"
 
--- Global precedence table
-local precedence = {
-
-	["or"]  = 0,
-	["and"] = 1,
-
-	["<"]   = 2,
-	[">"]   = 2,
-	["<="]  = 2,
-	[">="]  = 2,
-	["=="]  = 2,
-	["~="]  = 2,
-
-	["+"]   = 3,
-	["-"]   = 3,
-
-	["*"]   = 4,
-	["/"]   = 4,
-	["%"]   = 4,
-
-	unary   = 5,
-	--	uminus  = 5,
-	--	["not"] = 5,
-	--	["#"]   = 5,
-
-	["^"]   = 6,
-}
-
 local block_terminators = {
 	['end']    = 1,
 	['else']   = 1,
@@ -43,6 +15,8 @@ local block_terminators = {
 	['until']  = 1,
 	['break']  = 1,
 }
+
+local unary_prec = 5
 
 --[[ Generic expression operator parsing functions: ]]--
 local function leftbinaryimpl(P, lhs, isreductionop)
@@ -78,7 +52,7 @@ end
 local function unary (P)
 	local node = ast.UnaryOp:New(P)
 	local op = P:next().type
-	local exp = P:exp(precedence.unary)
+	local exp = P:exp(unary_prec)
 	node.op, node.exp = op, exp
 	return node
 end	
@@ -92,140 +66,87 @@ local lang = { }
 lang.exp = pratt.Pratt() -- returns a pratt parser
 :prefix("-",   unary)
 :prefix("not", unary)
+:infix("or",  0, leftbinaryred)
+:infix("and", 1, leftbinaryred)
 
-:infix("or",  precedence["or"],  leftbinaryred)
-:infix("and", precedence["and"], leftbinaryred)
+:infix("<",   2, leftbinary)
+:infix(">",   2, leftbinary)
+:infix("<=",  2, leftbinary)
+:infix(">=",  2, leftbinary)
+:infix("==",  2, leftbinary)
+:infix("~=",  2, leftbinary)
 
-:infix("<",   precedence["<"],   leftbinary)
-:infix(">",   precedence[">"],   leftbinary)
-:infix("<=",  precedence["<="],  leftbinary)
-:infix(">=",  precedence[">="],  leftbinary)
-:infix("==",  precedence["=="],  leftbinary)
-:infix("~=",  precedence["~="],  leftbinary)
+:infix("*",   4,   leftbinaryred)
+:infix('/',   4,   leftbinaryred)
+:infix('%',   4,   leftbinary)
 
-:infix("*",   precedence['*'],   leftbinaryred)
-:infix('/',   precedence['/'],   leftbinaryred)
-:infix('%',   precedence['%'],   leftbinary)
-
-:infix("+",   precedence["+"],   leftbinaryred)
-:infix("-",   precedence["-"],   leftbinaryred)
-:infix('^',   precedence['^'],   rightbinary)
-:prefix(pratt.default, function(P) return P:simpleexp() end)
-
--- tuples are used to represent a sequence of comma-seperated expressions that can
--- be found in function calls and will perhaps be used in for statements
-lang.tuple = function (P, exprs, terminator)
-	exprs = exprs or { }
-    if terminator == nil or not P:matches(terminator) then
-        exprs[#exprs + 1] = P:exp()
-    end
-	if P:nextif(",") then
-		return P:tuple(exprs)
-	else 
-		local tuple    = ast.Tuple:New(P)
-		tuple.children = exprs
-        if #exprs ~= 0 then
-            tuple:copy_location(exprs[1])
-        end
-		return tuple
-	end
-end
-
---[[ recursively checks to see if lhs is part of a field index 
-or a table lookup. lhs parameter is already an LValue 
---]]
-lang.lvaluehelper = function (P, lhs)
-	local cur = P:cur()
-	-- table indexing:
-	if cur.type == '.' then
-		local node = ast.TableLookup:New(P)
-		local op = P:next().type
-		-- check to make sure the table is being indexed by a valid name
-		node.table, node.member = lhs, P:expect(P.name).value
-		return P:lvaluehelper(node)
-	end
-		
-	-- field index / function call?
-	local open_parens = P:nextif('(')
-	if open_parens then
-		local node = ast.Call:New(P)
-		local args = P:tuple({}, ')')
-		P:expectmatch(')', '(', open_parens.linenumber)
-		node.func, node.params = lhs, args
-		return P:lvaluehelper(node)
-	end
-
-	local open_sq_bracket = P:nextif('[')
-	if open_sq_bracket then
-		local node = ast.VectorIndex:New(P)
-		local exp = P:exp()
-		P:expectmatch(']', '[', open_sq_bracket.linenumber)
-		node.vector, node.index = lhs, exp
-		return P:lvaluehelper(node)
-	end
-
-	return lhs
-end
-
---[[ This function finds the first name of the lValue, then calls
-lValueHelper to recursively check to table or field lookups. 
---]]
-lang.lvalue = function (P)
-	if not P:matches(P.name) then
-		local token = P:next()
-		P:error("Expected name at " .. token.linenumber .. ":" .. token.offset)
-	end
-	local node = ast.Name:New(P)
-	node.name = P:next().value
-	P:ref(node.name)
-	return P:lvaluehelper(node)
-end
-
-lang.vectorliteral = function (P)
-	local node = ast.VectorLiteral:New(P)
-	local start = P:expect('{')
-	local elems = { }
-
-	repeat
-		elems[#elems + 1] = P:exp()
-	until not P:nextif(",")
-	P:expectmatch("}", "{", start.linenumber)
-	node.elems = elems
+:infix("+",   3,   leftbinaryred)
+:infix("-",   3,   leftbinaryred)
+:infix('^',   6,   rightbinary)
+:infix('.',   7, function(P,lhs)
+    local node = ast.TableLookup:New(P)
+    local op = P:next().type
+    node.table, node.member = lhs, P:expect(P.name).value
+    return node
+end)
+:infix('[',   8, function(P,lhs)
+    local begin = P:next().linenumber
+    local node = ast.VectorIndex:New(P)
+	local exp = P:exp()
+	P:expectmatch(']', '[', begin)
+	node.vector, node.index = lhs, exp
 	return node
-end
+end)
+:infix('(',   8, function(P,lhs)
+    local begin = P:next().linenumber
+    local node = ast.Call:New(P)
+	local args = ast.Tuple:New(P)
+	args.children = {}
+	if not P:matches(')') then
+	    repeat
+	        table.insert(args.children,P:exp())
+	    until not P:nextif(',')
+	end
+	P:expectmatch(')', '(', begin)
+	node.func, node.params = lhs, args
+	return node
+end)
+:prefix(pratt.default, function(P) return P:simpleexp() end)
 
 --[[  simpleexp is called when exp cannot parse the next token...
 we could be looking at an LValue, Value, or parenthetically
 enclosed expression  
 --]]
 lang.simpleexp = function(P)
-	-- catch values
-	-- TODO: This does something weird with integers
-	if P:matches(P.number) then
+    local start = P:cur().linenumber
+	if P:matches(P.name) then
+	    local node = ast.Name:New(P)
+	    node.name = P:next().value
+	    P:ref(node.name)
+	    return node
+	elseif P:matches(P.number) then
 		local node = ast.Number:New(P)
 		node.value = P:next().value
 		return node
-
-		-- catch bools
 	elseif P:matches('true') or P:matches('false') then
 		local node = ast.Bool:New(P)
 		node.value = P:next().type
 		return node
-	end
-
-	-- catch parenthesized expressions
-	local open = P:nextif('(')
-	if open then
+	elseif P:nextif('(') then
 		local v = P:exp()
-		P:expectmatch(")", "(", open.linenumber)
+		P:expectmatch(")", "(", start)
 		return v
+	elseif P:nextif("{") then
+		local node = ast.VectorLiteral:New(P)
+	    local elems = { }
+	    repeat
+		    elems[#elems + 1] = P:exp()
+	    until not P:nextif(",")
+	    P:expectmatch("}", "{", start)
+	    node.elems = elems
+	    return node
 	end
-
-	if P:matches("{") then
-		return P:vectorliteral()
-	end
-	-- expect LValue
-	return P:lvalue()
+	P:error("unexpected symbol")
 end
 
 lang.liszt_kernel = function (P)
@@ -235,7 +156,7 @@ lang.liszt_kernel = function (P)
 	local open  = P:expect("(")
 	local iter  = P:expect(P.name).value
     P:expect("in")
-    local set   = P:lvalue()
+    local set   = P:exp()
 	P:expectmatch(")", "(", open.linenumber)
 
 	-- parse block
@@ -351,7 +272,7 @@ lang.statement = function (P)
 		local iterator = P:expect(P.name).value
 		if (P:nextif("in")) then
 			local node_gf = ast.GenericFor:New(P)
-			local set = P:lvalue()
+			local set = P:exp()
 			P:expect("do")
 			local body = P:block()
 			P:expect("end")
