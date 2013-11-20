@@ -20,7 +20,6 @@ local Expression      = { kind = 'expr'   } -- abstract
 local BinaryOp        = { kind = 'binop'  }
 local Reduce          = { kind = 'reduce' }
 local UnaryOp         = { kind = 'unop'   }
-local Tuple           = { kind = 'tuple'  }
 
 local TableLookup     = { kind = 'lookup' }
 local VectorIndex     = { kind = 'index'  }
@@ -75,7 +74,6 @@ inherit(UnaryOp,       Expression)
 inherit(Number,        Expression)
 inherit(String,        Expression)
 inherit(Bool,          Expression)
-inherit(Tuple,         Expression)
 inherit(VectorLiteral, Expression)
 
 inherit(Call,          Expression)
@@ -151,8 +149,6 @@ function AST:clone ()
 	return setmetatable(copy, getmetatable(self))
 end
 
-function Tuple:size ( ) return #self.children end
-
 function AST:is (obj)
 	return obj == getmetatable(self)
 end
@@ -220,14 +216,6 @@ function FieldAccess:pretty_print(indent)
 	print(indent .. self.kind .. ': ' .. tostring(self.field))
 end
 
-function Tuple:pretty_print(indent)
-	indent = indent or ''
-	print(indent .. self.kind)
-	for i = 1, #self.children do
-		self.children[i]:pretty_print(indent .. indent_delta)
-	end
-end
-
 function VectorLiteral:pretty_print(indent)
 	indent = indent or ''
 	print(indent .. self.kind)
@@ -240,7 +228,9 @@ function Call:pretty_print (indent)
 	indent = indent or ''
 	print(indent .. self.kind .. ": (func, params)")
 	self.func:pretty_print(indent .. indent_delta)
-	self.params:pretty_print(indent .. indent_delta)
+	for i = 1, #self.params do
+		self.params[i]:pretty_print(indent .. indent_delta)
+	end
 end
 
 function TableLookup:pretty_print (indent)
@@ -377,7 +367,6 @@ for k,v in pairs({
 	BinaryOp        = BinaryOp,
 	UnaryOp         = UnaryOp,
 	Reduce 	        = Reduce,
-	Tuple           = Tuple,
 	TableLookup     = TableLookup,
 	VectorIndex     = VectorIndex,
 	Scalar 	        = Scalar,

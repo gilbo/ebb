@@ -33,7 +33,7 @@ end
 B.assert = Func.new(assert)
 
 function B.assert.check(ast, ctxt)
-    local args = ast.params.children
+    local args = ast.params
     if #args ~= 1 then
         ctxt:error(ast, "assert expects exactly 1 argument (instead got " .. #args .. ")")
         return
@@ -55,7 +55,7 @@ local terra lisztAssert(test : bool, file : rawstring, line : int)
 end
 
 function B.assert.codegen(ast, env)
-    local test = ast.params.children[1]
+    local test = ast.params[1]
     local code = test:codegen(env)
     if test.node_type:isVector() then
         if test.node_type.N == 0 then return quote end end
@@ -75,7 +75,7 @@ end
 B.print = Func.new(print)
 
 function B.print.check(ast, ctxt)
-    local args = ast.params.children
+    local args = ast.params
     
     for i,output in ipairs(args) do
         local outtype = output.node_type
@@ -125,11 +125,11 @@ local function printOne(env,output)
     end
 end
 function B.print.codegen(ast, env)
-    local output = ast.params.children[1]
+    local output = ast.params[1]
     local stmts = {}
-    for i,output in ipairs(ast.params.children) do
+    for i,output in ipairs(ast.params) do
         table.insert(stmts, printOne(env,output))
-        local t = ast.params.children[i+1] and " " or "\n"
+        local t = ast.params[i+1] and " " or "\n"
         table.insert(stmts,`C.printf(t))
     end
 	return stmts
@@ -157,7 +157,7 @@ end
 B.dot = Func.new(dot)
 
 function B.dot.check(ast, ctxt)
-    local args = ast.params.children
+    local args = ast.params
     if #args ~= 2 then
         ctxt:error(ast, "dot expects exactly 2 arguments (instead got " .. #args .. ")")
         return
@@ -185,7 +185,7 @@ function B.dot.check(ast, ctxt)
 end
 
 function B.dot.codegen(ast, env)
-    local args = ast.params.children
+    local args = ast.params
     local v1 = symbol()
     local v2 = symbol()
     local N = args[1].node_type.N
@@ -238,7 +238,7 @@ end
 B.cross = Func.new(cross)
 
 function B.cross.check(ast, ctxt)
-    local args = ast.params.children
+    local args = ast.params
     if #args ~= 2 then
         ctxt:error(ast, "cross expects exactly 2 arguments (instead got " .. #args .. ")")
         return
@@ -268,7 +268,7 @@ function B.cross.check(ast, ctxt)
 end
 
 function B.cross.codegen(ast, env)
-    local args = ast.params.children
+    local args = ast.params
 
     local tt1 = args[1].node_type:terraType()
     local tt2 = args[2].node_type:terraType()
@@ -299,7 +299,7 @@ end
 B.length = Func.new(length)
 
 function B.length.check(ast, ctxt)
-    local args = ast.params.children
+    local args = ast.params
     if #args ~= 1 then
         ctxt:error(ast, "length expects exactly 1 argument (instead got " .. #args .. ")")
         return L.error
@@ -316,7 +316,7 @@ function B.length.check(ast, ctxt)
 end
 
 function B.length.codegen(ast, env)
-    local args = ast.params.children
+    local args = ast.params
     local sq = symbol()
     local N = args[1].node_type.N
     if N == 0 then
@@ -354,7 +354,7 @@ end
 local function TerraCheck(func)
     func:compile()
     return function (ast, ctxt)
-        local args = ast.params.children 
+        local args = ast.params
         local argsyms = map(GetTypedSymbol, args)
         local rettype = nil
         local try = function()
@@ -382,7 +382,7 @@ end
 
 local function TerraCodegen(func)
     return function (ast, env)
-        local args = ast.params.children 
+        local args = ast.params
         local argsyms = map(GetTypedSymbol, args)
         local init_params = quote end
         for i = 1, #args do

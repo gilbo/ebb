@@ -100,15 +100,14 @@ end)
 :infix('(',   8, function(P,lhs)
     local begin = P:next().linenumber
     local node = ast.Call:New(P)
-	local args = ast.Tuple:New(P)
-	args.children = {}
+	local params = {}
 	if not P:matches(')') then
 	    repeat
-	        table.insert(args.children,P:exp())
+	        table.insert(params,P:exp())
 	    until not P:nextif(',')
 	end
 	P:expectmatch(')', '(', begin)
-	node.func, node.params = lhs, args
+	node.func, node.params = lhs, params
 	return node
 end)
 :prefix(pratt.default, function(P) return P:simpleexp() end)

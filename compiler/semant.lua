@@ -651,36 +651,12 @@ end
 ------------------------------------------------------------------------------
 --[[                         Miscellaneous nodes:                         ]]--
 ------------------------------------------------------------------------------
-function ast.Tuple:check(ctxt)
-    local tuple = self:clone()
-    tuple.children = {}
-    for i, node in ipairs(self.children) do
-        tuple.children[i] = node:check(ctxt)
-    end
-    return tuple
-end
-
-function ast.Tuple:index_check(ctxt)
-    -- type checking tuple when it should be a single argument, for
-    -- instance, when indexing a field
-    if #self.children ~= 1 then
-        ctxt:error(self, "can use exactly one argument to index here")
-        local errnode = self:clone()
-        errnode.node_type = L.error
-        return errnode
-    end
-    local arg_ast = self.children[1]:check(ctxt)
-    local argtype = arg_ast.node_type
-    assert(argtype ~= nil)
-    self.node_type = argtype
-    return arg_ast
-end
-
 
 local function RunMacro(ctxt,src_node,v,params)
   local r = v.genfunc(unpack(params))
   return luav_to_checked_ast(r, src_node, ctxt)
 end
+
 function ast.TableLookup:check(ctxt)
     local tab     = self.table:check(ctxt)
     local member    = self.member
@@ -787,8 +763,10 @@ function ast.Call:check(ctxt)
     
     call.node_type = L.error -- default
     local func      = self.func:check(ctxt)
-    call.params = self.params:check(ctxt)
-        
+    call.params = {}
+    for i,p in ipairs(self.params) do
+        call.params[i] = p:check(ctxt)
+    end
     local isinternal = func.node_type:isInternal()
     local v = isinternal and func.node_type.value
     if v and L.is_function(v) then
@@ -796,7 +774,7 @@ function ast.Call:check(ctxt)
         call.node_type = v.check(call, ctxt)
     elseif v and L.is_macro(v) then
         -- replace the call node with the inlined AST
-        call = RunMacro(ctxt, self, v, call.params.children)
+        call = RunMacro(ctxt, self, v, call.params)
     elseif func.node_type:isError() then
         -- fall through
         -- (do not print error messages for errors already reported)
