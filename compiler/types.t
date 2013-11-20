@@ -37,8 +37,8 @@ end
 function Type:isError()
   return self.kind == "error"
 end
-function Type:isSet()
-  return self.kind == "set"
+function Type:isQuery()
+  return self.kind == "query"
 end
 
 -- Can this type of AST represent a Liszt value
@@ -76,7 +76,7 @@ function Type:baseType()
 end
 
 local struct emptyStruct {}
-local struct  SetType {
+local struct  QueryType {
     start : uint64;
     finish : uint64;
 }
@@ -84,7 +84,7 @@ function Type:terraType()
   if     self:isPrimitive() then return self.terratype
   elseif self:isVector()    then return vector(self.type:terraType(), self.N)
   elseif self:isRow()       then return L.addr:terraType()
-  elseif self:isSet()       then return SetType
+  elseif self:isQuery()     then return QueryType
   elseif self:isInternal()  then return emptyStruct
   end
   error("terraType method not implemented for type " .. self:toString(), 2)
@@ -124,7 +124,7 @@ local function cached(ctor)
 end
 local function checkrelation(relation)
     if not L.is_relation(relation) then
-        error("invalid argument to type constructor. A relation must be provided", 3)
+        error("invalid argument to type constructor. A relation must be provided", 4)
     end
 end
 local rowType = cached(function(relation)
@@ -133,17 +133,19 @@ local rowType = cached(function(relation)
     rt.relation = relation
     return rt
 end)
-local setType = cached(function(relation)
-    checkrelation(relation)
-    local t = Type:new("set")
-    t.relation = relation
-    return t
-end)
 local internalType = cached(function(obj)
     local t = Type:new("internal")
     t.value = obj
     return t
 end)
+--we don't bother to de-duplicate query types
+--for simplicity and since since queries are not compared to each other
+local function queryType(relation,projections)
+    local t = Type:new("query")
+    t.relation = relation
+    t.projections = projections
+    return t
+end
 
 -------------------------------------------------------------------------------
 --[[ Type interface:                                                       ]]--
@@ -164,7 +166,7 @@ end
 L.vector    = vectorType
 L.row       = rowType
 L.internal  = internalType
-L.set       = setType
+L.query     = queryType
 -- Errors
 L.error     = Type:new("error")
 
@@ -181,7 +183,7 @@ function Type:toString()
   elseif self:isVector()    then return 'Vector('..self.type:toString()..
                                         ','..tostring(self.N)..')'
   elseif self:isRow()       then return 'Row('..self.relation:Name()..')'
-  elseif self:isSet()       then return 'Set('..self.relation:Name()..')' 
+  elseif self:isQuery()     then return 'Query('..self.relation:Name()..').'..table.concat(self.projections,'.') 
   elseif self:isInternal()  then return 'Internal('..tostring(self.value)..')'
   elseif self:isError()     then return 'error'
   end

@@ -327,10 +327,16 @@ function ast.GenericFor:check(ctxt)
     local r = self:clone()
     r.name = self.name
     r.set = self.set:check(ctxt)
-    if not r.set.node_type:isSet() then
-        ctxt:error(self,"for statement expects a set but found type ",r.set.node_type)
+    if not r.set.node_type:isQuery() then
+        ctxt:error(self,"for statement expects a query but found type ",r.set.node_type)
+        return r
     end
-    local rowType = L.row(r.set.node_type.relation)
+    local rel = r.set.node_type.relation
+    for i,p in ipairs(r.set.node_type.projections) do
+        rel = rel[p].type.relation
+        assert(rel)
+    end
+    local rowType = L.row(rel)
     ctxt:enterblock()
     ctxt:enterloop()
     ctxt:liszt()[r.name] = rowType
@@ -676,9 +682,9 @@ local function RunMacro(ctxt,src_node,v,params)
   return luav_to_checked_ast(r, src_node, ctxt)
 end
 function ast.TableLookup:check(ctxt)
-    local table     = self.table:check(ctxt)
+    local tab     = self.table:check(ctxt)
     local member    = self.member
-    local ttype     = table.node_type
+    local ttype     = tab.node_type
 
     if ttype == L.error then
         return err(self, ctxt)
@@ -705,19 +711,37 @@ function ast.TableLookup:check(ctxt)
         if L.is_field(luaval) then
             local field         = luaval
             local ast_node      = ast.FieldAccess:DeriveFrom(member)
-            ast_node.row        = table
+            ast_node.row        = tab
             ast_node.field      = field
             ast_node.node_type  = field.type
             return ast_node
 
         -- desugar macro-fields from row.macro to macro(row)
         elseif L.is_macro(luaval) then
-            return RunMacro(ctxt,self,luaval,{table})
+            return RunMacro(ctxt,self,luaval,{tab})
         else
-            return err(self, ctxt, "Row "..table.name.." does not "..
+            return err(self, ctxt, "Row "..ttype.relation:Name().." does not "..
                                    "have field or macro-field "..
                                    "'"..member.."'")
         end
+    elseif ttype:isQuery() then
+        local rel = ttype.relation
+        local ct = tab:clone()
+        for k,v in pairs(tab) do ct[k] = v end
+        local projs = {}
+        for i,p in ipairs(ttype.projections) do
+            table.insert(projs,p)
+            rel = rel[p].type.relation
+            assert(rel)
+        end
+        local field = rel[member]
+        if not L.is_field(field) then
+            ctxt:error(self, "Relation "..rel:Name().." does not have field "..member)
+        else 
+            table.insert(projs,member)
+        end
+        ct.node_type = L.query(ttype.relation,projs)
+        return ct
     else
         return err(self, ctxt, "select operator not "..
                                "supported for "..
@@ -823,7 +847,7 @@ function ast.Where:check(ctxt)
     local w = self:clone()
     w.relation = field.owner
     w.key = self.key
-    w.node_type = L.set(w.relation)
+    w.node_type = L.query(w.relation,{})
     return w
 end
 

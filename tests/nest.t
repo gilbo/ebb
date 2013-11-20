@@ -18,8 +18,8 @@ mesh.faces:NewFieldMacro("vertices",L.NewMacro(function(f)
 end))
 
 local test_for = liszt_kernel (f in mesh.faces)
-	for v in f.vertices do
-	    lprint(f,v.face,v.vertex)
+	for v in f.vertices.vertex do
+	    lprint(f,v)
 	end
 end
 test_for()

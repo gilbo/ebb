@@ -286,18 +286,31 @@ function ast.Where:codegen(env)
     end
 end
 
+local function doProjection(obj,field)
+    assert(L.is_field(field))
+    return `field.data[obj]
+end
+
 function ast.GenericFor:codegen (env)
-	local rowType = L.row(self.set.node_type.relation)
-	local sym = symbol(rowType:terraType())
-    local set = self.set:codegen(env)
+	local set = self.set:codegen(env)
+	local iter = symbol("iter")
+    local rel = self.set.node_type.relation
+    local projected = iter
+    for i,p in ipairs(self.set.node_type.projections) do
+        local field = rel[p]
+        projected = doProjection(projected,field)
+        rel = field.type.relation
+        assert(rel)
+    end
+    local sym = symbol(L.row(rel):terraType())
     env:enterblock()
 	env:localenv()[self.name] = sym
 	local body = self.body:codegen(env)
     env:leaveblock()
     local code = quote
 	    var s = [set]
-	    for i = s.start,s.finish do
-	        var [sym] = i
+	    for [iter] = s.start,s.finish do
+	        var [sym] = [projected]
 	        [body]
 	    end
 	end
