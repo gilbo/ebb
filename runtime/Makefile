@@ -5,7 +5,7 @@
 UNAME = $(shell uname)
 CXX = clang++
 
-COMMON_SRC = src/mesh.cpp src/lmeshloader.cpp
+COMMON_SRC = src/mesh.cpp src/lmeshloader.cpp src/swift.cpp
 COMMON_OBJ = $(patsubst src/%.cpp,build/%.o,$(COMMON_SRC))
 
 FLAGS = -I. -g -fPIC -Wno-deprecated
