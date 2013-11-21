@@ -20,7 +20,6 @@ local Expression      = { kind = 'expr'   } -- abstract
 local BinaryOp        = { kind = 'binop'  }
 local Reduce          = { kind = 'reduce' }
 local UnaryOp         = { kind = 'unop'   }
-local Tuple           = { kind = 'tuple'  }
 
 local TableLookup     = { kind = 'lookup' }
 local VectorIndex     = { kind = 'index'  }
@@ -39,7 +38,7 @@ local Scalar          = { kind = 'scalar'      } -- type determined by scalar ty
 
 local QuoteExpr       = { kind = 'quoteexpr'   } -- type already checked, just return checked AST
 local LuaObject       = { kind = 'luaobject' } --reference to a special Lua object, type is already provided
-
+local Where           = { kind = 'where'     }
 
 -- Statements:
 local Statement       = { kind = 'statement'  }  -- abstract
@@ -75,7 +74,6 @@ inherit(UnaryOp,       Expression)
 inherit(Number,        Expression)
 inherit(String,        Expression)
 inherit(Bool,          Expression)
-inherit(Tuple,         Expression)
 inherit(VectorLiteral, Expression)
 
 inherit(Call,          Expression)
@@ -88,6 +86,7 @@ inherit(Scalar,        Expression)
 inherit(FieldAccess,   Expression)
 inherit(QuoteExpr,     Expression)
 inherit(LuaObject,     Expression)
+inherit(Where,         Expression)
 
 inherit(IfStatement,     Statement)
 inherit(WhileStatement,  Statement)
@@ -149,8 +148,6 @@ function AST:clone ()
 	}
 	return setmetatable(copy, getmetatable(self))
 end
-
-function Tuple:size ( ) return #self.children end
 
 function AST:is (obj)
 	return obj == getmetatable(self)
@@ -219,14 +216,6 @@ function FieldAccess:pretty_print(indent)
 	print(indent .. self.kind .. ': ' .. tostring(self.field))
 end
 
-function Tuple:pretty_print(indent)
-	indent = indent or ''
-	print(indent .. self.kind)
-	for i = 1, #self.children do
-		self.children[i]:pretty_print(indent .. indent_delta)
-	end
-end
-
 function VectorLiteral:pretty_print(indent)
 	indent = indent or ''
 	print(indent .. self.kind)
@@ -239,7 +228,9 @@ function Call:pretty_print (indent)
 	indent = indent or ''
 	print(indent .. self.kind .. ": (func, params)")
 	self.func:pretty_print(indent .. indent_delta)
-	self.params:pretty_print(indent .. indent_delta)
+	for i = 1, #self.params do
+		self.params[i]:pretty_print(indent .. indent_delta)
+	end
 end
 
 function TableLookup:pretty_print (indent)
@@ -376,7 +367,6 @@ for k,v in pairs({
 	BinaryOp        = BinaryOp,
 	UnaryOp         = UnaryOp,
 	Reduce 	        = Reduce,
-	Tuple           = Tuple,
 	TableLookup     = TableLookup,
 	VectorIndex     = VectorIndex,
 	Scalar 	        = Scalar,
@@ -400,6 +390,7 @@ for k,v in pairs({
 	GenericFor      = GenericFor,
 	Break           = Break,
 	CondBlock       = CondBlock,
-	LuaObject       = LuaObject
+	LuaObject       = LuaObject,
+	Where           = Where
 }) do A[k] = v end
 

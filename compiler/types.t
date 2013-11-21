@@ -21,7 +21,7 @@ end
 -------------------------------------------------------------------------------
 --[[ Basic Type Methods                                                    ]]--
 -------------------------------------------------------------------------------
--- There are 5 basic kinds of types:
+-- There are 6 basic kinds of types:
 function Type:isPrimitive()
   return self.kind == "primitive"
 end
@@ -36,6 +36,9 @@ function Type:isInternal()
 end
 function Type:isError()
   return self.kind == "error"
+end
+function Type:isQuery()
+  return self.kind == "query"
 end
 
 -- Can this type of AST represent a Liszt value
@@ -73,11 +76,15 @@ function Type:baseType()
 end
 
 local struct emptyStruct {}
-
+local struct  QueryType {
+    start : uint64;
+    finish : uint64;
+}
 function Type:terraType()
   if     self:isPrimitive() then return self.terratype
   elseif self:isVector()    then return vector(self.type:terraType(), self.N)
   elseif self:isRow()       then return L.addr:terraType()
+  elseif self:isQuery()     then return QueryType
   elseif self:isInternal()  then return emptyStruct
   end
   error("terraType method not implemented for type " .. self:toString(), 2)
@@ -85,34 +92,6 @@ end
 
 function Type:terraBaseType()
     return self:baseType():terraType()
-end
-
--------------------------------------------------------------------------------
---[[ Stringify types                                                       ]]--
--------------------------------------------------------------------------------
-function Type:toString()
-  if     self:isPrimitive() then return self.name
-  elseif self:isVector()    then return 'LVector('..self.type:toString()..
-                                        ','..tostring(self.N)..')'
-  elseif self:isRow()       then return 'Row('..self.relation:Name()..')'
-  elseif self:isInternal()  then return 'Internal('..tostring(self.value)..')'
-  elseif self:isError()     then return 'error'
-  end
-  print(debug.traceback())
-  error('toString method not implemented for this type!', 2)
-end
-Type.__tostring = Type.toString
-
-
--- THIS DOES NOT EMIT A STRING
--- It outputs a LUA table which can be JSON stringified safely
-function Type:json_serialize()
-  local json = {}
-  return json
-end
--- given a table output by json_serialize, deserialize reconstructs
--- a proper Type object with correct metatable, etc.
-function Type.json_deserialize(json_tbl)
 end
 
 -------------------------------------------------------------------------------
@@ -132,27 +111,39 @@ local function vectorType (typ, len)
   return vector_types[tpn]
 end
 
-local row_type_table = {}
-local function rowType (relation)
-  if not L.is_relation(relation) then
-    error("invalid argument to row type constructor. A relation "..
-          "must be provided", 2)
-  end
-  if not row_type_table[relation] then
+local function cached(ctor)
+    local cache = {}
+    return function(param)
+        local t = cache[param]
+        if not t then
+            t = ctor(param)
+            cache[param] = t
+        end
+        return t
+    end
+end
+local function checkrelation(relation)
+    if not L.is_relation(relation) then
+        error("invalid argument to type constructor. A relation must be provided", 4)
+    end
+end
+local rowType = cached(function(relation)
+    checkrelation(relation)
     local rt = Type:new("row")
     rt.relation = relation
-    row_type_table[relation:Name()] = rt
-  end
-  return row_type_table[relation:Name()]
-end
-local internal_types = {}
-local function internalType(obj)
-    local t = internal_types[obj]
-    if not t then
-        t = Type:new("internal")
-        t.value = obj
-        internal_types[obj] = t
-    end
+    return rt
+end)
+local internalType = cached(function(obj)
+    local t = Type:new("internal")
+    t.value = obj
+    return t
+end)
+--we don't bother to de-duplicate query types
+--for simplicity and since since queries are not compared to each other
+local function queryType(relation,projections)
+    local t = Type:new("query")
+    t.relation = relation
+    t.projections = projections
     return t
 end
 
@@ -175,7 +166,7 @@ end
 L.vector    = vectorType
 L.row       = rowType
 L.internal  = internalType
-
+L.query     = queryType
 -- Errors
 L.error     = Type:new("error")
 
@@ -192,12 +183,14 @@ function Type:toString()
   elseif self:isVector()    then return 'Vector('..self.type:toString()..
                                         ','..tostring(self.N)..')'
   elseif self:isRow()       then return 'Row('..self.relation:Name()..')'
+  elseif self:isQuery()     then return 'Query('..self.relation:Name()..').'..table.concat(self.projections,'.') 
   elseif self:isInternal()  then return 'Internal('..tostring(self.value)..')'
   elseif self:isError()     then return 'error'
   end
   print(debug.traceback())
   error('toString method not implemented for this type!', 2)
 end
+Type.__tostring = Type.toString
 
 -- THIS DOES NOT EMIT A STRING
 -- It outputs a LUA table which can be JSON stringified safely
