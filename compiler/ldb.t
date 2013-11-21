@@ -138,31 +138,34 @@ function L.LRelation:NewFieldMacro (name, macro)
     return macro
 end
 
-function L.LRelation:LoadIndexFromMemory(name, key, row_idx)
-    if not L.is_relation(key) then
-        error("LoadIndexFromMemory(): Key must be a relation")
-    end
-    if self._index then
-        error("LoadIndexFromMemory(): Relation already has an index")
-    end
-    self:NewField(name, key)
+function L.LRelation:CreateIndex(name)
     local f = self[name]
+    if self._index then
+        error("CreateIndex(): Relation already has an index")
+    end
+    if not L.is_field(f) then
+        error("CreateIndex(): No field "..name)
+    end
+    if not f.type:isRow() then
+        error("CreateIndex(): index must be a relation")
+    end
+    local key = f.type.relation
     rawset(self,"_index",f)
     local numindices = key:Size()
+    local numvalues = f:Size()
     rawset(self,"_indexdata",MallocArray(uint64,numindices+1))
-    f:Allocate()
-    local fsize = f:Size()
-    for i = 0, numindices-1 do
-        local start = row_idx[i]
-        local finish = row_idx[i+1]
-        assert(start >= 0 and start < fsize)
-        assert(finish >= start and finish <= fsize)
-        for j = start, finish - 1 do
-            f.data[j] = i
+    local prev,pos = 0,0
+    for i = 0, numindices - 1 do
+        self._indexdata[i] = pos
+        while f.data[pos] == i and pos < numvalues do
+            if f.data[pos] < prev then
+                error("CreateIndex(): Index field is not sorted")
+            end
+            prev,pos = f.data[pos],pos + 1
         end
-        self._indexdata[i] = start
     end
-    self._indexdata[numindices] = row_idx[numindices]
+    assert(pos == numvalues)
+    self._indexdata[numindices] = pos
 end
 
 function L.LRelation:json_serialize(rel_to_name)

@@ -68,6 +68,30 @@ local function initRowFromMemory32(field, srcmem, stride, offset)
     field:LoadFromCallback(row32_copy_callback(srcmem, stride, offset))
 end
 
+local function alloc(n, typ)
+    return terralib.cast(&typ, C.malloc(n * terralib.sizeof(typ)))
+end
+            
+function initFieldFromIndex(rel,name, key, row_idx)
+    rel:NewField(name, key)
+    local f = rel[name]
+    local numindices = key:Size()
+    local fsize = f:Size()
+    local scratch = alloc(fsize,uint64)
+    for i = 0, numindices-1 do
+        local start = row_idx[i]
+        local finish = row_idx[i+1]
+        assert(start >= 0 and start < fsize)
+        assert(finish >= start and finish <= fsize)
+        for j = start, finish - 1 do
+            scratch[j] = i
+        end
+    end
+    f:LoadFromMemory(scratch)
+    C.free(scratch)
+    rel:CreateIndex(name)
+end
+
 local function initMeshRelations(mesh)
     -- initialize list of relations
     local relations = {}
@@ -94,15 +118,12 @@ local function initMeshRelations(mesh)
         -- store table with name intended for global scope
         relations[name] = rel
 
-        rel:LoadIndexFromMemory(xtoy.n1, relations[xtoy.t1], mesh[old_name].row_idx)
+        initFieldFromIndex(rel,xtoy.n1, relations[xtoy.t1], mesh[old_name].row_idx)
         rel:NewField(xtoy.n2, relations[xtoy.t2])
 
         -- if our lmesh field has orientation encoded into the relation,
         -- extract the orientation and load it as a separate field
         if xtoy.orientation then
-            local function alloc(n, typ)
-                return terralib.cast(&typ, C.malloc(n * terralib.sizeof(typ)))
-            end
             local ordata   = alloc(n_rows, bool)
             local vdata    = alloc(n_rows, uint32)
             local srcdata  = terralib.cast(&uint32, mesh[old_name].values)
