@@ -93,6 +93,7 @@ function initFieldFromIndex(rel,name, key, row_idx)
 end
 
 local function initMeshRelations(mesh)
+    import "compiler.liszt"
     -- initialize list of relations
     local relations = {}
     -- basic element relations
@@ -120,7 +121,6 @@ local function initMeshRelations(mesh)
 
         initFieldFromIndex(rel,xtoy.n1, relations[xtoy.t1], mesh[old_name].row_idx)
         rel:NewField(xtoy.n2, relations[xtoy.t2])
-
         -- if our lmesh field has orientation encoded into the relation,
         -- extract the orientation and load it as a separate field
         if xtoy.orientation then
@@ -146,6 +146,10 @@ local function initMeshRelations(mesh)
         else
             initRowFromMemory32(rel[xtoy.n2], mesh[old_name].values)
         end
+        --setup the correct macros
+        relations[xtoy.t1]:NewFieldMacro(xtoy.t2,L.NewMacro(function(f)
+            return liszt `L.Where(rel.[xtoy.n1],f).[xtoy.n2]
+        end))
     end
 
     for k, xtoy in pairs(mesh_rels_topo) do

@@ -61,6 +61,17 @@ function Context:leaveloop()
     if self.loop_count < 0 then self.loop_count = 0 end
 end
 
+local function exec_external(exp,ctxt,default)
+    local status, v = pcall(function()
+        return exp(ctxt:lua())
+    end)
+    if not status then
+        ctxt:error(ast_node, "Error evaluating type annotation: "..typ)
+        v = default
+    end
+    return v
+end
+
 ------------------------------------------------------------------------------
 --[[ AST semantic checking methods:                                       ]]--
 ------------------------------------------------------------------------------
@@ -218,14 +229,7 @@ function ast.Assignment:check(ctxt)
 end
 
 local function exec_type_annotation(typexp, ast_node, ctxt)
-    local status, typ = pcall(function()
-        return typexp(ctxt:lua())
-    end)
-
-    if not status then
-        ctxt:error(ast_node, "Error evaluating type annotation: "..typ)
-        typ = L.error
-    end
+    local typ = exec_external(typexp, ctxt, L.error)
     if not T.isLisztType(typ) then
         ctxt:error(ast_node, "Expected Liszt type annotation but found " ..
                              type(typ))
@@ -569,7 +573,6 @@ end
 function ast.Name:check(ctxt)
     -- try to find the name in the local Liszt scope
     local typ = ctxt:liszt()[self.name]
-
     -- if the name is in the local scope, then it must have been declared
     -- somewhere in the liszt kernel.  Thus, it has to be a primitive, a
     -- bool, or a topological element.
@@ -584,11 +587,7 @@ function ast.Name:check(ctxt)
     local luav = ctxt:lua()[self.name]
     if luav then
         -- convert the lua value into an ast node
-        local ast_node = luav_to_checked_ast(luav, self, ctxt)
-
-        -- track the name this came from for debuging convenience
-        ast_node.name = self.name
-        return ast_node
+        return luav_to_checked_ast(luav, self, ctxt)
     end
 
 
@@ -660,6 +659,13 @@ end
 function ast.TableLookup:check(ctxt)
     local tab     = self.table:check(ctxt)
     local member    = self.member
+    if type(member) == "function" then --member is an escaped lua expression
+       member = exec_external(member,ctxt,"<error>")
+       if type(member) ~= "string" then
+        ctxt:error(self,"expected escape to evaluate to a string but found ", type(member))
+        member = "<error>"
+       end
+    end
     local ttype     = tab.node_type
 
     if ttype == L.error then

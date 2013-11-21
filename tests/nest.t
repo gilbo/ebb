@@ -13,10 +13,6 @@ local com   = L.NewScalar(L.vector(L.float, 3), {0, 0, 0})--Vector.new(float, {0
 local upval = 5
 local vv    = L.NewVector(L.float, {1,2,3})
 
-mesh.faces:NewFieldMacro("vertices",L.NewMacro(function(f)
-    return liszt `L.Where(mesh.verticesofface.face,f).vertex
-end))
-
 local test_for = liszt_kernel (f in mesh.faces)
 	for v in f.vertices do
 	    lprint(f,v)

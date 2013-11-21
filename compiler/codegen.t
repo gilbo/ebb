@@ -118,6 +118,7 @@ end
 
 function ast.Name:codegen(env)
 	local s = env:localenv()[self.name]
+	assert(terralib.issymbol(s))
 	return `[s]
 end
 
@@ -278,12 +279,13 @@ function ast.Where:codegen(env)
     local key = self.key:codegen(env)
     local sType = self.node_type:terraType()
     local index = self.relation._indexdata
-    return quote
+    local v = quote
         var k = [key]
         var idx = [index]
     in 
         sType { idx[k], idx[k+1] }
     end
+    return v
 end
 
 local function doProjection(obj,field)
