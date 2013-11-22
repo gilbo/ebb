@@ -2,6 +2,7 @@
 -- the rest of the compiler should just terralib.require this file
 return terralib.includecstring [[
 #include "runtime/src/lmeshloader.h"
+#include "runtime/src/swiftshim.h"
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>

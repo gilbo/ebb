@@ -15,13 +15,15 @@ ifeq ($(UNAME),Darwin)
 else
 	LFLAGS += -shared
 endif
+LFLAGS += -fPIC
 
 LIBRARIES = libsingle_runtime.so
+LIBDEPENDS = -Wl,-Bstatic -lSWIFT -Wl,-Bdynamic
 
 all: $(LIBRARIES)
 
 lib%.so:   build/%.o $(COMMON_OBJ)
-	$(CXX) $(LFLAGS) $< $(COMMON_OBJ) -o $@
+	$(CXX) $(LFLAGS) $< $(COMMON_OBJ) $(LIBDEPENDS) -o $@
     
 build/%.o:	src/%.cpp 
 	$(CXX) $(FLAGS) $< -c -o $@

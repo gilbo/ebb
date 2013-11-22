@@ -4,7 +4,7 @@ LMesh = terralib.require "compiler.lmesh"
 Particle = terralib.require "compiler.particle"
 local print = L.print
 
-local M = LMesh.Load("examples/rmesh.lmesh")
+local M = LMesh.Load("tests/twocells.lmesh")
 
 local center_of_cell_1 = terra (mem : &vector(float, 3), i : uint)
     mem[0] = vectorof(float, 0.5, 0.5, 0.5)
