@@ -29,6 +29,28 @@ function B.isFunc(f)
     return getmetatable(f) == Func
 end
 
+local id = function () error("id expects a relaton row") end
+B.id = Func.new(id)
+
+function B.id.check(ast, ctxt)
+    local args = ast.params
+    if #args ~= 1 then 
+        ctxt:error(ast, "id expects exactly 1 argument (instead got " .. tostring(#args) .. ")")
+        return L.error
+    end
+
+    if not ast.params[1].node_type:isRow() then
+        ctxt:error(ast, "expected a relational row as the argument for id()")
+        return L.error
+    end
+
+    return L.int
+end
+
+function B.id.codegen(ast, env)
+    return ast.params[1]:codegen(env)
+end
+
 
 B.assert = Func.new(assert)
 
@@ -408,4 +430,5 @@ L.assert = B.assert
 L.dot    = B.dot
 L.cross  = B.cross
 L.length = B.length
+L.id     = B.id
 L.is_function = B.isFunc
