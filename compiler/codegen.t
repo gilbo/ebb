@@ -118,6 +118,7 @@ end
 
 function ast.Name:codegen(env)
 	local s = env:localenv()[self.name]
+	assert(terralib.issymbol(s))
 	return `[s]
 end
 
@@ -274,27 +275,49 @@ end
 function ast.LuaObject:codegen (env)
     return `{}
 end
---[[
+function ast.Where:codegen(env)
+    local key = self.key:codegen(env)
+    local sType = self.node_type:terraType()
+    local index = self.relation._indexdata
+    local v = quote
+        var k = [key]
+        var idx = [index]
+    in 
+        sType { idx[k], idx[k+1] }
+    end
+    return v
+end
+
+local function doProjection(obj,field)
+    assert(L.is_field(field))
+    return `field.data[obj]
+end
+
 function ast.GenericFor:codegen (env)
-	env:enterblock()
-
-	local varname = self.children[1].children[1]
-	local varsym = symbol()
-	local ctx    = env.context
-	env:localenv()[varname] = varsym
-
-	local code = quote
-		var [varsym] : runtime.lkElement
-		if (runtime.lkGetActiveElement(&[ctx], [varsym]) > 0) then
-			-- run block!
-		end
+	local set = self.set:codegen(env)
+	local iter = symbol("iter")
+    local rel = self.set.node_type.relation
+    local projected = iter
+    for i,p in ipairs(self.set.node_type.projections) do
+        local field = rel[p]
+        projected = doProjection(projected,field)
+        rel = field.type.relation
+        assert(rel)
+    end
+    local sym = symbol(L.row(rel):terraType())
+    env:enterblock()
+	env:localenv()[self.name] = sym
+	local body = self.body:codegen(env)
+    env:leaveblock()
+    local code = quote
+	    var s = [set]
+	    for [iter] = s.start,s.finish do
+	        var [sym] = [projected]
+	        [body]
+	    end
 	end
-
-
-	env:leaveblock()
 	return code
 end
-]]--
 
 function C.codegen (luaenv, kernel_ast)
 	local env = terralib.newenvironment(luaenv)
@@ -303,7 +326,8 @@ function C.codegen (luaenv, kernel_ast)
 	local kernel_body = kernel_ast:codegen(env)
 	env:leaveblock()
 
-	return terra ()
+	local r = terra ()
 		[kernel_body]
 	end
+	return r
 end

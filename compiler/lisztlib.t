@@ -21,6 +21,7 @@ local Kernel     = make_prototype("LKernel","kernel")
 
 local C = terralib.require "compiler.c"
 local T = terralib.require "compiler.types"
+local ast = terralib.require "compiler.ast"
 terralib.require "compiler.builtins"
 local LDB = terralib.require "compiler.ldb"
 local semant = terralib.require "compiler.semant"
@@ -249,6 +250,16 @@ end
 function L.NewMacro(generator)
     return setmetatable({genfunc=generator}, LMacro)    
 end
+
+L.Where = L.NewMacro(function(field,key)
+    if field == nil or key == nil then
+        error("Where expects 2 arguments")
+    end
+    local w = ast.Where:DeriveFrom(field)
+    w.field = field
+    w.key   = key
+    return semant.check({},w)
+end)
 
 
 -------------------------------------------------------------------------------

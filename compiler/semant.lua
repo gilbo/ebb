@@ -61,6 +61,17 @@ function Context:leaveloop()
     if self.loop_count < 0 then self.loop_count = 0 end
 end
 
+local function exec_external(exp,ctxt,default)
+    local status, v = pcall(function()
+        return exp(ctxt:lua())
+    end)
+    if not status then
+        ctxt:error(ast_node, "Error evaluating type annotation: "..typ)
+        v = default
+    end
+    return v
+end
+
 ------------------------------------------------------------------------------
 --[[ AST semantic checking methods:                                       ]]--
 ------------------------------------------------------------------------------
@@ -218,14 +229,7 @@ function ast.Assignment:check(ctxt)
 end
 
 local function exec_type_annotation(typexp, ast_node, ctxt)
-    local status, typ = pcall(function()
-        return typexp(ctxt:lua())
-    end)
-
-    if not status then
-        ctxt:error(ast_node, "Error evaluating type annotation: "..typ)
-        typ = L.error
-    end
+    local typ = exec_external(typexp, ctxt, L.error)
     if not T.isLisztType(typ) then
         ctxt:error(ast_node, "Expected Liszt type annotation but found " ..
                              type(typ))
@@ -324,7 +328,26 @@ function ast.NumericFor:check(ctxt)
 end
 
 function ast.GenericFor:check(ctxt)
-    ctxt:error(self, "generic for statement not yet implemented", 2)
+    local r = self:clone()
+    r.name = self.name
+    r.set = self.set:check(ctxt)
+    if not r.set.node_type:isQuery() then
+        ctxt:error(self,"for statement expects a query but found type ",r.set.node_type)
+        return r
+    end
+    local rel = r.set.node_type.relation
+    for i,p in ipairs(r.set.node_type.projections) do
+        rel = rel[p].type.relation
+        assert(rel)
+    end
+    local rowType = L.row(rel)
+    ctxt:enterblock()
+    ctxt:enterloop()
+    ctxt:liszt()[r.name] = rowType
+    r.body = self.body:check(ctxt)
+    ctxt:leaveloop()
+    ctxt:leaveblock()
+    return r
 end
 
 function ast.Break:check(ctxt)
@@ -550,7 +573,6 @@ end
 function ast.Name:check(ctxt)
     -- try to find the name in the local Liszt scope
     local typ = ctxt:liszt()[self.name]
-
     -- if the name is in the local scope, then it must have been declared
     -- somewhere in the liszt kernel.  Thus, it has to be a primitive, a
     -- bool, or a topological element.
@@ -565,11 +587,7 @@ function ast.Name:check(ctxt)
     local luav = ctxt:lua()[self.name]
     if luav then
         -- convert the lua value into an ast node
-        local ast_node = luav_to_checked_ast(luav, self, ctxt)
-
-        -- track the name this came from for debuging convenience
-        ast_node.name = self.name
-        return ast_node
+        return luav_to_checked_ast(luav, self, ctxt)
     end
 
 
@@ -632,40 +650,23 @@ end
 ------------------------------------------------------------------------------
 --[[                         Miscellaneous nodes:                         ]]--
 ------------------------------------------------------------------------------
-function ast.Tuple:check(ctxt)
-    local tuple = self:clone()
-    tuple.children = {}
-    for i, node in ipairs(self.children) do
-        tuple.children[i] = node:check(ctxt)
-    end
-    return tuple
-end
-
-function ast.Tuple:index_check(ctxt)
-    -- type checking tuple when it should be a single argument, for
-    -- instance, when indexing a field
-    if #self.children ~= 1 then
-        ctxt:error(self, "can use exactly one argument to index here")
-        local errnode = self:clone()
-        errnode.node_type = L.error
-        return errnode
-    end
-    local arg_ast = self.children[1]:check(ctxt)
-    local argtype = arg_ast.node_type
-    assert(argtype ~= nil)
-    self.node_type = argtype
-    return arg_ast
-end
-
 
 local function RunMacro(ctxt,src_node,v,params)
   local r = v.genfunc(unpack(params))
   return luav_to_checked_ast(r, src_node, ctxt)
 end
+
 function ast.TableLookup:check(ctxt)
-    local table     = self.table:check(ctxt)
+    local tab     = self.table:check(ctxt)
     local member    = self.member
-    local ttype     = table.node_type
+    if type(member) == "function" then --member is an escaped lua expression
+       member = exec_external(member,ctxt,"<error>")
+       if type(member) ~= "string" then
+        ctxt:error(self,"expected escape to evaluate to a string but found ", type(member))
+        member = "<error>"
+       end
+    end
+    local ttype     = tab.node_type
 
     if ttype == L.error then
         return err(self, ctxt)
@@ -692,19 +693,37 @@ function ast.TableLookup:check(ctxt)
         if L.is_field(luaval) then
             local field         = luaval
             local ast_node      = ast.FieldAccess:DeriveFrom(member)
-            ast_node.row        = table
+            ast_node.row        = tab
             ast_node.field      = field
             ast_node.node_type  = field.type
             return ast_node
 
         -- desugar macro-fields from row.macro to macro(row)
         elseif L.is_macro(luaval) then
-            return RunMacro(ctxt,self,luaval,{table})
+            return RunMacro(ctxt,self,luaval,{tab})
         else
-            return err(self, ctxt, "Row "..table.name.." does not "..
+            return err(self, ctxt, "Row "..ttype.relation:Name().." does not "..
                                    "have field or macro-field "..
-                                   "'"..member.name.."'")
+                                   "'"..member.."'")
         end
+    elseif ttype:isQuery() then
+        local rel = ttype.relation
+        local ct = tab:clone()
+        for k,v in pairs(tab) do ct[k] = v end
+        local projs = {}
+        for i,p in ipairs(ttype.projections) do
+            table.insert(projs,p)
+            rel = rel[p].type.relation
+            assert(rel)
+        end
+        local field = rel[member]
+        if not L.is_field(field) then
+            ctxt:error(self, "Relation "..rel:Name().." does not have field "..member)
+        else 
+            table.insert(projs,member)
+        end
+        ct.node_type = L.query(ttype.relation,projs)
+        return ct
     else
         return err(self, ctxt, "select operator not "..
                                "supported for "..
@@ -750,8 +769,10 @@ function ast.Call:check(ctxt)
     
     call.node_type = L.error -- default
     local func      = self.func:check(ctxt)
-    call.params = self.params:check(ctxt)
-        
+    call.params = {}
+    for i,p in ipairs(self.params) do
+        call.params[i] = p:check(ctxt)
+    end
     local isinternal = func.node_type:isInternal()
     local v = isinternal and func.node_type.value
     if v and L.is_function(v) then
@@ -759,8 +780,8 @@ function ast.Call:check(ctxt)
         call.node_type = v.check(call, ctxt)
     elseif v and L.is_macro(v) then
         -- replace the call node with the inlined AST
-        call = RunMacro(ctxt, self, v, call.params.children)
-    elseif call.func.node_type:isError() then
+        call = RunMacro(ctxt, self, v, call.params)
+    elseif func.node_type:isError() then
         -- fall through
         -- (do not print error messages for errors already reported)
     else
@@ -792,6 +813,26 @@ end
 function ast.LuaObject:check(ctxt)
     assert(self.node_type and self.node_type:isInternal())
     return self
+end
+function ast.Where:check(ctxt)
+    --note: where is generated in a macro, so its fields are already type-checked
+    local fieldobj = self.field.node_type
+    local keytype = self.key.node_type
+    if not fieldobj:isInternal() or not L.is_field(fieldobj.value) then
+        ctxt:error(self,"Expected a field as the first argument but found ",fieldobj)
+    end
+    local field = fieldobj.value
+    if keytype ~= field.type then
+        ctxt:error(self,"Key of where is type ",keytype," but expected type ",field.type)
+    end
+    if field.owner._index ~= field then
+        ctxt:error(self,"Field ",field.name, " is not an index of ",field.owner:Name())
+    end
+    local w = self:clone()
+    w.relation = field.owner
+    w.key = self.key
+    w.node_type = L.query(w.relation,{})
+    return w
 end
 
 ------------------------------------------------------------------------------

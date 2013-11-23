@@ -40,6 +40,19 @@ local function is_valid_lua_identifier(name)
     return true
 end
 
+
+--vector(double,4) requires 32-byte alignment
+--WARNING: this will need more bookkeeping since you cannot call
+-- free on the returned pointer
+local terra allocateAligned32(size : uint64)
+    var r = [uint64](C.malloc(size + 32))
+    r = (r + 31) and not 31
+    return [&opaque](r)
+end
+local function MallocArray(T,N)
+    return terralib.cast(&T,allocateAligned32( N * terralib.sizeof(T) ))
+end
+
 function LDB.NewRelation(size, name)
     -- error check
     if not name or type(name) ~= "string" then
@@ -123,6 +136,36 @@ function L.LRelation:NewFieldMacro (name, macro)
     rawset(self, name, macro)
     self._macros:insert(macro)
     return macro
+end
+
+function L.LRelation:CreateIndex(name)
+    local f = self[name]
+    if self._index then
+        error("CreateIndex(): Relation already has an index")
+    end
+    if not L.is_field(f) then
+        error("CreateIndex(): No field "..name)
+    end
+    if not f.type:isRow() then
+        error("CreateIndex(): index must be a relation")
+    end
+    local key = f.type.relation
+    rawset(self,"_index",f)
+    local numindices = key:Size()
+    local numvalues = f:Size()
+    rawset(self,"_indexdata",MallocArray(uint64,numindices+1))
+    local prev,pos = 0,0
+    for i = 0, numindices - 1 do
+        self._indexdata[i] = pos
+        while f.data[pos] == i and pos < numvalues do
+            if f.data[pos] < prev then
+                error("CreateIndex(): Index field is not sorted")
+            end
+            prev,pos = f.data[pos],pos + 1
+        end
+    end
+    assert(pos == numvalues)
+    self._indexdata[numindices] = pos
 end
 
 function L.LRelation:json_serialize(rel_to_name, filedir)
@@ -213,19 +256,8 @@ function L.LField:Size()
 end
 local bit = require "bit"
 
-
---vector(double,4) requires 32-byte alignment
---WARNING: this will need more bookkeeping since you cannot call
--- free on the returned pointer
-local terra allocateAligned32(size : uint64)
-    var r = [uint64](C.malloc(size + 32))
-    r = (r + 31) and not 31
-    return [&opaque](r)
-end
 function L.LField:Allocate()
-    local bytes  =
-        allocateAligned32(self:Size() * terralib.sizeof(self.type:terraType()))
-    self.data    = terralib.cast(&self.type:terraType(),bytes)
+    self.data = MallocArray(self.type:terraType(),self:Size())
 end
 
 function L.LField:LoadFromCallback (callback)

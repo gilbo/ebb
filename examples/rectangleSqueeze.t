@@ -166,7 +166,7 @@ local update_previous_velocity = liszt_kernel (v in M.vertices) v.v_p = v.v_n en
 
 -- Update the velocity at t^{n+1}: v^{n+1} = v^{n+1/2}+dt^{n+1/2}/2*a^n
 local update_velocity = liszt_kernel (v in M.vertices)
-	v.v_n = v.v_n_h + .5 * dt_n_h * v.a_n
+	v.v_n = v.v_n_h + .5f * dt_n_h * v.a_n
 end
 
 

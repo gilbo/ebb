@@ -29,11 +29,33 @@ function B.isFunc(f)
     return getmetatable(f) == Func
 end
 
+local id = function () error("id expects a relaton row") end
+B.id = Func.new(id)
+
+function B.id.check(ast, ctxt)
+    local args = ast.params
+    if #args ~= 1 then 
+        ctxt:error(ast, "id expects exactly 1 argument (instead got " .. tostring(#args) .. ")")
+        return L.error
+    end
+
+    if not ast.params[1].node_type:isRow() then
+        ctxt:error(ast, "expected a relational row as the argument for id()")
+        return L.error
+    end
+
+    return L.int
+end
+
+function B.id.codegen(ast, env)
+    return ast.params[1]:codegen(env)
+end
+
 
 B.assert = Func.new(assert)
 
 function B.assert.check(ast, ctxt)
-    local args = ast.params.children
+    local args = ast.params
     if #args ~= 1 then
         ctxt:error(ast, "assert expects exactly 1 argument (instead got " .. #args .. ")")
         return
@@ -55,7 +77,7 @@ local terra lisztAssert(test : bool, file : rawstring, line : int)
 end
 
 function B.assert.codegen(ast, env)
-    local test = ast.params.children[1]
+    local test = ast.params[1]
     local code = test:codegen(env)
     if test.node_type:isVector() then
         if test.node_type.N == 0 then return quote end end
@@ -75,29 +97,26 @@ end
 B.print = Func.new(print)
 
 function B.print.check(ast, ctxt)
-    local args = ast.params.children
-    if #args ~= 1 then
-        ctxt:error(ast, "print expects exactly one argument (instead got " .. #args .. ")")
-    end
-
-    local output = args[1]
-    local outtype = output.node_type
-    if outtype ~= L.error and
-       not outtype:isValueType() and not outtype:isRow()
-    then
-        ctxt:error(ast, "only numbers, bools, vectors and rows can be printed")
+    local args = ast.params
+    
+    for i,output in ipairs(args) do
+        local outtype = output.node_type
+        if outtype ~= L.error and
+           not outtype:isValueType() and not outtype:isRow()
+        then
+            ctxt:error(ast, "only numbers, bools, vectors and rows can be printed")
+        end
     end
 end
 
-function B.print.codegen(ast, env)
-    local output = ast.params.children[1]
-	local lt   = output.node_type
+local function printOne(env,output)
+    local lt   = output.node_type
     local tt   = lt:terraType()
     local code = output:codegen(env)
-    if     lt == L.float or lt == L.double then return quote C.printf("%f\n", [double](code)) end
-	elseif lt == L.int   or lt:isRow() then return quote C.printf("%d\n", code) end
+    if     lt == L.float or lt == L.double then return quote C.printf("%f", [double](code)) end
+	elseif lt == L.int   or lt:isRow() then return quote C.printf("%d", code) end
 	elseif lt == L.bool  then
-        return quote C.printf("%s", terralib.select(code, "true\n", "false\n")) end
+        return quote C.printf("%s", terralib.select(code, "true", "false")) end
 	elseif lt:isVector() then
         local printSpec = "{"
         local sym = symbol()
@@ -117,7 +136,7 @@ function B.print.codegen(ast, env)
                 error('Unrecognized type in print: ' .. tostring(bt:terraType()))
             end
         end
-        printSpec = printSpec .. " }\n"
+        printSpec = printSpec .. " }"
         return quote
             var [sym] : tt = code
         in
@@ -126,6 +145,16 @@ function B.print.codegen(ast, env)
     else
         assert(false and "printed object should always be number, bool, or vector")
     end
+end
+function B.print.codegen(ast, env)
+    local output = ast.params[1]
+    local stmts = {}
+    for i,output in ipairs(ast.params) do
+        table.insert(stmts, printOne(env,output))
+        local t = ast.params[i+1] and " " or "\n"
+        table.insert(stmts,`C.printf(t))
+    end
+	return stmts
 end
 
 
@@ -150,7 +179,7 @@ end
 B.dot = Func.new(dot)
 
 function B.dot.check(ast, ctxt)
-    local args = ast.params.children
+    local args = ast.params
     if #args ~= 2 then
         ctxt:error(ast, "dot expects exactly 2 arguments (instead got " .. #args .. ")")
         return
@@ -178,7 +207,7 @@ function B.dot.check(ast, ctxt)
 end
 
 function B.dot.codegen(ast, env)
-    local args = ast.params.children
+    local args = ast.params
     local v1 = symbol()
     local v2 = symbol()
     local N = args[1].node_type.N
@@ -231,7 +260,7 @@ end
 B.cross = Func.new(cross)
 
 function B.cross.check(ast, ctxt)
-    local args = ast.params.children
+    local args = ast.params
     if #args ~= 2 then
         ctxt:error(ast, "cross expects exactly 2 arguments (instead got " .. #args .. ")")
         return
@@ -261,7 +290,7 @@ function B.cross.check(ast, ctxt)
 end
 
 function B.cross.codegen(ast, env)
-    local args = ast.params.children
+    local args = ast.params
 
     local tt1 = args[1].node_type:terraType()
     local tt2 = args[2].node_type:terraType()
@@ -292,7 +321,7 @@ end
 B.length = Func.new(length)
 
 function B.length.check(ast, ctxt)
-    local args = ast.params.children
+    local args = ast.params
     if #args ~= 1 then
         ctxt:error(ast, "length expects exactly 1 argument (instead got " .. #args .. ")")
         return L.error
@@ -309,7 +338,7 @@ function B.length.check(ast, ctxt)
 end
 
 function B.length.codegen(ast, env)
-    local args = ast.params.children
+    local args = ast.params
     local sq = symbol()
     local N = args[1].node_type.N
     if N == 0 then
@@ -347,7 +376,7 @@ end
 local function TerraCheck(func)
     func:compile()
     return function (ast, ctxt)
-        local args = ast.params.children 
+        local args = ast.params
         local argsyms = map(GetTypedSymbol, args)
         local rettype = nil
         local try = function()
@@ -375,7 +404,7 @@ end
 
 local function TerraCodegen(func)
     return function (ast, env)
-        local args = ast.params.children 
+        local args = ast.params
         local argsyms = map(GetTypedSymbol, args)
         local init_params = quote end
         for i = 1, #args do
@@ -401,4 +430,5 @@ L.assert = B.assert
 L.dot    = B.dot
 L.cross  = B.cross
 L.length = B.length
+L.id     = B.id
 L.is_function = B.isFunc
