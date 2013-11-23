@@ -125,7 +125,10 @@ function L.LRelation:NewFieldMacro (name, macro)
     return macro
 end
 
-function L.LRelation:json_serialize(rel_to_name)
+function L.LRelation:json_serialize(rel_to_name, filedir)
+    if filedir then
+        os.execute("mkdir " .. filedir)
+    end
     local json = {
         size      = self._size,
         fields    = {},
@@ -133,14 +136,22 @@ function L.LRelation:json_serialize(rel_to_name)
     -- serialize fields
     for i,f in ipairs(self._fields) do
         local name = f.name
-        json.fields[name] = f:json_serialize(rel_to_name)
+        local filename
+        if filedir then
+            filename = filedir..'/'..name..'.field'
+        end
+        json.fields[name] = f:json_serialize(rel_to_name, filename)
     end
     return json
 end
 
-function L.LField:json_serialize(rel_to_name)
+function L.LField:json_serialize(rel_to_name, filename)
+    if filename then
+        self:SaveToFile(filename)
+    end
     local json = {
-        type = self.type:json_serialize(rel_to_name)
+        type = self.type:json_serialize(rel_to_name),
+        path = filename,
     }
     return json
 end
@@ -256,6 +267,156 @@ function L.LField:print()
 end
 
 
+-- A Field file is laid out as follows
+--------------------------------------------------------------------
+--                          -- HEADER --                          --
+-- MAGIC SIGNATURE (8 bytes; uint64) (LITFIELD) (endianness check)
+-- VERSION NUMBERS (8 bytes; uint64)
+-- FILE SIZE in BYTES (8 bytes; uint64)
+-- HEADER SIZE in BYTES (8 bytes; uint64)
+-- ARRAY SIZE in #entries (8 bytes; uint64)
+-- TYPE_STR LENGTH in BYTES (8 bytes; uint64)
+-- HINT_STR LENGTH in BYTES (8 bytes; uint64)
+--------------------------------------------------------------------
+--                         -- TYPE_STR --   (still header)        --
+--------------------------------------------------------------------
+--                         -- HINT_STR --   (still header)        --
+--================================================================--
+--                        -- DATA BLOCK --   (not header)         --
+--                              ...
+--------------------------------------------------------------------
+local struct FieldHeader {
+    version      : uint64;
+    file_size    : uint64;
+    header_size  : uint64;
+    array_size   : uint64;
+    type_str_len : uint64;
+    hint_str_len : uint64;
+    type_str     : &int8;
+    hint_str     : &int8;
+}
+local terra write_field_header(
+    file       : &C.FILE,
+    header     : &FieldHeader
+)
+    var LITFIELD    : uint64 = 0x4c49544649454c44ULL
+    var data_size   : uint64 = header.file_size - header.header_size
+
+    -- header metadata
+    C.fwrite( &LITFIELD,                8, 1, file )
+    C.fwrite( &header.version,          8, 1, file )
+    C.fwrite( &header.file_size,        8, 1, file )
+    C.fwrite( &header.header_size,      8, 1, file )
+    C.fwrite( &header.array_size,       8, 1, file )
+    C.fwrite( &header.type_str_len,     8, 1, file )
+    C.fwrite( &header.hint_str_len,     8, 1, file )
+    -- header strings
+    C.fwrite( header.type_str,          1, header.type_str_len, file )
+    C.fwrite( header.hint_str,          1, header.hint_str_len, file )
+end
+
+-- allocates arrays for string
+local terra read_field_header(
+    file       : &C.FILE,
+    header     : &FieldHeader
+)
+    -- Check the Magic Number
+    var LITFIELD        : uint64 = 0x4c49544649454c44ULL
+    var magic_number    : uint64
+    C.fread( &magic_number,             8, 1, file )
+    if magic_number ~= LITFIELD then
+        return 1 -- TODO: better error message somehow?
+    end
+
+    -- Check the version
+    C.fread( &header.version,           8, 1, file )
+    if header.version ~= 0x00 then
+        return 1 -- TODO: better error
+    end
+
+    -- read in the rest of the metadata
+    C.fread( header.file_size,       8, 1, file )
+    C.fread( header.header_size,     8, 1, file )
+    C.fread( header.array_size,      8, 1, file )
+    C.fread( header.type_str_len,    8, 1, file )
+    C.fread( header.hint_str_len,    8, 1, file )
+
+    -- allocate space for strings
+    header.type_str = C.malloc( header.type_str_len )
+    header.hint_str = C.malloc( header.hint_str_len )
+
+    -- read in strings
+    C.fread( header.type_str,               1, header.type_str_len, file )
+    C.fread( header.hint_str,               1, header.hint_str_len, file )
+    
+    return 0
+end
+
+function L.LField:SaveToFile(filename)
+    assert(self.data)
+
+    -- open the file for writing
+    local file = C.fopen(filename, 'wb')
+    if not file then
+        error("failed to open file "..filename.." to write to.", 2)
+    end
+
+    -- version is currently 0.0 (dev)
+    local major_version = 0x00
+    local minor_version = 0x00
+    local version =
+        bit.lshift(bit.bor(bit.lshift(major_version, 8), minor_version), 16)
+
+    -- compute some values...
+    local n_rows    = self.owner._size
+    local tsize     = terralib.sizeof(self.type:terraType())
+    local type_str  = self.type:toString()
+    local hint_str  = "" -- for future use?
+
+    -- structs / arrays to pack data for Terra functions
+    local header =
+        terralib.cast(&FieldHeader, C.malloc(terralib.sizeof(FieldHeader)))
+    -- pack the header metadata
+    header.version          = version
+    header.array_size       = n_rows
+    header.type_str_len     = #type_str + 1
+    header.hint_str_len     = #hint_str + 1
+    header.header_size      = 7 * 8 +
+                              header.type_str_len +
+                              header.hint_str_len
+    header.file_size        = header.header_size +
+                              header.array_size * tsize
+    -- pack the header strings
+    (terra()
+        header.type_str = type_str
+        header.hint_str = hint_str
+    end)()
+
+    -- Error escape which will make sure to close the file on the way out
+    local function err(msg)
+        C.free(header)
+        C.fclose(file)
+        error(msg, 2)
+    end
+
+    write_field_header( file, header )
+    if C.ferror(file) ~= 0 then
+        C.perror('field file header write error: ')
+        err("error writing field file header to "..filename)
+    end
+
+    -- write data block out
+    C.fwrite( self.data, tsize, n_rows, file )
+    if C.ferror(file) ~= 0 then
+        C.perror('field file data write error: ')
+        err("error writing field file data to "..filename)
+    end
+
+    C.free(header)
+    C.fclose(file)
+end
+
+
 function L.SaveRelationIndex(params)
 local interface_description =
 [[
@@ -293,7 +454,9 @@ local interface_description =
     if notes then json_obj.notes = notes end
     json_obj.relations = {}
     for name, rel in pairs(relations) do
-        json_obj.relations[name] = rel:json_serialize(rel_to_name)
+        local filedir = './blah/'..name
+        json_obj.relations[name] =
+            rel:json_serialize(rel_to_name, filedir)
     end
     -- version numbers here are for the file format
     -- so that we can detect old data moving forward
@@ -312,7 +475,7 @@ local interface_description =
         return err_msg
     end
 
-    -- dump text to the appropriate file.  For now, dump it to console
+    -- dump text to the appropriate file.
     local f, err_msg, err_num = io.open(filename, 'w')
     if not f then
         io.stderr:write(err_msg..'\n')

@@ -118,6 +118,7 @@ local function rowType (relation)
   end
   return row_type_table[relation:Name()]
 end
+
 local internal_types = {}
 local function internalType(obj)
     local t = internal_types[obj]
@@ -173,6 +174,38 @@ function Type:toString()
 end
 Type.__tostring = Type.toString
 
+local primitive_set = {
+  ["int"   ] = true,
+  ["uint"  ] = true,
+  ["uint8" ] = true,
+  ["uint64"] = true,
+  ["bool"  ] = true,
+  ["float" ] = true,
+  ["double"] = true,
+}
+-- For inverting the toString mapping
+-- only supports primitives and Vectors
+function Type.fromString(str)
+  if str:sub(1,6) == 'Vector' then
+    local base, n = str:match('Vector%(([^,]*),([^%)]*)%)')
+    n = tonumber(n)
+    if n == nil then
+      error("When constructing a Vector type from a string, "..
+            "no length was found.", 2)
+    end
+    base = Type.fromString(base)
+    return L.vector(base, n)
+  else
+    local lookup = primitive_set[str]
+    if lookup then
+      return L[str]
+    else
+      error("Tried to construct a type from a string which does not "..
+            "express a vector or primitive type", 2)
+    end
+  end
+end
+
 -- THIS DOES NOT EMIT A STRING
 -- It outputs a LUA table which can be JSON stringified safely
 function Type:json_serialize(rel_to_name)
@@ -205,7 +238,7 @@ end
 function Type.json_deserialize(json, name_to_rel)
   name_to_rel = name_to_rel or {}
   if not type(json) == 'table' then
-    error('Tried to deserialize type, but found a non.', 2)
+    error('Tried to deserialize type, but found a non-object.', 2)
   end
   if json.basic_kind == 'primitive' then
     local primitive = L[json.primitive]
