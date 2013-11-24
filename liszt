@@ -10,8 +10,7 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 #echo $SCRIPT_DIR
 
 
-OPTS=-p$SCRIPT_DIR/?.t
-# may want to add the pwd to the path too??
+OPTS="-p$SCRIPT_DIR/?.t -p$SCRIPT_DIR/?.lua"
 
 #echo $OPTS
 
