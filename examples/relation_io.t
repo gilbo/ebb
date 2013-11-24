@@ -23,6 +23,21 @@ local relations, err_msg = L.LoadRelationIndex {
   filename = "./blah/index.json",
 }
 
+
+for k,v in pairs(relations) do
+    relations[k]:print()
+end
+
+
+print('BEFORE')
+relations.vertices.position:print()
+
+relations.vertices.position:LoadFromFile('./blah/vertices/position.field')
+
+print('AFTER')
+relations.vertices.position:print()
+
+
 --local init_to_zero = terra (mem : &float, i : int) mem[0] = 0 end
 --local init_temp    = terra (mem : &float, i : int)
 --  if i == 0 then

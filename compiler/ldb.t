@@ -41,13 +41,37 @@ local function is_valid_lua_identifier(name)
 end
 
 
+-- construct a Lua String from a Terra &int8 given the known length
+local function tstr_to_lstr(tstr, len)
+    local lstr = ''
+    for i=1,len do
+        lstr = lstr..string.char(tstr[i-1])
+    end
+    return lstr
+end
+
 --vector(double,4) requires 32-byte alignment
 --WARNING: this will need more bookkeeping since you cannot call
 -- free on the returned pointer
 local terra allocateAligned32(size : uint64)
-    var r = [uint64](C.malloc(size + 32))
-    r = (r + 31) and not 31
-    return [&opaque](r)
+    var raw                 = [uint64](C.malloc(size + 32))
+    -- round r up to the next multiple of 32,
+    -- making sure there is at least one hidden preceding byte
+    var aligned = (raw + 32) and not 31
+    var diff : uint8        = aligned - raw
+    -- hide the offset before the array
+    @([&uint8](aligned-1))  = diff
+    -- return the aligned pointer
+    return [&opaque](aligned)
+end
+-- WARNING: THIS IS DEFINITELY UNTESTED
+local terra freeAligned32(ptr : &opaque)
+    -- extract the hidden offset
+    var addr         = [uint64](ptr)
+    var diff : uint8 = @([&uint8](addr-1))
+    -- and reconstruct the allocated pointer to free
+    var raw_ptr      = [&opaque](addr - diff)
+    C.free(raw_ptr)
 end
 local function MallocArray(T,N)
     return terralib.cast(&T,allocateAligned32( N * terralib.sizeof(T) ))
@@ -147,18 +171,22 @@ function L.LRelation:CreateIndex(name)
         error("CreateIndex(): No field "..name)
     end
     if not f.type:isRow() then
-        error("CreateIndex(): index must be a relation")
+        error("CreateIndex(): index field must refer to a relation")
     end
-    local key = f.type.relation
+    local rel = f.type.relation
     rawset(self,"_index",f)
-    local numindices = key:Size()
+    local numindices = rel:Size()
     local numvalues = f:Size()
-    rawset(self,"_indexdata",MallocArray(uint64,numindices+1))
+    --rawset(self,"_indexdata",MallocArray(uint64,numindices+1))
+    rawset(self,"_indexdata",
+           terralib.cast(&uint64,
+                C.malloc((numindices+1) * terralib.sizeof(uint64))))
     local prev,pos = 0,0
     for i = 0, numindices - 1 do
         self._indexdata[i] = pos
         while f.data[pos] == i and pos < numvalues do
             if f.data[pos] < prev then
+                -- TODO: NEED TO FREE ALLOCATION SAFELY IN THIS CASE
                 error("CreateIndex(): Index field is not sorted")
             end
             prev,pos = f.data[pos],pos + 1
@@ -212,29 +240,28 @@ function L.LRelation.json_deserialize_stub(json_tbl, relation_name)
     local relation = LDB.NewRelation(json_tbl.size, relation_name)
     return relation
 end
--- the second call should supply the actual relation object...
-function L.LRelation:json_deserialize_fields(json_tbl, name_to_rel)
-    for field_name, field_json in pairs(json_tbl.fields) do
-
-        local field = L.LField.json_deserialize(field_json, name_to_rel)
-
-        field.owner = self -- i.e. the relation
-        field.name  = field_name
-        rawset(self, field.name, field)
-        self._fields:insert(field)
-    end
-end
-
-function L.LField.json_deserialize(json_tbl, name_to_rel)
+-- the next set of calls are made on the actual relation object
+function L.LRelation:json_deserialize_field(fname, json_tbl, name_to_rel)
     if not json_tbl.type then
         error('could not find field type', 2)
     end
 
     local typ = T.Type.json_deserialize(json_tbl.type, name_to_rel)
     local field = setmetatable({
-        type = typ
+        type  = typ,
+        owner = self, -- the relation
+        name  = fname,
     }, L.LField)
-    return field
+
+    -- install the field
+    rawset(self, field.name, field)
+    self._fields:insert(field)
+
+    if json_tbl.path then
+        field:LoadFromFile(json_tbl.path)
+    else
+        -- TODO: throw warning about uninitialized data here?
+    end
 end
 
 
@@ -257,7 +284,10 @@ end
 local bit = require "bit"
 
 function L.LField:Allocate()
-    self.data = MallocArray(self.type:terraType(),self:Size())
+    --self.data = MallocArray(self.type:terraType(),self:Size())
+    local ttype = self.type:terraType()
+    local typesize = terralib.sizeof(ttype)
+    self.data = terralib.cast(&ttype, C.malloc(self:Size() * typesize))
 end
 
 function L.LField:LoadFromCallback (callback)
@@ -270,7 +300,22 @@ end
 
 function L.LField:LoadFromMemory(mem)
     self:Allocate()
-    C.memcpy(self.data,mem, self:Size() * terralib.sizeof(self.type:terraType()))
+    local copy_size = self:Size() * terralib.sizeof(self.type:terraType())
+    C.memcpy(self.data, mem, copy_size)
+end
+
+-- remove allocated data and clear any depedent data, such as indices
+function L.LField:ClearData ()
+    if self.data then
+        C.free(self.data)
+        self.data = nil
+    end
+    -- clear index if installed on this field
+    if self.owner._index == self then
+        C.free(self.owner._indexdata)
+        self.owner._indexdata = nil
+        self.owner._index = nil
+    end
 end
 
 function L.LField:print()
@@ -313,9 +358,11 @@ end
 --                         -- TYPE_STR --   (still header)        --
 --------------------------------------------------------------------
 --                         -- HINT_STR --   (still header)        --
+--------------------------------------------------------------------
+--  optional dead space for data alignment  (still header)        --
 --================================================================--
 --                        -- DATA BLOCK --   (not header)         --
---                              ...
+--                              ...                               --
 --------------------------------------------------------------------
 local struct FieldHeader {
     version      : uint64;
@@ -327,12 +374,21 @@ local struct FieldHeader {
     type_str     : &int8;
     hint_str     : &int8;
 }
+local function new_field_header()
+    local header =
+        terralib.cast(&FieldHeader, C.malloc(terralib.sizeof(FieldHeader)))
+    header.type_str = nil
+    header.hint_str = nil
+    return header
+end
 local terra write_field_header(
     file       : &C.FILE,
     header     : &FieldHeader
 )
     var LITFIELD    : uint64 = 0x4c49544649454c44ULL
     var data_size   : uint64 = header.file_size - header.header_size
+    var dead_space  : uint64 = header.header_size - 7*8 -
+                               header.type_str_len - header.hint_str_len
 
     -- header metadata
     C.fwrite( &LITFIELD,                8, 1, file )
@@ -345,6 +401,8 @@ local terra write_field_header(
     -- header strings
     C.fwrite( header.type_str,          1, header.type_str_len, file )
     C.fwrite( header.hint_str,          1, header.hint_str_len, file )
+    -- jump to end of header dead space
+    C.fseek ( file, header.header_size, C.SEEK_SET_value() )
 end
 
 -- allocates arrays for string
@@ -367,19 +425,22 @@ local terra read_field_header(
     end
 
     -- read in the rest of the metadata
-    C.fread( header.file_size,       8, 1, file )
-    C.fread( header.header_size,     8, 1, file )
-    C.fread( header.array_size,      8, 1, file )
-    C.fread( header.type_str_len,    8, 1, file )
-    C.fread( header.hint_str_len,    8, 1, file )
+    C.fread( &header.file_size,         8, 1, file )
+    C.fread( &header.header_size,       8, 1, file )
+    C.fread( &header.array_size,        8, 1, file )
+    C.fread( &header.type_str_len,      8, 1, file )
+    C.fread( &header.hint_str_len,      8, 1, file )
 
     -- allocate space for strings
-    header.type_str = C.malloc( header.type_str_len )
-    header.hint_str = C.malloc( header.hint_str_len )
+    header.type_str = [&int8](C.malloc( header.type_str_len ))
+    header.hint_str = [&int8](C.malloc( header.hint_str_len ))
 
     -- read in strings
-    C.fread( header.type_str,               1, header.type_str_len, file )
-    C.fread( header.hint_str,               1, header.hint_str_len, file )
+    C.fread( header.type_str,           1, header.type_str_len, file )
+    C.fread( header.hint_str,           1, header.hint_str_len, file )
+
+    -- jump to end of header dead space
+    C.fseek( file, header.header_size,  C.SEEK_SET_value() )
     
     return 0
 end
@@ -399,15 +460,14 @@ function L.LField:SaveToFile(filename)
     local version =
         bit.lshift(bit.bor(bit.lshift(major_version, 8), minor_version), 16)
 
-    -- compute some values...
+    -- compute some useful values...
     local n_rows    = self.owner._size
     local tsize     = terralib.sizeof(self.type:terraType())
     local type_str  = self.type:toString()
     local hint_str  = "" -- for future use?
 
     -- structs / arrays to pack data for Terra functions
-    local header =
-        terralib.cast(&FieldHeader, C.malloc(terralib.sizeof(FieldHeader)))
+    local header = new_field_header()
     -- pack the header metadata
     header.version          = version
     header.array_size       = n_rows
@@ -419,6 +479,8 @@ function L.LField:SaveToFile(filename)
     header.file_size        = header.header_size +
                               header.array_size * tsize
     -- pack the header strings
+    -- TODO: Is this leaking memory?
+    --       Does the Terra strings' backing memory need to be freed?
     (terra()
         header.type_str = type_str
         header.hint_str = hint_str
@@ -428,7 +490,7 @@ function L.LField:SaveToFile(filename)
     local function err(msg)
         C.free(header)
         C.fclose(file)
-        error(msg, 2)
+        error(msg, 3)
     end
 
     write_field_header( file, header )
@@ -444,6 +506,81 @@ function L.LField:SaveToFile(filename)
         err("error writing field file data to "..filename)
     end
 
+    C.free(header)
+    C.fclose(file)
+end
+
+
+local function check_field_type(field, type_str)
+    -- right now, we let any row match any other row.
+    -- TODO: add a warning message system to alert the user
+    --       to potential errors when loading a row field
+    --       with inconsistent types.
+    -- Also note that this is subject to re-design
+    if field.type:isRow() then
+        return type_str:sub(1,3) == 'Row'
+    else
+        return type_str == field.type:toString()
+    end
+end
+function L.LField:LoadFromFile(filename)
+    self:ClearData()
+
+    -- open the file for reading
+    local file = C.fopen(filename, 'rb')
+    if not file then
+        error("failed to open file "..filename.." to read from.", 2)
+    end
+    -- allocate space for header data
+    local header = new_field_header()
+
+    -- early exit error helper
+    local function err(msg)
+        C.free(header.type_str)
+        C.free(header.hint_str)
+        C.free(header)
+        C.fclose(file)
+        error('field file '..filename..' load error: '..msg, 3)
+    end
+
+    -- extract the file header
+    read_field_header( file, header )
+    if C.ferror(file) ~= 0 then
+        C.perror('field file header read error: ')
+        err('error reading header')
+    end
+
+    -- version check
+    if header.version ~= 0 then err('version must be 0.0') end
+    -- metadata extraction
+    local type_str =
+        tstr_to_lstr(header.type_str, tonumber(header.type_str_len) - 1)
+    local hint_str =
+        tstr_to_lstr(header.hint_str, tonumber(header.hint_str_len) - 1)
+    local array_size = tonumber(header.array_size)
+    -- metadata consistency check
+    if not check_field_type(self, type_str) then
+        err('type mismatch, expected '..self.type:toString()..
+            ' but got '..type_str)
+    end
+    if self:Size() ~= array_size then
+        err('size mismatch, expected '..self:Size()..' elements, but '..
+            'the file contained '..array_size..' elements')
+    end
+
+    -- read data block out
+    self:Allocate()
+    local type_size = terralib.sizeof(self.type:terraType())
+    C.fread( self.data, type_size, array_size, file )
+    if C.ferror(file) ~= 0 then
+        C.perror('field file data read error: ')
+        C.free(self.data)
+        err('error reading data')
+    end
+
+    -- cleanup intermediary allocations and close the file
+    C.free(header.type_str)
+    C.free(header.hint_str)
     C.free(header)
     C.fclose(file)
 end
@@ -552,7 +689,7 @@ local interface_description = [[
     if json_obj.major_version ~= 0 or json_obj.minor_version ~= 0 then
         error('This Liszt relation loader only supports index.json files '..
               'of version 0.0 (development);    '..
-              'The file that was just attempted to load is version '..
+              'The file '..filename..' has version '..
               json_obj.major_version..'.'..json_obj.minor_version..
               ' ')
     end
@@ -573,16 +710,20 @@ local interface_description = [[
     end
     -- then we make a second pass to actually recover the fields
     for id, relation in pairs(relations) do
-        local json_val = json_obj.relations[id]
+        local json_relation = json_obj.relations[id]
 
-        relation:json_deserialize_fields(json_val, relations)
+        -- deserialize each field
+        for f_name, f_json in pairs(json_relation.fields) do
+            relation:json_deserialize_field(f_name, f_json, relations)
+        end
     end
 
-    for k,v in pairs(relations) do
-        print(k)
-        relations[k]:print()
-    end
+    --for k,v in pairs(relations) do
+    --    print(k)
+    --    relations[k]:print()
+    --end
 
+    return relations, nil
 
     --print(json_str)
 end

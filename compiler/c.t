@@ -8,5 +8,9 @@ return terralib.includecstring [[
 #include <stdio.h>
 #include <math.h>
 
+// exposing pre-processor macro constants
+int SEEK_SET_value () { return SEEK_SET; }
+int SEEK_CUR_value () { return SEEK_CUR; }
+
 FILE *get_stderr () { return stderr; }
 ]]
