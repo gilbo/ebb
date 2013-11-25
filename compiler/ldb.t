@@ -50,31 +50,15 @@ local function tstr_to_lstr(tstr, len)
     return lstr
 end
 
---vector(double,4) requires 32-byte alignment
---WARNING: this will need more bookkeeping since you cannot call
--- free on the returned pointer
-local terra allocateAligned32(size : uint64)
-    var raw                 = [uint64](C.malloc(size + 32))
-    -- round r up to the next multiple of 32,
-    -- making sure there is at least one hidden preceding byte
-    var aligned = (raw + 32) and not 31
-    var diff : uint8        = aligned - raw
-    -- hide the offset before the array
-    @([&uint8](aligned-1))  = diff
-    -- return the aligned pointer
-    return [&opaque](aligned)
+terra allocateAligned(alignment : uint64, size : uint64)
+    var r : &opaque
+    C.posix_memalign(&r,alignment,size)
+    return r
 end
--- WARNING: THIS IS DEFINITELY UNTESTED
-local terra freeAligned32(ptr : &opaque)
-    -- extract the hidden offset
-    var addr         = [uint64](ptr)
-    var diff : uint8 = @([&uint8](addr-1))
-    -- and reconstruct the allocated pointer to free
-    var raw_ptr      = [&opaque](addr - diff)
-    C.free(raw_ptr)
-end
+-- vector(double,4) requires 32-byte alignment
+-- note: it _is safe_ to free memory allocated this way with C.free
 local function MallocArray(T,N)
-    return terralib.cast(&T,allocateAligned32( N * terralib.sizeof(T) ))
+    return terralib.cast(&T,allocateAligned(32,N * terralib.sizeof(T)))
 end
 
 function LDB.NewRelation(size, name)
@@ -177,10 +161,7 @@ function L.LRelation:CreateIndex(name)
     rawset(self,"_index",f)
     local numindices = rel:Size()
     local numvalues = f:Size()
-    --rawset(self,"_indexdata",MallocArray(uint64,numindices+1))
-    rawset(self,"_indexdata",
-           terralib.cast(&uint64,
-                C.malloc((numindices+1) * terralib.sizeof(uint64))))
+    rawset(self,"_indexdata",MallocArray(uint64,numindices+1))
     local prev,pos = 0,0
     for i = 0, numindices - 1 do
         self._indexdata[i] = pos
@@ -284,10 +265,7 @@ end
 local bit = require "bit"
 
 function L.LField:Allocate()
-    --self.data = MallocArray(self.type:terraType(),self:Size())
-    local ttype = self.type:terraType()
-    local typesize = terralib.sizeof(ttype)
-    self.data = terralib.cast(&ttype, C.malloc(self:Size() * typesize))
+    self.data = MallocArray(self.type:terraType(),self:Size())
 end
 
 function L.LField:LoadFromCallback (callback)
