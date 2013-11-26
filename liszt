@@ -11,13 +11,13 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 
 OPTS="-p$SCRIPT_DIR/?.t -p$SCRIPT_DIR/?.lua"
-
+LISZT_RUNTIME=$SCRIPT_DIR/runtime/libsingle_runtime.so
 #echo $OPTS
 
 # the following line is complaining about a unary operator, what gives?
 if [ $1 == "-v" ];
 then
-	$SCRIPT_DIR/terra/terra -vv $OPTS $2
+	LISZT_RUNTIME=$LISZT_RUNTIME $SCRIPT_DIR/terra/terra -vv $OPTS $2
 else
-	$SCRIPT_DIR/terra/terra  $OPTS $1
+	LISZT_RUNTIME=$LISZT_RUNTIME $SCRIPT_DIR/terra/terra  $OPTS $1
 fi

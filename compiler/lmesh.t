@@ -2,8 +2,8 @@ local LMesh = {}
 package.loaded["compiler.lmesh"] = LMesh
 local L = terralib.require "compiler.lisztlib"
 local LDB = terralib.require "compiler.ldb"
-local UTIL = terralib.require "runtime.util"
-UTIL.link_runtime()
+local lisztlibrary = os.getenv("LISZT_RUNTIME")
+terralib.linklibrary(lisztlibrary)
 
 local C = terralib.require "compiler.c"
 -------------------------------------------------------------------------------
