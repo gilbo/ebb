@@ -11,6 +11,21 @@ function test.neq(a,b)
 	end
 end
 
+function test.seteq(a,b)
+	for id,_ in pairs(a) do
+		if not b[id] then
+			error('Element ' .. tostring(id) .. ' of the left-set was not found '..
+				 		'in the right-set', 2)
+		end
+	end
+	for id,_ in pairs(b) do
+		if not a[id] then
+			error('Element ' .. tostring(id) .. ' of the right-set was not found '..
+				 		'in the left-set', 2)
+		end
+	end
+end
+
 function test.aeq(a, b)
 	if #a ~= #b then error("Arrays are not of equal length", 2) end
 	for i = 1, #a do

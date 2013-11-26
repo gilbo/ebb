@@ -19,6 +19,8 @@ local L = terralib.require "compiler.lisztlib"
 local T = terralib.require "compiler.types"
 local C = terralib.require "compiler.c"
 
+local PN = terralib.require "compiler.pathname"
+
 local JSON = require('compiler.JSON')
 
 -------------------------------------------------------------------------------
