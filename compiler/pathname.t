@@ -9,6 +9,11 @@
 -- One works with "pathname" objects instead of raw strings
 -- with easy conversion from/to raw strings
 
+-- NOTE NOTE: Pathnames are assumed to be immutable
+-- If any routine in this module tries to mutate a pathname
+-- rather than making a copy and mutating the copy, then
+-- that's definitely a BIG ERROR.
+
 
 local PN = {}
 package.loaded["compiler.pathname"] = PN
@@ -235,6 +240,9 @@ end
 
 -- General exposed interface for constructing new pathnames from strings
 function Pathname.new(path_str)
+  if PN.is_pathname(path_str) then
+    return path_str
+  end
   if type(path_str) ~= 'string' then
     error('Pathname.new() expects a string argument', 2)
   end

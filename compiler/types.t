@@ -268,11 +268,18 @@ function Type.json_deserialize(json, name_to_rel)
     return primitive
 
   elseif json.basic_kind == 'vector' then
+    if type(json.base) ~= 'table' then
+      error('Tried to deserialize vector but missing base type', 2)
+    end
     local baseType = Type.json_deserialize(json.base)
     return L.vector(baseType, json.n)
 
   elseif json.basic_kind == 'row' then
     local relation = name_to_rel[json.relation]
+    if not relation then
+      error('Tried to deserialize row type, but couldn\'t find the '..
+            'relation "'..json.relation..'"', 2)
+    end
     return L.row(relation)
 
   else

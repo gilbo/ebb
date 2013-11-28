@@ -13,14 +13,14 @@ for k,v in pairs(M) do
   end
 end
 
-local err_msg = L.SaveRelationIndex {
+local err_msg = L.SaveRelationSchema {
   relations = relation_list,
-  filename = "./blah/index.json",
-  notes    = "these are some notes",
+  file      = "./blah",
+  notes     = "these are some notes",
 }
 
-local relations, err_msg = L.LoadRelationIndex {
-  filename = "./blah/index.json",
+local relations, err_msg = L.LoadRelationSchema {
+  file = "./blah",
 }
 
 

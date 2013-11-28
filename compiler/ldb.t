@@ -20,12 +20,26 @@ local T = terralib.require "compiler.types"
 local C = terralib.require "compiler.c"
 
 local PN = terralib.require "compiler.pathname"
+local Pathname = PN.Pathname
+local ffi = require('ffi')
 
 local JSON = require('compiler.JSON')
 
--------------------------------------------------------------------------------
---[[ LRelation methods                                                     ]]--
--------------------------------------------------------------------------------
+
+
+
+terra allocateAligned(alignment : uint64, size : uint64)
+    var r : &opaque
+    C.posix_memalign(&r,alignment,size)
+    return r
+end
+-- vector(double,4) requires 32-byte alignment
+-- note: it _is safe_ to free memory allocated this way with C.free
+local function MallocArray(T,N)
+    return terralib.cast(&T,allocateAligned(32,N * terralib.sizeof(T)))
+end
+
+
 
 local valid_relation_name_err_msg =
     "Relation names must be valid Lua Identifiers: a letter or underscore,"..
@@ -43,25 +57,9 @@ local function is_valid_lua_identifier(name)
 end
 
 
--- construct a Lua String from a Terra &int8 given the known length
-local function tstr_to_lstr(tstr, len)
-    local lstr = ''
-    for i=1,len do
-        lstr = lstr..string.char(tstr[i-1])
-    end
-    return lstr
-end
-
-terra allocateAligned(alignment : uint64, size : uint64)
-    var r : &opaque
-    C.posix_memalign(&r,alignment,size)
-    return r
-end
--- vector(double,4) requires 32-byte alignment
--- note: it _is safe_ to free memory allocated this way with C.free
-local function MallocArray(T,N)
-    return terralib.cast(&T,allocateAligned(32,N * terralib.sizeof(T)))
-end
+-------------------------------------------------------------------------------
+--[[ LRelation methods                                                     ]]--
+-------------------------------------------------------------------------------
 
 function LDB.NewRelation(size, name)
     -- error check
@@ -108,10 +106,12 @@ function L.LRelation:NewField (name, typ)
               "That name is already being used.", 2)
     end
     
-    if not (T.isLisztType(typ) and typ:isValueType()) and
-       not L.is_relation(typ)
-    then
-        error("NewField() expects a Liszt type as the 2nd argument", 2)
+    local function is_value_or_row_type()
+        return T.isLisztType(typ) and (typ:isValueType() or typ:isRow())
+    end
+    if not L.is_relation(typ) and not is_value_or_row_type() then
+        error("NewField() expects a Liszt type or "..
+              "relation as the 2nd argument", 2)
     end
 
     if L.is_relation(typ) then
@@ -178,75 +178,6 @@ function L.LRelation:CreateIndex(name)
     assert(pos == numvalues)
     self._indexdata[numindices] = pos
 end
-
-function L.LRelation:json_serialize(rel_to_name, filedir)
-    if filedir then
-        os.execute("mkdir " .. filedir)
-    end
-    local json = {
-        size      = self._size,
-        fields    = {},
-    }
-    -- serialize fields
-    for i,f in ipairs(self._fields) do
-        local name = f.name
-        local filename
-        if filedir then
-            filename = filedir..'/'..name..'.field'
-        end
-        json.fields[name] = f:json_serialize(rel_to_name, filename)
-    end
-    return json
-end
-
-function L.LField:json_serialize(rel_to_name, filename)
-    if filename then
-        self:SaveToFile(filename)
-    end
-    local json = {
-        type = self.type:json_serialize(rel_to_name),
-        path = filename,
-    }
-    return json
-end
-
--- we split de-serialization into two phases so that all of the
--- Relations can be reconstructed before any of the Fields.
--- This ensures that Row Fields will safely match some existing
--- Relation when deserialized.
-function L.LRelation.json_deserialize_stub(json_tbl, relation_name)
-    if not type(json_tbl.size) == 'number' then
-        error('tried to deserialize relation missing size', 2)
-    end
-    relation_name = relation_name or nil
-
-    local relation = LDB.NewRelation(json_tbl.size, relation_name)
-    return relation
-end
--- the next set of calls are made on the actual relation object
-function L.LRelation:json_deserialize_field(fname, json_tbl, name_to_rel)
-    if not json_tbl.type then
-        error('could not find field type', 2)
-    end
-
-    local typ = T.Type.json_deserialize(json_tbl.type, name_to_rel)
-    local field = setmetatable({
-        type  = typ,
-        owner = self, -- the relation
-        name  = fname,
-    }, L.LField)
-
-    -- install the field
-    rawset(self, field.name, field)
-    self._fields:insert(field)
-
-    if json_tbl.path then
-        field:LoadFromFile(json_tbl.path)
-    else
-        -- TODO: throw warning about uninitialized data here?
-    end
-end
-
 
 
 function L.LRelation:print()
@@ -322,6 +253,22 @@ function L.LField:print()
         end
     end
 end
+
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+--[[ Serialization / Deserialization                                       ]]--
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+
+local function is_path_or_str(obj)
+    return type(obj) == 'string' or PN.is_pathname(obj)
+end
+
+
+
+-------------------------------------------------------------------------------
+--[[ Field saving / loading                                                ]]--
+-------------------------------------------------------------------------------
 
 
 -- A Field file is laid out as follows
@@ -430,7 +377,7 @@ function L.LField:SaveToFile(filename)
 
     -- open the file for writing
     local file = C.fopen(filename, 'wb')
-    if not file then
+    if file == nil then -- b/c of cdata, must check explicitly
         error("failed to open file "..filename.." to write to.", 2)
     end
 
@@ -490,7 +437,6 @@ function L.LField:SaveToFile(filename)
     C.fclose(file)
 end
 
-
 local function check_field_type(field, type_str)
     -- right now, we let any row match any other row.
     -- TODO: add a warning message system to alert the user
@@ -504,12 +450,17 @@ local function check_field_type(field, type_str)
     end
 end
 function L.LField:LoadFromFile(filename)
+    if not is_path_or_str(filename) then
+        error('LoadFromFile() expects a string or pathname as argument', 2)
+    end
+    local path = Pathname.new(filename)
+
     self:ClearData()
 
     -- open the file for reading
-    local file = C.fopen(filename, 'rb')
-    if not file then
-        error("failed to open file "..filename.." to read from.", 2)
+    local file = C.fopen(tostring(path), 'rb')
+    if file == nil then -- b/c of cdata, must check explicitly
+        error("failed to open file "..tostring(path).." to read from.", 2)
     end
     -- allocate space for header data
     local header = new_field_header()
@@ -520,7 +471,7 @@ function L.LField:LoadFromFile(filename)
         C.free(header.hint_str)
         C.free(header)
         C.fclose(file)
-        error('field file '..filename..' load error: '..msg, 3)
+        error('field file '..tostring(path)..' load error: '..msg, 3)
     end
 
     -- extract the file header
@@ -533,11 +484,9 @@ function L.LField:LoadFromFile(filename)
     -- version check
     if header.version ~= 0 then err('version must be 0.0') end
     -- metadata extraction
-    local type_str =
-        tstr_to_lstr(header.type_str, tonumber(header.type_str_len) - 1)
-    local hint_str =
-        tstr_to_lstr(header.hint_str, tonumber(header.hint_str_len) - 1)
-    local array_size = tonumber(header.array_size)
+    local type_str      = ffi.string(header.type_str)
+    local hint_str      = ffi.string(header.hint_str)
+    local array_size    = tonumber(header.array_size)
     -- metadata consistency check
     if not check_field_type(self, type_str) then
         err('type mismatch, expected '..self.type:toString()..
@@ -566,146 +515,577 @@ function L.LField:LoadFromFile(filename)
 end
 
 
-function L.SaveRelationIndex(params)
-local interface_description =
-[[
-    SaveRelationIndex assumes that it will be passed named arguments
-    Arguments are as follows:
 
-    relations    = {...}    -- a table with { name = relation } pairs
-    filename     = "..."    -- file to save to on disk
-                            -- if string does not end in .json,
-                            -- then .json will be appended
-    notes        = "..."    -- optionally a string with some notes can
-                            -- be saved out so the index's purpose is less
-                            -- inscrutable later.
-    compressed   = bool     -- if 'compressed' is present and set to true,
-                            -- then the JSON will not be pretty-printed.
-                            -- this will save on filesize slightly
-                            -- at the expense of being less human-readable
-]]
-    if not (params.relations and type(params.relations) == 'table') or
-       not (params.filename  and type(params.filename)  == 'string')
-    then
-        error(interface_description, 2)
-    end
-    local relations   = params.relations
-    local filename    = params.filename
 
-    local rel_to_name = {}
-    for k,v in pairs(relations) do rel_to_name[v] = k end
 
-    local notes = params.notes
-    if notes and type(notes) ~= 'string' then notes = nil end
+-------------------------------------------------------------------------------
+--[[ Relation Schema Saving                                                ]]--
+-------------------------------------------------------------------------------
 
-    -- construct JSON object to encode
-    local json_obj = {}
-    if notes then json_obj.notes = notes end
-    json_obj.relations = {}
-    for name, rel in pairs(relations) do
-        local filedir = './blah/'..name
-        json_obj.relations[name] =
-            rel:json_serialize(rel_to_name, filedir)
-    end
-    -- version numbers here are for the file format
-    -- so that we can detect old data moving forward
-    json_obj.major_version   = 0
-    json_obj.minor_version   = 0
 
-    -- perform JSON encoding
-    local json_str, err_msg
-    if params.compressed then
-        json_str, err_msg = JSON.stringify(json_obj)
-    else
-        json_str, err_msg = JSON.stringify(json_obj, '  ')
-    end
-    if err_msg then
-        io.stderr:write(err_msg..'\n')
-        return err_msg
-    end
 
-    -- dump text to the appropriate file.
-    local f, err_msg, err_num = io.open(filename, 'w')
-    if not f then
-        io.stderr:write(err_msg..'\n')
-        return err_msg, err_num
-    else
-        f:write(json_str)
-        f:close()
+local function save_opt_hint_str(opt_str)
+    return 'Pass argument '..opt_str..' to SaveRelationSchema()\n'..
+           '  to suppress this error.'
+end
+
+local function check_save_relations(relations, params)
+    local rel_to_name       = params.rel_to_name
+    local allow_all_names   = params.allow_all_names
+    local no_file_data      = params.no_file_data
+    local allow_hint =
+        'Pass argument allow_all_names to SaveRelationSchema()\n'..
+        '  to suppress this error.'
+
+    for rname, rel in pairs(relations) do
+        local rstr = 'Relation "'..rname..'"'
+
+        -- The relation names must be valid
+        if not allow_all_names and not is_valid_lua_identifier(rname) then
+            error('SaveRelationSchema() Error: '..rstr..
+                  ' has an invalid name\n'..
+                  valid_relation_name_err_msg..'\n'..allow_hint, 3)
+        end
+
+        -- The relation names must be writable to disk
+        if not no_file_data then
+            local status, err_msg = pcall(function() Pathname.new(rname) end)
+            if not status then
+                error('SaveRelationSchema() Error: '..rstr..
+                      ' cannot be used as a directory name\n'..err_msg, 3)
+            end
+        end
+
+        for _,f in ipairs(rel._fields) do
+            local fname = f.name
+            local fstr  = 'Field "'..fname..'" on '..rstr
+
+            -- The field names must be valid
+            if not allow_all_names and
+               not is_valid_lua_identifier(fname)
+            then
+                error('SaveRelationSchema() Error: '..fstr..
+                      ' has an invalid name\n'..
+                      valid_field_name_err_msg..'\n'..allow_hint, 3)
+            end
+
+            -- The field names must be writable to disk
+            if not no_file_data then
+                local status, err_msg =
+                    pcall(function() Pathname.new(rname) end)
+                if not status then
+                    error('SaveRelationSchema() Error: '..fstr..
+                          ' cannot be used as a file name\n'..err_msg, 3)
+                end
+            end
+
+            -- Row fields must reference Relations that are being saved
+            if f.type:isRow() then
+                local lookup = rel_to_name[f.type.relation]
+                if not lookup then
+                    error('SaveRelationSchema() Error: '..fstr..
+                          ' has type '..f.type:toString()..
+                          ' which references a Relation not being saved.', 3)
+                end
+            end
+        end
     end
 end
 
-function L.LoadRelationIndex(params)
-local interface_description = [[
-    LoadRelationIndex assumes that it will be passed named arguments
+local function json_serialize_relation(relation, params)
+    local rel_to_name   = params.rel_to_name
+    local basedir       = params.basedir
+    local rdir          = params.rdir
+    local no_file_data  = params.no_file_data
+
+    local json = {
+        size    = relation._size,
+        fields  = {},
+    }
+    -- serialize fields
+    for _, field in ipairs(relation._fields) do
+        local fname = field.name
+        local fstr  = 'Field "'..fname..'" on '..
+                      'Relation "'..rel_to_name[relation]..'"'
+
+        -- get the field type
+        local typ
+        local status, err_msg = pcall(function()
+            typ = field.type:json_serialize(rel_to_name)
+        end)
+        if not status then
+            error('SaveRelationSchema() Error: Bad Type!\n'..err_msg, 3)
+        end
+
+        -- build the field json
+        json.fields[fname] = { type = typ }
+
+        -- Save field data to disk and add pathname if appropriate
+        if not no_file_data then
+            local file  = rdir..Pathname.new(fname..'.field')
+
+            local status, err_msg = pcall(function()
+                field:SaveToFile(tostring(basedir..file))
+            end)
+            if not status then
+                error('SaveRelationSchema() Error: Error while saving '..
+                      'field data of '..fstr..'\n'..err_msg, 3)
+            end
+
+            json.fields[fname].path = file:tostring()
+        end
+    end
+
+    return json
+end
+
+function L.SaveRelationSchema(params)
+local interface_description =
+[[
+    SaveRelationSchema assumes that it will be passed named arguments
     Arguments are as follows:
 
-    filename    = "..."     -- where to look for the index.json file on disk
+    relations       = {...} -- a table with { name = relation } pairs
+    file            = "..." -- file or directory to save to on disk
+                            -- if the string ends in .json, then
+                            --   file is interpreted as the schema file
+                            --   to write.
+                            -- otherwise,
+                            --   file is interpreted as a directory
+                            --   in which to write a schema.json file.
+                            --   The directory will be created if it
+                            --   doesn't exist.
+    notes           = "..." -- optionally a string with some notes can
+                            -- be saved out so the schema's purpose is less
+                            -- inscrutable later.
+    compressed      = bool  -- if 'compressed' is present and set to true,
+                            -- then the JSON will not be pretty-printed.
+                            -- This will save on filesize slightly
+                            -- at the expense of being less human-readable.
+    allow_all_names = bool  -- If set to true, this option allows
+                            --  for saving relations and fields with
+                            --  names that are not valid lua identifiers.
+                            --  RECOMMENDED SETTING: false
+    no_file_data    = bool  -- If set to true, this option will save the
+                            --  schema file without paths to default
+                            --  field data, and will not try to save out
+                            --  the default field data.
+                            --  RECOMMENDED SETTING: false
+                            --  This option is present to support building
+                            --  more elaborate storage systems using
+                            --  the basic one.
 ]]
-    if not (params.filename and type(params.filename)  == 'string')
+    if type(params) ~= 'table' or
+       type(params.relations) ~= 'table' or
+       not is_path_or_str(params.file)
     then
         error(interface_description, 2)
     end
-    local filename    = params.filename
+    local relations = params.relations
+    local file      = Pathname.new(params.file)
+    local filedir   = file:dirpath()
+    local notes     = params.notes or ''
+    local allow_all_names = params.allow_all_names
+    local no_file_data    = params.no_file_data
 
-    -- get the json string sucked in from the disk on file
-    local f, err_msg, err_num = io.open(filename, 'r')
-    if not f then
-        io.stderr:write(err_msg..'\n')
-        return {}, err_msg, err_num
+    -- build inverse mapping relation -> relation_name
+    local rel_to_name = {}
+    for rname, rel in pairs(relations) do rel_to_name[rel] = rname end
+
+    -- Check whether or not names are valid...
+    check_save_relations(relations, {
+        rel_to_name     = rel_to_name,
+        allow_all_names = allow_all_names,
+        no_file_data    = no_file_data,
+    })
+
+
+    -- Handle all filesystem / directory mangling up front
+    local function check_filedir() -- utility function
+        if not filedir:exists() then
+            error('SaveRelationSchema() Error: Cannot save '..
+                  '"'..tostring(file)..'" because directory '..
+                  '"'..tostring(filedir)..'" does not exist.', 3)
+        end
     end
-    -- otherwise, let's grab this string
-    local json_str = f:read('*all')
+    if no_file_data then
+        if file:extname():lower() ~= 'json' then
+            error('SaveRelationSchema() Error: If no_file_data is set, '..
+                  'then the provided filename must name a .json file\n', 2)
+        end
+        check_filedir()
+    else
+        if file:extname():lower() ~= 'json' then
+            filedir     = file
+            file        = file .. 'schema.json'
+
+            -- create the file directory if necessary
+            if not filedir:exists() then
+                if not filedir:mkdir() then
+                    error('SaveRelationSchema() Error: Could not create '..
+                          'file directory "'..tostring(filedir)..'"', 2)
+                end
+            end
+        else
+            check_filedir()
+        end
+
+        -- create the required sub-directory structure
+        for rname, rel in pairs(relations) do
+            local rdir = filedir..rname
+            if not rdir:exists() and not rdir:mkdir() then
+                error('SaveRelationSchema() Error: Could not create '..
+                      'sub-directory "'..tostring(rdir)..'"', 2)
+            end
+        end
+    end
+
+
+    -- construct JSON object to encode
+    local json = {
+        major_version = 0,
+        minor_version = 0,
+        notes = notes,
+        relations = {},
+    }
+    -- serialize the relations
+    for rname, rel in pairs(relations) do
+        -- want path relative to schema.json file
+        local rdir = Pathname.new(rname)
+        json.relations[rname] = json_serialize_relation(rel, {
+            rel_to_name     = rel_to_name,
+            basedir         = filedir,
+            rdir            = rdir,
+            no_file_data    = no_file_data,
+        })
+    end
+
+
+    -- perform JSON encoding
+    local space
+    if not params.compressed then space = '  ' end
+    local json_str, err_msg = JSON.stringify(json, space)
+    if err_msg then
+        error('SaveRelationSchema() Error: JSON encode failed\n'..
+              err_msg, 2)
+    end
+
+    -- dump text to the appropriate JSON file.
+    local f, err_msg = io.open(tostring(file), 'w')
+    if not f then
+        error('SaveRelationSchema() Error: failed to open '..
+              '"'..tostring(file)..'" for writing\n'..
+              err_msg, 2)
+    end
+    local _, err_msg = f:write(json_str)
     f:close()
+    if err_msg then
+        error('SaveRelationSchema() Error: failed to write to '..
+              '"'..tostring(file)..'"\n'..
+              err_msg, 2)
+    end
+end
+
+
+
+-------------------------------------------------------------------------------
+--[[ Relation Schema Loading                                               ]]--
+-------------------------------------------------------------------------------
+
+
+-- helper for the following load functions
+local function load_schema_json(filepath)
+    -- check that the file is in fact a file
+    if not filepath:is_file() then
+        error('Could not find schema file "'..
+              filepath:tostring()..'" on disk', 3)
+    end
+
+    -- now we can try to read
+    local f, err_msg = io.open(filepath:tostring(), 'r')
+    if not f then
+        error('Error opening schema file "'..filepath:tostring()..'"\n'..
+              err_msg, 3)
+    end
+
+    -- given a successful read, let's suck down the contents
+    local json_str, err_msg = f:read('*all')
+    f:close()
+    if not json_str then
+        error('Error reading schema file "'..filepath:tostring()..'"\n'..
+              err_msg, 3)
+    end
 
     -- parse the JSON string into an object
     local json_obj, err_msg = JSON.parse(json_str)
     if err_msg then
-        io.stderr:write(err_msg..'\n')
-        return {}, err_msg
+        error('Error parsing schema.json file "'..filepath:tostring()..'"\n'..
+              err_msg, 3)
     end
 
-    -- check version #
-    if json_obj.major_version ~= 0 or json_obj.minor_version ~= 0 then
-        error('This Liszt relation loader only supports index.json files '..
-              'of version 0.0 (development);    '..
-              'The file '..filename..' has version '..
-              json_obj.major_version..'.'..json_obj.minor_version..
-              ' ')
+    if type(json_obj) ~= 'table' then
+        error('Schema JSON file "'..filepath:tostring()..'" '..
+              'did not parse to an object', 3)
     end
+
+    return json_obj
+end
+
+function L.LoadRelationSchemaNotes(params)
+local interface_description = [[
+    LoadRelationSchemaNotes assumes that it will be passed named arguments
+    Arguments are as follows:
+
+    file        = "..."     -- where to look for the schema.json file on disk
+                            -- If the string ends in .json, then
+                            --      try to load this exact file
+                            -- Otherwise,
+                            --      interpret as directory and look for
+                            --      a schema.json file in that directory
+]]
+    if type(params) ~= 'table' or
+       not is_path_or_str(params.file)
+    then
+        error(interface_description, 2)
+    end
+
+    -- ensure we have a pathname and allow for directory name convention
+    local file = Pathname.new(params.file)
+    if file:extname() ~= 'json' then
+        file = file .. 'schema.json'
+    end
+
+    local json_obj = load_schema_json(file)
+
+    -- extract the notes
+    local notes = json_obj.notes
+    if type(notes) ~= 'string' then
+        error('Bad Schema JSON File "'..tostring(file)..'":\n'..
+              'expected to find \'notes\' string', 2)
+    end
+
+    return notes
+end
+
+
+
+local function load_opt_hint_str(opt_str)
+    return 'Pass argument '..opt_str..' to LoadRelationSchema()\n'..
+           '  to suppress this error'
+end
+
+local function check_schema_json(json, opts)
+    local err                   = opts.err or ''
+    local allow_all_names       = opts.allow_all_names
+    local allow_null_paths      = opts.allow_null_paths
+    local allow_abs_paths       = opts.allow_abs_paths
+
+    -- check version #
+    if json.major_version ~= 0 or json.minor_version ~= 0 then
+        error(err..
+              'This Liszt relation loader only supports schema.json files '..
+              'of version 0.0 (development);   given file has version '..
+              json.major_version..'.'..json.minor_version, 3)
+    end
+
+    -- certify that the JSON object has relations
+    if type(json.relations) ~= 'table' then
+        error(err..'Could not find \'relations\' object', 3)
+    end
+
+    -- certify each relation
+    for rname, rjson in pairs(json.relations) do
+        -- check for valid name
+        if not allow_all_names and not is_valid_lua_identifier(rname) then
+            error(err..
+                  'Invalid Relation name "'..rname..'"\n'..
+                  valid_relation_name_err_msg..'\n'..
+                  load_opt_hint_str('allow_all_names'), 3)
+        end
+
+        local relstr = 'Relation "'..rname..'"'
+
+        -- check that the relation object is present,
+        -- that it has a size,
+        -- and that it has fields
+        if type(rjson) ~= 'table' then
+            error(err..relstr..' was not a JSON object', 3)
+        elseif type(rjson.size) ~= 'number' then
+            error(err..relstr..' was missing a "size" count', 3)
+        elseif type(rjson.fields) ~= 'table' then
+            error(err..relstr..' does not have a \'fields\' object', 3)
+        end
+
+        -- certify each field
+        for fname, fjson in pairs(rjson.fields) do
+            -- check for valid name
+            if not allow_all_names and not is_valid_lua_identifier(fname) then
+                error(err..'Invalid Field name "'..fname..'" on '..
+                      relstr..'\n'..
+                      valid_field_name_err_msg..'\n'..
+                      load_opt_hint_str('allow_all_names'), 3)
+            end
+
+            local fstr = 'Field "'..fname..'" on '..relstr
+
+            -- check that the field object is present and that it has a type
+            if type(fjson) ~= 'table' then
+                error(err..fstr..' was not a JSON object', 3)
+            elseif type(fjson.type) ~= 'table' then
+                error(err..fstr..' was missing a type object', 3)
+            end
+            
+            -- check that the field object has a path (if req.),
+            -- that the path is a valid pathname,
+            -- and that the path is relative (if req.)
+            local null_path_err -- hold any errors encountered
+            if type(fjson.path) ~= 'string' then
+                null_path_err = err..fstr..' was missing a path object'
+            else
+                local fpath
+                local status, err_msg = pcall(function()
+                    fpath = Pathname.new(fjson.path)
+                end)
+
+                if not status then
+                    null_path_err = err..'Invalid path for '..fstr..'\n'..
+                                    err_msg
+                elseif fpath:is_absolute() and not allow_abs_paths then
+                    null_path_err = err..'Absolute path for '..fstr..'\n'..
+                                    'Absolute paths in schema files are '..
+                                    'prohibited\n'..
+                                    load_opt_hint_str('allow_abs_paths')
+                end
+            end
+            if null_path_err and not allow_null_paths then
+                error(null_path_err..'\n'..
+                      load_opt_hint_str('allow_null_paths'), 3)
+            end
+        end
+    end
+end
+
+
+-- the next set of calls are made on the actual relation object
+local function json_deserialize_field(fname, fjson, params)
+    local owner         = params.owner
+    local schema_path   = params.schema_path
+    local name_to_rel   = params.name_to_rel
+    local err           = params.err
+    local fstr          = 'Field "'..fname..'" '..
+                          'on Relation "'..params.owner._name..'"'
+
+    -- get the type
+    local typ
+    local status, err_msg = pcall(function()
+        typ = T.Type.json_deserialize(fjson.type, params.name_to_rel)
+    end)
+    if not status then
+        error(err..'Error while deserializing type of '..fstr..'\n'..
+              err_msg, 3)
+    end
+
+    -- create the field in question
+    local field = params.owner:NewField(fname, typ)
+
+    -- load field data if we can get a reasonable path...
+    local fpath
+    if type(fjson.path) == 'string' and
+       pcall(function() fpath = Pathname.new(fjson.path) end)
+    then
+        if fpath:is_relative() then
+            fpath = params.schema_path:dirpath() .. fpath
+        end
+
+        local status, err_msg = pcall(function()
+            field:LoadFromFile(tostring(fpath))
+        end)
+        if not status then
+            error(err..'Error while loading field data of '..fstr..'\n'..
+                  err_msg, 3)
+        end
+    end
+end
+
+function L.LoadRelationSchema(params)
+local interface_description = [[
+    LoadRelationSchema assumes that it will be passed named arguments
+    Arguments are as follows:
+
+    file            = "..." -- where to look for the schema.json file on disk
+                            -- If the string ends in .json, then
+                            --      try to load this exact file
+                            -- Otherwise,
+                            --      interpret as directory and look for
+                            --      a schema.json file in that directory
+    allow_all_names = bool  -- If set to true, this option allows
+                            --  relations and fields to have names
+                            --  which are not valid lua identifiers.
+                            --  such names will only be accesible via
+                            --  bracket indexing
+                            --  (e.g. relations['id w/ spaces'] )
+    allow_null_paths = bool -- If set to true, this option allows
+                            --  the schema to load without successfully
+                            --  loading default field data for all fields
+    allow_abs_paths = bool  -- If set to true, this option allows
+                            --  the schema to load field data from
+                            --  absolute file paths.  By default,
+                            --  absolute file paths will be considered
+                            --  unreliable.
+]]
+    if type(params) ~= 'table' or
+       not is_path_or_str(params.file)
+    then
+        error(interface_description, 2)
+    end
+
+    -- ensure we have a pathname and allow for directory name convention
+    local file = Pathname.new(params.file)
+    if file:extname():lower() ~= 'json' then
+        file = file .. 'schema.json'
+    end
+
+    local json = load_schema_json(file)
+
+    -- check for JSON formatting errors
+    -- do this first to simplify the actual data extraction below
+    local err_prefix = 'Bad Schema JSON File "'..tostring(file)..'":\n'
+    check_schema_json(json, {
+        err                 = err_prefix,
+        allow_all_names     = params.allow_all_names,
+        allow_null_paths    = params.allow_null_paths,
+        allow_abs_paths     = params.allow_abs_paths,
+    })
+
 
     local relations = {}
 
-    -- unpack the JSON object into a reconstructed set of relations
-    if not json_obj.relations or not type(json_obj.relations) == 'table' then
-        return {}, 'JSON object does not have a relations table'
+    -- First, fill out all stub relations
+    -- (do this first to allow Row types to match something)
+    for rname, rjson in pairs(json.relations) do
+        relations[rname] = LDB.NewRelation(rjson.size, rname)
     end
-    -- first, fill out stub relations
-    for id, json_val in pairs(json_obj.relations) do
-        if not is_valid_lua_identifier(id) then
-            return {}, valid_relation_name_err_msg
-        end
-
-        relations[id] = L.LRelation.json_deserialize_stub(json_val, id)
-    end
-    -- then we make a second pass to actually recover the fields
-    for id, relation in pairs(relations) do
-        local json_relation = json_obj.relations[id]
+    -- Second, add fields to the stub relations
+    for rname, rjson in pairs(json.relations) do
+        local rel = relations[rname]
 
         -- deserialize each field
-        for f_name, f_json in pairs(json_relation.fields) do
-            relation:json_deserialize_field(f_name, f_json, relations)
+        -- TODO: there should probably be some kind of cleanup
+        --      that kicks in to clean up memory if the load
+        --      fails halfway through reading in all the fields.
+        --    Punting under the assumption that the user is going
+        --      to usually just restart the process in this case.
+        for fname, fjson in pairs(rjson.fields) do
+            json_deserialize_field(fname, fjson, {
+                owner = rel,
+                name_to_rel = relations,
+                schema_path = file,
+                err = err_prefix,
+            })
         end
     end
 
-    --for k,v in pairs(relations) do
-    --    print(k)
-    --    relations[k]:print()
-    --end
-
-    return relations, nil
-
-    --print(json_str)
+    return relations
 end
 
 
