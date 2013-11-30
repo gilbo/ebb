@@ -12,12 +12,13 @@ import 'compiler.liszt'
 local m      = terralib.includec("math.h")
 local sqrt   = m.sqrt
 local printf = terralib.includec("stdio.h").printf
+local PN     = terralib.require('compiler.pathname')
 
 --------------------------------------------------------------------------------
 --[[ Load mesh relations, boundary sets                                     ]]--
 --------------------------------------------------------------------------------
 local LMesh = terralib.require "compiler.lmesh"
-local M  = LMesh.Load("examples/fem_mesh.lmesh")
+local M  = LMesh.Load(PN.scriptdir():concat("fem_mesh.lmesh"):tostring())
 M.left   = M.inlet
 M.right  = M.outlet
 local C, V, F, E = M.cells, M.vertices, M.faces, M.edges

@@ -61,7 +61,7 @@ end
 --[[ LRelation methods                                                     ]]--
 -------------------------------------------------------------------------------
 
-function LDB.NewRelation(size, name)
+function L.NewRelation(size, name)
     -- error check
     if not name or type(name) ~= "string" then
         error("NewRelation() expects a string as the 2nd argument", 2)
@@ -197,24 +197,12 @@ function L.LField:Size()
 end
 local bit = require "bit"
 
+-- TODO: Hide this function so it's not public
 function L.LField:Allocate()
     self.data = MallocArray(self.type:terraType(),self:Size())
 end
 
-function L.LField:LoadFromCallback (callback)
-    -- TODO: It would be nice to typecheck the callback's type signature...
-    self:Allocate()
-    for i = 0, self:Size() - 1 do
-        callback(self.data + i, i)
-    end
-end
-
-function L.LField:LoadFromMemory(mem)
-    self:Allocate()
-    local copy_size = self:Size() * terralib.sizeof(self.type:terraType())
-    C.memcpy(self.data, mem, copy_size)
-end
-
+-- TODO: Hide this function so it's not public
 -- remove allocated data and clear any depedent data, such as indices
 function L.LField:ClearData ()
     if self.data then
@@ -227,6 +215,21 @@ function L.LField:ClearData ()
         self.owner._indexdata = nil
         self.owner._index = nil
     end
+end
+
+function L.LField:LoadFromCallback (callback)
+    -- TODO: It would be nice to typecheck the callback's type signature...
+    self:Allocate()
+    for i = 0, self:Size() - 1 do
+        callback(self.data + i, i)
+    end
+end
+
+-- TODO: Hide this function so it's not public
+function L.LField:LoadFromMemory(mem)
+    self:Allocate()
+    local copy_size = self:Size() * terralib.sizeof(self.type:terraType())
+    C.memcpy(self.data, mem, copy_size)
 end
 
 function L.LField:print()
@@ -482,10 +485,10 @@ function L.LField:LoadFromFile(filename)
     end
 
     -- version check
-    if header.version ~= 0 then err('version must be 0.0') end
+    if header.version ~= 0x0 then err('version must be 0.0') end
     -- metadata extraction
-    local type_str      = ffi.string(header.type_str)
-    local hint_str      = ffi.string(header.hint_str)
+    local type_str      = ffi.string(header.type_str, header.type_str_len - 1)
+    local hint_str      = ffi.string(header.hint_str, header.hint_str_len - 1)
     local array_size    = tonumber(header.array_size)
     -- metadata consistency check
     if not check_field_type(self, type_str) then
@@ -531,23 +534,30 @@ end
 
 local function check_save_relations(relations, params)
     local rel_to_name       = params.rel_to_name
-    local allow_all_names   = params.allow_all_names
     local no_file_data      = params.no_file_data
-    local allow_hint =
-        'Pass argument allow_all_names to SaveRelationSchema()\n'..
-        '  to suppress this error.'
 
     for rname, rel in pairs(relations) do
+        if type(rname) ~= 'string' then
+            error('SaveRelationSchema() Error: Found a non-string '..
+                  'key in the relations table', 3)
+        end
         local rstr = 'Relation "'..rname..'"'
 
+        -- The relations must actually be relations
+        if not L.is_relation(rel) then
+            error('SaveRelationSchema() Error: '..rstr..
+                  ' is not a relation', 3)
+        end
+
         -- The relation names must be valid
-        if not allow_all_names and not is_valid_lua_identifier(rname) then
+        if not is_valid_lua_identifier(rname) then
             error('SaveRelationSchema() Error: '..rstr..
                   ' has an invalid name\n'..
-                  valid_relation_name_err_msg..'\n'..allow_hint, 3)
+                  valid_relation_name_err_msg, 3)
         end
 
         -- The relation names must be writable to disk
+        -- (redundant; present in case of name policy changes)
         if not no_file_data then
             local status, err_msg = pcall(function() Pathname.new(rname) end)
             if not status then
@@ -561,18 +571,18 @@ local function check_save_relations(relations, params)
             local fstr  = 'Field "'..fname..'" on '..rstr
 
             -- The field names must be valid
-            if not allow_all_names and
-               not is_valid_lua_identifier(fname)
+            if not is_valid_lua_identifier(fname)
             then
                 error('SaveRelationSchema() Error: '..fstr..
                       ' has an invalid name\n'..
-                      valid_field_name_err_msg..'\n'..allow_hint, 3)
+                      valid_field_name_err_msg, 3)
             end
 
             -- The field names must be writable to disk
+            -- (redundant; present in case of name policy changes)
             if not no_file_data then
                 local status, err_msg =
-                    pcall(function() Pathname.new(rname) end)
+                    pcall(function() Pathname.new(fname) end)
                 if not status then
                     error('SaveRelationSchema() Error: '..fstr..
                           ' cannot be used as a file name\n'..err_msg, 3)
@@ -586,6 +596,14 @@ local function check_save_relations(relations, params)
                     error('SaveRelationSchema() Error: '..fstr..
                           ' has type '..f.type:toString()..
                           ' which references a Relation not being saved.', 3)
+                end
+            end
+
+            -- Ensure that data is present
+            if not no_file_data then
+                if f.data == nil then -- in case of cdata pointer
+                    error('SaveRelationSchema() Error: '..fstr..' is '..
+                          'uninitialized; it has no data', 3)
                 end
             end
         end
@@ -636,12 +654,18 @@ local function json_serialize_relation(relation, params)
         end
     end
 
+    -- attach an index flag if present
+    if relation._index then
+        json.index = relation._index.name
+    end
+
     return json
 end
 
 function L.SaveRelationSchema(params)
 local interface_description =
 [[
+
     SaveRelationSchema assumes that it will be passed named arguments
     Arguments are as follows:
 
@@ -662,10 +686,6 @@ local interface_description =
                             -- then the JSON will not be pretty-printed.
                             -- This will save on filesize slightly
                             -- at the expense of being less human-readable.
-    allow_all_names = bool  -- If set to true, this option allows
-                            --  for saving relations and fields with
-                            --  names that are not valid lua identifiers.
-                            --  RECOMMENDED SETTING: false
     no_file_data    = bool  -- If set to true, this option will save the
                             --  schema file without paths to default
                             --  field data, and will not try to save out
@@ -685,7 +705,6 @@ local interface_description =
     local file      = Pathname.new(params.file)
     local filedir   = file:dirpath()
     local notes     = params.notes or ''
-    local allow_all_names = params.allow_all_names
     local no_file_data    = params.no_file_data
 
     -- build inverse mapping relation -> relation_name
@@ -695,7 +714,6 @@ local interface_description =
     -- Check whether or not names are valid...
     check_save_relations(relations, {
         rel_to_name     = rel_to_name,
-        allow_all_names = allow_all_names,
         no_file_data    = no_file_data,
     })
 
@@ -819,7 +837,7 @@ local function load_schema_json(filepath)
     -- parse the JSON string into an object
     local json_obj, err_msg = JSON.parse(json_str)
     if err_msg then
-        error('Error parsing schema.json file "'..filepath:tostring()..'"\n'..
+        error('Error parsing schema file "'..filepath:tostring()..'"\n'..
               err_msg, 3)
     end
 
@@ -833,6 +851,7 @@ end
 
 function L.LoadRelationSchemaNotes(params)
 local interface_description = [[
+
     LoadRelationSchemaNotes assumes that it will be passed named arguments
     Arguments are as follows:
 
@@ -859,9 +878,11 @@ local interface_description = [[
 
     -- extract the notes
     local notes = json_obj.notes
-    if type(notes) ~= 'string' then
-        error('Bad Schema JSON File "'..tostring(file)..'":\n'..
-              'expected to find \'notes\' string', 2)
+    if notes then
+        if type(notes) ~= 'string' then
+            error('Bad Schema JSON File "'..tostring(file)..'":\n'..
+                  'Expected \'notes\' to be a string', 2)
+        end
     end
 
     return notes
@@ -876,7 +897,6 @@ end
 
 local function check_schema_json(json, opts)
     local err                   = opts.err or ''
-    local allow_all_names       = opts.allow_all_names
     local allow_null_paths      = opts.allow_null_paths
     local allow_abs_paths       = opts.allow_abs_paths
 
@@ -896,11 +916,10 @@ local function check_schema_json(json, opts)
     -- certify each relation
     for rname, rjson in pairs(json.relations) do
         -- check for valid name
-        if not allow_all_names and not is_valid_lua_identifier(rname) then
+        if not is_valid_lua_identifier(rname) then
             error(err..
                   'Invalid Relation name "'..rname..'"\n'..
-                  valid_relation_name_err_msg..'\n'..
-                  load_opt_hint_str('allow_all_names'), 3)
+                  valid_relation_name_err_msg, 3)
         end
 
         local relstr = 'Relation "'..rname..'"'
@@ -916,14 +935,28 @@ local function check_schema_json(json, opts)
             error(err..relstr..' does not have a \'fields\' object', 3)
         end
 
+        -- if the relation has an index, make sure it's a string and
+        -- that it's a field-name present in the fields object
+        if rjson.index then
+            if type(rjson.index) ~= 'string' then
+                error(err..relstr..' has an index of non-string type', 3)
+            end
+
+            local lookup = rjson.fields[rjson.index]
+            if not lookup then
+                error(err..relstr..' has index field "'..rjson.index..'" '..
+                      'but an entry in the "fields" object '..
+                      'could not be found.', 3)
+            end
+        end
+
         -- certify each field
         for fname, fjson in pairs(rjson.fields) do
             -- check for valid name
-            if not allow_all_names and not is_valid_lua_identifier(fname) then
+            if not is_valid_lua_identifier(fname) then
                 error(err..'Invalid Field name "'..fname..'" on '..
                       relstr..'\n'..
-                      valid_field_name_err_msg..'\n'..
-                      load_opt_hint_str('allow_all_names'), 3)
+                      valid_field_name_err_msg, 3)
             end
 
             local fstr = 'Field "'..fname..'" on '..relstr
@@ -1009,6 +1042,7 @@ end
 
 function L.LoadRelationSchema(params)
 local interface_description = [[
+
     LoadRelationSchema assumes that it will be passed named arguments
     Arguments are as follows:
 
@@ -1018,11 +1052,6 @@ local interface_description = [[
                             -- Otherwise,
                             --      interpret as directory and look for
                             --      a schema.json file in that directory
-    allow_all_names = bool  -- If set to true, this option allows
-                            --  relations and fields to have names
-                            --  which are not valid lua identifiers.
-                            --  such names will only be accesible via
-                            --  bracket indexing
                             --  (e.g. relations['id w/ spaces'] )
     allow_null_paths = bool -- If set to true, this option allows
                             --  the schema to load without successfully
@@ -1052,7 +1081,6 @@ local interface_description = [[
     local err_prefix = 'Bad Schema JSON File "'..tostring(file)..'":\n'
     check_schema_json(json, {
         err                 = err_prefix,
-        allow_all_names     = params.allow_all_names,
         allow_null_paths    = params.allow_null_paths,
         allow_abs_paths     = params.allow_abs_paths,
     })
@@ -1063,7 +1091,7 @@ local interface_description = [[
     -- First, fill out all stub relations
     -- (do this first to allow Row types to match something)
     for rname, rjson in pairs(json.relations) do
-        relations[rname] = LDB.NewRelation(rjson.size, rname)
+        relations[rname] = L.NewRelation(rjson.size, rname)
     end
     -- Second, add fields to the stub relations
     for rname, rjson in pairs(json.relations) do
@@ -1082,6 +1110,11 @@ local interface_description = [[
                 schema_path = file,
                 err = err_prefix,
             })
+        end
+
+        -- reconstitute the index if one is present
+        if rjson.index then
+            rel:CreateIndex(rjson.index)
         end
     end
 

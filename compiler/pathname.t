@@ -113,7 +113,7 @@ local LISZT_ROOT_DIR_CACHED
 (function()
   local info = debug.getinfo(1, "S")
   local src  = info.source
-  -- strip leading '@'' and trailing '/compiler/pathname.t'
+  -- strip leading '@' and trailing '/compiler/pathname.t'
   LISZT_ROOT_DIR_CACHED = src:sub(2,-21)
 end)()
 
@@ -293,6 +293,15 @@ function PN.root        ()  return Pathname.root        end
 function PN.pwd         ()  return Pathname.pwd         end
 function PN.liszt_root  ()  return Pathname.liszt_root  end
 PN.getwd = PN.pwd
+
+function Pathname.scriptdir()
+  -- get the source path of the calling function
+  local info = debug.getinfo(2, "S")
+  local src  = info.source
+  -- strip leading '@'
+  return Pathname.new(src:sub(2,-1)):dirpath()
+end
+PN.scriptdir = Pathname.scriptdir
 
 
 ------------------------------------------------------------------------------
@@ -536,8 +545,6 @@ end
 function Pathname:mkpath()
   error("UNIMPLEMENTED")
 end
-
-
 
 
 

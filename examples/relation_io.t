@@ -3,7 +3,8 @@ local length, lprint = L.length, L.print
 
 -- Test code
 local LMesh = terralib.require "compiler.lmesh"
-local M = LMesh.Load("examples/rmesh.lmesh")
+local PN = terralib.require 'compiler.pathname'
+local M = LMesh.Load(PN.scriptdir():concat("rmesh.lmesh"):tostring())
 
 
 local relation_list = {}
@@ -13,14 +14,14 @@ for k,v in pairs(M) do
   end
 end
 
-local err_msg = L.SaveRelationSchema {
+L.SaveRelationSchema {
   relations = relation_list,
-  file      = "./blah",
+  file      = "./relation_io_test_relation",
   notes     = "these are some notes",
 }
 
 local relations, err_msg = L.LoadRelationSchema {
-  file = "./blah",
+  file = "./relation_io_test_relation",
 }
 
 

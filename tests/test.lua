@@ -60,6 +60,8 @@ function test.meq(a,...)
 	end
 end
 
+-- WARNING: This will cause trouble on Windows possibly
+-- Cross Platform timing is a bit tricky and worth reading about.
 function test.time(fn)
     local s = os.clock()
     fn()

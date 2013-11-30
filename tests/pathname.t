@@ -22,6 +22,9 @@ test.eq(testdir:abspath():is_relative(), false)
 test.eq(testdir:abspath():is_absolute(), true)
 test.eq(testdir:is_root(), false)
 
+-- check the script path here
+test.eq(PN.scriptdir():basename(), 'tests')
+
 -- rebuild a clean testdir
 if testdir:exists() then
   os.execute('rm -r pathname_testdir')

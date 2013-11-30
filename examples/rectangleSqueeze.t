@@ -20,8 +20,9 @@ import 'compiler.liszt'
 --------------------------------------------------------------------------------
 --[[ Load relations from lmesh                                              ]]--
 --------------------------------------------------------------------------------
+local PN     = terralib.require('compiler.pathname')
 local LMesh = terralib.require "compiler.lmesh"
-local M  = LMesh.Load("examples/fem_mesh.lmesh")
+local M  = LMesh.Load(PN.scriptdir():concat("fem_mesh.lmesh"):tostring())
 M.left   = M.inlet
 M.right  = M.outlet
 local C, V, F, E = M.cells, M.vertices, M.faces, M.edges
