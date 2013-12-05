@@ -781,6 +781,17 @@ function ast.Call:check(ctxt)
     elseif v and L.is_macro(v) then
         -- replace the call node with the inlined AST
         call = RunMacro(ctxt, self, v, call.params)
+    elseif v and T.isLisztType(v) and v:isValueType() then
+        local params = call.params
+        call = ast.Cast:DeriveFrom(self)
+        if #params == 1 then
+            call.value = params[1]
+            call.node_type = v
+        else
+            ctxt:error(self, "Cast to " .. v.toString() ..
+                    " expects exactly 1 argument (instead got " .. #params ..
+                    ")")
+        end
     elseif func.node_type:isError() then
         -- fall through
         -- (do not print error messages for errors already reported)

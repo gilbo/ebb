@@ -172,6 +172,12 @@ function ast.FieldAccess:codegen (env)
 	]]
 end
 
+function ast.Cast:codegen(env)
+    local valuecode = self.value:codegen(env)
+    local casttype = self.node_type:terraType()
+    return `[casttype](valuecode)
+end
+
 -- By the time we make it to codegen, Call nodes are only used to represent builtin function calls.
 function ast.Call:codegen (env)
     return self.func.codegen(self, env)
