@@ -77,22 +77,16 @@ local function AddMeshCells(mesh)
     terralib.tree.printraw(cells)
 end
 
-function Particle.init(mesh, numParticles)
-    mesh.particles = LDB.NewRelation(numParticles, "particles")
+local function InitCommon(mesh, numParticles)
+    mesh.particles = L.NewRelation(numParticles, "particles")
     local position = mesh.particles:NewField('position', L.vector(L.float, 3))
     mesh.particles:NewField('cell', mesh.cells):LoadFromCallback(terra(mem : &uint64, i : uint)
         mem[0] = 0
     end)
-    
-    mesh.particles:NewField('_swift_id', L.int):LoadFromCallback(terra(mem : &int, i : uint)
-        mem[0] = -1
-    end)
-    mesh._swift_scene = c.swift_create_scene()
-    AddMeshCells(mesh)
     return position
 end
 
-function Particle.update(mesh)
+local function UpdateParticles(mesh)
     -- TODO: collision detection on mesh using acceleration structure
     (liszt kernel(p in mesh.particles)
         if dot(p.position, {1, 0, 0}) > 1.0 then
@@ -102,3 +96,42 @@ function Particle.update(mesh)
         end
     end)()
 end
+
+function Particle.init(mesh, numParticles)
+    local position = InitCommon(mesh, numParticles)
+    mesh.particles:NewField('_swift_id', L.int):LoadFromCallback(terra(mem : &int, i : uint)
+        mem[0] = -1
+    end)
+    mesh._swift_scene = c.swift_create_scene()
+    mesh.updateParticles = UpdateParticles
+    AddMeshCells(mesh)
+    return position
+end
+
+local function UpdateParticlesUniformGrid(mesh)
+    (liszt kernel(p in mesh.particles)
+        var coord = (p.position - mesh.minExtent) / (mesh.maxExtent - mesh.minExtent) *
+                mesh.dimensions
+        var x1 = L.int(L.dot(coord, {1, 0, 0}))
+        var x2 = L.int(L.dot(coord, {0, 1, 0}))
+        var x3 = L.int(L.dot(coord, {0, 0, 1}))
+        
+        var x2span = L.int(L.dot(mesh.dimensions, {0, 0, 1}))
+        var x1span = L.int(L.dot(mesh.dimensions, {0, 1, 0})) * x2span
+
+        p.cell = x1 * x1span + x2 * x2span + x3
+    end)()
+end
+    
+function Particle.initUniformGrid(mesh, numParticles, dimensions, minExtent, maxExtent)
+    if minExtent == nil then minExtent = {0, 0, 0} end
+    if maxExtent == nil then maxExtent = dimensions end
+
+    local position = InitCommon(mesh, numParticles)
+    mesh.dimensions = L.NewScalar(L.vector(L.int, 3), dimensions)
+    mesh.minExtent = L.NewScalar(L.vector(L.double, 3), minExtent)
+    mesh.maxExtent = L.NewScalar(L.vector(L.double, 3), maxExtent)
+    mesh.updateParticles = UpdateParticlesUniformGrid
+    return position
+end
+
