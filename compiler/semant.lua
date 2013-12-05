@@ -853,7 +853,7 @@ function ast.LisztKernel:check(ctxt)
     local kernel            = self:clone()
     local set = self.set:check(ctxt)
     if not set.node_type:isInternal() or not L.is_relation(set.node_type.value) then
-        ctxt:error(kernel.set, "Expected a relation")
+        ctxt:error(self.set, "Expected a relation")
     else 
         kernel.name      = self.name
         kernel.relation  = set.node_type.value

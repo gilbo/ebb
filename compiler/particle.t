@@ -110,6 +110,7 @@ end
 
 local intvec3 = L.vector(L.int, 3)
 local function UpdateParticlesUniformGrid(mesh)
+    if mesh == nil then error("mesh is nil in call to updateParticles. Did you use '.' instead of ':'?", 2) end
     (liszt kernel(p in mesh.particles)
         var coord = intvec3((p.position - mesh.minExtent) / (mesh.maxExtent - mesh.minExtent) *
                 mesh.dimensions)
