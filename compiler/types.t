@@ -183,7 +183,8 @@ function Type:toString()
   elseif self:isVector()    then return 'Vector('..self.type:toString()..
                                         ','..tostring(self.N)..')'
   elseif self:isRow()       then return 'Row('..self.relation:Name()..')'
-  elseif self:isQuery()     then return 'Query('..self.relation:Name()..').'..table.concat(self.projections,'.') 
+  elseif self:isQuery()     then return 'Query('..self.relation:Name()..').'
+                                        ..table.concat(self.projections,'.') 
   elseif self:isInternal()  then return 'Internal('..tostring(self.value)..')'
   elseif self:isError()     then return 'error'
   end
@@ -191,6 +192,38 @@ function Type:toString()
   error('toString method not implemented for this type!', 2)
 end
 Type.__tostring = Type.toString
+
+local primitive_set = {
+  ["int"   ] = true,
+  ["uint"  ] = true,
+  ["uint8" ] = true,
+  ["uint64"] = true,
+  ["bool"  ] = true,
+  ["float" ] = true,
+  ["double"] = true,
+}
+-- For inverting the toString mapping
+-- only supports primitives and Vectors
+function Type.fromString(str)
+  if str:sub(1,6) == 'Vector' then
+    local base, n = str:match('Vector%(([^,]*),([^%)]*)%)')
+    n = tonumber(n)
+    if n == nil then
+      error("When constructing a Vector type from a string, "..
+            "no length was found.", 2)
+    end
+    base = Type.fromString(base)
+    return L.vector(base, n)
+  else
+    local lookup = primitive_set[str]
+    if lookup then
+      return L[str]
+    else
+      error("Tried to construct a type from a string which does not "..
+            "express a vector or primitive type", 2)
+    end
+  end
+end
 
 -- THIS DOES NOT EMIT A STRING
 -- It outputs a LUA table which can be JSON stringified safely
@@ -224,7 +257,7 @@ end
 function Type.json_deserialize(json, name_to_rel)
   name_to_rel = name_to_rel or {}
   if not type(json) == 'table' then
-    error('Tried to deserialize type, but found a non.', 2)
+    error('Tried to deserialize type, but found a non-object.', 2)
   end
   if json.basic_kind == 'primitive' then
     local primitive = L[json.primitive]
@@ -235,11 +268,18 @@ function Type.json_deserialize(json, name_to_rel)
     return primitive
 
   elseif json.basic_kind == 'vector' then
+    if type(json.base) ~= 'table' then
+      error('Tried to deserialize vector but missing base type', 2)
+    end
     local baseType = Type.json_deserialize(json.base)
     return L.vector(baseType, json.n)
 
   elseif json.basic_kind == 'row' then
     local relation = name_to_rel[json.relation]
+    if not relation then
+      error('Tried to deserialize row type, but couldn\'t find the '..
+            'relation "'..json.relation..'"', 2)
+    end
     return L.row(relation)
 
   else

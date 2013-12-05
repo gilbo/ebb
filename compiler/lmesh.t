@@ -1,8 +1,10 @@
 local LMesh = {}
 package.loaded["compiler.lmesh"] = LMesh
 local L = terralib.require "compiler.lisztlib"
+local PN = terralib.require "compiler.pathname"
 local LDB = terralib.require "compiler.ldb"
-terralib.linklibrary("runtime/libsingle_runtime.so")
+local lisztlibrary = os.getenv("LISZT_RUNTIME")
+terralib.linklibrary(lisztlibrary)
 
 local C = terralib.require "compiler.c"
 -------------------------------------------------------------------------------
@@ -100,7 +102,7 @@ local function initMeshRelations(mesh)
 
     for _i, name in ipairs(topo_elems) do
         local n_rows       = tonumber(mesh["n"..name])
-        relations[name]    = LDB.NewRelation(n_rows, name)
+        relations[name]    = L.NewRelation(n_rows, name)
         --relations[name]:NewField('value', REF_TYPE)
         --local terra init (mem: &REF_TYPE:terraType(), i : int)
         --    mem[0] = i
@@ -114,7 +116,7 @@ local function initMeshRelations(mesh)
         local old_name   = xtoy.old_name
         local n_t1       = relations[xtoy.t1]:Size()
         local n_rows     = mesh[old_name].row_idx[n_t1]
-        local rel        = LDB.NewRelation(n_rows, name)
+        local rel        = L.NewRelation(n_rows, name)
 
         -- store table with name intended for global scope
         relations[name] = rel
@@ -172,6 +174,7 @@ local function sanitizeName(name)
 end
 -- returns all relations from the given file
 function LMesh.Load(filename)
+    if PN.is_pathname(filename) then filename = tostring(filename) end
     local meshdata = terralib.new(C.LMeshData)
     C.LMeshLoadFromFile(filename,meshdata)
     
@@ -183,7 +186,7 @@ function LMesh.Load(filename)
         local relationname = ffi.string(b.type)
         assert(M[relationname])
         name = sanitizeName(name)
-        local s = LDB.NewRelation(tonumber(b.size), name)
+        local s = L.NewRelation(tonumber(b.size), name)
         s:NewField("value",M[relationname])
         s.value:LoadFromMemory(b.data)
         M[name] = s

@@ -1,9 +1,23 @@
 #!/bin/bash
-OPTS=-p$(pwd)/?.t
 
+# one liner from stack overflow that gets the
+# full resident directory path of this script
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+# The above allows us to run this script from most anywhere as a program
+# If something breaks, uncomment the diagnostic echo and check
+# Stack Overflow for more ideas.  There were also elaborate multi-line
+# solutions to handle various edge-cases
+#echo $SCRIPT_DIR
+
+
+OPTS="-p$SCRIPT_DIR/?.t -p$SCRIPT_DIR/?.lua"
+LISZT_RUNTIME=$SCRIPT_DIR/runtime/libsingle_runtime.so
+#echo $OPTS
+
+# the following line is complaining about a unary operator, what gives?
 if [ $1 == "-v" ];
 then
-	./terra/terra -vv $OPTS $2
+	LISZT_RUNTIME=$LISZT_RUNTIME $SCRIPT_DIR/terra/terra -vv $OPTS $2
 else
-	./terra/terra  $OPTS $1
+	LISZT_RUNTIME=$LISZT_RUNTIME $SCRIPT_DIR/terra/terra  $OPTS $1
 fi
