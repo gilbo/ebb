@@ -108,18 +108,13 @@ function Particle.init(mesh, numParticles)
     return position
 end
 
+local intvec3 = L.vector(L.int, 3)
 local function UpdateParticlesUniformGrid(mesh)
     (liszt kernel(p in mesh.particles)
-        var coord = (p.position - mesh.minExtent) / (mesh.maxExtent - mesh.minExtent) *
-                mesh.dimensions
-        var x1 = L.int(L.dot(coord, {1, 0, 0}))
-        var x2 = L.int(L.dot(coord, {0, 1, 0}))
-        var x3 = L.int(L.dot(coord, {0, 0, 1}))
-        
-        var x2span = L.int(L.dot(mesh.dimensions, {0, 0, 1}))
-        var x1span = L.int(L.dot(mesh.dimensions, {0, 1, 0})) * x2span
-
-        p.cell = x1 * x1span + x2 * x2span + x3
+        var coord = intvec3((p.position - mesh.minExtent) / (mesh.maxExtent - mesh.minExtent) *
+                mesh.dimensions)
+        var span = {mesh.dimensions[1] * mesh.dimensions[2], mesh.dimensions[2], 1}
+        p.cell = L.dot(coord, span)
     end)()
 end
     
