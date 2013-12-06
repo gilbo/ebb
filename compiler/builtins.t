@@ -366,9 +366,9 @@ local function all(v)
         error("argument to length must be a vector", 2)
     end
     for _,d in ipairs(v.data) do
-        if d then return true end
+        if not d then return false end
     end
-    return false
+    return true
 end
 
 B.all = Func.new(all)
