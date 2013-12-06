@@ -11,6 +11,7 @@ local VDB = terralib.includec("examples/vdb.h")
 local M = LMesh.Load(PN.scriptdir():concat("fem_mesh.lmesh"):tostring())
 
 local init_to_zero = terra (mem : &float, i : int) mem[0] = 0 end
+local init_to_false = terra (mem : &bool, i : int) mem[0] = false end
 local init_to_zero_vec = terra (mem : &vector(float, 3), i : int)
     mem[0] = vectorof(float, 0, 0, 0)
 end
@@ -33,11 +34,14 @@ end
 Particle.initUniformGrid(M, 100, {10, 5, 5}, {0, 0, 0}, {1, 0.5, 0.5}):LoadFromCallback(init_random)
 M.vertices:NewField('flux',        L.float):LoadFromCallback(init_to_zero)
 M.vertices:NewField('jacobistep',  L.float):LoadFromCallback(init_to_zero)
-M.vertices:NewField('rawgradient', L.vector(L.float, 3)):LoadFromCallback(init_to_zero_vec)
-M.particles:NewField('rawgradient', L.vector(L.float, 3)):LoadFromCallback(init_to_zero_vec)
-M.vertices:NewField('gradient', L.vector(L.float, 3)):LoadFromCallback(init_to_zero_vec)
-M.particles:NewField('gradient', L.vector(L.float, 3)):LoadFromCallback(init_to_zero_vec)
+M.vertices:NewField('degree',      L.float):LoadFromCallback(init_to_zero)
 M.vertices:NewField('temperature', L.float):LoadFromCallback(init_temp)
+M.vertices:NewField('rawgradient', L.vector(L.float, 3)):LoadFromCallback(init_to_zero_vec)
+M.vertices:NewField('gradient',    L.vector(L.float, 3)):LoadFromCallback(init_to_zero_vec)
+M.particles:NewField('normalization', L.float):LoadFromCallback(init_to_zero)
+M.particles:NewField('rawgradient',   L.vector(L.float, 3)):LoadFromCallback(init_to_zero_vec)
+M.particles:NewField('gradient',      L.vector(L.float, 3)):LoadFromCallback(init_to_zero_vec)
+M.edges:NewField('hasparticles', L.bool):LoadFromCallback(init_to_false)
 M:updateParticles()
 
 local compute_step = liszt kernel(e in M.edges)
@@ -58,9 +62,42 @@ local propagate_temp = liszt kernel(p in M.vertices)
 	p.temperature = p.temperature + .01 * p.flux / p.jacobistep
 end
 
-local clear = liszt kernel(p in M.vertices)
-	p.flux = 0
-	p.jacobistep = 0
+local compute_deltas = liszt kernel(e in M.edges)
+    var dT = e.head.temperature - e.tail.temperature
+    var dr = e.head.position - e.tail.position
+    e.head.rawgradient += dT / length(dr) * dr / length(dr)
+    e.tail.rawgradient -= dT / length(dr) * dr / length(dr)
+    e.head.degree += 1
+    e.tail.degree += 1
+end
+
+local propagate_point_gradients = liszt kernel(v in M.vertices)
+    v.gradient = v.rawgradient / v.degree
+end
+
+local interpolate_gradients = liszt kernel(p in M.particles)
+    if L.id(p.cell) ~= 0 then
+        for v in p.cell.vertices do
+            var weight = 1 / L.length(v.position - p.position)
+            p.rawgradient += weight * v.gradient
+            p.normalization += weight
+        end
+    end
+end
+
+local advect_particles = liszt kernel(p in M.particles)
+    if L.id(p.cell) ~= 0 then
+        var gradient = p.rawgradient / p.normalization
+        p.position += 0.001 * gradient
+    end
+end
+
+local color_cells = liszt kernel(p in M.particles)
+    if L.id(p.cell) ~= 0 then
+        for e in p.cell.edges do
+            e.hasparticles = true
+        end
+    end
 end
 
 local x = L.NewMacro(function(v) return liszt `L.dot(v, {1, 0, 0}) end)
@@ -69,40 +106,83 @@ local z = L.NewMacro(function(v) return liszt `L.dot(v, {0, 0, 1}) end)
 local color = VDB.vdb_color
 local line = VDB.vdb_line
 local point = VDB.vdb_point
+
+local visualize_edges = liszt kernel(e in M.edges)
+--[[    var ave_temp = (e.head.temperature + e.tail.temperature) * 0.5 / 3
+    if ave_temp > 0.5 then
+        color(1, 0, 1 - (ave_temp - 0.5) * 2)
+    else
+        color(ave_temp * 2, 0, 1)
+    end]]
+    if e.hasparticles then
+        color(0, 1, 0)
+    else
+        color(0, 0, 1)
+    end
+    var p1 = e.head.position
+    var p2 = e.tail.position
+    line(x(p1), y(p1), z(p1), x(p2), y(p2), z(p2))
+end
+
+local visualize_particles = liszt kernel(p in M.particles)
+    var pos = p.position
+    point(x(pos), y(pos), z(pos))
+end
+
+local visualize_gradients = liszt kernel(v in M.vertices)
+    var start = v.position
+    var g = v.gradient * 0.01
+    if L.length(g) > 0.1 then g /= L.length(g) end
+    var finish = start + g
+    line(x(start), y(start), z(start), x(finish), y(finish), z(finish))
+end
+
 local function visualize()
-    (liszt kernel(e in M.edges)
-        var ave_temp = (e.head.temperature + e.tail.temperature) * 0.5 / 3
-        if ave_temp > 0.5 then
-            color(1, 0, 1 - (ave_temp - 0.5) * 2)
-        else
-            color(ave_temp * 2, 0, 1)
-        end
-        var p1 = e.head.position
-        var p2 = e.tail.position
-        line(x(p1), y(p1), z(p1), x(p2), y(p2), z(p2))
-    end)()
+    VDB.vdb_begin()
+    VDB.vdb_frame()
+    visualize_edges()
     color(1, 1, 0)
-    (liszt kernel(p in M.particles)
-        var pos = p.position
-        point(x(pos), y(pos), z(pos))
-    end)()
+    visualize_particles()
+    color(1, 0, 0)
+    visualize_gradients()
+    VDB.vdb_end()
+end
+
+local clear_vertices = liszt kernel(p in M.vertices)
+    p.flux = 0
+    p.jacobistep = 0
+    p.rawgradient = 0
+    p.degree = 0
+end
+
+local clear_particles = liszt kernel(p in M.particles)
+    p.rawgradient = 0
+    p.normalization = 0
+end
+
+local clear_edges = liszt kernel(e in M.edges)
+    e.hasparticles = false
+end
+
+local function clear()
+    clear_vertices()
+    clear_particles()
+    clear_edges()
 end
 
 for i = 1, 20000 do
 	compute_step()
 	propagate_temp()
-    -- compute_deltas()
-    -- propagate_point_gradients()
-    -- interpolate_gradients()
-    -- assign_particle_gradients()
+    compute_deltas()
+    propagate_point_gradients()
+    interpolate_gradients()
+    advect_particles()
+    M:updateParticles()
+    color_cells()
     if i % 20 == 0 then
-        VDB.vdb_begin()
-        VDB.vdb_frame()
         visualize()
-        VDB.vdb_end()
     end
 	clear()
 end
 
 M.vertices.temperature:print()
-M.vertices.position:print()

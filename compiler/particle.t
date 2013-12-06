@@ -112,10 +112,17 @@ local intvec3 = L.vector(L.int, 3)
 local function UpdateParticlesUniformGrid(mesh)
     if mesh == nil then error("mesh is nil in call to updateParticles. Did you use '.' instead of ':'?", 2) end
     (liszt kernel(p in mesh.particles)
-        var coord = intvec3((p.position - mesh.minExtent) / (mesh.maxExtent - mesh.minExtent) *
-                mesh.dimensions)
-        var span = {mesh.dimensions[1] * mesh.dimensions[2], mesh.dimensions[2], 1}
-        p.cell = L.dot(coord, span)
+        if L.any(p.position < mesh.minExtent) or L.any(p.position >= mesh.maxExtent) then
+            p.cell = 0
+        else
+            var coord = intvec3((p.position - mesh.minExtent) / (mesh.maxExtent - mesh.minExtent) *
+                    mesh.dimensions)
+            -- TODO major hack specific to fem mesh. Why isn't this ordered more sensibly?
+            var span = {-mesh.dimensions[1], -mesh.dimensions[0] * mesh.dimensions[1], 1}
+            var offset = (mesh.dimensions[0] * mesh.dimensions[1] - 1) * mesh.dimensions[2] + 1
+            p.cell = offset + L.dot(coord, span)
+            L.assert(L.id(p.cell) >= 0 and L.id(p.cell) <= 250)
+        end
     end)()
 end
     
