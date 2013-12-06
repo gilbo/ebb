@@ -361,6 +361,156 @@ function B.length.codegen(ast, env)
 end
 
 
+local function all(v)
+    if not v.type:isVector() then
+        error("argument to length must be a vector", 2)
+    end
+    for _,d in ipairs(v.data) do
+        if d then return true end
+    end
+    return false
+end
+
+B.all = Func.new(all)
+
+function B.all.check(ast, ctxt)
+    local args = ast.params
+    if #args ~= 1 then
+        ctxt:error(ast, "all expects exactly 1 argument (instead got " .. #args .. ")")
+        return L.error
+    end
+    local lt = args[1].node_type
+    if not lt:isVector() then
+        ctxt:error(args[1], "argument to all must be a vector")
+        return L.error
+    end
+    return L.bool
+end
+
+function B.all.codegen(ast, env)
+    local args = ast.params
+    local N = args[1].node_type.N
+    if N == 0 then
+        return `true
+    end
+
+    local tt = args[1].node_type:terraType()
+    local v = symbol(tt)
+    local truth = `v[0]
+    -- TODO: make this codegen a Terra for loop for super-long vectors
+    for i = 1, N - 1 do
+        truth = `truth and v[i]
+    end
+
+    local code = args[1]:codegen(env)
+    return quote
+        var [v] = code
+    in
+        truth
+    end
+end
+
+
+local function any(v)
+    if not v.type:isVector() then
+        error("argument to length must be a vector", 2)
+    end
+    for _,d in ipairs(v.data) do
+        if d then return true end
+    end
+    return false
+end
+
+B.any = Func.new(any)
+
+function B.any.check(ast, ctxt)
+    local args = ast.params
+    if #args ~= 1 then
+        ctxt:error(ast, "any expects exactly 1 argument (instead got " .. #args .. ")")
+        return L.error
+    end
+    local lt = args[1].node_type
+    if not lt:isVector() then
+        ctxt:error(args[1], "argument to any must be a vector")
+        return L.error
+    end
+    return L.bool
+end
+
+function B.any.codegen(ast, env)
+    local args = ast.params
+    local N = args[1].node_type.N
+    if N == 0 then
+        return `false
+    end
+
+    local tt = args[1].node_type:terraType()
+    local v = symbol(tt)
+    local truth = `v[0]
+    -- TODO: make this codegen a Terra for loop for super-long vectors
+    for i = 1, N - 1 do
+        truth = `truth or v[i]
+    end
+
+    local code = args[1]:codegen(env)
+    return quote
+        var [v] = code
+    in
+        truth
+    end
+end
+
+
+local function any(v)
+    if not v.type:isVector() then
+        error("argument to length must be a vector", 2)
+    end
+    for _,d in ipairs(v.data) do
+        if d then return true end
+    end
+    return false
+end
+
+B.any = Func.new(any)
+
+function B.any.check(ast, ctxt)
+    local args = ast.params
+    if #args ~= 1 then
+        ctxt:error(ast, "any expects exactly 1 argument (instead got " .. #args .. ")")
+        return L.error
+    end
+    local lt = args[1].node_type
+    if not lt:isVector() then
+        ctxt:error(args[1], "argument to any must be a vector")
+        return L.error
+    end
+    return L.bool
+end
+
+function B.any.codegen(ast, env)
+    local args = ast.params
+    local N = args[1].node_type.N
+    if N == 0 then
+        return `false
+    end
+
+    local tt = args[1].node_type:terraType()
+    local v = symbol(tt)
+    local truth = `v[0]
+    -- TODO: make this codegen a Terra for loop for super-long vectors
+    for i = 1, N - 1 do
+        truth = `truth or v[i]
+    end
+
+    local code = args[1]:codegen(env)
+    return quote
+        var [v] = code
+    in
+        truth
+    end
+end
+
+
 local function map(fn, list)
     local result = {}
     for i = 1, #list do
@@ -431,4 +581,6 @@ L.dot    = B.dot
 L.cross  = B.cross
 L.length = B.length
 L.id     = B.id
+L.any    = B.any
+L.all    = B.all
 L.is_function = B.isFunc
