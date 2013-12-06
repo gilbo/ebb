@@ -65,8 +65,9 @@ end
 local compute_deltas = liszt kernel(e in M.edges)
     var dT = e.head.temperature - e.tail.temperature
     var dr = e.head.position - e.tail.position
-    e.head.rawgradient += dT / length(dr) * dr / length(dr)
-    e.tail.rawgradient -= dT / length(dr) * dr / length(dr)
+    var grad = dT / length(dr) * dr / length(dr)
+    e.head.rawgradient += grad
+    e.tail.rawgradient += grad
     e.head.degree += 1
     e.tail.degree += 1
 end
@@ -108,17 +109,22 @@ local line = VDB.vdb_line
 local point = VDB.vdb_point
 
 local visualize_edges = liszt kernel(e in M.edges)
---[[    var ave_temp = (e.head.temperature + e.tail.temperature) * 0.5 / 3
+    var r : L.float = 1.0
+    var g : L.float = 0.0
+    var b : L.float = 1.0
+
+    var ave_temp = (e.head.temperature + e.tail.temperature) * 0.5 / 3
     if ave_temp > 0.5 then
-        color(1, 0, 1 - (ave_temp - 0.5) * 2)
+        b = 1 - (ave_temp - 0.5) * 2
     else
-        color(ave_temp * 2, 0, 1)
-    end]]
-    if e.hasparticles then
-        color(0, 1, 0)
-    else
-        color(0, 0, 1)
+        r = ave_temp * 2
     end
+
+    if e.hasparticles then
+        g = 1
+    end
+
+    color(r, g, b)
     var p1 = e.head.position
     var p2 = e.tail.position
     line(x(p1), y(p1), z(p1), x(p2), y(p2), z(p2))
@@ -129,6 +135,7 @@ local visualize_particles = liszt kernel(p in M.particles)
     point(x(pos), y(pos), z(pos))
 end
 
+--[[
 local visualize_gradients = liszt kernel(v in M.vertices)
     var start = v.position
     var g = v.gradient * 0.01
@@ -136,15 +143,16 @@ local visualize_gradients = liszt kernel(v in M.vertices)
     var finish = start + g
     line(x(start), y(start), z(start), x(finish), y(finish), z(finish))
 end
+]]
 
 local function visualize()
     VDB.vdb_begin()
     VDB.vdb_frame()
     visualize_edges()
-    color(1, 1, 0)
+    color(1, 1, 1)
     visualize_particles()
-    color(1, 0, 0)
-    visualize_gradients()
+--[[color(1, 0, 0)
+    visualize_gradients()]]
     VDB.vdb_end()
 end
 
@@ -170,7 +178,7 @@ local function clear()
     clear_edges()
 end
 
-for i = 1, 20000 do
+for i = 1, 5000 do
 	compute_step()
 	propagate_temp()
     compute_deltas()
@@ -179,9 +187,8 @@ for i = 1, 20000 do
     advect_particles()
     M:updateParticles()
     color_cells()
-    if i % 20 == 0 then
-        visualize()
-    end
+    if i % 5 == 0 then visualize() end
+    if i % 1000 == 0 then print(i) end
 	clear()
 end
 
