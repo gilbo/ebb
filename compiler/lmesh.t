@@ -313,13 +313,42 @@ local function Uniform_ctov(dimensions)
     return {row_idx = row_idx, values = values}
 end
 
-local terra ArraySet(data : &vector(double, 3), i : uint,
-                     x : double, y : double, z : double)
-    data[i] = vectorof(double, x, y, z)
+local function Grid_etov(dimensions, num_edges)
+    local row_idx = {}
+    for i = 0, num_edges do
+        row_idx[i] = i * 2
+    end
+    local values = alloc(num_edges * 2, uint32)
+
+    local i = 0
+    for dir = 0,2 do
+        for sx = 0,dimensions[1] - (dir == 0 and 1 or 0) do
+        for sy = 0,dimensions[2] - (dir == 1 and 1 or 0) do
+        for sz = 0,dimensions[3] - (dir == 2 and 1 or 0) do
+            local tail = {sx, sy, sz}
+            local head = {tail[1], tail[2], tail[3]}
+            head[dir + 1] = head[dir + 1] + 1
+            assert(i % 2 == 0)
+            assert(EdgeId(dir, tail, dimensions) == i / 2)
+            values[i] = VertexId(head, dimensions)
+            i = i + 1
+            values[i] = VertexId(tail, dimensions)
+            i = i + 1
+        end end end
+    end
+
+    return {row_idx = row_idx, values = values}
+end
+
+local terra VectorSet(data : &double, i : uint,
+                      x : double, y : double, z : double)
+    data[i * 3] = x
+    data[i * 3 + 1] = y
+    data[i * 3 + 2] = z
 end
     
 local function UniformPositionData(nvertices, dimensions, minExtent, maxExtent)
-    local data = alloc(nvertices, vector(double, 3))
+    local data = alloc(nvertices * 3, double)
     local spacing = {(maxExtent[1] - minExtent[1]) / dimensions[1],
                      (maxExtent[2] - minExtent[2]) / dimensions[2],
                      (maxExtent[3] - minExtent[3]) / dimensions[3]}
@@ -327,9 +356,9 @@ local function UniformPositionData(nvertices, dimensions, minExtent, maxExtent)
     for x=0,dimensions[1] do
     for y=0,dimensions[2] do
     for z=0,dimensions[3] do
-        ArraySet(data, i, minExtent[1] + spacing[1] * x,
-                          minExtent[2] + spacing[2] * y,
-                          minExtent[3] + spacing[3] * z)
+        VectorSet(data, i, minExtent[1] + spacing[1] * x,
+                           minExtent[2] + spacing[2] * y,
+                           minExtent[3] + spacing[3] * z)
         i = i + 1
     end end end
     return data
@@ -363,7 +392,7 @@ local function UniformGridMesh(numParticles, dimensions, minExtent, maxExtent)
     m.vtoe = {row_idx = empty_idx_v, values = empty_array}
     m.vtof = {row_idx = empty_idx_v, values = empty_array}
     m.vtoc = {row_idx = empty_idx_v, values = empty_array}
-    m.etov = {row_idx = empty_idx_e, values = empty_array}
+    m.etov = Grid_etov(dimensions, m.nedges)
     m.etof = {row_idx = empty_idx_e, values = empty_array}
     m.etoc = {row_idx = empty_idx_e, values = empty_array}
     m.ftov = {row_idx = empty_idx_f, values = empty_array}

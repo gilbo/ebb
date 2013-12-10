@@ -109,29 +109,28 @@ function Particle.init(mesh, numParticles)
 end
 
 local intvec3 = L.vector(L.int, 3)
-local function UpdateParticlesUniformGrid(mesh)
-    if mesh == nil then error("mesh is nil in call to updateParticles. Did you use '.' instead of ':'?", 2) end
-    (liszt kernel(p in mesh.particles)
+local function CreateUpdateParticlesUniformGrid(mesh)
+    local _update_kernel = liszt kernel(p in mesh.particles)
         if L.any(p.position < mesh.minExtent) or L.any(p.position >= mesh.maxExtent) then
             p.cell = 0
         else
             var coord = intvec3((p.position - mesh.minExtent) / (mesh.maxExtent - mesh.minExtent) *
                     mesh.dimensions)
-            -- TODO major hack specific to fem mesh. Why isn't this ordered more sensibly?
-            var span = {-mesh.dimensions[1], -mesh.dimensions[0] * mesh.dimensions[1], 1}
-            var offset = (mesh.dimensions[0] * mesh.dimensions[1] - 1) * mesh.dimensions[2] + 1
-            p.cell = offset + L.dot(coord, span)
-            L.assert(L.id(p.cell) >= 0 and L.id(p.cell) <= 250)
+            var stride = {mesh.dimensions[2] * mesh.dimensions[1], mesh.dimensions[2], 1}
+            p.cell = 1 + L.dot(coord, stride)
         end
-    end)()
+    end
+    function mesh:updateParticles()
+        _update_kernel()
+    end
 end
-    
+
 function Particle.initUniformGrid(mesh, numParticles, dimensions, minExtent, maxExtent)
     local position = InitCommon(mesh, numParticles)
     mesh.dimensions = L.NewScalar(L.vector(L.int, 3), dimensions)
     mesh.minExtent = L.NewScalar(L.vector(L.double, 3), minExtent)
     mesh.maxExtent = L.NewScalar(L.vector(L.double, 3), maxExtent)
-    mesh.updateParticles = UpdateParticlesUniformGrid
+    CreateUpdateParticlesUniformGrid(mesh)
     return position
 end
 

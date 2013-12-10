@@ -8,8 +8,7 @@ local Particle = terralib.require "compiler.particle"
 local c = terralib.require "compiler.c"
 terralib.linklibrary("examples/vdb.a")
 local VDB = terralib.includec("examples/vdb.h")
-local M = LMesh.LoadUniformGrid(M, 100, {10, 5, 5}, {0, 0, 0}, {1, 0.5, 0.5})
-M.particles.position:LoadFromCallback(init_random)
+local M = LMesh.LoadUniformGrid(100, {10, 5, 5}, {0, 0, 0}, {1, 0.5, 0.5})
 
 local init_to_zero = terra (mem : &float, i : int) mem[0] = 0 end
 local init_to_false = terra (mem : &bool, i : int) mem[0] = false end
@@ -32,6 +31,7 @@ local init_random = terra (mem : &vector(float, 3), i : uint)
     mem[0] = vectorof(float, random(), random() * 0.5, random() * 0.5)
 end
 
+M.particles.position:LoadFromCallback(init_random)
 M.vertices:NewField('flux',        L.float):LoadFromCallback(init_to_zero)
 M.vertices:NewField('jacobistep',  L.float):LoadFromCallback(init_to_zero)
 M.vertices:NewField('degree',      L.float):LoadFromCallback(init_to_zero)
@@ -89,7 +89,7 @@ end
 local advect_particles = liszt kernel(p in M.particles)
     if L.id(p.cell) ~= 0 then
         var gradient = p.rawgradient / p.normalization
-        p.position += 0.001 * gradient
+        p.position += 0.0005 * gradient
     end
 end
 
@@ -178,7 +178,7 @@ local function clear()
     clear_edges()
 end
 
-for i = 1, 5000 do
+for i = 1, 10000 do
 	compute_step()
 	propagate_temp()
     compute_deltas()
