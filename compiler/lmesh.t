@@ -3,6 +3,7 @@ package.loaded["compiler.lmesh"] = LMesh
 local L = terralib.require "compiler.lisztlib"
 local PN = terralib.require "compiler.pathname"
 local LDB = terralib.require "compiler.ldb"
+local Particle = terralib.require "compiler.particle"
 local lisztlibrary = os.getenv("LISZT_RUNTIME")
 terralib.linklibrary(lisztlibrary)
 
@@ -83,7 +84,7 @@ function initFieldFromIndex(rel,name, key, row_idx)
     for i = 0, numindices-1 do
         local start = row_idx[i]
         local finish = row_idx[i+1]
-        assert(start >= 0 and start < fsize)
+        assert(start >= 0 and start <= fsize)
         assert(finish >= start and finish <= fsize)
         for j = start, finish - 1 do
             scratch[j] = i
@@ -172,11 +173,9 @@ local ffi = require "ffi"
 local function sanitizeName(name)
     return name:gsub("[^%w]","_"):gsub("^[^%a]","_")
 end
--- returns all relations from the given file
-function LMesh.Load(filename)
-    if PN.is_pathname(filename) then filename = tostring(filename) end
-    local meshdata = terralib.new(C.LMeshData)
-    C.LMeshLoadFromFile(filename,meshdata)
+-- code in common between file loading and procedural loading
+local function LoadCallback(callback)
+    local meshdata = callback()
     
     local M = initMeshRelations(meshdata.mesh)
     
@@ -222,5 +221,184 @@ function LMesh.Load(filename)
         relation[name]:LoadFromMemory(template)
         C.free(template)
     end
+    return M
+end
+
+-- returns all relations from the given file
+function LMesh.Load(filename)
+    if PN.is_pathname(filename) then filename = tostring(filename) end
+    return LoadCallback(function()
+        local meshdata = terralib.new(C.LMeshData)
+        C.LMeshLoadFromFile(filename,meshdata)
+        return meshdata
+    end)
+end
+
+
+local function VertexId(coord, dimensions)
+    local stridey = (dimensions[3] + 1)
+    local stridex = (dimensions[2] + 1) * stridey
+    return stridex * coord[1] + stridey * coord[2] + coord[3]
+end
+
+local function EdgeId(dir, start, dimensions)
+    if dir < 0 or dir > 2 then error("dir should be a number between 0 and 2, inclusive", 2) end
+
+    local dirstart = 0
+    local dx, dy, dz = unpack(dimensions)
+    if dir >= 1 then
+        dirstart = dx * (dy + 1) * (dz + 1)
+    end
+    if dir == 2 then
+        dirstart = dirstart + (dx + 1) * dy * (dz + 1)
+    end
+
+    local stridey = dz + (dir == 2 and 0 or 1)
+    local stridex = (dy + (dir == 1 and 0 or 1)) * stridey
+    return dirstart + stridex * start[1] + stridey * start[2] + start[3]
+end
+
+local function Uniform_ctoe(dimensions)
+    local num_cells = 1 + dimensions[1] * dimensions[2] * dimensions[3]
+    local row_idx = {}
+    row_idx[0] = 0
+    for i = 1, num_cells do
+        row_idx[i] = (i - 1) * 12
+    end
+    local values = alloc(row_idx[num_cells], uint32)
+
+    local i = 0
+    for x = 0,dimensions[1] - 1 do
+    for y = 0,dimensions[2] - 1 do
+    for z = 0,dimensions[3] - 1 do
+        for dir = 0,2 do
+            for ed1 = 0,1 do
+            for ed2 = 0,1 do
+                local start = {x, y, z}
+                local idx1 = (dir + 1) % 3 + 1
+                start[idx1] = start[idx1] + ed1
+                local idx2 = (dir + 2) % 3 + 1
+                start[idx2] = start[idx2] + ed2
+                values[i] = EdgeId(dir, start, dimensions)
+                i = i + 1
+            end end
+        end
+    end end end
+
+    return {row_idx = row_idx, values = values}
+end
+
+local function Uniform_ctov(dimensions)
+    local num_cells = 1 + dimensions[1] * dimensions[2] * dimensions[3]
+    local row_idx = {}
+    row_idx[0] = 0
+    for i = 1, num_cells do
+        row_idx[i] = (i - 1) * 8
+    end
+    local values = alloc(row_idx[num_cells], uint32)
+
+    local i = 0
+    for x = 0,dimensions[1] - 1 do
+    for y = 0,dimensions[2] - 1 do
+    for z = 0,dimensions[3] - 1 do
+        for dx = 0,1 do
+        for dy = 0,1 do
+        for dz = 0,1 do
+            local coord = {x + dx, y + dy, z + dz}
+            values[i] = VertexId(coord, dimensions)
+            i = i + 1
+        end end end
+    end end end
+
+    return {row_idx = row_idx, values = values}
+end
+
+local terra ArraySet(data : &vector(double, 3), i : uint,
+                     x : double, y : double, z : double)
+    data[i] = vectorof(double, x, y, z)
+end
+    
+local function UniformPositionData(nvertices, dimensions, minExtent, maxExtent)
+    local data = alloc(nvertices, vector(double, 3))
+    local spacing = {(maxExtent[1] - minExtent[1]) / dimensions[1],
+                     (maxExtent[2] - minExtent[2]) / dimensions[2],
+                     (maxExtent[3] - minExtent[3]) / dimensions[3]}
+    local i = 0
+    for x=0,dimensions[1] do
+    for y=0,dimensions[2] do
+    for z=0,dimensions[3] do
+        ArraySet(data, i, minExtent[1] + spacing[1] * x,
+                          minExtent[2] + spacing[2] * y,
+                          minExtent[3] + spacing[3] * z)
+        i = i + 1
+    end end end
+    return data
+end
+
+local function UniformGridMesh(numParticles, dimensions, minExtent, maxExtent)
+    local m = {}
+    local dx, dy, dz = dimensions[1], dimensions[2], dimensions[3]
+    m.nvertices = (dx + 1) * (dy + 1) * (dz + 1)
+    m.nedges = dx * (dy + 1) * (dz + 1) + (dx + 1) * dy * (dz + 1) +
+               (dx + 1) * (dy + 1) * dz
+    m.nfaces = 0 --(dx + 1) * dy * dz + dx * (dy + 1) * dz + dx * dy * (dz + 1)
+    m.ncells = 1 + dx * dy * dz
+
+    local empty_idx_v = {}
+    for i=0,m.nvertices do
+        empty_idx_v[i] = 0
+    end
+    local empty_idx_e = {}
+    for i=0,m.nedges do
+        empty_idx_e[i] = 0
+    end
+    local empty_idx_f = {}
+    empty_idx_f[0] = 0
+    local empty_idx_c = {}
+    for i=0,m.ncells do
+        empty_idx_c[i] = 0
+    end
+    local empty_array = alloc(0, uint32)
+    m.vtov = {row_idx = empty_idx_v, values = empty_array}
+    m.vtoe = {row_idx = empty_idx_v, values = empty_array}
+    m.vtof = {row_idx = empty_idx_v, values = empty_array}
+    m.vtoc = {row_idx = empty_idx_v, values = empty_array}
+    m.etov = {row_idx = empty_idx_e, values = empty_array}
+    m.etof = {row_idx = empty_idx_e, values = empty_array}
+    m.etoc = {row_idx = empty_idx_e, values = empty_array}
+    m.ftov = {row_idx = empty_idx_f, values = empty_array}
+    m.ftoe = {row_idx = empty_idx_f, values = empty_array}
+    m.ftoc = {row_idx = empty_idx_f, values = empty_array}
+    m.ctov = Uniform_ctov(dimensions)
+    m.ctoe = Uniform_ctoe(dimensions)
+    m.ctof = {row_idx = empty_idx_c, values = empty_array}
+    m.ctoc = {row_idx = empty_idx_c, values = empty_array}
+
+    local fields = {}
+    fields[0] = {
+        name = "position",
+        elemtype = "vertices",
+        datatype = "double",
+        nelems = 3, 
+        data = UniformPositionData(m.nvertices, dimensions, minExtent, maxExtent)
+    }
+    return {
+        nFields = 1,
+        fields = fields,
+        nBoundaries = 0,
+        mesh = m
+    }
+end
+
+-- returns relations necessary for a uniform grid with some number of particles
+function LMesh.LoadUniformGrid(numParticles, dimensions, minExtent, maxExtent)
+    if minExtent == nil then minExtent = {0, 0, 0} end
+    if maxExtent == nil then maxExtent = dimensions end
+
+    local M = LoadCallback(function()
+        return UniformGridMesh(numParticles, dimensions, minExtent, maxExtent)
+    end)
+
+    Particle.initUniformGrid(M, numParticles, dimensions, minExtent, maxExtent)
     return M
 end

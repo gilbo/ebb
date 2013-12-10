@@ -167,7 +167,7 @@ function L.LRelation:CreateIndex(name)
     local prev,pos = 0,0
     for i = 0, numindices - 1 do
         self._indexdata[i] = pos
-        while f.data[pos] == i and pos < numvalues do
+        while pos < numvalues and f.data[pos] == i do
             if f.data[pos] < prev then
                 -- TODO: NEED TO FREE ALLOCATION SAFELY IN THIS CASE
                 error("CreateIndex(): Index field is not sorted")

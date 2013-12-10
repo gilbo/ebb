@@ -788,7 +788,7 @@ function ast.Call:check(ctxt)
             call.value = params[1]
             call.node_type = v
         else
-            ctxt:error(self, "Cast to " .. v.toString() ..
+            ctxt:error(self, "Cast to " .. v:toString() ..
                     " expects exactly 1 argument (instead got " .. #params ..
                     ")")
         end

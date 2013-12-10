@@ -127,9 +127,6 @@ local function UpdateParticlesUniformGrid(mesh)
 end
     
 function Particle.initUniformGrid(mesh, numParticles, dimensions, minExtent, maxExtent)
-    if minExtent == nil then minExtent = {0, 0, 0} end
-    if maxExtent == nil then maxExtent = dimensions end
-
     local position = InitCommon(mesh, numParticles)
     mesh.dimensions = L.NewScalar(L.vector(L.int, 3), dimensions)
     mesh.minExtent = L.NewScalar(L.vector(L.double, 3), minExtent)
