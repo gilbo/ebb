@@ -235,6 +235,9 @@ function LMesh.Load(filename)
 end
 
 
+-------------------------------------------------------------------------------
+--[[ Generic grid relations                                                ]]--
+-------------------------------------------------------------------------------
 local function VertexId(coord, dimensions)
     local stridey = (dimensions[3] + 1)
     local stridex = (dimensions[2] + 1) * stridey
@@ -258,7 +261,7 @@ local function EdgeId(dir, start, dimensions)
     return dirstart + stridex * start[1] + stridey * start[2] + start[3]
 end
 
-local function Uniform_ctoe(dimensions)
+local function Grid_ctoe(dimensions)
     local num_cells = 1 + dimensions[1] * dimensions[2] * dimensions[3]
     local row_idx = {}
     row_idx[0] = 0
@@ -288,7 +291,7 @@ local function Uniform_ctoe(dimensions)
     return {row_idx = row_idx, values = values}
 end
 
-local function Uniform_ctov(dimensions)
+local function Grid_ctov(dimensions)
     local num_cells = 1 + dimensions[1] * dimensions[2] * dimensions[3]
     local row_idx = {}
     row_idx[0] = 0
@@ -340,31 +343,7 @@ local function Grid_etov(dimensions, num_edges)
     return {row_idx = row_idx, values = values}
 end
 
-local terra VectorSet(data : &double, i : uint,
-                      x : double, y : double, z : double)
-    data[i * 3] = x
-    data[i * 3 + 1] = y
-    data[i * 3 + 2] = z
-end
-    
-local function UniformPositionData(nvertices, dimensions, minExtent, maxExtent)
-    local data = alloc(nvertices * 3, double)
-    local spacing = {(maxExtent[1] - minExtent[1]) / dimensions[1],
-                     (maxExtent[2] - minExtent[2]) / dimensions[2],
-                     (maxExtent[3] - minExtent[3]) / dimensions[3]}
-    local i = 0
-    for x=0,dimensions[1] do
-    for y=0,dimensions[2] do
-    for z=0,dimensions[3] do
-        VectorSet(data, i, minExtent[1] + spacing[1] * x,
-                           minExtent[2] + spacing[2] * y,
-                           minExtent[3] + spacing[3] * z)
-        i = i + 1
-    end end end
-    return data
-end
-
-local function UniformGridMesh(numParticles, dimensions, minExtent, maxExtent)
+local function GridMesh(dimensions)
     local m = {}
     local dx, dy, dz = dimensions[1], dimensions[2], dimensions[3]
     m.nvertices = (dx + 1) * (dy + 1) * (dz + 1)
@@ -382,7 +361,7 @@ local function UniformGridMesh(numParticles, dimensions, minExtent, maxExtent)
         empty_idx_e[i] = 0
     end
     local empty_idx_f = {}
-    empty_idx_f[0] = 0
+        empty_idx_f[0] = 0
     local empty_idx_c = {}
     for i=0,m.ncells do
         empty_idx_c[i] = 0
@@ -398,25 +377,58 @@ local function UniformGridMesh(numParticles, dimensions, minExtent, maxExtent)
     m.ftov = {row_idx = empty_idx_f, values = empty_array}
     m.ftoe = {row_idx = empty_idx_f, values = empty_array}
     m.ftoc = {row_idx = empty_idx_f, values = empty_array}
-    m.ctov = Uniform_ctov(dimensions)
-    m.ctoe = Uniform_ctoe(dimensions)
+    m.ctov = Grid_ctov(dimensions)
+    m.ctoe = Grid_ctoe(dimensions)
     m.ctof = {row_idx = empty_idx_c, values = empty_array}
     m.ctoc = {row_idx = empty_idx_c, values = empty_array}
 
+    return m
+end
+
+local function GridMeshData(dimensions, position_data)
     local fields = {}
     fields[0] = {
         name = "position",
         elemtype = "vertices",
         datatype = "double",
         nelems = 3, 
-        data = UniformPositionData(m.nvertices, dimensions, minExtent, maxExtent)
+        data = position_data
     }
     return {
         nFields = 1,
         fields = fields,
         nBoundaries = 0,
-        mesh = m
+        mesh = GridMesh(dimensions)
     }
+end
+
+
+-------------------------------------------------------------------------------
+--[[ Uniform grid                                                          ]]--
+-------------------------------------------------------------------------------
+local terra VectorSet(data : &double, i : uint,
+                      x : double, y : double, z : double)
+    data[i * 3] = x
+    data[i * 3 + 1] = y
+    data[i * 3 + 2] = z
+end
+    
+local function UniformPositionData(dimensions, minExtent, maxExtent)
+    local nvertices = (dimensions[1] + 1) * (dimensions[2] + 1) * (dimensions[3] + 1)
+    local data = alloc(nvertices * 3, double)
+    local spacing = {(maxExtent[1] - minExtent[1]) / dimensions[1],
+                     (maxExtent[2] - minExtent[2]) / dimensions[2],
+                     (maxExtent[3] - minExtent[3]) / dimensions[3]}
+    local i = 0
+    for x=0,dimensions[1] do
+    for y=0,dimensions[2] do
+    for z=0,dimensions[3] do
+        VectorSet(data, i, minExtent[1] + spacing[1] * x,
+                           minExtent[2] + spacing[2] * y,
+                           minExtent[3] + spacing[3] * z)
+        i = i + 1
+    end end end
+    return data
 end
 
 -- returns relations necessary for a uniform grid with some number of particles
@@ -424,8 +436,10 @@ function LMesh.LoadUniformGrid(numParticles, dimensions, minExtent, maxExtent)
     if minExtent == nil then minExtent = {0, 0, 0} end
     if maxExtent == nil then maxExtent = dimensions end
 
+    local meshdata = GridMeshData(dimensions,
+            UniformPositionData(dimensions, minExtent, maxExtent))
     local M = LoadCallback(function()
-        return UniformGridMesh(numParticles, dimensions, minExtent, maxExtent)
+        return meshdata
     end)
 
     Particle.initUniformGrid(M, numParticles, dimensions, minExtent, maxExtent)
