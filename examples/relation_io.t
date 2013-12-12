@@ -33,7 +33,9 @@ end
 print('BEFORE')
 relations.vertices.position:print()
 
-relations.vertices.position:LoadFromFile('./blah/vertices/position.field')
+relations.vertices.position:LoadFromFile(
+  './relation_io_test_relation/vertices/position.field'
+)
 
 print('AFTER')
 relations.vertices.position:print()
