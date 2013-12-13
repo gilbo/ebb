@@ -1,0 +1,207 @@
+<html>
+<head>
+
+<link rel="stylesheet" type="text/css" href="css/style.css" />
+
+<title>Liszt Feature Proposal: Relation Generators</title>
+
+</head>
+
+
+<body><div id="body-wrapper">
+
+<h1> Liszt Feature Proposal: Relation Generators </h1>
+
+<h1> Feedback Sought </h1>
+
+<ul>
+  <li> Does the general idea seem good/sound? </li>
+  <li> Is the syntax/name/keywords ok?  What would make sense to change?  What would you like to change? (even for trivial reasons)</li>
+  <li> Is this overkill?  Is there a simpler way to solve the stated problems, either by minimizing the proposal further or by taking a totally different approach?</li>
+</ul>
+
+<h1> Problems Addressed </h1>
+
+
+<ol>
+<li> Can we generate indexing relations like LMesh's <code>cellsofvertex</code> within Liszt, without having to rely on backdoors in the API? </li>
+<li> How do we support a rendering interface for Liszt? </li>
+</ol>
+
+
+<h2> Index Relations; Facet-Edge </h2>
+<p>
+LMesh currently stores 16 different relations: <code>vertices</code>, <code>edges</code>, <code>faces</code>, <code>cells</code>, plus 12 other relations which take the form "X of Y" (e.g. <code>facesofcell</code>).  While these 12 relations are (in aggregate) redundant, they're the only reference for the mesh topology, counter to the original proposal for Facet-Edge storage.  They're also essential for supporting <code>for f in edge.faces do ... end</code> iterations.  We would like to reconstitute these 12 relations on load rather than save them.
+</p>
+<p>
+Using Liszt as it exists, we could reconstitute a relation like <code>facesofedge</code> by (i) extracting the topology data from a Facet-Edge relation in the form of <code>uint64</code> addresses; (ii) transform this data (in Lua) into arrays of <code>uint64</code> addresses representing the desired <code>facesofedge</code> relation; and then (iii) initialize a new relation with this data, expecting the runtime to appropriately resolve <code>uint64</code> addresses to whatever internal reference scheme it's using.
+</p>
+<p>
+The existing process outlined above has at least two problems.  (1) It violates the abstraction of row addressing. The extracted and bulk-loaded <code>uint64</code> address values must retain consistent meanings between the Liszt API calls or the data will become corrupt.  (2) The index construction step is now external to Liszt and cannot be parallelized.
+</p>
+
+<h2> Rendering Interface </h2>
+<p>
+We want an interface to OpenGL, for debugging, visualization and real-time rendering.  This interface needs to address a few different problems. (1) Simulation data is generally not stored in the same way as rendering data.  e.g. a simulation may be volumetric, while an isosurface is used for rendering, or a temperature field may be simulated, while a color field is rendered. (2) If both simulation and rendering occur on the GPU, we should try to avoid communication over the system bus back to main memory.  (3) Users may wish to optimize the GPU memory footprint by having simulation and rendering operate on the same data arrays.
+</p>
+
+<p> In aggregate these concerns suggest that we need some way to transform relational data--within Liszt--such that the transformation can happen entirely on the GPU and then be fed seamlessly into OpenGL.</p>
+
+
+<h1> Proposed Feature: Generators </h1>
+
+The proposal is to add a new kind of kernel to the Liszt language, which I will call a generator.  Generators are identical to existing Liszt kernels except that (1) they a relation as output, and (2) they have access to the <code>emit()</code> language keyword within their body.
+
+<h2> An example </h2>
+
+Suppose we have a standard triangle mesh encoded as Clef relations.  There is a <code>vertex</code> relation with <code>position</code> field and a <code>triangle</code> relation with 3 reference fields to the <code>vertex</code> relation: <code>v0</code>, <code>v1</code>, <code>v2</code>.  We want to construct a <code>triangles_of_vertex</code> relation so that we can loop over the triangles adjacent to a given vertex.  To do so, we write the following Liszt generator:
+
+<pre><code class="code-block">local tofv_gen =
+liszt generate {v=L.row(vertices), t=L.row(triangles)}
+      with_index v
+      from(tri in triangle)
+    emit{v=tri.v0, t=tri}
+    emit{v=tri.v1, t=tri}
+    emit{v=tri.v2, t=tri}
+end
+
+local triangles_of_vertex = tofv_gen:generate_from(triangle)
+</code></pre>
+
+<h2> Specification </h2>
+
+<p>
+Liszt generators are first-class Liszt kernels, meaning they can make use of existing indices, can perform arbitrary computation, including reading and writing fields.  Whenever the <code>:generate_from()</code> member function is called on a generator, the kernel is mapped over the specified relation.  In addition to the usual output caused by writing to fields, a generator returns a new relation object.
+</p>
+
+<h3>Generator Syntax</h3>
+
+<pre>
+<code class="code-block">liszt generate <i>{field_name = field_type, ...}</i>
+      <i>[</i>with_index <i>field_name]</i> -- optional
+      from (<i>id</i> in <i>relation</i>)   -- same as regular kernel
+    ...
+    -- any number of emit calls may be made from the kernel
+    emit {<i>field_name</i> = <i>value</i> <i>[, ...]</i>}
+    ...
+end
+</code></pre>
+
+<p>
+A generator declaration declares the type of the generated relation as a Lua table binding identifiers (field names) to Liszt types.  Optionally, an index field may be specified, in which case the runtime will create the desired indexing at the same time the relation is created.  (In the implementation proposal we will see why specifying this feature is desirable)  Within the body of the kernel, the <code>emit</code> keyword may be used to construct a single row of the output relation.  Values must be supplied for and type-check against all declared output fields.
+</p>
+
+<h2> Implementation </h2>
+
+<p>
+A single core runtime will use a dynamic array or similar structure, assigning addresses to new rows sequentially as they are emitted.  The distributed and GPU runtimes are more involved
+</p>
+
+<h3> Distributed </h3>
+<p>
+Each emitted row in the ``generated relation'' is emitted from the execution of the kernel on some row of the ``base relation''.  We assign the newly emitted row to the same partition/machine as the row from the base relation.  As a result the generator computation remains local.
+</p>
+
+<h3> GPU </h3>
+<p>
+We use a 3 phase scheme to execute a generator on the GPU.  [Phase 1] Execute the kernel with all field-writes replaced with no-ops (i.e. the kernel is side-effect free).  Rather than generating a row, each time an emit statement is encountered, a per-base-relation-row counter is incremented.  The first phase produces a vector of expected emission counts.  [Phase 2] Run prefix sum over the emission count array.  The result is a base-index array, telling each base-relation-row where to begin writing.  [Phase 3]  Execute the kernel normally (i.e. with side effects).  Whenever the kth emit for a given base-relation-row is encountered, the result is written to position base-index + k.
+</p>
+
+<h3> Indexing </h3>
+<p>
+Consider the specification of an index field.  The output relation must now be generated in sorted order according to the index field.  On single core machines, we can use the GPU runtime trick to decide in linear time exactly how many emitted rows will have each index value. (assuming we are just indexing over Row-type fields)  After running a prefix-sum, a second kernel execution can directly write the sorted output relation.  This scheme can likely be extended to the distributed case, although some degree of data shuffling across machines may be required.
+</p>
+
+<p>
+One problem I wasn't able to resolve is how to efficiently generate an indexed relation on the GPU.  However, I suspect someone could come up with a clever solution.
+</p>
+
+<h2> Analysis </h2>
+
+<p>
+A user's performance model for a generator is roughly identical to their performance model for a regular kernel.  They can expect it to run in work/time roughly linear to the size of the relation mapped over.  As a point of contrast suppose we solved the index construction problem by introducing inner-joins to Liszt.  This would be a natural way to construct the <code>triangles_of_vertex</code> relation.  But whether an inner-join can be executed in linear time/work is often (a) not obvious to the user and (b) difficult for the compiler to determine automatically.  Generators force the user to supply us with an efficient means of constructing the desired relation, not just specify which relation is desired.
+</p>
+
+<p>
+The tricks required to effectively parallelize generators on GPU architectures and to support the linear time construction of indices are non-obvious.  They also require understanding details of the runtime being used.  This provides further evidence that abstracting the generation of relations into the DSL is a sound design choice.
+</p>
+
+
+<h1> Rendering </h1>
+
+<p>
+OpenGL and DirectX expect to be presented with a vertex buffer and index buffer specifying the triangles to be sent down the pipeline.  So, if we create Clef relations with a compatible format, we should be able to issue OpenGL or DirectX draw calls directly on the relations.  For instance,
+</p>
+
+<pre>
+<code class="code-block">my_vertices = L.NewRelation(...)
+my_vertices:NewField('my_position', L.vector(L.double, 3))
+
+my_triangles = L.NewRelation(...)
+my_triangles:NewField('v0', my_vertices)
+my_triangles:NewField('v1', my_vertices)
+my_triangles:NewField('v2', my_vertices)
+my_triangles:NewField('temperature_rgba', L.vector(L.uint8,4))
+
+...
+
+L.GLdraw {
+  vertices = my_vertices,
+  triangles = my_triangles,
+  vert_map = {
+    position = 'my_position'
+  },
+  tri_map = {
+    vert0 = 'v0',
+    vert1 = 'v1',
+    vert2 = 'v2',
+    attr1 = 'temperature_rgba'
+  }
+}
+</code></pre>
+
+<p>
+(Naturally, we might want to build some more specialized convenience functions to simplify common use cases, but the full interface would be available if needed.)
+</p>
+
+<p>
+The runtime is responsible for marshalling the specified data and binding it to the OpenGL context.  If the relations/fields specified are already resident on the GPU and the lower level abstractions provide for data sharing (e.g. DirectX and Direct Compute) then the implementation can attempt to optimize out the copying of the buffers altogether.
+</p>
+
+<p>
+Not every application will choose to store data in an OpenGL friendly way.  However, by supporting generators we make it easy for users to generate drawing primitives on the fly for OpenGL to consume.  Rather than introduce a special <code>draw</code> call, the general purpose <code>emit</code> can be used, provided that the generated relation is amenable to being used for OpenGL input.  As Zach has mentioned previously, the generators now look like souped up versions of the geometry shader from the perspective of the rendering pipeline.
+</p>
+
+
+<h1> More Applications of Generators </h1> 
+
+<h2> Format Conversion </h2>
+
+<p>
+Generators make it easier for users to produce new relations from existing relations.  Such a feature could be used to convert data between different Clef relational schemas.  This may (though perhaps not) help users support a wider variety of file formats.  For instance, one could (i) convert the file format into a closely related Clef schema, and then (ii) write a generator to produce an LMesh from the intermediary Clef schema.
+</p>
+
+<h2> Marching Cubes </h2>
+
+<p>
+Given the generator feature it should be possible to implement marching cubes in Liszt.  Doing so trivially yields efficient parallel implementations.
+</p>
+
+<h2> Stencil Analysis is a Generator? </h2>
+
+<p>
+If one would like to produce a concrete representation of a stencil analysis in a compressed row storage format, then the stencil analysis itself could be viewed as a kind of generator.  Not sure if this is good for anything, but maybe we can avoid some code duplication.
+</p>
+
+<h2> A Start on Dynamic Geometry </h2>
+
+<p>
+Generators start to scratch the surface of features Liszt might include in order to support the dynamic creation and deletion of geometric elements.  They provide a way to efficiently bulk-create relations, and hence geometry.  For instance, it would be trivial to create a distribution of particles over a domain by generating k particles per cell.  Generators give us a jumping off point to think about how we might support the incremental addition of rows to or deletion of rows from an existing relation.
+</p>
+
+
+
+
+</div></body>
+</html>
+

@@ -8,11 +8,11 @@ body {
   background-color: white;
   padding: 30px;
 }
-
-#allstuff {
-  width: 600px;
-  margin-left: 10%;
+div#body-wrapper {
+  margin:auto;
+  max-width: 40em;
 }
+
 body > *:first-child {
   margin-top: 0 !important; }
 body > *:last-child {
