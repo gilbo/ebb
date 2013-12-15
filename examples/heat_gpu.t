@@ -21,7 +21,7 @@ C.cudaMemcpyDeviceToHost = 2
 
 local tid       = cudalib.nvvm_read_ptx_sreg_tid_x -- threadId.x
 local sqrt      = cudalib.nvvm_sqrt_rm_d           -- floating point sqrt, round to nearest
---local atomicAdd = cudalib.atom_add_f
+local aadd      = terralib.intrinsic("llvm.nvvm.atomic.load.add.f32.p0f32", {&float,float} -> {float})
 
 
 --------------------------------------------------------------------------------
@@ -50,15 +50,13 @@ M.vertices:NewField('flux',        L.float):LoadFromCallback(init_to_zero)
 M.vertices:NewField('jacobistep',  L.float):LoadFromCallback(init_to_zero)
 M.vertices:NewField('temperature', L.float):LoadFromCallback(init_temp)
 
-M.edges:NewField('debug', L.float):LoadFromCallback(init_to_zero)
-
 
 --------------------------------------------------------------------------------
 --[[ Parallel kernels for GPU:                                              ]]--
 --------------------------------------------------------------------------------
-local terra compute_step (head : &uint64, tail : &uint64, 
+local terra compute_step (head : &uint64, tail       : &uint64, 
 	                      flux : &float,  jacobistep : &float,
-	                      temp : &float,  position   : &float, debug : &float) : {}
+	                      temp : &float,  position   : &float) : {}
 
 	var edge_id : uint64 = tid()
 	var head_id : uint64 = head[edge_id]
@@ -84,22 +82,21 @@ local terra compute_step (head : &uint64, tail : &uint64,
 --]]
 
 --[-[ atomic (safe) add-reductions.  Why are these segfaulting?
-	atomicAdd(&flux[head_id], -dt * step)
-	atomicAdd(&flux[tail_id],  dt * step)
+	aadd(&flux[head_id], -dt * step)
+	aadd(&flux[tail_id],  dt * step)
 
-	atomicAdd(&jacobistep[head_id], step)
-	atomicAdd(&jacobistep[tail_id], step)
+	aadd(&jacobistep[head_id], step)
+	aadd(&jacobistep[tail_id], step)
 --]]
 
 end
 
-local terra propagate_temp (temp : &float, flux : &float, jacobistep : &float, debug : &float)
+local terra propagate_temp (temp : &float, flux : &float, jacobistep : &float)
 	var vid = tid()
-	debug[vid] = flux[vid]
 	temp[vid] = temp[vid] + .01 * flux[vid] / jacobistep[vid]
 end
 
-local terra clear_temp_vars (flux : &float, jacobistep : &float, debug : &float)
+local terra clear_temp_vars (flux : &float, jacobistep : &float)
 	var vid = tid()
 	flux[vid]       = 0.0
 	jacobistep[vid] = 0.0
@@ -132,7 +129,6 @@ local terra run_simulation (iters : uint64)
 	-- Allocate and copy over field data to GPU device
 	var head_ddata : &uint64,
 	    tail_ddata : &uint64,
-	    debg_ddata : &float,
 	    flux_ddata : &float,
 	    jaco_ddata : &float, 
 	    temp_ddata : &float, 
@@ -140,11 +136,9 @@ local terra run_simulation (iters : uint64)
 
 	var tsize = sizeof(uint64) * nEdges -- size of edge topology relation
 	var fsize = sizeof(float)  * nVerts -- size of fields over vertices
-	var dsize = sizeof(float)  * nEdges -- size of debug field over edges
 
 	C.cudaMalloc([&&opaque](&head_ddata),   tsize)
 	C.cudaMalloc([&&opaque](&tail_ddata),   tsize)
-	C.cudaMalloc([&&opaque](&debg_ddata),   dsize)
 	C.cudaMalloc([&&opaque](&flux_ddata),   fsize)
 	C.cudaMalloc([&&opaque](&jaco_ddata),   fsize)
 	C.cudaMalloc([&&opaque](&temp_ddata),   fsize)
@@ -152,7 +146,6 @@ local terra run_simulation (iters : uint64)
 
 	C.cudaMemcpy([&opaque](head_ddata), [&opaque](M.edges.head.data),             tsize, C.cudaMemcpyHostToDevice)
 	C.cudaMemcpy([&opaque](tail_ddata), [&opaque](M.edges.tail.data),             tsize, C.cudaMemcpyHostToDevice)
-	C.cudaMemcpy([&opaque](debg_ddata), [&opaque](M.edges.debug.data),            dsize, C.cudaMemcpyHostToDevice)
 	C.cudaMemcpy([&opaque](flux_ddata), [&opaque](M.vertices.flux.data),          fsize, C.cudaMemcpyHostToDevice)
 	C.cudaMemcpy([&opaque](jaco_ddata), [&opaque](M.vertices.jacobistep.data),    fsize, C.cudaMemcpyHostToDevice)
 	C.cudaMemcpy([&opaque](temp_ddata), [&opaque](M.vertices.temperature.data),   fsize, C.cudaMemcpyHostToDevice)
@@ -164,22 +157,20 @@ local terra run_simulation (iters : uint64)
 
 	-- run kernels!
 	for i = 0, iters do
-		R.compute_step(&eLaunch,    head_ddata, tail_ddata, flux_ddata, jaco_ddata,
-		                            temp_ddata, posn_ddata, debg_ddata)
-		R.propagate_temp(&vLaunch,  temp_ddata, flux_ddata, jaco_ddata, debg_ddata)
-		R.clear_temp_vars(&vLaunch, flux_ddata, jaco_ddata, debg_ddata)
+		R.compute_step(&eLaunch,    head_ddata, tail_ddata, flux_ddata,
+		                            jaco_ddata, temp_ddata, posn_ddata)
+		R.propagate_temp(&vLaunch,  temp_ddata, flux_ddata, jaco_ddata)
+		R.clear_temp_vars(&vLaunch, flux_ddata, jaco_ddata)
 	end
 
 	-- copy back results
 	C.cudaMemcpy([&opaque](M.vertices.temperature.data),  [&opaque](temp_ddata),  fsize, C.cudaMemcpyDeviceToHost)
-	C.cudaMemcpy([&opaque](M.edges.debug.data),           [&opaque](debg_ddata),  dsize, C.cudaMemcpyDeviceToHost)
 
 	-- Free unused memory
 	C.free(posn_data)
 
 	C.cudaFree(head_ddata)
 	C.cudaFree(tail_ddata)
-	C.cudaFree(debg_ddata)
 	C.cudaFree(flux_ddata)
 	C.cudaFree(jaco_ddata)
 	C.cudaFree(temp_ddata)
@@ -187,10 +178,8 @@ local terra run_simulation (iters : uint64)
 end
 
 local function main()
-	run_simulation(1)
-
+	run_simulation(1000)
 	-- Debug output:
-	M.edges:print()
 	M.vertices.temperature:print()
 end
 
