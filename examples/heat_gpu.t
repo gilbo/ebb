@@ -27,15 +27,9 @@ local aadd      = terralib.intrinsic("llvm.nvvm.atomic.load.add.f32.p0f32", {&fl
 --------------------------------------------------------------------------------
 --[[ Read in mesh relation, initialize fields                               ]]--
 --------------------------------------------------------------------------------
---[[
--- this code isn't working on derp.stanford.edu - linux problems with path module?
 local PN    = terralib.require 'compiler.pathname'
 local LMesh = terralib.require "compiler.lmesh"
 local M     = LMesh.Load(PN.scriptdir():concat("rmesh.lmesh"):tostring())
-]]--
-
-local LMesh = terralib.require "compiler.lmesh"
-local M     = LMesh.Load('/home/clemire/liszt-in-terra/examples/rmesh.lmesh')
 
 local init_to_zero = terra (mem : &float, i : int) mem[0] = 0 end
 local init_temp    = terra (mem : &float, i : int)
