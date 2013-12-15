@@ -67,22 +67,13 @@ local terra compute_step (head : &uint64, tail       : &uint64,
 
 	var dt : float = temp[head_id] - temp[tail_id]
 
---[[ Non-atomic (unsafe) add-reductions
-	flux[head_id] = flux[head_id] - dt * step
-	flux[tail_id] = flux[tail_id] + dt * step
-
-	jacobistep[head_id] = jacobistep[head_id] + step
-	jacobistep[tail_id] = jacobistep[tail_id] + step
---]]
-
---[-[ atomic (safe) add-reductions.  Why are these segfaulting?
+	-- Atomic floating point add reductions ensure that we don't compute incorrect
+	-- results due to race conditions
 	aadd(&flux[head_id], -dt * step)
 	aadd(&flux[tail_id],  dt * step)
 
 	aadd(&jacobistep[head_id], step)
 	aadd(&jacobistep[tail_id], step)
---]]
-
 end
 
 local terra propagate_temp (temp : &float, flux : &float, jacobistep : &float)
