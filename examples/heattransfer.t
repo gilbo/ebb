@@ -1,10 +1,8 @@
 import 'compiler.liszt'
-local length, lprint = L.length, L.print
 
--- Test code
-local PN = terralib.require 'compiler.pathname'
+local PN    = terralib.require 'compiler.pathname'
 local LMesh = terralib.require "compiler.lmesh"
-local M = LMesh.Load(PN.scriptdir():concat("rmesh.lmesh"):tostring())
+local M     = LMesh.Load(PN.scriptdir():concat("rmesh.lmesh"):tostring())
 
 local init_to_zero = terra (mem : &float, i : int) mem[0] = 0 end
 local init_temp    = terra (mem : &float, i : int)
@@ -24,7 +22,7 @@ local compute_step = liszt_kernel(e in M.edges)
 	var v2   = e.tail
 	var dp   = v1.position - v2.position
 	var dt   = v1.temperature - v2.temperature
-	var step = 1.0 / length(dp)
+	var step = 1.0 / L.length(dp)
 
 	v1.flux = v1.flux - dt * step
 	v2.flux = v2.flux + dt * step
@@ -38,7 +36,7 @@ local propagate_temp = liszt_kernel (p in M.vertices)
 end
 
 local clear = liszt_kernel (p in M.vertices)
-	p.flux = 0
+	p.flux       = 0
 	p.jacobistep = 0
 end
 
