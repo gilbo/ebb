@@ -1,0 +1,86 @@
+<html>
+<head>
+
+<link rel="stylesheet" type="text/css" href="css/style.css" />
+
+<title>Liszt Feature Proposal: Insert</title>
+
+</head>
+
+
+<body><div id="body-wrapper">
+
+<h1> Liszt Feature Proposal: Insert </h1>
+
+<h2> Simple Example </h2>
+
+Suppose we have a standard triangle mesh (relations <code>triangle</code> and <code>vertex</code>) and want to create a relation of all triangle-vertex pairs.  Using insert statements, we can do so as...
+
+<pre><code class="code-block">local triangle_of_vertex = L.NewRelation(0, 'triangle_of_vertex')
+triangle_of_vertex:NewField('tri', triangle)
+triangle_of_vertex:NewField('vert', vertex)
+
+local build_tri_of_vert = liszt_kernel (t in triangle)
+    insert {vert=t.v0, tri=t} into triangle_of_vertex
+    insert {vert=t.v1, tri=t} into triangle_of_vertex
+    insert {vert=t.v2, tri=t} into triangle_of_vertex
+end
+
+local triangles_of_vertex = tofv_gen:generate_from(triangle)
+</code></pre>
+
+<h2> General Syntax </h2>
+
+
+<pre>
+<code class="code-block">liszt_kernel ...
+    ...
+    -- any number of insert calls may be made from a kernel
+    -- each to a potentially different relation
+    insert {<i>field_name</i> = <i>value</i> <i>[, ...]</i>} into <i>target_relation</i>
+    ...
+end
+</code></pre>
+
+<p>
+The parser needs to have <code>insert</code> and <code>into</code> added as keywords.  The parser also needs to be extended to parse Lua records.
+</p>
+
+<p>
+<b>Question:</b> How should we represent these records internally in the compiler?
+</p>
+
+<h2> Type Checking </h2>
+
+The constructed record can be type checked against the target relation to ensure that (i) all target fields are assigned values, (ii) there are no spurious values for fields that don't exist on the target relation, and (iii) all of the assigned values can be coerced into the corresponding target field types.
+
+<h2> Semantics (runtime-independent) </h2>
+
+Any kernel can insert into any relation.  The inserted rows will be bulk created and inserted into the specified relations <i>after</i> the rest of the kernel has finished executing.  Furthermore, note that <code>insert</code> does not return a reference to the new row, so any references to newly inserted rows will have to be added in a second pass.  If rows are inserted into the relation which the kernel is being mapped over, then the kernel is not mapped over those rows.  They will not exist until <i>after</i> the kernel execution.
+
+
+<h2> Single Core Implementation </h2>
+
+<p>
+Liszt Kernels making use of insert statements are tagged with which target tables they will insert into at compile time.  At the beginning of kernel execution, a "dump" is created for each target table.  Then whenever an insert statement is encountered, the row is added to the corresponding dump.  If any table inserted into has an "index" (meaning a stored sort order), then that index is invalidated.
+</p>
+<p>
+<b>Question:</b> how do we re-arrange rows in a relation and maintain all global references?
+</p>
+
+<h2> Problems Addressed </h2>
+
+
+<ol>
+<li> Allow for facet-edge storage format </li>
+<li> Scaffolding to support the rendering interface for Liszt? </li>
+</ol>
+
+
+
+
+
+
+</div></body>
+</html>
+
