@@ -148,6 +148,7 @@ Valid filename / filepath strings:
     1. Alphanumeric characters are allowed (i.e. a-z, A-Z and 0-9)
     2. Underscores (i.e. _ ), dots (i.e. . ) and hyphens (i.e. - ) are allowed
     3. Hyphens are not allowed as the first character of a filename
+    4. Spaces are allowed, but no leading or trailing whitespace is allowed
   File Paths are sequences of filenames, separated by
     forward slashes (i.e. / ), repetition allowed.
     If the first character is a slash, then the path starts
@@ -155,10 +156,11 @@ Valid filename / filepath strings:
 
   We will not check whether or not a name is exactly 'null', but
     YOU SHOULD NOT DO THAT!
-  (note: these are roughly the POSIX portable filenames)
+  (note: these are roughly the POSIX portable filenames plus spaces)
 ]]
 local function POSIX_valid_filename(str)
-  return not not str:match('^[%w%._][%w%._-]*$')
+  local test = not not str:match('^[%w%._][%w%.%s_-]*$')
+  return test and not str:match('%s$') -- and does not end with a space
 end
 -- ALLOWS for empty paths, should check another way!
 local function POSIX_valid_pathname(str)
