@@ -5,7 +5,7 @@
 UNAME = $(shell uname)
 CXX = clang++
 
-COMMON_SRC = src/mesh.cpp src/lmeshloader.cpp src/swift.cpp
+COMMON_SRC = src/mesh.cpp src/lmeshloader.cpp
 COMMON_OBJ = $(patsubst src/%.cpp,build/%.o,$(COMMON_SRC))
 
 FLAGS = -I. -g -fPIC -Wno-deprecated
@@ -18,12 +18,11 @@ endif
 LFLAGS += -fPIC
 
 LIBRARIES = libsingle_runtime.so
-LIBDEPENDS = -Wl,-Bstatic -lSWIFT -Wl,-Bdynamic
 
 all: $(LIBRARIES)
 
 lib%.so:   build/%.o $(COMMON_OBJ)
-	$(CXX) $(LFLAGS) $< $(COMMON_OBJ) $(LIBDEPENDS) -o $@
+	$(CXX) $(LFLAGS) $< $(COMMON_OBJ) -o $@
     
 build/%.o:	src/%.cpp 
 	$(CXX) $(FLAGS) $< -c -o $@

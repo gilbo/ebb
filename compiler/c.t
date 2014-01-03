@@ -14,7 +14,6 @@ local liszt_dir = src:sub(2,-14)
 
 return terralib.includecstring([[
 #include "runtime/src/lmeshloader.h"
-#include "runtime/src/swiftshim.h"
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
