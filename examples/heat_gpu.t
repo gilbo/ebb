@@ -15,13 +15,14 @@ local C = terralib.includecstring [[
 ]]
 
 -- Find cudasMemcpyKind enum in <cuda-include>/driver_types.h, have to
--- declare manually since terra doesn't grok enums from include files
+-- declare manually since terra doesnt grok enums from include files
 C.cudaMemcpyHostToDevice = 1
 C.cudaMemcpyDeviceToHost = 2
 
-local tid       = cudalib.nvvm_read_ptx_sreg_tid_x -- threadId.x
-local sqrt      = cudalib.nvvm_sqrt_rm_d           -- floating point sqrt, round to nearest
-local aadd      = terralib.intrinsic("llvm.nvvm.atomic.load.add.f32.p0f32", {&float,float} -> {float})
+local tid   = cudalib.nvvm_read_ptx_sreg_tid_x   -- threadId.x
+local ntid  = cudalib.nvvm_read_ptx_sreg_ntid_x  -- terralib.intrinsic("llvm.nvvm.read.ptx.sreg.ntid.x",{} -> int)
+local sqrt  = cudalib.nvvm_sqrt_rm_d             -- floating point sqrt, round to nearest
+local aadd  = terralib.intrinsic("llvm.nvvm.atomic.load.add.f32.p0f32", {&float,float} -> {float})
 
 
 --------------------------------------------------------------------------------
