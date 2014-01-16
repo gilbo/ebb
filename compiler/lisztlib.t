@@ -258,27 +258,35 @@ L.Where = L.NewMacro(function(field,key)
     local w = ast.Where:DeriveFrom(field)
     w.field = field
     w.key   = key
-    return semant.check({},w)
+    return semant.check({}, w)
 end)
 
 
 -------------------------------------------------------------------------------
---[[ Kernels:                                                              ]]--
+--[[ Kernels/Runtimes                                                       ]]--
 -------------------------------------------------------------------------------
+local rtlib = terralib.require 'compiler/runtimes'
 
-Kernel.__call  = function (kobj)
-	if not kobj.__kernel then kobj:generate() end
-	kobj.__kernel()
+L.singlecore = rtlib.singlecore
+L.gpu        = rtlib.gpu
+
+Kernel.__call  = function (kobj, runtime)
+    if not runtime then runtime = L.singlecore end
+    if not rtlib.is_valid_runtime(runtime) then 
+        error('Argument is not a valid runtime')
+    end
+	if not kobj.__kernels[runtime] then kobj:generate(runtime) end
+	kobj.__kernels[runtime]()
 end
 
 function L.NewKernel(kernel_ast, env)
-	return setmetatable({ast=kernel_ast,env=env}, Kernel)
+	return setmetatable({ast=kernel_ast,env=env,__kernels={}}, Kernel)
 end
 
-function Kernel:generate (param_type)
-  self.typed_ast = semant.check(self.env, self.ast)
+function Kernel:generate (runtime)
+    self.typed_ast = semant.check(self.env, self.ast)
 
-	if not self.__kernel then
-		self.__kernel = codegen.codegen(self.env, self.typed_ast)
+	if not self.__kernels[runtime] then
+		self.__kernels[runtime] = codegen.codegen(runtime, self.env, self.typed_ast)
 	end
 end

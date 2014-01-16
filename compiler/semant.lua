@@ -11,17 +11,110 @@ local T   = terralib.require "compiler.types"
         Each check() method is designed to accept a typing context (see below).
         Once called, check() will construct and return a new type-checked
         version of its subtree (new AST nodes)
-]]--
+--]]
+
+------------------------------------------------------------------------------
+--[[ Phase Dictionary                                                     ]]--
+------------------------------------------------------------------------------
+--[[ Keeps track of Field accesses and field access metadata:
+     * whether the field was read, written, or reduced
+     * where the Access occurred (for debugging/error reporting)
+--]]
+local Phase = {}
+Phase.__index = Phase
+function Phase.new (string) return setmetatable({string=string}, Phase) end
+function Phase:__tostring () return self.string end
+
+local phases = {}
+phases.READ_ONLY       = Phase.new("<Read>")
+phases.REDUCE_PLUS     = Phase.new("<Additive Reduction>")
+phases.REDUCE_MULTIPLY = Phase.new("<Multiplicative Reduction>")
+phases.REDUCE_MIN      = Phase.new("<MIN Reduction>")
+phases.REDUCE_MAX      = Phase.new("<MAX Reduction>")
+phases.REDUCE_AND      = Phase.new("<AND Reduction>") -- AND/OR/XOR by assignment type
+phases.REDUCE_OR       = Phase.new("<OR Reduction>")
+phases.WRITE_ONLY      = Phase.new("<Write>")
+
+phases['+']    = phases.REDUCE_PLUS
+phases['-']    = phases.REDUCE_PLUS
+phases['*']    = phases.REDUCE_MULTIPLY
+phases['/']    = phases.REDUCE_MULTIPLY
+phases['min']  = phases.REDUCE_MIN
+phases['max']  = phases.REDUCE_MAX
+phases['and']  = phases.REDUCE_AND
+phases['or']   = phases.REDUCE_OR
+
+local FieldAccessRecord = {}
+FieldAccessRecord.__index = FieldAccessRecord
+
+function FieldAccessRecord.new (field, phase, node)
+    return setmetatable({
+        phase      = phase,
+        field      = field,
+        linenumber = node.linenumber,
+        filename   = node.filename,
+        offset     = node.offset,
+        name       = node.name
+    }, FieldAccessRecord)
+end
+
+local PhaseDict = {}
+PhaseDict.__index = PhaseDict
+
+function PhaseDict.new(diag)
+    return setmetatable({
+        diag=diag, 
+        dict={}, 
+        ctxt={phases.READ_ONLY}}, PhaseDict)
+end
+
+function PhaseDict:enterLhs (reduce_op)
+    local ph = phases[reduce_op] or phases.WRITE_ONLY
+    self.ctxt[#self.ctxt+1] = ph
+end
+function PhaseDict:enterRhs ()
+    self.ctxt[#self.ctxt+1] = phases.READ_ONLY
+end
+function PhaseDict:leaveLhs ()
+    local sz = #self.ctxt
+    local ph = self.ctxt[sz]
+    self.ctxt[sz] = nil
+    -- assert that popped phase is a write or reduce phase
+    assert(ph and ph ~= phases.READ_ONLY)
+end
+function PhaseDict:leaveRhs ()
+    local sz = #self.ctxt
+    local ph = self.ctxt[sz]
+    self.ctxt[sz] = nil
+    -- assert that popped phase is read only
+    assert(ph == phases.READ_ONLY)    
+end
+function PhaseDict:store (field, node)
+    local phase = self.ctxt[#self.ctxt]
+    --print("found field '" .. tostring(node.name) .. '\' in phase ' .. tostring(phase) .. ' at line ' .. tostring(node.linenumber))
+    if not self.dict[field] then
+        self.dict[field] = FieldAccessRecord.new(field, phase, node)
+        return true
+    elseif phase ~= self.dict[field].phase then
+        local rec = self.dict[field]
+        self.diag:reporterror(node, "access of '"..node.name.."' field in "..tostring(phase).. 
+            ' phase conflicts with earlier access in '..tostring(rec.phase)..
+            ' phase at '..rec.filename..':'..tostring(rec.linenumber))
+        return false
+    end
+    return true
+end
 
 
 ------------------------------------------------------------------------------
 --[[ Context Definition                                                   ]]--
 ------------------------------------------------------------------------------
--- A Context is passed through type-checking, keeping track of any kind of
--- store or gadget we want to use, such as
--- the environment object and error diagnostic object.
--- It can be used to quickly thread new stores
--- through the entire typechecker.
+--[[ A Context is passed through type-checking, keeping track of any kind of
+     store or gadget we want to use, such as the environment object and
+     error diagnostic object. It can be used to quickly thread new stores
+     through the entire typechecker.
+
+--]]
 local Context = {}
 Context.__index = Context
 
@@ -29,9 +122,9 @@ function Context.new(env, diag)
     local ctxt = setmetatable({
         env         = env,
         diag        = diag,
-        lhs_count   = 0,
         loop_count  = 0,
         query_count = 0,
+        phaseDict   = PhaseDict.new(diag),
     }, Context)
     return ctxt
 end
@@ -60,6 +153,21 @@ function Context:leaveloop()
     self.loop_count = self.loop_count - 1
     if self.loop_count < 0 then self.loop_count = 0 end
 end
+function Context:enterlhs (reduce_op)
+    self.phaseDict:enterLhs(reduce_op)
+end
+function Context:enterrhs ()
+    self.phaseDict:enterRhs()
+end
+function Context:leavelhs ()
+    self.phaseDict:leaveLhs()
+end
+function Context:leaverhs ()
+    self.phaseDict:leaveRhs()
+end
+function Context:log_field_access (field, node)
+    return self.phaseDict:store(field, node)
+end
 
 local function exec_external(exp,ctxt,default)
     local status, v = pcall(function()
@@ -71,6 +179,7 @@ local function exec_external(exp,ctxt,default)
     end
     return v
 end
+
 
 ------------------------------------------------------------------------------
 --[[ AST semantic checking methods:                                       ]]--
@@ -185,7 +294,10 @@ end
 
 function ast.Assignment:check(ctxt)
     local assignment = self:clone()
+
+    ctxt:enterlhs(self.lvalue:is(ast.Reduce) and self.lvalue.op or nil)
     local lhs = self.lvalue:check(ctxt)
+    ctxt:leavelhs()
 
     assignment.lvalue = lhs
     local ltype       = lhs.node_type
@@ -612,6 +724,8 @@ end
 function ast.VectorLiteral:check(ctxt)
     local veclit      = self:clone()
     veclit.elems      = {}
+
+    ctxt:enterrhs()
     veclit.elems[1]   = self.elems[1]:check(ctxt)
     local type_so_far = veclit.elems[1].node_type
 
@@ -620,18 +734,28 @@ function ast.VectorLiteral:check(ctxt)
     local mt_error = "vector entries must be of the same type"
 
     if type_so_far == L.error then return err(self, ctxt) end
-    if not type_so_far:isPrimitive() then return err(self, ctxt, tp_error) end
+    if not type_so_far:isPrimitive() then
+        ctxt:leaverhs()
+        return err(self, ctxt, tp_error) 
+    end
 
     for i = 2, #self.elems do
         veclit.elems[i] = self.elems[i]:check(ctxt)
         local tp        = veclit.elems[i].node_type
 
-        if not tp:isPrimitive() then return err(self, ctxt, tp_error) end
+        if not tp:isPrimitive() then 
+            ctxt:leaverhs()
+            return err(self, ctxt, tp_error)
+        end
 
         type_so_far = T.type_meet(type_so_far, tp)
-        if type_so_far:isError() then return err(self, ctxt, mt_error) end
+        if type_so_far:isError() then 
+            ctxt:leaverhs()
+            return err(self, ctxt, mt_error) 
+        end
     end
 
+    ctxt:leaverhs()
     veclit.node_type = L.vector(type_so_far, #veclit.elems)
     return veclit
 end
@@ -654,7 +778,9 @@ local function RunMacro(ctxt,src_node,v,params)
 end
 
 function ast.TableLookup:check(ctxt)
+    ctxt:enterrhs()
     local tab    = self.table:check(ctxt)
+    ctxt:leaverhs()
     local member = self.member
     if type(member) == "function" then --member is an escaped lua expression
       member = exec_external(member,ctxt,"<error>")
@@ -689,10 +815,15 @@ function ast.TableLookup:check(ctxt)
         -- create a field access normally
         if L.is_field(luaval) then
             local field         = luaval
-            local ast_node      = ast.FieldAccess:DeriveFrom(member)
+            local ast_node      = ast.FieldAccess:DeriveFrom(tab)
+            ast_node.name       = self.member
             ast_node.row        = tab
             ast_node.field      = field
             ast_node.node_type  = field.type
+
+            -- log field accesses for phase analysis
+            ctxt:log_field_access(luaval, ast_node)
+
             return ast_node
 
         -- desugar macro-fields from row.macro to macro(row)
@@ -710,7 +841,7 @@ function ast.TableLookup:check(ctxt)
         local projs = {}
         for i,p in ipairs(ttype.projections) do
             table.insert(projs,p)
-            rel = rel[p].type.relation
+            rel = rel[p].type.relation 
             assert(rel)
         end
         local field = rel[member]
@@ -767,9 +898,13 @@ function ast.Call:check(ctxt)
     call.node_type = L.error -- default
     local func     = self.func:check(ctxt)
     call.params    = {}
+
+    ctxt:enterlhs()
     for i,p in ipairs(self.params) do
         call.params[i] = p:check(ctxt)
     end
+    ctxt:leavelhs()
+
     local isinternal = func.node_type:isInternal()
     local v = isinternal and func.node_type.value
     if v and L.is_function(v) then
@@ -863,7 +998,6 @@ function ast.LisztKernel:check(ctxt)
 end
 
 function S.check(luaenv, kernel_ast, param_type)
-
     -- environment for checking variables and scopes
     local env  = terralib.newenvironment(luaenv)
     local diag = terralib.newdiagnostics()

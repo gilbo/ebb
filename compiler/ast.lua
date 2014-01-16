@@ -141,13 +141,11 @@ function AST:clone ()
 	local copy =
 	{
 		kind       = self.kind,
-		linenumber = self.linenumber,
-		filename   = self.filename,
-		offset     = self.offset,
 		is_lvalue  = self.is_lvalue,
 		node_type  = self.node_type,
 		name       = self.name,
 	}
+	AST.copy_location(copy, self)
 	return setmetatable(copy, getmetatable(self))
 end
 
