@@ -91,13 +91,16 @@ function PhaseDict:leaveRhs ()
 end
 function PhaseDict:store (field, node)
     local phase = self.ctxt[#self.ctxt]
-    --print("found field '" .. tostring(node.name) .. '\' in phase ' .. tostring(phase) .. ' at line ' .. tostring(node.linenumber))
+    -- DEBUG print detected fields
+    -- local fn = tostring(field.owner._name) .. '.' .. field.name
+    -- print("Found field " .. fn .. ' in phase ' .. tostring(phase) .. ' at line: ' .. tostring(node.linenumber))
     if not self.dict[field] then
         self.dict[field] = FieldAccessRecord.new(field, phase, node)
         return true
     elseif phase ~= self.dict[field].phase then
         local rec = self.dict[field]
-        self.diag:reporterror(node, "access of '"..node.name.."' field in "..tostring(phase).. 
+        local fn  = tostring(field.owner._name) .. '.' .. field.name
+        self.diag:reporterror(node, "access of '"..fn.."' field in "..tostring(phase).. 
             ' phase conflicts with earlier access in '..tostring(rec.phase)..
             ' phase at '..rec.filename..':'..tostring(rec.linenumber))
         return false
@@ -779,7 +782,7 @@ end
 
 function ast.TableLookup:check(ctxt)
     ctxt:enterrhs()
-    local tab    = self.table:check(ctxt)
+    local tab = self.table:check(ctxt)
     ctxt:leaverhs()
     local member = self.member
     if type(member) == "function" then --member is an escaped lua expression
@@ -975,6 +978,7 @@ function ast.Where:check(ctxt)
     w.relation  = field.owner
     w.key       = self.key
     w.node_type = L.query(w.relation,{})
+    ctxt:log_field_access(field, w)
     return w
 end
 
