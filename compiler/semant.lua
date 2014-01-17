@@ -78,6 +78,9 @@ end
 function Context:log_field_access (field, node)
     return self.phaseDict:store(field, node)
 end
+function Context:field_usage ()
+    return self.phaseDict:export()
+end
 
 local function exec_external(exp,ctxt,default)
     local status, v = pcall(function()
@@ -921,5 +924,6 @@ function S.check(luaenv, kernel_ast, param_type)
     local new_kernel_ast = kernel_ast:check(ctxt)
     env:leaveblock()
     diag:finishandabortiferrors("Errors during typechecking liszt", 1)
+    new_kernel_ast.field_usage = ctxt:field_usage()
     return new_kernel_ast
 end

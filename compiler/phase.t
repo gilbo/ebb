@@ -48,9 +48,11 @@ PhaseDict.__index = PhaseDict
 
 function PhaseDict.new(diag)
     return setmetatable({
-        diag=diag, 
-        dict={}, 
-        ctxt={phases.READ_ONLY}}, PhaseDict)
+            diag=diag, 
+            dict={}, 
+            ctxt={phases.READ_ONLY} -- initial state is rhs
+        },
+        PhaseDict)
 end
 
 function PhaseDict:enterLhs (reduce_op)
@@ -84,13 +86,21 @@ function PhaseDict:store (field, node)
         return true
     elseif phase ~= self.dict[field].phase then
         local rec = self.dict[field]
-        local fn  = tostring(field.owner._name) .. '.' .. field.name
+        local fn  = field.owner._name .. '.' .. field.name
         self.diag:reporterror(node, "access of '"..fn.."' field in "..tostring(phase).. 
             ' phase conflicts with earlier access in '..tostring(rec.phase)..
             ' phase at '..rec.filename..':'..tostring(rec.linenumber))
         return false
     end
     return true
+end
+-- Export field usage data for codegen
+function PhaseDict:export ()
+    local fields = {}
+    for field, record in pairs(self.dict) do
+        fields[field] = record.phase
+    end
+    return fields
 end
 
 local P = {
