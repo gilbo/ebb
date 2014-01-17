@@ -250,6 +250,14 @@ function ast.Assignment:check(ctxt)
         return
     end
 
+    if assignment.lvalue:is(ast.FieldAccess) then
+        local fw = ast.FieldWrite:DeriveFrom(assignment)
+        fw.fieldaccess = assignment.lvalue
+        fw.exp         = assignment.exp
+        fw.reduceop    = assignment.reduceop
+        return fw
+    end
+
     return assignment
 end
 

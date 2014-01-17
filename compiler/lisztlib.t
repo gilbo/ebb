@@ -267,11 +267,11 @@ end)
 -------------------------------------------------------------------------------
 local rtlib = terralib.require 'compiler/runtimes'
 
-L.singlecore = rtlib.singlecore
+L.singleCore = rtlib.singleCore
 L.gpu        = rtlib.gpu
 
 Kernel.__call  = function (kobj, runtime)
-    if not runtime then runtime = L.singlecore end
+    if not runtime then runtime = L.singleCore end
     if not rtlib.is_valid_runtime(runtime) then 
         error('Argument is not a valid runtime')
     end

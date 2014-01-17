@@ -15,15 +15,7 @@ end
 function ast.LisztKernel:codegen (ctxt)
 	local param = symbol(self.node_type:terraType())
 	ctxt:localenv()[self.name] = param
-
-	local set  = self.relation
-	local body = self.body:codegen(ctxt)
-
-	return quote
-		for [param] = 0, [set]._size do
-			[body]
-		end
-	end
+	return ctxt:runtime_codegen_kernel_body(self)
 end
 
 function ast.Block:codegen (ctxt)
@@ -141,9 +133,6 @@ local function bin_exp (op, lhe, rhe)
 end
 
 function ast.Assignment:codegen (ctxt)
-	-- if lhs is local, there will be a symbol stored in env
-	-- If it is global, we will not have a symbol stored,
-	-- and we will need to codegen to get the reference
 	local lhs   = self.lvalue:codegen(ctxt)
 	local ttype = self.lvalue.node_type:terraType()
 	local rhs   = self.exp:codegen(ctxt)
@@ -154,22 +143,12 @@ function ast.Assignment:codegen (ctxt)
 	return quote [lhs] = rhs end
 end
 
+function ast.FieldWrite:codegen (ctxt)
+	return ctxt:runtime_codegen_field_write(self)
+end
+
 function ast.FieldAccess:codegen (ctxt)
-	local field = self.field
-	local index = self.row:codegen(ctxt)
-	return `@(field.data + [index])
-
-	--[[
-	local typ   = self.node_type:terraType()
-	local el_type, el_len = self.node_type:runtimeType()
-
-	return quote
-		var [read] : typ
-		runtime.lkFieldRead([field.__lkfield], [topo], el_type, el_len, 0, el_len, &[read])
-			in
-		[read]
-	end
-	]]
+	return ctxt:runtime_codegen_field_read(self)
 end
 
 function ast.Cast:codegen(ctxt)
@@ -344,6 +323,16 @@ end
 function Context:leaveblock()
 	self.env:leaveblock()
 end
+function Context:runtime_codegen_kernel_body (kernel_node)
+	return self.runtime:codegen_kernel_body(self, kernel_node)
+end
+function Context:runtime_codegen_field_write (fw_node)
+	return self.runtime:codegen_field_write(self, fw_node)
+end
+function Context:runtime_codegen_field_read (fa_node)
+	return self.runtime:codegen_field_read(self, fa_node)
+end
+
 
 function C.codegen (runtime, luaenv, kernel_ast)
 	local env = terralib.newenvironment(luaenv)
