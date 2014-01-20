@@ -22,6 +22,7 @@ local enum_list = {
     'STATIC_DRAW',
     'FLOAT',
     'DOUBLE',
+    'UNSIGNED_INT',
     'VERTEX_SHADER',
     'FRAGMENT_SHADER',
     'INFO_LOG_LENGTH',

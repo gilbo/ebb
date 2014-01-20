@@ -89,6 +89,8 @@ vertex_colors:set({
     0, 1, 0,
     0, 0, 1
 })
+local triangle_index = terralib.global(uint[1 * 3])
+triangle_index:set({ 0, 1, 2 })
 
 local position_attr_id = 0
 local color_attr_id = 1
@@ -105,13 +107,21 @@ local color_dld = dld.new({
     data            = vertex_colors:getpointer(),
     compact         = true,
 })
+local index_dld = dld.new({
+    type            = uint,
+    logical_size    = 3,
+    data            = triangle_index:getpointer(),
+    compact         = true,
+})
 
 vao:setSize({ faces = 1, vertices = 3 })
 vao:setData({
-    position = { dld = pos_dld,   attr_id = position_attr_id },
-    color    = { dld = color_dld, attr_id = color_attr_id },
+    index = index_dld,
+    attrs = {
+        position = { dld = pos_dld,   attr_id = position_attr_id },
+        color    = { dld = color_dld, attr_id = color_attr_id },
+    }
 })
-
 
 VAObject.bindnull()
 
@@ -252,9 +262,7 @@ while gl.glfwWindowShouldClose(window) == 0 do
 
 
     -- Issue the actual draw call
-    vao:bind()
-    gl.glDrawArrays(gl.TRIANGLES, 0, vao:nVertices())
-
+    vao:draw()
 
     gl.glfwSwapBuffers(window)
     -- polling with JIT compilation will cause errors
