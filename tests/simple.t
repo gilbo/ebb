@@ -11,9 +11,8 @@ local lassert, lprint, length = L.assert, L.print, L.length
 local a     = 43
 local com   = L.NewScalar(L.vector(L.float, 3), {0, 0, 0})--Vector.new(float, {0.0, 0.0, 0.0})
 local upval = 5
-local vv    = L.NewVector(L.float, {1,2,3})
 
-
+--[[
 local test_bool = liszt_kernel (v in mesh.vertices)
 	var q = true
 	var x = q  -- Also, test re-declaring variables (symbols for 'x' should now be different)
@@ -27,7 +26,6 @@ local test_bool = liszt_kernel (v in mesh.vertices)
 	lassert(t == q)
 end
 test_bool()
-
 
 local test_decls = liszt_kernel(v in mesh.vertices)
 	-- DeclStatement tests --
@@ -108,8 +106,9 @@ local test_conditionals = liszt_kernel (v in mesh.vertices)
 	lassert(a == 3)
 end
 test_conditionals()
+--]]
 
-
+local vv = L.NewVector(L.float, {1,2,3})
 local test_arith = liszt_kernel (v in mesh.vertices)
 	-- BinaryOp, UnaryOp, InitStatement, Number, Bool, and RValue codegen tests
 	var x = 9
@@ -137,11 +136,13 @@ local test_arith = liszt_kernel (v in mesh.vertices)
 
 	-- Codegen for vectors (do types propagate correctly?)
 	var x = 3 * vv
+	lassert(x == {3,6,9})
+
 	var y = vv / 4.2
 	var z = x + y
 	var a = y - x
 
-	var a = 43.3
+	var a = L.float(43.3)
 	var d : L.vector(L.float, 3)
 	d = a * vv
 	var e = a * vv
@@ -153,6 +154,7 @@ local test_arith = liszt_kernel (v in mesh.vertices)
 end
 test_arith()
 
+--[[
 
 local test_while = liszt_kernel(v in mesh.vertices)
 	-- While Statement tests --
@@ -222,4 +224,5 @@ local test_for = liszt_kernel (v in mesh.vertices)
 	lassert(x == true)
 end
 test_for()
+--]]
 

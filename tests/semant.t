@@ -19,8 +19,10 @@ s1 = L.NewScalar(L.int, 0)
 ------------------------
 mesh.cells.f1:LoadFromCallback(terra (mem : &float, i : int) mem[0] = 0 end)
 mesh.cells.f2:LoadFromCallback(
-	terra (mem : &vector(float, 3), i : int)
-		mem[0] = vectorof(float, 0, 0, 0)
+	terra (mem : &float, i : int)
+		mem[0] = 0.0
+		mem[1] = 0.0
+		mem[2] = 0.0
 	end
 )
 

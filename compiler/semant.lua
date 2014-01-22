@@ -443,6 +443,17 @@ local function err (node, ctx, msg)
     return node
 end
 
+local function vectorize (exp, len)
+    local typ = exp.node_type
+    local vl = ast.VectorLiteral:DeriveFrom(exp)
+    vl.elems = {}
+    for i = 1, len do
+        vl.elems[i] = exp
+    end
+    vl.node_type = L.vector(typ, len)
+    return vl
+end
+
 -- binary expressions
 function ast.BinaryOp:check(ctxt)
     local binop         = self:clone()
@@ -495,6 +506,16 @@ function ast.BinaryOp:check(ctxt)
     end
 
     binop.node_type = derived
+
+    -- For scalar * vector expressions, fill scalars into vectors to simplify
+    -- codegen.  (I mean scalar in the mathematical sense here, not as a Liszt
+    -- global read/reduction variable.)
+    if ltype.N ~= derived.N then
+        binop.lhs = vectorize(binop.lhs, derived.N)
+    elseif binop.rhs.node_type.N ~= derived.N then
+        binop.rhs = vectorize(binop.rhs, derived.N)
+    end
+
     return binop
 end
 
@@ -546,8 +567,9 @@ local function luav_to_ast(luav, src_node)
 
     -- Vector objects are expanded into literal AST trees
     elseif L.is_vector(luav) then
-        node        = ast.VectorLiteral:DeriveFrom(src_node)
-        node.elems  = {}
+        node           = ast.VectorLiteral:DeriveFrom(src_node)
+        node.elems     = {}
+        node.node_type = luav.type
         for i,v in ipairs(luav.data) do
             node.elems[i] = luav_to_ast(v, src_node)
         end
@@ -647,9 +669,12 @@ function ast.VectorLiteral:check(ctxt)
     veclit.elems      = {}
 
     ctxt:enterrhs()
-    veclit.elems[1]   = self.elems[1]:check(ctxt)
-    local type_so_far = veclit.elems[1].node_type
-
+    local type_so_far
+    if self.node_type then
+        type_so_far = self.node_type:baseType()
+    else
+        type_so_far = self.elems[1]:check(ctxt).node_type
+    end
     local tp_error = "vector literals can only contain values "..
                      "of boolean or numeric type"
     local mt_error = "vector entries must be of the same type"
@@ -660,7 +685,7 @@ function ast.VectorLiteral:check(ctxt)
         return err(self, ctxt, tp_error) 
     end
 
-    for i = 2, #self.elems do
+    for i = 1, #self.elems do
         veclit.elems[i] = self.elems[i]:check(ctxt)
         local tp        = veclit.elems[i].node_type
 

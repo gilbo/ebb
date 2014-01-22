@@ -1,4 +1,5 @@
 local Runtime = {}
+local C = terralib.require 'compiler.codegen'
 
 function Runtime:New (str)
 	return setmetatable({__string=str}, self)
@@ -33,33 +34,17 @@ function singleCore:codegen_kernel_body (ctxt, liszt_kernel)
 	end
 end
 
-local function bin_exp (op, lhe, rhe)
-	if     op == '+'   then return `[lhe] +   [rhe]
-	elseif op == '-'   then return `[lhe] -   [rhe]
-	elseif op == '/'   then return `[lhe] /   [rhe]
-	elseif op == '*'   then return `[lhe] *   [rhe]
-	elseif op == '%'   then return `[lhe] %   [rhe]
-	elseif op == '^'   then return `[lhe] ^   [rhe]
-	elseif op == 'or'  then return `[lhe] or  [rhe]
-	elseif op == 'and' then return `[lhe] and [rhe]
-	elseif op == '<'   then return `[lhe] <   [rhe]
-	elseif op == '>'   then return `[lhe] >   [rhe]
-	elseif op == '<='  then return `[lhe] <=  [rhe]
-	elseif op == '>='  then return `[lhe] >=  [rhe]
-	elseif op == '=='  then return `[lhe] ==  [rhe]
-	elseif op == '~='  then return `[lhe] ~=  [rhe]
-	end
-end
-
 function singleCore:codegen_field_write (ctxt, fw)
 	local lhs   = fw.fieldaccess:codegen(ctxt)
 	local ttype = fw.fieldaccess.node_type:terraType()
 	local rhs   = fw.exp:codegen(ctxt)
 
 	if fw.reduceop then
-		rhs = bin_exp(fw.reduceop, lhs, rhs)
+		rhs = C.utils.codegen_binary_op(fw.reduceop, lhs, rhs, fw.fieldaccess.node_type)
+		return C.utils.codegen_assignment(lhs, fw.fieldaccess.node_type, rhs, fw.fieldaccess.node_type)
 	end
-	return quote [lhs] = rhs end
+
+	return C.utils.codegen_assignment(lhs, fw.fieldaccess.node_type, rhs, fw.exp.node_type)
 end
 
 function singleCore:codegen_field_read (ctxt, fa)
