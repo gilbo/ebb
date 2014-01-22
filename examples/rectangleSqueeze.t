@@ -37,8 +37,10 @@ local function init(c)
 	end
 end
 
-local float3_zero = terra (mem : &vector(float, 3), i : uint)
-	mem[0] = vectorof(float, 0, 0, 0)
+local float3_zero = terra (mem : &float, i : uint)
+	mem[0] = 0.0
+	mem[1] = 0.0
+	mem[2] = 0.0
 end
 
 

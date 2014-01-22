@@ -105,41 +105,6 @@ function L.NewVector(dt, init)
     return setmetatable({N=N, type=L.vector(dt,N), data=data}, LVector)
 end
 
-function LVector:__codegen ()
-    local v1, v2, v3 = self.data[1], self.data[2], self.data[3]
-    local v4, v5, v6 = self.data[4], self.data[5], self.data[6]
-    local btype = self.type:terraBaseType()
-
-    if     self.N == 2 then
-        return `vectorof(btype, v1, v2)
-    elseif self.N == 3 then
-        return `vectorof(btype, v1, v2, v3)
-    elseif self.N == 4 then
-        return `vectorof(btype, v1, v2, v3, v4)
-    elseif self.N == 5 then
-        return `vectorof(btype, v1, v2, v3, v4, v5)
-    elseif self.N == 6 then
-        return `vectorof(btype, v1, v2, v3, v4, v5, v6)
-    end
-
-    local s = symbol(self.type:terraType())
-    local t = symbol()
-    local q = quote
-        var [s]
-        var [t] = [&btype](&s)
-    end
-
-    for i = 1, self.N do
-        local val = self.data[i]
-        q = quote 
-            [q] 
-            @[t] = [val]
-            t = t + 1
-        end
-    end
-    return quote [q] in [s] end
-end
-
 function LVector.__add (v1, v2)
     if not is_vector(v1) or not is_vector(v2) then
         error("Cannot add non-vector type to vector", 2)

@@ -41,8 +41,11 @@ F.field2:LoadFromCallback(terra (mem : &float, i : uint) mem[0] = 2.5   end)
 F.field3:LoadFromCallback(terra (mem : &float, i : uint) mem[0] = 6     end)
 F.field4:LoadFromCallback(terra (mem : &bool,  i : uint) mem[0] = false end)
 F.field5:LoadFromCallback(
-	terra (mem: &vector(float, 4), i : uint)
-		mem[0] = vectorof(float, 0, 0, 0, 0)
+	terra (mem: &float, i : uint)
+		mem[0] = 0
+		mem[1] = 0
+		mem[2] = 0
+		mem[3] = 0
 	end
 )
 

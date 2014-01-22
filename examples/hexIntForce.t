@@ -27,8 +27,10 @@ local C, V, F, E = M.cells, M.vertices, M.faces, M.edges
 --------------------------------------------------------------------------------
 --[[ Allocate/initialize vertex fields                                      ]]--
 --------------------------------------------------------------------------------
-local terra d3zero(mem : &vector(double, 3), i : uint)
-	@mem = vectorof(double, 0, 0, 0)
+local terra d3zero(mem : &double, i : uint)
+	mem[0] = 0.0
+	mem[1] = 0.0
+	mem[2] = 0.0
 end
 
 M.vertices:NewField('initialPos', L.vector(L.double, 3)):LoadFromCallback(d3zero)
@@ -127,9 +129,6 @@ local lambda    = (youngsMod * poisson) / ((1 + poisson) * (1 - 2 * poisson))
 --------------------------------------------------------------------------------
 --[[ Interior force calculation: kernel and terra helper functions          ]]--
 --------------------------------------------------------------------------------
-local VDB = 73
-
-local P = terralib.includec("stdio.h")
 local terra shapeFunction (xi : float, eta : float, zeta : float) : vector(float, 8)
 	var ret = 1./8. *   vector((1-xi) * (1-eta) * (1-zeta),
 	                           (1+xi) * (1-eta) * (1-zeta),

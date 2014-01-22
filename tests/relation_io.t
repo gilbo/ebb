@@ -17,11 +17,14 @@ local function compare_field_data(fa, fb)
   local comparefn = compare_field_cache[ttype]
   if not comparefn then
     local testeq
-    if ttype:isvector() then
+    if ttype:isstruct() then
       testeq = terra(a : &ttype, b : &ttype, i : int)
-        var boolvec = a[i] ~= b[i]
+        var boolvec : bool[fa.type.N]
+        for i = 0, fa.type.N do
+          boolvec[i] = a._0[i] ~= b._0[i]
+        end
         var test = false
-        for k = 0, ttype.N do
+        for k = 0, fa.type.N do
           test = test or boolvec[k]
         end
         return test

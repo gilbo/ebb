@@ -132,15 +132,71 @@ local function bin_exp (op, lhe, rhe)
 	end
 end
 
+--[[ Factored logic for generating binary expressions in BinaryOp, Assignments
+	 that contain reductions and FieldWrites with reductions.
+    	Args:
+		- op  : lua string encoding operator (e.g. '+', etc.)
+		- lhs : terra quote representing lhs expression
+		- rhs : terra quote representing rhs expression
+		- typ : liszt type of binop result 
+--]]
+local function codegen_binary_op (op, lhs, rhs, typ)
+	if not typ:isVector() then return bin_exp(op, lhs, rhs) end
+
+	local res = symbol(typ:terraType())
+	local bt  = typ:terraBaseType()
+
+
+	local q = quote 
+		var [res]
+	end
+
+	for i = 1, typ.N do
+		local exp = bin_exp(op, `lhs._0[i-1], `rhs._0[i-1])
+		q = quote [q] res._0[i-1] = exp end
+	end
+
+	return quote [q] in [res] end
+end
+
+--[[ Factored logic for generating assignments in Assignments, DeclStatements,
+	 and FieldWrites:
+    	Args:
+		- lval      : terra quote representing the lvalue
+		- lval_type : liszt type of lval
+		- rval      : terra quote representing the rhs expression
+		- rval_type : liszt type of rval
+--]]
+local function codegen_assignment (lval, lval_type, rval, rval_type)
+	if not lval_type:isVector() then
+		return quote [lval] = rval end
+	end
+
+	local lbt = lval_type:terraBaseType()
+	local rtt = rval_type:terraType()
+	local rbt = rval_type:terraBaseType()
+	local len = lval_type.N
+	return quote
+		var r : rtt = rval
+		var vt = [&lbt](&lval)
+		var rt = [&rbt](&r)
+		for i = 0, len do
+			vt[i] = rt[i]
+		end
+	end
+end
+
 function ast.Assignment:codegen (ctxt)
 	local lhs   = self.lvalue:codegen(ctxt)
-	local ttype = self.lvalue.node_type:terraType()
 	local rhs   = self.exp:codegen(ctxt)
 
+	local ltype, rtype = self.lvalue.node_type, self.exp.node_type
+
 	if self.reduceop then
-		rhs = bin_exp(self.reduceop, lhs, rhs)
+		rhs = codegen_binary_op(self.reduceop, lhs, rhs, ltype)
+		return codegen_assignment(lhs, ltype, rhs, ltype)
 	end
-	return quote [lhs] = rhs end
+	return codegen_assignment(lhs, ltype, rhs, rtype)
 end
 
 function ast.FieldWrite:codegen (ctxt)
@@ -162,6 +218,7 @@ function ast.Call:codegen (ctxt)
     return self.func.codegen(self, ctxt)
 end
 
+
 function ast.DeclStatement:codegen (ctxt)
 	local varname = self.name
 	local tp      = self.node_type:terraType()
@@ -170,53 +227,36 @@ function ast.DeclStatement:codegen (ctxt)
 
 	if self.initializer then
 		local exp = self.initializer:codegen(ctxt)
-		return quote var [varsym] = [exp] end
+		return quote 
+			var [varsym]
+			[codegen_assignment(varsym, self.node_type, exp, self.initializer.node_type)]
+		end
 	else
 		return quote var [varsym] end
 	end
 end
 
 function ast.VectorLiteral:codegen (ctxt)
-	local ct = { }
-	local v = symbol()
-	local tp = self.node_type:terraBaseType()
+	local elems = {}
 	for i = 1, #self.elems do
-		ct[i] = self.elems[i]:codegen(ctxt)
+		elems[i] = self.elems[i]:codegen(ctxt)
 	end
 
-   -- These quotes give terra the opportunity to generate optimized assembly via the vectorof call
-   -- when I dissassembled terra functions at the console, they seemed more likely to use vector
-   -- ops for loading values if vectors are initialized this way.
-   local v1, v2, v3, v4, v5, v6 = ct[1], ct[2], ct[3], ct[4], ct[5], ct[6]
-	if #ct == 2 then
-		return `vectorof(tp, v1, v2)
-	elseif #ct == 3 then
-		return `vectorof(tp, v1, v2, v3)
-	elseif #ct == 4 then
-		return `vectorof(tp, v1, v2, v3, v4)
-	elseif #ct == 5 then
-		return `vectorof(tp, v1, v2, v3, v4, v5)
-	elseif #ct == 6 then
-		return `vectorof(tp, v1, v2, v3, v4, v5, v6)
-
-	else
-		local s = symbol(self.node_type:terraType())
-		local t = symbol()
-		local q = quote
-			var [s]
-			var [t] = [&tp](&s)
+	local s = symbol()
+	local t = symbol()
+    local q = quote
+       	var [s] : self.node_type:terraType()
+       	var [t] = [&self.node_type:terraBaseType()](&s)
+    end
+	for i = 1, self.node_type.N do
+		local val = elems[i]
+		q = quote 
+			[q] 
+			@[t] = [val]
+			t = t + 1
 		end
-
-		for i = 1, #ct do
-			local val = ct[i]
-			q = quote 
-				[q] 
-				@[t] = [val]
-				t = t + 1
-			end
-		end
-		return quote [q] in [s] end
 	end
+	return quote [q] in [s] end
 end
 
 function ast.Scalar:codegen (ctxt)
@@ -229,7 +269,7 @@ function ast.VectorIndex:codegen (ctxt)
 	local vector = self.vector:codegen(ctxt)
 	local index  = self.index:codegen(ctxt)
 
-	return `vector[index]
+	return `vector._0[index]
 end
 
 function ast.Number:codegen (ctxt)
@@ -254,18 +294,43 @@ end
 function ast.BinaryOp:codegen (ctxt)
 	local lhe = self.lhs:codegen(ctxt)
 	local rhe = self.rhs:codegen(ctxt)
-	return bin_exp(self.op, lhe, rhe)
+
+	-- primitive types
+	if not self.node_type:isVector() then
+		return bin_exp(self.op, lhe, rhe)
+
+	-- vectors are stored as arrays and must be operated on
+	-- in loops
+	else
+		local s = symbol(self.node_type:terraType()) -- result
+		return quote 
+			var [s]
+			-- temp vars:
+			var l = [&self.lhs.node_type:terraBaseType()](&lhe)
+			var r = [&self.rhs.node_type:terraBaseType()](&rhe)
+			var t = [&self.node_type:terraBaseType()](&s)
+
+			for i = 0, [self.node_type.N] do
+				@t = [bin_exp(self.op, `@l, `@r)]
+				t = t + 1
+				l = l + 1
+				r = r + 1
+			end
+		in
+			[s]
+		end
+	end
 end
 
 function ast.LuaObject:codegen (ctxt)
     return `{}
 end
 function ast.Where:codegen(ctxt)
-    local key = self.key:codegen(ctxt)
+    local key   = self.key:codegen(ctxt)
     local sType = self.node_type:terraType()
     local index = self.relation._indexdata
     local v = quote
-        var k = [key]
+        var k   = [key]
         var idx = [index]
     in 
         sType { idx[k], idx[k+1] }
@@ -279,14 +344,15 @@ local function doProjection(obj,field)
 end
 
 function ast.GenericFor:codegen (ctxt)
-	local set = self.set:codegen(ctxt)
-	local iter = symbol("iter")
-    local rel = self.set.node_type.relation
+    local set       = self.set:codegen(ctxt)
+    local iter      = symbol("iter")
+    local rel       = self.set.node_type.relation
     local projected = iter
+
     for i,p in ipairs(self.set.node_type.projections) do
         local field = rel[p]
-        projected = doProjection(projected,field)
-        rel = field.type.relation
+        projected   = doProjection(projected,field)
+        rel         = field.type.relation
         assert(rel)
     end
     local sym = symbol(L.row(rel):terraType())
@@ -347,3 +413,8 @@ function C.codegen (runtime, luaenv, kernel_ast)
 	end
 	return r
 end
+
+C.utils = {
+	codegen_assignment = codegen_assignment,
+	codegen_binary_op  = codegen_binary_op
+}
