@@ -33,6 +33,23 @@ function dld.is_dld(o)
   return getmetatable(o) == dld
 end
 
+function dld:matchType(rhs)
+  local lhtyp = self.type
+  local rhtyp = rhs.type
+
+  return lhtyp.vector_size   == rhtyp.vector_size and
+         lhtyp.base_type_str == rhtyp.base_type_str and
+         lhtyp.base_bytes    == rhtyp.base_bytes
+end
+
+function dld:matchAll(rhs)
+  return self:matchType(rhs) and
+         self.logical_size == rhs.logical_size and
+         self.address      == rhs.address and
+         self.stride       == rhs.stride and
+         self.offset       == rhs.offset
+end
+
 function dld:init(params)
   params = params or {}
 

@@ -8,7 +8,7 @@
 
 local ffi = require 'ffi'
 local gl  = terralib.require 'gl.gl'
-local VAObject = terralib.require 'gl.vao'
+local VAObject = terralib.require 'gl.vo'
 local dld = terralib.require 'compiler.dld'
 local mat4f = terralib.require 'gl.mat4f'
 
@@ -114,12 +114,16 @@ local index_dld = dld.new({
     compact         = true,
 })
 
-vao:setSize({ faces = 1, vertices = 3 })
-vao:setData({
+--vao:setSize({ faces = 1, vertices = 3 })
+vao:initData({
     index = index_dld,
     attrs = {
-        position = { dld = pos_dld,   attr_id = position_attr_id },
-        color    = { dld = color_dld, attr_id = color_attr_id },
+        position = pos_dld,
+        color    = color_dld,
+    },
+    attr_ids = {
+        position = position_attr_id,
+        color    = color_attr_id,
     }
 })
 

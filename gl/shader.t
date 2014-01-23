@@ -88,14 +88,14 @@ end
 
 
 -- returns true when valid, false when not
-function Shader:validate(vao)
+function Shader:validate(vo)
   if not self.program_id then
     error('cannot validate an uncompiled/linked shader')
   end
 
-  vao:bind()
+  vo:bind()
   gl.glValidateProgram(self.program_id)
-  vao:unbind()
+  vo:unbind()
 
   local is_valid = true
   local p_validate_program = ffi.new 'int[1]'

@@ -18,6 +18,7 @@ package.loaded["compiler.ldb"] = LDB
 local L = terralib.require "compiler.lisztlib"
 local T = terralib.require "compiler.types"
 local C = terralib.require "compiler.c"
+local DLD = terralib.require "compiler.dld"
 
 local PN = terralib.require "compiler.pathname"
 local Pathname = PN.Pathname
@@ -256,6 +257,33 @@ function L.LField:print()
         end
     end
 end
+
+
+
+
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+--[[ Data Sharing Hooks                                                    ]]--
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+
+
+function L.LField:getDLD()
+    if not self.type:isPrimitive() and not self.type:isVector() then
+        error('Can only return DLDs for primitives and vectors, '..
+              'not Row types or other types given to fields')
+    end
+
+    local dld = DLD.new({
+        type            = self.type:terraType(),
+        logical_size    = self.owner:Size(),
+        data            = self.data,
+        compact         = true,
+    })
+
+    return dld
+end
+
 
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
