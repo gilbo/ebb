@@ -24,15 +24,15 @@ local compute_step = liszt_kernel(e in M.edges)
 	var dt   = v1.temperature - v2.temperature
 	var step = 1.0 / L.length(dp)
 
-	v1.flux = v1.flux - dt * step
-	v2.flux = v2.flux + dt * step
+	v1.flux -= dt * step
+	v2.flux += dt * step
 
-	v1.jacobistep = v1.jacobistep + step
-	v2.jacobistep = v2.jacobistep + step
+	v1.jacobistep += step
+	v2.jacobistep += step
 end
 
 local propagate_temp = liszt_kernel (p in M.vertices)
-	p.temperature = p.temperature + .01 * p.flux / p.jacobistep
+	p.temperature += .01 * p.flux / p.jacobistep
 end
 
 local clear = liszt_kernel (p in M.vertices)

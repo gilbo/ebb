@@ -2,8 +2,8 @@ local S = {}
 package.loaded["compiler.semant"] = S
 
 local ast = require "compiler.ast"
-local B = terralib.require "compiler.builtins"
-local T = terralib.require "compiler.types"
+local B   = terralib.require "compiler.builtins"
+local T   = terralib.require "compiler.types"
 
 --[[
     AST:check(ctxt) type checking routines
@@ -11,17 +11,20 @@ local T = terralib.require "compiler.types"
         Each check() method is designed to accept a typing context (see below).
         Once called, check() will construct and return a new type-checked
         version of its subtree (new AST nodes)
-]]--
-
+--]]
 
 ------------------------------------------------------------------------------
 --[[ Context Definition                                                   ]]--
 ------------------------------------------------------------------------------
--- A Context is passed through type-checking, keeping track of any kind of
--- store or gadget we want to use, such as
--- the environment object and error diagnostic object.
--- It can be used to quickly thread new stores
--- through the entire typechecker.
+--[[ A Context is passed through type-checking, keeping track of any kind of
+     store or gadget we want to use, such as the environment object and
+     error diagnostic object. It can be used to quickly thread new stores
+     through the entire typechecker.
+
+--]]
+
+local P = terralib.require 'compiler/phase'
+
 local Context = {}
 Context.__index = Context
 
@@ -29,9 +32,9 @@ function Context.new(env, diag)
     local ctxt = setmetatable({
         env         = env,
         diag        = diag,
-        lhs_count   = 0,
         loop_count  = 0,
         query_count = 0,
+        phaseDict   = P.PhaseDict.new(diag),
     }, Context)
     return ctxt
 end
@@ -60,6 +63,24 @@ function Context:leaveloop()
     self.loop_count = self.loop_count - 1
     if self.loop_count < 0 then self.loop_count = 0 end
 end
+function Context:enterlhs (reduce_op)
+    self.phaseDict:enterLhs(reduce_op)
+end
+function Context:enterrhs ()
+    self.phaseDict:enterRhs()
+end
+function Context:leavelhs ()
+    self.phaseDict:leaveLhs()
+end
+function Context:leaverhs ()
+    self.phaseDict:leaveRhs()
+end
+function Context:log_field_access (field, node)
+    return self.phaseDict:store(field, node)
+end
+function Context:field_usage ()
+    return self.phaseDict:export()
+end
 
 local function exec_external(exp,ctxt,default)
     local status, v = pcall(function()
@@ -71,6 +92,7 @@ local function exec_external(exp,ctxt,default)
     end
     return v
 end
+
 
 ------------------------------------------------------------------------------
 --[[ AST semantic checking methods:                                       ]]--
@@ -185,7 +207,10 @@ end
 
 function ast.Assignment:check(ctxt)
     local assignment = self:clone()
+
+    ctxt:enterlhs(self.lvalue:is(ast.Reduce) and self.lvalue.op or nil)
     local lhs = self.lvalue:check(ctxt)
+    ctxt:leavelhs()
 
     assignment.lvalue = lhs
     local ltype       = lhs.node_type
@@ -225,6 +250,14 @@ function ast.Assignment:check(ctxt)
         return
     end
 
+    if assignment.lvalue:is(ast.FieldAccess) then
+        local fw = ast.FieldWrite:DeriveFrom(assignment)
+        fw.fieldaccess = assignment.lvalue
+        fw.exp         = assignment.exp
+        fw.reduceop    = assignment.reduceop
+        return fw
+    end
+
     return assignment
 end
 
@@ -239,8 +272,8 @@ local function exec_type_annotation(typexp, ast_node, ctxt)
 end
 
 function ast.DeclStatement:check(ctxt)
-    local decl    = self:clone()
-    decl.name     = self.name
+    local decl = self:clone()
+    decl.name  = self.name
 
     -- catch syntactically invalid initializations
     if not self.typeexpression and not self.initializer then
@@ -329,8 +362,8 @@ end
 
 function ast.GenericFor:check(ctxt)
     local r = self:clone()
-    r.name = self.name
-    r.set = self.set:check(ctxt)
+    r.name  = self.name
+    r.set   = self.set:check(ctxt)
     if not r.set.node_type:isQuery() then
         ctxt:error(self,"for statement expects a query but found type ",r.set.node_type)
         return r
@@ -412,11 +445,11 @@ end
 
 -- binary expressions
 function ast.BinaryOp:check(ctxt)
-    local binop = self:clone()
-    binop.op    = self.op
-    binop.lhs   = self.lhs:check(ctxt)
-    binop.rhs   = self.rhs:check(ctxt)
-    local ltype, rtype = binop.lhs.node_type, binop.rhs.node_type
+    local binop         = self:clone()
+    binop.op            = self.op
+    binop.lhs           = self.lhs:check(ctxt)
+    binop.rhs           = self.rhs:check(ctxt)
+    local ltype, rtype  = binop.lhs.node_type, binop.rhs.node_type
 
     -- Silently ignore/propagate errors
     if ltype == L.error or rtype == L.error then return err(self, ctxt) end
@@ -492,7 +525,7 @@ function ast.UnaryOp:check(ctxt)
 end
 
 local function NewLuaObject(anchor, obj)
-    local lo = ast.LuaObject:DeriveFrom(anchor)
+    local lo     = ast.LuaObject:DeriveFrom(anchor)
     lo.node_type = L.internal(obj)
     return lo
 end
@@ -549,9 +582,6 @@ end
 
 -- luav_to_checked_ast wraps luav_to_ast and ensures that
 -- a typed AST node is returned.
--- IF allow_lua_return is provided, there is a chance that the returned
--- value is a lua table acting as a namespace, which must then be
--- handled appropriately.
 local function luav_to_checked_ast(luav, src_node, ctxt)
     -- convert the lua value into an ast node
     local ast_node = luav_to_ast(luav, src_node)
@@ -559,7 +589,7 @@ local function luav_to_checked_ast(luav, src_node, ctxt)
     -- on conversion error
     if not ast_node then
         ctxt:error(src_node, "could not convert Lua value to a Liszt value")
-        ast_node = src_node:clone()
+        ast_node           = src_node:clone()
         ast_node.node_type = L.error
 
     -- on successful conversion to an ast node
@@ -577,7 +607,7 @@ function ast.Name:check(ctxt)
     -- somewhere in the liszt kernel.  Thus, it has to be a primitive, a
     -- bool, or a topological element.
     if typ then
-        local node = ast.Name:DeriveFrom(self)
+        local node     = ast.Name:DeriveFrom(self)
         node.node_type = typ
         node.name      = self.name
         return node
@@ -593,8 +623,8 @@ function ast.Name:check(ctxt)
 
     -- failed to find this name anywhere
     ctxt:error(self, "variable '" .. self.name .. "' is not defined")
-    local err_node = self:clone()
-    err_node.name  = self.name
+    local err_node     = self:clone()
+    err_node.name      = self.name
     err_node.node_type = L.error
     return err_node
 end
@@ -603,18 +633,20 @@ function ast.Number:check(ctxt)
     local number = self:clone()
     number.value = self.value
     if tonumber(self.value) % 1 == 0 then
-        self.node_type = L.int
+        self.node_type   = L.int
         number.node_type = L.int
     else
-        self.node_type = L.double
+        self.node_type   = L.double
         number.node_type = L.double
     end
     return number
 end
 
 function ast.VectorLiteral:check(ctxt)
-    local veclit = self:clone()
-    veclit.elems = {}
+    local veclit      = self:clone()
+    veclit.elems      = {}
+
+    ctxt:enterrhs()
     veclit.elems[1]   = self.elems[1]:check(ctxt)
     local type_so_far = veclit.elems[1].node_type
 
@@ -623,25 +655,35 @@ function ast.VectorLiteral:check(ctxt)
     local mt_error = "vector entries must be of the same type"
 
     if type_so_far == L.error then return err(self, ctxt) end
-    if not type_so_far:isPrimitive() then return err(self, ctxt, tp_error) end
+    if not type_so_far:isPrimitive() then
+        ctxt:leaverhs()
+        return err(self, ctxt, tp_error) 
+    end
 
     for i = 2, #self.elems do
         veclit.elems[i] = self.elems[i]:check(ctxt)
         local tp        = veclit.elems[i].node_type
 
-        if not tp:isPrimitive() then return err(self, ctxt, tp_error) end
+        if not tp:isPrimitive() then 
+            ctxt:leaverhs()
+            return err(self, ctxt, tp_error)
+        end
 
         type_so_far = T.type_meet(type_so_far, tp)
-        if type_so_far:isError() then return err(self, ctxt, mt_error) end
+        if type_so_far:isError() then 
+            ctxt:leaverhs()
+            return err(self, ctxt, mt_error) 
+        end
     end
 
+    ctxt:leaverhs()
     veclit.node_type = L.vector(type_so_far, #veclit.elems)
     return veclit
 end
 
 function ast.Bool:check(ctxt)
-    local boolnode = self:clone()
-    boolnode.value = self.value
+    local boolnode     = self:clone()
+    boolnode.value     = self.value
     boolnode.node_type = L.bool
     return boolnode
 end
@@ -657,16 +699,18 @@ local function RunMacro(ctxt,src_node,v,params)
 end
 
 function ast.TableLookup:check(ctxt)
-    local tab     = self.table:check(ctxt)
-    local member    = self.member
+    ctxt:enterrhs()
+    local tab = self.table:check(ctxt)
+    ctxt:leaverhs()
+    local member = self.member
     if type(member) == "function" then --member is an escaped lua expression
-       member = exec_external(member,ctxt,"<error>")
-       if type(member) ~= "string" then
+      member = exec_external(member,ctxt,"<error>")
+      if type(member) ~= "string" then
         ctxt:error(self,"expected escape to evaluate to a string but found ", type(member))
         member = "<error>"
-       end
+      end
     end
-    local ttype     = tab.node_type
+    local ttype = tab.node_type
 
     if ttype == L.error then
         return err(self, ctxt)
@@ -692,10 +736,15 @@ function ast.TableLookup:check(ctxt)
         -- create a field access normally
         if L.is_field(luaval) then
             local field         = luaval
-            local ast_node      = ast.FieldAccess:DeriveFrom(member)
+            local ast_node      = ast.FieldAccess:DeriveFrom(tab)
+            ast_node.name       = self.member
             ast_node.row        = tab
             ast_node.field      = field
             ast_node.node_type  = field.type
+
+            -- log field accesses for phase analysis
+            ctxt:log_field_access(luaval, ast_node)
+
             return ast_node
 
         -- desugar macro-fields from row.macro to macro(row)
@@ -708,12 +757,12 @@ function ast.TableLookup:check(ctxt)
         end
     elseif ttype:isQuery() then
         local rel = ttype.relation
-        local ct = tab:clone()
+        local ct  = tab:clone()
         for k,v in pairs(tab) do ct[k] = v end
         local projs = {}
         for i,p in ipairs(ttype.projections) do
             table.insert(projs,p)
-            rel = rel[p].type.relation
+            rel = rel[p].type.relation 
             assert(rel)
         end
         local field = rel[member]
@@ -737,7 +786,7 @@ function ast.VectorIndex:check(ctxt)
     local vec    = self.vector:check(ctxt)
     local idx    = self.index:check(ctxt)
     vidx.vector, vidx.index = vec, idx
-    local vectype, idxtype = vec.node_type, idx.node_type
+    local vectype, idxtype  = vec.node_type, idx.node_type
 
     -- RHS is an expression of integral type
     -- (make sure this check always runs)
@@ -765,18 +814,22 @@ function ast.VectorIndex:check(ctxt)
 end
 
 function ast.Call:check(ctxt)
-    local call     = self:clone()
+    local call = self:clone()
     
     call.node_type = L.error -- default
-    local func      = self.func:check(ctxt)
-    call.params = {}
+    local func     = self.func:check(ctxt)
+    call.params    = {}
+
+    ctxt:enterlhs()
     for i,p in ipairs(self.params) do
         call.params[i] = p:check(ctxt)
     end
+    ctxt:leavelhs()
+
     local isinternal = func.node_type:isInternal()
     local v = isinternal and func.node_type.value
     if v and L.is_function(v) then
-        call.func = v
+        call.func      = v
         call.node_type = v.check(call, ctxt)
     elseif v and L.is_macro(v) then
         -- replace the call node with the inlined AST
@@ -785,7 +838,7 @@ function ast.Call:check(ctxt)
         local params = call.params
         call = ast.Cast:DeriveFrom(self)
         if #params == 1 then
-            call.value = params[1]
+            call.value     = params[1]
             call.node_type = v
         else
             ctxt:error(self, "Cast to " .. v.toString() ..
@@ -815,9 +868,9 @@ function ast.QuoteExpr:check(ctxt)
 end
 
 function ast.FieldAccess:check(ctxt)
-    local n     = self:clone()
-    n.field     = self.field
-    n.row       = self.row
+    local n = self:clone()
+    n.field = self.field
+    n.row   = self.row
     return n
 end
 
@@ -828,7 +881,7 @@ end
 function ast.Where:check(ctxt)
     --note: where is generated in a macro, so its fields are already type-checked
     local fieldobj = self.field.node_type
-    local keytype = self.key.node_type
+    local keytype  = self.key.node_type
     if not fieldobj:isInternal() or not L.is_field(fieldobj.value) then
         ctxt:error(self,"Expected a field as the first argument but found ",fieldobj)
     end
@@ -839,10 +892,11 @@ function ast.Where:check(ctxt)
     if field.owner._index ~= field then
         ctxt:error(self,"Field ",field.name, " is not an index of ",field.owner:Name())
     end
-    local w = self:clone()
-    w.relation = field.owner
-    w.key = self.key
+    local w     = self:clone()
+    w.relation  = field.owner
+    w.key       = self.key
     w.node_type = L.query(w.relation,{})
+    ctxt:log_field_access(field, w)
     return w
 end
 
@@ -850,23 +904,22 @@ end
 --[[ Semantic checking called from here:                                  ]]--
 ------------------------------------------------------------------------------
 function ast.LisztKernel:check(ctxt)
-    local kernel            = self:clone()
-    local set = self.set:check(ctxt)
+    local kernel = self:clone()
+    local set    = self.set:check(ctxt)
     if not set.node_type:isInternal() or not L.is_relation(set.node_type.value) then
         ctxt:error(kernel.set, "Expected a relation")
     else 
-        kernel.name      = self.name
-        kernel.relation  = set.node_type.value
-        kernel.node_type = L.row(kernel.relation)
+        kernel.name               = self.name
+        kernel.relation           = set.node_type.value
+        kernel.node_type          = L.row(kernel.relation)
         ctxt:liszt()[kernel.name] = kernel.node_type
-        kernel.body = self.body:check(ctxt)
+        kernel.body               = self.body:check(ctxt)
     end
 
     return kernel
 end
 
 function S.check(luaenv, kernel_ast, param_type)
-
     -- environment for checking variables and scopes
     local env  = terralib.newenvironment(luaenv)
     local diag = terralib.newdiagnostics()
@@ -879,5 +932,6 @@ function S.check(luaenv, kernel_ast, param_type)
     local new_kernel_ast = kernel_ast:check(ctxt)
     env:leaveblock()
     diag:finishandabortiferrors("Errors during typechecking liszt", 1)
+    new_kernel_ast.field_usage = ctxt:field_usage()
     return new_kernel_ast
 end

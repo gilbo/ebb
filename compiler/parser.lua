@@ -76,12 +76,12 @@ lang.exp = pratt.Pratt() -- returns a pratt parser
 :infix("==",  2, leftbinary)
 :infix("~=",  2, leftbinary)
 
+:infix("+",   3,   leftbinaryred)
+:infix("-",   3,   leftbinaryred)
 :infix("*",   4,   leftbinaryred)
 :infix('/',   4,   leftbinaryred)
 :infix('%',   4,   leftbinary)
 
-:infix("+",   3,   leftbinaryred)
-:infix("-",   3,   leftbinaryred)
 :infix('^',   6,   rightbinary)
 :infix('.',   7, function(P,lhs)
     local node = ast.TableLookup:New(P)
