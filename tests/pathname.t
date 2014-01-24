@@ -84,7 +84,7 @@ test.eq(longpath:direxists(), false)
 
 -- create some non-directory files
 os.execute('touch '..testdir:tostring()..'/.hidden')
-os.execute('touch '..testdir:tostring()..'/non\\ posix-portable\\ name.txt')
+os.execute('touch '..testdir:tostring()..'/whitespace\\ posix-portable\\ name.txt')
 os.execute('touch '..testdir:tostring()..'/noext.t.')
 os.execute('touch '..testdir:tostring()..'/boring.t')
 
@@ -99,12 +99,14 @@ local dir_contents = {
   ['foo'     ]  = true,
   ['noext.t.']  = true,
   ['boring.t']  = true,
+  ['whitespace posix-portable name.txt'] = true
 }
 local dir_w_hidden_contents = {
   ['foo'     ]  = true,
   ['noext.t.']  = true,
   ['boring.t']  = true,
   ['.hidden' ]  = true,
+  ['whitespace posix-portable name.txt'] = true
 }
 -- include hidden and invalid
 local dir_w_all_contents = {
@@ -112,7 +114,7 @@ local dir_w_all_contents = {
   ['noext.t.']  = true,
   ['boring.t']  = true,
   ['.hidden' ]  = true,
-  ['non posix-portable name.txt'] = true
+  ['whitespace posix-portable name.txt'] = true
 }
 
 local test_children = {}

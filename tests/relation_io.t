@@ -136,9 +136,6 @@ test.fail_function(function() L.SaveRelationSchema{
   relations = {},
   file = '#@#9ijadfpoin',
 } end, 'Bad Pathname')
-test.fail_function(function() L.LoadRelationSchema{
-  file = 'ok there',
-} end, 'Bad Pathname')
 
 -- broken basic schema file loading should produce the following errors
 test.fail_function(function() L.LoadRelationSchema{
