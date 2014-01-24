@@ -274,12 +274,20 @@ function L.LField:getDLD()
               'not Row types or other types given to fields')
     end
 
+    local terra_type = self.type:terraType()
     local dld = DLD.new({
-        type            = self.type:terraType(),
+        type            = terra_type,
         logical_size    = self.owner:Size(),
         data            = self.data,
         compact         = true,
     })
+
+    -- in the event that we have a vector of 3 things
+    -- the vectors actually aren't packed tightly in memory
+    -- So we need to get this right
+    if terra_type:isvector() then
+        dld:setStride(terralib.sizeof(terra_type))
+    end
 
     return dld
 end

@@ -559,13 +559,21 @@ local function luav_to_ast(luav, src_node)
         node = NewLuaObject(src_node,luav)
     elseif terralib.isfunction(luav) then
         node = NewLuaObject(src_node,B.terra_to_func(luav))
-    elseif type(luav) == 'table' and luav.is_liszt_ast then
-        -- For macro substitution: typed ASTs
-        -- may be external and need to be inlined.
-        node = ast.QuoteExpr:DeriveFrom(src_node)
-        node.ast = luav
     elseif type(luav) == 'table' then
-        node = NewLuaObject(src_node, luav)
+        -- Determine whether this is an AST node
+        local metatable = getmetatable(luav)
+        -- This craziness is needed to prevent errors when we get
+        -- tables with custom index metamethods 
+        if metatable and type(metatable.__index) == 'table' and
+           luav.is_liszt_ast
+        then
+            -- For macro substitution: typed ASTs
+            -- may be external and need to be inlined.
+            node = ast.QuoteExpr:DeriveFrom(src_node)
+            node.ast = luav
+        else
+            node = NewLuaObject(src_node, luav)
+        end
     elseif type(luav) == 'number' then
         node       = ast.Number:DeriveFrom(src_node)
         node.value = luav
