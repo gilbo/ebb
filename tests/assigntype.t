@@ -6,7 +6,7 @@ local mesh = LMesh.Load("examples/mesh.lmesh")
 
 sf   = L.NewScalar(L.float, 0.0)
 
-local k = liszt_kernel (c in mesh.cells)
+local k = liszt_kernel (c : mesh.cells)
 	sf.a = 1
 end
 

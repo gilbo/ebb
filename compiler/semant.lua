@@ -911,18 +911,23 @@ end
 ------------------------------------------------------------------------------
 --[[ Semantic checking called from here:                                  ]]--
 ------------------------------------------------------------------------------
-function ast.LisztKernel:check(ctxt)
-    local kernel = self:clone()
-    local set    = self.set:check(ctxt)
-    if not set.node_type:isInternal() or not L.is_relation(set.node_type.value) then
-        ctxt:error(kernel.set, "Expected a relation")
-    else 
-        kernel.name               = self.name
-        kernel.relation           = set.node_type.value
-        kernel.node_type          = L.row(kernel.relation)
-        ctxt:liszt()[kernel.name] = kernel.node_type
-        kernel.body               = self.body:check(ctxt)
+function ast.LisztKernel:check(ctxt, relation) -- hacked 2nd parameter
+    local kernel              = self:clone()
+
+    -- check the set (TODO: check consistency of type signature between
+    --  The relation provided for typing and the relation executed over)
+    if self.set then 
+        local set    = self.set:check(ctxt)
+        if not set.node_type:isInternal() or
+           not L.is_relation(set.node_type.value)
+        then
+            ctxt:error(kernel.set, "Expected a relation")
+        end
     end
+
+    kernel.name               = self.name
+    ctxt:liszt()[kernel.name] = L.row(relation)
+    kernel.body               = self.body:check(ctxt)
 
     return kernel
 end
@@ -937,7 +942,7 @@ function S.check(luaenv, kernel_ast, relation)
 
     diag:begin()
     env:enterblock()
-    local new_kernel_ast = kernel_ast:check(ctxt)
+    local new_kernel_ast = kernel_ast:check(ctxt, relation)
     env:leaveblock()
     diag:finishandabortiferrors("Errors during typechecking liszt", 1)
     new_kernel_ast.field_usage = ctxt:field_usage()

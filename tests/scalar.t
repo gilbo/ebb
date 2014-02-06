@@ -19,12 +19,12 @@ vi  = L.NewVector(L.int,   {2, 2, 2, 2})
 local two = 2
 
 -- test vector codegen:
-local f1 = liszt_kernel (f in mesh.faces) sf3 +=   vf    end
-local f2 = liszt_kernel (f in mesh.faces) si4 -=   vi    end
---local f3 = liszt_kernel (f in mesh.faces) sb5 and= vb    end
-local f4 = liszt_kernel (f in mesh.faces) sf  +=   1     end
-local f5 = liszt_kernel (f in mesh.faces) si  -=   two   end
-local f6 = liszt_kernel (f in mesh.faces) sb  and= false end
+local f1 = liszt_kernel (f : mesh.faces) sf3 +=   vf    end
+local f2 = liszt_kernel (f : mesh.faces) si4 -=   vi    end
+--local f3 = liszt_kernel (f : mesh.faces) sb5 and= vb    end
+local f4 = liszt_kernel (f : mesh.faces) sf  +=   1     end
+local f5 = liszt_kernel (f : mesh.faces) si  -=   two   end
+local f6 = liszt_kernel (f : mesh.faces) sb  and= false end
 
 f1(mesh.faces)
 test.fuzzy_aeq(sf3:value().data, {nf, 2*nf, 3*nf})

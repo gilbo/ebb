@@ -8,7 +8,7 @@ local mesh = LMesh.Load("examples/mesh.lmesh")
 local v1 = L.NewVector(L.float, {1, 2, 3})
 local v2 = L.NewVector(L.float, {5, 7, 11})
 
-(liszt kernel(f in mesh.faces)
+(liszt kernel(f : mesh.faces)
     assert(true)
     print(42)
     assert(dot(v1, v2) == 52)

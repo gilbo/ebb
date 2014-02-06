@@ -6,7 +6,7 @@ local init_to_zero = terra (mem : &float, i : int) mem[0] = 0 end
 M.vertices:NewField('field1', L.float):LoadFromCallback(init_to_zero)
 M.vertices:NewField('field2', L.float):LoadFromCallback(init_to_zero)
 
-local kernel = liszt_kernel (v in M.vertices)
+local kernel = liszt_kernel (v : M.vertices)
 	var x = v.field1
 	v.field1 += 3
 end

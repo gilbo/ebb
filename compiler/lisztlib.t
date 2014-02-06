@@ -300,6 +300,6 @@ function Kernel:generate (runtime, relation)
     end
 	if not self.__kernels[runtime][relation] then
 		self.__kernels[runtime][relation] =
-            codegen.codegen(runtime, self.env, self.typed_ast)
+            codegen.codegen(runtime, self.env, self.typed_ast, relation)
 	end
 end

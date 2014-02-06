@@ -10,7 +10,7 @@ function main ()
 	local com = L.NewScalar(L.vector(L.float, 3), {0, 0, 0})
 
 	-- compute centroid
-	local sum_pos = liszt_kernel(v in mesh.vertices)
+	local sum_pos = liszt_kernel(v : mesh.vertices)
 		com += v.position
 	end
 	--mesh.vertices:map(sum_pos)

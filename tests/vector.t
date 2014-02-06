@@ -111,14 +111,14 @@ local mesh = LMesh.Load("examples/mesh.lmesh")
 ------------------
 -- Should pass: --
 ------------------
-local k = liszt_kernel (v in mesh.vertices)
+local k = liszt_kernel (v : mesh.vertices)
 	var x       = {5, 5, 5}
 	v.position += x + {0, 1, 1}
 end
 k(mesh.vertices)
 
 local s = L.NewScalar(L.vector(L.float, 3), {0.0, 0.0, 0.0})
-local check = liszt_kernel(v in mesh.vertices)
+local check = liszt_kernel(v : mesh.vertices)
 	s += v.position
 end
 check(mesh.vertices)

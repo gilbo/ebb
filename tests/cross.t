@@ -12,7 +12,7 @@ local v2 = L.NewVector(L.float, {5, 7, 11})
 local v3 = L.NewVector(L.int, {1, 2, 3})
 local v4 = L.NewVector(L.int, {5, 7, 11})
 
-local test_cross = liszt_kernel(f in mesh.faces)
+local test_cross = liszt_kernel(f : mesh.faces)
     assert(cross(v1, v2) == {1, 4, -3}) -- simple test
     assert(cross(v3, v4) == {1, 4, -3}) -- int only
     assert(cross(v1, v4) == {1, 4, -3}) -- cross types

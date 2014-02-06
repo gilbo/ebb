@@ -259,14 +259,14 @@ vertices:NewField('pos_temp', L.vector(L.float, 4)):LoadFromCallback(
     terra(mem : &vector(float, 4), i : uint)
         @mem = vectorof(float, 0, 0, 0, 0)
     end)
-local update_pos1 = liszt_kernel (v in vertices)
+local update_pos1 = liszt_kernel (v)
     var y = v.pos[1]
     if y > 0 then
         y = 0.5 + 0.4 * C.cos(3*time_scalar)
     end
     v.pos_temp = { v.pos[0], y, v.pos[2], v.pos[3] }
 end
-local update_pos2 = liszt_kernel (v in vertices)
+local update_pos2 = liszt_kernel (v : vertices)
     v.pos = v.pos_temp
 end
 

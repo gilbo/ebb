@@ -57,51 +57,51 @@ local b = L.NewVector(L.float, {1, 3, 4, 5})
 -------------------
 -- Test kernels: --
 -------------------
-local reduce1 = liszt_kernel (f in F)
+local reduce1 = liszt_kernel (f : F)
 	f.field1 -= 3 - 1/6 * a
 end
 
-local reduce2 = liszt_kernel (f in F)
+local reduce2 = liszt_kernel (f : F)
 	f.field2 *= 3 * 7 / 3
 end
 
-local read1 = liszt_kernel (f in F)
+local read1 = liszt_kernel (f : F)
 	var tmp = f.field3 + 5
 	assert(tmp == 11)
 end
 
-local write1 = liszt_kernel(f in F)
+local write1 = liszt_kernel(f : F)
 	f.field3 = 0.0
 end
 
-local write2 = liszt_kernel (f in F)
+local write2 = liszt_kernel (f : F)
 	f.field5 = b
 end
 
-local reduce3 = liszt_kernel (f in F)
+local reduce3 = liszt_kernel (f : F)
 	f.field5 += {1.0,1.0,1.0,1.0}
 end
 
-local check2 = liszt_kernel (f in F)
+local check2 = liszt_kernel (f : F)
 	assert(f.field5[0] == 2)
 	assert(f.field5[1] == 4)
 	assert(f.field5[2] == 5)
 	assert(f.field5[3] == 6)
 end
 
-local write3 = liszt_kernel (f in F)
+local write3 = liszt_kernel (f : F)
 	f.field4 = true
 end
 
-local check3 = liszt_kernel (f in F)
+local check3 = liszt_kernel (f : F)
 	assert(f.field4)
 end
 
-local write4 = liszt_kernel (f in F)
+local write4 = liszt_kernel (f : F)
 	f.field4 = false
 end
 
-local check4 = liszt_kernel(f in F)
+local check4 = liszt_kernel(f : F)
 	assert(not f.field4)
 end
 
@@ -137,7 +137,7 @@ local function check_write ()
 	reduce3(F)
 
 	f4:setTo({0, 0, 0, 0})
-	local sum_positions = liszt_kernel (f in F)
+	local sum_positions = liszt_kernel (f : F)
 		f4 += f.field5
 	end
 	sum_positions(F)

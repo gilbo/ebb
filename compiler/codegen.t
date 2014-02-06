@@ -3,6 +3,61 @@ package.loaded["compiler.codegen"] = C
 
 local ast = require "compiler.ast"
 
+
+----------------------------------------------------------------------------
+
+
+local Context = {}
+Context.__index = Context
+
+function Context.new(env, runtime)
+    local ctxt = setmetatable({
+        env     = env,
+        runtime = runtime
+    }, Context)
+    return ctxt
+end
+function Context:localenv()
+	return self.env:localenv()
+end
+function Context:enterblock()
+	self.env:enterblock()
+end
+function Context:leaveblock()
+	self.env:leaveblock()
+end
+function Context:runtime_codegen_kernel_body (kernel_node, rel)
+	return self.runtime:codegen_kernel_body(self, kernel_node, rel)
+end
+function Context:runtime_codegen_field_write (fw_node)
+	return self.runtime:codegen_field_write(self, fw_node)
+end
+function Context:runtime_codegen_field_read (fa_node)
+	return self.runtime:codegen_field_read(self, fa_node)
+end
+
+
+function C.codegen (runtime, luaenv, kernel_ast, relation)
+	local env = terralib.newenvironment(luaenv)
+	local ctxt = Context.new(env, runtime)
+
+	ctxt:enterblock()
+		local parameter = symbol(L.row(relation):terraType())
+		ctxt:localenv()[kernel_ast.name] = parameter
+		local kernel_body =
+			ctxt:runtime_codegen_kernel_body(kernel_ast, relation)
+	ctxt:leaveblock()
+
+	local r = terra ()
+		[kernel_body]
+	end
+	return r
+end
+
+
+----------------------------------------------------------------------------
+
+
 function ast.AST:codegen (ctxt)
 	print(debug.traceback())
 	error("Codegen not implemented for AST node " .. self.kind)
@@ -12,11 +67,9 @@ function ast.ExprStatement:codegen (ctxt)
 	return self.exp:codegen(ctxt)
 end
 
-function ast.LisztKernel:codegen (ctxt)
-	local param = symbol(self.node_type:terraType())
-	ctxt:localenv()[self.name] = param
-	return ctxt:runtime_codegen_kernel_body(self)
-end
+-- DON'T CODEGEN THE KERNEL THIS WAY; HANDLE IN C.codegen()
+--function ast.LisztKernel:codegen (ctxt)
+--end
 
 function ast.Block:codegen (ctxt)
 	-- start with an empty ast node, or we'll get an error when appending new quotes below
@@ -304,46 +357,3 @@ function ast.GenericFor:codegen (ctxt)
 	return code
 end
 
-local Context = {}
-Context.__index = Context
-
-function Context.new(env, runtime)
-    local ctxt = setmetatable({
-        env     = env,
-        runtime = runtime
-    }, Context)
-    return ctxt
-end
-function Context:localenv()
-	return self.env:localenv()
-end
-function Context:enterblock()
-	self.env:enterblock()
-end
-function Context:leaveblock()
-	self.env:leaveblock()
-end
-function Context:runtime_codegen_kernel_body (kernel_node)
-	return self.runtime:codegen_kernel_body(self, kernel_node)
-end
-function Context:runtime_codegen_field_write (fw_node)
-	return self.runtime:codegen_field_write(self, fw_node)
-end
-function Context:runtime_codegen_field_read (fa_node)
-	return self.runtime:codegen_field_read(self, fa_node)
-end
-
-
-function C.codegen (runtime, luaenv, kernel_ast)
-	local env = terralib.newenvironment(luaenv)
-	local ctxt = Context.new(env, runtime)
-
-	ctxt:enterblock()
-	local kernel_body = kernel_ast:codegen(ctxt)
-	ctxt:leaveblock()
-
-	local r = terra ()
-		[kernel_body]
-	end
-	return r
-end

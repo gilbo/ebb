@@ -3,7 +3,7 @@ import "compiler.liszt"
 local LMesh = terralib.require "compiler.lmesh"
 local mesh = LMesh.Load("examples/mesh.lmesh")
 
-local pass_assert = liszt_kernel(f in mesh.faces)
+local pass_assert = liszt_kernel(f : mesh.faces)
     L.assert(true)
 end
 pass_assert(mesh.faces)

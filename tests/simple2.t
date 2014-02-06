@@ -7,7 +7,7 @@ local com = L.NewScalar(L.vector(L.float, 3), {0, 0, 0})
 
 function center_of_mass ()
 	com:setTo({0,0,0})
-	local sum_pos = liszt_kernel (v in mesh.vertices)
+	local sum_pos = liszt_kernel (v : mesh.vertices)
 		com += v.position
 	end
 	sum_pos(mesh.vertices)
@@ -16,7 +16,7 @@ end
 
 local function displace_mesh (delta_x, delta_y, delta_z)
 	local d = L.NewVector(L.float, {delta_x, delta_y, delta_z})
-	local dk = liszt_kernel (v in mesh.vertices)
+	local dk = liszt_kernel (v : mesh.vertices)
 		v.position += d
 	end
 	dk(mesh.vertices)

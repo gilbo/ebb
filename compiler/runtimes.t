@@ -21,13 +21,12 @@ end
 	-- relation: LRelation
 	-- body: recursively generated AST that iterates over a single element from the relation
 --]]
-function singleCore:codegen_kernel_body (ctxt, liszt_kernel)
+function singleCore:codegen_kernel_body (ctxt, liszt_kernel, relation)
 	local param = ctxt:localenv()[liszt_kernel.name]
-	local set   = liszt_kernel.relation
 	local body  = liszt_kernel.body:codegen(ctxt)
 
 	return quote
-		for [param] = 0, [set]._size do
+		for [param] = 0, [relation]._size do
 			[body]
 		end
 	end
