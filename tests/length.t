@@ -26,4 +26,4 @@ local test_dot = liszt_kernel(f in M.faces)
     assert(length(sum) == ans2) -- test working with local variables
     assert(length(v1 + v2) == ans2) -- test working with expressions
 end
-test_dot()
+test_dot(M.faces)

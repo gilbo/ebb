@@ -107,20 +107,20 @@ end
 
 
 -- execute!
-reduce1()
-reduce2()
+reduce1(F)
+reduce2(F)
 
-read1()
-write1()
-write2()
-reduce3()
-check2()
+read1(F)
+write1(F)
+write2(F)
+reduce3(F)
+check2(F)
 
-write3()
-check3()
+write3(F)
+check3(F)
 
-write4()
-check4()
+write4(F)
+check4(F)
 
 
 
@@ -133,14 +133,14 @@ local f4 = L.NewScalar(L.vector(L.float, 4), {0, 0, 0, 0})
 
 local function check_write ()
 	-- should initialize each field element to {2, 4, 5, 6}
-	write2()
-	reduce3()
+	write2(F)
+	reduce3(F)
 
 	f4:setTo({0, 0, 0, 0})
 	local sum_positions = liszt_kernel (f in F)
 		f4 += f.field5
 	end
-	sum_positions()
+	sum_positions(F)
 
 	local avg = f4:value() / F._size
 	test.fuzzy_aeq(avg.data, {2, 4, 5, 6})

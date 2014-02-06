@@ -7,7 +7,7 @@ function shift(x,y,z)
 	local pass_kernel = liszt_kernel(v in M.vertices)
 	    v.position = {x,y,z}
 	end
-	pass_kernel()
+	pass_kernel(M.vertices)
 end
 
 function check(x,y,z)

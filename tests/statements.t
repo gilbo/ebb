@@ -18,6 +18,6 @@ local l = liszt_kernel (v in mesh.vertices)
 
 	red += y
 end
-l()
+l(mesh.vertices)
 
 test.eq(red:value(), mesh.vertices._size)

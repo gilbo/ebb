@@ -18,5 +18,5 @@ local test_for = liszt_kernel (f in mesh.faces)
 	    lprint(f,v)
 	end
 end
-test_for()
+test_for(mesh.faces)
 

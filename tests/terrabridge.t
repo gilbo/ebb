@@ -33,4 +33,4 @@ local test_terra = liszt_kernel(f in mesh.faces)
     say_hi() -- correctly handle a Terra function with no parameters
     srand(2) -- correctly handle a built-in C function with void return type
 end
-test_terra()
+test_terra(mesh.faces)

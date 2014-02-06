@@ -19,5 +19,5 @@ local check_count = liszt_kernel(v in mesh.vertices)
     L.assert(c == v.count)
 end
 
-sum_count()
-check_count()
+sum_count(mesh.edges)
+check_count(mesh.vertices)

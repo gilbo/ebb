@@ -14,7 +14,7 @@ function main ()
 		com += v.position
 	end
 	--mesh.vertices:map(sum_pos)
-	sum_pos()
+	sum_pos(mesh.vertices)
 
 	local center = com:value() / mesh.vertices:Size()
 

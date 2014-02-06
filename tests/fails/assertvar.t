@@ -8,4 +8,4 @@ local fail_assert = liszt_kernel(f in mesh.faces)
     L.assert(x == 4)
 end
 
-fail_assert()
+fail_assert(mesh.faces)

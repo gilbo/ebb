@@ -296,8 +296,8 @@ while gl.glfwWindowShouldClose(window) == 0 do
 
 
     time_scalar:setTo(time)
-    update_pos1()
-    update_pos2()
+    update_pos1(vertices)
+    update_pos2(vertices)
     triangles:UpdateGClef()
 
     -- Issue the actual draw call

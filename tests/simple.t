@@ -26,7 +26,7 @@ local test_bool = liszt_kernel (v in mesh.vertices)
 	lassert(y == true)
 	lassert(t == q)
 end
-test_bool()
+test_bool(mesh.vertices)
 
 
 local test_decls = liszt_kernel(v in mesh.vertices)
@@ -58,7 +58,7 @@ local test_decls = liszt_kernel(v in mesh.vertices)
 	var x = doo == dah
 	lassert(doo == dah)
 end
-test_decls()
+test_decls(mesh.vertices)
 
 
 local test_conditionals = liszt_kernel (v in mesh.vertices)
@@ -107,7 +107,7 @@ local test_conditionals = liszt_kernel (v in mesh.vertices)
 	end
 	lassert(a == 3)
 end
-test_conditionals()
+test_conditionals(mesh.vertices)
 
 
 local test_arith = liszt_kernel (v in mesh.vertices)
@@ -151,7 +151,7 @@ local test_arith = liszt_kernel (v in mesh.vertices)
     f = a * vv
     lassert(f == e)
 end
-test_arith()
+test_arith(mesh.vertices)
 
 
 local test_while = liszt_kernel(v in mesh.vertices)
@@ -168,7 +168,7 @@ local test_while = liszt_kernel(v in mesh.vertices)
 		var b = false
 	end
 end
-test_while()
+test_while(mesh.vertices)
 
 
 local test_do = liszt_kernel (v in mesh.vertices)
@@ -189,7 +189,7 @@ local test_do = liszt_kernel (v in mesh.vertices)
 	lassert(x == true)
 	lassert(y == 4)
 end
-test_do()
+test_do(mesh.vertices)
 
 
 local test_repeat = liszt_kernel (v in mesh.vertices)
@@ -209,7 +209,7 @@ local test_repeat = liszt_kernel (v in mesh.vertices)
 	until y == 5
 	lassert(y == 5)
 end
-test_repeat()
+test_repeat(mesh.vertices)
 
 
 local test_for = liszt_kernel (v in mesh.vertices)
@@ -221,5 +221,5 @@ local test_for = liszt_kernel (v in mesh.vertices)
 	end
 	lassert(x == true)
 end
-test_for()
+test_for(mesh.vertices)
 

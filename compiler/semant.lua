@@ -927,7 +927,7 @@ function ast.LisztKernel:check(ctxt)
     return kernel
 end
 
-function S.check(luaenv, kernel_ast, param_type)
+function S.check(luaenv, kernel_ast, relation)
     -- environment for checking variables and scopes
     local env  = terralib.newenvironment(luaenv)
     local diag = terralib.newdiagnostics()

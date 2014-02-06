@@ -11,4 +11,4 @@ local kernel = liszt_kernel (v in M.vertices)
 	v.field2 = v.field1
 end
 
-kernel()
+kernel(M.vertices)

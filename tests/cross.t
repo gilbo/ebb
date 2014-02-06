@@ -21,4 +21,4 @@ local test_cross = liszt_kernel(f in mesh.faces)
     assert(cross(v1, expr) == {2, 8, -6}) -- test working with local variables
     assert(cross(v1, v1 + 2 * v2) == {2, 8, -6}) -- test working with expressions
 end
-test_cross()
+test_cross(mesh.faces)

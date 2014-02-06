@@ -25,15 +25,15 @@ local test_dot = liszt_kernel(f in mesh.faces)
     assert(dot(v1, sum) == 6 + 18 + 42) -- test working with local variables
     assert(dot(v1, v1 + v2) == 6 + 18 + 42) -- test working with expressions
 end
-test_dot()
+test_dot(mesh.faces)
 
 local test_bad_len = liszt_kernel(f in mesh.faces)
     assert(dot(v1, v3) == 7)
 end
-test.fail_function(test_bad_len, "differing lengths")
+test.fail_kernel(test_bad_len, mesh.faces, "differing lengths")
 
 local vb = L.NewVector(L.bool, {true, true, false})
 local test_bad_bool = liszt_kernel(f in mesh.faces)
     assert(dot(v1, vb) == 52)
 end
-test.fail_function(test_bad_bool, "boolean vector")
+test.fail_kernel(test_bad_bool, mesh.faces, "boolean vector")

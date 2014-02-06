@@ -14,7 +14,7 @@ local pass = liszt kernel(f in mesh.faces)
     L.assert(L.all({true, true, true}))
     L.assert(not L.all({true, false}))
 end
-pass()
+pass(mesh.faces)
 
 assert(L.any(L.NewVector(L.bool, {true})))
 assert(not L.any(L.NewVector(L.bool, {false})))

@@ -41,9 +41,9 @@ local clear = liszt_kernel (p in M.vertices)
 end
 
 for i = 1, 1000 do
-	compute_step()
-	propagate_temp()
-	clear()
+	compute_step(M.edges)
+	propagate_temp(M.vertices)
+	clear(M.vertices)
 end
 
 M.vertices.temperature:print()

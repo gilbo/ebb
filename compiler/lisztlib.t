@@ -270,23 +270,36 @@ local rtlib = terralib.require 'compiler/runtimes'
 L.singleCore = rtlib.singleCore
 L.gpu        = rtlib.gpu
 
-Kernel.__call  = function (kobj, runtime)
-    if not runtime then runtime = L.singleCore end
-    if not rtlib.is_valid_runtime(runtime) then 
-        error('Argument is not a valid runtime')
+Kernel.__call  = function (kobj, relation)
+    if not relation then
+        error("A kernel must be called on a relation.  "..
+              "No relation specified.", 2)
     end
-	if not kobj.__kernels[runtime] then kobj:generate(runtime) end
-	kobj.__kernels[runtime]()
+    local runtime = L.singleCore
+    --if not runtime then runtime = L.singleCore end
+    --if not rtlib.is_valid_runtime(runtime) then 
+    --    error('Argument is not a valid runtime')
+    --end
+	if not kobj.__kernels[runtime] or
+       not kobj.__kernels[runtime][relation]
+    then
+        kobj:generate(runtime, relation)
+    end
+	kobj.__kernels[runtime][relation]()
 end
 
 function L.NewKernel(kernel_ast, env)
 	return setmetatable({ast=kernel_ast,env=env,__kernels={}}, Kernel)
 end
 
-function Kernel:generate (runtime)
-    self.typed_ast = semant.check(self.env, self.ast)
+function Kernel:generate (runtime, relation)
+    self.typed_ast = semant.check(self.env, self.ast, relation)
 
-	if not self.__kernels[runtime] then
-		self.__kernels[runtime] = codegen.codegen(runtime, self.env, self.typed_ast)
+    if not self.__kernels[runtime] then
+        self.__kernels[runtime] = {}
+    end
+	if not self.__kernels[runtime][relation] then
+		self.__kernels[runtime][relation] =
+            codegen.codegen(runtime, self.env, self.typed_ast)
 	end
 end

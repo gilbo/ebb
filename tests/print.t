@@ -14,4 +14,4 @@ local print_stuff = liszt_kernel(f in mesh.faces)
     L.print(L.id(f))
 end
 
-print_stuff()
+print_stuff(mesh.faces)

@@ -14,7 +14,7 @@ local v2 = L.NewVector(L.float, {5, 7, 11})
     assert(dot(v1, v2) == 52)
     assert(cross(v1, v2) == {1, 4, -3})
     assert(length(v1) == sqrt(1 + 4 + 9))
-end)()
+end)(mesh.faces)
 
 assert(true)
 print(42)

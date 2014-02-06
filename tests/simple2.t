@@ -10,7 +10,7 @@ function center_of_mass ()
 	local sum_pos = liszt_kernel (v in mesh.vertices)
 		com += v.position
 	end
-	sum_pos()
+	sum_pos(mesh.vertices)
 	return com:value() / mesh.vertices._size
 end
 
@@ -19,7 +19,7 @@ local function displace_mesh (delta_x, delta_y, delta_z)
 	local dk = liszt_kernel (v in mesh.vertices)
 		v.position += d
 	end
-	dk()
+	dk(mesh.vertices)
 end
 
 test.aeq(center_of_mass().data, {0, 0, 0})

@@ -6,4 +6,4 @@ local mesh = LMesh.Load("examples/mesh.lmesh")
 local pass_assert = liszt_kernel(f in mesh.faces)
     L.assert(true)
 end
-pass_assert()
+pass_assert(mesh.faces)

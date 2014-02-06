@@ -13,7 +13,7 @@ end)
 
 (liszt kernel(v in mesh.vertices)
 	assert(square(7) == 49)
-end)()
+end)(mesh.vertices)
 
 ----------------------------
 --Test stacked macro calls--
@@ -23,7 +23,7 @@ local sum = L.NewMacro(function(x, y, z)
 end)
 (liszt kernel(v in mesh.vertices)
     assert(sum(square(1), square(2), square(3)) == 14)
-end)()
+end)(mesh.vertices)
 
 ----------------------------------------
 --Test macro that behaves like a field--
@@ -33,7 +33,7 @@ mesh.vertices:NewFieldMacro('scaledposition', L.NewMacro(function(v)
 end))
 (liszt kernel(v in mesh.vertices)
     assert(v.scaledposition == 2 * v.position)
-end)()
+end)(mesh.vertices)
 
 -----------------------------------
 --Combine normal and field macros--
@@ -45,4 +45,4 @@ end)
     var lensq = norm(v.scaledposition)
     var expected = 4.0 * length(v.position) * length(v.position)
     assert(square(lensq - expected) < 0.00005)
-end)()
+end)(mesh.vertices)
