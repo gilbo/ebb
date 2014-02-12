@@ -14,6 +14,7 @@ local dld = terralib.require 'compiler.dld'
 local mat4f = terralib.require 'gl.mat4f'
 
 local C = terralib.require 'compiler.c'
+local vdb = terralib.includecstring '#include<vdb.h>'
 
 local glshader = terralib.require 'gl.shader'
 
@@ -267,7 +268,11 @@ local update_pos1 = liszt_kernel (v in vertices)
     v.pos_temp = { v.pos[0], y, v.pos[2], v.pos[3] }
 end
 local update_pos2 = liszt_kernel (v in vertices)
-    v.pos = v.pos_temp
+    var pos = v.pos_temp
+    v.pos = pos
+    vdb.vdb_color(v.color[0], v.color[1], v.color[2])
+    vdb.vdb_point(pos[0], pos[1], pos[2])
+
 end
 
 
