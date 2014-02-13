@@ -291,16 +291,16 @@ end
 
 -- Cell = {v_x, v_y, v_z, pressure, density}
 
-local 2dfluid = Grid.initUniformGrid({4, 4}, {1, 1, 1, 1, 1}, {{key = 'viscosity', value = 0.0}, {key = 'diffusion', value = 0.0}})
+local fluid = Grid.GridClass:initUniformGrid({4, 4}, {1, 1, 1, 1, 1}, {{key = 'viscosity', value = 0.0}, {key = 'diffusion', value = 0.0}})
 
-local 2dfluidPrev = Grid.initUniformGrid({4, 4}, {1, 1, 1, 1, 1}, {{key = 'viscosity', value = 0.0}, {key = 'diffusion', value = 0.0}})
+local fluidPrev = Grid.GridClass:initUniformGrid({4, 4}, {1, 1, 1, 1, 1}, {{key = 'viscosity', value = 0.0}, {key = 'diffusion', value = 0.0}})
 
 --addSource({0, 0}, localGrid, localGrid, 3, 5)
 
 dt = 0.008
 
-vel_setp({2, 2}, 2dfluid.GridClass, 2dfluidPrev.GridClass, 2dfluid['viscosity'], dt)
-dens_step({2, 2}, 2dfluid.GridClass, 2dfluidPrev.GridClass, 2dfluid['diffusion'], dt)
+vel_step({2, 2}, fluid.GridClass, fluidPrev.GridClass, fluid['viscosity'], dt)
+dens_step({2, 2}, fluid.GridClass, fluidPrev.GridClass, fluid['diffusion'], dt)
 
 localGrid:print()
 

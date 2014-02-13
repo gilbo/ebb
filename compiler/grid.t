@@ -25,7 +25,7 @@ function tprint (tbl, indent)
     end
 end
 
-function Grid.initUniformGrid(dim, value, globals)
+function Grid.GridClass:initUniformGrid(dim, value, globals)
     assert(dim)
     assert(#dim == 2 or #dim == 3)
 
