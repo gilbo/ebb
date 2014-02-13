@@ -4,7 +4,7 @@ local mesh = LMesh.Load("examples/mesh.lmesh")
 
 local v = L.NewVector(L.float, {1, 2, 3}) 
 
-local print_stuff = liszt_kernel(f in mesh.faces)
+local print_stuff = liszt_kernel(f : mesh.faces)
     L.print(true)
     L.print(4)
     L.print(2.2)
@@ -14,4 +14,4 @@ local print_stuff = liszt_kernel(f in mesh.faces)
     L.print(L.id(f))
 end
 
-print_stuff()
+print_stuff(mesh.faces)

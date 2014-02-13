@@ -4,7 +4,7 @@ require "tests/test"
 local LMesh = terralib.require "compiler.lmesh"
 local mesh = LMesh.Load("examples/mesh.lmesh")
 
-local pass = liszt kernel(f in mesh.faces)
+local pass = liszt kernel(f : mesh.faces)
     L.assert(L.any({true}))
     L.assert(not L.any({false}))
     L.assert(L.any({true, true, true}))
@@ -14,7 +14,7 @@ local pass = liszt kernel(f in mesh.faces)
     L.assert(L.all({true, true, true}))
     L.assert(not L.all({true, false}))
 end
-pass()
+pass(mesh.faces)
 
 assert(L.any(L.NewVector(L.bool, {true})))
 assert(not L.any(L.NewVector(L.bool, {false})))

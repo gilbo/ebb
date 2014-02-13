@@ -231,7 +231,7 @@ terra calculate_stress_tensor (F : vector(double, 9)) : vector(double, 9)
 	return stress_tensor
 end
 
-local calculate_internal_force = liszt_kernel (c in M.cells)
+local calculate_internal_force = liszt_kernel (c : M.cells)
 	-- ignore outside cell
 	if L.id(c) ~= 0	then
 		-- col1, col2, col3 are the columns of a matrix X, where the rows of X are
@@ -371,17 +371,17 @@ end
 --------------------------------------------------------------------------------
 --[[ Global micro-kernels                                                   ]]--
 --------------------------------------------------------------------------------
-local reset_internal_forces = liszt_kernel (v in M.vertices) v.fint = {0,0,0} end
+local reset_internal_forces = liszt_kernel (v : M.vertices) v.fint = {0,0,0} end
 
-local update_position = liszt_kernel (v in M.vertices)
+local update_position = liszt_kernel (v : M.vertices)
 	v.position += dt_n_h * v.v_n_h
 end
 
-local compute_acceleration = liszt_kernel (v in M.vertices)
+local compute_acceleration = liszt_kernel (v : M.vertices)
 	v.a_n = (v.fext - v.fint) / v.mass
 end
 
-local update_velocity = liszt_kernel (v in M.vertices)
+local update_velocity = liszt_kernel (v : M.vertices)
 	v.v_n = v.v_n_h + .5f * dt_n_h * v.a_n
 end
 
@@ -391,27 +391,27 @@ end
 --------------------------------------------------------------------------------
 local function main ()
 	-- Initialize position
-	(liszt_kernel (v in M.vertices)
+	(liszt_kernel (v : M.vertices)
 		v.initialPos = v.position
-	end)()
+	end)(M.vertices)
 
 	-- Initialize external forces
-	(liszt_kernel (f in M.left)
+	(liszt_kernel (f : M.left)
 		f.value.v0.fext = {10000000, 0, 0}
 		f.value.v1.fext = {10000000, 0, 0}
 		f.value.v2.fext = {10000000, 0, 0}
 		f.value.v3.fext = {10000000, 0, 0}
-	end)()
+	end)(M.left)
 
-	(liszt_kernel (f in M.right)
+	(liszt_kernel (f : M.right)
 		f.value.v0.fext = {-10000000, 0, 0}
 		f.value.v1.fext = {-10000000, 0, 0}
 		f.value.v2.fext = {-10000000, 0, 0}
 		f.value.v3.fext = {-10000000, 0, 0}
-	end)()
+	end)(M.right)
 
 	-- Initialize acceleration based on initial forces
-	compute_acceleration()
+	compute_acceleration(M.vertices)
 
 	local t_n   = 0
 	local t_n_h = 0
@@ -420,25 +420,25 @@ local function main ()
 		-- Update half time:  t^{n+1/2} = t^n + 1/2*deltat^{n+1/2}
 		t_n_h = t_n + dt_n_h/2
 
-		reset_internal_forces()
+		reset_internal_forces(M.vertices)
 		-- Update nodal velocities (requires inline kernel to escape current t values)
-		(liszt_kernel (v in M.vertices)
+		(liszt_kernel (v : M.vertices)
 			v.v_n_h = v.v_n + (t_n_h - t_n) * v.a_n
-		end)()
+		end)(M.vertices)
 
-		update_position()
-		calculate_internal_force()
-		compute_acceleration()
-		update_velocity()
+		update_position(M.vertices)
+		calculate_internal_force(M.cells)
+		compute_acceleration(M.vertices)
+		update_velocity(M.vertices)
 
 		-- Time update: t^n = t^{n-1} + deltat^{n-1/2}
 		t_n = t_n + dt_n_h
 	end
 
 	-- DEBUG
-	(liszt_kernel (v in M.vertices)
+	(liszt_kernel (v : M.vertices)
 		L.print(v.position)
-	end)()
+	end)(M.vertices)
 end
 
 main()

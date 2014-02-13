@@ -161,8 +161,10 @@ lang.liszt_kernel = function (P)
 	-- parse parameter
 	local open  = P:expect("(")
 	local iter  = P:expect(P.name).value
-    P:expect("in")
-    local set   = P:exp()
+	local set   = nil
+	if P:nextif(":") then
+		set 		  = P:exp()
+	end
 	P:expectmatch(")", "(", open.linenumber)
 
 	-- parse block
@@ -174,17 +176,26 @@ lang.liszt_kernel = function (P)
 end
 
 lang.liszt = function (P)
-    local liszt_kw = P:nextif("liszt")
-    if liszt_kw and P:nextif("kernel") or P:nextif("liszt_kernel") then
-        return P:liszt_kernel()
-    else
-        assert(liszt_kw)
-        if P:nextif('`') then
-            return P:exp()
-        else
-            P:errorexpected("'kernel' or '`'")
-        end
-    end
+		local code_type
+		if P:nextif("liszt") then
+			if P:nextif("kernel") then
+				code_type = 'kernel'
+			elseif P:nextif('`') then
+				code_type = 'quote'
+			else
+				p:errorexpected("'kernel' or '`'")
+			end
+		elseif P:nextif("liszt_kernel") then
+			code_type = 'kernel'
+		else
+			P:errorexpected("'liszt' or 'liszt_kernel'")
+		end
+
+		if code_type == 'kernel' then
+			return P:liszt_kernel()
+		else -- code_type == 'quote'
+			return P:exp()
+ 		end
 end
 
 --[[ Statement Parsing ]]--

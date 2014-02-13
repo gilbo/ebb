@@ -260,7 +260,7 @@ vertices:NewField('pos_temp', L.vector(L.float, 4)):LoadFromCallback(
     terra(mem : &vector(float, 4), i : uint)
         @mem = vectorof(float, 0, 0, 0, 0)
     end)
-local update_pos1 = liszt_kernel (v in vertices)
+local update_pos1 = liszt_kernel (v)
     var y = v.pos[1]
     if y > 0 then
         y = 0.5 + 0.4 * C.cos(3*time_scalar)
@@ -301,8 +301,8 @@ while gl.glfwWindowShouldClose(window) == 0 do
 
 
     time_scalar:setTo(time)
-    update_pos1()
-    update_pos2()
+    update_pos1(vertices)
+    update_pos2(vertices)
     triangles:UpdateGClef()
 
     -- Issue the actual draw call

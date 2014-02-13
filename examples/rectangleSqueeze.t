@@ -125,18 +125,18 @@ local tmax   = 1000
 --------------------------------------------------------------------------------
 --[[ Global kernels                                                         ]]--
 --------------------------------------------------------------------------------
-local reset_internal_forces = liszt_kernel (v in M.vertices)
+local reset_internal_forces = liszt_kernel (v : M.vertices)
    	v.fint = {0, 0, 0} 
 end
 
 -- Update the displacement at t^(n+1): d^{n+1} = d^n + dt^{n+1/2}*v^{n+1/2}
-local update_pos_and_disp = liszt_kernel (v in M.vertices)
+local update_pos_and_disp = liszt_kernel (v : M.vertices)
 	v.d_n      += dt_n_h * v.v_n_h
 	v.position += dt_n_h * v.v_n_h
 end
 
 -- calculate edge length displacement
-local calc_edge_disp = liszt_kernel (e in M.edges)
+local calc_edge_disp = liszt_kernel (e : M.edges)
 	var v1 = e.head
 	var v2 = e.tail
 
@@ -144,7 +144,7 @@ local calc_edge_disp = liszt_kernel (e in M.edges)
 	e.currEdgeLength = L.length(dist)
 end
 
-local calc_internal_force = liszt_kernel (e in M.edges)
+local calc_internal_force = liszt_kernel (e : M.edges)
 	var edgeLengthDisplacement = e.currEdgeLength - e.initialEdgeLength
 		
 	var v1 = e.head
@@ -159,14 +159,14 @@ local calc_internal_force = liszt_kernel (e in M.edges)
 end
 
 -- Compute the acceleration at t^{n+1}: a^{n+1} = M^{-1}(fext^{n+1}-fint^{n+1}-C*v^{n+1/2})
-local compute_accel = liszt_kernel (v in M.vertices)
+local compute_accel = liszt_kernel (v : M.vertices)
 	v.a_n = v.fext + v.fint / v.mass
 end
 
-local update_previous_velocity = liszt_kernel (v in M.vertices) v.v_p = v.v_n end
+local update_previous_velocity = liszt_kernel (v : M.vertices) v.v_p = v.v_n end
 
 -- Update the velocity at t^{n+1}: v^{n+1} = v^{n+1/2}+dt^{n+1/2}/2*a^n
-local update_velocity = liszt_kernel (v in M.vertices)
+local update_velocity = liszt_kernel (v : M.vertices)
 	v.v_n = v.v_n_h + .5f * dt_n_h * v.a_n
 end
 
@@ -177,27 +177,27 @@ end
 local function main()
 
 	--[[ Initialize external forces: ]]--
-	(liszt_kernel (f in M.left)
+	(liszt_kernel (f : M.left)
 		f.value.v0.fext = {.01, 0, 0}
 		f.value.v1.fext = {.01, 0, 0}
 		f.value.v2.fext = {.01, 0, 0}
 		f.value.v3.fext = {.01, 0, 0}
-	end)()
+	end)(M.left)
 
-	(liszt_kernel (f in M.right)
+	(liszt_kernel (f : M.right)
 		f.value.v0.fext = {-.01, 0, 0}
 		f.value.v1.fext = {-.01, 0, 0}
 		f.value.v2.fext = {-.01, 0, 0}
 		f.value.v3.fext = {-.01, 0, 0}
-	end)()
+	end)(M.right)
 
 	--[[ Initialize acceleration based on initial forces ]]--
-	(liszt_kernel (v in M.vertices)
+	(liszt_kernel (v : M.vertices)
 		v.a_n = (v.fext - v.fint) / v.mass
-	end)()
+	end)(M.vertices)
 
 	--[[ Initialize edge lengths]]--
-	(liszt_kernel (e in M.edges)
+	(liszt_kernel (e : M.edges)
 		var v1 = e.head
 		var v2 = e.tail
 
@@ -206,7 +206,7 @@ local function main()
 
 		e.initialEdgeLength = length
 		e.currEdgeLength    = length
-	end)()
+	end)(M.edges)
 
 	--[[ MAIN LOOP: ]]--
 	local t_n = 0
@@ -217,22 +217,22 @@ local function main()
 	  	t_n_h = t_n + dt_n_h/2 
 
 		-- nodal velocity kernel depends on changing t_n
-		local update_nodal_velocities = liszt_kernel (v in M.vertices)
+		local update_nodal_velocities = liszt_kernel (v : M.vertices)
 			v.v_n_h = v.v_n + (t_n_h - t_n) * v.a_n
 		end
 
 		--[[ Execute! ]]--
-		reset_internal_forces()
+		reset_internal_forces(M.vertices)
 
-		update_nodal_velocities()
-		update_pos_and_disp()
+		update_nodal_velocities(M.vertices)
+		update_pos_and_disp(M.vertices)
 
-		calc_edge_disp()
-		calc_internal_force()
+		calc_edge_disp(M.edges)
+		calc_internal_force(M.edges)
 
-		compute_accel()
-		update_previous_velocity()
-		update_velocity()
+		compute_accel(M.vertices)
+		update_previous_velocity(M.vertices)
+		update_velocity(M.vertices)
 
 		-- Time update: t^n = t^{n-1} + deltat^{n-1/2}
 		t_n = t_n + dt_n_h
@@ -242,8 +242,8 @@ end
 main()
 
 -- Print results
-(liszt_kernel (v in M.vertices)
+(liszt_kernel (v : M.vertices)
 	L.print(v.position)
-end)()
+end)(M.vertices)
 
 
