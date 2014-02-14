@@ -1,8 +1,6 @@
 import "compiler.liszt"
 
 local Grid = {}
-local Dim = {}
-local Globals = {}
 
 package.loaded["compiler.grid"] = Grid
 
@@ -33,10 +31,7 @@ function Grid.GridClass:initUniformGrid(dim, value, globals)
         value = 0
     end
 
-    -- Specify dim of grid
-    Dim = dim;
-
-    local table = {}
+    local grid = setmetatable(table, Grid.GridClass)
 
     for i = 1, dim[1] do
         table[i] = {}
@@ -50,46 +45,45 @@ function Grid.GridClass:initUniformGrid(dim, value, globals)
             end
         end
     end
-
-    local grid = setmetatable(table, Grid.GridClass)
-
-    Globals = globals
     
-    return Grid
+    grid['dim'] = dim
+    grid['globals'] = globals
+    
+    return grid
 end
 
 function Grid.GridClass:get(index)
     if #index == 2 then
-        assert(index[1] <= Dim[1])
-        assert(index[2] <= Dim[2])
+        assert(index[1] <= self['dim'][1])
+        assert(index[2] <= self['dim'][2])
 
-        return Grid[index[1]][index[2]]
+        return self[index[1]][index[2]]
     else
         assert(#index == 3)
-        assert(#Dim == 3)
-        assert(index[1] <= Dim[1])
-        assert(index[2] <= Dim[2])
-        assert(index[3] <= Dim[3])
+        assert(#self['dim'] == 3)
+        assert(index[1] <= self['dim'][1])
+        assert(index[2] <= self['dim'][2])
+        assert(index[3] <= self['dim'][3])
 
-        return Grid[index[1]][index[2]][index[3]]
+        return self[index[1]][index[2]][index[3]]
     end
 end
 
 function Grid.GridClass:set(index, value)
     if #index == 2 then
-        assert(#Dim == 2)
-        assert(index[1] <= Dim[1])
-        assert(index[2] <= Dim[2])
+        assert(#self['dim'] == 2)
+        assert(index[1] <= self['dim'][1])
+        assert(index[2] <= self['dim'][2])
 
-        Grid[index[1]][index[2]] = value
+        self[index[1]][index[2]] = value
     else
         assert(#index == 3)
-        assert(#Dim == 3)
-        assert(index[1] <= Dim[1])
-        assert(index[2] <= Dim[2])
-        assert(index[3] <= Dim[3])
+        assert(#self['dim'] == 3)
+        assert(index[1] <= self['dim'][1])
+        assert(index[2] <= self['dim'][2])
+        assert(index[3] <= self['dim'][3])
 
-        Grid[index[1]][index[2]][index[3]] = value
+        self[index[1]][index[2]][index[3]] = value
     end
 end
 
