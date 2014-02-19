@@ -187,15 +187,15 @@ glfw.glBindVertexArray(vao)
 local buffers = genBuffers(2)
 
 -- mjlgg: Dimension for fluid grid comes from here
-local dim = {4, 4}
+local dim = {16, 16}
 
 globals = {}
 globals['viscosity'] = 0.00001
 globals['diffusion'] = 0.001
-dt = 0.008
+dt = 0.08
 
-local fluid = Grid.GridClass:initUniformGrid(dim, {1, 1, 1, 1, 1}, globals)
-local fluidPrev = Grid.GridClass:initUniformGrid(dim, {1, 1, 1, 1, 1}, globals)
+local fluid = Grid.GridClass:initUniformGrid(dim, {0, 0, 0}, globals)
+local fluidPrev = Grid.GridClass:initUniformGrid(dim, {0, 0, 0}, globals)
 
 -- set up the data to load
 local n_faces = (dim[1] - 1) * (dim[2] - 1) * 2
@@ -208,7 +208,7 @@ offset = {-.4, -.4}
 size = {.3, .4}
 
 c = 0
-s = .5
+s = .1
 size = {size[1] * s * 0.5, size[2] * s * 0.5}
 
 for i = 1, dim[1] - 1 do
@@ -516,7 +516,7 @@ function addSource(dim, dstGrid, dstIndex, srcGrid, srcIndex, dt)
         for j = 1, dim[2] + 2 do
             local x = dstGrid:get({i, j})
             local y = srcGrid:get({i, j})
-            local z = {x[1], x[2], x[3], x[4], x[5]}
+            local z = {x[1], x[2], x[3]}
 
             z[dstIndex] = x[dstIndex] + y[srcIndex] * dt
 
@@ -530,7 +530,7 @@ function setBoundary(dim, grid, index, boundaryFlag)
         -- 1
         local x = grid:get({1, i})
         local y = grid:get({2, i})
-        local z = {x[1], x[2], x[3], x[4], x[5]}
+        local z = {x[1], x[2], x[3]}
 
         if boundaryFlag == 1 then
             z[index] = -y[index]
@@ -543,7 +543,7 @@ function setBoundary(dim, grid, index, boundaryFlag)
         -- 2
         local x = grid:get({dim[1] + 2, i})
         local y = grid:get({dim[1] + 1, i})
-        local z = {x[1], x[2], x[3], x[4], x[5]}
+        local z = {x[1], x[2], x[3]}
 
         if boundaryFlag == 1 then
             z[index] = -y[index]
@@ -556,7 +556,7 @@ function setBoundary(dim, grid, index, boundaryFlag)
         -- 3
         local x = grid:get({i, 1})
         local y = grid:get({i, 2})
-        local z = {x[1], x[2], x[3], x[4], x[5]}
+        local z = {x[1], x[2], x[3]}
 
         if boundaryFlag == 2 then
             z[index] = -y[index]
@@ -569,7 +569,7 @@ function setBoundary(dim, grid, index, boundaryFlag)
         -- 4
         local x = grid:get({i, dim[2] + 2})
         local y = grid:get({i, dim[2] + 1})
-        local z = {x[1], x[2], x[3], x[4], x[5]}
+        local z = {x[1], x[2], x[3]}
 
         if boundaryFlag == 2 then
             z[index] = -y[index]
@@ -584,7 +584,7 @@ function setBoundary(dim, grid, index, boundaryFlag)
     local x = grid:get({1, 1})
     local y = grid:get({2, 1})
     local z = grid:get({1, 2})
-    local w = {x[1], x[2], x[3], x[4], x[5]}
+    local w = {x[1], x[2], x[3]}
 
     w[index] = 0.5 * (y[index] + z[index])
 
@@ -594,7 +594,7 @@ function setBoundary(dim, grid, index, boundaryFlag)
     local x = grid:get({1, dim[2] + 2})
     local y = grid:get({2, dim[2] + 2})
     local z = grid:get({1, dim[2] + 1})
-    local w = {x[1], x[2], x[3], x[4], x[5]}
+    local w = {x[1], x[2], x[3]}
 
     w[index] = 0.5 * (y[index] + z[index])
 
@@ -604,7 +604,7 @@ function setBoundary(dim, grid, index, boundaryFlag)
     local x = grid:get({dim[1] + 2, 1})
     local y = grid:get({dim[1] + 1, 2})
     local z = grid:get({dim[1] + 2, 2})
-    local w = {x[1], x[2], x[3], x[4], x[5]}
+    local w = {x[1], x[2], x[3]}
 
     w[index] = 0.5 * (y[index] + z[index])
 
@@ -614,7 +614,7 @@ function setBoundary(dim, grid, index, boundaryFlag)
     local x = grid:get({dim[1] + 2, dim[2] + 2})
     local y = grid:get({dim[1] + 1, dim[2] + 2})
     local z = grid:get({dim[1] + 2, 2})
-    local w = {x[1], x[2], x[3], x[4], x[5]}
+    local w = {x[1], x[2], x[3]}
 
     w[index] = 0.5 * (y[index] + z[index])
 
@@ -667,7 +667,7 @@ function advect(dim, dstGrid, dstIndex, srcGrid, srcIndex, uGrid, uIndex, vGrid,
             local d01 = srcGrid:get({i0, j1})
             local d10 = srcGrid:get({i1, j0})
             local d11 = srcGrid:get({i1, j1})
-            local z = {d[1], d[2], d[3], d[4], d[5]}
+            local z = {d[1], d[2], d[3]}
 
             z[dstIndex] = s0 * (t0 * d00[srcIndex] + t1 * d01[srcIndex]) + s1 * (t0 * d10[srcIndex] + t1 * d11[srcIndex])
 
@@ -686,7 +686,7 @@ function diffuse(dim, dstGrid, srcGrid, index, diff, dt, boundaryFlag)
             for j = 2, dim[2] + 1 do
                 local x = dstGrid:get({i, j})
                 local y = srcGrid:get({i, j})
-                local z = {x[1], x[2], x[3], x[4], x[5]}
+                local z = {x[1], x[2], x[3]}
 
                 local leftX = dstGrid:get({i - 1, j})
                 local rightX = dstGrid:get({i + 1, j})
@@ -708,7 +708,7 @@ function project(dim, uGrid, uIndex, vGrid, vIndex, pGrid, pIndex, divGrid, divI
     for i = 2, dim[1] + 1 do
         for j = 2, dim[2] + 1 do
             local x = divGrid:get({i, j})
-            local y = {x[1], x[2], x[3], x[4], x[5]}
+            local y = {x[1], x[2], x[3]}
 
             local leftU = uGrid:get({i - 1, j})
             local rightU = uGrid:get({i + 1, j})
@@ -720,7 +720,7 @@ function project(dim, uGrid, uIndex, vGrid, vIndex, pGrid, pIndex, divGrid, divI
             divGrid:set({i, j}, y)
 
             local z = pGrid:get({i, j})
-            local w = {z[1], z[2], z[3], z[4], z[5]}
+            local w = {z[1], z[2], z[3]}
 
             w[pIndex] = 0
             pGrid:set({i, j}, w)
@@ -734,7 +734,7 @@ function project(dim, uGrid, uIndex, vGrid, vIndex, pGrid, pIndex, divGrid, divI
         for i = 2, dim[1] + 1 do
             for j = 2, dim[2] + 1 do
                 local x = pGrid:get({i, j})
-                local y = {x[1], x[2], x[3], x[4], x[5]}
+                local y = {x[1], x[2], x[3]}
 
                 local div = divGrid:get({i, j})
 
@@ -755,7 +755,7 @@ function project(dim, uGrid, uIndex, vGrid, vIndex, pGrid, pIndex, divGrid, divI
     for i = 2, dim[1] + 1 do
         for j = 2, dim[2] + 1 do
             local u = uGrid:get({i, j})
-            local u0 = {u[1], u[2], u[3], u[4], u[5]}
+            local u0 = {u[1], u[2], u[3]}
 
             local leftP = pGrid:get({i - 1, j})
             local rightP = pGrid:get({i + 1, j})
@@ -764,7 +764,7 @@ function project(dim, uGrid, uIndex, vGrid, vIndex, pGrid, pIndex, divGrid, divI
             uGrid:set({i, j}, u0)
 
             local v = vGrid:get({i, j})
-            local v0 = {v[1], v[2], v[3], v[4], v[5]}
+            local v0 = {v[1], v[2], v[3]}
 
             local botP = pGrid:get({i, j + 1})
             local topP = pGrid:get({i, j - 1})
@@ -811,6 +811,8 @@ local function getFramebufferSize(window)
     return pWidth[0], pHeight[0]
 end
 
+fluid[1][1][3] = 0.1
+fluidPrev[1][1][3] = 0.1
 
 -- loop
 while glfw.glfwWindowShouldClose(window) == 0 do
@@ -855,18 +857,18 @@ while glfw.glfwWindowShouldClose(window) == 0 do
         rot_ortho_matrix:get())
 
     -- Fluids
-    print("Running vel_step()...")
-    --vel_step({2, 2}, fluid, fluidPrev, fluid, fluidPrev, 1, 2, fluid['globals']['viscosity'], dt)
+    --print("Running vel_step()...")
+    vel_step({dim[1] - 2, dim[2] - 2}, fluid, fluidPrev, fluid, fluidPrev, 1, 2, fluid['globals']['viscosity'], dt)
     
-    print("Running dens_step()...")
-    --dens_step({2, 2}, fluid, 5, fluidPrev, 5, fluid, 1, fluid, 2, fluid['globals']['diffusion'], dt)
+    --print("Running dens_step()...")
+    dens_step({dim[1] - 2, dim[2] - 2}, fluid, 3, fluidPrev, 3, fluid, 1, fluid, 2, fluid['globals']['diffusion'], dt)
     
     -- Update density
     for i = 1, dim[1] do
         for j = 1, dim[2] do
             c = 18 * (i - 1) + 18 * (j - 1) * (dim[1] - 1)
             lowc = 18 * (i - 1) + 18 * (j - 2) * (dim[1] - 1)
-            d = fluid[i][j][5]
+            d = fluid[i][j][3]
             
             if (i > 1) and (j < dim[2]) then
                 -- 1
