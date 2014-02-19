@@ -862,22 +862,22 @@ while glfw.glfwWindowShouldClose(window) == 0 do
     --dens_step({2, 2}, fluid, 5, fluidPrev, 5, fluid, 1, fluid, 2, fluid['globals']['diffusion'], dt)
     
     -- Update density
-    for i = 1, 2 do
-        for j = 1, 2 do
+    for i = 1, dim[1] do
+        for j = 1, dim[2] do
             c = 18 * (i - 1) + 18 * (j - 1) * (dim[1] - 1)
             lowc = 18 * (i - 1) + 18 * (j - 2) * (dim[1] - 1)
             d = fluid[i][j][5]
             
             if (i > 1) and (j < dim[2]) then
                 -- 1
-                vc[c - 18 + 3] = d
-                vc[c - 18 + 4] = d
-                vc[c - 18 + 5] = d
+                vc[c - 18 + 6] = d
+                vc[c - 18 + 7] = d
+                vc[c - 18 + 8] = d
             
                 -- 2
-                vc[c - 18 + 15] = d
-                vc[c - 18 + 16] = d
-                vc[c - 18 + 17] = d
+                vc[c - 18 + 12] = d
+                vc[c - 18 + 13] = d
+                vc[c - 18 + 14] = d
             end
 
             if (i < dim[1]) and (j < dim[2]) then
@@ -896,14 +896,14 @@ while glfw.glfwWindowShouldClose(window) == 0 do
 
             if (i < dim[1]) and (j > 1) then
                 -- 5
-                vc[lowc + 6] = d
-                vc[lowc + 7] = d
-                vc[lowc + 8] = d
+                vc[lowc + 3] = d
+                vc[lowc + 4] = d
+                vc[lowc + 5] = d
 
                 -- 6
-                vc[lowc + 12] = d
-                vc[lowc + 13] = d
-                vc[lowc + 14] = d
+                vc[lowc + 15] = d
+                vc[lowc + 16] = d
+                vc[lowc + 17] = d
             end
         end
     end
