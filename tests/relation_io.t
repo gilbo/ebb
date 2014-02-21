@@ -227,8 +227,6 @@ simp_rels.cells.temperature:LoadFromCallback(terra(t : &double, i : int)
   @t = 25.0 - (4.5-i)*(4.5-i)
 end)
 simp_rels.particles.temperature:LoadConstant(0.0)
---simp_rels.particles.temperature:LoadFromCallback(
---  terra(t : &double, i : int) @t = 0.0 end)
 simp_rels.particles.position:LoadFromCallback(
   terra(pos : &vector(double, 3), i : int)
     var mi = i % 10

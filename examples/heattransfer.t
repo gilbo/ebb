@@ -13,8 +13,8 @@ local init_temp    = terra (mem : &float, i : int)
 	end
 end
 
-M.vertices:NewField('flux',        L.float):LoadFromCallback(init_to_zero)
-M.vertices:NewField('jacobistep',  L.float):LoadFromCallback(init_to_zero)
+M.vertices:NewField('flux',        L.float):LoadConstant(0)
+M.vertices:NewField('jacobistep',  L.float):LoadConstant(0)
 M.vertices:NewField('temperature', L.float):LoadFromCallback(init_temp)
 
 local compute_step = liszt_kernel(e : M.edges)

@@ -36,15 +36,11 @@ F:NewField('field3', L.float)
 F:NewField('field4', L.bool)
 F:NewField('field5', L.vector(L.float, 4))
 
-F.field1:LoadFromCallback(terra (mem : &float, i : uint) mem[0] = 1     end)
-F.field2:LoadFromCallback(terra (mem : &float, i : uint) mem[0] = 2.5   end)
-F.field3:LoadFromCallback(terra (mem : &float, i : uint) mem[0] = 6     end)
-F.field4:LoadFromCallback(terra (mem : &bool,  i : uint) mem[0] = false end)
-F.field5:LoadFromCallback(
-	terra (mem: &vector(float, 4), i : uint)
-		mem[0] = vectorof(float, 0, 0, 0, 0)
-	end
-)
+F.field1:LoadConstant(1)
+F.field2:LoadConstant(2.5)
+F.field3:LoadConstant(6)
+F.field4:LoadConstant(false)
+F.field5:LoadConstant(vector(float, 0, 0, 0, 0))
 
 
 -----------------

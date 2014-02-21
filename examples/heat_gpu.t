@@ -32,7 +32,6 @@ local PN    = terralib.require 'compiler.pathname'
 local LMesh = terralib.require "compiler.lmesh"
 local M     = LMesh.Load(PN.scriptdir():concat("rmesh.lmesh"):tostring())
 
-local init_to_zero = terra (mem : &float, i : int) mem[0] = 0 end
 local init_temp    = terra (mem : &float, i : int)
 	if i == 0 then
 		mem[0] = 1000
@@ -41,8 +40,8 @@ local init_temp    = terra (mem : &float, i : int)
 	end
 end
 
-M.vertices:NewField('flux',        L.float):LoadFromCallback(init_to_zero)
-M.vertices:NewField('jacobistep',  L.float):LoadFromCallback(init_to_zero)
+M.vertices:NewField('flux',        L.float):LoadConstant(0)
+M.vertices:NewField('jacobistep',  L.float):LoadConstant(0)
 M.vertices:NewField('temperature', L.float):LoadFromCallback(init_temp)
 
 

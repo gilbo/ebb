@@ -28,36 +28,23 @@ M.right  = M.outlet
 local C, V, F, E = M.cells, M.vertices, M.faces, M.edges
 
 
---------------------------------------------------------------------------------
---[[ Callback initializers for fields                                       ]]--
---------------------------------------------------------------------------------
-local function init(c) 
-	return terra (mem : &float, i : uint)
-		mem[0] = c
-	end
-end
-
-local float3_zero = terra (mem : &vector(float, 3), i : uint)
-	mem[0] = vectorof(float, 0, 0, 0)
-end
-
 
 --------------------------------------------------------------------------------
 --[[ FEM field allocation                                                   ]]--
 --------------------------------------------------------------------------------
-V:NewField('v_n',   L.vector(L.float, 3)):LoadFromCallback(float3_zero)
-V:NewField('v_p',   L.vector(L.float, 3)):LoadFromCallback(float3_zero)
-V:NewField('d_n',   L.vector(L.float, 3)):LoadFromCallback(float3_zero)
-V:NewField('a_n',   L.vector(L.float, 3)):LoadFromCallback(float3_zero)
-V:NewField('v_n_h', L.vector(L.float, 3)):LoadFromCallback(float3_zero)
-V:NewField('fext',  L.vector(L.float, 3)):LoadFromCallback(float3_zero)
-V:NewField('fint',  L.vector(L.float, 3)):LoadFromCallback(float3_zero)
+V:NewField('v_n',   L.vector(L.float, 3)):LoadConstant(vector(float, 0, 0, 0)
+V:NewField('v_p',   L.vector(L.float, 3)):LoadConstant(vector(float, 0, 0, 0)
+V:NewField('d_n',   L.vector(L.float, 3)):LoadConstant(vector(float, 0, 0, 0)
+V:NewField('a_n',   L.vector(L.float, 3)):LoadConstant(vector(float, 0, 0, 0)
+V:NewField('v_n_h', L.vector(L.float, 3)):LoadConstant(vector(float, 0, 0, 0)
+V:NewField('fext',  L.vector(L.float, 3)):LoadConstant(vector(float, 0, 0, 0)
+V:NewField('fint',  L.vector(L.float, 3)):LoadConstant(vector(float, 0, 0, 0)
 
-V:NewField('mass', L.float):LoadFromCallback(init(1.0))
+V:NewField('mass', L.float):LoadConstant(1.0)
 
-C:NewField('springConstant',    L.float):LoadFromCallback(init(0.3))
-E:NewField('initialEdgeLength', L.float):LoadFromCallback(init(0.0))
-E:NewField('currEdgeLength',    L.float):LoadFromCallback(init(0.0))
+C:NewField('springConstant',    L.float):LoadConstant(0.3)
+E:NewField('initialEdgeLength', L.float):LoadConstant(0.0)
+E:NewField('currEdgeLength',    L.float):LoadConstant(0.0)
 
 
 --------------------------------------------------------------------------------
