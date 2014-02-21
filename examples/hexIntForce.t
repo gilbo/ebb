@@ -74,12 +74,12 @@ function build_structured_face()
 		end
 	end
 	local function vcall (j)
-		return terra (mem : &uint64, ind : uint) mem[0] = vd[offset[ind]+j] end
+		return (function (i) return vd[offset[i] + j] end)
 	end
-	F:NewField('v0', V):LoadFromCallback(vcall(0))
-	F:NewField('v1', V):LoadFromCallback(vcall(1))
-	F:NewField('v2', V):LoadFromCallback(vcall(2))
-	F:NewField('v3', V):LoadFromCallback(vcall(3))
+	F:NewField('v0', V):LoadFunction(vcall(0))
+	F:NewField('v1', V):LoadFunction(vcall(1))
+	F:NewField('v2', V):LoadFunction(vcall(2))
+	F:NewField('v3', V):LoadFunction(vcall(3))
 	Clib.free(offset)
 end
 
@@ -97,16 +97,16 @@ function build_structured_cell()
 		end
 	end
 	local function ccall (j)
-		return terra (mem : &uint64, ind : uint) mem[0] = vd[offset[ind]+j] end
+		return (function (i) return vd[offset[i]+j] end)
 	end
-	C:NewField('v0', V):LoadFromCallback(ccall(0))
-	C:NewField('v1', V):LoadFromCallback(ccall(1))
-	C:NewField('v2', V):LoadFromCallback(ccall(2))
-	C:NewField('v3', V):LoadFromCallback(ccall(3))
-	C:NewField('v4', V):LoadFromCallback(ccall(4))
-	C:NewField('v5', V):LoadFromCallback(ccall(5))
-	C:NewField('v6', V):LoadFromCallback(ccall(6))
-	C:NewField('v7', V):LoadFromCallback(ccall(7))
+	C:NewField('v0', V):LoadFunction(ccall(0))
+	C:NewField('v1', V):LoadFunction(ccall(1))
+	C:NewField('v2', V):LoadFunction(ccall(2))
+	C:NewField('v3', V):LoadFunction(ccall(3))
+	C:NewField('v4', V):LoadFunction(ccall(4))
+	C:NewField('v5', V):LoadFunction(ccall(5))
+	C:NewField('v6', V):LoadFunction(ccall(6))
+	C:NewField('v7', V):LoadFunction(ccall(7))
 	Clib.free(offset)
 end
 

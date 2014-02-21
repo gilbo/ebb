@@ -32,13 +32,13 @@ local C, V, F, E = M.cells, M.vertices, M.faces, M.edges
 --------------------------------------------------------------------------------
 --[[ FEM field allocation                                                   ]]--
 --------------------------------------------------------------------------------
-V:NewField('v_n',   L.vector(L.float, 3)):LoadConstant(vector(float, 0, 0, 0)
-V:NewField('v_p',   L.vector(L.float, 3)):LoadConstant(vector(float, 0, 0, 0)
-V:NewField('d_n',   L.vector(L.float, 3)):LoadConstant(vector(float, 0, 0, 0)
-V:NewField('a_n',   L.vector(L.float, 3)):LoadConstant(vector(float, 0, 0, 0)
-V:NewField('v_n_h', L.vector(L.float, 3)):LoadConstant(vector(float, 0, 0, 0)
-V:NewField('fext',  L.vector(L.float, 3)):LoadConstant(vector(float, 0, 0, 0)
-V:NewField('fint',  L.vector(L.float, 3)):LoadConstant(vector(float, 0, 0, 0)
+V:NewField('v_n',   L.vector(L.float, 3)):LoadConstant(vector(float, 0, 0, 0))
+V:NewField('v_p',   L.vector(L.float, 3)):LoadConstant(vector(float, 0, 0, 0))
+V:NewField('d_n',   L.vector(L.float, 3)):LoadConstant(vector(float, 0, 0, 0))
+V:NewField('a_n',   L.vector(L.float, 3)):LoadConstant(vector(float, 0, 0, 0))
+V:NewField('v_n_h', L.vector(L.float, 3)):LoadConstant(vector(float, 0, 0, 0))
+V:NewField('fext',  L.vector(L.float, 3)):LoadConstant(vector(float, 0, 0, 0))
+V:NewField('fint',  L.vector(L.float, 3)):LoadConstant(vector(float, 0, 0, 0))
 
 V:NewField('mass', L.float):LoadConstant(1.0)
 
@@ -53,29 +53,35 @@ E:NewField('currEdgeLength',    L.float):LoadConstant(0.0)
 -- Since domain is a cube mesh, want to access vertices of face as 
 -- f.v0, f.v1, f.v2, f.v3
 local vd = M.verticesofface.vertex.data
+--local function vcall (j)
+--	return terra (mem : &uint64, i : uint) mem[0] = vd[4*i+j] end
+--end
 local function vcall (j)
-	return terra (mem : &uint64, i : uint) mem[0] = vd[4*i+j] end
+	return (function(i) return vd[4*i + j] end)
 end
 
-F:NewField('v0', V):LoadFromCallback(vcall(0))
-F:NewField('v1', V):LoadFromCallback(vcall(1))
-F:NewField('v2', V):LoadFromCallback(vcall(2))
-F:NewField('v3', V):LoadFromCallback(vcall(3))
+F:NewField('v0', V):LoadFunction(vcall(0))
+F:NewField('v1', V):LoadFunction(vcall(1))
+F:NewField('v2', V):LoadFunction(vcall(2))
+F:NewField('v3', V):LoadFunction(vcall(3))
 
 -- Similarly, want cell.v0, ... cell.v8
 local cd = M.verticesofcell.vertex.data
+--local function vcall (j)
+--	return terra (mem : &uint64, i : uint) mem[0] = cd[8*i+j] end
+--end
 local function vcall (j)
-	return terra (mem : &uint64, i : uint) mem[0] = cd[8*i+j] end
+	return (function(i) return cd[8*i + j] end)
 end
 
-C:NewField('v0', V):LoadFromCallback(vcall(0))
-C:NewField('v1', V):LoadFromCallback(vcall(1))
-C:NewField('v2', V):LoadFromCallback(vcall(2))
-C:NewField('v3', V):LoadFromCallback(vcall(3))
-C:NewField('v4', V):LoadFromCallback(vcall(4))
-C:NewField('v5', V):LoadFromCallback(vcall(5))
-C:NewField('v6', V):LoadFromCallback(vcall(6))
-C:NewField('v7', V):LoadFromCallback(vcall(7))
+C:NewField('v0', V):LoadFunction(vcall(0))
+C:NewField('v1', V):LoadFunction(vcall(1))
+C:NewField('v2', V):LoadFunction(vcall(2))
+C:NewField('v3', V):LoadFunction(vcall(3))
+C:NewField('v4', V):LoadFunction(vcall(4))
+C:NewField('v5', V):LoadFunction(vcall(5))
+C:NewField('v6', V):LoadFunction(vcall(6))
+C:NewField('v7', V):LoadFunction(vcall(7))
 
 -- Want edge.c1...
 -- Not all edges have the same number of cells, so we will have to build an array
@@ -95,10 +101,13 @@ for i = 0, M.cellsofedge:Size() do
 	end
 end
 
+--local function ccall (j)
+--	return terra (mem : &uint64, i : uint) mem[0] = cd[offset[i]+j] end
+--end
 local function ccall (j)
-	return terra (mem : &uint64, i : uint) mem[0] = cd[offset[i]+j] end
+	return (function(i) return cd[offset[i] + j] end)
 end
-E:NewField('c1', C):LoadFromCallback(ccall(1))
+E:NewField('c1', C):LoadFunction(ccall(1))
 
 
 --------------------------------------------------------------------------------

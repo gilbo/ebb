@@ -32,11 +32,11 @@ local PN    = terralib.require 'compiler.pathname'
 local LMesh = terralib.require "compiler.lmesh"
 local M     = LMesh.Load(PN.scriptdir():concat("rmesh.lmesh"):tostring())
 
-local init_temp    = terra (mem : &float, i : int)
+local function init_temp (i)
 	if i == 0 then
-		mem[0] = 1000
+		return 1000
 	else 
-		mem[0] = 0
+		return 0
 	end
 end
 

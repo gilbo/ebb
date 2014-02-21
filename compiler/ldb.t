@@ -232,11 +232,10 @@ function L.LField:ClearData ()
     end
 end
 
-function L.LField:LoadFromCallback (callback)
-    -- TODO: It would be nice to typecheck the callback's type signature...
+function L.LField:LoadFunction(lua_callback)
     self:Allocate()
     for i = 0, self:Size() - 1 do
-        callback(self.data + i, i)
+        self.data[i] = lua_callback(i)
     end
 end
 

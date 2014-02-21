@@ -41,9 +41,7 @@ local function initFieldViaCopy(field, src)
 
     local ftype = field.type:terraType()
 
-    field:LoadFromCallback(terra( dst : &ftype, i : int )
-        @dst = src[i]
-    end)
+    field:LoadFunction(function(i) return src[i] end)
 end
 
 -- we assume srcmem has terra type &uint32
@@ -67,7 +65,11 @@ local function initRowFromMemory32(field, srcmem, stride, offset)
     offset      = offset or 0
     assert(field.data == nil)
 
-    field:LoadFromCallback(row32_copy_callback(srcmem, stride, offset))
+    field:LoadFunction(function(i)
+        return srcmem[stride*i + offset]
+    end)
+
+    --field:LoadFromCallback(row32_copy_callback(srcmem, stride, offset))
 end
 
 local function alloc(n, typ)
