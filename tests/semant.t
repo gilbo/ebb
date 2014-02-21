@@ -17,12 +17,9 @@ s1 = L.NewScalar(L.int, 0)
 ------------------------
 -- Initialize fields: --
 ------------------------
-mesh.cells.f1:LoadFromCallback(terra (mem : &float, i : int) mem[0] = 0 end)
-mesh.cells.f2:LoadFromCallback(
-	terra (mem : &vector(float, 3), i : int)
-		mem[0] = vectorof(float, 0, 0, 0)
-	end
-)
+mesh.cells.f1:LoadConstant(0)
+mesh.cells.f2:LoadConstant(vector(float, 0,0,0))
+
 
 ---------------------
 -- Global lua vars --
