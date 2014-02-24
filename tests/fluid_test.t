@@ -187,12 +187,13 @@ glfw.glBindVertexArray(vao)
 local buffers = genBuffers(2)
 
 -- mjlgg: Dimension for fluid grid comes from here
+--local dim = {128, 128}
 local dim = {16, 16}
 
 globals = {}
-globals['viscosity'] = 0.00001
-globals['diffusion'] = 0.001
-dt = 0.08
+globals['viscosity'] = 0.01
+globals['diffusion'] = 0.01
+dt = 0.0008
 
 local fluid = Grid.GridClass:initUniformGrid(dim, {0, 0, 0}, globals)
 local fluidPrev = Grid.GridClass:initUniformGrid(dim, {0, 0, 0}, globals)
@@ -638,7 +639,7 @@ function advect(dim, dstGrid, dstIndex, srcGrid, srcIndex, uGrid, uIndex, vGrid,
                 x = dim[1] + 0.5
             end
 
-            local i0 = math.floor(x)
+            local i0 = math.floor(x) + 1
             local i1 = i0 + 1
 
             -- y
@@ -653,7 +654,7 @@ function advect(dim, dstGrid, dstIndex, srcGrid, srcIndex, uGrid, uIndex, vGrid,
                 y = dim[2] + 0.5
             end
 
-            local j0 = math.floor(x)
+            local j0 = math.floor(x) + 1
             local j1 = j0 + 1
 
             -- ...
@@ -668,13 +669,13 @@ function advect(dim, dstGrid, dstIndex, srcGrid, srcIndex, uGrid, uIndex, vGrid,
             local d10 = srcGrid:get({i1, j0})
             local d11 = srcGrid:get({i1, j1})
             local z = {d[1], d[2], d[3]}
-
+            
             z[dstIndex] = s0 * (t0 * d00[srcIndex] + t1 * d01[srcIndex]) + s1 * (t0 * d10[srcIndex] + t1 * d11[srcIndex])
 
             dstGrid:set({i, j}, z)
         end
     end
-
+    
     setBoundary(dim, dstGrid, dstIndex, boundaryFlag)
 end
 
@@ -694,6 +695,7 @@ function diffuse(dim, dstGrid, srcGrid, index, diff, dt, boundaryFlag)
                 local topX = dstGrid:get({i, j + 1})
 
                 z[index] = (y[index] + a * (leftX[index] + rightX[index] + botX[index] + topX[index])) / (1 + 4 * a)
+
                 dstGrid:set({i, j}, z)
             end
         end
@@ -760,7 +762,7 @@ function project(dim, uGrid, uIndex, vGrid, vIndex, pGrid, pIndex, divGrid, divI
             local leftP = pGrid:get({i - 1, j})
             local rightP = pGrid:get({i + 1, j})
 
-            u0[uIndex] = (rightP[pIndex] - leftP[pIndex]) / h
+            u0[uIndex] = u0[uIndex] - 0.5 * (rightP[pIndex] - leftP[pIndex]) / h
             uGrid:set({i, j}, u0)
 
             local v = vGrid:get({i, j})
@@ -769,7 +771,7 @@ function project(dim, uGrid, uIndex, vGrid, vIndex, pGrid, pIndex, divGrid, divI
             local botP = pGrid:get({i, j + 1})
             local topP = pGrid:get({i, j - 1})
 
-            v0[vIndex] = (botP[pIndex] - topP[pIndex]) / h
+            v0[vIndex] = v0[vIndex] - 0.5 * (botP[pIndex] - topP[pIndex]) / h
             vGrid:set({i, j}, v0)
         end
     end
@@ -781,7 +783,7 @@ end
 function dens_step(dim, dstGrid, dstIndex, srcGrid, srcIndex, uGrid, uIndex, vGrid, vIndex, diff, dt)
     assert(dstIndex == srcIndex)
     addSource(dim, dstGrid, dstIndex, srcGrid, srcIndex, dt)
-    diffuse(dim, dstGrid, srcGrid, srcIndex, diff, dt, 0)
+    diffuse(dim, srcGrid, dstGrid, srcIndex, diff, dt, 0)
     advect(dim, dstGrid, dstIndex, srcGrid, srcIndex, uGrid, uIndex, vGrid, vIndex, dt, 0)
 end
 
@@ -792,9 +794,11 @@ function vel_step(dim, uDstGrid, vDstGrid, uSrcGrid, vSrcGrid, uIndex, vIndex, v
     diffuse(dim, uSrcGrid, uDstGrid, uIndex, visc, dt, 1)
     diffuse(dim, vSrcGrid, vDstGrid, vIndex, visc, dt, 2)
 
-    project(dim, uDstGrid, uIndex, vDstGrid, vIndex, uSrcGrid, uIndex, vSrcGrid, vIndex)
-    advect(dim, uSrcGrid, uIndex, uDstGrid, uIndex, vSrcGrid, vIndex, uSrcGrid, uIndex, dt, 1)
-    advect(dim, vSrcGrid, vIndex, vDstGrid, vIndex, vSrcGrid, vIndex, uSrcGrid, uIndex, dt, 2)
+    project(dim, uSrcGrid, uIndex, vSrcGrid, vIndex, uDstGrid, uIndex, vDstGrid, vIndex)
+    --project(dim, uDstGrid, uIndex, vDstGrid, vIndex, uSrcGrid, uIndex, vSrcGrid, vIndex)
+
+    advect(dim, uDstGrid, uIndex, uSrcGrid, uIndex, uSrcGrid, uIndex, vSrcGrid, vIndex, dt, 1)
+    advect(dim, vDstGrid, vIndex, vSrcGrid, vIndex, uSrcGrid, uIndex, vSrcGrid, vIndex, dt, 2)
     project(dim, uDstGrid, uIndex, vDstGrid, vIndex, uSrcGrid, uIndex, vSrcGrid, vIndex)
 end
 
@@ -811,8 +815,18 @@ local function getFramebufferSize(window)
     return pWidth[0], pHeight[0]
 end
 
-fluid[1][1][3] = 0.1
-fluidPrev[1][1][3] = 0.1
+fluid[1][1][1] = 0.01
+fluid[1][1][2] = 0.01
+
+fluid[1][1][3] = 1
+--fluid[1][1][2] = 0.1
+--fluid[1][1][3] = 0.1
+
+for i = 1, dim[1] do
+    for j = 1, dim[1] do
+        print("(1, 2, 3) = (", fluid[i][j][1], ", ", fluid[i][j][2], ", ", fluid[i][j][3], ")")
+    end
+end
 
 -- loop
 while glfw.glfwWindowShouldClose(window) == 0 do
@@ -862,12 +876,15 @@ while glfw.glfwWindowShouldClose(window) == 0 do
     
     --print("Running dens_step()...")
     dens_step({dim[1] - 2, dim[2] - 2}, fluid, 3, fluidPrev, 3, fluid, 1, fluid, 2, fluid['globals']['diffusion'], dt)
-    
+
     -- Update density
     for i = 1, dim[1] do
         for j = 1, dim[2] do
             c = 18 * (i - 1) + 18 * (j - 1) * (dim[1] - 1)
             lowc = 18 * (i - 1) + 18 * (j - 2) * (dim[1] - 1)
+            
+            x = fluid[i][j][1]
+            y = fluid[i][j][2]
             d = fluid[i][j][3]
             
             if (i > 1) and (j < dim[2]) then
@@ -884,7 +901,7 @@ while glfw.glfwWindowShouldClose(window) == 0 do
 
             if (i < dim[1]) and (j < dim[2]) then
                 -- 3 (center)
-                vc[c] = d
+                vc[c] =     d
                 vc[c + 1] = d
                 vc[c + 2] = d
             end

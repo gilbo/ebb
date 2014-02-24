@@ -31,6 +31,7 @@ function Grid.GridClass:initUniformGrid(dim, value, globals)
         value = 0
     end
 
+    local table = {}
     local grid = setmetatable(table, Grid.GridClass)
 
     for i = 1, dim[1] do
