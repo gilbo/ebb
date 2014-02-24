@@ -44,8 +44,8 @@ local function compare_field_data(fa, fb)
 
   local i = comparefn(fa.data, fb.data, fa:Size())
   if i ~= fa:Size() then
-    error('data inconsistency at position #'..i..
-          '  '..fa.data[i]..'  vs.  '..fb.data[i], 2)
+    error('data inconsistency at position #'..tostring(i)..
+          '  '..tostring(fa.data[i])..'  vs.  '..tostring(fb.data[i]), 2)
   end
 end
 
@@ -223,24 +223,16 @@ simp_rels.particle_cell = L.NewRelation(30, 'particle_cell')
   simp_rels.particle_cell:NewField('c', simp_rels.cells)
 
 -- intialize relation
-simp_rels.cells.temperature:LoadFromCallback(terra(t : &double, i : int)
-  @t = 25.0 - (4.5-i)*(4.5-i)
+simp_rels.cells.temperature:LoadFunction(function(i)
+  return 25.0 - (4.5-i)*(4.5-i)
 end)
-simp_rels.particles.temperature:LoadFromCallback(
-  terra(t : &double, i : int) @t = 0.0 end)
-simp_rels.particles.position:LoadFromCallback(
-  terra(pos : &vector(double, 3), i : int)
-    var mi = i % 10
-    @pos = vector(mi + 0.5, 0.0, 0.0)
-  end)
-simp_rels.particle_cell.p:LoadFromCallback(
-  terra(p : &uint64, i : int)
-    @p = i
-  end)
-simp_rels.particle_cell.c:LoadFromCallback(
-  terra(c : &uint64, i : int)
-    @c = i % 10
-  end)
+simp_rels.particles.temperature:LoadConstant(0.0)
+simp_rels.particles.position:LoadFunction(function(i)
+  return vector(float, i % 10 + 0.5, 0.0, 0.0)
+end)
+simp_rels.particle_cell.p:LoadFunction(function(i) return i end)
+simp_rels.particle_cell.c:LoadFunction(function(i) return i % 10 end)
+
 
 -- load a disk copy of the relation above
 local simp_rels_load = L.LoadRelationSchema{ file = datadir .. 'simp' }

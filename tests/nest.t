@@ -4,7 +4,7 @@ local LMesh = terralib.require "compiler.lmesh"
 local mesh = LMesh.Load("examples/mesh.lmesh")
 
 mesh.faces:NewField('field', L.float)
-mesh.faces.field:LoadFromCallback(terra (mem: &float, i : uint) mem[0] = 0 end)
+mesh.faces.field:LoadConstant(0)
 
 local lassert, lprint, length = L.assert, L.print, L.length
 

@@ -5,17 +5,17 @@ local LMesh = terralib.require "compiler.lmesh"
 local M     = LMesh.Load(PN.scriptdir():concat("rmesh.lmesh"):tostring())
 
 local init_to_zero = terra (mem : &float, i : int) mem[0] = 0 end
-local init_temp    = terra (mem : &float, i : int)
+local function init_temp (i)
 	if i == 0 then
-		mem[0] = 1000
+		return 1000
 	else
-		mem[0] = 0
+		return 0
 	end
 end
 
-M.vertices:NewField('flux',        L.float):LoadFromCallback(init_to_zero)
-M.vertices:NewField('jacobistep',  L.float):LoadFromCallback(init_to_zero)
-M.vertices:NewField('temperature', L.float):LoadFromCallback(init_temp)
+M.vertices:NewField('flux',        L.float):LoadConstant(0)
+M.vertices:NewField('jacobistep',  L.float):LoadConstant(0)
+M.vertices:NewField('temperature', L.float):LoadFunction(init_temp)
 
 local compute_step = liszt_kernel(e : M.edges)
 	var v1   = e.head

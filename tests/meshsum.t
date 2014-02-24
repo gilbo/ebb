@@ -3,7 +3,7 @@ local LMesh = terralib.require "compiler.lmesh"
 
 local mesh = LMesh.Load("examples/mesh.lmesh")
 mesh.vertices:NewField('count', L.float)
-mesh.vertices.count:LoadFromCallback(terra (mem: &float, i : uint) mem[0] = 0 end)
+mesh.vertices.count:LoadConstant(0)
 
 
 local sum_count = liszt_kernel (e : mesh.edges)

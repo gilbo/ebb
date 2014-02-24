@@ -4,6 +4,21 @@ package.loaded["compiler.types"] = T
 
 local L = terralib.require "compiler.lisztlib"
 
+-- From the Lua Documentation
+function pairs_sorted(tbl, compare)
+  local arr = {}
+  for k in pairs(tbl) do table.insert(arr, k) end
+  table.sort(arr, compare)
+
+  local i = 0
+  local iter = function() -- iterator
+    i = i + 1
+    if arr[i] == nil then return nil
+    else return arr[i], tbl[arr[i]] end
+  end
+  return iter
+end
+
 -------------------------------------------------------------------------------
 --[[ Liszt type prototype:                                                 ]]--
 -------------------------------------------------------------------------------
@@ -40,12 +55,20 @@ end
 function Type:isQuery()
   return self.kind == "query"
 end
+function Type:isRecord()
+  return self.kind == "record"
+end
 
--- Can this type of AST represent a Liszt value
+-- These types represent Liszt values (not row references though)
 function Type:isValueType()
   return self:isPrimitive() or self:isVector()
 end
--- eventually this type should support rows...
+
+-- These are types that are valid to use for a field
+function Type:isFieldType()
+  return self:isValueType() or self:isRow()
+end
+
 
 -------------------------------------------------------------------------------
 --[[ Primitive/Vector Type Methods                                         ]]--
@@ -100,7 +123,10 @@ end
 
 local vector_types = {}
 local function vectorType (typ, len)
-  if not T.isLisztType(typ) or not typ:isPrimitive() then error("invalid type argument to vector type constructor (is this a terra type?)", 2) end
+  if not T.isLisztType(typ) or not typ:isPrimitive() then
+    error("invalid type argument to vector type constructor "..
+          "(is this a terra type?)", 2)
+  end
   local tpn = 'vector(' .. typ:toString() .. ',' .. tostring(len) .. ')'
   if not vector_types[tpn] then
     local vt = Type:new("vector")
@@ -109,6 +135,38 @@ local function vectorType (typ, len)
     vector_types[tpn] = vt
   end
   return vector_types[tpn]
+end
+
+local record_types = {}
+local function recordType (rec)
+  if type(rec) ~= 'table' then
+    error('invalid argument to record type constructor:\n'..
+          '  must supply a table', 2)
+  end
+  -- string for de-duplicating types
+  local unique_str = '{'
+  -- build the string and check the types
+  for name, typ in pairs_sorted(rec) do
+    if type(name) ~= 'string' then
+      error('invalid argument to record type constructor:\n'..
+            '  table keys must be strings', 2)
+    end
+    if not T.isLisztType(typ) or
+       not (typ:isValueType() or typ:isRow())
+    then
+      error('invalid argument to record type constructor:\n'..
+            '  table values must be valid types for fields', 2)
+    end
+    unique_str = unique_str .. tostring(name) .. '=' .. tostring(typ) .. ','
+  end
+  unique_str = unique_str .. '}'
+
+  if not record_types[unique_str] then
+    local rt = Type:new("record")
+    rt.rec = rec
+    record_types[unique_str] = rt
+  end
+  return record_types[unique_str]
 end
 
 local function cached(ctor)
@@ -124,7 +182,8 @@ local function cached(ctor)
 end
 local function checkrelation(relation)
     if not L.is_relation(relation) then
-        error("invalid argument to type constructor. A relation must be provided", 4)
+        error("invalid argument to type constructor."..
+              "A relation must be provided", 4)
     end
 end
 local rowType = cached(function(relation)
@@ -165,6 +224,7 @@ end
 -- Complex type constructors
 L.vector    = vectorType
 L.row       = rowType
+L.record    = recordType
 L.internal  = internalType
 L.query     = queryType
 -- Errors
@@ -183,6 +243,16 @@ function Type:toString()
   elseif self:isVector()    then return 'Vector('..self.type:toString()..
                                         ','..tostring(self.N)..')'
   elseif self:isRow()       then return 'Row('..self.relation:Name()..')'
+  elseif self:isRecord()    then
+    local str = 'Record({ '
+    local first_pair = true
+    for name, typ in pairs_sorted(self.rec) do
+      if first_pair then first_pair = false
+      else str = str .. ', ' end
+      str = str .. name .. '=' .. typ:toString()
+    end
+    str = str .. ' })'
+    return str
   elseif self:isQuery()     then return 'Query('..self.relation:Name()..').'
                                         ..table.concat(self.projections,'.') 
   elseif self:isInternal()  then return 'Internal('..tostring(self.value)..')'

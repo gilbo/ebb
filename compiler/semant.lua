@@ -306,9 +306,7 @@ function ast.DeclStatement:check(ctxt)
     end
     decl.node_type = typ
 
-    if typ ~= L.error and
-         not typ:isValueType() and not typ:isRow()
-    then
+    if typ ~= L.error and not typ:isFieldType() then
         ctxt:error(self,"can only assign numbers, bools, "..
                         "or rows to local temporaries")
     end
