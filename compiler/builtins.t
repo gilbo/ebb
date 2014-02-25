@@ -44,7 +44,7 @@ function B.id.check(ast, ctxt)
         return L.error
     end
 
-    return L.int
+    return L.addr
 end
 
 function B.id.codegen(ast, env)
@@ -149,11 +149,7 @@ local function printOne(env,output)
     local lt   = output.node_type
     local tt   = lt:terraType()
     local code = output:codegen(env)
-    if     lt == L.float or lt == L.double then return quote C.printf("%f", [double](code)) end
-	elseif lt == L.int   or lt:isRow() then return quote C.printf("%d", code) end
-	elseif lt == L.bool  then
-        return quote C.printf("%s", terralib.select(code, "true", "false")) end
-	elseif lt:isVector() then
+    if lt:isVector() then
         local printSpec = "{"
         local sym = symbol()
         local elemQuotes = {}
@@ -178,6 +174,12 @@ local function printOne(env,output)
         in
             C.printf(printSpec, elemQuotes)
         end
+    elseif lt == L.bool  then
+        return quote C.printf("%s", terralib.select(code, "true", "false")) end
+    elseif lt == L.float or lt == L.double then
+        return quote C.printf("%f", [double](code)) end
+	elseif lt:isNumeric() or lt:isRow() then
+        return quote C.printf("%d", code) end
     else
         assert(false and "printed object should always be number, bool, or vector")
     end

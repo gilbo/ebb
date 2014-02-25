@@ -1,94 +1,61 @@
 import "compiler.liszt"
 
 local Grid = {}
-
+Grid.__index = Grid
 package.loaded["compiler.grid"] = Grid
 
 local L = terralib.require "compiler.lisztlib"
 
-Grid.GridClass = {}
-Grid.GridClass.__index = Grid.GridClass
 
--- mjlgg: Useful table printer
-function tprint (tbl, indent)
-    if not indent then indent = 0 end
-    for k, v in pairs(tbl) do
-        local formatting = string.rep("  ", indent) .. k .. ": "
-        if type(v) == "table" then
-            print(formatting)
-            tprint(v, indent+1)
-        else
-            print(formatting .. tostring(v))
-        end
-    end
+
+local function installMacros(grid)
+    --grid.cells:NewFieldMacro('offset', L.NewMacro(function(c, xoff, yoff)
+    --    -- TODO should check that xoff/yoff are number literals here...
+    --    local xsize = grid:xSize()
+    --    return liszt `begin
+    --        var id = L.id(c)
+    --        var new_id = id + yoff * xsize + xoff
+    --        return L.UNSAFE_ROW(new_id, grid.cells)
+    --    end
+    --    -- TODO: somehow return null? when there is no cell?
+    --end))
+    
+    grid.cells:NewFieldMacro('left', L.NewMacro(function(c)
+        return liszt `L.UNSAFE_ROW( L.id(c)-1, grid.cells )
+    end))
 end
 
-function Grid.GridClass:initUniformGrid(dim, value, globals)
-    assert(dim)
-    assert(#dim == 2 or #dim == 3)
-
-    if value == nil then
-        value = 0
+function Grid.New2dUniformGrid(xSize, ySize)
+    if not xSize or not ySize then
+        error('must supply the x and y size of the grid', 2)
     end
 
-    local table = {}
-    local grid = setmetatable(table, Grid.GridClass)
+    local nCells = xSize * ySize
 
-    for i = 1, dim[1] do
-        table[i] = {}
-        for j = 1, dim[2] do
-            if #dim == 3 then
-                for k = 1, dim[3] do
-                    table[i][j][k] = value
-                end
-            else
-                table[i][j] = value
-            end
-        end
-    end
-    
-    grid['dim'] = dim
-    grid['globals'] = globals
-    
+    local grid = setmetatable({
+        xdim = xSize,
+        ydim = ySize,
+        cells = L.NewRelation(nCells, 'cells'),
+    }, Grid)
+
+    installMacros(grid)
+
     return grid
 end
 
-function Grid.GridClass:get(index)
-    if #index == 2 then
-        assert(index[1] <= self['dim'][1])
-        assert(index[2] <= self['dim'][2])
-
-        return self[index[1]][index[2]]
-    else
-        assert(#index == 3)
-        assert(#self['dim'] == 3)
-        assert(index[1] <= self['dim'][1])
-        assert(index[2] <= self['dim'][2])
-        assert(index[3] <= self['dim'][3])
-
-        return self[index[1]][index[2]][index[3]]
-    end
+function Grid:xSize()
+    return self.xdim
 end
 
-function Grid.GridClass:set(index, value)
-    if #index == 2 then
-        assert(#self['dim'] == 2)
-        assert(index[1] <= self['dim'][1])
-        assert(index[2] <= self['dim'][2])
-
-        self[index[1]][index[2]] = value
-    else
-        assert(#index == 3)
-        assert(#self['dim'] == 3)
-        assert(index[1] <= self['dim'][1])
-        assert(index[2] <= self['dim'][2])
-        assert(index[3] <= self['dim'][3])
-
-        self[index[1]][index[2]][index[3]] = value
-    end
+function Grid:ySize()
+    return self.ydim
 end
 
-function Grid.GridClass:print()
-    tprint(self)
-end
+
+--[[ NOTE MACRO PROBLEMS: 
+    We cannot create a complicated expression, which we need to implement
+    offset correctly...
+]]
+
+
 

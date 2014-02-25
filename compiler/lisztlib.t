@@ -26,7 +26,7 @@ terralib.require "compiler.builtins"
 local LDB = terralib.require "compiler.ldb"
 local semant = terralib.require "compiler.semant"
 local codegen = terralib.require "compiler.codegen"
-L.LDB = LDB
+--L.LDB = LDB
 
 --[[
 - An LRelation contains its size and fields as members.  The _index member
