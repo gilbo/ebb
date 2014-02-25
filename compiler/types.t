@@ -76,15 +76,15 @@ end
 
 -- of type integer or vectors of integers
 function Type:isIntegral ()
-  return self:isValueType() and self.terratype:isintegral()
+  return self:isValueType() and self:terraBaseType():isintegral()
 end
 
 function Type:isNumeric ()
-  return self:isValueType() and self.terratype:isarithmetic()
+  return self:isValueType() and self:terraBaseType():isarithmetic()
 end
 
 function Type:isLogical ()
-  return self:isPrimitive() and self.terratype == bool
+  return self:isPrimitive() and self:terraBaseType() == bool
 end
 
 -------------------------------------------------------------------------------
