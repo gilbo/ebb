@@ -35,8 +35,9 @@ test.fuzzy_eq(avgy, 4)
 -- Should fail: --
 ------------------
 idx = 3.5
-local vk2 = liszt_kernel(v : mesh.vertices)
-    v.position[idx] = 5
-end
-test.fail_kernel(vk2, mesh.vertices, "expected an integer")
+test.fail_function(function()
+  liszt_kernel(v : mesh.vertices)
+      v.position[idx] = 5
+  end
+end, "expected an integer")
 

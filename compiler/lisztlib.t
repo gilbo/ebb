@@ -289,11 +289,23 @@ Kernel.__call  = function (kobj, relation)
 end
 
 function L.NewKernel(kernel_ast, env)
-	return setmetatable({ast=kernel_ast,env=env,__kernels={}}, Kernel)
+    local new_kernel = setmetatable({
+        ast=kernel_ast,
+        env=env,
+        __kernels={}
+    }, Kernel)
+
+    new_kernel.typed_ast = semant.check(env, kernel_ast)
+
+	return new_kernel
 end
 
 function Kernel:generate (runtime, relation)
-    self.typed_ast = semant.check(self.env, self.ast, relation)
+    -- Right now, we require that the relation match exactly
+    local ast_relation = self.typed_ast.relation
+    if ast_relation ~= relation then
+        error('Kernels may only be called on relation they were typed with')
+    end
 
     if not self.__kernels[runtime] then
         self.__kernels[runtime] = {}
@@ -303,3 +315,5 @@ function Kernel:generate (runtime, relation)
             codegen.codegen(runtime, self.env, self.typed_ast, relation)
 	end
 end
+
+

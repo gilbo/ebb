@@ -161,10 +161,8 @@ lang.liszt_kernel = function (P)
 	-- parse parameter
 	local open  = P:expect("(")
 	local iter  = P:expect(P.name).value
-	local set   = nil
-	if P:nextif(":") then
-		set 		  = P:exp()
-	end
+	local from  = P:expect(":")
+	local set   = P:exp()
 	P:expectmatch(")", "(", open.linenumber)
 
 	-- parse block

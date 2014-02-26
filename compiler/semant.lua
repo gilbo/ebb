@@ -889,14 +889,17 @@ function ast.Where:check(ctxt)
     local fieldobj = self.field.node_type
     local keytype  = self.key.node_type
     if not fieldobj:isInternal() or not L.is_field(fieldobj.value) then
-        ctxt:error(self,"Expected a field as the first argument but found ",fieldobj)
+        ctxt:error(self,"Expected a field as the first argument but found "
+                   ,fieldobj)
     end
     local field = fieldobj.value
     if keytype ~= field.type then
-        ctxt:error(self,"Key of where is type ",keytype," but expected type ",field.type)
+        ctxt:error(self,"Key of where is type ",keytype,
+                   " but expected type ",field.type)
     end
     if field.owner._index ~= field then
-        ctxt:error(self,"Field ",field.name, " is not an index of ",field.owner:Name())
+        ctxt:error(self,"Field ",field.name,
+                   " is not an index of ",field.owner:Name())
     end
     local w     = self:clone()
     w.relation  = field.owner
@@ -909,28 +912,25 @@ end
 ------------------------------------------------------------------------------
 --[[ Semantic checking called from here:                                  ]]--
 ------------------------------------------------------------------------------
-function ast.LisztKernel:check(ctxt, relation) -- hacked 2nd parameter
+function ast.LisztKernel:check(ctxt) -- hacked 2nd parameter
     local kernel              = self:clone()
-
-    -- check the set (TODO: check consistency of type signature between
-    --  The relation provided for typing and the relation executed over)
-    if self.set then 
-        local set    = self.set:check(ctxt)
-        if not set.node_type:isInternal() or
-           not L.is_relation(set.node_type.value)
-        then
-            ctxt:error(kernel.set, "Expected a relation")
-        end
-    end
-
     kernel.name               = self.name
-    ctxt:liszt()[kernel.name] = L.row(relation)
-    kernel.body               = self.body:check(ctxt)
+
+    local set    = self.set:check(ctxt)
+    if set.node_type:isInternal() and
+       L.is_relation(set.node_type.value)
+    then
+        kernel.relation             = set.node_type.value
+        ctxt:liszt()[kernel.name]   = L.row(kernel.relation)
+        kernel.body                 = self.body:check(ctxt)
+    else
+        ctxt:error(kernel.set, "Expected a relation")
+    end
 
     return kernel
 end
 
-function S.check(luaenv, kernel_ast, relation)
+function S.check(luaenv, kernel_ast)
     -- environment for checking variables and scopes
     local env  = terralib.newenvironment(luaenv)
     local diag = terralib.newdiagnostics()
@@ -940,7 +940,7 @@ function S.check(luaenv, kernel_ast, relation)
 
     diag:begin()
     env:enterblock()
-    local new_kernel_ast = kernel_ast:check(ctxt, relation)
+    local new_kernel_ast = kernel_ast:check(ctxt)
     env:leaveblock()
     diag:finishandabortiferrors("Errors during typechecking liszt", 1)
     new_kernel_ast.field_usage = ctxt:field_usage()

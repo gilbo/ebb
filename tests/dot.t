@@ -27,13 +27,17 @@ local test_dot = liszt_kernel(f : mesh.faces)
 end
 test_dot(mesh.faces)
 
-local test_bad_len = liszt_kernel(f : mesh.faces)
+
+
+test.fail_function(function()
+  liszt_kernel(f : mesh.faces)
     assert(dot(v1, v3) == 7)
-end
-test.fail_kernel(test_bad_len, mesh.faces, "differing lengths")
+  end
+end, "differing lengths")
 
 local vb = L.NewVector(L.bool, {true, true, false})
-local test_bad_bool = liszt_kernel(f : mesh.faces)
+test.fail_function(function()
+  liszt_kernel(f : mesh.faces)
     assert(dot(v1, vb) == 52)
-end
-test.fail_kernel(test_bad_bool, mesh.faces, "boolean vector")
+  end
+end, "boolean vector")
