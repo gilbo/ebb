@@ -46,3 +46,22 @@ end)
     var expected = 4.0 * length(v.position) * length(v.position)
     assert(square(lensq - expected) < 0.00005)
 end)(mesh.vertices)
+
+--------------------------------------
+--Test Macros Using Let-Style Quotes--
+--------------------------------------
+local sub1_but_non_neg = L.NewMacro(function(num)
+    return liszt quote
+        var result = num - 1
+        if result < 0 then result = 0 end
+    in
+        result
+    end
+end)
+(liszt kernel (v : mesh.vertices)
+    assert(sub1_but_non_neg(2) == 1)
+    assert(sub1_but_non_neg(0) == 0)
+end)(mesh.vertices)
+
+
+

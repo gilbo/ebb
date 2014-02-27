@@ -12,7 +12,7 @@ L = lisztlib
 local lisztlanguage = {
 	name        = "liszt", -- name for debugging
 	entrypoints = {"liszt_kernel", "liszt"},
-	keywords    = {"var", "kernel"},
+	keywords    = {"var", "kernel", "quote"},
 
 	expression = function(self, lexer)
 		local ast = P.Parse(lexer)
