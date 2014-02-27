@@ -21,7 +21,14 @@ local function installMacros(grid)
     --end))
     
     grid.cells:NewFieldMacro('left', L.NewMacro(function(c)
-        return liszt `L.UNSAFE_ROW( L.id(c)-1, grid.cells )
+        return liszt quote
+            var raw_addr = L.id(c)
+            -- TODO: The following assert should check the entire
+            -- left side of the grid, not just the top left
+            assert(raw_addr > 0)
+        in
+            L.UNSAFE_ROW( raw_addr-1, grid.cells )
+        end
     end))
 end
 
