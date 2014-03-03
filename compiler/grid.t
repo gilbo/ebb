@@ -25,9 +25,58 @@ local function installMacros(grid)
             var raw_addr = L.id(c)
             -- TODO: The following assert should check the entire
             -- left side of the grid, not just the top left
-            assert(raw_addr > 0)
+--            assert(raw_addr > 0)
+            raw_addr -= 1
         in
-            L.UNSAFE_ROW( raw_addr-1, grid.cells )
+            L.UNSAFE_ROW( raw_addr, grid.cells )
+        end
+    end))
+
+    grid.cells:NewFieldMacro('right', L.NewMacro(function(c)
+        return liszt quote
+            var raw_addr = L.id(c)
+            -- TODO: The following assert should check the entire
+            -- left side of the grid, not just the top left
+--            assert(raw_addr > 0)
+            raw_addr += 1
+        in
+            L.UNSAFE_ROW( raw_addr, grid.cells )
+        end
+    end))
+
+    grid.cells:NewFieldMacro('top', L.NewMacro(function(c)
+        return liszt quote
+            var raw_addr = L.id(c)
+            -- TODO: The following assert should check the entire
+            -- left side of the grid, not just the top left
+--            assert(raw_addr > 0)
+            raw_addr -= grid.xdim
+        in
+            L.UNSAFE_ROW( raw_addr, grid.cells )
+        end
+    end))
+
+    grid.cells:NewFieldMacro('bot', L.NewMacro(function(c)
+        return liszt quote
+            var raw_addr = L.id(c)
+            -- TODO: The following assert should check the entire
+            -- left side of the grid, not just the top left
+--            assert(raw_addr > 0)
+            raw_addr += grid.xdim
+        in
+            L.UNSAFE_ROW( raw_addr, grid.cells )
+        end
+    end))
+
+    grid.cells:NewFieldMacro('nbr', L.NewMacro(function(c)
+        return liszt quote
+            var raw_addr = L.id(c)
+            -- TODO: The following assert should check the entire
+            -- left side of the grid, not just the top left
+--            assert(raw_addr > 0)
+            raw_addr += x + (y * grid.xdim)
+        in
+            L.UNSAFE_ROW( raw_addr, grid.cells )
         end
     end))
 end
@@ -57,7 +106,6 @@ end
 function Grid:ySize()
     return self.ydim
 end
-
 
 --[[ NOTE MACRO PROBLEMS: 
     We cannot create a complicated expression, which we need to implement

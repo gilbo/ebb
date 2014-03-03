@@ -2,29 +2,165 @@ import "compiler.liszt"
 
 local Grid = terralib.require 'compiler.grid'
 
-local grid = Grid.New2dUniformGrid(20,20)
+local N = 3
+local grid = Grid.New2dUniformGrid(N, N)
 
 grid.cells:NewField('density', L.float)
-grid.cells.density:LoadConstant(0)
+grid.cells.density:LoadConstant(1)
+
+grid.cells:NewField('density_prev', L.float)
+grid.cells.density:LoadConstant(1)
+
+grid.cells:NewField('density_temp', L.float)
+grid.cells.density_temp:LoadConstant(0)
 
 grid.cells:NewField('velocity', L.vector(L.float, 2))
 grid.cells.velocity:LoadConstant(L.NewVector(L.float, {0,0}))
 
-grid.cells:NewField('temp_density', L.float)
-grid.cells.temp_density:LoadConstant(0)
+grid.cells:NewField('velocity_prev', L.vector(L.float, 2))
+grid.cells.velocity:LoadConstant(L.NewVector(L.float, {0,0}))
 
+grid.cells:NewField('velocity_temp', L.vector(L.float, 2))
+grid.cells.velocity_temp:LoadConstant(L.NewVector(L.float, {0,0}))
 
-local diffuse = liszt kernel(c : grid.cells)
-  var sq_density = c.density * c.density
+local a = 0
+local dt0 = 0
+local h = 0
 
-  c.temp_density = sq_density
+local diff = 1
+local visc = 0.01
+local dt = 0.01
+
+-----------------------------------------------------------------------------
+--[[                             ADD SOURCE                              ]]--
+-----------------------------------------------------------------------------
+
+local addsource_density = liszt_kernel(c : grid.cells)
+    c.density = c.density_prev
 end
 
-local diffuse2 = liszt_kernel(c : grid.cells)
-  c.density = c.temp_density
+local addsource_velocity = liszt_kernel(c : grid.cells)
+    c.velocity = c.velocity_prev
 end
 
-for i=1,100 do
-  diffuse(grid.cells)
-  diffuse2(grid.cells)
+-----------------------------------------------------------------------------
+--[[                             DIFFUSE                                 ]]--
+-----------------------------------------------------------------------------
+
+local function diffuse_preprocess(val)
+    a = dt * val * N * N
 end
+
+local diffuse_density = liszt_kernel(c : grid.cells)
+-- TODO: Deal with boundary conditions
+        c.density_temp = (c.density_prev + a * (c.left.density + c.right.density + c.top.density + c.bot.density)) / (1 + 4 * a)
+end
+
+local diffuse_density_update = liszt_kernel(c : grid.cells)
+    c.density = c.density_temp
+end
+
+-----------------------------------------------------------------------------
+--[[                             ADVECT                                  ]]--
+-----------------------------------------------------------------------------
+
+local function advect_preprocess()
+    dt0 = dt * N
+end
+
+local advect_density = liszt_kernel(c : grid.cells)
+    local x = i - dt0 * c.velocity[1]
+    local x = 0
+
+    if x < 0.5 then
+        x = 0.5
+    end
+
+    if x > N + 0.5 then
+        x = N + 0.5
+    end
+
+    local i0 = math.floor(x) + 1
+    local i1 = i0 + 1
+
+    local y = j - dt0 * c.velocity[2]
+    local y = 0
+
+    if y < 0.5 then
+        y = 0.5
+    end
+
+    if y > N + 0.5 then
+        y = N + 0.5
+    end
+
+    local j0 = math.floor(x) + 1
+    local j1 = j0 + 1
+
+    local s1 = x - i0
+    local s0 = 1 - s1
+    local t1 = y - j0
+    local t0 = 1 - t1
+    
+    c.density_temp = s0 * (t0 * c.density_prev.nbr(i0, j0) + t1 * c.density_prev.nbr(i0, j1) + s1 * (t0 * c.density_prev.nbr(i1, j0) + t1 * c.density_prev.nbr(i1, j1)))
+end
+
+local advect_density_update(c : grid.cells)
+    c.density = c.density_temp
+end
+
+-----------------------------------------------------------------------------
+--[[                             PROJECT                                 ]]--
+-----------------------------------------------------------------------------
+
+local function project_preprocess()
+    h = 1 / N
+end
+
+local project_1 = liszt_kernel(c : grid.cells)
+    c.velocity_prev[2] =  -0.5 * h * (c.right.velocity[1] - c.left.velocity[1] + c.right.velocity[2] - c.left.velocity[2])
+end
+
+local project_2 = liszt_kernel(c : grid.cells)
+    c.velocity[1] = 0.25 * (c.velocity_prev[2] + c.left.velocity_prev[1] + c.right.velocity_prev[1] + c.top.velocity_prev[1] + c.bot.velocity_prev[1])
+end
+
+local project_3 = liszt_kernel(c : grid.cells)
+    c.velocity_temp[1] = c.velocity[1] - 0.5 * (c.right.velocity_prev[1] - c.left.velocity_prev[1]) / h
+    c.velocity_temp[2] = c.velocity[2] - 0.5 * (c.bot.velocity_prev[1] - c.top.velocity_prev[1]) / h
+end
+
+lcoal project_update = liszt_kernel(c : grid.cells)
+    c.velocity = c.velocity_temp
+end
+
+-----------------------------------------------------------------------------
+--[[                             MAIN LOOP                               ]]--
+-----------------------------------------------------------------------------
+
+grid.cells:print()
+
+for i = 1, 1000 do
+    -- velocity step
+    addsource_velocity(grid.cells)
+    
+    -- density step
+    addsource_density(grid.cells)
+    
+    diffuse_preprocess(diff)
+    diffuse_density(grid.cells)
+    diffuse_density_update(grid.cells)
+
+    advect_preprocess()
+    advect_density(grid.cells)
+    advect_density_update(grid.cells)
+
+    project_preprocess()
+    project_1(grid.cells)
+    project_2(grid.cells) -- Repeat this 20 times
+    project_3(grid.cells)
+    project_update(grid.cells)
+end
+
+grid.cells:print()
+
