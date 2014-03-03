@@ -29,7 +29,7 @@ function B.isFunc(f)
     return getmetatable(f) == Func
 end
 
-local id = function () error("id expects a relaton row") end
+local id = function () error("id expects a relation row") end
 B.id = Func.new(id)
 
 function B.id.check(ast, ctxt)
@@ -44,10 +44,46 @@ function B.id.check(ast, ctxt)
         return L.error
     end
 
-    return L.int
+    return L.addr
 end
 
 function B.id.codegen(ast, env)
+    return ast.params[1]:codegen(env)
+end
+
+
+local UNSAFE_ROW = function() error('UNSAFE_ROW cannot be called as Lua') end
+B.UNSAFE_ROW = Func.new(UNSAFE_ROW)
+
+function B.UNSAFE_ROW.check(ast, ctxt)
+    local args = ast.params
+    if #args ~= 2 then
+        ctxt:error(ast, "UNSAFE_ROW expects exactly 2 arguments "..
+                        "(instead got " .. #args .. ")")
+        return
+    end
+
+    local ret_type = nil
+
+    local addr_type = args[1].node_type
+    local rel_type = args[2].node_type
+    if addr_type ~= L.addr then
+        ctxt:error(ast, "UNSAFE_ROW expected an address as the first arg")
+        ret_type = L.error
+    end
+    if not rel_type:isInternal() or not L.is_relation(rel_type.value) then
+        ctxt:error(ast, "UNSAFE_ROW expected a relation as the second arg")
+        ret_type = L.error
+    end
+
+    -- actual typing
+    if not ret_type then
+        ret_type = L.row(rel_type.value)
+    end
+
+    return ret_type
+end
+function B.UNSAFE_ROW.codegen(ast, env)
     return ast.params[1]:codegen(env)
 end
 
@@ -113,11 +149,7 @@ local function printOne(env,output)
     local lt   = output.node_type
     local tt   = lt:terraType()
     local code = output:codegen(env)
-    if     lt == L.float or lt == L.double then return quote C.printf("%f", [double](code)) end
-	elseif lt == L.int   or lt:isRow() then return quote C.printf("%d", code) end
-	elseif lt == L.bool  then
-        return quote C.printf("%s", terralib.select(code, "true", "false")) end
-	elseif lt:isVector() then
+    if lt:isVector() then
         local printSpec = "{"
         local sym = symbol()
         local elemQuotes = {}
@@ -142,6 +174,12 @@ local function printOne(env,output)
         in
             C.printf(printSpec, elemQuotes)
         end
+    elseif lt == L.bool  then
+        return quote C.printf("%s", terralib.select(code, "true", "false")) end
+    elseif lt == L.float or lt == L.double then
+        return quote C.printf("%f", [double](code)) end
+	elseif lt:isNumeric() or lt:isRow() then
+        return quote C.printf("%d", code) end
     else
         assert(false and "printed object should always be number, bool, or vector")
     end
@@ -601,6 +639,7 @@ L.dot    = B.dot
 L.cross  = B.cross
 L.length = B.length
 L.id     = B.id
+L.UNSAFE_ROW = B.UNSAFE_ROW
 L.any    = B.any
 L.all    = B.all
 L.is_function = B.isFunc

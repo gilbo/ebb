@@ -11,9 +11,9 @@ local square = L.NewMacro(function(x)
     return liszt `x*x
 end)
 
-(liszt kernel(v in mesh.vertices)
+(liszt kernel(v : mesh.vertices)
 	assert(square(7) == 49)
-end)()
+end)(mesh.vertices)
 
 ----------------------------
 --Test stacked macro calls--
@@ -21,9 +21,9 @@ end)()
 local sum = L.NewMacro(function(x, y, z)
     return liszt `x + y + z
 end)
-(liszt kernel(v in mesh.vertices)
+(liszt kernel(v : mesh.vertices)
     assert(sum(square(1), square(2), square(3)) == 14)
-end)()
+end)(mesh.vertices)
 
 ----------------------------------------
 --Test macro that behaves like a field--
@@ -31,9 +31,9 @@ end)()
 mesh.vertices:NewFieldMacro('scaledposition', L.NewMacro(function(v)
     return liszt `2*v.position 
 end))
-(liszt kernel(v in mesh.vertices)
+(liszt kernel(v : mesh.vertices)
     assert(v.scaledposition == 2 * v.position)
-end)()
+end)(mesh.vertices)
 
 -----------------------------------
 --Combine normal and field macros--
@@ -41,8 +41,27 @@ end)()
 local norm = L.NewMacro(function(v)
     return liszt `dot(v, v)
 end)
-(liszt kernel(v in mesh.vertices)
+(liszt kernel(v : mesh.vertices)
     var lensq = norm(v.scaledposition)
     var expected = 4.0 * length(v.position) * length(v.position)
     assert(square(lensq - expected) < 0.00005)
-end)()
+end)(mesh.vertices)
+
+--------------------------------------
+--Test Macros Using Let-Style Quotes--
+--------------------------------------
+local sub1_but_non_neg = L.NewMacro(function(num)
+    return liszt quote
+        var result = num - 1
+        if result < 0 then result = 0 end
+    in
+        result
+    end
+end)
+(liszt kernel (v : mesh.vertices)
+    assert(sub1_but_non_neg(2) == 1)
+    assert(sub1_but_non_neg(0) == 0)
+end)(mesh.vertices)
+
+
+

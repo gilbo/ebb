@@ -14,8 +14,7 @@ OPTS="-p$SCRIPT_DIR/?.t -p$SCRIPT_DIR/?.lua"
 LISZT_RUNTIME=$SCRIPT_DIR/runtime/libsingle_runtime.so
 #echo $OPTS
 
-# the following line is complaining about a unary operator, what gives?
-if [ $1 == "-v" ];
+if [ $1 ] && [ $1 == "-v" ];
 then
 	LISZT_RUNTIME=$LISZT_RUNTIME $SCRIPT_DIR/terra/terra -vv $OPTS $2
 else

@@ -19,27 +19,27 @@ vi  = L.NewVector(L.int,   {2, 2, 2, 2})
 local two = 2
 
 -- test vector codegen:
-local f1 = liszt_kernel (f in mesh.faces) sf3 +=   vf    end
-local f2 = liszt_kernel (f in mesh.faces) si4 -=   vi    end
---local f3 = liszt_kernel (f in mesh.faces) sb5 and= vb    end
-local f4 = liszt_kernel (f in mesh.faces) sf  +=   1     end
-local f5 = liszt_kernel (f in mesh.faces) si  -=   two   end
-local f6 = liszt_kernel (f in mesh.faces) sb  and= false end
+local f1 = liszt_kernel (f : mesh.faces) sf3 +=   vf    end
+local f2 = liszt_kernel (f : mesh.faces) si4 -=   vi    end
+--local f3 = liszt_kernel (f : mesh.faces) sb5 and= vb    end
+local f4 = liszt_kernel (f : mesh.faces) sf  +=   1     end
+local f5 = liszt_kernel (f : mesh.faces) si  -=   two   end
+local f6 = liszt_kernel (f : mesh.faces) sb  and= false end
 
-f1()
+f1(mesh.faces)
 test.fuzzy_aeq(sf3:value().data, {nf, 2*nf, 3*nf})
 
-f2()
+f2(mesh.faces)
 test.fuzzy_aeq(si4:value().data, {1-2*nf,2-2*nf,3-2*nf,4-2*nf})
 
---f3()
+--f3(mesh.faces)
 --test.aeq(sb5:value().data, {true, false, true, false, true})
 
-f4()
+f4(mesh.faces)
 test.eq(sf:value(), mesh.faces._size)
 
-f5()
+f5(mesh.faces)
 test.eq(si:value(), -2*nf)
 
-f6()
+f6(mesh.faces)
 test.eq(sb:value(), false)

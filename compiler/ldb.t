@@ -18,6 +18,7 @@ package.loaded["compiler.ldb"] = LDB
 local L = terralib.require "compiler.lisztlib"
 local T = terralib.require "compiler.types"
 local C = terralib.require "compiler.c"
+local DLD = terralib.require "compiler.dld"
 
 local PN = terralib.require "compiler.pathname"
 local Pathname = PN.Pathname
@@ -88,6 +89,16 @@ function L.LRelation:Name()
     return self._name
 end
 
+-- returns a record type
+function L.LRelation:StructuralType()
+    local rec = {}
+    for _, field in ipairs(self._fields) do
+        rec[field.name] = field.type
+    end
+    local typ = L.record(rec)
+    return typ
+end
+
 -- prevent user from modifying the lua table
 function L.LRelation:__newindex(fieldname,value)
     error("Cannot assign members to LRelation object "..
@@ -107,7 +118,7 @@ function L.LRelation:NewField (name, typ)
     end
     
     local function is_value_or_row_type()
-        return T.isLisztType(typ) and (typ:isValueType() or typ:isRow())
+        return T.isLisztType(typ) and typ:isFieldType()
     end
     if not L.is_relation(typ) and not is_value_or_row_type() then
         error("NewField() expects a Liszt type or "..
@@ -195,6 +206,10 @@ end
 function L.LField:Size()
     return self.owner._size
 end
+function L.LField:Type()
+    return self.type
+end
+
 local bit = require "bit"
 
 -- TODO: Hide this function so it's not public
@@ -217,11 +232,10 @@ function L.LField:ClearData ()
     end
 end
 
-function L.LField:LoadFromCallback (callback)
-    -- TODO: It would be nice to typecheck the callback's type signature...
+function L.LField:LoadFunction(lua_callback)
     self:Allocate()
     for i = 0, self:Size() - 1 do
-        callback(terralib.cast(&self.type:terraBaseType(), self.data + i), i)
+        self.data[i] = lua_callback(i)
     end
 end
 
@@ -230,6 +244,13 @@ function L.LField:LoadFromMemory(mem)
     self:Allocate()
     local copy_size = self:Size() * terralib.sizeof(self.type:terraType())
     C.memcpy(self.data, mem, copy_size)
+end
+
+function L.LField:LoadConstant(constant)
+    self:Allocate()
+    for i = 0, self:Size() - 1 do
+        self.data[i] = constant
+    end
 end
 
 function L.LField:print()
@@ -256,6 +277,41 @@ function L.LField:print()
         end
     end
 end
+
+
+
+
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+--[[ Data Sharing Hooks                                                    ]]--
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+
+
+function L.LField:getDLD()
+    if not self.type:isPrimitive() and not self.type:isVector() then
+        error('Can only return DLDs for primitives and vectors, '..
+              'not Row types or other types given to fields')
+    end
+
+    local terra_type = self.type:terraType()
+    local dld = DLD.new({
+        type            = terra_type,
+        logical_size    = self.owner:Size(),
+        data            = self.data,
+        compact         = true,
+    })
+
+    -- in the event that we have a vector of 3 things
+    -- the vectors actually aren't packed tightly in memory
+    -- So we need to get this right
+    if terra_type:isvector() then
+        dld:setStride(terralib.sizeof(terra_type))
+    end
+
+    return dld
+end
+
 
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------

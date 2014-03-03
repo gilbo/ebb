@@ -306,9 +306,7 @@ function ast.DeclStatement:check(ctxt)
     end
     decl.node_type = typ
 
-    if typ ~= L.error and
-         not typ:isValueType() and not typ:isRow()
-    then
+    if typ ~= L.error and not typ:isFieldType() then
         ctxt:error(self,"can only assign numbers, bools, "..
                         "or rows to local temporaries")
     end
@@ -581,13 +579,13 @@ local function luav_to_ast(luav, src_node)
         node = NewLuaObject(src_node,luav)
     elseif terralib.isfunction(luav) then
         node = NewLuaObject(src_node,B.terra_to_func(luav))
-    elseif type(luav) == 'table' and luav.is_liszt_ast then
-        -- For macro substitution: typed ASTs
-        -- may be external and need to be inlined.
-        node = ast.QuoteExpr:DeriveFrom(src_node)
-        node.ast = luav
     elseif type(luav) == 'table' then
-        node = NewLuaObject(src_node, luav)
+        -- Determine whether this is an AST node
+        if ast.is_ast(luav) and luav:is(ast.QuoteExpr) then
+            node = luav
+        else
+            node = NewLuaObject(src_node, luav)
+        end
     elseif type(luav) == 'number' then
         node       = ast.Number:DeriveFrom(src_node)
         node.value = luav
@@ -718,9 +716,20 @@ end
 --[[                         Miscellaneous nodes:                         ]]--
 ------------------------------------------------------------------------------
 
-local function RunMacro(ctxt,src_node,v,params)
-  local r = v.genfunc(unpack(params))
-  return luav_to_checked_ast(r, src_node, ctxt)
+local function QuoteParam(param_ast)
+    local q = ast.QuoteExpr:DeriveFrom(param_ast)
+    q.block, q.exp = nil, param_ast
+    q.node_type    = param_ast.node_type -- do not try to type-check these
+    return q
+end
+
+local function RunMacro(ctxt,src_node,the_macro,params)
+    local quoted_params = {}
+    for i,v in ipairs(params) do
+        quoted_params[i] = QuoteParam(params[i])
+    end
+    local result = the_macro.genfunc(unpack(quoted_params))
+    return luav_to_checked_ast(result, src_node, ctxt)
 end
 
 function ast.TableLookup:check(ctxt)
@@ -889,7 +898,27 @@ function ast.Scalar:check(ctxt)
 end
 
 function ast.QuoteExpr:check(ctxt)
-    return self.ast
+    -- Ensure quotes are only typed once
+    -- By typing the quote at declaration, we make it safe
+    -- to included it in other code as is
+    if not self.node_type then
+        local q     = self:clone()
+        if not self.block and not self.exp then
+            ctxt:error('Found a Quote with no block and no expression.')
+        else
+            ctxt:enterblock()
+            if self.block then
+                q.block = self.block:check(ctxt)
+            end
+            q.exp       = self.exp:check(ctxt)
+            ctxt:leaveblock()
+
+            q.node_type = q.exp.node_type
+        end
+        return q
+    else
+        return self
+    end
 end
 
 function ast.FieldAccess:check(ctxt)
@@ -908,14 +937,17 @@ function ast.Where:check(ctxt)
     local fieldobj = self.field.node_type
     local keytype  = self.key.node_type
     if not fieldobj:isInternal() or not L.is_field(fieldobj.value) then
-        ctxt:error(self,"Expected a field as the first argument but found ",fieldobj)
+        ctxt:error(self,"Expected a field as the first argument but found "
+                   ,fieldobj)
     end
     local field = fieldobj.value
     if keytype ~= field.type then
-        ctxt:error(self,"Key of where is type ",keytype," but expected type ",field.type)
+        ctxt:error(self,"Key of where is type ",keytype,
+                   " but expected type ",field.type)
     end
     if field.owner._index ~= field then
-        ctxt:error(self,"Field ",field.name, " is not an index of ",field.owner:Name())
+        ctxt:error(self,"Field ",field.name,
+                   " is not an index of ",field.owner:Name())
     end
     local w     = self:clone()
     w.relation  = field.owner
@@ -928,23 +960,25 @@ end
 ------------------------------------------------------------------------------
 --[[ Semantic checking called from here:                                  ]]--
 ------------------------------------------------------------------------------
-function ast.LisztKernel:check(ctxt)
-    local kernel = self:clone()
+function ast.LisztKernel:check(ctxt) -- hacked 2nd parameter
+    local kernel              = self:clone()
+    kernel.name               = self.name
+
     local set    = self.set:check(ctxt)
-    if not set.node_type:isInternal() or not L.is_relation(set.node_type.value) then
+    if set.node_type:isInternal() and
+       L.is_relation(set.node_type.value)
+    then
+        kernel.relation             = set.node_type.value
+        ctxt:liszt()[kernel.name]   = L.row(kernel.relation)
+        kernel.body                 = self.body:check(ctxt)
+    else
         ctxt:error(kernel.set, "Expected a relation")
-    else 
-        kernel.name               = self.name
-        kernel.relation           = set.node_type.value
-        kernel.node_type          = L.row(kernel.relation)
-        ctxt:liszt()[kernel.name] = kernel.node_type
-        kernel.body               = self.body:check(ctxt)
     end
 
     return kernel
 end
 
-function S.check(luaenv, kernel_ast, param_type)
+function S.check(luaenv, kernel_ast)
     -- environment for checking variables and scopes
     local env  = terralib.newenvironment(luaenv)
     local diag = terralib.newdiagnostics()

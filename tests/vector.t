@@ -111,26 +111,17 @@ local mesh = LMesh.Load("examples/mesh.lmesh")
 ------------------
 -- Should pass: --
 ------------------
-local s = L.NewScalar(L.vector(L.float, 3), {1.0, 2.2, 3.3})
-local check = liszt_kernel(v in mesh.vertices)
-	s += v.position
-end
-check()
-
-local f = s:value()
-test.fuzzy_aeq(f.data, {1,2.2,3.3})
-
-local k = liszt_kernel (v in mesh.vertices)
+local k = liszt_kernel (v : mesh.vertices)
 	var x       = {5, 5, 5}
 	v.position += x + {0, 1, 1}
 end
-k()
+k(mesh.vertices)
 
-local t = L.NewScalar(L.vector(L.float, 3), {0.0, 0.0, 0.0})
-local check = liszt_kernel(v in mesh.vertices)
-	t += v.position
+local s = L.NewScalar(L.vector(L.float, 3), {0.0, 0.0, 0.0})
+local sum_position = liszt_kernel(v : mesh.vertices)
+	s += v.position
 end
-check()
+sum_position(mesh.vertices)
 
 local f = t:value() / mesh.vertices._size
 test.fuzzy_aeq(f.data, {5, 6, 6})

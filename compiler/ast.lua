@@ -10,6 +10,15 @@ package.loaded["compiler.ast"] = A
 local AST             = { kind = 'ast', is_liszt_ast = true }
 AST.__index           = AST
 
+function A.is_ast(obj)
+	local mt = getmetatable(obj)
+	if mt and mt.is_liszt_ast then
+		return true
+	else
+		return false
+	end
+end
+
 local LisztKernel     = { kind = 'kernel' }
 local Block           = { kind = 'block'  } -- Statement*
   -- store condition and block to be executed for if/elseif clauses

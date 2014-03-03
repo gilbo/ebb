@@ -3,9 +3,9 @@ local LMesh = terralib.require "compiler.lmesh"
 local mesh = LMesh.Load("examples/mesh.lmesh")
 
 
-local fail_assert = liszt_kernel(f in mesh.faces)
+local fail_assert = liszt_kernel(f : mesh.faces)
     var x = 5
     L.assert(x == 4)
 end
 
-fail_assert()
+fail_assert(mesh.faces)

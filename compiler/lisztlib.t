@@ -26,7 +26,7 @@ terralib.require "compiler.builtins"
 local LDB = terralib.require "compiler.ldb"
 local semant = terralib.require "compiler.semant"
 local codegen = terralib.require "compiler.codegen"
-L.LDB = LDB
+--L.LDB = LDB
 
 --[[
 - An LRelation contains its size and fields as members.  The _index member
@@ -223,35 +223,65 @@ L.Where = L.NewMacro(function(field,key)
     local w = ast.Where:DeriveFrom(field)
     w.field = field
     w.key   = key
-    return semant.check({}, w)
+    local q = ast.QuoteExpr:DeriveFrom(field)
+    q.exp   = semant.check({}, w)
+    q.node_type = q.exp.node_type
+    return q
 end)
 
 
 -------------------------------------------------------------------------------
---[[ Kernels/Runtimes                                                       ]]--
+--[[ Kernels/Runtimes                                                      ]]--
 -------------------------------------------------------------------------------
 local rtlib = terralib.require 'compiler/runtimes'
 
 L.singleCore = rtlib.singleCore
 L.gpu        = rtlib.gpu
 
-Kernel.__call  = function (kobj, runtime)
-    if not runtime then runtime = L.singleCore end
-    if not rtlib.is_valid_runtime(runtime) then 
-        error('Argument is not a valid runtime')
+Kernel.__call  = function (kobj, relation)
+    if not relation then
+        error("A kernel must be called on a relation.  "..
+              "No relation specified.", 2)
     end
-	if not kobj.__kernels[runtime] then kobj:generate(runtime) end
-	kobj.__kernels[runtime]()
+    local runtime = L.singleCore
+    --if not runtime then runtime = L.singleCore end
+    --if not rtlib.is_valid_runtime(runtime) then 
+    --    error('Argument is not a valid runtime')
+    --end
+	if not kobj.__kernels[runtime] or
+       not kobj.__kernels[runtime][relation]
+    then
+        kobj:generate(runtime, relation)
+    end
+	kobj.__kernels[runtime][relation]()
 end
 
 function L.NewKernel(kernel_ast, env)
-	return setmetatable({ast=kernel_ast,env=env,__kernels={}}, Kernel)
+    local new_kernel = setmetatable({
+        ast=kernel_ast,
+        env=env,
+        __kernels={}
+    }, Kernel)
+
+    new_kernel.typed_ast = semant.check(env, kernel_ast)
+
+	return new_kernel
 end
 
-function Kernel:generate (runtime)
-    self.typed_ast = semant.check(self.env, self.ast)
+function Kernel:generate (runtime, relation)
+    -- Right now, we require that the relation match exactly
+    local ast_relation = self.typed_ast.relation
+    if ast_relation ~= relation then
+        error('Kernels may only be called on relation they were typed with')
+    end
 
-	if not self.__kernels[runtime] then
-		self.__kernels[runtime] = codegen.codegen(runtime, self.env, self.typed_ast)
+    if not self.__kernels[runtime] then
+        self.__kernels[runtime] = {}
+    end
+	if not self.__kernels[runtime][relation] then
+		self.__kernels[runtime][relation] =
+            codegen.codegen(runtime, self.env, self.typed_ast, relation)
 	end
 end
+
+
