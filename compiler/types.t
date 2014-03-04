@@ -105,7 +105,7 @@ local struct  QueryType {
 }
 function Type:terraType()
   if     self:isPrimitive() then return self.terratype
-  elseif self:isVector()    then return vector(self.type:terraType(), self.N)
+  elseif self:isVector()    then return self.terratype
   elseif self:isRow()       then return L.addr:terraType()
   elseif self:isQuery()     then return QueryType
   elseif self:isInternal()  then return emptyStruct
@@ -132,6 +132,9 @@ local function vectorType (typ, len)
     local vt = Type:new("vector")
     vt.N = len
     vt.type = typ
+    local ttype = typ:terraType()
+    vt.terratype = struct { ttype[vt.N]; }
+    vt.terratype.name = tostring(ttype) .. "_" .. tostring(vt.N)
     vector_types[tpn] = vt
   end
   return vector_types[tpn]
@@ -385,37 +388,35 @@ local function num_meet(ltype, rtype)
 end
 
 local function type_meet(ltype, rtype)
-  -- helper
-  local function vec_meet(ltype, rtype, N)
-    local btype = type_meet(ltype:baseType(), rtype:baseType())
-    if btype == L.error then return L.error
-    else                     return L.vector(btype, N) end
-  end
-
-  -- vector meets
-  if ltype:isVector() and rtype:isVector() then
-    if ltype.N ~= rtype.N then return L.error
-    else                       return vec_meet(ltype, rtype, ltype.N) end
-
-  elseif ltype:isVector() and rtype:isPrimitive() then
-    return vec_meet(ltype, rtype, ltype.N)
-
-  elseif ltype:isPrimitive() and rtype:isVector() then
-    return vec_meet(ltype, rtype, rtype.N)
-
-  -- primitive meets
-  elseif ltype:isPrimitive() and rtype:isPrimitive() then
-    if ltype:isNumeric() and rtype:isNumeric() then
-      return num_meet(ltype, rtype)
-
-    elseif ltype:isLogical() and rtype:isLogical() then
-      return L.bool
-
+    -- helper
+    local function vec_meet(ltype, rtype, N)
+        local btype = type_meet(ltype:baseType(), rtype:baseType())
+        if btype == L.error then return L.error
+        else                     return L.vector(btype, N) end
     end
-  end
 
-  -- default is to error
-  return L.error
+    -- vector meets
+    if ltype:isVector() and rtype:isVector() then
+        if ltype.N ~= rtype.N then return L.error
+        else                       return vec_meet(ltype, rtype, ltype.N) end
+
+    elseif ltype:isVector() and rtype:isPrimitive() then
+        return vec_meet(ltype, rtype, ltype.N)
+
+    elseif ltype:isPrimitive() and rtype:isVector() then
+        return vec_meet(ltype, rtype, rtype.N)
+
+    -- primitive meets
+    elseif ltype:isPrimitive() and rtype:isPrimitive() then
+        if ltype:isNumeric() and rtype:isNumeric() then
+            return num_meet(ltype, rtype)
+        elseif ltype:isLogical() and rtype:isLogical() then
+            return L.bool
+        end
+    end
+
+    -- default is to error
+    return L.error
 end
 
 

@@ -118,10 +118,10 @@ end
 k(mesh.vertices)
 
 local s = L.NewScalar(L.vector(L.float, 3), {0.0, 0.0, 0.0})
-local check = liszt_kernel(v : mesh.vertices)
+local sum_position = liszt_kernel(v : mesh.vertices)
 	s += v.position
 end
-check(mesh.vertices)
+sum_position(mesh.vertices)
 
 local f = s:value() / mesh.vertices._size
 test.fuzzy_aeq(f.data, {5, 6, 6})
