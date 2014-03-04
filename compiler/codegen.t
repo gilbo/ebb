@@ -24,8 +24,8 @@ end
 function Context:leaveblock()
 	self.env:leaveblock()
 end
-function Context:runtime_codegen_kernel_body (kernel_node)
-	return self.runtime:codegen_kernel_body(self, kernel_node)
+function Context:runtime_codegen_kernel_body (kernel_node, relation)
+	return self.runtime:codegen_kernel_body(self, kernel_node, relation)
 end
 function Context:runtime_codegen_field_write (fw_node)
 	return self.runtime:codegen_field_write(self, fw_node)

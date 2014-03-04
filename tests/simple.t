@@ -11,6 +11,7 @@ local lassert, lprint, length = L.assert, L.print, L.length
 local a     = 43
 local com   = L.NewScalar(L.vector(L.float, 3), {0, 0, 0})--Vector.new(float, {0.0, 0.0, 0.0})
 local upval = 5
+local vv = L.NewVector(L.int, {1,2,3})
 
 local test_bool = liszt_kernel (v : mesh.vertices)
 	var q = true
