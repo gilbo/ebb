@@ -239,7 +239,7 @@ function L.LField:LoadFunction(lua_callback)
     end
 end
 
--- TODO: Hide this function so it's not public
+-- TODO: Hide this function so it's not public  (maybe not?)
 function L.LField:LoadFromMemory(mem)
     self:Allocate()
     local copy_size = self:Size() * terralib.sizeof(self.type:terraType())
@@ -251,6 +251,23 @@ function L.LField:LoadConstant(constant)
     for i = 0, self:Size() - 1 do
         self.data[i] = constant
     end
+end
+
+-- generic dispatch function for loads
+function L.LField:Load(arg)
+    -- load from lua callback
+    if      type(arg) == 'function' then
+        return self:LoadFunction(arg)
+    elseif  type(arg) == 'cdata' then
+        local typ = terralib.typeof(arg)
+        if typ and typ:ispointer() then
+            return self:LoadFromMemory(arg)
+        end
+    elseif  type(arg) == 'string' or PN.is_pathname(arg) then
+        return self:LoadFromFile(arg)
+    end
+    -- default to trying to load as a constant
+    return self:LoadConstant(arg)
 end
 
 function L.LField:print()
