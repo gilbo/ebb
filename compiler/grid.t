@@ -68,7 +68,7 @@ local function installMacros(grid)
         end
     end))
 
-    grid.cells:NewFieldMacro('nbr', L.NewMacro(function(c)
+    grid.cells:NewFieldMacro('locate', L.NewMacro(function(c)
         return liszt quote
             var raw_addr = L.id(c)
             -- TODO: The following assert should check the entire
