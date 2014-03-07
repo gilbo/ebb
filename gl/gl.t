@@ -107,9 +107,11 @@ local platform = ffi.string(c_inc.CURRENT_PLATFORM_STR());
 if platform == 'apple' then
     local glfw_path = nil
     for line in io.popen('mdfind -name libglfw'):lines() do
+        print(line)
         if glfw_path then
-            error('when searching for libglfw, multiple options were found. '..
-                  'Crashing as a safety measure.')
+            --error('when searching for libglfw, multiple options were found. '..
+            --      'Crashing as a safety measure.')
+            break
         end
         glfw_path = line
     end

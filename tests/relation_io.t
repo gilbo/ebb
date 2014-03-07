@@ -9,43 +9,52 @@ local C     = terralib.require 'compiler.c'
 local datadir = PN.scriptdir() .. 'relation_io_data'
 
 local compare_field_cache = {}
-local function compare_field_data(fa, fb)
+local function compare_field_data(fa, fb, fname)
   local ttype = fa.type:terraType()
-  local typeN = 0
-  if ttype:isvector() then typeN = ttype.N end
+  local N = (fa.type:isVector() and fa.type.N) or 0
 
-  local comparefn = compare_field_cache[ttype]
+  local comparefn = compare_field_cache[fa.type]
   if not comparefn then
-    local testeq
-    if ttype:isvector() then
-      testeq = terra(a : &ttype, b : &ttype, i : int)
-        var boolvec = a[i] ~= b[i]
-        var test = false
-        for k = 0, ttype.N do
-          test = test or boolvec[k]
+    local test_not_eq
+    if fa.type:isVector() then
+      test_not_eq = terra(a : &ttype, b : &ttype, i : int)
+        for j = 0, N do
+          if a[i]._0[j] ~= b[i]._0[j] then return true end
         end
-        return test
+        return false
       end
     else
-      testeq = terra(a : &ttype, b : &ttype, i : int)
+      test_not_eq = terra(a : &ttype, b : &ttype, i : int)
         return a[i] ~= b[i]
       end
     end
 
     comparefn = terra(a : &ttype, b : &ttype, n : int) : int
       for i = 0, n do
-        if testeq(a,b,i) then return i end
+        if test_not_eq(a,b,i) then return i end
       end
       return n
     end
 
-    compare_field_cache[ttype] = comparefn
+    compare_field_cache[fa.type] = comparefn
   end
 
+  local function vecprint(cdata)
+    local res = '{'
+    for i=0,N-1 do res = res .. tostring(cdata._0[i]) .. ',' end
+    return res .. '}'
+  end
   local i = comparefn(fa.data, fb.data, fa:Size())
   if i ~= fa:Size() then
-    error('data inconsistency at position #'..tostring(i)..
-          '  '..tostring(fa.data[i])..'  vs.  '..tostring(fb.data[i]), 2)
+    local da = tostring(fa.data[i])
+    local db = tostring(fb.data[i])
+    if fa.type:isVector() then
+      da = vecprint(fa.data[i])
+      db = vecprint(fb.data[i])
+    end
+    error('data inconsistency in field "'..fname..
+          '" at position #'..tostring(i)..
+          '  '..da..'  vs.  '..db, 2)
   end
 end
 
@@ -94,7 +103,7 @@ local function test_db_eq(dba, dbb)
         end
 
         -- check data equality
-        compare_field_data(fielda, fieldb)
+        compare_field_data(fielda, fieldb, fname)
       end
     end
   end
@@ -104,6 +113,7 @@ local function test_db_eq(dba, dbb)
     error('error while comparing relational dbs\n'..err_msg, 2)
   end
 end
+
 
 
 -- ensure that the LMesh loading matches the
@@ -228,11 +238,10 @@ simp_rels.cells.temperature:LoadFunction(function(i)
 end)
 simp_rels.particles.temperature:LoadConstant(0.0)
 simp_rels.particles.position:LoadFunction(function(i)
-  return vector(float, i % 10 + 0.5, 0.0, 0.0)
+  return L.NewVector(L.float, {i % 10 + 0.5, 0.0, 0.0})
 end)
 simp_rels.particle_cell.p:LoadFunction(function(i) return i end)
 simp_rels.particle_cell.c:LoadFunction(function(i) return i % 10 end)
-
 
 -- load a disk copy of the relation above
 local simp_rels_load = L.LoadRelationSchema{ file = datadir .. 'simp' }

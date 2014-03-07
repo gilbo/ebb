@@ -55,8 +55,8 @@ vdb.triangle = L.NewMacro(function(p0, p1, p2)
                                    p2[0], p2[1], p2[2])
 end)
 
-vdb.begin  = VDB_C.vdb_begin
-vdb.end    = VDB_C.vdb_end
+vdb.vbegin  = VDB_C.vdb_begin
+vdb.vend    = VDB_C.vdb_end
 vdb.flush  = VDB_C.vdb_flush
 vdb.frame  = VDB_C.vdb_frame
 vdb.sample = VDB_C.vdb_sample

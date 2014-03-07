@@ -232,14 +232,48 @@ function L.LField:ClearData ()
     end
 end
 
-function L.LField:LoadFunction(lua_callback)
-    self:Allocate()
-    for i = 0, self:Size() - 1 do
-        self.data[i] = lua_callback(i)
+-- convert lua tables or LVectors to
+-- Terra structs used to represent vectors
+local function convert_vec(vec_val, typ)
+    if L.is_vector(vec_val) then
+        -- re-route to the common handler for Lua tables...
+        return convert_vec(vec_val.data, typ)
+    elseif type(vec_val) == 'table' and #vec_val == typ.N then
+        return terralib.new(typ:terraType(), {vec_val})
+    else
+        return nil
     end
 end
 
--- TODO: Hide this function so it's not public
+function L.LField:LoadFunction(lua_callback)
+    self:Allocate()
+    if self.type:isVector() then
+        for i = 0, self:Size() - 1 do
+            local val = lua_callback(i)
+            self.data[i] = convert_vec(val, self.type)
+        end
+    else
+        for i = 0, self:Size() - 1 do
+            self.data[i] = lua_callback(i)
+        end
+    end
+end
+
+function L.LField:LoadTableArray(tbl)
+    if type(tbl) ~= 'table' then
+        error('bad type passed to LoadTableArray().  Expecting a table', 2)
+    end
+    if #tbl ~= self:Size() then
+        error('argument array has the wrong number of elements: '..
+              tostring(#tbl)..
+              ' (was expecting '..tostring(self:Size())..')', 2)
+    end
+    self:LoadFunction(function(i)
+        return tbl[i+1]
+    end)
+end
+
+-- TODO: Hide this function so it's not public  (maybe not?)
 function L.LField:LoadFromMemory(mem)
     self:Allocate()
     local copy_size = self:Size() * terralib.sizeof(self.type:terraType())
@@ -248,8 +282,69 @@ end
 
 function L.LField:LoadConstant(constant)
     self:Allocate()
+    if self.type:isVector() then
+        constant = convert_vec(constant, self.type)
+    end
+
     for i = 0, self:Size() - 1 do
         self.data[i] = constant
+    end
+end
+
+-- generic dispatch function for loads
+function L.LField:Load(arg)
+    -- load from lua callback
+    if      type(arg) == 'function' then
+        return self:LoadFunction(arg)
+    elseif  type(arg) == 'cdata' then
+        local typ = terralib.typeof(arg)
+        if typ and typ:ispointer() then
+            return self:LoadFromMemory(arg)
+        end
+    elseif  type(arg) == 'string' or PN.is_pathname(arg) then
+        return self:LoadFromFile(arg)
+    elseif  type(arg) == 'table' then
+        return self:LoadTableArray(arg)
+    end
+    -- default to trying to load as a constant
+    return self:LoadConstant(arg)
+end
+
+
+
+-- convert lua tables or LVectors to
+-- Terra structs used to represent vectors
+local function terraval_to_lua(val, typ)
+    if typ:isVector() then
+        local vec = {}
+        for i = 1, typ.N do
+            vec[i] = terraval_to_lua(val._0[i-1], typ:baseType())
+        end
+        return vec
+    elseif typ:isNumeric() then
+        return tonumber(val)
+    elseif typ:isLogical() then
+        if tonumber(val) == 0 then return false else return true end
+    else
+        error('unhandled terra_to_lua conversion')
+    end
+end
+
+function L.LField:DumpToTable()
+    local arr = {}
+    for i = 0, self:Size()-1 do
+        arr[i+1] = terraval_to_lua(self.data[i], self.type)
+    end
+    return arr
+end
+
+-- callback(i, val)
+--      i:      which row we're outputting (starting at 0)
+--      val:    the value of this field for the ith row
+function L.LField:DumpFunction(lua_callback)
+    for i = 0, self:Size()-1 do
+        local val = terraval_to_lua(self.data[i], self.type)
+        lua_callback(i, val)
     end
 end
 
@@ -265,7 +360,7 @@ function L.LField:print()
         for i = 0, N-1 do
             local s = ''
             for j = 0, self.type.N-1 do
-                local t = tostring(self.data[i][j]):gsub('ULL','')
+                local t = tostring(self.data[i]._0[j]):gsub('ULL','')
                 s = s .. t .. ' '
             end
             print("", i, s)
@@ -295,19 +390,18 @@ function L.LField:getDLD()
     end
 
     local terra_type = self.type:terraType()
+    local n = nil
+    if self.type:isVector() then
+        terra_type = self.type:terraBaseType()
+        n = self.type.N
+    end
     local dld = DLD.new({
         type            = terra_type,
+        type_n          = n,
         logical_size    = self.owner:Size(),
         data            = self.data,
         compact         = true,
     })
-
-    -- in the event that we have a vector of 3 things
-    -- the vectors actually aren't packed tightly in memory
-    -- So we need to get this right
-    if terra_type:isvector() then
-        dld:setStride(terralib.sizeof(terra_type))
-    end
 
     return dld
 end

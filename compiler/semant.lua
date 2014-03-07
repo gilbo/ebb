@@ -250,6 +250,19 @@ function ast.Assignment:check(ctxt)
         return
     end
 
+    -- otherwise, check if we need to insert a type-cast...
+    -- TODO: THIS IS NOT SAFE & SOUND
+    if ltype ~= derived then 
+        derived = ltype
+    end
+    if rtype ~= derived then
+
+        local cast      = ast.Cast:DeriveFrom(assignment.exp)
+        cast.value      = assignment.exp
+        cast.node_type  = derived
+        assignment.exp = cast
+    end
+
     if assignment.lvalue:is(ast.FieldAccess) then
         local fw = ast.FieldWrite:DeriveFrom(assignment)
         fw.fieldaccess = assignment.lvalue
@@ -544,8 +557,11 @@ local function luav_to_ast(luav, src_node)
 
     -- Vector objects are expanded into literal AST trees
     elseif L.is_vector(luav) then
-        node        = ast.VectorLiteral:DeriveFrom(src_node)
-        node.elems  = {}
+        node            = ast.VectorLiteral:DeriveFrom(src_node)
+        node.elems      = {}
+        -- We have to copy the type here b/c the values
+        -- may not imply the right type
+        node.node_type  = luav.type
         for i,v in ipairs(luav.data) do
             node.elems[i] = luav_to_ast(v, src_node)
         end
@@ -647,6 +663,10 @@ function ast.VectorLiteral:check(ctxt)
     ctxt:enterrhs()
     veclit.elems[1]   = self.elems[1]:check(ctxt)
     local type_so_far = veclit.elems[1].node_type
+    -- correct the type if it was explicitly provided...
+    if self.node_type then
+        type_so_far = self.node_type:baseType()
+    end
 
     local tp_error = "vector literals can only contain values "..
                      "of boolean or numeric type"

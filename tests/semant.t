@@ -18,7 +18,7 @@ s1 = L.NewScalar(L.int, 0)
 -- Initialize fields: --
 ------------------------
 mesh.cells.f1:LoadConstant(0)
-mesh.cells.f2:LoadConstant(vector(float, 0,0,0))
+mesh.cells.f2:LoadConstant(L.NewVector(L.float, {0,0,0}))
 
 
 ---------------------

@@ -1,4 +1,5 @@
 local Runtime = {}
+local ast = terralib.require('compiler.ast')
 
 function Runtime:New (str)
 	return setmetatable({__string=str}, self)
@@ -32,33 +33,14 @@ function singleCore:codegen_kernel_body (ctxt, liszt_kernel, relation)
 	end
 end
 
-local function bin_exp (op, lhe, rhe)
-	if     op == '+'   then return `[lhe] +   [rhe]
-	elseif op == '-'   then return `[lhe] -   [rhe]
-	elseif op == '/'   then return `[lhe] /   [rhe]
-	elseif op == '*'   then return `[lhe] *   [rhe]
-	elseif op == '%'   then return `[lhe] %   [rhe]
-	elseif op == '^'   then return `[lhe] ^   [rhe]
-	elseif op == 'or'  then return `[lhe] or  [rhe]
-	elseif op == 'and' then return `[lhe] and [rhe]
-	elseif op == '<'   then return `[lhe] <   [rhe]
-	elseif op == '>'   then return `[lhe] >   [rhe]
-	elseif op == '<='  then return `[lhe] <=  [rhe]
-	elseif op == '>='  then return `[lhe] >=  [rhe]
-	elseif op == '=='  then return `[lhe] ==  [rhe]
-	elseif op == '~='  then return `[lhe] ~=  [rhe]
-	end
-end
-
 function singleCore:codegen_field_write (ctxt, fw)
-	local lhs   = fw.fieldaccess:codegen(ctxt)
-	local ttype = fw.fieldaccess.node_type:terraType()
-	local rhs   = fw.exp:codegen(ctxt)
+	-- just re-direct to an assignment statement for now.
+	local assign = ast.Assignment:DeriveFrom(fw)
+	assign.lvalue = fw.fieldaccess
+	assign.exp    = fw.exp
+	if fw.reduceop then assign.reduceop = fw.reduceop end
 
-	if fw.reduceop then
-		rhs = bin_exp(fw.reduceop, lhs, rhs)
-	end
-	return quote [lhs] = rhs end
+	return assign:codegen(ctxt)
 end
 
 function singleCore:codegen_field_read (ctxt, fa)

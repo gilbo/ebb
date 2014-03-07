@@ -14,7 +14,7 @@ local dld = terralib.require 'compiler.dld'
 local mat4f = terralib.require 'gl.mat4f'
 
 local C = terralib.require 'compiler.c'
-local vdb = terralib.includecstring '#include<vdb.h>'
+local vdb = terralib.require 'compiler.vdb'
 
 local glshader = terralib.require 'gl.shader'
 
@@ -79,22 +79,12 @@ end)
 --[[                Setup Liszt Relations & init GClef                   ]]--
 -----------------------------------------------------------------------------
 
-
 local triangles = L.NewRelation(1, 'triangles')
 local vertices  = L.NewRelation(3, 'vertices')
 
-triangles:NewField('v0', vertices):LoadFromCallback(
-    terra(mem : &uint64, i : uint)
-        @mem = 3*i + 0
-    end)
-triangles:NewField('v1', vertices):LoadFromCallback(
-    terra(mem : &uint64, i : uint)
-        @mem = 3*i + 1
-    end)
-triangles:NewField('v2', vertices):LoadFromCallback(
-    terra(mem : &uint64, i : uint)
-        @mem = 3*i + 2
-    end)
+triangles:NewField('v0', vertices):Load(function(i) return 3*i + 0 end)
+triangles:NewField('v1', vertices):Load(function(i) return 3*i + 1 end)
+triangles:NewField('v2', vertices):Load(function(i) return 3*i + 2 end)
 
 local vpos = terralib.global(float[1 * 3 * 4])
 vpos:set({
@@ -102,11 +92,11 @@ vpos:set({
   0.6, -0.4, 0, 1,
     0,  0.6, 0, 1
 })
-vertices:NewField('pos', L.vector(L.float, 4)):LoadFromCallback(
-    terra(mem : &vector(float, 4), i : uint)
-        @mem = vectorof(float, vpos[4*i+0], vpos[4*i+1],
-                               vpos[4*i+2], vpos[4*i+3])
-    end)
+vertices:NewField('pos', L.vector(L.float, 4)):Load(function(i)
+    local p = vpos:get()
+    return {p[4*i+0], p[4*i+1], p[4*i+2], p[4*i+3]}
+end)
+
 
 local vcolor = terralib.global(float[1 * 3 * 3])
 vcolor:set({
@@ -115,15 +105,10 @@ vcolor:set({
     0, 0, 1
 })
 
--- BUG BUG BUG  WHY DOES THIS VERSION BUG ON ME?
---vertices:NewField('color', L.vector(L.float, 3)):LoadFromCallback(
---    terra(mem : &vector(float, 3), i : uint)
---        @mem = vectorof(float, vcolor[3*i+0], vcolor[3*i+1], vcolor[3*i+2])
---    end)
-vertices:NewField('color', L.vector(L.float, 4)):LoadFromCallback(
-    terra(mem : &vector(float, 4), i : uint)
-        @mem = vectorof(float, vcolor[3*i+0], vcolor[3*i+1], vcolor[3*i+2], 1)
-    end)
+vertices:NewField('color', L.vector(L.float, 3)):Load(function(i)
+    local c = vcolor:get()
+    return {c[3*i+0], c[3*i+1], c[3*i+2]}
+end)
 
 local position_attr_id = 0
 local color_attr_id = 1
@@ -256,23 +241,19 @@ end
 -- Liszt Mumbo Jumbo
 
 local time_scalar = L.NewScalar(L.float, 0)
-vertices:NewField('pos_temp', L.vector(L.float, 4)):LoadFromCallback(
-    terra(mem : &vector(float, 4), i : uint)
-        @mem = vectorof(float, 0, 0, 0, 0)
-    end)
-local update_pos1 = liszt_kernel (v)
+vertices:NewField('pos_temp', L.vector(L.float, 4)):Load({0,0,0,0})
+local update_pos1 = liszt_kernel (v : vertices)
     var y = v.pos[1]
     if y > 0 then
         y = 0.5 + 0.4 * C.cos(3*time_scalar)
     end
     v.pos_temp = { v.pos[0], y, v.pos[2], v.pos[3] }
 end
-local update_pos2 = liszt_kernel (v in vertices)
+local update_pos2 = liszt_kernel (v : vertices)
     var pos = v.pos_temp
     v.pos = pos
-    vdb.vdb_color(v.color[0], v.color[1], v.color[2])
-    vdb.vdb_point(pos[0], pos[1], pos[2])
-
+    vdb.color(v.color)
+    vdb.point(pos)
 end
 
 

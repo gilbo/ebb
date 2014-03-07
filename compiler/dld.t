@@ -55,7 +55,7 @@ function dld:init(params)
 
   if params.type then
     if terralib.types.istype(params.type) then
-      self:setTerraType(params.type)
+      self:setTerraType(params.type, params.type_n)
     end
   end
 
@@ -80,25 +80,21 @@ function dld:init(params)
   end
 end
 
-function dld:setTerraType(typ)
+function dld:setTerraType(typ, n)
   if not terralib.types.istype(typ) then
-    error('setTerraType() only accepts Terra types as arguments')
+    error('setTerraType() only accepts Terra types as arguments', 2)
   end
-  self.type = {}
-
-  if typ:isvector() then
-    self.type.vector_size = typ.N
-    typ = typ.type
-  else
-    self.type.vector_size = 1
-  end
-
   if not typ:isprimitive() then
-    error('Cannot handle non-vector, non-primitive types in DLD')
-  else
-    self.type.base_type_str = tostring(typ)
-    self.type.base_bytes    = terralib.sizeof(typ)
+    error('Can only use setTerraType on primitives', 2)
   end
+
+  n = n or 1
+
+  self.type = {
+    vector_size   = n,
+    base_type_str = tostring(typ),
+    base_bytes    = terralib.sizeof(typ)
+  }
 end
 
 function dld:setLogicalSize(n)

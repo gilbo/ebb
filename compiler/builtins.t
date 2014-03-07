@@ -116,14 +116,19 @@ function B.assert.codegen(ast, env)
     local test = ast.params[1]
     local code = test:codegen(env)
     if test.node_type:isVector() then
-        if test.node_type.N == 0 then return quote end end
-        local tt = test.node_type:terraType()
-        local v = symbol()
-        local alltest = `v[0]
-        for i = 1, test.node_type.N - 1 do
-            alltest = `alltest and v[i]
+        local N      = test.node_type.N
+        local vec    = symbol(test.node_type:terraType())
+
+        local all    = `true
+        for i = 0, N-1 do
+            all = `all and vec._0[i]
         end
-        return quote var [v] = code in lisztAssert(alltest, ast.filename, ast.linenumber) end
+
+        return quote
+            var [vec] = [code]
+        in
+            lisztAssert(all, ast.filename, ast.linenumber)
+        end
     else
         return quote lisztAssert(code, ast.filename, ast.linenumber) end
     end
@@ -157,13 +162,13 @@ local function printOne(env,output)
         for i = 0, lt.N - 1 do
             if bt == L.float or bt == L.double then
                 printSpec = printSpec .. " %f"
-                table.insert(elemQuotes, `[double](sym[i]))
+                table.insert(elemQuotes, `[double](sym._0[i]))
             elseif bt == L.int then
                 printSpec = printSpec .. " %d"
-                table.insert(elemQuotes, `sym[i])
+                table.insert(elemQuotes, `sym._0[i])
             elseif bt == L.bool then
                 printSpec = printSpec .. " %s"
-                table.insert(elemQuotes, `terralib.select(sym[i], "true", "false"))
+                table.insert(elemQuotes, `terralib.select(sym._0[i], "true", "false"))
             else
                 error('Unrecognized type in print: ' .. tostring(bt:terraType()))
             end
@@ -219,54 +224,51 @@ B.dot = Func.new(dot)
 function B.dot.check(ast, ctxt)
     local args = ast.params
     if #args ~= 2 then
-        ctxt:error(ast, "dot expects exactly 2 arguments (instead got " .. #args .. ")")
-        return
+        ctxt:error(ast, "dot product expects exactly 2 arguments "..
+                        "(instead got " .. #args .. ")")
+        return L.error
     end
+
     local lt1 = args[1].node_type
     local lt2 = args[2].node_type
-    if not lt1:isVector() then
-        ctxt:error(args[1], "first argument to dot must be a vector")
+
+    local numvec_err = 'arguments to dot product must be numeric vectors'
+    local veclen_err = 'vectors in dot product must have equal dimensions'
+    if not lt1:isVector()  or not lt2:isVector() or
+       not lt1:isNumeric() or not lt2:isNumeric()
+    then
+        ctxt:error(ast, numvec_err)
+    elseif lt1.N ~= lt2.N then
+        ctxt:error(ast, veclen_err)
+    else
+        return T.type_meet(lt1:baseType(), lt2:baseType())
     end
-    if not lt2:isVector() then
-        ctxt:error(args[2], "second argument to dot must be a vector")
-    end
-    if not lt1:isVector() or not lt2:isVector() then return end
-    if lt1.N ~= lt2.N then
-        ctxt:error(ast, "cannot dot vectors of differing lengths (" ..
-                lt1.N .. " and " .. lt2.N .. ")")
-    end
-    if lt1:baseType() == L.bool then
-        ctxt:error(args[1], "boolean vector passed as first argument to dot")
-    end
-    if lt2:baseType() == L.bool then 
-        ctxt:error(args[2], "boolean vector passed as second argument to dot")
-    end
-    return T.type_meet(lt1:baseType(), lt2:baseType())
+
+    return L.error
 end
 
 function B.dot.codegen(ast, env)
     local args = ast.params
-    local v1 = symbol()
-    local v2 = symbol()
-    local N = args[1].node_type.N
-    if N == 0 then
-        return `0
-    end
-    local result = `v1[0] * v2[0]
-    -- TODO: make this codegen a Terra for loop for super-long vectors
-    for i = 1, N - 1 do
-        result = `result + v1[i] * v2[i]
+
+    local N     = args[1].node_type.N
+    local lhtyp = args[1].node_type:terraType()
+    local rhtyp = args[2].node_type:terraType()
+    local lhe   = args[1]:codegen(env)
+    local rhe   = args[2]:codegen(env)
+
+    local lhval = symbol(lhtyp)
+    local rhval = symbol(rhtyp)
+
+    local exp = `0
+    for i = 0, N-1 do
+        exp = `exp + lhval._0[i] * rhval._0[i]
     end
 
-    local tt1 = args[1].node_type:terraType()
-    local tt2 = args[2].node_type:terraType()
-    local code1 = args[1]:codegen(env)
-    local code2 = args[2]:codegen(env)
     return quote
-        var [v1] : tt1 = code1
-        var [v2] : tt2 = code2
+        var [lhval] = [lhe]
+        var [rhval] = [rhe]
     in
-        result
+        exp
     end
 end
 
@@ -299,52 +301,47 @@ B.cross = Func.new(cross)
 
 function B.cross.check(ast, ctxt)
     local args = ast.params
+
     if #args ~= 2 then
-        ctxt:error(ast, "cross expects exactly 2 arguments (instead got " .. #args .. ")")
-        return
+        ctxt:error(ast, "cross product expects exactly 2 arguments "..
+                        "(instead got " .. #args .. ")")
+        return L.error
     end
+
     local lt1 = args[1].node_type
     local lt2 = args[2].node_type
-    if not lt1:isVector() then
-        ctxt:error(args[1], "first argument to cross must be a vector")
+
+    local numvec_err = 'arguments to cross product must be numeric vectors'
+    local veclen_err = 'vectors in cross product must be 3 dimensional'
+    if not lt1:isVector()  or not lt2:isVector() or
+       not lt1:isNumeric() or not lt2:isNumeric()
+    then
+        ctxt:error(ast, numvec_err)
+    elseif lt1.N ~= 3 or lt2.N ~= 3 then
+        ctxt:error(ast, veclen_err)
+    else
+        return T.type_meet(lt1, lt2)
     end
-    if not lt2:isVector() then
-        ctxt:error(args[2], "second argument to cross must be a vector")
-    end
-    if not lt1:isVector() or not lt2:isVector() then return end
-    if lt1.N ~= 3 then
-        ctxt:error(ast, "arguments to cross must be vectors of length 3 (first argument is of length" ..  lt1.N .. ")")
-    end
-    if lt2.N ~= 3 then
-        ctxt:error(ast, "arguments to cross must be vectors of length 3 (second argument is of length" ..  lt1.N .. ")")
-    end
-    if lt1:baseType() == L.bool then
-        ctxt:error(args[1], "boolean vector passed as first argument to cross")
-    end
-    if lt2:baseType() == L.bool then 
-        ctxt:error(args[2], "boolean vector passed as second argument to cross")
-    end
-    return T.type_meet(lt1, lt2)
+
+    return L.error
 end
 
 function B.cross.codegen(ast, env)
     local args = ast.params
 
-    local tt1 = args[1].node_type:terraType()
-    local tt2 = args[2].node_type:terraType()
-    local v1 = symbol(tt1)
-    local v2 = symbol(tt2)
+    local lhtyp = args[1].node_type:terraType()
+    local rhtyp = args[2].node_type:terraType()
+    local lhe   = args[1]:codegen(env)
+    local rhe   = args[2]:codegen(env)
 
-    local tp = T.type_meet(args[1].node_type:baseType(), args[2].node_type:baseType()):terraType()
-    local code1 = args[1]:codegen(env)
-    local code2 = args[2]:codegen(env)
     return quote
-        var [v1] = code1
-        var [v2] = code2
-    in
-        vectorof(tp, v1[1] * v2[2] - v1[2] * v2[1],
-                     v1[2] * v2[0] - v1[0] * v2[2],
-                     v1[0] * v2[1] - v1[1] * v2[0])
+        var lhval : lhtyp = [lhe]
+        var rhval : rhtyp = [rhe]
+    in { array(
+        lhval._0[1] * rhval._0[2] - lhval._0[2] * rhval._0[1],
+        lhval._0[2] * rhval._0[0] - lhval._0[0] * rhval._0[2],
+        lhval._0[0] * rhval._0[1] - lhval._0[1] * rhval._0[0]
+    ) }
     end
 end
 
@@ -377,24 +374,22 @@ end
 
 function B.length.codegen(ast, env)
     local args = ast.params
-    local sq = symbol()
-    local N = args[1].node_type.N
-    if N == 0 then
-        return `0
-    end
-    local len2 = `sq[0]
-    -- TODO: make this codegen a Terra for loop for super-long vectors
-    for i = 1, N - 1 do
-        len2 = `len2 + sq[i]
+
+    local N      = args[1].node_type.N
+    local typ    = args[1].node_type:terraType()
+    local exp    = args[1]:codegen(env)
+
+    local vec    = symbol(typ)
+
+    local len2 = `0
+    for i = 0, N-1 do
+        len2 = `len2 + vec._0[i] * vec._0[i]
     end
 
-    local tt = args[1].node_type:terraType()
-    local code = args[1]:codegen(env)
     return quote
-        var v : tt = code
-        var [sq] : tt = v * v
+        var [vec] = [exp]
     in
-        C.sqrt(len2)
+        C.sqrt( len2 )
     end
 end
 
@@ -427,24 +422,22 @@ end
 
 function B.all.codegen(ast, env)
     local args = ast.params
-    local N = args[1].node_type.N
-    if N == 0 then
-        return `true
+
+    local N      = args[1].node_type.N
+    local typ    = args[1].node_type:terraType()
+    local exp    = args[1]:codegen(env)
+
+    local val    = symbol(typ)
+
+    local outexp = `true
+    for i = 0, N-1 do
+        outexp = `outexp and val._0[i]
     end
 
-    local tt = args[1].node_type:terraType()
-    local v = symbol(tt)
-    local truth = `v[0]
-    -- TODO: make this codegen a Terra for loop for super-long vectors
-    for i = 1, N - 1 do
-        truth = `truth and v[i]
-    end
-
-    local code = args[1]:codegen(env)
     return quote
-        var [v] = code
+        var [val] = [exp]
     in
-        truth
+        outexp
     end
 end
 
@@ -476,75 +469,23 @@ function B.any.check(ast, ctxt)
 end
 
 function B.any.codegen(ast, env)
-    local args = ast.params
-    local N = args[1].node_type.N
-    if N == 0 then
-        return `false
+    local args   = ast.params
+
+    local N      = args[1].node_type.N
+    local typ    = args[1].node_type:terraType()
+    local exp    = args[1]:codegen(env)
+
+    local val    = symbol(typ)
+
+    local outexp = `false
+    for i = 0, N-1 do
+        outexp = `outexp or val._0[i]
     end
 
-    local tt = args[1].node_type:terraType()
-    local v = symbol(tt)
-    local truth = `v[0]
-    -- TODO: make this codegen a Terra for loop for super-long vectors
-    for i = 1, N - 1 do
-        truth = `truth or v[i]
-    end
-
-    local code = args[1]:codegen(env)
     return quote
-        var [v] = code
+        var [val] = [exp]
     in
-        truth
-    end
-end
-
-
-local function any(v)
-    if not v.type:isVector() then
-        error("argument to length must be a vector", 2)
-    end
-    for _,d in ipairs(v.data) do
-        if d then return true end
-    end
-    return false
-end
-
-B.any = Func.new(any)
-
-function B.any.check(ast, ctxt)
-    local args = ast.params
-    if #args ~= 1 then
-        ctxt:error(ast, "any expects exactly 1 argument (instead got " .. #args .. ")")
-        return L.error
-    end
-    local lt = args[1].node_type
-    if not lt:isVector() then
-        ctxt:error(args[1], "argument to any must be a vector")
-        return L.error
-    end
-    return L.bool
-end
-
-function B.any.codegen(ast, env)
-    local args = ast.params
-    local N = args[1].node_type.N
-    if N == 0 then
-        return `false
-    end
-
-    local tt = args[1].node_type:terraType()
-    local v = symbol(tt)
-    local truth = `v[0]
-    -- TODO: make this codegen a Terra for loop for super-long vectors
-    for i = 1, N - 1 do
-        truth = `truth or v[i]
-    end
-
-    local code = args[1]:codegen(env)
-    return quote
-        var [v] = code
-    in
-        truth
+        outexp
     end
 end
 

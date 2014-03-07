@@ -28,17 +28,16 @@ M.right  = M.outlet
 local C, V, F, E = M.cells, M.vertices, M.faces, M.edges
 
 
-
 --------------------------------------------------------------------------------
 --[[ FEM field allocation                                                   ]]--
 --------------------------------------------------------------------------------
-V:NewField('v_n',   L.vector(L.float, 3)):LoadConstant(vector(float, 0, 0, 0))
-V:NewField('v_p',   L.vector(L.float, 3)):LoadConstant(vector(float, 0, 0, 0))
-V:NewField('d_n',   L.vector(L.float, 3)):LoadConstant(vector(float, 0, 0, 0))
-V:NewField('a_n',   L.vector(L.float, 3)):LoadConstant(vector(float, 0, 0, 0))
-V:NewField('v_n_h', L.vector(L.float, 3)):LoadConstant(vector(float, 0, 0, 0))
-V:NewField('fext',  L.vector(L.float, 3)):LoadConstant(vector(float, 0, 0, 0))
-V:NewField('fint',  L.vector(L.float, 3)):LoadConstant(vector(float, 0, 0, 0))
+V:NewField('v_n',   L.vector(L.float, 3)):LoadConstant( {0, 0, 0} )
+V:NewField('v_p',   L.vector(L.float, 3)):LoadConstant( {0, 0, 0} )
+V:NewField('d_n',   L.vector(L.float, 3)):LoadConstant( {0, 0, 0} )
+V:NewField('a_n',   L.vector(L.float, 3)):LoadConstant( {0, 0, 0} )
+V:NewField('v_n_h', L.vector(L.float, 3)):LoadConstant( {0, 0, 0} )
+V:NewField('fext',  L.vector(L.float, 3)):LoadConstant( {0, 0, 0} )
+V:NewField('fint',  L.vector(L.float, 3)):LoadConstant( {0, 0, 0} )
 
 V:NewField('mass', L.float):LoadConstant(1.0)
 
