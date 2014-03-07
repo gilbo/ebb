@@ -33,11 +33,11 @@ test.fail_function(function()
   liszt_kernel(f : mesh.faces)
     assert(dot(v1, v3) == 7)
   end
-end, "differing lengths")
+end, "must have equal dimensions")
 
 local vb = L.NewVector(L.bool, {true, true, false})
 test.fail_function(function()
   liszt_kernel(f : mesh.faces)
     assert(dot(v1, vb) == 52)
   end
-end, "boolean vector")
+end, "must be numeric vectors")

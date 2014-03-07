@@ -16,7 +16,15 @@ LISZT_RUNTIME=$SCRIPT_DIR/runtime/libsingle_runtime.so
 
 if [ $1 ] && [ $1 == "-v" ];
 then
-	LISZT_RUNTIME=$LISZT_RUNTIME $SCRIPT_DIR/terra/terra -vv $OPTS $2
+	if [ $2 ]; then
+		LISZT_RUNTIME=$LISZT_RUNTIME $SCRIPT_DIR/terra/terra -vv $OPTS $SCRIPT_DIR/compiler/launch_script.t $2
+	else
+		LISZT_RUNTIME=$LISZT_RUNTIME $SCRIPT_DIR/terra/terra -vv $OPTS
+	fi
 else
-	LISZT_RUNTIME=$LISZT_RUNTIME $SCRIPT_DIR/terra/terra  $OPTS $1
+	if [ $1 ]; then
+		LISZT_RUNTIME=$LISZT_RUNTIME $SCRIPT_DIR/terra/terra  $OPTS $SCRIPT_DIR/compiler/launch_script.t $1
+	else
+		LISZT_RUNTIME=$LISZT_RUNTIME $SCRIPT_DIR/terra/terra  $OPTS
+	fi
 fi

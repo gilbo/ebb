@@ -1,25 +1,32 @@
 {
   "major_version":0,
   "relations":{
-    "verticesofvertex":{
+    "edgesofface":{
       "fields":{
-        "v2":{
+        "orientation":{
           "type":{
-            "basic_kind":"row",
-            "relation":"vertices"
+            "basic_kind":"primitive",
+            "primitive":"bool"
           },
-          "path":"verticesofvertex/v2.field"
+          "path":"edgesofface/orientation.field"
         },
-        "v1":{
+        "face":{
           "type":{
             "basic_kind":"row",
-            "relation":"vertices"
+            "relation":"faces"
           },
-          "path":"verticesofvertex/v1.field"
+          "path":"edgesofface/face.field"
+        },
+        "edge":{
+          "type":{
+            "basic_kind":"row",
+            "relation":"edges"
+          },
+          "path":"edgesofface/edge.field"
         }
       },
       "size":24,
-      "index":"v1"
+      "index":"face"
     },
     "verticesofcell":{
       "fields":{
@@ -41,24 +48,24 @@
       "size":16,
       "index":"cell"
     },
-    "facesofvertex":{
+    "cellsofvertex":{
       "fields":{
         "vertex":{
           "type":{
             "basic_kind":"row",
             "relation":"vertices"
           },
-          "path":"facesofvertex/vertex.field"
+          "path":"cellsofvertex/vertex.field"
         },
-        "face":{
+        "cell":{
           "type":{
             "basic_kind":"row",
-            "relation":"faces"
+            "relation":"cells"
           },
-          "path":"facesofvertex/face.field"
+          "path":"cellsofvertex/cell.field"
         }
       },
-      "size":24,
+      "size":16,
       "index":"vertex"
     },
     "facesofedge":{
@@ -88,68 +95,29 @@
       "size":24,
       "index":"edge"
     },
-    "cellsofvertex":{
+    "verticesofface":{
       "fields":{
+        "face":{
+          "type":{
+            "basic_kind":"row",
+            "relation":"faces"
+          },
+          "path":"verticesofface/face.field"
+        },
         "vertex":{
           "type":{
             "basic_kind":"row",
             "relation":"vertices"
           },
-          "path":"cellsofvertex/vertex.field"
-        },
-        "cell":{
-          "type":{
-            "basic_kind":"row",
-            "relation":"cells"
-          },
-          "path":"cellsofvertex/cell.field"
-        }
-      },
-      "size":16,
-      "index":"vertex"
-    },
-    "vertices":{
-      "size":8,
-      "fields":{
-        "position":{
-          "type":{
-            "base":{
-              "basic_kind":"primitive",
-              "primitive":"double"
-            },
-            "basic_kind":"vector",
-            "n":3
-          },
-          "path":"vertices/position.field"
-        }
-      }
-    },
-    "edgesofvertex":{
-      "fields":{
-        "vertex":{
-          "type":{
-            "basic_kind":"row",
-            "relation":"vertices"
-          },
-          "path":"edgesofvertex/vertex.field"
-        },
-        "orientation":{
-          "type":{
-            "basic_kind":"primitive",
-            "primitive":"bool"
-          },
-          "path":"edgesofvertex/orientation.field"
-        },
-        "edge":{
-          "type":{
-            "basic_kind":"row",
-            "relation":"edges"
-          },
-          "path":"edgesofvertex/edge.field"
+          "path":"verticesofface/vertex.field"
         }
       },
       "size":24,
-      "index":"vertex"
+      "index":"face"
+    },
+    "cells":{
+      "size":2,
+      "fields":{}
     },
     "facesofcell":{
       "fields":{
@@ -177,6 +145,25 @@
       },
       "size":12,
       "index":"cell"
+    },
+    "edges":{
+      "size":12,
+      "fields":{
+        "tail":{
+          "type":{
+            "basic_kind":"row",
+            "relation":"vertices"
+          },
+          "path":"edges/tail.field"
+        },
+        "head":{
+          "type":{
+            "basic_kind":"row",
+            "relation":"vertices"
+          },
+          "path":"edges/head.field"
+        }
+      }
     },
     "cellsofcell":{
       "fields":{
@@ -218,6 +205,26 @@
       "size":24,
       "index":"edge"
     },
+    "verticesofvertex":{
+      "fields":{
+        "v2":{
+          "type":{
+            "basic_kind":"row",
+            "relation":"vertices"
+          },
+          "path":"verticesofvertex/v2.field"
+        },
+        "v1":{
+          "type":{
+            "basic_kind":"row",
+            "relation":"vertices"
+          },
+          "path":"verticesofvertex/v1.field"
+        }
+      },
+      "size":24,
+      "index":"v1"
+    },
     "faces":{
       "size":6,
       "fields":{
@@ -237,48 +244,41 @@
         }
       }
     },
-    "edges":{
-      "size":12,
+    "vertices":{
+      "size":8,
       "fields":{
-        "tail":{
+        "position":{
           "type":{
-            "basic_kind":"row",
-            "relation":"vertices"
+            "base":{
+              "basic_kind":"primitive",
+              "primitive":"double"
+            },
+            "basic_kind":"vector",
+            "n":3
           },
-          "path":"edges/tail.field"
-        },
-        "head":{
-          "type":{
-            "basic_kind":"row",
-            "relation":"vertices"
-          },
-          "path":"edges/head.field"
+          "path":"vertices/position.field"
         }
       }
     },
-    "cells":{
-      "size":2,
-      "fields":{}
-    },
-    "verticesofface":{
+    "facesofvertex":{
       "fields":{
-        "face":{
-          "type":{
-            "basic_kind":"row",
-            "relation":"faces"
-          },
-          "path":"verticesofface/face.field"
-        },
         "vertex":{
           "type":{
             "basic_kind":"row",
             "relation":"vertices"
           },
-          "path":"verticesofface/vertex.field"
+          "path":"facesofvertex/vertex.field"
+        },
+        "face":{
+          "type":{
+            "basic_kind":"row",
+            "relation":"faces"
+          },
+          "path":"facesofvertex/face.field"
         }
       },
       "size":24,
-      "index":"face"
+      "index":"vertex"
     },
     "edgesofcell":{
       "fields":{
@@ -300,32 +300,32 @@
       "size":24,
       "index":"cell"
     },
-    "edgesofface":{
+    "edgesofvertex":{
       "fields":{
+        "vertex":{
+          "type":{
+            "basic_kind":"row",
+            "relation":"vertices"
+          },
+          "path":"edgesofvertex/vertex.field"
+        },
         "orientation":{
           "type":{
             "basic_kind":"primitive",
             "primitive":"bool"
           },
-          "path":"edgesofface/orientation.field"
-        },
-        "face":{
-          "type":{
-            "basic_kind":"row",
-            "relation":"faces"
-          },
-          "path":"edgesofface/face.field"
+          "path":"edgesofvertex/orientation.field"
         },
         "edge":{
           "type":{
             "basic_kind":"row",
             "relation":"edges"
           },
-          "path":"edgesofface/edge.field"
+          "path":"edgesofvertex/edge.field"
         }
       },
       "size":24,
-      "index":"face"
+      "index":"vertex"
     }
   },
   "notes":"",

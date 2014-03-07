@@ -40,7 +40,7 @@ F.field1:LoadConstant(1)
 F.field2:LoadConstant(2.5)
 F.field3:LoadConstant(6)
 F.field4:LoadConstant(false)
-F.field5:LoadConstant(vector(float, 0, 0, 0, 0))
+F.field5:LoadConstant(L.NewVector(L.float, { 0, 0, 0, 0 }))
 
 
 -----------------

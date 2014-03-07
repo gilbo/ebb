@@ -27,26 +27,15 @@ local C, V, F, E = M.cells, M.vertices, M.faces, M.edges
 --------------------------------------------------------------------------------
 --[[ Allocate/initialize vertex fields                                      ]]--
 --------------------------------------------------------------------------------
-local terra d3zero(mem : &double, i : uint)
-	mem[0] = 0.0
-	mem[1] = 0.0
-	mem[2] = 0.0
-end
 
-M.vertices:NewField('initialPos', L.vector(L.double, 3)):LoadConstant(
-																									vector(double, 0, 0, 0))
-M.vertices:NewField('v_n',        L.vector(L.double, 3)):LoadConstant(
-																									vector(double, 0, 0, 0))
-M.vertices:NewField('v_p',        L.vector(L.double, 3)):LoadConstant(
-																									vector(double, 0, 0, 0))
-M.vertices:NewField('a_n',        L.vector(L.double, 3)):LoadConstant(
-																									vector(double, 0, 0, 0))
-M.vertices:NewField('v_n_h',      L.vector(L.double, 3)):LoadConstant(
-																									vector(double, 0, 0, 0))
-M.vertices:NewField('fext',       L.vector(L.double, 3)):LoadConstant(
-																									vector(double, 0, 0, 0))
-M.vertices:NewField('fint',       L.vector(L.double, 3)):LoadConstant(
-																									vector(double, 0, 0, 0))
+local zero = {0,0,0}
+M.vertices:NewField('initialPos', L.vector(L.double, 3)):LoadConstant(zero)
+M.vertices:NewField('v_n',        L.vector(L.double, 3)):LoadConstant(zero)
+M.vertices:NewField('v_p',        L.vector(L.double, 3)):LoadConstant(zero)
+M.vertices:NewField('a_n',        L.vector(L.double, 3)):LoadConstant(zero)
+M.vertices:NewField('v_n_h',      L.vector(L.double, 3)):LoadConstant(zero)
+M.vertices:NewField('fext',       L.vector(L.double, 3)):LoadConstant(zero)
+M.vertices:NewField('fint',       L.vector(L.double, 3)):LoadConstant(zero)
 
 M.vertices:NewField('mass', L.double):LoadConstant(2.0)
 

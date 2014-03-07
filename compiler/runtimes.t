@@ -1,5 +1,5 @@
 local Runtime = {}
-local C = terralib.require 'compiler.codegen'
+local ast = terralib.require('compiler.ast')
 
 function Runtime:New (str)
 	return setmetatable({__string=str}, self)
@@ -34,16 +34,13 @@ function singleCore:codegen_kernel_body (ctxt, liszt_kernel, relation)
 end
 
 function singleCore:codegen_field_write (ctxt, fw)
-	local lhs   = fw.fieldaccess:codegen(ctxt)
-	local ttype = fw.fieldaccess.node_type:terraType()
-	local rhs   = fw.exp:codegen(ctxt)
+	-- just re-direct to an assignment statement for now.
+	local assign = ast.Assignment:DeriveFrom(fw)
+	assign.lvalue = fw.fieldaccess
+	assign.exp    = fw.exp
+	if fw.reduceop then assign.reduceop = fw.reduceop end
 
-	if fw.reduceop then
-		rhs = C.utils.codegen_binary_op(fw.reduceop, lhs, rhs, fw.fieldaccess.node_type)
-		return C.utils.codegen_assignment(lhs, fw.fieldaccess.node_type, rhs, fw.fieldaccess.node_type)
-	end
-
-	return C.utils.codegen_assignment(lhs, fw.fieldaccess.node_type, rhs, fw.exp.node_type)
+	return assign:codegen(ctxt)
 end
 
 function singleCore:codegen_field_read (ctxt, fa)
