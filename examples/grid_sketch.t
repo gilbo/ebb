@@ -1,7 +1,6 @@
 import "compiler.liszt"
 
 local Grid = terralib.require 'compiler.grid'
-
 local cmath = terralib.includecstring '#include <math.h>'
 
 local N = 3
@@ -25,6 +24,10 @@ grid.cells.velocity:LoadConstant(L.NewVector(L.float, {0,0}))
 grid.cells:NewField('velocity_temp', L.vector(L.float, 2))
 grid.cells.velocity_temp:LoadConstant(L.NewVector(L.float, {0,0}))
 
+grid.cells:NewField('position', L.vector(L.float, 2))
+
+-- TODO: Init position
+
 local a     = L.NewScalar(L.float, 0)
 local dt0   = L.NewScalar(L.float, 0)
 local h     = L.NewScalar(L.float, 0)
@@ -45,6 +48,15 @@ local addsource_velocity = liszt_kernel(c : grid.cells)
     c.velocity = c.velocity_prev
 end
 
+-----------------------------------------------------------------------------
+--[[                             VELSTEP                                 ]]--
+-----------------------------------------------------------------------------
+
+
+
+-----------------------------------------------------------------------------
+--[[                             DENSTEP                                 ]]--
+-----------------------------------------------------------------------------
 -----------------------------------------------------------------------------
 --[[                             DIFFUSE                                 ]]--
 -----------------------------------------------------------------------------
@@ -76,8 +88,7 @@ local function advect_preprocess()
 end
 
 local advect_density = liszt_kernel(c : grid.cells)
-    var x = i - dt0 * c.velocity[1]
-    var x = 0
+    var x = c.position[1] - dt0 * c.velocity[1]
 
     if x < 0.5 then
         x = 0.5
@@ -87,11 +98,10 @@ local advect_density = liszt_kernel(c : grid.cells)
         x = N + 0.5
     end
 
-    var i0 = math.floor(x) + 1
+    var i0 = cmath.floor(x) + 1
     var i1 = i0 + 1
 
-    var y = j - dt0 * c.velocity[2]
-    var y = 0
+    var y = c.position[2] - dt0 * c.velocity[2]
 
     if y < 0.5 then
         y = 0.5
@@ -101,24 +111,26 @@ local advect_density = liszt_kernel(c : grid.cells)
         y = N + 0.5
     end
 
-    var j0 = cmath.floor(x) + 1
+    var j0 = cmath.floor(y) + 1
     var j1 = j0 + 1
 
     var s1 = x - i0
     var s0 = 1 - s1
     var t1 = y - j0
     var t0 = 1 - t1
-    
+
+    -- TODO: Implement casting for this
     c.density_temp =
-        s0 * ( t0 * c.density_prev.nbr(i0, j0) +
-               t1 * c.density_prev.nbr(i0, j1) +
-               s1 * ( t0 * c.density_prev.nbr(i1, j0) +
-                      t1 * c.density_prev.nbr(i1, j1)
-                    )
-             )
+        ( s0 * ( t0 * c.density_prev.locate(i0, j0) +
+                 t1 * c.density_prev.locate(i0, j1)
+               ) +
+          s1 * ( t0 * c.density_prev.locate(i1, j0) +
+                 t1 * c.density_prev.locate(i1, j1)
+               )
+        )
 end
 
-local advect_density_update = liszt kernel (c : grid.cells)
+local advect_density_update = liszt_kernel(c : grid.cells)
     c.density = c.density_temp
 end
 
@@ -173,7 +185,7 @@ for i = 1, 1000 do
     addsource_density(grid.cells)
     
     diffuse_preprocess(diff)
-    diffuse_density(grid.cells)
+    diffuse_density(grid.cells) -- TODO: Repeat this 20 times
     diffuse_density_update(grid.cells)
 
     advect_preprocess()
@@ -182,7 +194,7 @@ for i = 1, 1000 do
 
     project_preprocess()
     project_1(grid.cells)
-    project_2(grid.cells) -- Repeat this 20 times
+    project_2(grid.cells) -- TODO: Repeat this 20 times
     project_3(grid.cells)
     project_update(grid.cells)
 end
