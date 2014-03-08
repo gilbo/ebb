@@ -257,7 +257,6 @@ test_db_eq(simp_rels, simp_rels_load)
 
 
 
-print('done')
 
 
 

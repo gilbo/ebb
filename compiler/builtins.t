@@ -5,7 +5,6 @@ local L = terralib.require "compiler.lisztlib"
 local T = terralib.require "compiler.types"
 local C = terralib.require "compiler.c"
 
-
 ---------------------------------------------
 --[[ Builtin functions                   ]]--
 ---------------------------------------------
@@ -108,7 +107,7 @@ end
 local terra lisztAssert(test : bool, file : rawstring, line : int)
     if not test then
         C.fprintf(C.get_stderr(), "%s:%d: assertion failed!\n", file, line)
-        C.exit(1)
+        assert(false)
     end
 end
 

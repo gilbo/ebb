@@ -1,6 +1,7 @@
 
 -- LDB = Liszt DataBase
 
+-- NOT TRUE: THE ORIGINAL INTENTION OF THIS FILE HAS NOT BEEN CARRIED OUT
 -- The "database" is responsible for tracking all relations
 -- currently present in the runtime.  This helps us view
 -- relations from a closed rather than open-world perspective,
@@ -25,8 +26,6 @@ local Pathname = PN.Pathname
 local ffi = require('ffi')
 
 local JSON = require('compiler.JSON')
-
-
 
 
 terra allocateAligned(alignment : uint64, size : uint64)
