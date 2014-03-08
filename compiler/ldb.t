@@ -318,7 +318,7 @@ local function terraval_to_lua(val, typ)
     if typ:isVector() then
         local vec = {}
         for i = 1, typ.N do
-            vec[i] = terraval_to_lua(val._0[i-1], typ:baseType())
+            vec[i] = terraval_to_lua(val.d[i-1], typ:baseType())
         end
         return vec
     elseif typ:isNumeric() then
@@ -360,7 +360,7 @@ function L.LField:print()
         for i = 0, N-1 do
             local s = ''
             for j = 0, self.type.N-1 do
-                local t = tostring(self.data[i]._0[j]):gsub('ULL','')
+                local t = tostring(self.data[i].d[j]):gsub('ULL','')
                 s = s .. t .. ' '
             end
             print("", i, s)

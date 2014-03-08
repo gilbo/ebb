@@ -134,7 +134,7 @@ local function vectorType (typ, len)
     vt.type = typ
     local ttype = typ:terraType()
     local struct_name = tostring(ttype) .. "_" .. tostring(vt.N)
-    vt.terratype = struct { ttype[vt.N]; }
+    vt.terratype = struct { d : ttype[vt.N]; }
     vt.terratype.metamethods.__typename = function(self)
       return struct_name
     end

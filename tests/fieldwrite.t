@@ -13,9 +13,9 @@ end
 function check(x,y,z)
 	for i = 0, M.vertices._size - 1 do
 		local v = M.vertices.position.data[i]
-		assert(v._0[0] == x)
-		assert(v._0[1] == y)
-		assert(v._0[2] == z)
+		assert(v.d[0] == x)
+		assert(v.d[1] == y)
+		assert(v.d[2] == z)
 	end
 end
 

@@ -19,7 +19,7 @@ local function compare_field_data(fa, fb, fname)
     if fa.type:isVector() then
       test_not_eq = terra(a : &ttype, b : &ttype, i : int)
         for j = 0, N do
-          if a[i]._0[j] ~= b[i]._0[j] then return true end
+          if a[i].d[j] ~= b[i].d[j] then return true end
         end
         return false
       end
@@ -41,7 +41,7 @@ local function compare_field_data(fa, fb, fname)
 
   local function vecprint(cdata)
     local res = '{'
-    for i=0,N-1 do res = res .. tostring(cdata._0[i]) .. ',' end
+    for i=0,N-1 do res = res .. tostring(cdata.d[i]) .. ',' end
     return res .. '}'
   end
   local i = comparefn(fa.data, fb.data, fa:Size())
