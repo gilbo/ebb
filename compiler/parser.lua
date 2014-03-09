@@ -234,8 +234,11 @@ lang.statement = function (P)
 		node_decl.name = P:expect(P.name).value
 		if P:nextif(":") then
 			node_decl.typeexpression = P:luaexpr()
-		end
-		if (P:nextif("=")) then
+			if (P:nextif("=")) then
+				node_decl.initializer = P:exp()
+			end
+		else
+			P:expect("=")
 			node_decl.initializer = P:exp()
 		end
 		return node_decl
@@ -341,7 +344,11 @@ lang.statement = function (P)
 			-- fix line # info for assignment statement
 			node_asgn:copy_location(expr)
 			
-			node_asgn.lvalue = expr
+			if expr:is(ast.Reduce) then
+				node_asgn.reduceop, node_asgn.lvalue = expr.op, expr.exp
+			else
+				node_asgn.lvalue = expr
+			end
 			node_asgn.exp    = P:exp()
 			return node_asgn
 		else

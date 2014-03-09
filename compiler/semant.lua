@@ -93,6 +93,19 @@ local function exec_external(exp,ctxt,default)
     return v
 end
 
+local function try_coerce(target_typ, node, ctxt)
+    local cast = ast.Cast:DeriveFrom(node)
+    if node.node_type:isCoercableTo(target_typ) then
+        cast.node_type  = target_typ
+        cast.value      = node
+    else
+        ctxt:error(node, "Could not coerce expression of type '"..
+                        tostring(node.node_type) .. "' into type '"..
+                        tostring(target_typ) .. "'")
+        cast.node_type  = L.error
+    end
+    return cast
+end
 
 ------------------------------------------------------------------------------
 --[[ AST semantic checking methods:                                       ]]--
@@ -185,30 +198,34 @@ function ast.ExprStatement:check(ctxt)
     return expstmt
 end
 
-function ast.Reduce:check(ctxt)
-    local exp = self.exp:check(ctxt)
-
-    -- When reduced, a scalar can be an lvalue
-    if exp:is(ast.Scalar) then
-        exp.is_lvalue = true
-    end
-
-    -- only lvalues can be "reduced"
-    if exp.is_lvalue then
-        return exp
-
-    else
-        ctxt:error(self, "only lvalues can be reduced.")
-        local errnode = self:clone()
-        errnode.node_type = L.error
-        return errnode
-    end
-end
+--function ast.Reduce:check(ctxt)
+--    ctxt:error(self, "Reduction should have been refactored in the parser. (--Report to the developers)")
+--    return L.error
+--    local exp = self.exp:check(ctxt)
+--
+--    -- When reduced, a scalar can be an lvalue
+--    if exp:is(ast.Scalar) then
+--        exp.is_lvalue = true
+--    end
+--
+--    -- only lvalues can be "reduced"
+--    if exp.is_lvalue then
+--        return exp
+--
+--    else
+--        ctxt:error(self, "only lvalues can be reduced.")
+--        local errnode = self:clone()
+--        errnode.node_type = L.error
+--        return errnode
+--    end
+--end
 
 function ast.Assignment:check(ctxt)
     local assignment = self:clone()
+    assignment.reduceop = self.reduceop
 
-    ctxt:enterlhs(self.lvalue:is(ast.Reduce) and self.lvalue.op or nil)
+    -- LHS tracked for phase-checking
+    ctxt:enterlhs(self.reduceop or nil)
     local lhs = self.lvalue:check(ctxt)
     ctxt:leavelhs()
 
@@ -221,9 +238,9 @@ function ast.Assignment:check(ctxt)
     local rtype       = rhs.node_type
     if rtype == L.error then return assignment end
 
-    -- If the left hand side was a reduction store the reduction operation
-    if self.lvalue:is(ast.Reduce) then
-        assignment.reduceop = self.lvalue.op
+    -- Promote scalar lhs to lvalue if there was a reduction
+    if self.reduceop and lhs:is(ast.Scalar) then
+        lhs.is_value = true
     end
 
     -- enforce that the lhs is an lvalue
@@ -239,29 +256,12 @@ function ast.Assignment:check(ctxt)
         return assignment
     end
 
-    -- enforce type agreement b/w lhs and rhs
-    local derived = T.type_meet(ltype,rtype)
-    if derived == L.error or
-       (ltype:isPrimitive() and rtype:isVector()) or
-       (ltype:isVector()    and rtype:isVector() and ltype.N ~= rtype.N)
-    then
-        ctxt:error(self, "invalid conversion from " .. rtype:toString() ..
-                         ' to ' .. ltype:toString())
-        return
+    -- handle any coercions
+    if ltype ~= rtype then
+        assignment.exp = try_coerce(ltype, assignment.exp, ctxt)
+        if assignment.exp.node_type == L.error then return assignment end
     end
 
-    -- otherwise, check if we need to insert a type-cast...
-    -- TODO: THIS IS NOT SAFE & SOUND
-    if ltype ~= derived then 
-        derived = ltype
-    end
-    if rtype ~= derived then
-
-        local cast      = ast.Cast:DeriveFrom(assignment.exp)
-        cast.value      = assignment.exp
-        cast.node_type  = derived
-        assignment.exp = cast
-    end
 
     if assignment.lvalue:is(ast.FieldAccess) then
         local fw = ast.FieldWrite:DeriveFrom(assignment)
@@ -287,44 +287,31 @@ end
 function ast.DeclStatement:check(ctxt)
     local decl = self:clone()
     decl.name  = self.name
-
-    -- catch syntactically invalid initializations
-    if not self.typeexpression and not self.initializer then
-        ctxt:error(self, "Variables must either be initialized or have "..
-                         "an explicitly annotated type.")
-        decl.node_type = L.error
-        return decl
-    end
+    -- assert(self.typeexpression or self.initializer)
 
     -- process any explicit type annotation
-    local typ
     if self.typeexpression then
-        typ = exec_type_annotation(self.typeexpression, self, ctxt)
+        decl.node_type = exec_type_annotation(self.typeexpression, self, ctxt)
     end
-    -- check the initialization against the annotation or infer type from init.
+    -- check the initialization against the annotation or infer type.
     if self.initializer then
         decl.initializer = self.initializer:check(ctxt)
         local exptyp     = decl.initializer.node_type
-        -- if the type was annotated check consistency
-        if typ then
-            local mtyp = T.type_meet(exptyp,typ)
-            if typ ~= mtyp then
-                ctxt:error(self, "Cannot assign a value of type ",
-                                  exptyp, " to type ", typ)
-            end
-        -- or infer the type as the expression type
+        -- if the type was annotated handle any coercions
+        if decl.node_type then
+            decl.initializer =
+                try_coerce(decl.node_type, decl.initializer, ctxt)
         else
-            typ = exptyp
+            decl.node_type = exptyp
         end
     end
-    decl.node_type = typ
 
-    if typ ~= L.error and not typ:isFieldType() then
+    if decl.node_type ~= L.error and not decl.node_type:isFieldType() then
         ctxt:error(self,"can only assign numbers, bools, "..
                         "or rows to local temporaries")
     end
 
-    ctxt:liszt()[decl.name] = typ
+    ctxt:liszt()[decl.name] = decl.node_type
 
     return decl
 end
@@ -332,8 +319,9 @@ end
 function ast.NumericFor:check(ctxt)
     local node = self
     local function check_num_type(tp)
-        if tp ~= L.error and not tp:isNumeric() then
-            ctxt:error(node, "expected a numeric expression to define the "..
+        if tp ~= L.error and not tp:isIntegral() then
+            ctxt:error(node,
+                "expected an integer-type expression to define the "..
                              "iterator bounds/step (found "..
                              tp:toString()..")")
         end
@@ -347,20 +335,23 @@ function ast.NumericFor:check(ctxt)
     local upper_type = numfor.upper.node_type
     check_num_type(lower_type)
     check_num_type(upper_type)
+    if lower_type ~= upper_type then -- sanity check!
+        ctxt:error(node, 'iterator bound types must match!')
+    end
 
     local step, step_type
     if self.step then
         numfor.step = self.step:check(ctxt)
         step_type   = numfor.step.node_type
         check_num_type(step_type)
+        if lower_type ~= step_type then -- sanity check!
+            ctxt:error(node, 'iterator bound types must match!')
+        end
     end
 
     -- infer iterator type
     numfor.name           = self.name
-    numfor.node_type = T.type_meet(lower_type, upper_type)
-    if step_type then
-        numfor.node_type = T.type_meet(numfor.node_type, step_type)
-    end
+    numfor.node_type      = lower_type
 
     ctxt:enterblock()
     ctxt:enterloop()
@@ -406,7 +397,7 @@ function ast.CondBlock:check(ctxt)
     new_node.cond   = self.cond:check(ctxt)
     local condtype  = new_node.cond.node_type
     if condtype ~= L.error and condtype ~= L.bool then
-        ctxt:error(self, "conditional expression type should be"..
+        ctxt:error(self, "conditional expression type should be "..
                          "boolean (found " .. condtype:toString() .. ")")
     end
 

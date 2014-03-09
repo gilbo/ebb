@@ -218,7 +218,7 @@ end
 
 -- Primitives
 local terraprimitive_to_liszt = {}
-local primitives = {"int","uint","uint8","uint64","bool","float","double"}
+local primitives = {"int","uint64","bool","float","double"}
 for i,p in ipairs(primitives) do
     local t = Type:new("primitive")
     t.terratype = _G[p] 
@@ -271,8 +271,6 @@ Type.__tostring = Type.toString
 
 local primitive_set = {
   ["int"   ] = true,
-  ["uint"  ] = true,
-  ["uint8" ] = true,
   ["uint64"] = true,
   ["bool"  ] = true,
   ["float" ] = true,
@@ -366,6 +364,48 @@ end
 
 
 -------------------------------------------------------------------------------
+--[[ Type coercion                                                         ]]--
+-------------------------------------------------------------------------------
+
+-- Coercion defines a partial order.  This function defines that order
+function Type:isCoercableTo(target)
+  -- make sure we have two types
+  if not T.isLisztType(target) then return false end
+
+  -- identity relationship preserved
+  if self == target then return true end
+
+  -- Only numeric values are coercable...
+  if self:isNumeric() and target:isNumeric() then
+    local source = self
+
+    -- If we have matching dimension vectors, then delegate the
+    -- decision to the base types
+    if source:isVector() and target:isVector() and source.N == target.N then
+      source = source:baseType()
+      target = target:baseType()
+    end
+
+    if source:isPrimitive() and target:isPrimitive() then
+      if target == L.double and
+         (source == L.float or source == L.int)
+      then
+        return true
+      end
+      -- This should probably be stripped out at some point
+      -- However, you should expect trouble with the number literals
+      -- if you do so.
+      if source == L.int and target == L.float then
+        return true
+      end
+    end
+  end
+
+  -- In all other cases, coercion fails
+  return false
+end
+
+-------------------------------------------------------------------------------
 --[[ Type meeting                                                          ]]--
 -------------------------------------------------------------------------------
 
@@ -374,17 +414,9 @@ local function num_meet(ltype, rtype)
       if ltype == L.double or rtype == L.double then return L.double
   elseif ltype == L.float  or rtype == L.float  then return L.float
   elseif ltype == L.uint64 or rtype == L.uint64 then return L.uint64
-  --elseif ltype == L.int64  or rtype == L.int64  then return L.int64
-  --elseif ltype == L.uint32 or rtype == L.uint32 then return L.uint32
-  --elseif ltype == L.int32  or rtype == L.int32  then return L.int32
   -- note: this is assuming that int and uint get mapped to
   -- 32 bit numbers, which is probably wrong somewhere...
-  elseif ltype == L.uint   or rtype == L.uint   then return L.uint
   elseif ltype == L.int    or rtype == L.int    then return L.int
-  --elseif ltype == L.uint16 or rtype == L.uint16 then return L.uint16
-  --elseif ltype == L.int16  or rtype == L.int16  then return L.int16
-  elseif ltype == L.uint8  or rtype == L.uint8  then return L.uint8
-  --elseif ltype == L.int8   or rtype == L.int8   then return L.int8
   else
     return L.error
   end
@@ -469,6 +501,21 @@ local function terraToLisztType (tp)
   
   return nil
 end
+
+
+-------------------------------------------------------------------------------
+--[[ type aliases                                                          ]]--
+-------------------------------------------------------------------------------
+L.vec2f     = L.vector(L.float, 2)
+L.vec3f     = L.vector(L.float, 3)
+L.vec4f     = L.vector(L.float, 4)
+L.vec2d     = L.vector(L.double, 2)
+L.vec3d     = L.vector(L.double, 3)
+L.vec4d     = L.vector(L.double, 4)
+
+L.vec2b     = L.vector(L.bool, 2)
+L.vec3b     = L.vector(L.bool, 3)
+L.vec4b     = L.vector(L.bool, 4)
 
 
 -------------------------------------------------------------------------------

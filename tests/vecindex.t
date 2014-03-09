@@ -17,8 +17,8 @@ local vk = liszt_kernel (v : mesh.vertices)
 end
 vk(mesh.vertices)
 
-local x_out = L.NewScalar(L.float, 0.0)
-local y_out = L.NewScalar(L.float, 0.0)
+local x_out = L.NewScalar(L.double, 0.0)
+local y_out = L.NewScalar(L.double, 0.0)
 local y_idx = L.NewScalar(L.int, 1)
 local read_out = liszt_kernel(v : mesh.vertices)
     x_out += v.position[0]

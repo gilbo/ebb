@@ -3,7 +3,7 @@ require "tests/test"
 
 local LMesh = terralib.require "compiler.lmesh"
 local mesh = LMesh.Load("examples/mesh.lmesh")
-local com = L.NewScalar(L.vector(L.float, 3), {0, 0, 0})
+local com = L.NewScalar(L.vector(L.double, 3), {0, 0, 0})
 
 function center_of_mass ()
 	com:setTo({0,0,0})
@@ -15,7 +15,7 @@ function center_of_mass ()
 end
 
 local function displace_mesh (delta_x, delta_y, delta_z)
-	local d = L.NewVector(L.float, {delta_x, delta_y, delta_z})
+	local d = L.NewVector(L.double, {delta_x, delta_y, delta_z})
 	local dk = liszt_kernel (v : mesh.vertices)
 		v.position += d
 	end

@@ -32,7 +32,7 @@ local compute_step = liszt_kernel(e : M.edges)
 end
 
 local propagate_temp = liszt_kernel (p : M.vertices)
-	p.temperature += .01 * p.flux / p.jacobistep
+	p.temperature += L.float(.01) * p.flux / p.jacobistep
 end
 
 local clear = liszt_kernel (p : M.vertices)

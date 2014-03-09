@@ -145,7 +145,7 @@ local calc_internal_force = liszt_kernel (e : M.edges)
 	var v1 = e.head
 	var v2 = e.tail
 
-	var disp = v1.position - v2.position
+	var disp = L.vec3f(v1.position - v2.position)
 	var len  = L.length(disp)
 	var norm = disp / len
 
@@ -162,7 +162,7 @@ local update_previous_velocity = liszt_kernel (v : M.vertices) v.v_p = v.v_n end
 
 -- Update the velocity at t^{n+1}: v^{n+1} = v^{n+1/2}+dt^{n+1/2}/2*a^n
 local update_velocity = liszt_kernel (v : M.vertices)
-	v.v_n = v.v_n_h + .5f * dt_n_h * v.a_n
+	v.v_n = v.v_n_h + L.float(.5f) * dt_n_h * v.a_n
 end
 
 
@@ -173,17 +173,17 @@ local function main()
 
 	--[[ Initialize external forces: ]]--
 	(liszt_kernel (f : M.left)
-		f.value.v0.fext = {.01, 0, 0}
-		f.value.v1.fext = {.01, 0, 0}
-		f.value.v2.fext = {.01, 0, 0}
-		f.value.v3.fext = {.01, 0, 0}
+		f.value.v0.fext = L.vec3f({.01, 0, 0})
+		f.value.v1.fext = L.vec3f({.01, 0, 0})
+		f.value.v2.fext = L.vec3f({.01, 0, 0})
+		f.value.v3.fext = L.vec3f({.01, 0, 0})
 	end)(M.left)
 
 	(liszt_kernel (f : M.right)
-		f.value.v0.fext = {-.01, 0, 0}
-		f.value.v1.fext = {-.01, 0, 0}
-		f.value.v2.fext = {-.01, 0, 0}
-		f.value.v3.fext = {-.01, 0, 0}
+		f.value.v0.fext = L.vec3f({-.01, 0, 0})
+		f.value.v1.fext = L.vec3f({-.01, 0, 0})
+		f.value.v2.fext = L.vec3f({-.01, 0, 0})
+		f.value.v3.fext = L.vec3f({-.01, 0, 0})
 	end)(M.right)
 
 	--[[ Initialize acceleration based on initial forces ]]--
@@ -213,7 +213,7 @@ local function main()
 
 		-- nodal velocity kernel depends on changing t_n
 		local update_nodal_velocities = liszt_kernel (v : M.vertices)
-			v.v_n_h = v.v_n + (t_n_h - t_n) * v.a_n
+			v.v_n_h = v.v_n + L.float(t_n_h - t_n) * v.a_n
 		end
 
 		--[[ Execute! ]]--

@@ -80,7 +80,7 @@ test.fail_function(function()
 		var floatvar = 2 + 3.3
 		floatvar = true
 	end
-end, "invalid conversion from bool to double")
+end, "Could not coerce expression of type 'bool' into type 'double'")
 
 -- local8 is not in scope in the while loop
 test.fail_function(function()
@@ -121,7 +121,7 @@ test.fail_function(function()
 			local1 = 2.0 -- should fail, local1 is of type bool
 		end
 	end
-end, "invalid conversion from int to bool")
+end, "Could not coerce expression of type 'int' into type 'bool'")
 
 test.fail_function(function()
 	liszt_kernel (cell : mesh.cells)
@@ -150,7 +150,7 @@ test.fail_function(function()
 		end
 		v = 5
 	end
-end, "invalid conversion from int to bool")
+end, "Could not coerce expression of type 'int' into type 'bool'")
 
 local tbl = {}
 test.fail_function(function()
