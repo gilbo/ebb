@@ -7,16 +7,17 @@ package.loaded["compiler.grid"] = Grid
 local L = terralib.require "compiler.lisztlib"
 
 local function installMacros(grid)
-    --grid.cells:NewFieldMacro('offset', L.NewMacro(function(c, xoff, yoff)
-    --    -- TODO should check that xoff/yoff are number literals here...
-    --    local xsize = grid:xSize()
-    --    return liszt `begin
-    --        var id = L.id(c)
-    --        var new_id = id + yoff * xsize + xoff
-    --        return L.UNSAFE_ROW(new_id, grid.cells)
-    --    end
-    --    -- TODO: somehow return null? when there is no cell?
-    --end))
+    grid.cells:NewFieldMacro('offset', L.NewMacro(function(c, xoff, yoff)
+        -- TODO should check that xoff/yoff are number literals here...
+        --local xsize = grid:xSize()
+        return liszt quote
+            var id = L.id(c)
+            var new_id = id + yoff * grid.xdim + xoff
+        in
+            L.UNSAFE_ROW(new_id, grid.cells)
+        end
+        -- TODO: somehow return null? when there is no cell?
+    end))
     
     grid.cells:NewFieldMacro('left', L.NewMacro(function(c)
         return liszt quote
@@ -24,9 +25,9 @@ local function installMacros(grid)
             -- TODO: The following assert should check the entire
             -- left side of the grid, not just the top left
 --            assert(raw_addr > 0)
-            raw_addr -= 1
+            --raw_addr -= 1
         in
-            L.UNSAFE_ROW( raw_addr, grid.cells )
+            L.UNSAFE_ROW( raw_addr - 1, grid.cells )
         end
     end))
 
@@ -36,9 +37,9 @@ local function installMacros(grid)
             -- TODO: The following assert should check the entire
             -- left side of the grid, not just the top left
 --            assert(raw_addr > 0)
-            raw_addr += 1
+            --raw_addr += 1
         in
-            L.UNSAFE_ROW( raw_addr, grid.cells )
+            L.UNSAFE_ROW( raw_addr + 1, grid.cells )
         end
     end))
 
@@ -48,9 +49,9 @@ local function installMacros(grid)
             -- TODO: The following assert should check the entire
             -- left side of the grid, not just the top left
 --            assert(raw_addr > 0)
-            raw_addr -= grid.xdim
+            --raw_addr -= grid.xdim
         in
-            L.UNSAFE_ROW( raw_addr, grid.cells )
+            L.UNSAFE_ROW( raw_addr - grid.xdim, grid.cells )
         end
     end))
 
@@ -60,30 +61,22 @@ local function installMacros(grid)
             -- TODO: The following assert should check the entire
             -- left side of the grid, not just the top left
 --            assert(raw_addr > 0)
-            raw_addr += grid.xdim
+            --raw_addr += grid.xdim
         in
-            L.UNSAFE_ROW( raw_addr, grid.cells )
+            L.UNSAFE_ROW( raw_addr + grid.xdim, grid.cells )
         end
     end))
 
-    grid.cells:NewFieldMacro('locate', L.NewMacro(function(c)
+    grid.cells:NewFieldMacro('locate', L.NewMacro(function(c, xoff, yoff)
+        -- TODO should check that xoff/yoff are number literals here...
+        --local xsize = grid:xSize()
         return liszt quote
-            var raw_addr = L.id(c)
-            -- TODO: The following assert should check the entire
-            -- left side of the grid, not just the top left
---            assert(raw_addr > 0)
---            raw_addr += x + (y * grid.xdim)
+            var id = L.id(c)
+            var new_id = id + yoff * grid.xdim + xoff
         in
-            L.UNSAFE_ROW( raw_addr, grid.cells )
+            L.UNSAFE_ROW(new_id, grid.cells)
         end
-    end))
-
-    grid.cells:NewFieldMacro('GetIndex', L.NewMacro(function(c)
-        return liszt quote
-            var raw_addr = L.id(c)
-        in
-            raw_addr
-        end
+        -- TODO: somehow return null? when there is no cell?
     end))
 end
 
