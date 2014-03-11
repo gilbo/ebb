@@ -94,17 +94,56 @@ local function exec_external(exp,ctxt,default)
 end
 
 local function try_coerce(target_typ, node, ctxt)
-    local cast = ast.Cast:DeriveFrom(node)
     if node.node_type:isCoercableTo(target_typ) then
+        local cast = ast.Cast:DeriveFrom(node)
         cast.node_type  = target_typ
         cast.value      = node
+        return cast
     else
-        ctxt:error(node, "Could not coerce expression of type '"..
-                        tostring(node.node_type) .. "' into type '"..
-                        tostring(target_typ) .. "'")
-        cast.node_type  = L.error
+        if ctxt then
+            ctxt:error(node, "Could not coerce expression of type '"..
+                            tostring(node.node_type) .. "' into type '"..
+                            tostring(target_typ) .. "'")
+        end
+        return nil
     end
-    return cast
+end
+
+-- This is like a type meet.  Except we coerce the arguments
+-- as necessary and then return them
+local function try_bin_coerce(node_a, node_b)
+    if node_a.node_type == node_b.node_type then
+        return node_a, node_b
+    elseif node_a.node_type:isCoercableTo(node_b.node_type) then
+        return try_coerce(node_b.node_type, node_a), node_b
+    elseif node_b.node_type:isCoercableTo(node_a.node_type) then
+        return node_a, try_coerce(node_a.node_type, node_b)
+    else
+        return nil, nil
+    end
+end
+
+-- like above, but if one of the operands is a vector, then
+-- only coerce the base types into agreement
+local function try_vec_bin_coerce(node_a, node_b)
+    if node_a.node_type:isVector() == node_b.node_type:isVector() then
+        return try_bin_coerce(node_a, node_b)
+    elseif node_b.node_type:isVector() then
+        local b, a = try_vec_bin_coerce(node_b, node_a)
+        return a, b
+    else -- now a is vec, b is primitive
+        local abase = node_a.node_type:baseType()
+        local N     = node_a.node_type.N
+        if abase == node_b.node_type then
+            return node_a, node_b
+        elseif abase:isCoercableTo(node_b.node_type) then
+            return try_coerce(L.vector(node_b.node_type, N), node_a), node_b
+        elseif node_b.node_type:isCoercableTo(abase) then
+            return node_a, try_coerce(abase, node_b)
+        else
+            return nil, nil
+        end
+    end
 end
 
 ------------------------------------------------------------------------------
@@ -245,24 +284,23 @@ function ast.Assignment:check(ctxt)
 
     -- enforce that the lhs is an lvalue
     if not lhs.is_lvalue then
-        -- TODO: less cryptic error messages in this case
-        --   Better error messages probably involves switching on kind of lhs
-        ctxt:error(self.lvalue, "assignments in a Liszt kernel are only "..
-                                "valid to indexed fields or kernel variables")
+        ctxt:error(self.lvalue, "Illegal assignment: left hand side cannot "..
+                                "be assigned")
         return assignment
     elseif lhs.node_type:isRow() then
-        ctxt:error(self.lvalue, "cannot re-assign variables of "..
-                                "row type")
+        ctxt:error(self.lvalue, "Illegal assignment: variables of row type "..
+                                "cannot be re-assigned")
         return assignment
     end
 
     -- handle any coercions
     if ltype ~= rtype then
         assignment.exp = try_coerce(ltype, assignment.exp, ctxt)
-        if assignment.exp.node_type == L.error then return assignment end
+        if not assignment.exp then return assignment end
     end
 
-
+    -- replace assignment with a field write if we see a
+    -- field access on the left hand side
     if assignment.lvalue:is(ast.FieldAccess) then
         local fw = ast.FieldWrite:DeriveFrom(assignment)
         fw.fieldaccess = assignment.lvalue
@@ -424,19 +462,29 @@ local isNumOp = {
 }
 
 -- these operators always return logical types!
-local isCompOp = {
-    ['<='] = true,
-    ['>='] = true,
-    ['>']  = true,
-    ['<']  = true,
+local is_eq_compare = {
     ['=='] = true,
     ['~='] = true
 }
 
 -- only logical operands
-local isBoolOp = {
+local is_logical_op = {
     ['and'] = true,
     ['or']  = true
+}
+
+local is_num_compare_op = {
+    ['<='] = true,
+    ['>='] = true,
+    ['>']  = true,
+    ['<']  = true
+}
+
+local is_arith_op = {
+    ['+']  = true,
+    ['-']  = true,
+    ['*']  = true,
+    ['/']  = true
 }
 
 local function err (node, ctx, msg)
@@ -465,39 +513,79 @@ function ast.BinaryOp:check(ctxt)
         return err(self, ctxt, op_err)
     end
 
-    local derived = T.type_meet(ltype, rtype)
+    -- operators on booleans
+    if is_logical_op[binop.op] then
+        if ltype ~= rtype then              return err(binop, ctxt, type_err)
+        elseif not ltype:isLogical() then   return err(binop, ctxt, op_err)
+        else                                binop.node_type = ltype
+                                            return binop end
+    end
 
-    -- Numeric op operands cannot be vectors
-    if isNumOp[binop.op] then
-        if ltype:isVector() or rtype:isVector() then return err(binop, ctxt, op_err) end
-
-    elseif isCompOp[binop.op] then
-        if ltype:isLogical() ~= rtype:isLogical() then
+    -- operators for numeric primitives only
+    if is_num_compare_op[binop.op] or binop.op == '^' or binop.op == '%' then
+        if not ltype:isPrimitive() or not ltype:isNumeric() or
+           not rtype:isPrimitive() or not rtype:isNumeric() or
+           (binop.op == '%' and
+            (not ltype:isIntegral() or not rtype:isIntegral()))
+        then
             return err(binop, ctxt, op_err)
+        end
 
-        -- if the type_meet failed, types are incompatible
-        elseif derived == L.error then
-            return err(binop, ctxt, type_err)
+        -- coerce the arguments then
+        binop.lhs, binop.rhs = try_bin_coerce(binop.lhs, binop.rhs)
+        if not binop.lhs then return err(binop, ctxt, type_err) end
 
-        -- otherwise, we need to return a logical type
+        if is_num_compare_op[binop.op] then 
+            binop.node_type = L.bool
         else
-            binop.node_type =
-              derived:isPrimitive() and L.bool or L.vector(L.bool, derived.N)
-            return binop
+            binop.node_type = binop.lhs.node_type
         end
+        return binop
+    end
 
-    elseif isBoolOp[binop.op] then
-        if not ltype:isLogical() or not rtype:isLogical() then
+    -- equality / inequality (the eternal problem)
+    if is_eq_compare[binop.op] then
+        -- try coercion
+        binop.lhs, binop.rhs = try_bin_coerce(binop.lhs, binop.rhs)
+        if not binop.lhs then return err(binop, ctxt, type_err) end
+
+        binop.node_type = L.bool
+        return binop
+    end
+
+    -- all remaining cases of basic arithmetic ops
+    if is_arith_op[binop.op] then
+        if not ltype:isNumeric() or not rtype:isNumeric() then
             return err(binop, ctxt, op_err)
         end
+
+        -- check validity for this kind of operator
+        if binop.op == '+' or binop.op == '-' then
+            if ltype:isVector() ~= rtype:isVector() then
+                return err(binop, ctxt, op_err)
+            end
+        elseif binop.op == '*' then
+            if ltype:isVector() and rtype:isVector() then
+                return err(binop, ctxt, op_err)
+            end
+        elseif binop.op == '/' then
+            if rtype:isVector() then
+                return err(binop, ctxt, op_err)
+            end
+        end
+
+        -- coerce types
+        binop.lhs, binop.rhs = try_vec_bin_coerce(binop.lhs, binop.rhs)
+        if not binop.lhs then return err(binop, ctxt, type_err) end
+
+        -- make sure we get a vector type if appropriate
+        binop.node_type = binop.lhs.node_type
+        if rtype:isVector() then binop.node_type = binop.rhs.node_type end
+        return binop
     end
 
-    if derived == L.error then
-        ctxt:error(self, type_err)
-    end
-
-    binop.node_type = derived
-    return binop
+    -- We should never get here...
+    return err(binop, ctxt, "Failed to recognize operator '"..binop.op.."'")
 end
 
 function ast.UnaryOp:check(ctxt)
@@ -651,42 +739,48 @@ function ast.VectorLiteral:check(ctxt)
     local veclit      = self:clone()
     veclit.elems      = {}
 
-    ctxt:enterrhs()
-    veclit.elems[1]   = self.elems[1]:check(ctxt)
-    local type_so_far = veclit.elems[1].node_type
-    -- correct the type if it was explicitly provided...
-    if self.node_type then
-        type_so_far = self.node_type:baseType()
-    end
-
     local tp_error = "vector literals can only contain values "..
                      "of boolean or numeric type"
     local mt_error = "vector entries must be of the same type"
 
-    if type_so_far == L.error then return err(self, ctxt) end
-    if not type_so_far:isPrimitive() then
-        ctxt:leaverhs()
-        return err(self, ctxt, tp_error) 
+    ctxt:enterrhs()
+
+    veclit.elems[1]   = self.elems[1]:check(ctxt)
+    local max_type    = veclit.elems[1].node_type
+    if max_type == L.error then ctxt:leaverhs(); return err(self, ctxt) end
+    if not max_type:isPrimitive() then
+        ctxt:leaverhs(); return err(self, ctxt, tp_error) 
     end
 
+    -- scan the remaining entries to compute a max type
     for i = 2, #self.elems do
         veclit.elems[i] = self.elems[i]:check(ctxt)
         local tp        = veclit.elems[i].node_type
-
-        if not tp:isPrimitive() then 
-            ctxt:leaverhs()
-            return err(self, ctxt, tp_error)
+        if tp == L.error then ctxt:leaverhs(); return err(self, ctxt) end
+        if not tp:isPrimitive() then
+            ctxt:leaverhs(); return err(self,ctxt, tp_error)
         end
 
-        type_so_far = T.type_meet(type_so_far, tp)
-        if type_so_far:isError() then 
-            ctxt:leaverhs()
-            return err(self, ctxt, mt_error) 
+        if max_type:isCoercableTo(tp) then
+            max_type = tp
+        elseif not tp:isCoercableTo(max_type) then
+            ctxt:leaverhs(); return err(self, ctxt, mt_error)
         end
     end
 
+    -- If the type was explicitly provided...
+    if self.node_type then
+        max_type = self.node_type:baseType()
+    end
+
+    -- now coerce all of the entries into the max type
+    for i = 1, #veclit.elems do
+        veclit.elems[i] = try_coerce(max_type, veclit.elems[i], ctxt)
+    end
+
     ctxt:leaverhs()
-    veclit.node_type = L.vector(type_so_far, #veclit.elems)
+
+    veclit.node_type = L.vector(max_type, #veclit.elems)
     return veclit
 end
 

@@ -211,32 +211,47 @@ function let_vec_binding(typ, N, exp)
 end
 
 function vec_bin_exp(op, result_typ, lhe, rhe, lhtyp, rhtyp)
-  if not result_typ:isVector() then return bin_exp(op, lhe, rhe) end
+  -- ALL non-vector ops are handled here
+  if not lhtyp:isVector() and not rhtyp:isVector() then
+    return bin_exp(op, lhe, rhe)
+  end
+
+  -- the result type is misleading if we're doing a vector comparison...
+  if op == '==' or op == '~=' then
+    -- assert(lhtyp:isVector() and rhtyp:isVector())
+    result_typ = lhtyp
+    if lhtyp:isCoercableTo(rhtyp) then
+      result_typ = rhtyp
+    end
+  end
 
   local N = result_typ.N
-  local res_typ = result_typ:terraBaseType()
 
-  -- otherwise, bind the expression results into a let-clause
-  -- to ensure each sub-expression is evaluated exactly once.
-  -- Then, construct a vector expression result using these bound
-  -- values.
   local lhbind, lhcoords = let_vec_binding(lhtyp, N, lhe)
   local rhbind, rhcoords = let_vec_binding(rhtyp, N, rhe)
 
-  -- Now, assemble the vector by mashing up the coords
-  local result_coords = {}
+  -- Assemble the resulting vector by mashing up the coords
+  local coords = {}
   for i=1, N do
-    local exp = bin_exp(op, lhcoords[i], rhcoords[i])
-    result_coords[i] = `[res_typ](exp)
+    coords[i] = bin_exp(op, lhcoords[i], rhcoords[i])
+  end
+  local result = `[result_typ:terraType()]({ array( [coords] ) })
+
+  -- special case handling of vector comparisons
+  if op == '==' then -- AND results
+    result = `true
+    for i = 1, N do result = `result and [ coords[i] ] end
+  elseif op == '~=' then -- OR results
+    result = `false
+    for i = 1, N do result = `result or [ coords[i] ] end
   end
 
   local q = quote
     [lhbind]
     [rhbind]
   in
-    [result_typ:terraType()]({ arrayof(res_typ, [result_coords]) })
+    [result]
   end
-
   return q
 end
 
@@ -306,17 +321,15 @@ end
 
 function ast.VectorLiteral:codegen (ctxt)
   local typ = self.node_type
-  local btt = typ:terraBaseType()
 
   -- type everything explicitly
   local elems = {}
   for i = 1, #self.elems do
-    local code = self.elems[i]:codegen(ctxt)
-    elems[i] = `[btt](code)
+    elems[i] = self.elems[i]:codegen(ctxt)
   end
 
   -- we allocate vectors as a struct with a single array member
-  return `[typ:terraType()]({ arrayof(btt, [elems]) })
+  return `[typ:terraType()]({ array( [elems] ) })
 end
 
 function ast.Scalar:codegen (ctxt)
@@ -365,7 +378,7 @@ function ast.UnaryOp:codegen (ctxt)
     return quote
       [binding]
     in
-      [typ:terraType()]({ arrayof([typ:terraBaseType()], [coords]) })
+      [typ:terraType()]({ arrayof([coords]) })
     end
   end
 end

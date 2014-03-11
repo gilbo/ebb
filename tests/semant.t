@@ -40,7 +40,7 @@ test.fail_function(function()
  	liszt_kernel (cell : mesh.cells)
 		checkthis1 = cell.f1
 	end
-end, "assignments in a Liszt kernel are only")
+end, "Illegal assignment: left hand side cannot be assigned")
 
 -- Should fail when we re-assign a new value to x, since it originally
 -- refers to a topological element
@@ -49,7 +49,7 @@ test.fail_function(function()
 		var x = cell
   	  x = cell
 	end
-end, "cannot re%-assign")
+end, "Illegal assignment: variables of row type cannot be re%-assigned")
 
 -- Should fail because we do not allow assignments to fields
 -- (only to indexed fields, scalars, and local vars)
@@ -57,7 +57,7 @@ test.fail_function(function()
 	fail3 = liszt_kernel (cell : mesh.cells)
 		mesh.cells.f1 = 5
 	end
-end, "assignments in a Liszt kernel are only")
+end, "Illegal assignment: left hand side cannot be assigned")
 
 -- Should fail because we do not allow the user to alias fields,
 -- or any other entity that would confuse stencil generation, in the kernel
@@ -127,7 +127,7 @@ test.fail_function(function()
 	liszt_kernel (cell : mesh.cells)
 		lassert(4 == true) -- binary op will fail here, type mismatch
 	end
-end, "invalid types for operator")
+end, "incompatible types: int and bool")
 
 local v = L.NewVector(L.float, {1, 1, 1})
 test.fail_function(function()
@@ -140,7 +140,7 @@ test.fail_function(function()
 	liszt_kernel (cell : mesh.cells)
 		a.b = 12
 	end
-end, "assignments in a Liszt kernel are only")
+end, "Illegal assignment: left hand side cannot be assigned")
 
 test.fail_function(function()
 	liszt_kernel (cell : mesh.cells)
