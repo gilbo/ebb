@@ -398,6 +398,9 @@ function Type:isCoercableTo(target)
       if source == L.int and target == L.float then
         return true
       end
+      if source == L.int and target == L.uint64 then
+        return true
+      end
     end
   end
 

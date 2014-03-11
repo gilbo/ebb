@@ -153,7 +153,7 @@ local advect_density = liszt_kernel(c : grid.cells)
     var t0 = 1 - t1
 
     -- TODO: Implement casting for this
-c.locate(0, 0).density_prev
+    grid.offset(c, 0, 0).density_prev
 --[[
     c.density_temp =
         ( s0 * ( t0 * c.density_prev.locate(i0, j0) +
@@ -171,61 +171,58 @@ end
 -----------------------------------------------------------------------------
 
 local project_velocity_prev_1 = liszt_kernel(c : grid.cells)
-    c.velocity_temp = {
-        c.velocity[1],
-        -0.5 * h * ( c.right.velocity_prev[1] - c.left.velocity_prev[1] +
-                     c.right.velocity_prev[2] - c.left.velocity_prev[2]
-                   )
-                      }
+    c.velocity_temp = { c.velocity[1],
+        L.float(-0.5) * h *
+            ( c.right.velocity_prev[1] - c.left.velocity_prev[1] +
+              c.right.velocity_prev[2] - c.left.velocity_prev[2] )
+    }
 end
 
 local project_velocity_prev_2 = liszt_kernel(c : grid.cells)
     c.velocity_temp = {
-        0.25 * ( c.velocity[2] +
-                 c.left.velocity[1] + c.right.velocity[1] +
-                 c.top.velocity[1]  + c.bot.velocity[1]),
-                 c.velocity[2]
-                      }
+        L.float(0.25) * ( c.velocity[2] +
+            c.left.velocity[1] + c.right.velocity[1] +
+            c.top.velocity[1]  + c.bot.velocity[1]
+        ),
+        c.velocity[2]
+    }
 end
 
 local project_velocity_prev_3 = liszt_kernel(c : grid.cells)
     c.velocity_prev_temp = {
-        c.velocity_prev[1] - 0.5 * ( c.right.velocity[1] -
-                                c.left.velocity[1]
-                              ) / h,
-        c.velocity_prev[2] - 0.5 * ( c.bot.velocity[1] -
-                                c.top.velocity[1]
-                              ) / h
-                           }
+        c.velocity_prev[1] - L.float(0.5) *
+            ( c.right.velocity[1] - c.left.velocity[1] ) / h,
+        c.velocity_prev[2] - L.float(0.5) *
+            ( c.bot.velocity[1] - c.top.velocity[1] ) / h
+    }
 end
 
 local project_velocity_1 = liszt_kernel(c : grid.cells)
     c.velocity_prev_temp = {
         c.velocity_prev[1],
-        -0.5 * h * ( c.right.velocity[1] - c.left.velocity[1] +
-                     c.right.velocity[2] - c.left.velocity[2]
-                   )
-                           }
+        -L.float(0.5) * h *
+            ( c.right.velocity[1] - c.left.velocity[1] +
+              c.right.velocity[2] - c.left.velocity[2] )
+    }
 end
 
 local project_velocity_2 = liszt_kernel(c : grid.cells)
     c.velocity_prev_temp = {
-        0.25 * ( c.velocity_prev[2] +
-                 c.left.velocity_prev[1] + c.right.velocity_prev[1] +
-                 c.top.velocity_prev[1]  + c.bot.velocity_prev[1]),
-                 c.velocity_prev[2]
-                           }
+        L.float(0.25) * ( c.velocity_prev[2] +
+            c.left.velocity_prev[1] + c.right.velocity_prev[1] +
+            c.top.velocity_prev[1]  + c.bot.velocity_prev[1]
+        ),
+        c.velocity_prev[2]
+    }
 end
 
 local project_velocity_3 = liszt_kernel(c : grid.cells)
     c.velocity_temp = {
-        c.velocity[1] - 0.5 * ( c.right.velocity_prev[1] -
-                                c.left.velocity_prev[1]
-                              ) / h,
-        c.velocity[2] - 0.5 * ( c.bot.velocity_prev[1] -
-                                c.top.velocity_prev[1]
-                              ) / h
-                      }
+        c.velocity[1] - L.float(0.5) *
+            ( c.right.velocity_prev[1] - c.left.velocity_prev[1] ) / h,
+        c.velocity[2] - L.float(0.5) *
+            ( c.bot.velocity_prev[1] - c.top.velocity_prev[1] ) / h
+    }
 end
 
 -----------------------------------------------------------------------------

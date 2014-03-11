@@ -7,17 +7,30 @@ package.loaded["compiler.grid"] = Grid
 local L = terralib.require "compiler.lisztlib"
 
 local function installMacros(grid)
-    grid.cells:NewFieldMacro('offset', L.NewMacro(function(c, xoff, yoff)
-        -- TODO should check that xoff/yoff are number literals here...
-        --local xsize = grid:xSize()
+-- UNFORTUNATELY OFFSET WON'T WORK CURRENTLY
+--    grid.cells:NewFieldMacro('offset', L.NewMacro(function(c, xoff, yoff)
+--        -- TODO should check that xoff/yoff are number literals here...
+--        --local xsize = grid:xSize()
+--        return liszt quote
+--            var id = L.id(c)
+--            var new_id = id + yoff * grid.xdim + xoff
+--        in
+--            L.UNSAFE_ROW(new_id, grid.cells)
+--        end
+--        -- TODO: somehow return null? when there is no cell?
+--    end))
+
+-- Workaround for now
+    grid.offset = L.NewMacro(function(c, xoff, yoff)
+        local xsize = grid:xSize()
         return liszt quote
             var id = L.id(c)
             var new_id = id + yoff * grid.xdim + xoff
         in
             L.UNSAFE_ROW(new_id, grid.cells)
         end
-        -- TODO: somehow return null? when there is no cell?
-    end))
+        -- TODO: No null checking or plan for that
+    end)
     
     grid.cells:NewFieldMacro('left', L.NewMacro(function(c)
         return liszt quote
@@ -67,17 +80,21 @@ local function installMacros(grid)
         end
     end))
 
-    grid.cells:NewFieldMacro('locate', L.NewMacro(function(c, xoff, yoff)
-        -- TODO should check that xoff/yoff are number literals here...
-        --local xsize = grid:xSize()
+    grid.cells_locate = L.NewMacro(function(xy_pos_vec)
+        -- compute any constants???
+        local xsize = grid:xSize()
+
         return liszt quote
             var id = L.id(c)
-            var new_id = id + yoff * grid.xdim + xoff
+            -- Should actually do conversion from coordinates to integers...
+            var xoff = xy_pos_vec[0]
+            var yoff = xy_pos_vec[1]
+
+            var new_id = id + yoff * xsize + xoff
         in
             L.UNSAFE_ROW(new_id, grid.cells)
         end
-        -- TODO: somehow return null? when there is no cell?
-    end))
+    end)
 end
 
 --local initPrivateIndices = liszt_kernel(c: grid.cells)
