@@ -643,6 +643,7 @@ local function luav_to_ast(luav, src_node)
         node.node_type  = luav.type
         for i,v in ipairs(luav.data) do
             node.elems[i] = luav_to_ast(v, src_node)
+            node.elems[i].node_type = luav.type:baseType()
         end
     elseif B.isFunc(luav) then
         node = NewLuaObject(src_node,luav)
@@ -725,11 +726,11 @@ end
 function ast.Number:check(ctxt)
     local number = self:clone()
     number.value = self.value
-    if tonumber(self.value) % 1 == 0 then
-        self.node_type   = L.int
+    if self.node_type then
+        number.node_type = self.node_type
+    elseif tonumber(self.value) % 1 == 0 then
         number.node_type = L.int
     else
-        self.node_type   = L.double
         number.node_type = L.double
     end
     return number

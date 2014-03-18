@@ -7,7 +7,7 @@ local Grid = terralib.require 'compiler.grid'
 local cmath = terralib.includecstring '#include <math.h>'
 
 local N = 3
-local grid = Grid.New2dUniformGrid(N, N, {0,0}, N, N)
+local grid = Grid.New2dUniformGrid(N, N, {0.0, 0.0}, N, N)
 
 indices = {}
 
@@ -41,8 +41,8 @@ grid.cells.velocity_temp:LoadConstant(L.NewVector(L.float, {0,0}))
 grid.cells:NewField('velocity_prev_temp', L.vector(L.float, 2))
 grid.cells.velocity_prev_temp:LoadConstant(L.NewVector(L.float, {0,0}))
 
-grid.cells:NewField('idx', L.vector(L.int, 2))
-grid.cells.idx:Load(indices)
+--grid.cells:NewField('idx', L.vector(L.int, 2))
+--grid.cells.idx:Load(indices)
 
 local a     = L.NewScalar(L.float, 0)
 local dt0   = L.NewScalar(L.float, 0)
@@ -104,66 +104,37 @@ end
 -----------------------------------------------------------------------------
 
 local diffuse_velocity_prev = liszt_kernel(c : grid.cells)
-    c.velocity_prev_temp =
-        ( c.velocity +
-          a * ( c.left.velocity_prev + c.right.velocity_prev +
-                c.top.velocity_prev  + c.bot.velocity_prev
-              )
-        ) / (1 + 4 * a)
+    var sum_vel = ( c.left.velocity_prev + c.right.velocity_prev +
+                    c.top.velocity_prev  + c.bot.velocity_prev )
+    c.velocity_prev_temp = ( c.velocity + a * sum_vel) / (1 + 4 * a)
 end
 
 -----------------------------------------------------------------------------
 --[[                             ADVECT                                  ]]--
 -----------------------------------------------------------------------------
 
+local cell_w = grid:cellWidth()
+local cell_h = grid:cellHeight()
 local advect_density = liszt_kernel(c : grid.cells)
-    var x = 0
-    --c.idx[1] - dt0 * c.velocity[1]
+    var offset          = - c.velocity
+    var xfrac           = offset[0] - cell_w * cmath.floor(offset[0] / cell_w)
+    var yfrac           = offset[1] - cell_h * cmath.floor(offset[1] / cell_h)
+    var prev_position   = c.center + dt0 * offset
 
-    if x < 0.5 then
-        --x = 0.5
-    end
+    -- locate dual cell (TODO: REMOVE THIS INTO ANOTHER KERNEL)
+    var dc = grid.dual_locate(prev_position)
 
-    if x > N + 0.5 then
-        --x = N + 0.5
-    end
+    -- interpolate from corners of dual cell
+    var x1 = L.float(xfrac)
+    var y1 = L.float(yfrac)
+    var x0 = L.float(1.0 - xfrac)
+    var y0 = L.float(1.0 - yfrac)
+    var dens = x0 * y0 * dc.topleft.density_prev
+             + x1 * y0 * dc.topright.density_prev
+             + x0 * y1 * dc.bottomleft.density_prev
+             + x1 * y1 * dc.bottomright.density_prev
 
-    var i0 = 0
-    --cmath.floor(x) + 1
-    var i1 = i0 + 1
-
-    var y = 0
-    --c.idx[2] - dt0 * c.velocity[2]
-
-    if y < 0.5 then
-        --y = 0.5
-    end
-
-    if y > N + 0.5 then
-        --y = N + 0.5
-    end
-
-    var j0 = 0
-    --cmath.floor(y) + 1
-    var j1 = j0 + 1
-
-    var s1 = x - i0
-    var s0 = 1 - s1
-    var t1 = y - j0
-    var t0 = 1 - t1
-
-    -- TODO: Implement casting for this
-    grid.offset(c, 0, 0).density_prev
---[[
-    c.density_temp =
-        ( s0 * ( t0 * c.density_prev.locate(i0, j0) +
-                 t1 * c.density_prev.locate(i0, j1)
-               ) +
-          s1 * ( t0 * c.density_prev.locate(i1, j0) +
-                 t1 * c.density_prev.locate(i1, j1)
-               )
-        )
-]]
+    c.density = dens
 end
 
 -----------------------------------------------------------------------------
