@@ -332,9 +332,9 @@ function ast.VectorLiteral:codegen (ctxt)
   return `[typ:terraType()]({ array( [elems] ) })
 end
 
-function ast.Scalar:codegen (ctxt)
-  local d = self.scalar.data
-  local s = symbol(&self.scalar.type:terraType())
+function ast.Global:codegen (ctxt)
+  local d = self.global.data
+  local s = symbol(&self.global.type:terraType())
   return `@d
 end
 

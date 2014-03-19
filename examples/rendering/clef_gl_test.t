@@ -240,12 +240,12 @@ end
 
 -- Liszt Mumbo Jumbo
 
-local time_scalar = L.NewScalar(L.float, 0)
+local time_global = L.NewGlobal(L.float, 0)
 vertices:NewField('pos_temp', L.vector(L.float, 4)):Load({0,0,0,0})
 local update_pos1 = liszt_kernel (v : vertices)
     var y = v.pos[1]
     if y > 0 then
-        y = 0.5 + 0.4 * C.cos(3*time_scalar)
+        y = 0.5 + 0.4 * C.cos(3*time_global)
     end
     v.pos_temp = { v.pos[0], y, v.pos[2], v.pos[3] }
 end
@@ -281,7 +281,7 @@ while gl.glfwWindowShouldClose(window) == 0 do
     shader:setUniform('pvm', proj * rotation)
 
 
-    time_scalar:setTo(time)
+    time_global:setTo(time)
     update_pos1(vertices)
     update_pos2(vertices)
     triangles:UpdateGClef()

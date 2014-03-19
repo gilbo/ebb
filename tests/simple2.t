@@ -3,7 +3,7 @@ require "tests/test"
 
 local LMesh = terralib.require "compiler.lmesh"
 local mesh = LMesh.Load("examples/mesh.lmesh")
-local com = L.NewScalar(L.vector(L.double, 3), {0, 0, 0})
+local com = L.NewGlobal(L.vector(L.double, 3), {0, 0, 0})
 
 function center_of_mass ()
 	com:setTo({0,0,0})

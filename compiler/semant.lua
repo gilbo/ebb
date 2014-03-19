@@ -237,28 +237,6 @@ function ast.ExprStatement:check(ctxt)
     return expstmt
 end
 
---function ast.Reduce:check(ctxt)
---    ctxt:error(self, "Reduction should have been refactored in the parser. (--Report to the developers)")
---    return L.error
---    local exp = self.exp:check(ctxt)
---
---    -- When reduced, a scalar can be an lvalue
---    if exp:is(ast.Scalar) then
---        exp.is_lvalue = true
---    end
---
---    -- only lvalues can be "reduced"
---    if exp.is_lvalue then
---        return exp
---
---    else
---        ctxt:error(self, "only lvalues can be reduced.")
---        local errnode = self:clone()
---        errnode.node_type = L.error
---        return errnode
---    end
---end
-
 function ast.Assignment:check(ctxt)
     local assignment = self:clone()
     assignment.reduceop = self.reduceop
@@ -277,8 +255,8 @@ function ast.Assignment:check(ctxt)
     local rtype       = rhs.node_type
     if rtype == L.error then return assignment end
 
-    -- Promote scalar lhs to lvalue if there was a reduction
-    if self.reduceop and lhs:is(ast.Scalar) then
+    -- Promote global lhs to lvalue if there was a reduction
+    if self.reduceop and lhs:is(ast.Global) then
         lhs.is_value = true
     end
 
@@ -629,10 +607,10 @@ local function luav_to_ast(luav, src_node)
     -- try to construct an ast node to return...
     local node
 
-    -- Scalar objects are replaced with special Scalar nodes
-    if L.is_scalar(luav) then
-        node        = ast.Scalar:DeriveFrom(src_node)
-        node.scalar = luav
+    -- Global objects are replaced with special Global nodes
+    if L.is_global(luav) then
+        node        = ast.Global:DeriveFrom(src_node)
+        node.global = luav
 
     -- Vector objects are expanded into literal AST trees
     elseif L.is_vector(luav) then
@@ -971,10 +949,10 @@ function ast.Call:check(ctxt)
     return call
 end
 
-function ast.Scalar:check(ctxt)
+function ast.Global:check(ctxt)
     local n     = self:clone()
-    n.scalar    = self.scalar
-    n.node_type = self.scalar.type
+    n.global    = self.global
+    n.node_type = self.global.type
     return n
 end
 

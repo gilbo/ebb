@@ -5,13 +5,13 @@ local lassert, lprint = L.assert, L.print
 
 
 ---------------------------
--- Field and scalar objs --
+-- Field and Global objs --
 ---------------------------
 local LMesh = terralib.require "compiler.lmesh"
 local mesh = LMesh.Load("examples/mesh.lmesh")
 mesh.cells:NewField('f1', L.float)
 mesh.cells:NewField('f2', L.vector(L.float, 3))
-s1 = L.NewScalar(L.int, 0)
+s1 = L.NewGlobal(L.int, 0)
 
 
 ------------------------
@@ -35,7 +35,7 @@ a.b.c.d = 4
 -------------------------------
 -- ...let the testing begin! --
 -------------------------------
--- Should fail b/c checkthis1 is not a scalar
+-- Should fail b/c checkthis1 is not a global
 test.fail_function(function()
  	liszt_kernel (cell : mesh.cells)
 		checkthis1 = cell.f1
@@ -52,7 +52,7 @@ test.fail_function(function()
 end, "Illegal assignment: variables of row type cannot be re%-assigned")
 
 -- Should fail because we do not allow assignments to fields
--- (only to indexed fields, scalars, and local vars)
+-- (only to indexed fields, globals, and local vars)
 test.fail_function(function()
 	fail3 = liszt_kernel (cell : mesh.cells)
 		mesh.cells.f1 = 5

@@ -121,11 +121,11 @@ check4(F)
 
 
 --------------------------------------
--- Now the same thing with scalars: --
+-- Now the same thing with globals: --
 --------------------------------------
-local  f = L.NewScalar(L.float, 0.0)
-local bv = L.NewScalar(L.bool, true)
-local f4 = L.NewScalar(L.vector(L.float, 4), {0, 0, 0, 0})
+local  f = L.NewGlobal(L.float, 0.0)
+local bv = L.NewGlobal(L.bool, true)
+local f4 = L.NewGlobal(L.vector(L.float, 4), {0, 0, 0, 0})
 
 local function check_write ()
 	-- should initialize each field element to {2, 4, 5, 6}

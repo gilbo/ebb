@@ -4,13 +4,13 @@ local LMesh = terralib.require "compiler.lmesh"
 local mesh = LMesh.Load("examples/mesh.lmesh")
 
 nf = mesh.faces._size
-sf = L.NewScalar(L.float, 0.0)
-si = L.NewScalar(L.int,     0)
-sb = L.NewScalar(L.bool, true)
+sf = L.NewGlobal(L.float, 0.0)
+si = L.NewGlobal(L.int,     0)
+sb = L.NewGlobal(L.bool, true)
 
-sf3 = L.NewScalar(L.vector(L.float, 3), {0, 0, 0})
-si4 = L.NewScalar(L.vector(L.int,   4), {1, 2, 3, 4})
---sb5 = L.NewScalar(L.vector(L.bool,  5), {true, true, true, true, true})
+sf3 = L.NewGlobal(L.vector(L.float, 3), {0, 0, 0})
+si4 = L.NewGlobal(L.vector(L.int,   4), {1, 2, 3, 4})
+--sb5 = L.NewGlobal(L.vector(L.bool,  5), {true, true, true, true, true})
 
 vf  = L.NewVector(L.float, {1, 2, 3})
 vi  = L.NewVector(L.int,   {2, 2, 2, 2})

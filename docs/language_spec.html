@@ -67,7 +67,7 @@
 <tr><td>Call                     </td><td>::</td><td> LValue '(' Tuple ')'                             </td></tr>
 <tr><td>TableLookup              </td><td>::</td><td> LValue '.' Name                                  </td></tr>
 <tr><td>VectorIndex              </td><td>::</td><td> LValue '[' Expression ']'                        </td></tr>
-<tr><td>ScalarRead, ScalarWrite  </td><td>::</td><td> LValue                                           </td></tr>
+<tr><td>GlobalRead, GlobalWrite  </td><td>::</td><td> LValue                                           </td></tr>
 
 <tr><td>&nbsp;</td></tr>
 <tr><td>Tuple </td><td>::</td><td> '(' Expression (, Expression)* (,)? ')'                             </td></tr>
@@ -90,7 +90,7 @@
 specifying the relation over which we are mapping the kernel, and the first one
 evaluates to a row within this relation. </p>
 <p>Global variables cannot be declared inside of a Liszt kernel, and references
-to upvalues can be written to only if they are liszt fields or scalars (which
+to upvalues can be written to only if they are liszt fields or globals (which
 we perform phase analysis on to prevent R/W dependencies).</p>
 
 <h2>Global Variables</h2>

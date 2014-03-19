@@ -6,8 +6,8 @@ local mesh = LMesh.Load(PN.scriptdir():concat("mesh.lmesh"):tostring())
 --local pos  = mesh:fieldWithLabel(Vertex, Vector(float, 3), "position")
 
 function main ()
-	-- declare a scalar to store the computed centroid of the mesh
-	local com = L.NewScalar(L.vector(L.float, 3), {0, 0, 0})
+	-- declare a global to store the computed centroid of the mesh
+	local com = L.NewGlobal(L.vector(L.float, 3), {0, 0, 0})
 
 	-- compute centroid
 	local sum_pos = liszt_kernel(v : mesh.vertices)
