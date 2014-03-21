@@ -31,70 +31,61 @@ local function installMacros(grid)
     grid.offset = L.NewMacro(function(c, xoff, yoff)
         return liszt quote
             var id = L.id(c)
-            var new_id = id + yoff * xsize + xoff
         in
-            L.UNSAFE_ROW(new_id, grid.cells)
+            L.UNSAFE_ROW( id + yoff * xsize + xoff,  grid.cells )
         end
         -- TODO: No null checking or plan for that
     end)
     
-
     grid.cells:NewFieldMacro('left', L.NewMacro(function(c)
-        return liszt quote
-            var raw_addr = L.id(c)
-            -- TODO: The following assert should check the entire
-            -- left side of the grid, not just the top left
---            assert(raw_addr > 0)
-        in
-            L.UNSAFE_ROW( raw_addr - 1, grid.cells )
-        end
+        return liszt `grid.offset(c, -1, 0)
     end))
-
     grid.cells:NewFieldMacro('right', L.NewMacro(function(c)
-        return liszt quote
-            var raw_addr = L.id(c)
-            -- TODO: The following assert should check the entire
-            -- left side of the grid, not just the top left
---            assert(raw_addr > 0)
-        in
-            L.UNSAFE_ROW( raw_addr + 1, grid.cells )
-        end
+        return liszt `grid.offset(c, 1, 0)
+    end))
+    grid.cells:NewFieldMacro('down', L.NewMacro(function(c)
+        return liszt `grid.offset(c, 0, -1)
+    end))
+    grid.cells:NewFieldMacro('up', L.NewMacro(function(c)
+        return liszt `grid.offset(c, 0, 1)
     end))
 
-    grid.cells:NewFieldMacro('top', L.NewMacro(function(c)
+    -- Should this be hidden?
+    grid.cells:NewFieldMacro('xy_ids', L.NewMacro(function(c)
         return liszt quote
-            var raw_addr = L.id(c)
-            -- TODO: The following assert should check the entire
-            -- left side of the grid, not just the top left
---            assert(raw_addr > 0)
+            var raw_addr    = L.id(c)
+            var y_id        = raw_addr / L.addr(xsize)
+            var x_id        = raw_addr - y_id * L.addr(xsize)
         in
-            L.UNSAFE_ROW( raw_addr - xsize, grid.cells )
-        end
-    end))
-
-    grid.cells:NewFieldMacro('bot', L.NewMacro(function(c)
-        return liszt quote
-            var raw_addr = L.id(c)
-            -- TODO: The following assert should check the entire
-            -- left side of the grid, not just the top left
---            assert(raw_addr > 0)
-        in
-            L.UNSAFE_ROW( raw_addr + xsize, grid.cells )
+            { x_id, y_id }
         end
     end))
 
     grid.cells:NewFieldMacro('center', L.NewMacro(function(c)
         return liszt quote
-            var raw_addr    = L.id(c)
-            var y_id        = raw_addr / L.addr(xsize)
-            var x_id        = raw_addr - y_id * L.addr(ysize)
+            var xy = L.vec2d(c.xy_ids) + {0.5, 0.5}
         in
-            L.vec2f({
-                xorigin + cell_width  * (L.float(x_id) + 0.5),
-                yorigin + cell_height * (L.float(y_id) + 0.5)
-            })
+            L.vec2f({ xorigin, yorigin } +
+                    { cell_width * xy[0], cell_height * xy[1] })
         end
     end))
+
+    local epsilon = 1.0e-5 * math.max(cell_width, cell_height)
+    local min_x = xorigin + (0.5 * cell_width) + epsilon
+    local max_x = xorigin + xsize * cell_width + 0.5 * cell_width - epsilon
+    local min_y = yorigin + (0.5 * cell_height) + epsilon
+    local max_y = yorigin + ysize * cell_height + 0.5 * cell_height - epsilon
+    grid.snap_to_grid = L.NewMacro(function(p)
+        return liszt quote
+            var xy : L.vec2f = p
+            if      xy[0] < min_x then xy[0] = L.float(min_x)
+            elseif  xy[0] > max_x then xy[0] = L.float(max_x) end
+            if      xy[1] < min_y then xy[1] = L.float(min_y)
+            elseif  xy[1] > max_y then xy[1] = L.float(max_y) end
+        in
+            L.vec2f(xy)
+        end
+    end)
 
 
     grid.dual_locate = L.NewMacro(function(xy_vec)
@@ -109,63 +100,59 @@ local function installMacros(grid)
         end
     end)
 
-    grid.dual_cells:NewFieldMacro('topleft', L.NewMacro(function(dc)
+
+    grid.dual_cells:NewFieldMacro('center', L.NewMacro(function(dc)
+        return liszt quote
+            var raw_addr = L.id(dc)
+            var y_id     = raw_addr / L.addr(xsize-1)
+            var x_id     = raw_addr - y_id * L.addr(xsize-1)
+            var xy       = L.vec2d({ x_id + 1.0, y_id + 1.0 })
+        in
+            L.vec2f({ xorigin +  cell_width * xy[0],
+                      yorigin + cell_height * xy[1] })
+        end
+    end))
+
+    local function dc_helper (dc, xadd, yadd)
         return liszt quote
             var raw_addr = L.id(dc)
             var y_id     = raw_addr / L.addr(xsize-1)
             var x_id     = raw_addr - y_id * L.addr(xsize-1)
         in
-            L.UNSAFE_ROW( x_id + y_id * xsize,  grid.cells )
+            L.UNSAFE_ROW( (x_id + xadd) + (y_id + yadd) * xsize,  grid.cells )
         end
+    end
+
+    grid.dual_cells:NewFieldMacro('downleft', L.NewMacro(function(dc)
+        return dc_helper(dc, 0, 0)
+    end))
+    grid.dual_cells:NewFieldMacro('downright', L.NewMacro(function(dc)
+        return dc_helper(dc, 1, 0)
+    end))
+    grid.dual_cells:NewFieldMacro('upleft', L.NewMacro(function(dc)
+        return dc_helper(dc, 0, 1)
+    end))
+    grid.dual_cells:NewFieldMacro('upright', L.NewMacro(function(dc)
+        return dc_helper(dc, 1, 1)
     end))
 
-    grid.dual_cells:NewFieldMacro('topright', L.NewMacro(function(dc)
-        return liszt quote
-            var raw_addr = L.id(dc)
-            var y_id     = raw_addr / L.addr(xsize-1)
-            var x_id     = raw_addr - y_id * L.addr(xsize-1)
-        in
-            L.UNSAFE_ROW( (x_id + 1) + y_id * xsize,  grid.cells )
-        end
+    -- Set up the boundary!
+    grid.cells:NewFieldMacro('is_left_bnd', L.NewMacro(function(c)
+        return liszt `(c.xy_ids[0] == 0)
     end))
-
-    grid.dual_cells:NewFieldMacro('bottomleft', L.NewMacro(function(dc)
-        return liszt quote
-            var raw_addr = L.id(dc)
-            var y_id     = raw_addr / L.addr(xsize-1)
-            var x_id     = raw_addr - y_id * L.addr(xsize-1)
-            var new_id   = x_id + (y_id+1) * xsize
-        in
-            L.UNSAFE_ROW( (x_id + 1) + y_id * xsize,  grid.cells )
-        end
+    grid.cells:NewFieldMacro('is_right_bnd', L.NewMacro(function(c)
+        return liszt `(c.xy_ids[0] == xsize-1)
     end))
-
-    grid.dual_cells:NewFieldMacro('bottomright', L.NewMacro(function(dc)
-        return liszt quote
-            var raw_addr = L.id(dc)
-            var y_id     = raw_addr / L.addr(xsize-1)
-            var x_id     = raw_addr - y_id * L.addr(xsize-1)
-            var new_id   = x_id + (y_id+1) * xsize
-        in
-            L.UNSAFE_ROW( (x_id + 1) + (y_id + 1) * xsize,  grid.cells )
-        end
+    grid.cells:NewFieldMacro('is_down_bnd', L.NewMacro(function(c)
+        return liszt `(c.xy_ids[1] == 0)
     end))
-
---    grid.cells_locate = L.NewMacro(function(xy_pos_vec)
---        -- compute any constants???
---        local xsize = grid:xSize()
---
---        return liszt quote
---            var id = L.id(c)
---            -- Should actually do conversion from coordinates to integers...
---            var xoff = xy_pos_vec[0]
---            var yoff = xy_pos_vec[1]
---
---            var new_id = id + yoff * xsize + xoff
---        in
---            L.UNSAFE_ROW(new_id, grid.cells)
---        end
---    end)
+    grid.cells:NewFieldMacro('is_up_bnd', L.NewMacro(function(c)
+        return liszt `(c.xy_ids[1] == ysize-1)
+    end))
+    grid.cells:NewFieldMacro('is_bnd', L.NewMacro(function(c)
+        return liszt ` c.is_left_bnd or c.is_right_bnd or
+                       c.is_up_bnd   or c.is_down_bnd
+    end))
 end
 
 --local initPrivateIndices = liszt_kernel(c: grid.cells)

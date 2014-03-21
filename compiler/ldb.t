@@ -302,7 +302,7 @@ function L.LField:Load(arg)
         end
     elseif  type(arg) == 'string' or PN.is_pathname(arg) then
         return self:LoadFromFile(arg)
-    elseif  type(arg) == 'table' then
+    elseif  type(arg) == 'table' and not L.is_vector(arg) then
         return self:LoadTableArray(arg)
     end
     -- default to trying to load as a constant

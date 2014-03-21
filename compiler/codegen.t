@@ -378,7 +378,7 @@ function ast.UnaryOp:codegen (ctxt)
     return quote
       [binding]
     in
-      [typ:terraType()]({ arrayof([coords]) })
+      [typ:terraType()]({ array([coords]) })
     end
   end
 end

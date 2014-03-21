@@ -265,7 +265,7 @@ function ast.Assignment:check(ctxt)
         ctxt:error(self.lvalue, "Illegal assignment: left hand side cannot "..
                                 "be assigned")
         return assignment
-    elseif lhs.node_type:isRow() then
+    elseif lhs.node_type:isRow() and not lhs:is(ast.FieldAccess) then
         ctxt:error(self.lvalue, "Illegal assignment: variables of row type "..
                                 "cannot be re-assigned")
         return assignment
