@@ -1,13 +1,26 @@
 import "compiler.liszt"
 
 local Grid  = terralib.require 'compiler.grid'
-local cmath = terralib.includecstring '#include <math.h>'
+local cmath = terralib.includecstring [[
+#include <math.h>
+#include <stdlib.h>
+#include <time.h>
+
+
+
+float rand_float()
+{
+      float r = (float)rand() / (float)RAND_MAX;
+      return r;
+}
+]]
+cmath.srand(cmath.time(nil));
 local vdb   = terralib.require 'compiler.vdb'
 
-local N = 40
+local N = 150
 local grid = Grid.New2dUniformGrid(N, N, {-N/2.0, -1.0}, N, N)
 
-local viscosity     = 0.01
+local viscosity     = 0.08
 local dt            = L.NewGlobal(L.float, 0.01)
 
 
@@ -278,6 +291,48 @@ end
 
 
 
+local N_particles = (N-1)*(N-1)
+local particles = L.NewRelation(N_particles, 'particles')
+
+particles:NewField('dual_cell', grid.dual_cells)
+    :Load(function(i) return i end)
+
+particles:NewField('next_pos', L.vec2f):Load(L.NewVector(L.float, {0,0}))
+particles:NewField('pos', L.vec2f):Load(L.NewVector(L.float, {0,0}))
+(liszt kernel (p : particles) -- init...
+    p.pos = p.dual_cell.center
+end)(particles)
+
+local locate_particles = liszt kernel (p : particles)
+    p.dual_cell = grid.dual_locate(p.pos)
+end
+
+local compute_particle_velocity = liszt kernel (p : particles)
+    var dc      = p.dual_cell
+    var frac    = p.pos - dc.center
+    -- figure out fractional position in the dual cell in range [0.0, 1.0]
+    var xfrac   = frac[0] / cell_w + 0.5 
+    var yfrac   = frac[1] / cell_h + 0.5
+
+    -- interpolation constants
+    var x1      = L.float(xfrac)
+    var y1      = L.float(yfrac)
+    var x0      = L.float(1.0 - xfrac)
+    var y0      = L.float(1.0 - yfrac)
+
+    p.next_pos  = p.pos + N *
+        ( x0 * y0 * dc.upleft.velocity
+        + x1 * y0 * dc.upright.velocity
+        + x0 * y1 * dc.downleft.velocity
+        + x1 * y1 * dc.downright.velocity )
+end
+
+local update_particle_pos = liszt kernel (p : particles)
+    var r = L.vec2f({ cmath.rand_float() - 0.5, cmath.rand_float() - 0.5 })
+    var pos = p.next_pos + dt * r
+    p.pos = grid.snap_to_grid(pos)
+end
+
 
 -----------------------------------------------------------------------------
 --[[                             MAIN LOOP                               ]]--
@@ -285,7 +340,7 @@ end
 
 --grid.cells:print()
 
-local source_strength = 30.0
+local source_strength = 100.0
 local source_velocity = liszt kernel (c : grid.cells)
     if cmath.fabs(c.center[0]) < 1.75 and
        cmath.fabs(c.center[1]) < 1.75 and
@@ -299,16 +354,25 @@ local draw_grid = liszt kernel (c : grid.cells)
     var color = {1.0, 1.0, 1.0}
     vdb.color(color)
     var p : L.vec3f = { c.center[0],   c.center[1],   0.0 }
-    var vel = 100 * c.velocity
+    var vel = c.velocity
     var v = L.vec3f({ vel[0], vel[1], 0.5 })
     --if not c.is_bnd then
     vdb.line(p, p+v)
 end
 
+local draw_particles = liszt kernel (p : particles)
+    var color = {1.0,1.0,0.0}
+    vdb.color(color)
+    var pos : L.vec3f = { p.pos[0], p.pos[1], 0.0 }
+    vdb.point(pos)
+end
+
 for i = 1, 1000 do
-    source_velocity(grid.cells)
-    velocity_swap(grid.cells)
-    velocity_update_bnd(grid.cells)
+    if math.floor(i / 70) % 2 == 0 then
+        source_velocity(grid.cells)
+        velocity_swap(grid.cells)
+        velocity_update_bnd(grid.cells)
+    end
 
     diffuse_velocity(grid)
     project_velocity(grid)
@@ -318,9 +382,14 @@ for i = 1, 1000 do
     advect_velocity(grid)
     project_velocity(grid)
 
+    compute_particle_velocity(particles)
+    update_particle_pos(particles)
+    locate_particles(particles)
+
     vdb.vbegin()
         vdb.frame()
-        draw_grid(grid.cells)
+        --draw_grid(grid.cells)
+        draw_particles(particles)
     vdb.vend()
 
 end

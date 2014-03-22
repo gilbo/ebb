@@ -117,7 +117,7 @@ local k = liszt_kernel (v : mesh.vertices)
 end
 k(mesh.vertices)
 
-local s = L.NewScalar(L.vector(L.double, 3), {0.0, 0.0, 0.0})
+local s = L.NewGlobal(L.vector(L.double, 3), {0.0, 0.0, 0.0})
 local sum_position = liszt_kernel(v : mesh.vertices)
 	s += v.position
 end
