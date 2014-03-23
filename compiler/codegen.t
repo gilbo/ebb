@@ -35,8 +35,8 @@ function Context:runtime_codegen_field_read (fa_node)
 end
 
 
-function C.codegen (runtime, luaenv, kernel_ast, relation)
-  local env = terralib.newenvironment(luaenv)
+function C.codegen (runtime, kernel_ast, relation)
+  local env = terralib.newenvironment(nil)
   local ctxt = Context.new(env, runtime)
 
   ctxt:enterblock()

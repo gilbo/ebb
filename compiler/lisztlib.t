@@ -258,8 +258,6 @@ end
 
 function L.NewKernel(kernel_ast, env)
     local new_kernel = setmetatable({
-        ast=kernel_ast,
-        env=env,
         __kernels={}
     }, Kernel)
 
@@ -280,7 +278,7 @@ function Kernel:generate (runtime, relation)
     end
 	if not self.__kernels[runtime][relation] then
 		self.__kernels[runtime][relation] =
-            codegen.codegen(runtime, self.env, self.typed_ast, relation)
+            codegen.codegen(runtime, self.typed_ast, relation)
 	end
 end
 
