@@ -173,24 +173,26 @@ vertices.nTriangles:Load(0)
 
 ------------------------------------------------------------------------------
 
--- In addition to Fields, we can also define Scalars.
--- A Liszt Scalar is a kind of "global" variable that's useful for
+-- In addition to Fields, we can also define Globals.
+-- A Liszt Global is a kind of "global" variable that's useful for
 -- controlling time-step behavior or computing simple summary statistics
+-- Unlike Fields, which have a different value for each entry/row in the
+-- relation, Globals have exactly one value visible to all rows.
 
-local timestep = L.NewScalar(L.double, 1.0)
--- The preceding line set up a Scalar named timestep of type L.double
+local timestep = L.NewGlobal(L.double, 1.0)
+-- The preceding line set up a Global named timestep of type L.double
 -- and gave it initial value 1.0
 
 timestep:setTo(0.45)
 -- Then this line set the value using the method :setTo(...)
 
 print( 'the timestep is ' .. tostring(timestep:value()) )
--- We can retreive the value of a scalar with the :value() method
+-- We can retreive the value of a global with the :value() method
 
--- NOTE: Scalars have to be explicitly written and read from Lua code.
+-- NOTE: Globals have to be explicitly written and read from Lua code.
 
-local avg_temp_change = L.NewScalar(L.double, 0.0)
--- We'll use this second scalar to measure the average change in
+local avg_temp_change = L.NewGlobal(L.double, 0.0)
+-- We'll use this second global to measure the average change in
 -- temperature as we run our simulation.
 
 ------------------------------------------------------------------------------
@@ -248,11 +250,11 @@ compute_n_triangles(triangles)
 -- So, let's go ahead and define a conduction constant
 local conduction = 1.0
 
--- Note that we didn't define conduction as a Scalar.  As a result, it will
+-- Note that we didn't define conduction as a Global.  As a result, it will
 -- be compiled into the Liszt Kernel.  If we later change the value of
 -- conduction, it will have no effect.  If we wanted to change the
 -- conduction over the course of the simulation, then we should have
--- created a Scalar.
+-- created a Global.
 
 
 -- In order to get access to trigonometric functions and other C code,

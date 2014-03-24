@@ -35,8 +35,8 @@ function Context:runtime_codegen_field_read (fa_node)
 end
 
 
-function C.codegen (runtime, luaenv, kernel_ast, relation)
-  local env = terralib.newenvironment(luaenv)
+function C.codegen (runtime, kernel_ast, relation)
+  local env = terralib.newenvironment(nil)
   local ctxt = Context.new(env, runtime)
 
   ctxt:enterblock()
@@ -202,7 +202,7 @@ function let_vec_binding(typ, N, exp)
 
   local coords = {}
   if typ:isVector() then
-    for i=1, N do coords[i] = `val._0[i-1] end
+    for i=1, N do coords[i] = `val.d[i-1] end
   else
     for i=1, N do coords[i] = `val end
   end
@@ -211,95 +211,50 @@ function let_vec_binding(typ, N, exp)
 end
 
 function vec_bin_exp(op, result_typ, lhe, rhe, lhtyp, rhtyp)
-  if not result_typ:isVector() then return bin_exp(op, lhe, rhe) end
+  -- ALL non-vector ops are handled here
+  if not lhtyp:isVector() and not rhtyp:isVector() then
+    return bin_exp(op, lhe, rhe)
+  end
+
+  -- the result type is misleading if we're doing a vector comparison...
+  if op == '==' or op == '~=' then
+    -- assert(lhtyp:isVector() and rhtyp:isVector())
+    result_typ = lhtyp
+    if lhtyp:isCoercableTo(rhtyp) then
+      result_typ = rhtyp
+    end
+  end
 
   local N = result_typ.N
-  local res_typ = result_typ:terraBaseType()
 
-  -- otherwise, bind the expression results into a let-clause
-  -- to ensure each sub-expression is evaluated exactly once.
-  -- Then, construct a vector expression result using these bound
-  -- values.
   local lhbind, lhcoords = let_vec_binding(lhtyp, N, lhe)
   local rhbind, rhcoords = let_vec_binding(rhtyp, N, rhe)
 
-  -- Now, assemble the vector by mashing up the coords
-  local result_coords = {}
+  -- Assemble the resulting vector by mashing up the coords
+  local coords = {}
   for i=1, N do
-    local exp = bin_exp(op, lhcoords[i], rhcoords[i])
-    result_coords[i] = `[res_typ](exp)
+    coords[i] = bin_exp(op, lhcoords[i], rhcoords[i])
+  end
+  local result = `[result_typ:terraType()]({ array( [coords] ) })
+
+  -- special case handling of vector comparisons
+  if op == '==' then -- AND results
+    result = `true
+    for i = 1, N do result = `result and [ coords[i] ] end
+  elseif op == '~=' then -- OR results
+    result = `false
+    for i = 1, N do result = `result or [ coords[i] ] end
   end
 
   local q = quote
     [lhbind]
     [rhbind]
   in
-    { arrayof(res_typ, [result_coords]) }
+    [result]
   end
-
   return q
 end
 
---[[ Factored logic for generating binary expressions in BinaryOp, Assignments
-   that contain reductions and FieldWrites with reductions.
-    Args:
-    - op  : lua string encoding operator (e.g. '+', etc.)
-    - lhs : terra quote representing lhs expression
-    - rhs : terra quote representing rhs expression
-    - typ : liszt type of binop result 
---]]
---local function codegen_binary_op (op, lhs, rhs, typ)
---  if not typ:isVector() then return bin_exp(op, lhs, rhs) end
---
---  if lhs
---
---  local entries = {}
---  for i = 1, typ.N do
---    entries[i] = bin_exp(op, `lhs._0[i-1], `rhs._0[i-1])
---  end
---
---  local q = `{ [entries] }
---  return q
-
-  --local result = symbol(typ:terraType())
-  --local bt  = typ:terraBaseType()
-  --local stmts = { quote var[res] }
-  --local q = quote var [res] end
-
-  --for i = 1, typ.N do
-  --  local exp = bin_exp(op, `lhs._0[i-1], `rhs._0[i-1])
-  --  q = quote [q] res._0[i-1] = exp end
-  --end
---
-  --return quote [q] in [res] end
---end
-
---[[ Factored logic for generating assignments in Assignments, DeclStatements,
-   and FieldWrites:
-      Args:
-    - lval      : terra quote representing the lvalue
-    - lval_type : liszt type of lval
-    - rval      : terra quote representing the rhs expression
-    - rval_type : liszt type of rval
---]]
---local function codegen_assignment (lval, lval_type, rval, rval_type)
---  if not lval_type:isVector() then
---    return quote [lval] = rval end
---  end
---
---  local lbt = lval_type:terraBaseType()
---  local rtt = rval_type:terraType()
---  local rbt = rval_type:terraBaseType()
---  local len = lval_type.N
---  return quote
---    var r : rtt = rval
---    var vt = [&lbt](&lval)
---    var rt = [&rbt](&r)
---    for i = 0, len do
---      vt[i] = rt[i]
---    end
---  end
---end
 
 function ast.Assignment:codegen (ctxt)
   local lhs   = self.lvalue:codegen(ctxt)
@@ -309,11 +264,8 @@ function ast.Assignment:codegen (ctxt)
 
   if self.reduceop then
     rhs = vec_bin_exp(self.reduceop, ltype, lhs, rhs, ltype, rtype)
-    --rhs = codegen_binary_op(self.reduceop, lhs, rhs, ltype)
-    --return codegen_assignment(lhs, ltype, rhs, ltype)
   end
   return quote [lhs] = rhs end
-  --return codegen_assignment(lhs, ltype, rhs, rtype)
 end
 
 function ast.FieldWrite:codegen (ctxt)
@@ -335,12 +287,12 @@ function ast.Cast:codegen(ctxt)
     local bt  = typ:terraBaseType()
 
     local coords = {}
-    for i= 1, typ.N do coords[i] = `[bt](vec._0[i-1]) end
+    for i= 1, typ.N do coords[i] = `[bt](vec.d[i-1]) end
 
     return quote
       var [vec] = valuecode
     in
-      { arrayof(bt, [coords]) }
+      [typ:terraType()]({ arrayof(bt, [coords]) })
     end
   end
 end
@@ -361,8 +313,6 @@ function ast.DeclStatement:codegen (ctxt)
     local exp = self.initializer:codegen(ctxt)
     return quote 
       var [varsym] = [exp]
-      --var [varsym]
-      --[codegen_assignment(varsym, self.node_type, exp, self.initializer.node_type)]
     end
   else
     return quote var [varsym] end
@@ -371,22 +321,20 @@ end
 
 function ast.VectorLiteral:codegen (ctxt)
   local typ = self.node_type
-  local btt = typ:terraBaseType()
 
   -- type everything explicitly
   local elems = {}
   for i = 1, #self.elems do
-    local code = self.elems[i]:codegen(ctxt)
-    elems[i] = `[btt](code)
+    elems[i] = self.elems[i]:codegen(ctxt)
   end
 
   -- we allocate vectors as a struct with a single array member
-  return `{ arrayof(btt, [elems]) }
+  return `[typ:terraType()]({ array( [elems] ) })
 end
 
-function ast.Scalar:codegen (ctxt)
-  local d = self.scalar.data
-  local s = symbol(&self.scalar.type:terraType())
+function ast.Global:codegen (ctxt)
+  local d = self.global.data
+  local s = symbol(&self.global.type:terraType())
   return `@d
 end
 
@@ -394,7 +342,7 @@ function ast.VectorIndex:codegen (ctxt)
   local vector = self.vector:codegen(ctxt)
   local index  = self.index:codegen(ctxt)
 
-  return `vector._0[index]
+  return `vector.d[index]
 end
 
 function ast.Number:codegen (ctxt)
@@ -430,7 +378,7 @@ function ast.UnaryOp:codegen (ctxt)
     return quote
       [binding]
     in
-      { [coords] }
+      [typ:terraType()]({ array([coords]) })
     end
   end
 end
@@ -442,59 +390,6 @@ function ast.BinaryOp:codegen (ctxt)
   -- handle case of two primitives
   return vec_bin_exp(self.op, self.node_type,
       lhe, rhe, self.lhs.node_type, self.rhs.node_type)
-
-
---  if not typ:isVector() then return bin_exp(self.op, lhe, rhe) end
---
---  -- otherwise, bind the expression results into a let-clause
---  -- to ensure each sub-expression is evaluated exactly once.
---  -- Then, construct a vector expression result using these bound
---  -- values.
---  local lhbind, lhcoords = let_vec_binding(self.lhs.node_type, lhe)
---  local rhbind, rhcoords = let_vec_binding(self.rhs.node_type, rhe)
---
---  -- Now, assemble the vector by mashing up the coords
---  local result_coords = {}
---  for i=1, typ.N do
---    result_coords[i] = bin_exp(self.op, lhcoords[i], rhcoords[i])
---  end
---
---  local q = quote
---    [lhbind]
---    [rhbind]
---  in
---    { [result_coords] }
---  end
---
---  return q
-
-
-
-  -- primitive types
---  if not self.node_type:isVector() then
---    return bin_exp(self.op, lhe, rhe)
---
---  -- vectors are stored as arrays and must be operated on
---  -- in loops
---  else
---    local s = symbol(self.node_type:terraType()) -- result
---    return quote 
---      var [s]
---      -- temp vars:
---      var l = [&self.lhs.node_type:terraBaseType()](&lhe)
---      var r = [&self.rhs.node_type:terraBaseType()](&rhe)
---      var t = [&self.node_type:terraBaseType()](&s)
---
---      for i = 0, [self.node_type.N] do
---        @t = [bin_exp(self.op, `@l, `@r)]
---        t = t + 1
---        l = l + 1
---        r = r + 1
---      end
---    in
---      [s]
---    end
---  end
 end
 
 function ast.LuaObject:codegen (ctxt)
@@ -544,8 +439,3 @@ function ast.GenericFor:codegen (ctxt)
     end
     return code
 end
-
---C.utils = {
---  codegen_assignment = codegen_assignment,
---  codegen_binary_op  = codegen_binary_op
---}

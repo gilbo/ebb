@@ -1,6 +1,7 @@
 
 -- LDB = Liszt DataBase
 
+-- NOT TRUE: THE ORIGINAL INTENTION OF THIS FILE HAS NOT BEEN CARRIED OUT
 -- The "database" is responsible for tracking all relations
 -- currently present in the runtime.  This helps us view
 -- relations from a closed rather than open-world perspective,
@@ -25,8 +26,6 @@ local Pathname = PN.Pathname
 local ffi = require('ffi')
 
 local JSON = require('compiler.JSON')
-
-
 
 
 terra allocateAligned(alignment : uint64, size : uint64)
@@ -303,7 +302,7 @@ function L.LField:Load(arg)
         end
     elseif  type(arg) == 'string' or PN.is_pathname(arg) then
         return self:LoadFromFile(arg)
-    elseif  type(arg) == 'table' then
+    elseif  type(arg) == 'table' and not L.is_vector(arg) then
         return self:LoadTableArray(arg)
     end
     -- default to trying to load as a constant
@@ -318,7 +317,7 @@ local function terraval_to_lua(val, typ)
     if typ:isVector() then
         local vec = {}
         for i = 1, typ.N do
-            vec[i] = terraval_to_lua(val._0[i-1], typ:baseType())
+            vec[i] = terraval_to_lua(val.d[i-1], typ:baseType())
         end
         return vec
     elseif typ:isNumeric() then
@@ -360,7 +359,7 @@ function L.LField:print()
         for i = 0, N-1 do
             local s = ''
             for j = 0, self.type.N-1 do
-                local t = tostring(self.data[i]._0[j]):gsub('ULL','')
+                local t = tostring(self.data[i].d[j]):gsub('ULL','')
                 s = s .. t .. ' '
             end
             print("", i, s)

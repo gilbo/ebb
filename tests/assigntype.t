@@ -4,7 +4,7 @@ require "tests/test"
 local LMesh = terralib.require "compiler.lmesh"
 local mesh = LMesh.Load("examples/mesh.lmesh")
 
-sf   = L.NewScalar(L.float, 0.0)
+sf   = L.NewGlobal(L.float, 0.0)
 
 test.fail_function(function()
   liszt_kernel (c : mesh.cells)

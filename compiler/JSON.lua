@@ -22,6 +22,23 @@
 local JSON = {}
 
 
+-- Use the following to produce
+-- deterministic order of fields being serialized
+-- From the Lua Documentation
+function pairs_sorted(tbl, compare)
+  local arr = {}
+  for k in pairs(tbl) do table.insert(arr, k) end
+  table.sort(arr, compare)
+
+  local i = 0
+  local iter = function() -- iterator
+    i = i + 1
+    if arr[i] == nil then return nil
+    else return arr[i], tbl[arr[i]] end
+  end
+  return iter
+end
+
 
 -------------------------------------------------------------------------------
 --[[    STRINGIFY CODE                                                     ]]--
@@ -125,7 +142,7 @@ function stringify.object ( table, ctxt )
 
   local accstr = ''
   local first = true
-  for k,v in pairs(table) do
+  for k,v in pairs_sorted(table) do
     if type(k) == 'string' then
       local keystr = stringify.string(k)
       local valstr = stringify.value(v, ctxt)

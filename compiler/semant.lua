@@ -93,6 +93,58 @@ local function exec_external(exp,ctxt,default)
     return v
 end
 
+local function try_coerce(target_typ, node, ctxt)
+    if node.node_type:isCoercableTo(target_typ) then
+        local cast = ast.Cast:DeriveFrom(node)
+        cast.node_type  = target_typ
+        cast.value      = node
+        return cast
+    else
+        if ctxt then
+            ctxt:error(node, "Could not coerce expression of type '"..
+                            tostring(node.node_type) .. "' into type '"..
+                            tostring(target_typ) .. "'")
+        end
+        return nil
+    end
+end
+
+-- This is like a type meet.  Except we coerce the arguments
+-- as necessary and then return them
+local function try_bin_coerce(node_a, node_b)
+    if node_a.node_type == node_b.node_type then
+        return node_a, node_b
+    elseif node_a.node_type:isCoercableTo(node_b.node_type) then
+        return try_coerce(node_b.node_type, node_a), node_b
+    elseif node_b.node_type:isCoercableTo(node_a.node_type) then
+        return node_a, try_coerce(node_a.node_type, node_b)
+    else
+        return nil, nil
+    end
+end
+
+-- like above, but if one of the operands is a vector, then
+-- only coerce the base types into agreement
+local function try_vec_bin_coerce(node_a, node_b)
+    if node_a.node_type:isVector() == node_b.node_type:isVector() then
+        return try_bin_coerce(node_a, node_b)
+    elseif node_b.node_type:isVector() then
+        local b, a = try_vec_bin_coerce(node_b, node_a)
+        return a, b
+    else -- now a is vec, b is primitive
+        local abase = node_a.node_type:baseType()
+        local N     = node_a.node_type.N
+        if abase == node_b.node_type then
+            return node_a, node_b
+        elseif abase:isCoercableTo(node_b.node_type) then
+            return try_coerce(L.vector(node_b.node_type, N), node_a), node_b
+        elseif node_b.node_type:isCoercableTo(abase) then
+            return node_a, try_coerce(abase, node_b)
+        else
+            return nil, nil
+        end
+    end
+end
 
 ------------------------------------------------------------------------------
 --[[ AST semantic checking methods:                                       ]]--
@@ -185,30 +237,12 @@ function ast.ExprStatement:check(ctxt)
     return expstmt
 end
 
-function ast.Reduce:check(ctxt)
-    local exp = self.exp:check(ctxt)
-
-    -- When reduced, a scalar can be an lvalue
-    if exp:is(ast.Scalar) then
-        exp.is_lvalue = true
-    end
-
-    -- only lvalues can be "reduced"
-    if exp.is_lvalue then
-        return exp
-
-    else
-        ctxt:error(self, "only lvalues can be reduced.")
-        local errnode = self:clone()
-        errnode.node_type = L.error
-        return errnode
-    end
-end
-
 function ast.Assignment:check(ctxt)
     local assignment = self:clone()
+    assignment.reduceop = self.reduceop
 
-    ctxt:enterlhs(self.lvalue:is(ast.Reduce) and self.lvalue.op or nil)
+    -- LHS tracked for phase-checking
+    ctxt:enterlhs(self.reduceop or nil)
     local lhs = self.lvalue:check(ctxt)
     ctxt:leavelhs()
 
@@ -221,48 +255,30 @@ function ast.Assignment:check(ctxt)
     local rtype       = rhs.node_type
     if rtype == L.error then return assignment end
 
-    -- If the left hand side was a reduction store the reduction operation
-    if self.lvalue:is(ast.Reduce) then
-        assignment.reduceop = self.lvalue.op
+    -- Promote global lhs to lvalue if there was a reduction
+    if self.reduceop and lhs:is(ast.Global) then
+        lhs.is_value = true
     end
 
     -- enforce that the lhs is an lvalue
     if not lhs.is_lvalue then
-        -- TODO: less cryptic error messages in this case
-        --   Better error messages probably involves switching on kind of lhs
-        ctxt:error(self.lvalue, "assignments in a Liszt kernel are only "..
-                                "valid to indexed fields or kernel variables")
+        ctxt:error(self.lvalue, "Illegal assignment: left hand side cannot "..
+                                "be assigned")
         return assignment
-    elseif lhs.node_type:isRow() then
-        ctxt:error(self.lvalue, "cannot re-assign variables of "..
-                                "row type")
+    elseif lhs.node_type:isRow() and not lhs:is(ast.FieldAccess) then
+        ctxt:error(self.lvalue, "Illegal assignment: variables of row type "..
+                                "cannot be re-assigned")
         return assignment
     end
 
-    -- enforce type agreement b/w lhs and rhs
-    local derived = T.type_meet(ltype,rtype)
-    if derived == L.error or
-       (ltype:isPrimitive() and rtype:isVector()) or
-       (ltype:isVector()    and rtype:isVector() and ltype.N ~= rtype.N)
-    then
-        ctxt:error(self, "invalid conversion from " .. rtype:toString() ..
-                         ' to ' .. ltype:toString())
-        return
+    -- handle any coercions
+    if ltype ~= rtype then
+        assignment.exp = try_coerce(ltype, assignment.exp, ctxt)
+        if not assignment.exp then return assignment end
     end
 
-    -- otherwise, check if we need to insert a type-cast...
-    -- TODO: THIS IS NOT SAFE & SOUND
-    if ltype ~= derived then 
-        derived = ltype
-    end
-    if rtype ~= derived then
-
-        local cast      = ast.Cast:DeriveFrom(assignment.exp)
-        cast.value      = assignment.exp
-        cast.node_type  = derived
-        assignment.exp = cast
-    end
-
+    -- replace assignment with a field write if we see a
+    -- field access on the left hand side
     if assignment.lvalue:is(ast.FieldAccess) then
         local fw = ast.FieldWrite:DeriveFrom(assignment)
         fw.fieldaccess = assignment.lvalue
@@ -287,44 +303,31 @@ end
 function ast.DeclStatement:check(ctxt)
     local decl = self:clone()
     decl.name  = self.name
-
-    -- catch syntactically invalid initializations
-    if not self.typeexpression and not self.initializer then
-        ctxt:error(self, "Variables must either be initialized or have "..
-                         "an explicitly annotated type.")
-        decl.node_type = L.error
-        return decl
-    end
+    -- assert(self.typeexpression or self.initializer)
 
     -- process any explicit type annotation
-    local typ
     if self.typeexpression then
-        typ = exec_type_annotation(self.typeexpression, self, ctxt)
+        decl.node_type = exec_type_annotation(self.typeexpression, self, ctxt)
     end
-    -- check the initialization against the annotation or infer type from init.
+    -- check the initialization against the annotation or infer type.
     if self.initializer then
         decl.initializer = self.initializer:check(ctxt)
         local exptyp     = decl.initializer.node_type
-        -- if the type was annotated check consistency
-        if typ then
-            local mtyp = T.type_meet(exptyp,typ)
-            if typ ~= mtyp then
-                ctxt:error(self, "Cannot assign a value of type ",
-                                  exptyp, " to type ", typ)
-            end
-        -- or infer the type as the expression type
+        -- if the type was annotated handle any coercions
+        if decl.node_type then
+            decl.initializer =
+                try_coerce(decl.node_type, decl.initializer, ctxt)
         else
-            typ = exptyp
+            decl.node_type = exptyp
         end
     end
-    decl.node_type = typ
 
-    if typ ~= L.error and not typ:isFieldType() then
+    if decl.node_type ~= L.error and not decl.node_type:isFieldType() then
         ctxt:error(self,"can only assign numbers, bools, "..
                         "or rows to local temporaries")
     end
 
-    ctxt:liszt()[decl.name] = typ
+    ctxt:liszt()[decl.name] = decl.node_type
 
     return decl
 end
@@ -332,8 +335,9 @@ end
 function ast.NumericFor:check(ctxt)
     local node = self
     local function check_num_type(tp)
-        if tp ~= L.error and not tp:isNumeric() then
-            ctxt:error(node, "expected a numeric expression to define the "..
+        if tp ~= L.error and not tp:isIntegral() then
+            ctxt:error(node,
+                "expected an integer-type expression to define the "..
                              "iterator bounds/step (found "..
                              tp:toString()..")")
         end
@@ -347,20 +351,23 @@ function ast.NumericFor:check(ctxt)
     local upper_type = numfor.upper.node_type
     check_num_type(lower_type)
     check_num_type(upper_type)
+    if lower_type ~= upper_type then -- sanity check!
+        ctxt:error(node, 'iterator bound types must match!')
+    end
 
     local step, step_type
     if self.step then
         numfor.step = self.step:check(ctxt)
         step_type   = numfor.step.node_type
         check_num_type(step_type)
+        if lower_type ~= step_type then -- sanity check!
+            ctxt:error(node, 'iterator bound types must match!')
+        end
     end
 
     -- infer iterator type
     numfor.name           = self.name
-    numfor.node_type = T.type_meet(lower_type, upper_type)
-    if step_type then
-        numfor.node_type = T.type_meet(numfor.node_type, step_type)
-    end
+    numfor.node_type      = lower_type
 
     ctxt:enterblock()
     ctxt:enterloop()
@@ -406,7 +413,7 @@ function ast.CondBlock:check(ctxt)
     new_node.cond   = self.cond:check(ctxt)
     local condtype  = new_node.cond.node_type
     if condtype ~= L.error and condtype ~= L.bool then
-        ctxt:error(self, "conditional expression type should be"..
+        ctxt:error(self, "conditional expression type should be "..
                          "boolean (found " .. condtype:toString() .. ")")
     end
 
@@ -433,19 +440,29 @@ local isNumOp = {
 }
 
 -- these operators always return logical types!
-local isCompOp = {
-    ['<='] = true,
-    ['>='] = true,
-    ['>']  = true,
-    ['<']  = true,
+local is_eq_compare = {
     ['=='] = true,
     ['~='] = true
 }
 
 -- only logical operands
-local isBoolOp = {
+local is_logical_op = {
     ['and'] = true,
     ['or']  = true
+}
+
+local is_num_compare_op = {
+    ['<='] = true,
+    ['>='] = true,
+    ['>']  = true,
+    ['<']  = true
+}
+
+local is_arith_op = {
+    ['+']  = true,
+    ['-']  = true,
+    ['*']  = true,
+    ['/']  = true
 }
 
 local function err (node, ctx, msg)
@@ -474,39 +491,79 @@ function ast.BinaryOp:check(ctxt)
         return err(self, ctxt, op_err)
     end
 
-    local derived = T.type_meet(ltype, rtype)
+    -- operators on booleans
+    if is_logical_op[binop.op] then
+        if ltype ~= rtype then              return err(binop, ctxt, type_err)
+        elseif not ltype:isLogical() then   return err(binop, ctxt, op_err)
+        else                                binop.node_type = ltype
+                                            return binop end
+    end
 
-    -- Numeric op operands cannot be vectors
-    if isNumOp[binop.op] then
-        if ltype:isVector() or rtype:isVector() then return err(binop, ctxt, op_err) end
-
-    elseif isCompOp[binop.op] then
-        if ltype:isLogical() ~= rtype:isLogical() then
+    -- operators for numeric primitives only
+    if is_num_compare_op[binop.op] or binop.op == '^' or binop.op == '%' then
+        if not ltype:isPrimitive() or not ltype:isNumeric() or
+           not rtype:isPrimitive() or not rtype:isNumeric() or
+           (binop.op == '%' and
+            (not ltype:isIntegral() or not rtype:isIntegral()))
+        then
             return err(binop, ctxt, op_err)
+        end
 
-        -- if the type_meet failed, types are incompatible
-        elseif derived == L.error then
-            return err(binop, ctxt, type_err)
+        -- coerce the arguments then
+        binop.lhs, binop.rhs = try_bin_coerce(binop.lhs, binop.rhs)
+        if not binop.lhs then return err(binop, ctxt, type_err) end
 
-        -- otherwise, we need to return a logical type
+        if is_num_compare_op[binop.op] then 
+            binop.node_type = L.bool
         else
-            binop.node_type =
-              derived:isPrimitive() and L.bool or L.vector(L.bool, derived.N)
-            return binop
+            binop.node_type = binop.lhs.node_type
         end
+        return binop
+    end
 
-    elseif isBoolOp[binop.op] then
-        if not ltype:isLogical() or not rtype:isLogical() then
+    -- equality / inequality (the eternal problem)
+    if is_eq_compare[binop.op] then
+        -- try coercion
+        binop.lhs, binop.rhs = try_bin_coerce(binop.lhs, binop.rhs)
+        if not binop.lhs then return err(binop, ctxt, type_err) end
+
+        binop.node_type = L.bool
+        return binop
+    end
+
+    -- all remaining cases of basic arithmetic ops
+    if is_arith_op[binop.op] then
+        if not ltype:isNumeric() or not rtype:isNumeric() then
             return err(binop, ctxt, op_err)
         end
+
+        -- check validity for this kind of operator
+        if binop.op == '+' or binop.op == '-' then
+            if ltype:isVector() ~= rtype:isVector() then
+                return err(binop, ctxt, op_err)
+            end
+        elseif binop.op == '*' then
+            if ltype:isVector() and rtype:isVector() then
+                return err(binop, ctxt, op_err)
+            end
+        elseif binop.op == '/' then
+            if rtype:isVector() then
+                return err(binop, ctxt, op_err)
+            end
+        end
+
+        -- coerce types
+        binop.lhs, binop.rhs = try_vec_bin_coerce(binop.lhs, binop.rhs)
+        if not binop.lhs then return err(binop, ctxt, type_err) end
+
+        -- make sure we get a vector type if appropriate
+        binop.node_type = binop.lhs.node_type
+        if rtype:isVector() then binop.node_type = binop.rhs.node_type end
+        return binop
     end
 
-    if derived == L.error then
-        ctxt:error(self, type_err)
-    end
-
-    binop.node_type = derived
-    return binop
+    -- We should never get here...
+    return err(binop, ctxt, "Failed to recognize operator '"..binop.op.."'")
 end
 
 function ast.UnaryOp:check(ctxt)
@@ -550,10 +607,10 @@ local function luav_to_ast(luav, src_node)
     -- try to construct an ast node to return...
     local node
 
-    -- Scalar objects are replaced with special Scalar nodes
-    if L.is_scalar(luav) then
-        node        = ast.Scalar:DeriveFrom(src_node)
-        node.scalar = luav
+    -- Global objects are replaced with special Global nodes
+    if L.is_global(luav) then
+        node        = ast.Global:DeriveFrom(src_node)
+        node.global = luav
 
     -- Vector objects are expanded into literal AST trees
     elseif L.is_vector(luav) then
@@ -564,6 +621,7 @@ local function luav_to_ast(luav, src_node)
         node.node_type  = luav.type
         for i,v in ipairs(luav.data) do
             node.elems[i] = luav_to_ast(v, src_node)
+            node.elems[i].node_type = luav.type:baseType()
         end
     elseif B.isFunc(luav) then
         node = NewLuaObject(src_node,luav)
@@ -646,11 +704,11 @@ end
 function ast.Number:check(ctxt)
     local number = self:clone()
     number.value = self.value
-    if tonumber(self.value) % 1 == 0 then
-        self.node_type   = L.int
+    if self.node_type then
+        number.node_type = self.node_type
+    elseif tonumber(self.value) % 1 == 0 then
         number.node_type = L.int
     else
-        self.node_type   = L.double
         number.node_type = L.double
     end
     return number
@@ -660,42 +718,48 @@ function ast.VectorLiteral:check(ctxt)
     local veclit      = self:clone()
     veclit.elems      = {}
 
-    ctxt:enterrhs()
-    veclit.elems[1]   = self.elems[1]:check(ctxt)
-    local type_so_far = veclit.elems[1].node_type
-    -- correct the type if it was explicitly provided...
-    if self.node_type then
-        type_so_far = self.node_type:baseType()
-    end
-
     local tp_error = "vector literals can only contain values "..
                      "of boolean or numeric type"
     local mt_error = "vector entries must be of the same type"
 
-    if type_so_far == L.error then return err(self, ctxt) end
-    if not type_so_far:isPrimitive() then
-        ctxt:leaverhs()
-        return err(self, ctxt, tp_error) 
+    ctxt:enterrhs()
+
+    veclit.elems[1]   = self.elems[1]:check(ctxt)
+    local max_type    = veclit.elems[1].node_type
+    if max_type == L.error then ctxt:leaverhs(); return err(self, ctxt) end
+    if not max_type:isPrimitive() then
+        ctxt:leaverhs(); return err(self, ctxt, tp_error) 
     end
 
+    -- scan the remaining entries to compute a max type
     for i = 2, #self.elems do
         veclit.elems[i] = self.elems[i]:check(ctxt)
         local tp        = veclit.elems[i].node_type
-
-        if not tp:isPrimitive() then 
-            ctxt:leaverhs()
-            return err(self, ctxt, tp_error)
+        if tp == L.error then ctxt:leaverhs(); return err(self, ctxt) end
+        if not tp:isPrimitive() then
+            ctxt:leaverhs(); return err(self,ctxt, tp_error)
         end
 
-        type_so_far = T.type_meet(type_so_far, tp)
-        if type_so_far:isError() then 
-            ctxt:leaverhs()
-            return err(self, ctxt, mt_error) 
+        if max_type:isCoercableTo(tp) then
+            max_type = tp
+        elseif not tp:isCoercableTo(max_type) then
+            ctxt:leaverhs(); return err(self, ctxt, mt_error)
         end
     end
 
+    -- If the type was explicitly provided...
+    if self.node_type then
+        max_type = self.node_type:baseType()
+    end
+
+    -- now coerce all of the entries into the max type
+    for i = 1, #veclit.elems do
+        veclit.elems[i] = try_coerce(max_type, veclit.elems[i], ctxt)
+    end
+
     ctxt:leaverhs()
-    veclit.node_type = L.vector(type_so_far, #veclit.elems)
+
+    veclit.node_type = L.vector(max_type, #veclit.elems)
     return veclit
 end
 
@@ -885,10 +949,10 @@ function ast.Call:check(ctxt)
     return call
 end
 
-function ast.Scalar:check(ctxt)
+function ast.Global:check(ctxt)
     local n     = self:clone()
-    n.scalar    = self.scalar
-    n.node_type = self.scalar.type
+    n.global    = self.global
+    n.node_type = self.global.type
     return n
 end
 

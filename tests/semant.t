@@ -5,13 +5,13 @@ local lassert, lprint = L.assert, L.print
 
 
 ---------------------------
--- Field and scalar objs --
+-- Field and Global objs --
 ---------------------------
 local LMesh = terralib.require "compiler.lmesh"
 local mesh = LMesh.Load("examples/mesh.lmesh")
 mesh.cells:NewField('f1', L.float)
 mesh.cells:NewField('f2', L.vector(L.float, 3))
-s1 = L.NewScalar(L.int, 0)
+s1 = L.NewGlobal(L.int, 0)
 
 
 ------------------------
@@ -35,12 +35,12 @@ a.b.c.d = 4
 -------------------------------
 -- ...let the testing begin! --
 -------------------------------
--- Should fail b/c checkthis1 is not a scalar
+-- Should fail b/c checkthis1 is not a global
 test.fail_function(function()
  	liszt_kernel (cell : mesh.cells)
 		checkthis1 = cell.f1
 	end
-end, "assignments in a Liszt kernel are only")
+end, "Illegal assignment: left hand side cannot be assigned")
 
 -- Should fail when we re-assign a new value to x, since it originally
 -- refers to a topological element
@@ -49,15 +49,15 @@ test.fail_function(function()
 		var x = cell
   	  x = cell
 	end
-end, "cannot re%-assign")
+end, "Illegal assignment: variables of row type cannot be re%-assigned")
 
 -- Should fail because we do not allow assignments to fields
--- (only to indexed fields, scalars, and local vars)
+-- (only to indexed fields, globals, and local vars)
 test.fail_function(function()
 	fail3 = liszt_kernel (cell : mesh.cells)
 		mesh.cells.f1 = 5
 	end
-end, "assignments in a Liszt kernel are only")
+end, "Illegal assignment: left hand side cannot be assigned")
 
 -- Should fail because we do not allow the user to alias fields,
 -- or any other entity that would confuse stencil generation, in the kernel
@@ -80,7 +80,7 @@ test.fail_function(function()
 		var floatvar = 2 + 3.3
 		floatvar = true
 	end
-end, "invalid conversion from bool to double")
+end, "Could not coerce expression of type 'bool' into type 'double'")
 
 -- local8 is not in scope in the while loop
 test.fail_function(function()
@@ -121,13 +121,13 @@ test.fail_function(function()
 			local1 = 2.0 -- should fail, local1 is of type bool
 		end
 	end
-end, "invalid conversion from int to bool")
+end, "Could not coerce expression of type 'int' into type 'bool'")
 
 test.fail_function(function()
 	liszt_kernel (cell : mesh.cells)
 		lassert(4 == true) -- binary op will fail here, type mismatch
 	end
-end, "invalid types for operator")
+end, "incompatible types: int and bool")
 
 local v = L.NewVector(L.float, {1, 1, 1})
 test.fail_function(function()
@@ -140,7 +140,7 @@ test.fail_function(function()
 	liszt_kernel (cell : mesh.cells)
 		a.b = 12
 	end
-end, "assignments in a Liszt kernel are only")
+end, "Illegal assignment: left hand side cannot be assigned")
 
 test.fail_function(function()
 	liszt_kernel (cell : mesh.cells)
@@ -150,7 +150,7 @@ test.fail_function(function()
 		end
 		v = 5
 	end
-end, "invalid conversion from int to bool")
+end, "Could not coerce expression of type 'int' into type 'bool'")
 
 local tbl = {}
 test.fail_function(function()

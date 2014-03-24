@@ -5,7 +5,7 @@ local LMesh = terralib.require "compiler.lmesh"
 local mesh = LMesh.Load("examples/mesh.lmesh")
 mesh.vertices:NewField('val', L.float)
 mesh.vertices.val:LoadConstant(1)
-red = L.NewScalar(L.float, 0.0)
+red = L.NewGlobal(L.float, 0.0)
 
 -- checking decl statement, if statement, proper scoping
 local l = liszt_kernel (v : mesh.vertices)

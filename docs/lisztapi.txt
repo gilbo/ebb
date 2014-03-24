@@ -1,9 +1,9 @@
 Vector = L.NewVector(...)
 --and vector math methods
 
-Scalar = L.NewScalar([terratypeorvector],[initalvalue])
-function Scalar:SetTo(val)
-function Scalar:Value()
+Global = L.NewGlobal([terratypeorvector],[initalvalue])
+function Global:SetTo(val)
+function Global:Value()
 
 rtable = L.NewRelation(size, debugname)
 rtable:NewField(name,type)

@@ -14,7 +14,7 @@ local function make_prototype(objname,name)
 end
 local LRelation  = make_prototype("LRelation","relation")
 local LField     = make_prototype("LField","field")
-local LScalar    = make_prototype("LScalar","scalar")
+local LGlobal    = make_prototype("LGlobal","global")
 local LVector    = make_prototype("LVector","vector")
 local LMacro     = make_prototype("LMacro","macro")
 local Kernel     = make_prototype("LKernel","kernel")
@@ -38,13 +38,13 @@ local codegen = terralib.require "compiler.codegen"
 local is_vector = L.is_vector --cache lookup for efficiency
 
 -------------------------------------------------------------------------------
---[[ LScalars:                                                             ]]--
+--[[ LGlobals:                                                             ]]--
 -------------------------------------------------------------------------------
-function L.NewScalar (typ, init)
-    if not T.isLisztType(typ) or not typ:isValueType() then error("First argument to L.NewScalar must be a Liszt expression type", 2) end
-    if not T.luaValConformsToType(init, typ) then error("Second argument to L.NewScalar must be an instance of type " .. typ:toString(), 2) end
+function L.NewGlobal (typ, init)
+    if not T.isLisztType(typ) or not typ:isValueType() then error("First argument to L.NewGlobal must be a Liszt expression type", 2) end
+    if not T.luaValConformsToType(init, typ) then error("Second argument to L.NewGlobal must be an instance of type " .. typ:toString(), 2) end
 
-    local s  = setmetatable({type=typ}, LScalar)
+    local s  = setmetatable({type=typ}, LGlobal)
     local tt = typ:terraType()
     s.data   = terralib.cast(&tt, C.malloc(terralib.sizeof(tt)))
     s:setTo(init)
@@ -52,8 +52,8 @@ function L.NewScalar (typ, init)
 end
 
 
-function LScalar:setTo(val)
-   if not T.luaValConformsToType(val, self.type) then error("value does not conform to scalar type " .. self.type:toString(), 2) end
+function LGlobal:setTo(val)
+   if not T.luaValConformsToType(val, self.type) then error("value does not conform to type of global: " .. self.type:toString(), 2) end
       if self.type:isVector() then
           local v     = is_vector(val) and val or L.NewVector(self.type:baseType(), val)
           local sdata = terralib.cast(&self.type:terraBaseType(), self.data)
@@ -66,7 +66,7 @@ function LScalar:setTo(val)
     end
 end
 
-function LScalar:value()
+function LGlobal:value()
     if self.type:isPrimitive() then return self.data[0] end
 
     local ndata = {}
@@ -258,8 +258,6 @@ end
 
 function L.NewKernel(kernel_ast, env)
     local new_kernel = setmetatable({
-        ast=kernel_ast,
-        env=env,
         __kernels={}
     }, Kernel)
 
@@ -280,7 +278,7 @@ function Kernel:generate (runtime, relation)
     end
 	if not self.__kernels[runtime][relation] then
 		self.__kernels[runtime][relation] =
-            codegen.codegen(runtime, self.env, self.typed_ast, relation)
+            codegen.codegen(runtime, self.typed_ast, relation)
 	end
 end
 
