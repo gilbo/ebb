@@ -1,0 +1,5 @@
+This directory contains a Liszt skeleton for the particle-fluid heat exchanger
+code provided by Ivan. The python code for the particle-fluid heat exchanger is
+at https://github.com/ibermejomoreno/soleil.
+
+The Liszt code is incomplete, and still in progress.
