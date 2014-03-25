@@ -355,9 +355,9 @@ local draw_grid = liszt kernel (c : grid.cells)
     vdb.color(color)
     var p : L.vec3f = { c.center[0],   c.center[1],   0.0 }
     var vel = c.velocity
-    var v = L.vec3f({ vel[0], vel[1], 0.5 })
+    var v = L.vec3f({ vel[0], vel[1], 0.0 })
     --if not c.is_bnd then
-    vdb.line(p, p+v)
+    vdb.line(p, p+v*N)
 end
 
 local draw_particles = liszt kernel (p : particles)
@@ -388,7 +388,7 @@ for i = 1, 1000 do
 
     vdb.vbegin()
         vdb.frame()
-        --draw_grid(grid.cells)
+        draw_grid(grid.cells)
         draw_particles(particles)
     vdb.vend()
 
