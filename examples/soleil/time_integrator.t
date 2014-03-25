@@ -15,7 +15,7 @@ TimeIntegrator.__index = TimeIntegrator
 function S.NewTimeIntegrator(input, flow, particles)
     local t = setmetatable({}, TimeIntegrator)
 
-    -- member variables, relations, fields
+    -- member variables
     -- TODO: fill these based on configuration file
     t.timeIntegratorElement = {}
     t.type = {}
@@ -35,8 +35,9 @@ function S.NewTimeIntegrator(input, flow, particles)
     t.coeffTime = {}
     t.coeffFunction = {}
     
-    -- member liszt kernel wrapper: CalculateDeltaTimeKernel
+    -- member methods
     t.CalculateDeltaTime = DefineCalculateDeltaTimeHelper(t)
+
     return t
 end
 
@@ -46,16 +47,13 @@ local function DefineCalculateDeltaTimeHelper(t)
     local heatConductionSpectralRadius = L.NewScalar(L.float, 0)
     -- define kernel the first time
     local fluid = t.flow.fluid
-    local gridData = t.flow.gridData
-    local CalculateDeltaTimeKernel = liszt kernel(c : gridData.grid.cells)
-        -- Calculate equivalent cell diagonal from 
-        var dXInverse = 1.0/c.dX
-        var dYInverse = 1.0/c.dY
-        var dZInverse = 1.0/c.dZ
-        var dXYZInverse  = dXInverse * dXInverse +
-                           dYInverse * dYInverse +
-                           dZInverse * dZInverse
-        var dXYZInverseSquare = cmath.sqrt(dXYZInverseSquare)
+    local grid = t.flow.gridData.grid
+    local spatialStencils = t.flow.gridData.spatialStencils
+    local CalculateDeltaTimeKernel = liszt kernel(c : grid.cells)
+        -- Calculate equivalent cell diagonal from
+        var dXYZInverse = {1.0/c.dXYZ[0], 1.0/c.dXYZ[1], 1.0/c.dXYZ[2]}
+        var dXYZInverseSquare  = dot(dXYZInverse, dXYZInverse)
+        var dXYZInverse = cmath.sqrt(dXYZInverseSquare)
         -- Convective spectral radii
         var local_cond_spectral_radius = cmath.fabs(c.velocity[0]) * dXInverse +
                                          cmath.fabs(c.velocity[1]) * dYInverse +
@@ -89,16 +87,13 @@ local function DefineCalculateDeltaTimeHelper(t)
         data.convectiveSpectralRadius:setTo(0)
         data.viscousSpectralRadius:setTo(0)
         data.heatConductionSpectralRadius:setTo(0)
-        CalculateDeltaTimeKernel(gridData.grid.cells)
+        CalculateDeltaTimeKernel(grid.cells)
         local csr = convectiveSpectralRadius:value() *
-                    gridData.spatialStencils.
-                    firstDerivativeModifiedWaveNumber
+                    spatialStencils.firstDerivativeModifiedWaveNumber
         local vsr = viscousSpectralRadius:value() *
-                    gridData.spatialStencils.
-                    secondDerivativeModifiedWaveNumber
+                    spatialStencils.secondDerivativeModifiedWaveNumber
         local hsr = heatConductionSpectralRadius:value() *
-                    gridData.spatialStencils.
-                    secondDerivativeModifiedWaveNumber
+                    spatialStencils.secondDerivativeModifiedWaveNumber
         local diffusiveSpectralRadius = cmath.fmax(vsr, hsr)
         local spectralRadius = cmath.fmax(csr, diffusiveSpectralRadius)
         t.deltaTime = t.cfl / spectralRadius
