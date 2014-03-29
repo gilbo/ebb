@@ -59,10 +59,11 @@ grid.cells:NewField('rho', L.float)
 grid.cells:NewField('rho_velocity_t', L.vec2f)
 grid.cells:NewGield('rho_energy_t', L.float)
 -- flux
-grid.cells:NewField('rho_flux', L.float)
-grid.cells:NewField('rho_velocity_flux', L.vec2f)
-grid.cells:NewField('rho_energy_flux', L.float)
-grid.cells:NewField('rho_enthalpy', L.float)
+-- TODO: Define face and vertex macros
+grid.faces:NewField('rho_flux', L.float)
+grid.faces:NewField('rho_velocity_flux', L.vec2f)
+grid.faces:NewField('rho_energy_flux', L.float)
+grid.faces:NewField('rho_enthalpy', L.float)
 
 
 -- Declare and initialize particle relation and fields over the particle
@@ -100,17 +101,80 @@ particles:NewField('delta_temperature_term', L.float)
 -----------------------------------------------------------------------------
 
 
+-- Initialize enthalpy
+local AddInviscidInitialize = liszt kernel(c : grid.cells)
+    c.rho_enthalpy = c.rho_energy + c.pressure
+end
+
+
 -- Interpolation for flux values
 -- read conserved variables, write flux variables
-local AddInviscidPart1 = liszt kernel(c : grid.cells)
-    c.rho_enthalpy = c.rho_energy + c.pressure
+-- TODO:
+-- 1. discuss if to allow lookups based on variables that are
+-- known at compile time?
+-- 2. discuss indexing lua tables
+local AddInviscidGetFlux = liszt kernel(f : grid.faces)
+    var num_coeffs = spatial_stencil.num_interpolate_coeffs
+    var coeffs     = spatial_stencil.interpolate_coeffs
+    var rho_diagonal = 0.0
+    var rho_skew     = 0.0
+    var rho_velocity_diagonal = {0.0, 0.0}
+    var rho_velocity_skew     = {0.0, 0.0}
+    var rho_energy_diagonal   = 0.0
+    var rho_energy_skew       = 0.0
+    var fpdiag = 0.0
+    for i = 0, num_coeffs do
+        rho_diagonal += coeffs[i] *
+                      ( f.cell(i+1).rho *
+                        f.cell(i+1).velocity[0] +
+                        f.cell(i-1).rho *
+                        f.cell(i-1).velocity[0] )
+        rho_velocity_diagonal += coeffs[i] *
+                               ( f.cell(i+1).rho_velocity *
+                                 f.cell(i+1).velocity[0] +
+                                 f.cell(i-1).rho_velocity *
+                                 f.cell(i-1).velocity[0] )
+        rho_energy_diagonal += coeffs[i] *
+                             ( f.cell(i+1).rho_enthalpy *
+                               f.cell(i+1).velocity[0] +
+                               f.cell(i-1).rho_enthalpy *
+                               f.cell(i-1).velocity[0] )
+        fpdiag += coeffs[i] *
+                ( f.cell(i+1).pressure +
+                  f.cell(i-1).pressure )
+    end
+    -- TODO: I don't understand what skew is. Ask Ivan.
+    var s = spatial_stencil.split
+    f.rho_flux          = s * rho_diagonal +
+                          (1-s) * rho_skew
+    f.rho_velocity_flux = s * rho_velocity_diagonal +
+                          (1-s) * rho_velocity_skew
+    f.rho_energy_flux   = s * rho_energy_diagonal +
+                          (1-s) * rho_energy_skew
 end
 
 
 -- Update conserved variables using flux values from part 1
 -- write conserved variables, read flux variables
-local AddInviscidPart2 = liszt kernel(c : grid.cells)
-    c.rho_enthalpy = c.rho_energy + c.pressure
+local AddInviscidUpdateUsingFlux = liszt kernel(c : grid.cells)
+    c.rho_t -= (c.face(1,0,0).rho_flux -
+                c.face(-1,0,0).rho_flux)/c.dx
+    c.rho_t -= (c.face(0,1,0).rho_flux -
+                c.face(1,-1,0.rho_flux))/c.dy
+    c.rho_t -= (c.face(0,0,1).rho_flux -
+                c.face(0,0,-1).rho_flux)/c.dz
+    c.rho_velocity_t -= (c.face(1,0,0).rho_velocity_flux -
+                         c.face(-1,0,0).rho_velocity_flux)/c.dx
+    c.rho_velocity_t -= (c.face(0,1,0).rho_velocity_flux -
+                         c.face(1,-1,0).rho_velocity_flux)/c.dy
+    c.rho_velocity_t -= (c.face(0,0,1).rho_velocity_flux -
+                         c.face(0,0,-1).rho_velocity_flux)/c.dz
+    c.rho_energy_t -= (c.face(1,0,0).rho_energy_flux -
+                       c.face(-1,0,0).rho_energy_flux)/c.dx
+    c.rho_energy_t -= (c.face(0,1,0).rho_energy_flux -
+                       c.face(1,-1,0).rho_energy_flux)/c.dy
+    c.rho_energy_t -= (c.face(0,0,1).rho_energy_flux -
+                       c.face(0,0,-1).rho_energy_flux)/c.dz
 end
 
 
@@ -128,6 +192,18 @@ end
 -- Update flow variables using derivatives
 -- (last step in a single time step)
 local UpdateFlowFieldsFinal = liszt kernel(c : grid.cells)
+end
+
+
+-- Update particle variables using derivatives
+-- (intermediate steps in a single time step)
+local UpdateParticleFieldsIntermediate = liszt kernel(p : particles)
+end
+
+
+-- Update flow variables using derivatives
+-- (last step in a single time step)
+local UpdateParticleFieldsFinal = liszt kernel(p : particles)
 end
 
 
