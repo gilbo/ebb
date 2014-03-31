@@ -42,18 +42,24 @@ local zero_laplacian_edge = liszt kernel(e : bunny.edges)
 local zero_laplacian_vert = liszt kernel(v : bunny.vertices)
   v.laplacian_diag = 0 end
 local build_laplacian = liszt kernel(t : bunny.triangles)
-  var third = L.length(t.area_normal) / 3
+  var area : L.double = L.length(t.area_normal)
+  if area < 0.00001 then area = 0.00001 end
 
-  t.e12.laplacian += third
-  t.e21.laplacian += third
-  t.e13.laplacian += third
-  t.e31.laplacian += third
-  t.e23.laplacian += third
-  t.e32.laplacian += third
+  -- this should be the cotan laplacian
+  var c1 = L.dot(t.v2.pos - t.v1.pos, t.v3.pos - t.v1.pos) / area
+  var c2 = L.dot(t.v1.pos - t.v2.pos, t.v3.pos - t.v2.pos) / area
+  var c3 = L.dot(t.v1.pos - t.v3.pos, t.v2.pos - t.v3.pos) / area
 
-  t.v1.laplacian_diag += third
-  t.v2.laplacian_diag += third
-  t.v3.laplacian_diag += third
+  t.v1.laplacian_diag += c2+c3
+  t.v2.laplacian_diag += c1+c3
+  t.v3.laplacian_diag += c1+c2
+
+  t.e12.laplacian += c3
+  t.e21.laplacian += c3
+  t.e13.laplacian += c2
+  t.e31.laplacian += c2
+  t.e23.laplacian += c1
+  t.e32.laplacian += c1
 end
 
 local function compute_laplacian(mesh)
@@ -67,7 +73,7 @@ end
 ------------------------------------------------------------------------------
 
 -- define globals
-local timestep = L.NewGlobal(L.double, 0.05)
+local timestep = L.NewGlobal(L.double, 0.1)
 
 bunny.vertices:NewField('d_pos', L.vec3d):Load({0,0,0})
 local zero_d_pos = liszt kernel( v : bunny.vertices )
