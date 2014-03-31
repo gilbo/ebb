@@ -375,7 +375,7 @@ function Type:isCoercableTo(target)
   -- identity relationship preserved
   if self == target then return true end
 
-  -- Only numeric values are coercable...
+  -- Only numeric values are coercable otherwise...
   if self:isNumeric() and target:isNumeric() then
     local source = self
 
