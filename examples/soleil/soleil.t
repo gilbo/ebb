@@ -116,6 +116,7 @@ local delta_time = L.NewGlobal(L.float, 0.05)
 --[[                             LISZT MACROS                            ]]--
 -----------------------------------------------------------------------------
 
+-- Functions for calling inside liszt kernel
 
 local Rho = L.NewMacro(function(r)
     return liszt `r.rho
@@ -131,18 +132,19 @@ end)
 
 local InterpolateBilinear = L.NewMacro(function(dc, Field)
     return liszt quote
-        var c00 = dc.cell(-1, -1)
-        var c01 = dc.cell(-1, 1)
-        var c10 = dc.cell(1, -1)
-        var c11 = dc.cell(1, 1)
-        var delta1 = cmath.abs(c00.position[1] - dc.y)
-        var delta2 = cmath.abs(c11.position[1] - dc.y)
-        var f1 = (delta1*Field(c00) + delta2*Field(c01)) / (delta1 + delta2)
-        var f2 = (delta1*Field(c10) + delta2*Field(c11)) / (delta1 + delta2)
-        delta1 = cmath.abs(c00.position[0] - dc.x)
-        delta2 = cmath.abs(c11.position[0] - dc.x)
+        var cdl = dc.downleft
+        var cul = dc.upleft
+        var cdr = dc.downright
+        var cur = dc.upright
+        var xy = dc.center
+        var delta_l = cmath.abs(cdl.position[1] - xy.y)
+        var delta_r = cmath.abs(cur.position[1] - xy.y)
+        var f1 = (delta_l*Field(cdl) + delta_r*Field(cul)) / (delta_l + delta_r)
+        var f2 = (delta_l*Field(cdr) + delta_r*Field(cur)) / (delta_l + delta_r)
+        delta_d = cmath.abs(cdl.position[0] - xy.x)
+        delta_u = cmath.abs(cur.position[0] - xy.x)
     in
-        (delta1*f1 + delta2*f2) / (delta1 + delta2)
+        (delta_d*f1 + delta_u*f2) / (delta_d + delta_u)
     end
 end)
 
