@@ -22,6 +22,14 @@ local particle_options = {
 }
 
 
+local spatial_stencil = {
+}
+
+
+local time_integrator = {
+}
+
+
 -----------------------------------------------------------------------------
 --[[                       FLOW/ PARTICLE RELATIONS                      ]]--
 -----------------------------------------------------------------------------
@@ -44,20 +52,23 @@ grid.cells:NewField('temperature', L.float)
 grid.cells:NewField('pressure', L.float)
 
 -- scratch (temporary) fields
--- intermediate value
+-- intermediate value and copies
+grid.cells:NewField('rho_copy', L.float)
+grid.cells:NewField('rho_velocity_copy', L.vec2f)
+grid.cells:NewField('rho_energy_copy', L.float)
 grid.cells:NewField('rho_temp', L.float)
 grid.cells:NewField('rho_velocity_temp', L.vec2f)
 grid.cells:NewField('rho_energy_temp', L.float)
 -- derivatives
-grid.cells:NewField('rho', L.float)
+grid.cells:NewField('rho_t', L.float)
 grid.cells:NewField('rho_velocity_t', L.vec2f)
 grid.cells:NewGield('rho_energy_t', L.float)
 -- flux
--- TODO: Define face and related macros
-grid.faces:NewField('rho_flux', L.float)
-grid.faces:NewField('rho_velocity_flux', L.vec2f)
-grid.faces:NewField('rho_energy_flux', L.float)
-grid.faces:NewField('rho_enthalpy', L.float)
+-- TODO: Define edge and related macros
+grid.edges:NewField('rho_flux', L.float)
+grid.edges:NewField('rho_velocity_flux', L.vec2f)
+grid.edges:NewField('rho_energy_flux', L.float)
+grid.edges:NewField('rho_enthalpy', L.float)
 
 
 -- Declare and initialize particle relation and fields over the particle
@@ -76,6 +87,13 @@ particles:NewField('delta_velocity_over_relaxaion_time', L.vec2f)
 particles:NewField('delta_temperature_term', L.float)
 
 -- scratch (temporary) fields
+-- intermediate values and copies
+particles:NewField('position_copy', L.vec2f)
+particles:NewField('velocity_copy', L.vec2f)
+particles:NewField('temperature_copy', L.float)
+particles:NewField('position_temp', L.vec2f)
+particles:NewField('velocity_temp', L.vec2f)
+particles:NewField('temperature_temp', L.float)
 -- derivatives
 particles:NewField('position_t', L.vec2f)
 particles:NewField('velocity_t', L.vec2f)
@@ -91,22 +109,24 @@ particles:NewField('temperature_t', L.float)
 -- a Liszt kernel (variables that are not constants), declare them here.
 -- If you use lua variables, Liszt will treat them as constant values.
 
+local delta_time = L.NewGlobal(L.float, 0.05)
+
 
 -----------------------------------------------------------------------------
 --[[                             LISZT MACROS                            ]]--
 -----------------------------------------------------------------------------
 
 
-local Rho = L.NewMacro(function(c)
-    return liszt `c.rho
+local Rho = L.NewMacro(function(r)
+    return liszt `r.rho
 end)
 
-local Velocity = L.NewMacro(function(c)
-    return liszt `c.velocity
+local Velocity = L.NewMacro(function(r)
+    return liszt `r.velocity
 end)
 
-local Temperature = L.NewMacro(function(c)
-    return liszt `c.temperature
+local Temperature = L.NewMacro(function(r)
+    return liszt `r.temperature
 end)
 
 local InterpolateBilinear = L.NewMacro(function(dc, Field)
@@ -131,6 +151,7 @@ local GetDynamicViscosity = L.NewMacro(function(temperature)
         cmath.pow(temperature/fluid_options.dynamic_viscosity_temp_ref, 0.75)
 end)
 
+
 -----------------------------------------------------------------------------
 --[[                            LISZT KERNELS                            ]]--
 -----------------------------------------------------------------------------
@@ -141,7 +162,7 @@ local LocateParticles = liszt kernel(p : particles)
     p.dual_cell = grid.dual(p.position)
 end
 
--- Initialize enthalpy
+-- Initialize enthalpy and derivatives
 local AddInviscidInitialize = liszt kernel(c : grid.cells)
     c.rho_enthalpy = c.rho_energy + c.pressure
 end
@@ -149,7 +170,7 @@ end
 
 -- Interpolation for flux values
 -- read conserved variables, write flux variables
-local AddInviscidGetFlux = liszt kernel(f : grid.faces)
+local AddInviscidGetFlux = liszt kernel(e : grid.edges)
     var num_coeffs = spatial_stencil.num_interpolate_coeffs
     var coeffs     = spatial_stencil.interpolate_coeffs
     var rho_diagonal = 0.0
@@ -158,60 +179,54 @@ local AddInviscidGetFlux = liszt kernel(f : grid.faces)
     var rho_velocity_skew     = {0.0, 0.0}
     var rho_energy_diagonal   = 0.0
     var rho_energy_skew       = 0.0
-    var fpdiag = 0.0
+    var epdiag = 0.0
     var axis = f.axis
     for i = 0, num_coeffs do
         rho_diagonal += coeffs[i] *
-                      ( f.cell(i+1).rho *
-                        f.cell(i+1).velocity[axis] +
-                        f.cell(i-1).rho *
-                        f.cell(i-1).velocity[axis] )
+                      ( e.cell(i+1).rho *
+                        e.cell(i+1).velocity[axis] +
+                        e.cell(i-1).rho *
+                        e.cell(i-1).velocity[axis] )
         rho_velocity_diagonal += coeffs[i] *
-                               ( f.cell(i+1).rho_velocity *
-                                 f.cell(i+1).velocity[axis] +
-                                 f.cell(i-1).rho_velocity *
-                                 f.cell(i-1).velocity[axis] )
+                               ( e.cell(i+1).rho_velocity *
+                                 e.cell(i+1).velocity[axis] +
+                                 e.cell(i-1).rho_velocity *
+                                 e.cell(i-1).velocity[axis] )
         rho_energy_diagonal += coeffs[i] *
-                             ( f.cell(i+1).rho_enthalpy *
-                               f.cell(i+1).velocity[axis] +
-                               f.cell(i-1).rho_enthalpy *
-                               f.cell(i-1).velocity[axis] )
-        fpdiag += coeffs[i] *
-                ( f.cell(i+1).pressure +
-                  f.cell(i-1).pressure )
+                             ( e.cell(i+1).rho_enthalpy *
+                               e.cell(i+1).velocity[axis] +
+                               e.cell(i-1).rho_enthalpy *
+                               e.cell(i-1).velocity[axis] )
+        epdiag += coeffs[i] *
+                ( e.cell(i+1).pressure +
+                  e.cell(i-1).pressure )
     end
     -- TODO: I don't understand what skew is. Ask Ivan.
     var s = spatial_stencil.split
-    f.rho_flux          = s * rho_diagonal +
+    e.rho_flux          = s * rho_diagonal +
                           (1-s) * rho_skew
-    f.rho_velocity_flux = s * rho_velocity_diagonal +
+    e.rho_velocity_flux = s * rho_velocity_diagonal +
                           (1-s) * rho_velocity_skew
-    f.rho_energy_flux   = s * rho_energy_diagonal +
+    e.rho_energy_flux   = s * rho_energy_diagonal +
                           (1-s) * rho_energy_skew
 end
 
 
--- Update conserved variables using flux values from part 1
+-- Update conserved variables using flux values from previous part
 -- write conserved variables, read flux variables
 local AddInviscidUpdateUsingFlux = liszt kernel(c : grid.cells)
-    c.rho_t -= (c.face(1,0,0).rho_flux -
-                c.face(-1,0,0).rho_flux)/c.dx
-    c.rho_t -= (c.face(0,1,0).rho_flux -
-                c.face(1,-1,0.rho_flux))/c.dy
-    c.rho_t -= (c.face(0,0,1).rho_flux -
-                c.face(0,0,-1).rho_flux)/c.dz
-    c.rho_velocity_t -= (c.face(1,0,0).rho_velocity_flux -
-                         c.face(-1,0,0).rho_velocity_flux)/c.dx
-    c.rho_velocity_t -= (c.face(0,1,0).rho_velocity_flux -
-                         c.face(1,-1,0).rho_velocity_flux)/c.dy
-    c.rho_velocity_t -= (c.face(0,0,1).rho_velocity_flux -
-                         c.face(0,0,-1).rho_velocity_flux)/c.dz
-    c.rho_energy_t -= (c.face(1,0,0).rho_energy_flux -
-                       c.face(-1,0,0).rho_energy_flux)/c.dx
-    c.rho_energy_t -= (c.face(0,1,0).rho_energy_flux -
-                       c.face(1,-1,0).rho_energy_flux)/c.dy
-    c.rho_energy_t -= (c.face(0,0,1).rho_energy_flux -
-                       c.face(0,0,-1).rho_energy_flux)/c.dz
+    c.rho_t -= (c.edge(1,0).rho_flux -
+                c.edge(-1,0).rho_flux)/c.dx
+    c.rho_t -= (c.edge(0,1).rho_flux -
+                c.edge(1,-1.rho_flux))/c.dy
+    c.rho_velocity_t -= (c.edge(1,0).rho_velocity_flux -
+                         c.edge(-1,0).rho_velocity_flux)/c.dx
+    c.rho_velocity_t -= (c.edge(0,1).rho_velocity_flux -
+                         c.edge(1,-1).rho_velocity_flux)/c.dy
+    c.rho_energy_t -= (c.edge(1,0).rho_energy_flux -
+                       c.edge(-1,0).rho_energy_flux)/c.dx
+    c.rho_energy_t -= (c.edge(0,1).rho_energy_flux -
+                       c.edge(1,-1).rho_energy_flux)/c.dy
 end
 
 
@@ -241,27 +256,77 @@ local AddFlowCouplingPartTwo = liszt kernel(p : particles)
 end
 
 
--- Update flow variables using derivatives
--- (intermediate steps in a single time step)
-local UpdateFlowFieldsIntermediate = liszt kernel(c : grid.cells)
+-- Kernel generator for update flow variables using derivatives
+local UpdateFlowKernels = {}
+local function GenerateUpdateFlowKernels(relation, stage)
+    local coeff_fun  = time_integrator.coeff_function[stage]
+    local coeff_time = time_integrator.coeff_time[stage]
+    if stage <= 3 then
+        return liszt kernel(r : relation)
+            r.rho_temp += coeff_fun * delta_time * r.rho_t
+            r.rho       = r.rho_copy +
+                          coeff_time * delta_time * r.rho_t
+            r.rho_velocity_temp += coeff_fun * delta_time * r.rho_velocity_t
+            r.rho_velocity       = r.rho_velocity_copy +
+                                   coeff_time * delta_time * r.rho_velocity_t
+            r.rho_energy_temp += coeff_fun * delta_time * r.rho_energy_t
+            r.rho_energy       = r.rho_energy_copy +
+                                 coeff_time * delta_time * r.rho_energy_t
+        end
+    elseif
+        return liszt kernel(r : relation)
+            r.rho = r.rho_temp +
+                    coeff_fun * delta_time * r.rho_t
+            r.rho_velocity = r.rho_velocity_temp +
+                             coeff_fun * delta_time * r.rho_velocity_t
+            r.rho_energy = r.rho_energy_temp +
+                           coeff_fun * delta_time * r.rho_energy_t
+        end
+    end
 end
-
-
--- Update flow variables using derivatives
--- (last step in a single time step)
-local UpdateFlowFieldsFinal = liszt kernel(c : grid.cells)
+for i = 1, 4 do
+    UpdateFlowKernels[i] = GenerateUpdateFlowKernels(grid.cells, i)
 end
 
 
 -- Update particle variables using derivatives
--- (intermediate steps in a single time step)
-local UpdateParticleFieldsIntermediate = liszt kernel(p : particles)
+local UpdateParticleKernels = {}
+local function GenerateUpdateParticleKernels(relation, stage)
+    local coeff_fun  = time_integrator.coeff_function[stage]
+    local coeff_time = time_integrator.coeff_time[stage]
+    if stage <= 3 then
+        return liszt kernel(r : relation)
+            r.position_temp += coeff_fun * delta_time * r.position_t
+            r.position       = r.position_copy +
+                               coeff_time * delta_time * r.position_t
+            r.velocity_temp += coeff_fun * delta_time * r.velocity_t
+            r.velocity       = r.velocity_copy +
+                               coeff_time * delta_time * r.velocity_t
+            r.temperature_temp += coeff_fun * delta_time * r.temperature_t
+            r.temperature       = r.temperature_copy +
+                                  coeff_time * delta_time * r.temperature_t
+        end
+    elseif
+        return liszt kernel(r : relation)
+            r.position = r.position_temp +
+                         coeff_fun * delta_time * r.position_t
+            r.velocity = r.velocity_temp +
+                         coeff_fun * delta_time * r.velocity_t
+            r.temperature = r.rho_temperature_temp +
+                            coeff_fun * delta_time * r.temperature_t
+        end
+    end
+end
+for i = 1, 4 do
+    UpdateParticleKernels[i] = GenerateUpdateParticleKernels(particles, i)
 end
 
 
--- Update flow variables using derivatives
--- (last step in a single time step)
-local UpdateParticleFieldsFinal = liszt kernel(p : particles)
+-- Update time function
+local function UpdateTime(stage)
+    time_integrator.sim_time = time_integrator.sim_time +
+                               time_integrator.coeff_time[stage] *
+                               delta_time:value()
 end
 
 
@@ -283,3 +348,42 @@ end
 -----------------------------------------------------------------------------
 
 
+local function InitializeTemporaries()
+end
+
+
+local function InitializeDerivatives()
+end
+
+
+local function AddInviscid()
+    AddInviscidInitialize(grid.cells)
+    AddInviscidGetFlux(grid.edges)
+    AddInviscidUpdateUsingFlux(grid.cells)
+end
+
+
+local function AddFlowCoupling()
+    AddFlowCouplingPartOne(particles)
+    AddFlowCouplingPartTwo(particles)
+end
+
+local function UpdateFlow(i)
+    UpdateFlowKernels[i](grid.cells)
+end
+
+
+local function UpdateParticles(i)
+    UpdateParticleKernels[i](particles)
+end
+
+
+while (time_integrator.sim_time < time_integrator.final_time) do
+    InitializeTemporaries()
+    for stage = 1, 4 do
+        AddInviscid()
+        AddFlowCoupling()
+        UpdateFlow(i)
+        UpdateParticles(i)
+    end
+end
