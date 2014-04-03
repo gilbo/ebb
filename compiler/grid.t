@@ -153,6 +153,81 @@ local function installMacros(grid)
         return liszt ` c.is_left_bnd or c.is_right_bnd or
                        c.is_up_bnd   or c.is_down_bnd
     end))
+
+    -- edge and cell macros
+
+    local function xe_to_cell(e, dir)
+        return liszt quote
+            var raw_addr = L.id(e)
+            var y_id = raw_addr / L.addr(xsize)
+            var x_id = raw_addr - y_id * L.addr(xsize)
+        in
+            L.UNSAFE_ROW( x_id + (y_id + dir) * xsize, grid.cells)
+        end
+    end
+
+    grid.x_edges:NewFieldMacro('next', L.NewMacro(function(e)
+        return xe_to_cell(e, 1)
+    end))
+
+    grid.x_edges:NewFieldMacro('previous', L.NewMacro(function(e)
+        return xe_to_cell(e, 0)
+    end))
+
+    local function ye_to_cell(e, dir)
+        return liszt quote
+            var raw_addr = L.id(e)
+            var y_id = raw_addr / L.addr(xsize-1)
+            var x_id = raw_addr - y_id * L.addr(xsize-1)
+        in
+            L.UNSAFE_ROW( (x_id + dir) + y_id * xsize, grid.cells)
+        end
+    end
+
+    grid.y_edges:NewFieldMacro('next_cell', L.NewMacro(function(e)
+        return ye_to_cell(e, 1)
+    end))
+
+    grid.y_edges:NewFieldMacro('previous_cell', L.NewMacro(function(e)
+        return ye_to_cell(e, 0)
+    end))
+
+    local function cell_to_xe(c, dir)
+        return liszt quote
+            var raw_addr = L.id(c)
+            var y_id = raw_addr / L.addr(xsize)
+            var x_id = raw_addr - y_id * L.addr(xsize)
+        in
+            L.UNSAFE_ROW( x_id + (y_id-1 + dir) * xsize, grid.x_edges )
+        end
+    end
+
+    local function cell_to_ye(c, dir)
+        return liszt quote
+            var raw_addr = L.id(c)
+            var y_id = raw_addr / L.addr(xsize)
+            var x_id = raw_addr - y_id * L.addr(xsize)
+        in
+            L.UNSAFE_ROW( (x_id-1 + dir) + y_id * xsize, grid.y_edges )
+        end
+    end
+
+    grid.cells:NewFieldMacro('edge_up', L.NewMacro(function(c)
+        return cell_to_xe(e, 1)
+    end))
+
+    grid.cells:NewFieldMacro('edge_down', L.NewMacro(function(c)
+        return cell_to_xe(e, 0)
+    end))
+
+    grid.cells:NewFieldMacro('edge_right', L.NewMacro(function(c)
+        return cell_to_ye(e, 1)
+    end))
+
+    grid.cells:NewFieldMacro('edge_left', L.NewMacro(function(c)
+        return cell_to_ye(e, 0)
+    end))
+
 end
 
 --local initPrivateIndices = liszt_kernel(c: grid.cells)
@@ -166,6 +241,8 @@ function Grid.New2dUniformGrid(xSize, ySize, pos, w, h)
 
     local nCells = xSize * ySize
     local nDualCells = (xSize - 1) * (ySize - 1)
+    local nXEdges = xSize * (ySize - 1)
+    local nYEdges = (xSize - 1) * ySize
 
     local grid = setmetatable({
         xdim = xSize,
@@ -175,6 +252,8 @@ function Grid.New2dUniformGrid(xSize, ySize, pos, w, h)
         grid_height = h,
         cells       = L.NewRelation(nCells, 'cells'),
         dual_cells  = L.NewRelation(nDualCells, 'dual_cells'),
+        x_edges     = L.NewRelation(nXEdges, 'x_edges'),
+        y_edges     = L.NewRelation(nYEdges, 'y_edges')
     }, Grid)
 
     installMacros(grid)
