@@ -487,7 +487,11 @@ function ast.BinaryOp:check(ctxt)
     local op_err   = 'invalid types for operator \'' .. binop.op .. '\': ' ..
                      ltype:toString() .. ' and ' .. rtype:toString()
 
-    if not ltype:isValueType() or not rtype:isValueType() then
+    local coarse_check = ltype:isValueType() and rtype:isValueType()
+    if is_eq_compare[binop.op] then
+        coarse_check = ltype:isFieldType() and rtype:isFieldType()
+    end
+    if not coarse_check then
         return err(self, ctxt, op_err)
     end
 

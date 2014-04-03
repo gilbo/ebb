@@ -5,7 +5,7 @@ terra
 .metadata
 build
 
-examples/simple_trimesh_diffusion_output
+simple_trimesh_diffusion_output
 
 notes.txt
 
