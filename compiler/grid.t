@@ -184,11 +184,11 @@ local function installMacros(grid)
         end
     end
 
-    grid.y_edges:NewFieldMacro('next_cell', L.NewMacro(function(e)
+    grid.y_edges:NewFieldMacro('cell_next', L.NewMacro(function(e)
         return ye_to_cell(e, 1)
     end))
 
-    grid.y_edges:NewFieldMacro('previous_cell', L.NewMacro(function(e)
+    grid.y_edges:NewFieldMacro('cell_previous', L.NewMacro(function(e)
         return ye_to_cell(e, 0)
     end))
 

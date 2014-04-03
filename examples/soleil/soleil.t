@@ -65,10 +65,14 @@ grid.cells:NewField('rho_velocity_t', L.vec2f)
 grid.cells:NewGield('rho_energy_t', L.float)
 -- flux
 -- TODO: Define edge and related macros
-grid.edges:NewField('rho_flux', L.float)
-grid.edges:NewField('rho_velocity_flux', L.vec2f)
-grid.edges:NewField('rho_energy_flux', L.float)
-grid.edges:NewField('rho_enthalpy', L.float)
+grid.x_edges:NewField('rho_flux', L.float)
+grid.x_edges:NewField('rho_velocity_flux', L.vec2f)
+grid.x_edges:NewField('rho_energy_flux', L.float)
+grid.x_edges:NewField('rho_enthalpy', L.float)
+grid.y_edges:NewField('rho_flux', L.float)
+grid.y_edges:NewField('rho_velocity_flux', L.vec2f)
+grid.y_edges:NewField('rho_energy_flux', L.float)
+grid.y_edges:NewField('rho_enthalpy', L.float)
 
 
 -- Declare and initialize particle relation and fields over the particle
@@ -172,63 +176,70 @@ end
 
 -- Interpolation for flux values
 -- read conserved variables, write flux variables
-local AddInviscidGetFlux = liszt kernel(e : grid.edges)
-    var num_coeffs = spatial_stencil.num_interpolate_coeffs
-    var coeffs     = spatial_stencil.interpolate_coeffs
-    var rho_diagonal = 0.0
-    var rho_skew     = 0.0
-    var rho_velocity_diagonal = {0.0, 0.0}
-    var rho_velocity_skew     = {0.0, 0.0}
-    var rho_energy_diagonal   = 0.0
-    var rho_energy_skew       = 0.0
-    var epdiag = 0.0
-    var axis = f.axis
-    for i = 0, num_coeffs do
-        rho_diagonal += coeffs[i] *
-                      ( e.cell(i+1).rho *
-                        e.cell(i+1).velocity[axis] +
-                        e.cell(i-1).rho *
-                        e.cell(i-1).velocity[axis] )
-        rho_velocity_diagonal += coeffs[i] *
-                               ( e.cell(i+1).rho_velocity *
-                                 e.cell(i+1).velocity[axis] +
-                                 e.cell(i-1).rho_velocity *
-                                 e.cell(i-1).velocity[axis] )
-        rho_energy_diagonal += coeffs[i] *
-                             ( e.cell(i+1).rho_enthalpy *
-                               e.cell(i+1).velocity[axis] +
-                               e.cell(i-1).rho_enthalpy *
-                               e.cell(i-1).velocity[axis] )
-        epdiag += coeffs[i] *
-                ( e.cell(i+1).pressure +
-                  e.cell(i-1).pressure )
+local AddInviscidGetFlux = {}
+local function GenerateAddInviscidGetFlux(edges)
+    return liszt kernel(e : edges)
+        var num_coeffs = spatial_stencil.num_interpolate_coeffs
+        var coeffs     = spatial_stencil.interpolate_coeffs
+        var rho_diagonal = 0.0
+        var rho_skew     = 0.0
+        var rho_velocity_diagonal = {0.0, 0.0}
+        var rho_velocity_skew     = {0.0, 0.0}
+        var rho_energy_diagonal   = 0.0
+        var rho_energy_skew       = 0.0
+        var epdiag = 0.0
+        var axis = f.axis
+        for i = 0, num_coeffs do
+            rho_diagonal += coeffs[i] *
+                          ( e.cell_next.rho *
+                            e.cell_next.velocity[axis] +
+                            e.cell_previous.rho *
+                            e.cell_previous.velocity[axis] )
+            rho_velocity_diagonal += coeffs[i] *
+                                   ( e.cell_next.rho_velocity *
+                                     e.cell_next.velocity[axis] +
+                                     e.cell_previous.rho_velocity *
+                                     e.cell_previous.velocity[axis] )
+            rho_energy_diagonal += coeffs[i] *
+                                 ( e.cell_next.rho_enthalpy *
+                                   e.cell_next.velocity[axis] +
+                                   e.cell_previous.rho_enthalpy *
+                                   e.cell_previous.velocity[axis] )
+            epdiag += coeffs[i] *
+                    ( e.cell_next.pressure +
+                      e.cell_previous.pressure )
+        end
+        -- TODO: I don't understand what skew is. Ask Ivan.
+        var s = spatial_stencil.split
+        e.rho_flux          = s * rho_diagonal +
+                              (1-s) * rho_skew
+        e.rho_velocity_flux = s * rho_velocity_diagonal +
+                              (1-s) * rho_velocity_skew
+        e.rho_energy_flux   = s * rho_energy_diagonal +
+                              (1-s) * rho_energy_skew
     end
-    -- TODO: I don't understand what skew is. Ask Ivan.
-    var s = spatial_stencil.split
-    e.rho_flux          = s * rho_diagonal +
-                          (1-s) * rho_skew
-    e.rho_velocity_flux = s * rho_velocity_diagonal +
-                          (1-s) * rho_velocity_skew
-    e.rho_energy_flux   = s * rho_energy_diagonal +
-                          (1-s) * rho_energy_skew
 end
+AddInviscidFetFlux.X = GenerateAddInviscidGetFlux(grid.x_edges)
+AddInviscidFetFlux.Y = GenerateAddInviscidGetFlux(grid.y_edges)
 
 
 -- Update conserved variables using flux values from previous part
 -- write conserved variables, read flux variables
+local c_dx = grid:cellWidth()
+local c_dy = grid:cellHeight()
 local AddInviscidUpdateUsingFlux = liszt kernel(c : grid.cells)
-    c.rho_t -= (c.edge(1,0).rho_flux -
-                c.edge(-1,0).rho_flux)/c.dx
-    c.rho_t -= (c.edge(0,1).rho_flux -
-                c.edge(1,-1.rho_flux))/c.dy
-    c.rho_velocity_t -= (c.edge(1,0).rho_velocity_flux -
-                         c.edge(-1,0).rho_velocity_flux)/c.dx
-    c.rho_velocity_t -= (c.edge(0,1).rho_velocity_flux -
-                         c.edge(1,-1).rho_velocity_flux)/c.dy
-    c.rho_energy_t -= (c.edge(1,0).rho_energy_flux -
-                       c.edge(-1,0).rho_energy_flux)/c.dx
-    c.rho_energy_t -= (c.edge(0,1).rho_energy_flux -
-                       c.edge(1,-1).rho_energy_flux)/c.dy
+    c.rho_t -= (c.edge_right.rho_flux -
+                c.edge_left.rho_flux)/c.dx
+    c.rho_t -= (c.edge_up.rho_flux -
+                c.edge_downrho_flux)/c.dy
+    c.rho_velocity_t -= (c.edge_right.rho_velocity_flux -
+                         c.edge_left.rho_velocity_flux)/c_dx
+    c.rho_velocity_t -= (c.edge_up.rho_velocity_flux -
+                         c.edge_down.rho_velocity_flux)/c_dy
+    c.rho_energy_t -= (c.edge_right.rho_energy_flux -
+                       c.edge_left.rho_energy_flux)/c_dx
+    c.rho_energy_t -= (c.edge_up.rho_energy_flux -
+                       c.edge_down.rho_energy_flux)/c_dy
 end
 
 
@@ -258,7 +269,7 @@ local AddFlowCouplingPartTwo = liszt kernel(p : particles)
 end
 
 
--- Kernel generator for update flow variables using derivatives
+-- Update flow variables using derivatives
 local UpdateFlowKernels = {}
 local function GenerateUpdateFlowKernels(relation, stage)
     local coeff_fun  = time_integrator.coeff_function[stage]
@@ -360,7 +371,8 @@ end
 
 local function AddInviscid()
     AddInviscidInitialize(grid.cells)
-    AddInviscidGetFlux(grid.edges)
+    AddInviscidGetFlux.X(grid.x_edges)
+    AddInviscidGetFlux.Y(grid.y_edges)
     AddInviscidUpdateUsingFlux(grid.cells)
 end
 
