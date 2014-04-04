@@ -83,10 +83,14 @@ local flow_options = {
 
 -- Declare and initialize grid  and related fields
 
-local grid = Grid.New2dUniformGrid(grid_options.xnum, grid_options.ynum,
+local bnum = spatial_stencil.order/2
+local bw   = grid_options.width/grid_options.xnum * bnum
+local grid = Grid.New2dUniformGrid(grid_options.xnum + 2*bnum,
+                                   grid_options.ynum + 2*bnum,
                                    grid_options.pos,
-                                   grid_options.width, grid_options.height,
-                                   spatial_stencil.order/2)
+                                   grid_options.width + 2*bw,
+                                   grid_options.height + 2*bw,
+                                   bnum)
 
 -- conserved variables
 grid.cells:NewField('rho', L.double):
@@ -158,6 +162,7 @@ Load(function(i)
     local pmax = particle_options.pos_max
     local p1 = cmath.fmod(cmath.rand_double(), pmax)
     local p2 = cmath.fmod(cmath.rand_double(), pmax)
+    print("Position ", p1 + bw + 0.02, p2 + bw + 0.02)
     return {p1, p2}
 end)
 particles:NewField('velocity', L.vec2d):
@@ -267,17 +272,24 @@ local LocateParticles = liszt kernel(p : particles)
     p.dual_cell = grid.dual_locate(p.position)
 end
 
+
 -- Initialize flow variables
-local InitializeFlowPrimitivesDummy = liszt kernel(c : grid.cells)
+local InitializeFlowPrimitives = liszt kernel(c : grid.cells)
     if  c.in_interior then
         var xy = c.center
-        var x = xy[0]
-        var y = xy[1]
-        c.rho_energy = cmath.sin(x)
-        c.rho_velocity[0] = cmath.sin(y)
-        c.rho_velocity[1] = cmath.sin(x)
+        var sx = cmath.sin(xy[0])
+        var sy = cmath.sin(xy[1])
+        var cx = cmath.cos(xy[0])
+        var cy = cmath.cos(xy[1])
+        c.velocity = L.vec2d({sy, cx})
     end
 end
+local InitializeFlowConserved = liszt kernel(c : grid.cells)
+    if c.in_interior then
+        c.rho_velocity = c.rho * c.velocity
+    end
+end
+
 
 -- Initialize temporaries
 local InitializeFlowTemporaries = liszt kernel(c : grid.cells)
@@ -297,6 +309,7 @@ local InitializeParticleTemporaries = liszt kernel(p : particles)
     p.temperature_temp = p.temperature
 end
 
+
 -- Initialize derivatives
 local InitializeFlowDerivatives = liszt kernel(c : grid.cells)
     c.rho_t = L.double(0)
@@ -308,6 +321,7 @@ local InitializeParticleDerivatives = liszt kernel(p : particles)
     p.velocity_t = L.vec2d({0, 0})
     p.temperature_t = L.double(0)
 end
+
 
 -- Initialize enthalpy and derivatives
 local AddInviscidInitialize = liszt kernel(c : grid.cells)
@@ -509,9 +523,9 @@ local DrawParticlesKernel = liszt kernel (p : particles)
                           p.position[1]/pmax,
                           0.0 }
     vdb.point(pos)
-    var vel = p.velocity
+    --var vel = p.velocity
     --var v = L.vec3d({ vel[0], vel[1], 0.0 })
-    --v = 20 * v + {200, 200, 0}
+    --v = 200 * v + L.vec3d({2, 2, 0})
     --vdb.line(pos, pos+v)
 end
 
@@ -522,7 +536,8 @@ end
 
 
 local function InitializeVariables()
-    InitializeFlowPrimitivesDummy(grid.cells)
+    InitializeFlowPrimitives(grid.cells)
+    InitializeFlowConserved(grid.cells)
     LocateParticles(particles)
 end
 
@@ -563,6 +578,11 @@ local function UpdateParticles(i)
 end
 
 
+local function UpdateAuxiliary()
+    UpdateAuxiliaryGridVelocity(grid.cells)
+end
+
+
 -- Update time function
 local function UpdateTime(stage)
     time_integrator.sim_time = time_integrator.sim_time +
@@ -583,8 +603,6 @@ end
 
 
 InitializeVariables()
---particles.position:print()
---particles.dual_cell:print()
 
 while (time_integrator.sim_time < time_integrator.final_time) do
     print("Running time step ", time_integrator.time_step) 
@@ -596,11 +614,10 @@ while (time_integrator.sim_time < time_integrator.final_time) do
         UpdateFlow(stage)
         UpdateParticles(stage)
         UpdateTime(stage)
+        UpdateAuxiliary()
     end
     DrawParticles()
-    particles.position:print()
-    particles.velocity:print()
 end
 
 --particles.position:print()
---particles.diameter:print()
+--grid.cells.velocity:print()
