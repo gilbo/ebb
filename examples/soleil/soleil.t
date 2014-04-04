@@ -60,7 +60,7 @@ local time_integrator = {
     coeff_function = {1/6, 1/3, 1/3, 1/6},
     coeff_time     = {0.5, 0.5, 1, 1},
     sim_time = 0,
-    final_time = 1,
+    final_time = 0.1,
     time_step = 0
 }
 
@@ -68,6 +68,11 @@ local time_integrator = {
 local fluid_options = {
     dynamic_viscosity_ref = L.NewGlobal(L.double, 0.00044),
     dynamic_viscosity_temp_ref = L.NewGlobal(L.double, 1.0)
+}
+
+
+local flow_options = {
+    rho = 1.0,
 }
 
 
@@ -85,7 +90,7 @@ local grid = Grid.New2dUniformGrid(grid_options.xnum, grid_options.ynum,
 
 -- conserved variables
 grid.cells:NewField('rho', L.double):
-LoadConstant(0)
+LoadConstant(flow_options.rho)
 grid.cells:NewField('rho_velocity', L.vec2d):
 LoadConstant(L.NewVector(L.double, {0, 0}))
 grid.cells:NewField('rho_energy', L.double):
@@ -158,12 +163,15 @@ end)
 particles:NewField('velocity', L.vec2d):
 LoadConstant(L.NewVector(L.double, {0, 0}))
 particles:NewField('temperature', L.double):
-LoadConstant(0)
+LoadConstant(particle_options.temperature)
 
 particles:NewField('diameter', L.double):
-LoadConstant(0)
+Load(function(i)
+    return cmath.rand_unity() * particle_options.diameter_m +
+        particle_options.diameter_a
+end)
 particles:NewField('density', L.double):
-LoadConstant(0)
+LoadConstant(particle_options.density)
 
 particles:NewField('delta_velocity_over_relaxation_time', L.vec2d):
 LoadConstant(L.NewVector(L.double, {0, 0}))
@@ -254,23 +262,56 @@ end)
 -----------------------------------------------------------------------------
 
 
--- Initialization kernel
-local InitializeParticles = liszt kernel(p: particles)
-    p.temperature = particle_options.temperature
-    p.diameter = cmath.rand_unity() * particle_options.diameter_m +
-                 particle_options.diameter_a
-    p.density = particle_options.density
-end
-
 -- Locate particles
 local LocateParticles = liszt kernel(p : particles)
     p.dual_cell = grid.dual_locate(p.position)
 end
 
+-- Initialize flow variables
+local InitializeFlowPrimitivesDummy = liszt kernel(c : grid.cells)
+    if  c.in_interior then
+        var xy = c.center
+        var x = xy[0]
+        var y = xy[1]
+        c.rho_energy = cmath.sin(x)
+        c.rho_velocity[0] = cmath.sin(y)
+        c.rho_velocity[1] = cmath.sin(x)
+    end
+end
+
+-- Initialize temporaries
+local InitializeFlowTemporaries = liszt kernel(c : grid.cells)
+    c.rho_copy = c.rho
+    c.rho_velocity_copy = c.rho_velocity
+    c.rho_energy_copy   = c.rho_energy
+    c.rho_temp = c.rho
+    c.rho_velocity_temp = c.rho_velocity
+    c.rho_energy_temp   = c.rho_energy
+end
+local InitializeParticleTemporaries = liszt kernel(p : particles)
+    p.position_copy = p.position
+    p.velocity_copy = p.velocity
+    p.temperature_copy = p.temperature
+    p.position_temp = p.position
+    p.velocity_temp = p.velocity
+    p.temperature_temp = p.temperature
+end
+
+-- Initialize derivatives
+local InitializeFlowDerivatives = liszt kernel(c : grid.cells)
+    c.rho_t = L.double(0)
+    c.rho_velocity_t = L.vec2d({0, 0})
+    c.rho_energy_t = L.double(0)
+end
+local InitializeParticleDerivatives = liszt kernel(p : particles)
+    p.position_t = L.vec2d({0, 0})
+    p.velocity_t = L.vec2d({0, 0})
+    p.temperature_t = L.double(0)
+end
+
 -- Initialize enthalpy and derivatives
 local AddInviscidInitialize = liszt kernel(c : grid.cells)
-    -- c.rho_enthalpy = c.rho_energy + c.pressure
-    c.rho_enthalpy = 0
+    c.rho_enthalpy = c.rho_energy + c.pressure
 end
 
 
@@ -469,9 +510,9 @@ local DrawParticlesKernel = liszt kernel (p : particles)
                           0.0 }
     vdb.point(pos)
     var vel = p.velocity
-    var v = L.vec3d({ vel[0], vel[1], 0.0 })
-    v = 20 * v + {20, 20, 0}
-    vdb.line(pos, pos+v)
+    --var v = L.vec3d({ vel[0], vel[1], 0.0 })
+    --v = 20 * v + {200, 200, 0}
+    --vdb.line(pos, pos+v)
 end
 
 
@@ -481,16 +522,20 @@ end
 
 
 local function InitializeVariables()
-    InitializeParticles(particles)
+    InitializeFlowPrimitivesDummy(grid.cells)
     LocateParticles(particles)
 end
 
 
 local function InitializeTemporaries()
+    InitializeFlowTemporaries(grid.cells)
+    InitializeParticleTemporaries(particles)
 end
 
 
 local function InitializeDerivatives()
+    InitializeFlowDerivatives(grid.cells)
+    InitializeParticleDerivatives(particles)
 end
 
 
@@ -538,7 +583,8 @@ end
 
 
 InitializeVariables()
-particles.position:print()
+--particles.position:print()
+--particles.dual_cell:print()
 
 while (time_integrator.sim_time < time_integrator.final_time) do
     print("Running time step ", time_integrator.time_step) 
@@ -552,6 +598,9 @@ while (time_integrator.sim_time < time_integrator.final_time) do
         UpdateTime(stage)
     end
     DrawParticles()
+    particles.position:print()
+    particles.velocity:print()
 end
 
-particles.position:print()
+--particles.position:print()
+--particles.diameter:print()
