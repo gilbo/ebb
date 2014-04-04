@@ -162,7 +162,6 @@ Load(function(i)
     local pmax = particle_options.pos_max
     local p1 = cmath.fmod(cmath.rand_double(), pmax)
     local p2 = cmath.fmod(cmath.rand_double(), pmax)
-    print("Position ", p1 + bw + 0.02, p2 + bw + 0.02)
     return {p1, p2}
 end)
 particles:NewField('velocity', L.vec2d):
@@ -238,13 +237,12 @@ local Temperature = L.NewMacro(function(r)
     return liszt `r.temperature
 end)
 
-local InterpolateBilinear = L.NewMacro(function(dc, Field)
+local InterpolateBilinear = L.NewMacro(function(dc, xy, Field)
     return liszt quote
         var cdl = dc.downleft
         var cul = dc.upleft
         var cdr = dc.downright
         var cur = dc.upright
-        var xy = dc.center
         var delta_l = xy[1] - cdl.center[1]
         var delta_r = cur.center[1] - xy[1]
         var f1 = (delta_l*Field(cdl) + delta_r*Field(cul)) / (delta_l + delta_r)
@@ -411,9 +409,10 @@ local AddFlowCouplingPartOne = liszt kernel(p: particles)
     var flow_velocity    = L.vec2d({0, 0})
     var flow_temperature = L.double(0)
     var flow_dyn_viscosity = L.double(0)
-    flow_density     = InterpolateBilinear(dc, Rho)
-    flow_velocity    = InterpolateBilinear(dc, Velocity)
-    flow_temperature = InterpolateBilinear(dc, Temperature)
+    var pos = p.position
+    flow_density     = InterpolateBilinear(dc, pos, Rho)
+    flow_velocity    = InterpolateBilinear(dc, pos, Velocity)
+    flow_temperature = InterpolateBilinear(dc, pos, Temperature)
     flow_dyn_viscosity = GetDynamicViscosity(flow_temperature)
     p.position_t    += p.velocity
     var relaxation_time = p.density * cmath.pow(p.diameter, 2) /
@@ -621,3 +620,7 @@ end
 
 --particles.position:print()
 --grid.cells.velocity:print()
+
+local Velocity = L.NewMacro(function(c)
+    return liszt `c.velocity
+end)
