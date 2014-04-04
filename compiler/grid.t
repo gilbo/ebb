@@ -13,6 +13,7 @@ local function installMacros(grid)
     local cell_height       = grid:cellHeight()
     local xorigin           = grid:xOrigin()
     local yorigin           = grid:yOrigin()
+    local boundary_cells    = grid:boundaryCells()
 
 -- UNFORTUNATELY OFFSET WON'T WORK CURRENTLY
 --    grid.cells:NewFieldMacro('offset', L.NewMacro(function(c, xoff, yoff)
@@ -237,13 +238,70 @@ local function installMacros(grid)
         return cell_to_ye(c, 0)
     end))
 
+
+    -- boundary macros for higher stencils
+
+    grid.cells:NewFieldMacro('in_boundary_region', L.NewMacro(function(c)
+        return liszt `(c.xy_ids[0] < boundary_cells or
+                       c.xy_ids[0] > xsize - 1 - boundary_cells or
+                       c.xy_ids[1] < boundary_cells or
+                       c.xy_ids[1] > ysize - 1 - boundary_cells)
+    end))
+
+    grid.cells:NewFieldMacro('in_interior', L.NewMacro(function(c)
+        return liszt `(not c.in_boundary_region)
+    end))
+
+    grid.x_edges:NewFieldMacro('xy_ids', L.NewMacro(function(e)
+        return liszt quote
+            var raw_addr = L.id(e)
+            var y_id     = raw_addr / L.addr(xsize)
+            var x_id     = raw_addr - y_id * L.addr(xsize)
+        in
+            { x_id, y_id }
+        end
+    end))
+
+    grid.y_edges:NewFieldMacro('xy_ids', L.NewMacro(function(e)
+        return liszt quote
+            var raw_addr = L.id(e)
+            var y_id     = raw_addr / L.addr(xsize-1)
+            var x_id     = raw_addr - y_id * L.addr(xsize-1)
+        in
+            { x_id, y_id }
+        end
+    end))
+
+    grid.x_edges:NewFieldMacro('in_boundary_region', L.NewMacro(function(e)
+        return liszt `(e.xy_ids[0] < boundary_cells or
+                       e.xy_ids[0] > xsize - 1 - boundary_cells or
+                       e.xy_ids[1] < boundary_cells or
+                       e.xy_ids[1] > ysize - 2 - boundary_cells)
+    end))
+
+    grid.y_edges:NewFieldMacro('in_boundary_region', L.NewMacro(function(e)
+        return liszt `(e.xy_ids[0] < boundary_cells or
+                       e.xy_ids[0] > xsize - 2 - boundary_cells or
+                       e.xy_ids[1] < boundary_cells or
+                       e.xy_ids[1] > ysize - 1 - boundary_cells)
+    end))
+
+    grid.x_edges:NewFieldMacro('in_interior', L.NewMacro(function(e)
+        return liszt `(not e.in_boundary_region)
+    end))
+
+    grid.y_edges:NewFieldMacro('in_interior', L.NewMacro(function(e)
+        return liszt `(not e.in_boundary_region)
+    end))
+
 end
 
 --local initPrivateIndices = liszt_kernel(c: grid.cells)
 --    c.private.index = c.getPrivateIndex()
 --end
 
-function Grid.New2dUniformGrid(xSize, ySize, pos, w, h)
+function Grid.New2dUniformGrid(xSize, ySize, pos, w, h, boundary)
+    boundary = boundary or 0
     if not xSize or not ySize then
         error('must supply the x and y size of the grid', 2)
     end
@@ -262,7 +320,8 @@ function Grid.New2dUniformGrid(xSize, ySize, pos, w, h)
         cells       = L.NewRelation(nCells, 'cells'),
         dual_cells  = L.NewRelation(nDualCells, 'dual_cells'),
         x_edges     = L.NewRelation(nXEdges, 'x_edges'),
-        y_edges     = L.NewRelation(nYEdges, 'y_edges')
+        y_edges     = L.NewRelation(nYEdges, 'y_edges'),
+        boundary_cells = boundary,
     }, Grid)
 
     installMacros(grid)
@@ -307,5 +366,6 @@ function Grid:cellHeight()
     return self:height() / (1.0 * self:ySize())
 end
 
-
-
+function Grid:boundaryCells()
+    return self.boundary_cells
+end
