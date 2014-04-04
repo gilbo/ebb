@@ -2,6 +2,7 @@ import "compiler.liszt"
 local Grid  = terralib.require 'compiler.grid'
 local cmath = terralib.includecstring [[ #include <math.h> ]]
 
+local vdb   = terralib.require 'compiler.vdb'
 
 -----------------------------------------------------------------------------
 --[[                             OPTIONS                                 ]]--
@@ -174,7 +175,7 @@ LoadConstant(0)
 -- a Liszt kernel (variables that are not constants), declare them here.
 -- If you use lua variables, Liszt will treat them as constant values.
 
-local delta_time = L.NewGlobal(L.double, 0.05)
+local delta_time = L.NewGlobal(L.double, 0.02)
 local pi = L.NewGlobal(L.double, 3.14)
 
 
@@ -420,6 +421,20 @@ local UpdateAuxiliaryParticles = liszt kernel(p : particles)
 end
 
 
+-- kernels to draw particles and velocity for debugging purpose
+
+local DrawParticles = liszt kernel (p : particles)
+    var color = {1.0,1.0,0.0}
+    vdb.color(color)
+    var pos : L.vec3d = { p.position[0], p.position[1], 0.0 }
+    vdb.point(pos)
+    var vel = p.velocity
+    var v = L.vec3d({ vel[0], vel[1], 0.0 })
+    --if not c.is_bnd then
+    vdb.line(pos, pos+v*150)
+end
+
+
 -----------------------------------------------------------------------------
 --[[                             MAIN LOOP                               ]]--
 -----------------------------------------------------------------------------
@@ -478,4 +493,5 @@ while (time_integrator.sim_time < time_integrator.final_time) do
         UpdateParticles(stage)
         UpdateTime(stage)
     end
+    DrawParticles(particles)
 end
