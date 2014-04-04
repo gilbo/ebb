@@ -620,7 +620,3 @@ end
 
 --particles.position:print()
 --grid.cells.velocity:print()
-
-local Velocity = L.NewMacro(function(c)
-    return liszt `c.velocity
-end)
