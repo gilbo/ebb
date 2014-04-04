@@ -18,15 +18,26 @@ local grid_options = {
 
 
 local particle_options = {
-    num = 50
+    num = 50,
+    convective_coefficient = 0.7,
+    heat_capacity = 0.7
 }
 
 
 local spatial_stencil = {
+    order = 6,
+    size = 6,
+    num_interpolate_coeffs = 4,
+    interpolate_coeffs = L.NewVector(L.float, {0, 37/60, -8/60, 1/60}),
+    split = 0.5
 }
 
 
 local time_integrator = {
+    coeff_function = {1/6, 1/3, 1/3, 1/6},
+    coeff_time     = {0.5, 0.5, 1, 1},
+    sim_time = 0,
+    final_time = 100
 }
 
 
