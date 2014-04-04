@@ -19,8 +19,8 @@ local grid_options = {
 
 local particle_options = {
     num = 50,
-    convective_coefficient = 0.7,
-    heat_capacity = 0.7
+    convective_coefficient = L.NewGlobal(L.double, 0.7),
+    heat_capacity = L.NewGlobal(L.double, 0.7)
 }
 
 
@@ -28,7 +28,7 @@ local spatial_stencil = {
     order = 6,
     size = 6,
     num_interpolate_coeffs = 4,
-    interpolate_coeffs = L.NewVector(L.float, {0, 37/60, -8/60, 1/60}),
+    interpolate_coeffs = L.NewVector(L.double, {0, 37/60, -8/60, 1/60}),
     split = 0.5
 }
 
@@ -38,6 +38,12 @@ local time_integrator = {
     coeff_time     = {0.5, 0.5, 1, 1},
     sim_time = 0,
     final_time = 100
+}
+
+
+local fluid_options = {
+    dynamic_viscosity_ref = L.NewGlobal(L.double, 0.00044),
+    dynamic_viscosity_temp_ref = L.NewGlobal(L.double, 1.0)
 }
 
 
@@ -53,37 +59,38 @@ local grid = Grid.New2dUniformGrid(grid_options.xnum, grid_options.ynum,
                                    grid_options.width, grid_options.height)
 
 -- conserved variables
-grid.cells:NewField('rho', L.float)
-grid.cells:NewField('rho_velocity', L.vec2f)
-grid.cells:NewField('rho_energy', L.float)
+grid.cells:NewField('rho', L.double)
+grid.cells:NewField('rho_velocity', L.vec2d)
+grid.cells:NewField('rho_energy', L.double)
 
 -- primitive variables
-grid.cells:NewField('velocity', L.vec2f)
-grid.cells:NewField('temperature', L.float)
-grid.cells:NewField('pressure', L.float)
+grid.cells:NewField('velocity', L.vec2d)
+grid.cells:NewField('temperature', L.double)
+grid.cells:NewField('pressure', L.double)
+grid.cells:NewField('rho_enthalpy', L.double)
 
 -- scratch (temporary) fields
 -- intermediate value and copies
-grid.cells:NewField('rho_copy', L.float)
-grid.cells:NewField('rho_velocity_copy', L.vec2f)
-grid.cells:NewField('rho_energy_copy', L.float)
-grid.cells:NewField('rho_temp', L.float)
-grid.cells:NewField('rho_velocity_temp', L.vec2f)
-grid.cells:NewField('rho_energy_temp', L.float)
+grid.cells:NewField('rho_copy', L.double)
+grid.cells:NewField('rho_velocity_copy', L.vec2d)
+grid.cells:NewField('rho_energy_copy', L.double)
+grid.cells:NewField('rho_temp', L.double)
+grid.cells:NewField('rho_velocity_temp', L.vec2d)
+grid.cells:NewField('rho_energy_temp', L.double)
 -- derivatives
-grid.cells:NewField('rho_t', L.float)
-grid.cells:NewField('rho_velocity_t', L.vec2f)
-grid.cells:NewGield('rho_energy_t', L.float)
+grid.cells:NewField('rho_t', L.double)
+grid.cells:NewField('rho_velocity_t', L.vec2d)
+grid.cells:NewField('rho_energy_t', L.double)
 -- flux
 -- TODO: Define edge and related macros
-grid.x_edges:NewField('rho_flux', L.float)
-grid.x_edges:NewField('rho_velocity_flux', L.vec2f)
-grid.x_edges:NewField('rho_energy_flux', L.float)
-grid.x_edges:NewField('rho_enthalpy', L.float)
-grid.y_edges:NewField('rho_flux', L.float)
-grid.y_edges:NewField('rho_velocity_flux', L.vec2f)
-grid.y_edges:NewField('rho_energy_flux', L.float)
-grid.y_edges:NewField('rho_enthalpy', L.float)
+grid.x_edges:NewField('rho_flux', L.double)
+grid.x_edges:NewField('rho_velocity_flux', L.vec2d)
+grid.x_edges:NewField('rho_energy_flux', L.double)
+grid.x_edges:NewField('rho_enthalpy', L.double)
+grid.y_edges:NewField('rho_flux', L.double)
+grid.y_edges:NewField('rho_velocity_flux', L.vec2d)
+grid.y_edges:NewField('rho_energy_flux', L.double)
+grid.y_edges:NewField('rho_enthalpy', L.double)
 
 
 -- Declare and initialize particle relation and fields over the particle
@@ -91,28 +98,28 @@ grid.y_edges:NewField('rho_enthalpy', L.float)
 local particles = L.NewRelation(particle_options.num, 'particles')
 
 particles:NewField('dual_cell', grid.dual_cells)
-particles:NewField('position', L.vec2f)
-particles:NewField('velocity', L.vec2f)
-particles:NewField('temperature', L.float)
+particles:NewField('position', L.vec2d)
+particles:NewField('velocity', L.vec2d)
+particles:NewField('temperature', L.double)
 
-particles:NewField('diameter', L.float)
-particles:NewField('density', L.float)
+particles:NewField('diameter', L.double)
+particles:NewField('density', L.double)
 
-particles:NewField('delta_velocity_over_relaxaion_time', L.vec2f)
-particles:NewField('delta_temperature_term', L.float)
+particles:NewField('delta_velocity_over_relaxation_time', L.vec2d)
+particles:NewField('delta_temperature_term', L.double)
 
 -- scratch (temporary) fields
 -- intermediate values and copies
-particles:NewField('position_copy', L.vec2f)
-particles:NewField('velocity_copy', L.vec2f)
-particles:NewField('temperature_copy', L.float)
-particles:NewField('position_temp', L.vec2f)
-particles:NewField('velocity_temp', L.vec2f)
-particles:NewField('temperature_temp', L.float)
+particles:NewField('position_copy', L.vec2d)
+particles:NewField('velocity_copy', L.vec2d)
+particles:NewField('temperature_copy', L.double)
+particles:NewField('position_temp', L.vec2d)
+particles:NewField('velocity_temp', L.vec2d)
+particles:NewField('temperature_temp', L.double)
 -- derivatives
-particles:NewField('position_t', L.vec2f)
-particles:NewField('velocity_t', L.vec2f)
-particles:NewField('temperature_t', L.float)
+particles:NewField('position_t', L.vec2d)
+particles:NewField('velocity_t', L.vec2d)
+particles:NewField('temperature_t', L.double)
 
 
 -----------------------------------------------------------------------------
@@ -124,7 +131,8 @@ particles:NewField('temperature_t', L.float)
 -- a Liszt kernel (variables that are not constants), declare them here.
 -- If you use lua variables, Liszt will treat them as constant values.
 
-local delta_time = L.NewGlobal(L.float, 0.05)
+local delta_time = L.NewGlobal(L.double, 0.05)
+local pi = L.NewGlobal(L.double, 3.14)
 
 
 -----------------------------------------------------------------------------
@@ -152,12 +160,12 @@ local InterpolateBilinear = L.NewMacro(function(dc, Field)
         var cdr = dc.downright
         var cur = dc.upright
         var xy = dc.center
-        var delta_l = cmath.abs(cdl.position[1] - xy.y)
-        var delta_r = cmath.abs(cur.position[1] - xy.y)
+        var delta_l = xy[1] - cdl.center[1]
+        var delta_r = cur.center[1] - xy[1]
         var f1 = (delta_l*Field(cdl) + delta_r*Field(cul)) / (delta_l + delta_r)
         var f2 = (delta_l*Field(cdr) + delta_r*Field(cur)) / (delta_l + delta_r)
-        delta_d = cmath.abs(cdl.position[0] - xy.x)
-        delta_u = cmath.abs(cur.position[0] - xy.x)
+        var delta_d = xy[0] - cdl.center[0]
+        var delta_u = cur.center[0] - xy[0]
     in
         (delta_d*f1 + delta_u*f2) / (delta_d + delta_u)
     end
@@ -176,7 +184,7 @@ end)
 
 -- Locate particles
 local LocateParticles = liszt kernel(p : particles)
-    p.dual_cell = grid.dual(p.position)
+    p.dual_cell = grid.dual_locate(p.position)
 end
 
 -- Initialize enthalpy and derivatives
@@ -192,14 +200,14 @@ local function GenerateAddInviscidGetFlux(edges)
     return liszt kernel(e : edges)
         var num_coeffs = spatial_stencil.num_interpolate_coeffs
         var coeffs     = spatial_stencil.interpolate_coeffs
-        var rho_diagonal = 0.0
-        var rho_skew     = 0.0
-        var rho_velocity_diagonal = {0.0, 0.0}
-        var rho_velocity_skew     = {0.0, 0.0}
-        var rho_energy_diagonal   = 0.0
-        var rho_energy_skew       = 0.0
-        var epdiag = 0.0
-        var axis = f.axis
+        var rho_diagonal = L.double(0)
+        var rho_skew     = L.double(0)
+        var rho_velocity_diagonal = L.vec2d({0.0, 0.0})
+        var rho_velocity_skew     = L.vec2d({0.0, 0.0})
+        var rho_energy_diagonal   = L.double(0.0)
+        var rho_energy_skew       = L.double(0.0)
+        var epdiag = L.double(0.0)
+        var axis = e.axis
         for i = 0, num_coeffs do
             rho_diagonal += coeffs[i] *
                           ( e.cell_next.rho *
@@ -230,19 +238,19 @@ local function GenerateAddInviscidGetFlux(edges)
                               (1-s) * rho_energy_skew
     end
 end
-AddInviscidFetFlux.X = GenerateAddInviscidGetFlux(grid.x_edges)
-AddInviscidFetFlux.Y = GenerateAddInviscidGetFlux(grid.y_edges)
+AddInviscidGetFlux.X = GenerateAddInviscidGetFlux(grid.x_edges)
+AddInviscidGetFlux.Y = GenerateAddInviscidGetFlux(grid.y_edges)
 
 
 -- Update conserved variables using flux values from previous part
 -- write conserved variables, read flux variables
-local c_dx = grid:cellWidth()
-local c_dy = grid:cellHeight()
+local c_dx = L.NewGlobal(L.double, grid:cellWidth())
+local c_dy = L.NewGlobal(L.double, grid:cellHeight())
 local AddInviscidUpdateUsingFlux = liszt kernel(c : grid.cells)
     c.rho_t -= (c.edge_right.rho_flux -
-                c.edge_left.rho_flux)/c.dx
+                c.edge_left.rho_flux)/c_dx
     c.rho_t -= (c.edge_up.rho_flux -
-                c.edge_downrho_flux)/c.dy
+                c.edge_down.rho_flux)/c_dy
     c.rho_velocity_t -= (c.edge_right.rho_velocity_flux -
                          c.edge_left.rho_velocity_flux)/c_dx
     c.rho_velocity_t -= (c.edge_up.rho_velocity_flux -
@@ -257,17 +265,20 @@ end
 -- Update particle fields based on flow fields
 local AddFlowCouplingPartOne = liszt kernel(p: particles)
     var dc = p.dual_cell
-    var flow_density     = InterpolateBilinear(dc, Rho)
-    var flow_velocity    = InterpolateBilinear(dc, Velocity)
-    var flow_temperature = InterpolateBilineat(dc, Temperature)
-    var flow_dyn_viscosity = GetDynamicViscosity(flow_temperature)
+    var flow_density     = L.double(0)
+    var flow_velocity    = L.vec2d({0, 0})
+    var flow_temperature = L.double(0)
+    var flow_dyn_viscosity = L.double(0)
+    flow_density     = InterpolateBilinear(dc, Rho)
+    flow_velocity    = InterpolateBilinear(dc, Velocity)
+    flow_temperature = InterpolateBilinear(dc, Temperature)
+    flow_dyn_viscosity = GetDynamicViscosity(flow_temperature)
     p.position_t    += p.velocity
     var relaxation_time = p.density * cmath.pow(p.diameter, 2) /
         (18.0 * flow_dyn_viscosity)
     p.delta_velocity_over_relaxation_time = (flow_velocity - p.velocity)/
         relaxation_time
-    var particle_mass = 3.14 * p.density * cmath.pow(p.diameter, 3) / 6.0
-    p.delta_temperature_term = 3.14 * cmath.pow(p.diameter, 2) *
+    p.delta_temperature_term = pi * cmath.pow(p.diameter, 2) *
         particle_options.convective_coefficient *
         (flow_temperature - p.temperature)
 end
@@ -275,6 +286,7 @@ end
 
 local AddFlowCouplingPartTwo = liszt kernel(p : particles)
     p.velocity_t += p.delta_velocity_over_relaxation_time
+    var particle_mass = pi * p.density * cmath.pow(p.diameter, 3) / 6.0
     p.temperature_t += p.delta_temperature_term/
         (particle_mass * particle_options.heat_capacity)
 end
@@ -297,7 +309,7 @@ local function GenerateUpdateFlowKernels(relation, stage)
             r.rho_energy       = r.rho_energy_copy +
                                  coeff_time * delta_time * r.rho_energy_t
         end
-    elseif
+    elseif stage == 4 then
         return liszt kernel(r : relation)
             r.rho = r.rho_temp +
                     coeff_fun * delta_time * r.rho_t
@@ -330,13 +342,13 @@ local function GenerateUpdateParticleKernels(relation, stage)
             r.temperature       = r.temperature_copy +
                                   coeff_time * delta_time * r.temperature_t
         end
-    elseif
+    elseif stage == 4 then
         return liszt kernel(r : relation)
             r.position = r.position_temp +
                          coeff_fun * delta_time * r.position_t
             r.velocity = r.velocity_temp +
                          coeff_fun * delta_time * r.velocity_t
-            r.temperature = r.rho_temperature_temp +
+            r.temperature = r.temperature_temp +
                             coeff_fun * delta_time * r.temperature_t
         end
     end

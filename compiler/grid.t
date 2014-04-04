@@ -166,12 +166,16 @@ local function installMacros(grid)
         end
     end
 
-    grid.x_edges:NewFieldMacro('next', L.NewMacro(function(e)
+    grid.x_edges:NewFieldMacro('cell_next', L.NewMacro(function(e)
         return xe_to_cell(e, 1)
     end))
 
-    grid.x_edges:NewFieldMacro('previous', L.NewMacro(function(e)
+    grid.x_edges:NewFieldMacro('cell_previous', L.NewMacro(function(e)
         return xe_to_cell(e, 0)
+    end))
+
+    grid.x_edges:NewFieldMacro('axis', L.NewMacro(function(e)
+        return liszt `0
     end))
 
     local function ye_to_cell(e, dir)
@@ -191,6 +195,11 @@ local function installMacros(grid)
     grid.y_edges:NewFieldMacro('cell_previous', L.NewMacro(function(e)
         return ye_to_cell(e, 0)
     end))
+
+    grid.y_edges:NewFieldMacro('axis', L.NewMacro(function(e)
+        return liszt `1
+    end))
+
 
     local function cell_to_xe(c, dir)
         return liszt quote
@@ -213,19 +222,19 @@ local function installMacros(grid)
     end
 
     grid.cells:NewFieldMacro('edge_up', L.NewMacro(function(c)
-        return cell_to_xe(e, 1)
+        return cell_to_xe(c, 1)
     end))
 
     grid.cells:NewFieldMacro('edge_down', L.NewMacro(function(c)
-        return cell_to_xe(e, 0)
+        return cell_to_xe(c, 0)
     end))
 
     grid.cells:NewFieldMacro('edge_right', L.NewMacro(function(c)
-        return cell_to_ye(e, 1)
+        return cell_to_ye(c, 1)
     end))
 
     grid.cells:NewFieldMacro('edge_left', L.NewMacro(function(c)
-        return cell_to_ye(e, 0)
+        return cell_to_ye(c, 0)
     end))
 
 end
