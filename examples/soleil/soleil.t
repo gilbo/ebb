@@ -1,8 +1,25 @@
 import "compiler.liszt"
 local Grid  = terralib.require 'compiler.grid'
-local cmath = terralib.includecstring [[ #include <math.h> ]]
+local cmath = terralib.includecstring [[
+#include <math.h>
+#include <stdlib.h>
+#include <time.h>
 
+double rand_double() {
+      double r = (double)rand();
+      return r;
+}
+
+double rand_unity() {
+    double r = (double)rand()/(double)RAND_MAX;
+    return r;
+}
+
+]]
+
+cmath.srand(cmath.time(nil));
 local vdb   = terralib.require 'compiler.vdb'
+
 
 -----------------------------------------------------------------------------
 --[[                             OPTIONS                                 ]]--
@@ -21,7 +38,12 @@ local grid_options = {
 local particle_options = {
     num = 50,
     convective_coefficient = L.NewGlobal(L.double, 0.7),
-    heat_capacity = L.NewGlobal(L.double, 0.7)
+    heat_capacity = L.NewGlobal(L.double, 0.7),
+    pos_max = 6.2,
+    temperature = 20,
+    density = 1000,
+    diameter_m = 0.01,
+    diameter_a = 0.001
 }
 
 
@@ -38,7 +60,7 @@ local time_integrator = {
     coeff_function = {1/6, 1/3, 1/3, 1/6},
     coeff_time     = {0.5, 0.5, 1, 1},
     sim_time = 0,
-    final_time = 100,
+    final_time = 1,
     time_step = 0
 }
 
@@ -127,7 +149,12 @@ local particles = L.NewRelation(particle_options.num, 'particles')
 particles:NewField('dual_cell', grid.dual_cells):
 LoadConstant(0)
 particles:NewField('position', L.vec2d):
-LoadConstant(L.NewVector(L.double, {0, 0}))
+Load(function(i)
+    local pmax = particle_options.pos_max
+    local p1 = cmath.fmod(cmath.rand_double(), pmax)
+    local p2 = cmath.fmod(cmath.rand_double(), pmax)
+    return {p1, p2}
+end)
 particles:NewField('velocity', L.vec2d):
 LoadConstant(L.NewVector(L.double, {0, 0}))
 particles:NewField('temperature', L.double):
@@ -227,6 +254,14 @@ end)
 -----------------------------------------------------------------------------
 
 
+-- Initialization kernel
+local InitializeParticles = liszt kernel(p: particles)
+    p.temperature = particle_options.temperature
+    p.diameter = cmath.rand_unity() * particle_options.diameter_m +
+                 particle_options.diameter_a
+    p.density = particle_options.density
+end
+
 -- Locate particles
 local LocateParticles = liszt kernel(p : particles)
     p.dual_cell = grid.dual_locate(p.position)
@@ -275,8 +310,10 @@ local function GenerateAddInviscidGetFlux(edges)
                         ( e.cell_next.pressure +
                           e.cell_previous.pressure )
             end
-            -- TODO: I don't understand what skew is. Ask Ivan.
+            -- TODO: I couldn't understand how skew is implemented. Setting s =
+            -- 1 for now, this should be changed.
             var s = spatial_stencil.split
+            s = 1
             e.rho_flux          = s * rho_diagonal +
                                   (1-s) * rho_skew
             e.rho_velocity_flux = s * rho_velocity_diagonal +
@@ -423,21 +460,30 @@ end
 
 -- kernels to draw particles and velocity for debugging purpose
 
-local DrawParticles = liszt kernel (p : particles)
+local DrawParticlesKernel = liszt kernel (p : particles)
     var color = {1.0,1.0,0.0}
     vdb.color(color)
-    var pos : L.vec3d = { p.position[0], p.position[1], 0.0 }
+    var pmax = L.double(particle_options.pos_max)
+    var pos : L.vec3d = { p.position[0]/pmax,
+                          p.position[1]/pmax,
+                          0.0 }
     vdb.point(pos)
     var vel = p.velocity
     var v = L.vec3d({ vel[0], vel[1], 0.0 })
-    --if not c.is_bnd then
-    vdb.line(pos, pos+v*150)
+    v = 20 * v + {20, 20, 0}
+    vdb.line(pos, pos+v)
 end
 
 
 -----------------------------------------------------------------------------
 --[[                             MAIN LOOP                               ]]--
 -----------------------------------------------------------------------------
+
+
+local function InitializeVariables()
+    InitializeParticles(particles)
+    LocateParticles(particles)
+end
 
 
 local function InitializeTemporaries()
@@ -483,15 +529,29 @@ local function UpdateTime(stage)
 end
 
 
+local function DrawParticles()
+    vdb.vbegin()
+    vdb.frame()
+    DrawParticlesKernel(particles)
+    vdb.vend()
+end
+
+
+InitializeVariables()
+particles.position:print()
+
 while (time_integrator.sim_time < time_integrator.final_time) do
     print("Running time step ", time_integrator.time_step) 
     InitializeTemporaries()
     for stage = 1, 4 do
+        InitializeDerivatives()
         AddInviscid()
         AddFlowCoupling()
         UpdateFlow(stage)
         UpdateParticles(stage)
         UpdateTime(stage)
     end
-    DrawParticles(particles)
+    DrawParticles()
 end
+
+particles.position:print()
