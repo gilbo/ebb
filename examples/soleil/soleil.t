@@ -37,7 +37,8 @@ local time_integrator = {
     coeff_function = {1/6, 1/3, 1/3, 1/6},
     coeff_time     = {0.5, 0.5, 1, 1},
     sim_time = 0,
-    final_time = 100
+    final_time = 100,
+    time_step = 0
 }
 
 
@@ -60,67 +61,108 @@ local grid = Grid.New2dUniformGrid(grid_options.xnum, grid_options.ynum,
                                    spatial_stencil.order/2)
 
 -- conserved variables
-grid.cells:NewField('rho', L.double)
-grid.cells:NewField('rho_velocity', L.vec2d)
-grid.cells:NewField('rho_energy', L.double)
+grid.cells:NewField('rho', L.double):
+LoadConstant(0)
+grid.cells:NewField('rho_velocity', L.vec2d):
+LoadConstant(L.NewVector(L.double, {0, 0}))
+grid.cells:NewField('rho_energy', L.double):
+LoadConstant(0)
 
 -- primitive variables
-grid.cells:NewField('velocity', L.vec2d)
-grid.cells:NewField('temperature', L.double)
-grid.cells:NewField('pressure', L.double)
-grid.cells:NewField('rho_enthalpy', L.double)
+grid.cells:NewField('velocity', L.vec2d):
+LoadConstant(L.NewVector(L.double, {0, 0}))
+grid.cells:NewField('temperature', L.double):
+LoadConstant(0)
+grid.cells:NewField('pressure', L.double):
+LoadConstant(0)
+grid.cells:NewField('rho_enthalpy', L.double):
+LoadConstant(0)
 
 -- scratch (temporary) fields
 -- intermediate value and copies
-grid.cells:NewField('rho_copy', L.double)
-grid.cells:NewField('rho_velocity_copy', L.vec2d)
-grid.cells:NewField('rho_energy_copy', L.double)
-grid.cells:NewField('rho_temp', L.double)
-grid.cells:NewField('rho_velocity_temp', L.vec2d)
-grid.cells:NewField('rho_energy_temp', L.double)
+grid.cells:NewField('rho_copy', L.double):
+LoadConstant(0)
+grid.cells:NewField('rho_velocity_copy', L.vec2d):
+LoadConstant(L.NewVector(L.double, {0, 0}))
+grid.cells:NewField('rho_energy_copy', L.double):
+LoadConstant(0)
+grid.cells:NewField('rho_temp', L.double):
+LoadConstant(0)
+grid.cells:NewField('rho_velocity_temp', L.vec2d):
+LoadConstant(L.NewVector(L.double, {0, 0}))
+grid.cells:NewField('rho_energy_temp', L.double):
+LoadConstant(0)
 -- derivatives
-grid.cells:NewField('rho_t', L.double)
-grid.cells:NewField('rho_velocity_t', L.vec2d)
-grid.cells:NewField('rho_energy_t', L.double)
+grid.cells:NewField('rho_t', L.double):
+LoadConstant(0)
+grid.cells:NewField('rho_velocity_t', L.vec2d):
+LoadConstant(L.NewVector(L.double, {0, 0}))
+grid.cells:NewField('rho_energy_t', L.double):
+LoadConstant(0)
 -- flux
 -- TODO: Define edge and related macros
-grid.x_edges:NewField('rho_flux', L.double)
-grid.x_edges:NewField('rho_velocity_flux', L.vec2d)
-grid.x_edges:NewField('rho_energy_flux', L.double)
-grid.x_edges:NewField('rho_enthalpy', L.double)
-grid.y_edges:NewField('rho_flux', L.double)
-grid.y_edges:NewField('rho_velocity_flux', L.vec2d)
-grid.y_edges:NewField('rho_energy_flux', L.double)
-grid.y_edges:NewField('rho_enthalpy', L.double)
+grid.x_edges:NewField('rho_flux', L.double):
+LoadConstant(0)
+grid.x_edges:NewField('rho_velocity_flux', L.vec2d):
+LoadConstant(L.NewVector(L.double, {0, 0}))
+grid.x_edges:NewField('rho_energy_flux', L.double):
+LoadConstant(0)
+grid.x_edges:NewField('rho_enthalpy', L.double):
+LoadConstant(0)
+grid.y_edges:NewField('rho_flux', L.double):
+LoadConstant(0)
+grid.y_edges:NewField('rho_velocity_flux', L.vec2d):
+LoadConstant(L.NewVector(L.double, {0, 0}))
+grid.y_edges:NewField('rho_energy_flux', L.double):
+LoadConstant(0)
+grid.y_edges:NewField('rho_enthalpy', L.double):
+LoadConstant(0)
 
 
 -- Declare and initialize particle relation and fields over the particle
 
 local particles = L.NewRelation(particle_options.num, 'particles')
 
-particles:NewField('dual_cell', grid.dual_cells)
-particles:NewField('position', L.vec2d)
-particles:NewField('velocity', L.vec2d)
-particles:NewField('temperature', L.double)
+particles:NewField('dual_cell', grid.dual_cells):
+LoadConstant(0)
+particles:NewField('position', L.vec2d):
+LoadConstant(L.NewVector(L.double, {0, 0}))
+particles:NewField('velocity', L.vec2d):
+LoadConstant(L.NewVector(L.double, {0, 0}))
+particles:NewField('temperature', L.double):
+LoadConstant(0)
 
-particles:NewField('diameter', L.double)
-particles:NewField('density', L.double)
+particles:NewField('diameter', L.double):
+LoadConstant(0)
+particles:NewField('density', L.double):
+LoadConstant(0)
 
-particles:NewField('delta_velocity_over_relaxation_time', L.vec2d)
-particles:NewField('delta_temperature_term', L.double)
+particles:NewField('delta_velocity_over_relaxation_time', L.vec2d):
+LoadConstant(L.NewVector(L.double, {0, 0}))
+particles:NewField('delta_temperature_term', L.double):
+LoadConstant(0)
 
 -- scratch (temporary) fields
 -- intermediate values and copies
-particles:NewField('position_copy', L.vec2d)
-particles:NewField('velocity_copy', L.vec2d)
-particles:NewField('temperature_copy', L.double)
-particles:NewField('position_temp', L.vec2d)
-particles:NewField('velocity_temp', L.vec2d)
-particles:NewField('temperature_temp', L.double)
+particles:NewField('position_copy', L.vec2d):
+LoadConstant(L.NewVector(L.double, {0, 0}))
+particles:NewField('velocity_copy', L.vec2d):
+LoadConstant(L.NewVector(L.double, {0, 0}))
+particles:NewField('temperature_copy', L.double):
+LoadConstant(0)
+particles:NewField('position_temp', L.vec2d):
+LoadConstant(L.NewVector(L.double, {0, 0}))
+particles:NewField('velocity_temp', L.vec2d):
+LoadConstant(L.NewVector(L.double, {0, 0}))
+particles:NewField('temperature_temp', L.double):
+LoadConstant(0)
 -- derivatives
-particles:NewField('position_t', L.vec2d)
-particles:NewField('velocity_t', L.vec2d)
-particles:NewField('temperature_t', L.double)
+particles:NewField('position_t', L.vec2d):
+LoadConstant(L.NewVector(L.double, {0, 0}))
+particles:NewField('velocity_t', L.vec2d):
+LoadConstant(L.NewVector(L.double, {0, 0}))
+particles:NewField('temperature_t', L.double):
+LoadConstant(0)
 
 
 -----------------------------------------------------------------------------
@@ -139,6 +181,7 @@ local pi = L.NewGlobal(L.double, 3.14)
 -----------------------------------------------------------------------------
 --[[                             LISZT MACROS                            ]]--
 -----------------------------------------------------------------------------
+
 
 -- Functions for calling inside liszt kernel
 
@@ -190,7 +233,8 @@ end
 
 -- Initialize enthalpy and derivatives
 local AddInviscidInitialize = liszt kernel(c : grid.cells)
-    c.rho_enthalpy = c.rho_energy + c.pressure
+    -- c.rho_enthalpy = c.rho_energy + c.pressure
+    c.rho_enthalpy = 0
 end
 
 
@@ -363,14 +407,6 @@ for i = 1, 4 do
 end
 
 
--- Update time function
-local function UpdateTime(stage)
-    time_integrator.sim_time = time_integrator.sim_time +
-                               time_integrator.coeff_time[stage] *
-                               delta_time:value()
-end
-
-
 local UpdateAuxiliaryGridVelocity = liszt kernel(c : grid.cells)
     c.velocity = c.rho_velocity / c.rho
 end
@@ -406,6 +442,7 @@ end
 
 
 local function AddFlowCoupling()
+    LocateParticles(particles)
     AddFlowCouplingPartOne(particles)
     AddFlowCouplingPartTwo(particles)
 end
@@ -420,12 +457,25 @@ local function UpdateParticles(i)
 end
 
 
+-- Update time function
+local function UpdateTime(stage)
+    time_integrator.sim_time = time_integrator.sim_time +
+                               time_integrator.coeff_time[stage] *
+                               delta_time:value()
+    if stage == 4 then
+        time_integrator.time_step = time_integrator.time_step + 1
+    end
+end
+
+
 while (time_integrator.sim_time < time_integrator.final_time) do
+    print("Running time step ", time_integrator.time_step) 
     InitializeTemporaries()
     for stage = 1, 4 do
         AddInviscid()
         AddFlowCoupling()
-        UpdateFlow(i)
-        UpdateParticles(i)
+        UpdateFlow(stage)
+        UpdateParticles(stage)
+        UpdateTime(stage)
     end
 end
