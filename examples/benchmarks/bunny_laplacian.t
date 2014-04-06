@@ -42,7 +42,7 @@ local zero_laplacian_edge = liszt kernel(e : bunny.edges)
 local zero_laplacian_vert = liszt kernel(v : bunny.vertices)
   v.laplacian_diag = 0 end
 local build_laplacian = liszt kernel(t : bunny.triangles)
-  var area : L.double = L.length(t.area_normal)
+  var area : L.double = L.length(t.area_normal) / 2
   if area < 0.00001 then area = 0.00001 end
 
   -- this should be the cotan laplacian
@@ -107,7 +107,7 @@ local debug_tri_draw = liszt kernel ( t : bunny.triangles )
   var d = L.dot({1/sqrt3, 1/sqrt3, 1/sqrt3},
                 t.area_normal/L.length(t.area_normal))
   if d > 1.0 then d = 1.0 end
-  if d < -1.0 then d = 0.0 end
+  if d < -1.0 then d = -1.0 end
   var val = d * 0.5 + 0.5
   var col : L.vec3d = {val,val,val}
   vdb.color(col)
