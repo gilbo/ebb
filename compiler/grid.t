@@ -13,6 +13,7 @@ local function setupCells(grid)
     local cell_height       = grid:cellHeight()
     local xorigin           = grid:xOrigin()
     local yorigin           = grid:yOrigin()
+    local n_bd              = grid:boundaryCells()
 
 -- UNFORTUNATELY OFFSET WON'T WORK CURRENTLY
 --    grid.cells:NewFieldMacro('offset', L.NewMacro(function(c, xoff, yoff)
@@ -47,41 +48,44 @@ local function setupCells(grid)
         return liszt `grid.cell_offset(c, 0, 1)
     end))
 
-    -- Should this be hidden?
-    grid.cells:NewFieldMacro('xy_ids', L.NewMacro(function(c)
-        return liszt quote
-            var y_id = L.id(c) / L.addr(xsize)
-            var x_id = L.id(c) % L.addr(xsize)
-        in
-            { x_id, y_id }
-        end
+    -- Should these be hidden?
+    grid.cells:NewFieldMacro('xid', L.NewMacro(function(c)
+        return liszt ` L.id(c) % L.addr(xsize)
+    end))
+    grid.cells:NewFieldMacro('yid', L.NewMacro(function(c)
+        return liszt ` L.id(c) / L.addr(xsize)
     end))
 
     grid.cells:NewFieldMacro('center', L.NewMacro(function(c)
-        return liszt quote
-            var xy = L.vec2d(c.xy_ids) + {0.5, 0.5}
-        in
-            L.vec2f({ xorigin, yorigin } +
-                    { cell_width * xy[0], cell_height * xy[1] })
-        end
+        return liszt ` L.vec2f({
+            xorigin + cell_width  * (L.double(c.xid) + 0.5),
+            yorigin + cell_height * (L.double(c.yid) + 0.5) })
     end))
 
     -- Set up the boundary!
     grid.cells:NewFieldMacro('is_left_bnd', L.NewMacro(function(c)
-        return liszt `L.id(c) % xsize == 0
+        return liszt `c.xid < n_bd
     end))
     grid.cells:NewFieldMacro('is_right_bnd', L.NewMacro(function(c)
-        return liszt `L.id(c) % xsize == xsize-1
+        return liszt `c.xid >= xsize - n_bd
     end))
     grid.cells:NewFieldMacro('is_down_bnd', L.NewMacro(function(c)
-        return liszt `L.id(c) / xsize == 0
+        return liszt `c.yid < n_bd
     end))
     grid.cells:NewFieldMacro('is_up_bnd', L.NewMacro(function(c)
-        return liszt `L.id(c) / xsize == ysize-1
+        return liszt `c.yid >= ysize - n_bd
     end))
     grid.cells:NewFieldMacro('is_bnd', L.NewMacro(function(c)
         return liszt ` c.is_left_bnd or c.is_right_bnd or
                        c.is_up_bnd   or c.is_down_bnd
+    end))
+
+    -- Aliases
+    grid.cells:NewFieldMacro('in_boundary_region', L.NewMacro(function(c)
+        return liszt ` c.is_bnd
+    end))
+    grid.cells:NewFieldMacro('in_interior', L.NewMacro(function(c)
+        return liszt ` not c.is_bnd
     end))
 end
 
@@ -233,6 +237,102 @@ local function setupEdges(grid)
     end))
 end
 
+local function setupXYedges(grid)
+    local cxsize = grid:xSize()
+    local cysize = grid:ySize()
+    local n_bd   = grid:boundaryCells()
+    local ex_xsize = cxsize
+    local ex_ysize = cysize - 1
+    local ey_xsize = cxsize - 1
+    local ey_ysize = cysize
+
+    -- Make these private?
+    grid.x_edges:NewFieldMacro('xid', L.NewMacro(function(e)
+        return liszt ` L.id(e) % ex_xsize
+    end))
+    grid.x_edges:NewFieldMacro('yid', L.NewMacro(function(e)
+        return liszt ` L.id(e) / ex_xsize
+    end))
+    grid.y_edges:NewFieldMacro('xid', L.NewMacro(function(e)
+        return liszt ` L.id(e) % ey_xsize
+    end))
+    grid.y_edges:NewFieldMacro('yid', L.NewMacro(function(e)
+        return liszt ` L.id(e) / ey_xsize
+    end))
+
+    -- edge and cell macros
+
+    local function e_to_cell(e, x, y)
+        return liszt `
+            L.UNSAFE_ROW( (e.xid + x) + (e.yid + y) * cxsize, grid.cells )
+    end
+
+    grid.x_edges:NewFieldMacro('cell_next', L.NewMacro(function(e)
+        return e_to_cell(e, 0, 1)
+    end))
+    grid.x_edges:NewFieldMacro('cell_previous', L.NewMacro(function(e)
+        return e_to_cell(e, 0, 0)
+    end))
+    grid.x_edges:NewFieldMacro('axis', L.NewMacro(function(e)
+        return liszt `0
+    end))
+
+    grid.y_edges:NewFieldMacro('cell_next', L.NewMacro(function(e)
+        return e_to_cell(e, 1, 0)
+    end))
+    grid.y_edges:NewFieldMacro('cell_previous', L.NewMacro(function(e)
+        return e_to_cell(e, 0, 0)
+    end))
+    grid.y_edges:NewFieldMacro('axis', L.NewMacro(function(e)
+        return liszt `1
+    end))
+
+
+    local function cell_to_xe(c, x, y)
+        return liszt `
+            L.UNSAFE_ROW( (c.xid+x) + (c.yid+y) * ex_xsize, grid.x_edges )
+    end
+    local function cell_to_ye(c, x, y)
+        return liszt `
+            L.UNSAFE_ROW( (c.xid+x) + (c.yid+y) * ey_xsize, grid.y_edges )
+    end
+    grid.cells:NewFieldMacro('edge_up', L.NewMacro(function(c)
+        return cell_to_xe(c, 0, 0)
+    end))
+
+    grid.cells:NewFieldMacro('edge_down', L.NewMacro(function(c)
+        return cell_to_xe(c, 0, -1)
+    end))
+
+    grid.cells:NewFieldMacro('edge_right', L.NewMacro(function(c)
+        return cell_to_ye(c, 0, 0)
+    end))
+
+    grid.cells:NewFieldMacro('edge_left', L.NewMacro(function(c)
+        return cell_to_ye(c, -1, 0)
+    end))
+
+    grid.x_edges:NewFieldMacro('in_boundary_region', L.NewMacro(function(e)
+        return liszt ` e.xid < n_bd or
+                       e.xid >= ex_xsize - n_bd or
+                       e.yid < n_bd or
+                       e.yid >= ex_ysize - n_bd
+    end))
+    grid.y_edges:NewFieldMacro('in_boundary_region', L.NewMacro(function(e)
+        return liszt ` e.xid < n_bd or
+                       e.xid >= ey_xsize - n_bd or
+                       e.yid < n_bd or
+                       e.yid >= ey_ysize - n_bd
+    end))
+    grid.x_edges:NewFieldMacro('in_interior', L.NewMacro(function(e)
+        return liszt `(not e.in_boundary_region)
+    end))
+
+    grid.y_edges:NewFieldMacro('in_interior', L.NewMacro(function(e)
+        return liszt `(not e.in_boundary_region)
+    end))
+end
+
 local function setupInterconnects(grid)
     local cxsize, cysize    = grid:xSize(), grid:ySize()
     local vxsize, vysize    = cxsize + 1, cysize + 1
@@ -292,7 +392,8 @@ local function setupInterconnects(grid)
 end
 
 
-function Grid.New2dUniformGrid(xSize, ySize, pos, w, h)
+function Grid.New2dUniformGrid(xSize, ySize, pos, w, h, boundary)
+    boundary = boundary or 1
     if not xSize or not ySize then
         error('must supply the x and y size of the grid', 2)
     end
@@ -301,6 +402,8 @@ function Grid.New2dUniformGrid(xSize, ySize, pos, w, h)
     local nDualCells    = (xSize - 1) * (ySize - 1)
     local nVertices     = (xSize + 1) * (ySize + 1)
     local nEdges        = 2 * ( xSize*(ySize+1) + ySize*(xSize+1) )
+    local nXEdges       = xSize * (ySize - 1)
+    local nYEdges       = (xSize - 1) * ySize
     -- we use two grid systems for the edges
 
     local grid = setmetatable({
@@ -312,13 +415,19 @@ function Grid.New2dUniformGrid(xSize, ySize, pos, w, h)
         cells       = L.NewRelation(nCells, 'cells'),
         dual_cells  = L.NewRelation(nDualCells, 'dual_cells'),
         vertices    = L.NewRelation(nVertices, 'vertices'),
-        edges       = L.NewRelation(nEdges, 'edges')
+        edges       = L.NewRelation(nEdges, 'edges'),
+        -- x_edges are horizontal edges
+        x_edges     = L.NewRelation(nXEdges, 'x_edges'),
+        -- y_edges are vertical edges
+        y_edges     = L.NewRelation(nYEdges, 'y_edges'),
+        boundary_cells = boundary,
     }, Grid)
 
     setupCells(grid)
     setupDualCells(grid)
     setupVertices(grid)
     setupEdges(grid)
+    setupXYedges(grid)
 
     setupInterconnects(grid)
 
@@ -357,5 +466,7 @@ function Grid:cellHeight()
     return self:height() / (1.0 * self:ySize())
 end
 
-
+function Grid:boundaryCells()
+    return self.boundary_cells
+end
 
