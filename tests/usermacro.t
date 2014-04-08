@@ -64,4 +64,18 @@ end)
 end)(mesh.vertices)
 
 
+-----------------------------
+--Test special Apply Macro --
+-----------------------------
+mesh.vertices:NewField('temperature', L.double):Load(1.0)
+mesh.vertices:NewFieldMacro('__apply_macro', L.NewMacro(function(v, scale)
+    return liszt `scale * v.temperature
+end))
+(liszt kernel (v : mesh.vertices)
+    assert(v(1) == 1)
+    assert(v(5) == 5)
+end)(mesh.vertices)
+
+
+
 

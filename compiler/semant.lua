@@ -33,7 +33,6 @@ function Context.new(env, diag)
         env         = env,
         diag        = diag,
         loop_count  = 0,
-        query_count = 0,
         phaseDict   = P.PhaseDict.new(diag),
     }, Context)
     return ctxt
@@ -87,7 +86,7 @@ local function exec_external(exp,ctxt,default)
         return exp(ctxt:lua())
     end)
     if not status then
-        ctxt:error(ast_node, "Error evaluating type annotation: "..typ)
+        ctxt:error(exp, "Error evaluating lua expression")
         v = default
     end
     return v
@@ -154,15 +153,16 @@ function ast.AST:check(ctxt)
 end
 
 function ast.Block:check(ctxt)
-    local block = self:clone()
-
-    -- statements
-    block.statements = {}
-    for id, node in ipairs(self.statements) do
-        block.statements[id] = node:check(ctxt)
-    end
-
-    return block
+    return self:passthrough('check', ctxt)
+--    local block = self:clone()
+--
+--    -- statements
+--    block.statements = {}
+--    for id, node in ipairs(self.statements) do
+--        block.statements[id] = node:check(ctxt)
+--    end
+--
+--    return block
 end
 
 function ast.IfStatement:check(ctxt)
@@ -232,62 +232,62 @@ function ast.RepeatStatement:check(ctxt)
 end
 
 function ast.ExprStatement:check(ctxt)
-    local expstmt = self:clone()
-    expstmt.exp   = self.exp:check(ctxt)
-    return expstmt
+    return self:passthrough('check', ctxt)
+--    local expstmt = self:clone()
+--    expstmt.exp   = self.exp:check(ctxt)
+--    return expstmt
 end
 
 function ast.Assignment:check(ctxt)
-    local assignment = self:clone()
-    assignment.reduceop = self.reduceop
+    local node = self:clone()
 
     -- LHS tracked for phase-checking
     ctxt:enterlhs(self.reduceop or nil)
-    local lhs = self.lvalue:check(ctxt)
+    node.lvalue = self.lvalue:check(ctxt)
     ctxt:leavelhs()
 
-    assignment.lvalue = lhs
-    local ltype       = lhs.node_type
-    if ltype == L.error then return assignment end
+    local ltype  = node.lvalue.node_type
+    if ltype == L.error then return node end
 
-    local rhs         = self.exp:check(ctxt)
-    assignment.exp    = rhs
-    local rtype       = rhs.node_type
-    if rtype == L.error then return assignment end
+    node.exp     = self.exp:check(ctxt)
+    local rtype  = node.exp.node_type
+    if rtype == L.error then return node end
 
     -- Promote global lhs to lvalue if there was a reduction
-    if self.reduceop and lhs:is(ast.Global) then
-        lhs.is_value = true
+    if self.reduceop and node.lvalue:is(ast.Global) then
+        node.lvalue.is_lvalue = true
     end
 
     -- enforce that the lhs is an lvalue
-    if not lhs.is_lvalue then
+    if not node.lvalue.is_lvalue then
         ctxt:error(self.lvalue, "Illegal assignment: left hand side cannot "..
                                 "be assigned")
-        return assignment
-    elseif lhs.node_type:isRow() and not lhs:is(ast.FieldAccess) then
+        return node
+    elseif node.lvalue.node_type:isRow() and
+           not node.lvalue:is(ast.FieldAccess)
+    then
         ctxt:error(self.lvalue, "Illegal assignment: variables of row type "..
                                 "cannot be re-assigned")
-        return assignment
+        return node
     end
 
     -- handle any coercions
     if ltype ~= rtype then
-        assignment.exp = try_coerce(ltype, assignment.exp, ctxt)
-        if not assignment.exp then return assignment end
+        node.exp = try_coerce(ltype, node.exp, ctxt)
+        if not node.exp then return node end
     end
 
     -- replace assignment with a field write if we see a
     -- field access on the left hand side
-    if assignment.lvalue:is(ast.FieldAccess) then
-        local fw = ast.FieldWrite:DeriveFrom(assignment)
-        fw.fieldaccess = assignment.lvalue
-        fw.exp         = assignment.exp
-        fw.reduceop    = assignment.reduceop
+    if node.lvalue:is(ast.FieldAccess) then
+        local fw = ast.FieldWrite:DeriveFrom(node)
+        fw.fieldaccess = node.lvalue
+        fw.exp         = node.exp
+        fw.reduceop    = node.reduceop
         return fw
     end
 
-    return assignment
+    return node
 end
 
 local function exec_type_annotation(typexp, ast_node, ctxt)
@@ -302,7 +302,6 @@ end
 
 function ast.DeclStatement:check(ctxt)
     local decl = self:clone()
-    decl.name  = self.name
     -- assert(self.typeexpression or self.initializer)
 
     -- process any explicit type annotation
@@ -803,7 +802,8 @@ function ast.TableLookup:check(ctxt)
     if type(member) == "function" then --member is an escaped lua expression
       member = exec_external(member,ctxt,"<error>")
       if type(member) ~= "string" then
-        ctxt:error(self,"expected escape to evaluate to a string but found ", type(member))
+        ctxt:error(self,"expected escape to evaluate to a string but found ",
+                        type(member))
         member = "<error>"
       end
     end
@@ -834,7 +834,7 @@ function ast.TableLookup:check(ctxt)
         if L.is_field(luaval) then
             local field         = luaval
             local ast_node      = ast.FieldAccess:DeriveFrom(tab)
-            ast_node.name       = self.member
+            ast_node.name       = member
             ast_node.row        = tab
             ast_node.field      = field
             ast_node.node_type  = field.type
@@ -923,8 +923,7 @@ function ast.Call:check(ctxt)
     end
     ctxt:leavelhs()
 
-    local isinternal = func.node_type:isInternal()
-    local v = isinternal and func.node_type.value
+    local v = func.node_type:isInternal() and func.node_type.value
     if v and L.is_function(v) then
         call.func      = v
         call.node_type = v.check(call, ctxt)
@@ -942,6 +941,14 @@ function ast.Call:check(ctxt)
                     " expects exactly 1 argument (instead got " .. #params ..
                     ")")
         end
+
+    -- __apply_macro  i.e.  c(1,0)  for offsetting in a grid
+    elseif func.node_type:isRow() then
+        local apply_macro = func.node_type.relation.__apply_macro
+        local params = {func}
+        for _,v in ipairs(call.params) do table.insert(params, v) end
+        call = RunMacro(ctxt, self, apply_macro, params)
+
     elseif func.node_type:isError() then
         -- fall through
         -- (do not print error messages for errors already reported)
