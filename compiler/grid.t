@@ -15,37 +15,24 @@ local function setupCells(grid)
     local yorigin           = grid:yOrigin()
     local n_bd              = grid:boundaryCells()
 
--- UNFORTUNATELY OFFSET WON'T WORK CURRENTLY
---    grid.cells:NewFieldMacro('offset', L.NewMacro(function(c, xoff, yoff)
---        -- TODO should check that xoff/yoff are number literals here...
---        --local xsize = grid:xSize()
---        return liszt quote
---            var id = L.id(c)
---            var new_id = id + yoff * grid.xdim + xoff
---        in
---            L.UNSAFE_ROW(new_id, grid.cells)
---        end
---        -- TODO: somehow return null? when there is no cell?
---    end))
 
--- Workaround for now
-    grid.cell_offset = L.NewMacro(function(c, xoff, yoff)
-        return liszt `
-            L.UNSAFE_ROW( L.id(c) + yoff * xsize + xoff,  grid.cells )
-        -- TODO: No null checking or plan for that
-    end)
+    grid.cells:NewFieldMacro('__apply_macro',
+        L.NewMacro(function(c,xoff,yoff)
+            return liszt `
+                L.UNSAFE_ROW( L.id(c) + yoff * xsize + xoff,  grid.cells )
+        end))
     
     grid.cells:NewFieldMacro('left', L.NewMacro(function(c)
-        return liszt `grid.cell_offset(c, -1, 0)
+        return liszt `c(-1, 0)
     end))
     grid.cells:NewFieldMacro('right', L.NewMacro(function(c)
-        return liszt `grid.cell_offset(c, 1, 0)
+        return liszt `c(1, 0)
     end))
     grid.cells:NewFieldMacro('down', L.NewMacro(function(c)
-        return liszt `grid.cell_offset(c, 0, -1)
+        return liszt `c(0, -1)
     end))
     grid.cells:NewFieldMacro('up', L.NewMacro(function(c)
-        return liszt `grid.cell_offset(c, 0, 1)
+        return liszt `c(0, 1)
     end))
 
     -- Should these be hidden?
@@ -127,18 +114,16 @@ local function setupDualCells(grid)
         end
     end)
 
-    grid.dual_cells:NewFieldMacro('xy_ids', L.NewMacro(function (dc)
-        return liszt quote
-            var y_id = L.id(dc) / L.addr(dxsize)
-            var x_id = L.id(dc) % L.addr(dxsize)
-        in
-            { x_id, y_id }
-        end
+    grid.dual_cells:NewFieldMacro('xid', L.NewMacro(function(dc)
+        return liszt ` L.id(dc) % dxsize
+    end))
+    grid.dual_cells:NewFieldMacro('yid', L.NewMacro(function(dc)
+        return liszt ` L.id(dc) / dxsize
     end))
     grid.dual_cells:NewFieldMacro('center', L.NewMacro(function(dc)
         return liszt `L.vec2f({
-            dxorigin +  cell_width * (L.double(dc.xy_ids[0]) + 0.5),
-            dyorigin + cell_height * (L.double(dc.xy_ids[1]) + 0.5)
+            dxorigin +  cell_width * (L.double(dc.xid) + 0.5),
+            dyorigin + cell_height * (L.double(dc.yid) + 0.5)
         })
     end))
 end
@@ -147,30 +132,29 @@ end
 local function setupVertices(grid)
     local vxsize, vysize    = grid:xSize() + 1, grid:ySize() + 1
 
-    grid.vertex_offset = L.NewMacro(function(v, xoff, yoff)
-        return liszt `
-            L.UNSAFE_ROW( L.id(v) + yoff * vxsize + xoff,  grid.vertices )
-    end)
+    grid.vertices:NewFieldMacro('__apply_macro',
+        L.NewMacro(function(v, xoff, yoff)
+            return liszt `
+                L.UNSAFE_ROW( L.id(v) + yoff * vxsize + xoff,  grid.vertices )
+        end))
     grid.vertices:NewFieldMacro('left', L.NewMacro(function(v)
-        return liszt `grid.vertex_offset(v, -1, 0)
+        return liszt `v(-1, 0)
     end))
     grid.vertices:NewFieldMacro('right', L.NewMacro(function(v)
-        return liszt `grid.vertex_offset(v, 1, 0)
+        return liszt `v(1, 0)
     end))
     grid.vertices:NewFieldMacro('down', L.NewMacro(function(v)
-        return liszt `grid.vertex_offset(v, 0, -1)
+        return liszt `v(0, -1)
     end))
     grid.vertices:NewFieldMacro('up', L.NewMacro(function(v)
-        return liszt `grid.vertex_offset(v, 0, 1)
+        return liszt `v(0, 1)
     end))
 
-    grid.vertices:NewFieldMacro('xy_ids', L.NewMacro(function (v)
-        return liszt quote
-            var y_id        = L.id(v) / L.addr(vxsize)
-            var x_id        = L.id(v) % L.addr(vxsize)
-        in
-            { x_id, y_id }
-        end
+    grid.vertices:NewFieldMacro('xid', L.NewMacro(function (v)
+        return liszt ` L.id(v) % vxsize
+    end))
+    grid.vertices:NewFieldMacro('yid', L.NewMacro(function (v)
+        return liszt ` L.id(v) / vxsize
     end))
 
     -- boundary
@@ -338,9 +322,8 @@ local function setupInterconnects(grid)
     local vxsize, vysize    = cxsize + 1, cysize + 1
 
     local function dc_helper (dc, xadd, yadd)
-        return liszt `
-            L.UNSAFE_ROW( (dc.xy_ids[0] + xadd) +
-                          (dc.xy_ids[1] + yadd) * cxsize,  grid.cells )
+        return liszt ` L.UNSAFE_ROW( (dc.xid + xadd) +
+                                     (dc.yid + yadd) * cxsize,  grid.cells )
     end
     grid.dual_cells:NewFieldMacro('downleft', L.NewMacro(function(dc)
         return dc_helper(dc, 0, 0)
@@ -357,7 +340,7 @@ local function setupInterconnects(grid)
 
     grid.dual_cells:NewFieldMacro('vertex', L.NewMacro(function(dc)
         return liszt ` L.UNSAFE_ROW(
-            (dc.xy_ids[0] + 1) + (dc.xy_ids[1] + 1) * cxsize,  grid.vertices )
+            (dc.xid + 1) + (dc.yid + 1) * vxsize,  grid.vertices )
     end))
 
     -- edge sub-section offsets
@@ -367,12 +350,8 @@ local function setupInterconnects(grid)
     local up_off    = down_off  + vxsize * cysize
 
     local function edge_helper (v, offset, stride, xadd, yadd)
-        return liszt quote
-            var xy           = v.xy_ids
-            var eid : L.addr = offset + (xy[1]+yadd) * stride + (xy[0]+xadd)
-        in
-            L.UNSAFE_ROW( eid, grid.edges )
-        end
+        return liszt ` L.UNSAFE_ROW(
+            offset + (v.yid+yadd) * stride + (v.xid+xadd), grid.edges )
     end
     grid.vertices:NewFieldMacro('right_edge', L.NewMacro(function(v)
         return edge_helper(v, right_off, cxsize, 0, 0)
