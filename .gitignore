@@ -5,6 +5,8 @@ terra
 .metadata
 build
 
+local_files
+
 simple_trimesh_diffusion_output
 
 notes.txt
