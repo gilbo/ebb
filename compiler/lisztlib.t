@@ -3,6 +3,15 @@ package.loaded["compiler.lisztlib"] = L
 
 
 -------------------------------------------------------------------------------
+--[[ Liszt modules:                                                        ]]--
+-------------------------------------------------------------------------------
+
+function L.require( str )
+    local loaded_module = terralib.require( str )
+    return loaded_module
+end
+
+-------------------------------------------------------------------------------
 --[[ Liszt object prototypes:                                              ]]--
 -------------------------------------------------------------------------------
 local function make_prototype(objname,name)

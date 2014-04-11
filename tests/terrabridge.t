@@ -1,7 +1,7 @@
 import "compiler.liszt"
 
 local assert = L.assert
-local LMesh = terralib.require "compiler.lmesh"
+local LMesh = L.require "domains.lmesh"
 local mesh = LMesh.Load("examples/mesh.lmesh")
 
 local sqrt   = terralib.includec('math.h').sqrt

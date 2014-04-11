@@ -2,7 +2,7 @@ import "compiler.liszt"
 
 local Grid = {}
 Grid.__index = Grid
-package.loaded["compiler.grid"] = Grid
+package.loaded["domains.grid"] = Grid
 
 local L = terralib.require "compiler.lisztlib"
 

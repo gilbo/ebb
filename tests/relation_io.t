@@ -2,7 +2,7 @@ import "compiler.liszt"
 
 local test  = require "tests/test"
 
-local LMesh = terralib.require 'compiler.lmesh'
+local LMesh = L.require "domains.lmesh"
 local PN    = terralib.require 'compiler.pathname'
 local C     = terralib.require 'compiler.c'
 

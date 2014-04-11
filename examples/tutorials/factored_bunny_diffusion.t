@@ -3,10 +3,10 @@ import "compiler.liszt" -- Every Liszt File should start with this command
 -- This line includes the trimesh.t file.
 -- As a result, the table 'Trimesh' defined in that file is bound to
 -- the variable Trimesh declared right here.
-local Trimesh = terralib.require 'examples.tutorials.trimesh'
+local Trimesh = L.require 'examples.tutorials.trimesh'
 
 -- PN (Pathname) is a convenience library for working with paths
-local PN = terralib.require 'compiler.pathname'
+local PN = L.require 'compiler.pathname'
 
 -- include C math functions
 local cmath = terralib.includecstring '#include <math.h>'

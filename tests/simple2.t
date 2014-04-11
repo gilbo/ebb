@@ -1,7 +1,7 @@
 import "compiler.liszt"
 require "tests/test"
 
-local LMesh = terralib.require "compiler.lmesh"
+local LMesh = L.require "domains.lmesh"
 local mesh = LMesh.Load("examples/mesh.lmesh")
 local com = L.NewGlobal(L.vector(L.double, 3), {0, 0, 0})
 

@@ -1,7 +1,7 @@
 import 'compiler.liszt'
 
 local PN    = terralib.require 'compiler.pathname'
-local LMesh = terralib.require "compiler.lmesh"
+local LMesh = L.require "domains.lmesh"
 local M     = LMesh.Load(PN.scriptdir():concat("rmesh.lmesh"):tostring())
 
 local init_to_zero = terra (mem : &float, i : int) mem[0] = 0 end

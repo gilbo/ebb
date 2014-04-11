@@ -7,7 +7,7 @@ local lassert, lprint = L.assert, L.print
 ---------------------------
 -- Field and Global objs --
 ---------------------------
-local LMesh = terralib.require "compiler.lmesh"
+local LMesh = L.require "domains.lmesh"
 local mesh = LMesh.Load("examples/mesh.lmesh")
 mesh.cells:NewField('f1', L.float)
 mesh.cells:NewField('f2', L.vector(L.float, 3))

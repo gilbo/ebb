@@ -1,6 +1,6 @@
 import "compiler.liszt"
 
-local Grid  = terralib.require 'compiler.grid'
+local Grid  = L.require 'domains.grid'
 local cmath = terralib.includecstring [[
 #include <math.h>
 #include <stdlib.h>

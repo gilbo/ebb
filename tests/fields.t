@@ -7,7 +7,7 @@ import "compiler.liszt"
 require "tests.test"
 
 local assert = L.assert
-local LMesh = terralib.require "compiler.lmesh"
+local LMesh = L.require "domains.lmesh"
 local mesh = LMesh.Load("examples/mesh.lmesh")
 
 local V      = mesh.vertices

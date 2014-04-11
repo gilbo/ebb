@@ -17,7 +17,7 @@ local PN     = terralib.require('compiler.pathname')
 --------------------------------------------------------------------------------
 --[[ Load mesh relations, boundary sets                                     ]]--
 --------------------------------------------------------------------------------
-local LMesh = terralib.require "compiler.lmesh"
+local LMesh = L.require "domains.lmesh"
 local M  = LMesh.Load(PN.scriptdir():concat("fem_mesh.lmesh"):tostring())
 M.left   = M.inlet
 M.right  = M.outlet

@@ -1,6 +1,6 @@
 import "compiler.liszt"
 
-local LMesh = terralib.require 'compiler.lmesh'
+local LMesh = L.require "domains.lmesh"
 local PN = terralib.require 'compiler.pathname'
 local mesh = LMesh.Load(PN.scriptdir():concat("mesh.lmesh"):tostring())
 --local pos  = mesh:fieldWithLabel(Vertex, Vector(float, 3), "position")

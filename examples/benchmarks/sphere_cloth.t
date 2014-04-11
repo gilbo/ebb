@@ -1,9 +1,9 @@
 import "compiler.liszt" -- Every Liszt File should start with this command
 
-local Grid = terralib.require 'compiler.grid'
-local PN = terralib.require 'compiler.pathname'
+local Grid = L.require 'domains.grid'
+local PN = L.require 'compiler.pathname'
 local cmath = terralib.includecstring '#include <math.h>'
-local vdb = terralib.require 'compiler.vdb'
+local vdb = L.require 'compiler.vdb'
 
 
 local N = 40
@@ -38,8 +38,8 @@ grid.edges:NewField('J_z', L.vec3d):Load({0,0,0})
 grid.vertices:NewField('J_diag', L.vec3d):Load({0,0,0})
 
 local init_fields = liszt kernel(v : grid.vertices)
-  var i = L.int(v.xy_ids[0])
-  var j = L.int(v.xy_ids[1])
+  var i = L.int(v.xid)
+  var j = L.int(v.yid)
 
   var x = width * ((i/L.double(N)) - 0.5)
   var y = width * ((j/L.double(N)) - 0.5)

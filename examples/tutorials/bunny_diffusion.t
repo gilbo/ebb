@@ -16,7 +16,7 @@ this
 
 
 -- PN (Pathname) is a convenience library for working with paths
-local PN = terralib.require 'compiler.pathname'
+local PN = L.require 'compiler.pathname'
 
 -- here's the path object for our .OFF file we want to read in.
 -- Notice that the path is relative to this script's location on

@@ -1,6 +1,6 @@
 import "compiler.liszt"
 
-local LMesh = terralib.require "compiler.lmesh"
+local LMesh = L.require "domains.lmesh"
 local mesh = LMesh.Load("examples/mesh.lmesh")
 
 local pass_assert = liszt_kernel(f : mesh.faces)

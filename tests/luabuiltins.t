@@ -2,7 +2,7 @@ import "compiler.liszt"
 
 local print, assert, dot, cross, length = L.print, L.assert, L.dot, L.cross, L.length
 local sqrt = terralib.includec('math.h').sqrt
-local LMesh = terralib.require "compiler.lmesh"
+local LMesh = L.require "domains.lmesh"
 local mesh = LMesh.Load("examples/mesh.lmesh")
 
 local v1 = L.NewVector(L.float, {1, 2, 3})

@@ -5,7 +5,7 @@ local test = require "tests/test"
 --------------------------
 -- Kernel vector tests: --
 --------------------------
-local LMesh = terralib.require "compiler.lmesh"
+local LMesh = L.require "domains.lmesh"
 local mesh = LMesh.Load("examples/mesh.lmesh")
 
 ------------------

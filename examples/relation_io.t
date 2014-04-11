@@ -2,7 +2,7 @@ import 'compiler/liszt'
 local length, lprint = L.length, L.print
 
 -- Test code
-local LMesh = terralib.require "compiler.lmesh"
+local LMesh = L.require "domains.lmesh"
 local PN = terralib.require 'compiler.pathname'
 local M = LMesh.Load(PN.scriptdir():concat("rmesh.lmesh"):tostring())
 

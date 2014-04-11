@@ -1,5 +1,5 @@
 local LMesh = {}
-package.loaded["compiler.lmesh"] = LMesh
+package.loaded["domains.lmesh"] = LMesh
 local L = terralib.require "compiler.lisztlib"
 local PN = terralib.require "compiler.pathname"
 local LDB = terralib.require "compiler.ldb"

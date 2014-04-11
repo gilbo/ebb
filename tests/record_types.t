@@ -1,8 +1,5 @@
 import "compiler.liszt"
 require "tests/test"
---local LMesh = terralib.require "compiler.lmesh"
---local mesh = LMesh.Load("examples/mesh.lmesh")
-
 
 
 
