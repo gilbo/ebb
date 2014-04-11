@@ -16,12 +16,14 @@ grid.cells:NewField('d_temperature', L.double):Load(0)
 local K = L.NewGlobal(L.double, 1.0)
 
 local compute_diffuse = liszt kernel ( c : grid.cells )
-  var sum_diff = c( 1,0).temperature - c.temperature
-               + c(-1,0).temperature - c.temperature
-               + c(0, 1).temperature - c.temperature
-               + c(0,-1).temperature - c.temperature
+  if not c.is_bnd then
+    var sum_diff = c( 1,0).temperature - c.temperature
+                 + c(-1,0).temperature - c.temperature
+                 + c(0, 1).temperature - c.temperature
+                 + c(0,-1).temperature - c.temperature
 
-  c.d_temperature = K * sum_diff
+    c.d_temperature = K * sum_diff
+  end
 end
 
 local apply_diffuse = liszt kernel ( c : grid.cells )

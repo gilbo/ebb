@@ -258,9 +258,9 @@ function L.LField:LoadFunction(lua_callback)
     end
 end
 
-function L.LField:LoadTableArray(tbl)
+function L.LField:LoadList(tbl)
     if type(tbl) ~= 'table' then
-        error('bad type passed to LoadTableArray().  Expecting a table', 2)
+        error('bad type passed to LoadList().  Expecting a table', 2)
     end
     if #tbl ~= self:Size() then
         error('argument array has the wrong number of elements: '..
@@ -306,7 +306,7 @@ function L.LField:Load(arg)
         if self.type:isVector() and #arg == self.type.N then
             return self:LoadConstant(arg)
         else
-            return self:LoadTableArray(arg)
+            return self:LoadList(arg)
         end
     end
     -- default to trying to load as a constant
@@ -333,7 +333,7 @@ local function terraval_to_lua(val, typ)
     end
 end
 
-function L.LField:DumpToTable()
+function L.LField:DumpToList()
     local arr = {}
     for i = 0, self:Size()-1 do
         arr[i+1] = terraval_to_lua(self.data[i], self.type)

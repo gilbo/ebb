@@ -497,9 +497,9 @@ local loaded_data = L.LoadRelationSchema {
 -- construct a new version of the OFF file.
 
 
--- DumpToTable() is the inverse of the way we loaded the OFF file data
-local positions     = vertices.pos:DumpToTable()
-local temperatures  = vertices.temperature:DumpToTable()
+-- DumpToList() is the inverse of the way we loaded the OFF file data
+local positions     = vertices.pos:DumpToList()
+local temperatures  = vertices.temperature:DumpToList()
 
 -- Let's open up a file to dump this temperature data to.
 local output_temp_file = PN.scriptdir() ..
