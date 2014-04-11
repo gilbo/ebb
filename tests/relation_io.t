@@ -3,7 +3,7 @@ import "compiler.liszt"
 local test  = require "tests/test"
 
 local LMesh = L.require "domains.lmesh"
-local PN    = terralib.require 'compiler.pathname'
+local PN    = terralib.require 'lib.pathname'
 local C     = terralib.require 'compiler.c'
 
 local datadir = PN.scriptdir() .. 'relation_io_data'
