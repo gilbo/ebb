@@ -28,7 +28,7 @@ local aadd  = terralib.intrinsic("llvm.nvvm.atomic.load.add.f32.p0f32", {&float,
 --------------------------------------------------------------------------------
 --[[ Read in mesh relation, initialize fields                               ]]--
 --------------------------------------------------------------------------------
-local PN    = terralib.require 'compiler.pathname'
+local PN    = L.require 'lib.pathname'
 local LMesh = L.require "domains.lmesh"
 local M     = LMesh.Load(PN.scriptdir():concat("rmesh.lmesh"):tostring())
 

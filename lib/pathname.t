@@ -16,7 +16,7 @@
 
 
 local PN = {}
-package.loaded["compiler.pathname"] = PN
+package.loaded["lib.pathname"] = PN
 
 local ffi = require("ffi")
 local C   = terralib.require "compiler.c"

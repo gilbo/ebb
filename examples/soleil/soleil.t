@@ -18,7 +18,7 @@ double rand_unity() {
 ]]
 
 cmath.srand(cmath.time(nil));
-local vdb   = terralib.require 'compiler.vdb'
+local vdb   = L.require 'lib.vdb'
 
 
 -----------------------------------------------------------------------------

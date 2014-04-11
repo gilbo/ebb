@@ -21,7 +21,7 @@ local T = terralib.require "compiler.types"
 local C = terralib.require "compiler.c"
 local DLD = terralib.require "compiler.dld"
 
-local PN = terralib.require "compiler.pathname"
+local PN = terralib.require "lib.pathname"
 local Pathname = PN.Pathname
 local ffi = require('ffi')
 

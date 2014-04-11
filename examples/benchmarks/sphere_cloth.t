@@ -1,9 +1,9 @@
 import "compiler.liszt" -- Every Liszt File should start with this command
 
-local Grid = L.require 'domains.grid'
-local PN = L.require 'compiler.pathname'
+local Grid  = L.require 'domains.grid'
+local PN    = L.require 'lib.pathname'
 local cmath = terralib.includecstring '#include <math.h>'
-local vdb = L.require 'compiler.vdb'
+local vdb   = L.require 'lib.vdb'
 
 
 local N = 40

@@ -15,7 +15,7 @@ float rand_float()
 }
 ]]
 cmath.srand(cmath.time(nil));
-local vdb   = terralib.require 'compiler.vdb'
+local vdb   = L.require 'lib.vdb'
 
 local N = 150
 local grid = Grid.New2dUniformGrid(N, N, {-N/2.0, -1.0}, N, N)

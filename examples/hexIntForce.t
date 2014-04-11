@@ -12,7 +12,7 @@ import 'compiler.liszt'
 local m      = terralib.includec("math.h")
 local sqrt   = m.sqrt
 local printf = terralib.includec("stdio.h").printf
-local PN     = terralib.require('compiler.pathname')
+local PN     = L.require('lib.pathname')
 
 --------------------------------------------------------------------------------
 --[[ Load mesh relations, boundary sets                                     ]]--

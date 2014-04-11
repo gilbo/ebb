@@ -14,7 +14,7 @@ local dld = terralib.require 'compiler.dld'
 local mat4f = terralib.require 'gl.mat4f'
 
 local C = terralib.require 'compiler.c'
-local vdb = terralib.require 'compiler.vdb'
+local vdb = L.require 'lib.vdb'
 
 local glshader = terralib.require 'gl.shader'
 

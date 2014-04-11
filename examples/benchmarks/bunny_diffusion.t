@@ -3,10 +3,10 @@ import "compiler.liszt" -- Every Liszt File should start with this command
 -- This line includes the trimesh.t file.
 -- As a result, the table 'Trimesh' defined in that file is bound to
 -- the variable Trimesh declared right here.
-local Trimesh = terralib.require 'examples.benchmarks.trimesh'
+local Trimesh = L.require 'examples.benchmarks.trimesh'
 
 -- PN (Pathname) is a convenience library for working with paths
-local PN = terralib.require 'compiler.pathname'
+local PN = L.require 'lib.pathname'
 
 -- include C math functions
 local cmath = terralib.includecstring '#include <math.h>'
@@ -65,7 +65,7 @@ end
 
 
 -- EXTRA: (optional.  It demonstrates the use of VDB, a visual debugger)
-local vdb = terralib.require('compiler.vdb')
+local vdb  = L.require('lib.vdb')
 local cold = L.NewVector(L.float,{0.5,0.5,0.5})
 local hot  = L.NewVector(L.float,{1.0,0.0,0.0})
 local debug_tri_draw = liszt kernel ( t : bunny.triangles )

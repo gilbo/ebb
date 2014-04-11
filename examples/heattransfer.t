@@ -1,6 +1,6 @@
 import 'compiler.liszt'
 
-local PN    = terralib.require 'compiler.pathname'
+local PN    = L.require 'lib.pathname'
 local LMesh = L.require "domains.lmesh"
 local M     = LMesh.Load(PN.scriptdir():concat("rmesh.lmesh"):tostring())
 

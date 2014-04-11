@@ -1,7 +1,7 @@
 local LMesh = {}
 package.loaded["domains.lmesh"] = LMesh
 local L = terralib.require "compiler.lisztlib"
-local PN = terralib.require "compiler.pathname"
+local PN = terralib.require "lib.pathname"
 local LDB = terralib.require "compiler.ldb"
 local lisztlibrary = os.getenv("LISZT_RUNTIME")
 terralib.linklibrary(lisztlibrary)

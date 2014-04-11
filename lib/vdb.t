@@ -1,7 +1,7 @@
 import 'compiler.liszt'
 
 local vdb = {}
-package.loaded["compiler.vdb"] = vdb
+package.loaded["lib.vdb"] = vdb
 
 local L = terralib.require "compiler.lisztlib"
 local T = terralib.require "compiler.types"

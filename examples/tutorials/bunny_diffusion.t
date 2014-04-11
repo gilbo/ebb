@@ -16,7 +16,7 @@ this
 
 
 -- PN (Pathname) is a convenience library for working with paths
-local PN = L.require 'compiler.pathname'
+local PN = L.require 'lib.pathname'
 
 -- here's the path object for our .OFF file we want to read in.
 -- Notice that the path is relative to this script's location on
@@ -376,7 +376,7 @@ end
 
 -- EXTRA: (This is optional.  It demonstrates the use of VDB,
 --         a visual debugger)
-local vdb = terralib.require('compiler.vdb')
+local vdb = terralib.require('ldb.vdb')
 -- The idea here is that we're going to draw all of the triangles
 -- in the mesh with a color proportional to their current
 -- temperature.  When we view this data in VDB, we'll see the
