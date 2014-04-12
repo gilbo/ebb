@@ -1,6 +1,22 @@
 local L = {}
 package.loaded["compiler.lisztlib"] = L
 
+-- Use the following to produce
+-- deterministic order of table entries
+-- From the Lua Documentation
+function pairs_sorted(tbl, compare)
+  local arr = {}
+  for k in pairs(tbl) do table.insert(arr, k) end
+  table.sort(arr, compare)
+
+  local i = 0
+  local iter = function() -- iterator
+    i = i + 1
+    if arr[i] == nil then return nil
+    else return arr[i], tbl[arr[i]] end
+  end
+  return iter
+end
 
 -------------------------------------------------------------------------------
 --[[ Liszt modules:                                                        ]]--
@@ -23,10 +39,12 @@ local function make_prototype(objname,name)
 end
 local LRelation  = make_prototype("LRelation","relation")
 local LField     = make_prototype("LField","field")
+local LSubset    = make_prototype("LSubset", "subset")
 local LGlobal    = make_prototype("LGlobal","global")
 local LVector    = make_prototype("LVector","vector")
 local LMacro     = make_prototype("LMacro","macro")
 local Kernel     = make_prototype("LKernel","kernel")
+local KernelEnv  = make_prototype("LKernelEnv",'kernel_env')
 
 local C = terralib.require "compiler.c"
 local T = terralib.require "compiler.types"
@@ -247,48 +265,102 @@ local rtlib = terralib.require 'compiler/runtimes'
 L.singleCore = rtlib.singleCore
 L.gpu        = rtlib.gpu
 
-Kernel.__call  = function (kobj, relation)
-    if not relation then
-        error("A kernel must be called on a relation.  "..
-              "No relation specified.", 2)
+local kernel_cache = {}
+local function lookup_kernel_cache(sig)
+    local str_sig = ''
+    for k,v in pairs_sorted(sig) do
+        str_sig = str_sig .. k .. '=' .. tostring(v) .. ';'
     end
+    local lookup = kernel_cache[str_sig]
+    if not lookup then
+        lookup = {}
+        kernel_cache[str_sig] = lookup
+    end
+    return lookup
+end
+
+Kernel.__call  = function (kobj, relset)
+    if not (relset and (L.is_relation(relset) or L.is_subset(relset)))
+    then
+        error("A kernel must be called on a relation or subset.", 2)
+    end
+
     local runtime = L.singleCore
     --if not runtime then runtime = L.singleCore end
     --if not rtlib.is_valid_runtime(runtime) then 
     --    error('Argument is not a valid runtime')
     --end
-	if not kobj.__kernels[runtime] or
-       not kobj.__kernels[runtime][relation]
-    then
-        kobj:generate(runtime, relation)
+
+    -- retreive relevant data from the kernel cache
+    local cache = lookup_kernel_cache({
+        kernel=kobj,
+        relset=relset,
+        runtime=runtime
+    })
+    if not cache.kernel_exec then
+        cache.kernel_exec, cache.kernel_env = kobj:generate(runtime, relset)
     end
-	kobj.__kernels[runtime][relation]()
+
+    -- set up the kernel environment
+    local env_ctype = cache.kernel_env.terra_struct:get()
+
+    if L.is_relation(relset) then
+        env_ctype.n_rows = relset:Size()
+    elseif L.is_subset(relset) then
+        env_ctype.n_rows = relset:Relation():Size()
+        -- bind in the boolmask for the subset
+        local boolmask_id = cache.kernel_env.field_num['_boolmask']
+        env_ctype.fields[boolmask_id].data = relset._boolmask.data
+    end
+
+    -- launch the kernel
+    cache.kernel_exec()
 end
 
 function L.NewKernel(kernel_ast, env)
-    local new_kernel = setmetatable({
-        __kernels={}
-    }, Kernel)
+    local new_kernel = setmetatable({}, Kernel)
 
     new_kernel.typed_ast = semant.check(env, kernel_ast)
 
-	return new_kernel
+    return new_kernel
 end
 
-function Kernel:generate (runtime, relation)
-    -- Right now, we require that the relation match exactly
+function Kernel:generate (runtime, relset)
+    local relation = relset
+    if L.is_subset(relset) then relation = relset:Relation() end
     local ast_relation = self.typed_ast.relation
     if ast_relation ~= relation then
         error('Kernels may only be called on relation they were typed with')
     end
 
-    if not self.__kernels[runtime] then
-        self.__kernels[runtime] = {}
-    end
-	if not self.__kernels[runtime][relation] then
-		self.__kernels[runtime][relation] =
-            codegen.codegen(runtime, self.typed_ast, relation)
-	end
+    -- set up the execution environment structs
+    local n_fields = 1
+    local struct FieldEnv {
+        data : &opaque;
+    }
+    local struct EnvStruct {
+        n_rows : uint64;
+        fields : FieldEnv[n_fields];
+    }
+    local terraenv  = {
+        terra_struct = global(EnvStruct),
+        field_num = { -- which field data corresponds to this...
+            _boolmask = 0
+        },
+    }
+
+    -- do codegen
+    local use_subset = L.is_subset(relset)
+    local terrafunc = codegen.codegen(self.typed_ast, relation,
+                                      terraenv, runtime, use_subset)
+
+    return terrafunc, terraenv
 end
+
+
+
+
+
+
 
 

@@ -40,13 +40,12 @@ local function MallocArray(T,N)
 end
 
 
-
-local valid_relation_name_err_msg =
-    "Relation names must be valid Lua Identifiers: a letter or underscore,"..
+local valid_name_err_msg =
+    "must be valid Lua Identifiers: a letter or underscore,"..
     " followed by zero or more underscores, letters, and/or numbers"
-local valid_field_name_err_msg =
-    "Field names must be valid Lua Identifiers: a letter or underscore,"..
-    " followed by zero or more underscores, letters, and/or numbers"
+local valid_relation_name_err_msg = "Relation names " .. valid_name_err_msg
+local valid_field_name_err_msg = "Field names " .. valid_name_err_msg
+local valid_subset_name_err_msg = "Subset names " .. valid_name_err_msg
 local function is_valid_lua_identifier(name)
     if type(name) ~= 'string' then return false end
 
@@ -74,6 +73,7 @@ function L.NewRelation(size, name)
     local rel = setmetatable( {
         _size      = size,
         _fields    = terralib.newlist(),
+        _subsets   = terralib.newlist(),
         _macros    = terralib.newlist(),
         _name      = name,
     },
@@ -109,7 +109,7 @@ function L.LRelation:NewField (name, typ)
         error("NewField() expects a string as the first argument", 2)
     end
     if not is_valid_lua_identifier(name) then
-        error(valid_fieldName_err_msg, 2)
+        error(valid_field_name_err_msg, 2)
     end
     if self[name] then
         error("Cannot create a new field with name '"..name.."'  "..
@@ -142,7 +142,7 @@ function L.LRelation:NewFieldMacro (name, macro)
         error("NewFieldMacro() expects a string as the first argument", 2)
     end
     if not is_valid_lua_identifier(name) then
-        error(valid_fieldName_err_msg, 2)
+        error(valid_field_name_err_msg, 2)
     end
     if self[name] then
         error("Cannot create a new field-macro with name '"..name.."'  "..
@@ -156,6 +156,46 @@ function L.LRelation:NewFieldMacro (name, macro)
     rawset(self, name, macro)
     self._macros:insert(macro)
     return macro
+end
+
+local function new_subset (relation, name)
+    local field   = setmetatable({}, L.LField)
+    field.type    = L.bool
+    field.name    = name .. '_boolmask'
+    field.owner   = relation
+
+    local subset = setmetatable({
+        _relation = relation,
+        _boolmask = field,
+        _name     = name,
+    }, L.LSubset)
+
+    rawset(relation, name, subset)
+    relation._subsets:insert(subset)
+    return subset
+end
+
+function L.LRelation:NewSubsetFromFunction (name, predicate)
+    if not name or type(name) ~= "string" then
+        error("NewSubsetFromFunction() "..
+              "expects a string as the first argument", 2)
+    end
+    if not is_valid_lua_identifier(name) then
+        error(valid_subset_name_err_msg, 2)
+    end
+    if self[name] then
+        error("Cannot create a new subset with name '"..name.."'  "..
+              "That name is already being used.", 2)
+    end
+
+    if not type(predicate) == 'function' then
+        error("NewSubsetFromFunction() expects a predicate "..
+              "for determining membership as the second argument")
+    end
+
+    local subset = new_subset(self, name)
+    subset._boolmask:LoadFunction(predicate)
+    return subset
 end
 
 function L.LRelation:CreateIndex(name)
@@ -195,6 +235,14 @@ function L.LRelation:print()
     for i,f in ipairs(self._fields) do
         f:print()
     end
+end
+
+-------------------------------------------------------------------------------
+--[[ LSubset methods:                                                      ]]--
+-------------------------------------------------------------------------------
+
+function L.LSubset:Relation()
+    return self._relation
 end
 
 -------------------------------------------------------------------------------

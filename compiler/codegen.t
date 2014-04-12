@@ -35,15 +35,36 @@ function Context:runtime_codegen_field_read (fa_node)
 end
 
 
-function C.codegen (runtime, kernel_ast, relation)
+function C.codegen (kernel_ast, relation, exec_env, runtime, use_subset)
   local env = terralib.newenvironment(nil)
   local ctxt = Context.new(env, runtime)
 
+  local exec_params = exec_env.terra_struct
+
+
   ctxt:enterblock()
-    local parameter = symbol(L.row(relation):terraType())
-    ctxt:localenv()[kernel_ast.name] = parameter
-    local kernel_body =
-      ctxt:runtime_codegen_kernel_body(kernel_ast, relation)
+    local param = symbol(L.row(relation):terraType())
+    ctxt:localenv()[kernel_ast.name] = param
+
+    local body  = kernel_ast.body:codegen(ctxt)
+
+    local kernel_body = quote
+      for [param] = 0, exec_params.n_rows do
+        [body]
+      end
+    end
+
+    if use_subset then
+      local _boolmask_id = exec_env.field_num['_boolmask']
+      kernel_body = quote
+        var boolmask = [&bool](exec_params.fields[_boolmask_id].data)
+        for [param] = 0, exec_params.n_rows do
+          if boolmask[param] then -- subset guard
+            [body]
+          end
+        end
+      end
+    end
   ctxt:leaveblock()
 
   local r = terra ()
@@ -51,6 +72,7 @@ function C.codegen (runtime, kernel_ast, relation)
   end
   return r
 end
+
 
 ----------------------------------------------------------------------------
 
