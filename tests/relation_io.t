@@ -156,7 +156,7 @@ test.fail_function(function() L.LoadRelationSchema{
 } end, 'Error parsing schema file')
 test.fail_function(function() L.LoadRelationSchema{
   file = datadir .. 'not_json_obj.json',
-} end, 'Schema JSON file .* did not parse to an object')
+} end, '<root>: expected object')
 
 -- should be able to read in minimum but useless schema without error
 test.seteq(L.LoadRelationSchema{ file = datadir .. 'min_schema.json' }, {})
@@ -165,7 +165,7 @@ test.seteq(L.LoadRelationSchema{ file = datadir .. 'min_schema.json' }, {})
 test.eq(L.LoadRelationSchemaNotes{ file = datadir .. 'min_schema.json' }, nil)
 test.fail_function(function() L.LoadRelationSchemaNotes{
   file = datadir .. 'min_schema_w_bad_notes.json'
-} end, "Expected 'notes' to be a string")
+} end, "<root>.notes: expected string")
 test.eq(L.LoadRelationSchemaNotes{
   file = datadir .. 'min_schema_w_notes.json'
 }, 'sample note')

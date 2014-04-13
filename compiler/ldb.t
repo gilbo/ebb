@@ -1081,9 +1081,14 @@ local function load_schema_json(filepath)
               err_msg, 3)
     end
 
-    if type(json_obj) ~= 'table' then
-        error('Schema JSON file "'..filepath:tostring()..'" '..
-              'did not parse to an object', 3)
+    local schema_errors = {}
+    if not JSONSchema.match(schema_file_format, json_obj, schema_errors) then
+        local match_err = 'Schema JSON file "'..filepath:tostring()..'" '..
+                          ' had formatting errors:'
+        for _,e in ipairs(schema_errors) do
+            match_err = match_err .. '\n' .. e
+        end
+        error(match_err, 3)
     end
 
     return json_obj
@@ -1114,18 +1119,8 @@ local interface_description = [[
         file = file .. 'schema.json'
     end
 
-    local json_obj = load_schema_json(file)
-
-    -- extract the notes
-    local notes = json_obj.notes
-    if notes then
-        if type(notes) ~= 'string' then
-            error('Bad Schema JSON File "'..tostring(file)..'":\n'..
-                  'Expected \'notes\' to be a string', 2)
-        end
-    end
-
-    return notes
+    local  json_obj = load_schema_json(file)
+    return json_obj.notes
 end
 
 
@@ -1139,15 +1134,6 @@ local function check_schema_json(json, opts)
     local err                   = opts.err or ''
     local allow_null_paths      = opts.allow_null_paths
     local allow_abs_paths       = opts.allow_abs_paths
-
-    local schema_errors = {}
-    if not JSONSchema.match(schema_file_format, json, schema_errors) then
-        local match_err = err .. ' Schema matching errors found.'
-        for _,e in ipairs(schema_errors) do
-            match_err = match_err .. '\n' .. e
-        end
-        error(match_err, 3)
-    end
 
     -- check version #
     if json.major_version ~= 0 or json.minor_version ~= 0 then
@@ -1240,7 +1226,7 @@ local function json_deserialize_field(fname, fjson, params)
     end
 
     -- create the field in question
-    local field = params.owner:NewField(fname, typ)
+    local field = owner:NewField(fname, typ)
 
     -- load field data if we can get a reasonable path...
     local fpath
