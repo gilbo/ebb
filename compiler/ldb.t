@@ -726,22 +726,61 @@ end
 --[[ Relation Schema Saving                                                ]]--
 -------------------------------------------------------------------------------
 
+local JSONSchema = terralib.require 'compiler.JSONSchema'
+
+local primitive_type_schema = {
+  basic_kind  = 'primitive',
+  primitive   = JSONSchema.String
+}
+local type_schema = JSONSchema.OR {
+  primitive_type_schema,
+  {
+    basic_kind  = 'vector',
+    base        = primitive_type_schema,
+    n           = JSONSchema.Num
+  },
+  {
+    basic_kind  = 'row',
+    relation    = JSONSchema.String
+  }
+}
+local schema_file_format = JSONSchema.New {
+  ['major_version'] = JSONSchema.Num,
+  ['minor_version'] = JSONSchema.Num,
+  ['?'] = {
+    ['notes'] = JSONSchema.String,
+  },
+  ['relations'] = {
+    ['*'] = {
+      ['fields'] = {
+        ['*'] = {
+          ['?'] = {
+            ['path'] = JSONSchema.String
+          },
+          ['type'] = type_schema
+        }
+      },
+      ['size'] = JSONSchema.Num,
+      ['?'] = { -- optional fields
+          ['index'] = JSONSchema.String
+      }
+    }
+  }
+}
 
 
-local function save_opt_hint_str(opt_str)
-    return 'Pass argument '..opt_str..' to SaveRelationSchema()\n'..
-           '  to suppress this error.'
-end
+
+
+--local function save_opt_hint_str(opt_str)
+--    return 'Pass argument '..opt_str..' to SaveRelationSchema()\n'..
+--           '  to suppress this error.'
+--end
 
 local function check_save_relations(relations, params)
     local rel_to_name       = params.rel_to_name
     local no_file_data      = params.no_file_data
 
     for rname, rel in pairs(relations) do
-        if type(rname) ~= 'string' then
-            error('SaveRelationSchema() Error: Found a non-string '..
-                  'key in the relations table', 3)
-        end
         local rstr = 'Relation "'..rname..'"'
 
         -- The relations must actually be relations
@@ -1101,17 +1140,21 @@ local function check_schema_json(json, opts)
     local allow_null_paths      = opts.allow_null_paths
     local allow_abs_paths       = opts.allow_abs_paths
 
+    local schema_errors = {}
+    if not JSONSchema.match(schema_file_format, json, schema_errors) then
+        local match_err = err .. ' Schema matching errors found.'
+        for _,e in ipairs(schema_errors) do
+            match_err = match_err .. '\n' .. e
+        end
+        error(match_err, 3)
+    end
+
     -- check version #
     if json.major_version ~= 0 or json.minor_version ~= 0 then
         error(err..
               'This Liszt relation loader only supports schema.json files '..
               'of version 0.0 (development);   given file has version '..
               json.major_version..'.'..json.minor_version, 3)
-    end
-
-    -- certify that the JSON object has relations
-    if type(json.relations) ~= 'table' then
-        error(err..'Could not find \'relations\' object', 3)
     end
 
     -- certify each relation
@@ -1125,23 +1168,9 @@ local function check_schema_json(json, opts)
 
         local relstr = 'Relation "'..rname..'"'
 
-        -- check that the relation object is present,
-        -- that it has a size,
-        -- and that it has fields
-        if type(rjson) ~= 'table' then
-            error(err..relstr..' was not a JSON object', 3)
-        elseif type(rjson.size) ~= 'number' then
-            error(err..relstr..' was missing a "size" count', 3)
-        elseif type(rjson.fields) ~= 'table' then
-            error(err..relstr..' does not have a \'fields\' object', 3)
-        end
-
         -- if the relation has an index, make sure it's a string and
         -- that it's a field-name present in the fields object
         if rjson.index then
-            if type(rjson.index) ~= 'string' then
-                error(err..relstr..' has an index of non-string type', 3)
-            end
 
             local lookup = rjson.fields[rjson.index]
             if not lookup then
@@ -1161,39 +1190,30 @@ local function check_schema_json(json, opts)
             end
 
             local fstr = 'Field "'..fname..'" on '..relstr
-
-            -- check that the field object is present and that it has a type
-            if type(fjson) ~= 'table' then
-                error(err..fstr..' was not a JSON object', 3)
-            elseif type(fjson.type) ~= 'table' then
-                error(err..fstr..' was missing a type object', 3)
-            end
             
             -- check that the field object has a path (if req.),
             -- that the path is a valid pathname,
             -- and that the path is relative (if req.)
-            local null_path_err -- hold any errors encountered
-            if type(fjson.path) ~= 'string' then
-                null_path_err = err..fstr..' was missing a path object'
-            else
+            if not allow_null_paths then
+                local null_path_err
+                if not fjson.path then
+                    error(err..fstr..' was missing a path object\n'..
+                          load_opt_hint_str('allow_null_paths'), 3)
+                end
+
                 local fpath
                 local status, err_msg = pcall(function()
                     fpath = Pathname.new(fjson.path)
                 end)
 
                 if not status then
-                    null_path_err = err..'Invalid path for '..fstr..'\n'..
-                                    err_msg
-                elseif fpath:is_absolute() and not allow_abs_paths then
-                    null_path_err = err..'Absolute path for '..fstr..'\n'..
-                                    'Absolute paths in schema files are '..
-                                    'prohibited\n'..
-                                    load_opt_hint_str('allow_abs_paths')
+                    error(err..'Invalid path for '..fstr..'\n'..err_msg, 3)
                 end
-            end
-            if null_path_err and not allow_null_paths then
-                error(null_path_err..'\n'..
-                      load_opt_hint_str('allow_null_paths'), 3)
+                if not allow_abs_paths and fpath:is_absolute() then
+                    error(err..'Absolute path for '..fstr..'\n'..
+                               'Absolute paths are prohibited\n'..
+                               load_opt_hint_str('allow_abs_paths'), 3)
+                end
             end
         end
     end

@@ -176,22 +176,22 @@ test.fail_function(function() L.LoadRelationSchema{
 } end, 'Liszt relation loader only supports schema.json files of version 0.0')
 test.fail_function(function() L.LoadRelationSchema{
   file = datadir .. 'missing_relations.json',
-} end, 'Could not find \'relations\' object')
+} end, 'expected to find key \'relations\'')
 test.fail_function(function() L.LoadRelationSchema{
   file = datadir .. 'broken_simp/invalid_rel_name.json',
 } end, 'Invalid Relation name')
 test.fail_function(function() L.LoadRelationSchema{
   file = datadir .. 'broken_simp/no_rel_obj.json',
-} end, 'Relation .* was not a JSON object')
+} end, '<root>.relations.cells: expected object')
 test.fail_function(function() L.LoadRelationSchema{
   file = datadir .. 'broken_simp/no_rel_size.json',
-} end, 'Relation .* was missing a "size" count')
+} end, 'expected to find key \'size\'')
 test.fail_function(function() L.LoadRelationSchema{
   file = datadir .. 'broken_simp/no_rel_fields.json',
-} end, 'does not have a \'fields\' object')
+} end, 'expected to find key \'fields\'')
 test.fail_function(function() L.LoadRelationSchema{
   file = datadir .. 'broken_simp/non_str_index.json',
-} end, 'has an index of non%-string type') -- % is Lua pattern matching esc.
+} end, '<root>.relations.cells.index: expected string')
 test.fail_function(function() L.LoadRelationSchema{
   file = datadir .. 'broken_simp/dangling_index.json',
 } end, 'an entry in the "fields" object could not be found.')
@@ -200,19 +200,20 @@ test.fail_function(function() L.LoadRelationSchema{
 } end, 'Invalid Field name')
 test.fail_function(function() L.LoadRelationSchema{
   file = datadir .. 'broken_simp/no_field_obj.json',
-} end, 'Field .* was not a JSON object')
+} end, '<root>.relations.cells.fields.temperature: expected object')
 test.fail_function(function() L.LoadRelationSchema{
   file = datadir .. 'broken_simp/no_field_type.json',
-} end, 'Field .* was missing a type object')
+} end, '<root>.relations.cells.fields.temperature: '..
+       'expected to find key \'type\'')
 test.fail_function(function() L.LoadRelationSchema{
   file = datadir .. 'broken_simp/no_field_path.json',
-} end, 'Field .* was missing a path object')
+} end, 'Field "temperature" on Relation "cells" was missing a path object')
 test.fail_function(function() L.LoadRelationSchema{
   file = datadir .. 'broken_simp/invalid_field_path.json',
 } end, 'Invalid path for Field')
 test.fail_function(function() L.LoadRelationSchema{
   file = datadir .. 'broken_simp/absolute_field_path.json',
-} end, 'Absolute paths in schema files are prohibited')
+} end, 'Absolute paths are prohibited')
 
 
 -- broken type json formatting should produce the following errors
