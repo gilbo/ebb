@@ -233,7 +233,8 @@ function ast.Assignment:check(ctxt)
     if rtype == L.error then return node end
 
     -- Promote global lhs to lvalue if there was a reduction
-    if self.reduceop and node.lvalue:is(ast.Global) then
+    if node.lvalue:is(ast.Global) and not self.reduceop then
+        ctxt:error(self.lvalue, "Cannot write to globals in kernels")
         node.lvalue.is_lvalue = true
     end
 
@@ -256,9 +257,17 @@ function ast.Assignment:check(ctxt)
         if not node.exp then return node end
     end
 
+    -- replace assignment with a global reduce if we see a
+    -- global on the left hand side
+    if node.lvalue:is(ast.Global) then
+        local gr = ast.GlobalReduce:DeriveFrom(node)
+        gr.global      = node.lvalue
+        gr.exp         = node.exp
+        gr.reduceop    = node.reduceop
+        return gr
     -- replace assignment with a field write if we see a
     -- field access on the left hand side
-    if node.lvalue:is(ast.FieldAccess) then
+    elseif node.lvalue:is(ast.FieldAccess) then
         local fw = ast.FieldWrite:DeriveFrom(node)
         fw.fieldaccess = node.lvalue
         fw.exp         = node.exp
@@ -706,24 +715,24 @@ function ast.VectorLiteral:check(ctxt)
 
     veclit.elems[1]   = self.elems[1]:check(ctxt)
     local max_type    = veclit.elems[1].node_type
-    if max_type == L.error then ctxt:leaverhs(); return err(self, ctxt) end
+    if max_type == L.error then return err(self, ctxt) end
     if not max_type:isPrimitive() then
-        ctxt:leaverhs(); return err(self, ctxt, tp_error) 
+        return err(self, ctxt, tp_error) 
     end
 
     -- scan the remaining entries to compute a max type
     for i = 2, #self.elems do
         veclit.elems[i] = self.elems[i]:check(ctxt)
         local tp        = veclit.elems[i].node_type
-        if tp == L.error then ctxt:leaverhs(); return err(self, ctxt) end
+        if tp == L.error then return err(self, ctxt) end
         if not tp:isPrimitive() then
-            ctxt:leaverhs(); return err(self,ctxt, tp_error)
+            return err(self,ctxt, tp_error)
         end
 
         if max_type:isCoercableTo(tp) then
             max_type = tp
         elseif not tp:isCoercableTo(max_type) then
-            ctxt:leaverhs(); return err(self, ctxt, mt_error)
+            return err(self, ctxt, mt_error)
         end
     end
 

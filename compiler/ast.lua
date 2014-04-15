@@ -45,6 +45,7 @@ local VectorLiteral   = { kind = 'vecliteral' }
 local FieldAccess     = { kind = 'fieldaccess' } -- type determined by field type
 local FieldWrite      = { kind = 'fieldwrite'  }
 local Global          = { kind = 'global'      } -- type determined by global type
+local GlobalReduce    = { kind = 'globalreduce' }
 local Cast            = { kind = 'cast'        } -- called "function" is a type, cast to that type
 
 local QuoteExpr       = { kind = 'quoteexpr'   } -- type already checked, just return checked AST
@@ -113,6 +114,7 @@ inherit(DoStatement,     Statement, {'body'})
 inherit(RepeatStatement, Statement, {'cond', 'body'})
 inherit(ExprStatement,   Statement, {'exp'})
 inherit(Assignment,      Statement, {'lvalue','exp'})
+inherit(GlobalReduce,    Statement, {'global', 'exp'})
 inherit(FieldWrite,      Statement, {'fieldaccess','exp'})
 inherit(DeclStatement,   Statement, {'typeexpression','initializer'})
 inherit(NumericFor,      Statement, {'name','lower','upper','step','body'})
@@ -399,6 +401,13 @@ function Assignment:pretty_print (indent)
   self.exp:pretty_print(indent .. indent_delta)
 end
 
+function GlobalReduce:pretty_print (indent)
+  indent = indent or ''
+  print(indent .. self.kind .. ": <reduction \'" .. self.reduceop .. '\'>')
+  self.global:pretty_print(indent .. indent_delta)
+  self.exp:pretty_print(indent .. indent_delta)
+end
+
 function FieldWrite:pretty_print (indent)
   indent = indent or ''
   if self.reduceop then
@@ -474,6 +483,7 @@ for k,v in pairs({
   ExprStatement   = ExprStatement,
   Assignment      = Assignment,
   FieldWrite      = FieldWrite,
+  GlobalReduce    = GlobalReduce,
   DeclStatement   = DeclStatement,
   NumericFor      = NumericFor,
   GenericFor      = GenericFor,

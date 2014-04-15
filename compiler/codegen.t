@@ -281,6 +281,16 @@ function ast.Assignment:codegen (ctxt)
   return quote [lhs] = rhs end
 end
 
+function ast.GlobalReduce:codegen(ctxt)
+  -- just re-direct to an assignment statement for now.
+  local assign = ast.Assignment:DeriveFrom(self)
+  assign.lvalue = self.global
+  assign.exp    = self.exp
+  assign.reduceop = self.reduceop
+
+  return assign:codegen(ctxt)
+end
+
 function ast.FieldWrite:codegen (ctxt)
   -- just re-direct to an assignment statement for now.
   local assign = ast.Assignment:DeriveFrom(self)

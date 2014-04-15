@@ -79,6 +79,18 @@ function PhaseType:join(rhs)
   })
 end
 
+-- Global variables can't be used in exclusive mode
+function PhaseType:globals_join(rhs)
+  if self.kind == rhs.kind and
+     (self.kind ~= PT.REDUCE or self.reduceop == rhs.reduceop)
+  then
+    return PhaseType.New(self.kind, {reduceop=self.reduceop})
+  end
+
+  -- otherwise
+  return PhaseType.New(PT.ERROR)
+end 
+
 ------------------------------------------------------------------------------
 --[[ Context:                                                             ]]--
 ------------------------------------------------------------------------------
@@ -91,6 +103,7 @@ function Context.new(env, diag)
     --env     = env,
     diag    = diag,
     fields  = {},
+    globals = {}
   }, Context)
   return ctxt
 end
@@ -140,6 +153,40 @@ function Context:logfield(field, phase_type, node)
                        tostring(lookup.phase_type)..' Phase\n')
     end
     lookup.phase_type  = join_type
+    lookup.last_access = node
+  end
+end
+
+function Context:logglobal(global, phase_type, node)
+  local lookup = self.globals[global]
+
+  -- if this access was an error and is the first error
+  --if phase_type:isError() then
+  --  if not (lookup and lookup.phase_type:isError()) then
+  --    self:error(node, 'Non-Exclusive WRITE')
+  --  end
+  --end
+
+  -- first access
+  if not lookup then
+    lookup = {
+      phase_type = phase_type,
+      last_access = node,
+    }
+    self.globals[global] = lookup
+  else
+    local join_type = lookup.phase_type:globals_join(phase_type)
+    if join_type:isError() and
+      not (phase_type:isError() or lookup.phase_type:isError())
+    then
+      local lastfile = lookup.last_access.filename
+      local lastline = lookup.last_access.linenumber
+      self:error(node, tostring(phase_type)..' Phase for Global is'..
+                                             ' incompatible with\n'..
+                       lastfile..':'..lastline..': '..
+                       tostring(lookup.phase_type)..' Phase for Global\n')
+    end
+    lookup.phase_type = join_type
     lookup.last_access = node
   end
 end
@@ -212,10 +259,17 @@ function ast.Call:phasePass (ctxt)
 end
 
 
+function ast.GlobalReduce:phasePass(ctxt)
+  local ptype = PT.New(PT.REDUCE,{reduceop=self.reduceop})
+  local global = self.global.global
+  ctxt:logglobal(global, ptype, self)
+
+  self.exp:phasePass(ctxt)
+end
+
 function ast.Global:phasePass (ctxt)
-  --local d = self.global.data
-  --local s = symbol(&self.global.type:terraType())
-  --return `@d
+  -- if we got here, it wasn't through a write or reduce use
+  ctxt:logglobal(self.global, PT.New(PT.READ), self)
 end
 
 

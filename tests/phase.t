@@ -66,21 +66,23 @@ test.fail_function(function()
   local kernel = liszt kernel (v : M.vertices)
     g1 = v.field1
   end
-end, 'cannot write to globals inside kernels')
+end, 'Cannot write to globals in kernels')
 
 test.fail_function(function()
   local kernel = liszt kernel (v : M.vertices)
     var x = g1
     g1 += 1
   end
-end, 'cannot read and reduce a global at the same time')
+end, 'REDUCE%(%+%) Phase for Global is incompatible with.*'..
+     'READ Phase for Global')
 
 test.fail_function(function()
   local kernel = liszt kernel (v : M.vertices)
     g1 += v.field1
     g1 *= v.field1
   end
-end, 'cannot reduce a global in two different ways')
+end, 'REDUCE%(%*%) Phase for Global is incompatible with.*'..
+     'REDUCE%(%+%) Phase for Global')
 
 
 
