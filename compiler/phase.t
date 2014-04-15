@@ -1,118 +1,250 @@
 local Phase = {}
-Phase.__index = Phase
-function Phase.new (string) return setmetatable({string=string}, Phase) end
-function Phase:__tostring () return self.string end
+package.loaded['compiler.phase'] = Phase
 
-local phases = {}
-phases.READ_ONLY       = Phase.new("<Read>")
-phases.REDUCE_PLUS     = Phase.new("<Additive Reduction>")
-phases.REDUCE_MULTIPLY = Phase.new("<Multiplicative Reduction>")
-phases.REDUCE_MIN      = Phase.new("<MIN Reduction>")
-phases.REDUCE_MAX      = Phase.new("<MAX Reduction>")
-phases.REDUCE_AND      = Phase.new("<AND Reduction>") -- AND/OR/XOR by assignment type
-phases.REDUCE_OR       = Phase.new("<OR Reduction>")
-phases.WRITE_ONLY      = Phase.new("<Write>")
 
-phases['+']    = phases.REDUCE_PLUS
-phases['-']    = phases.REDUCE_PLUS
-phases['*']    = phases.REDUCE_MULTIPLY
-phases['/']    = phases.REDUCE_MULTIPLY
-phases['min']  = phases.REDUCE_MIN
-phases['max']  = phases.REDUCE_MAX
-phases['and']  = phases.REDUCE_AND
-phases['or']   = phases.REDUCE_OR
+local ast = require "compiler.ast"
+
 
 ------------------------------------------------------------------------------
---[[ Phase Dictionary                                                     ]]--
+--[[ Phase Types                                                          ]]--
 ------------------------------------------------------------------------------
---[[ Keeps track of Field accesses and field access metadata:
-     * whether the field was read, written, or reduced
-     * where the Access occurred (for debugging/error reporting)
---]]
-local FieldAccessRecord = {}
-FieldAccessRecord.__index = FieldAccessRecord
 
-function FieldAccessRecord.new (field, phase, node)
-    return setmetatable({
-        phase      = phase,
-        field      = field,
-        linenumber = node.linenumber,
-        filename   = node.filename,
-        offset     = node.offset,
-        name       = node.name
-    }, FieldAccessRecord)
+local PhaseType = {}
+PhaseType.__index = PhaseType
+local PT = PhaseType
+
+-- phase kind constants
+PT.READ        = {}
+PT.REDUCE      = {}
+PT.EXCLUSIVE   = {} -- write puts us here immediately
+PT.ERROR       = {}
+-- Ordering of lattice constants
+-- READ < EXCLUSIVE < ERROR
+-- REDUCE < EXCLUSIVE
+-- READ | REDUCE (incomparable)
+
+function PhaseType:__tostring()
+  local center = ''
+  if self.is_centered then center = '_or_EXCLUSIVE' end
+
+  if self.kind == PT.READ then
+    return 'READ' .. center
+  elseif self.kind == PT.REDUCE then
+    return 'REDUCE('..self.reduceop..')' .. center
+  elseif self.kind == PT.EXCLUSIVE then
+    return 'EXCLUSIVE'
+  else
+    return 'ERROR'
+  end
 end
 
-local PhaseDict = {}
-PhaseDict.__index = PhaseDict
+function PhaseType.New(kind, opts)
+  opts = opts or {}
+  local pt = setmetatable({
+    kind = kind,
+    reduceop = opts.reduceop,
+    is_centered = opts.is_centered
+  }, PhaseType)
 
-function PhaseDict.new(diag)
-    return setmetatable({
-            diag=diag, 
-            dict={}, 
-            ctxt={phases.READ_ONLY} -- initial state is rhs
-        },
-        PhaseDict)
+  -- promote uncentered exclusive access to error
+  if pt.kind == PT.EXCLUSIVE and not pt.is_centered then
+    pt.kind = PT.ERROR
+  end
+
+  return pt
 end
 
-function PhaseDict:enterLhs (reduce_op)
-    local ph = phases[reduce_op] or phases.WRITE_ONLY
-    self.ctxt[#self.ctxt+1] = ph
+function PhaseType:isError()
+  return self.kind == PT.ERROR
 end
-function PhaseDict:enterRhs ()
-    self.ctxt[#self.ctxt+1] = phases.READ_ONLY
+
+function PhaseType:join(rhs)
+  local kind
+  if self.kind == PT.ERROR or rhs.kind == PT.ERROR then
+    kind = PT.ERROR
+  elseif self.kind == rhs.kind then
+    kind = self.kind
+  else
+    kind = PT.EXCLUSIVE
+  end
+
+  -- promote if there's a reduce conflict
+  if kind == PT.REDUCE and self.reduceop ~= rhs.reduceop then
+    kind = PT.EXCLUSIVE
+  end
+
+  return PhaseType.New(kind, {
+    reduceop      = self.reduceop,
+    is_centered   = self.is_centered and rhs.is_centered
+  })
 end
-function PhaseDict:leaveLhs ()
-    local sz = #self.ctxt
-    local ph = self.ctxt[sz]
-    self.ctxt[sz] = nil
-    -- assert that popped phase is a write or reduce phase
-    assert(ph and ph ~= phases.READ_ONLY)
+
+------------------------------------------------------------------------------
+--[[ Context:                                                             ]]--
+------------------------------------------------------------------------------
+
+local Context = {}
+Context.__index = Context
+
+function Context.new(env, diag)
+  local ctxt = setmetatable({
+    --env     = env,
+    diag    = diag,
+    fields  = {},
+  }, Context)
+  return ctxt
 end
-function PhaseDict:leaveRhs ()
-    local sz = #self.ctxt
-    local ph = self.ctxt[sz]
-    self.ctxt[sz] = nil
-    -- assert that popped phase is read only
-    assert(ph == phases.READ_ONLY)    
+--function Context:localenv()
+--  --return self.env:localenv()
+--end
+--function Context:enterblock()
+--  --self.env:enterblock()
+--end
+--function Context:leaveblock()
+--  --self.env:leaveblock()
+--end
+function Context:error(ast, ...)
+  self.diag:reporterror(ast, ...)
 end
-function PhaseDict:store (field, node)
-    local phase = self.ctxt[#self.ctxt]
-    -- DEBUG print detected fields
-    -- local fn = tostring(field.owner._name) .. '.' .. field.name
-    -- print("Found field " .. fn .. ' in phase ' .. tostring(phase) .. ' at line: ' .. tostring(node.linenumber))
-    if not self.dict[field] then
-        self.dict[field] = FieldAccessRecord.new(field, phase, node)
-        return true
-    elseif phase ~= self.dict[field].phase then
-        local rec = self.dict[field]
-        local fn  = field.owner._name .. '.' .. field.name
-        self.diag:reporterror(node, "access of '"..fn.."' field in "..tostring(phase).. 
-            ' phase conflicts with earlier access in '..tostring(rec.phase)..
-            ' phase at '..rec.filename..':'..tostring(rec.linenumber))
-        return false
+
+function Context:logfield(field, phase_type, node)
+  -- Create an entry for the field
+  local lookup = self.fields[field]
+
+  -- if this access was an error and is the first error
+  if phase_type:isError() then
+    if not (lookup and lookup.phase_type:isError()) then
+      self:error(node, 'Non-Exclusive WRITE')
     end
-    return true
-end
--- Export field usage data for codegen
-function PhaseDict:export ()
-    local fields = {}
-    for field, record in pairs(self.dict) do
-        fields[field] = record.phase
+  end
+
+  -- first access
+  if not lookup then
+    lookup = {
+      phase_type = phase_type,
+      last_access = node,
+    }
+    self.fields[field] = lookup
+  -- later accesses
+  else
+    local join_type = lookup.phase_type:join(phase_type)
+    -- if first error, then...
+    if join_type:isError() and
+       not (phase_type:isError() or lookup.phase_type:isError())
+    then
+      local lastfile = lookup.last_access.filename
+      local lastline = lookup.last_access.linenumber
+      self:error(node, tostring(phase_type)..' Phase is'..
+                                             ' incompatible with\n'..
+                       lastfile..':'..lastline..': '..
+                       tostring(lookup.phase_type)..' Phase\n')
     end
-    return fields
+    lookup.phase_type  = join_type
+    lookup.last_access = node
+  end
 end
 
-local P = {
-    PhaseDict       = PhaseDict,
-    READ_ONLY       = phases.READ_ONLY,
-    REDUCE_PLUS     = phases.REDUCE_PLUS,
-    REDUCE_MULTIPLY = phases.REDUCE_MULTIPLY,
-    REDUCE_MIN      = phases.REDUCE_MIN,
-    REDUCE_MAX      = phases.REDUCE_MAX,
-    REDUCE_AND      = phases.REDUCE_AND,
-    REDUCE_OR       = phases.REDUCE_OR,
-    WRITE_ONLY      = phases.WRITE_ONLY     
-}
 
-return P
+
+------------------------------------------------------------------------------
+--[[ Phase Pass:                                                          ]]--
+------------------------------------------------------------------------------
+
+function Phase.phasePass(kernel_ast)
+  local env  = terralib.newenvironment(nil)
+  local diag = terralib.newdiagnostics()
+  local ctxt = Context.new(env, diag)
+
+  diag:begin()
+    kernel_ast:phasePass(ctxt)
+  diag:finishandabortiferrors("Errors during phasechecking Liszt", 1)
+end
+
+
+------------------------------------------------------------------------------
+--[[ AST Nodes:                                                           ]]--
+------------------------------------------------------------------------------
+
+function ast.AST:phasePass(ctxt)
+  self:callthrough('phasePass', ctxt)
+end
+
+
+
+
+function ast.FieldWrite:phasePass (ctxt)
+  -- We intentionally skip over the Field Access here...
+  self.fieldaccess.row:phasePass(ctxt)
+
+  local reduceop = self.reduceop
+  local centered = self.fieldaccess.row.is_centered
+  local kind     = (self.reduceop and PT.REDUCE) or PT.EXCLUSIVE
+  local ptype    = PT.New(kind, {reduceop=reduceop, is_centered=centered})
+
+  local field = self.fieldaccess.field
+  ctxt:logfield(field, ptype, self)
+
+  self.exp:phasePass(ctxt)
+end
+
+function ast.FieldAccess:phasePass (ctxt)
+  self.row:phasePass(ctxt)
+
+  local centered = self.row.is_centered
+  local ptype    = PT.New(PT.READ, {is_centered=centered})
+  ctxt:logfield(self.field, ptype, self)
+end
+
+
+function ast.Call:phasePass (ctxt)
+  for i,p in ipairs(self.params) do
+    -- Terra Funcs may write or do other nasty things...
+    if self.func.is_a_terra_func and p:is(ast.FieldAccess) then
+      p.row:phasePass()
+
+      local centered = p.row.is_centered
+      local ptype    = PT.New(PT.EXCLUSIVE, {is_centered=centered})
+      ctxt:logfield(p.field, ptype, p)
+    else
+      p:phasePass(ctxt)
+    end
+  end
+end
+
+
+function ast.Global:phasePass (ctxt)
+  --local d = self.global.data
+  --local s = symbol(&self.global.type:terraType())
+  --return `@d
+end
+
+
+function ast.Where:phasePass(ctxt)
+  -- Would like to log that there was a use of the index...?
+
+  -- Which field is the index effectively having us read?
+  local ptype = PT.New(PT.READ)
+  local field = self.relation._index
+  ctxt:logfield(field, ptype, self)
+
+  self.key:phasePass(ctxt)
+end
+
+function ast.GenericFor:phasePass(ctxt)
+  self.set:phasePass(ctxt)
+  -- assert(self.set.node_type:isQuery())
+
+  -- TODO: Make Projections Count as Field-READs
+
+  -- deal with any field accesses implied by projection
+  --local rel = r.set.node_type.relation
+  --for i,p in ipairs(r.set.node_type.projections) do
+  --    rel = rel[p].type.relation
+  --    assert(rel)
+  --end
+
+  self.body:phasePass(ctxt)
+end
+
+
+

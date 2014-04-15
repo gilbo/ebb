@@ -23,7 +23,7 @@ local T   = terralib.require "compiler.types"
 
 --]]
 
-local P = terralib.require 'compiler/phase'
+local P = terralib.require 'compiler/old_phase'
 
 local Context = {}
 Context.__index = Context
@@ -33,7 +33,6 @@ function Context.new(env, diag)
         env         = env,
         diag        = diag,
         loop_count  = 0,
-        phaseDict   = P.PhaseDict.new(diag),
     }, Context)
     return ctxt
 end
@@ -61,24 +60,6 @@ end
 function Context:leaveloop()
     self.loop_count = self.loop_count - 1
     if self.loop_count < 0 then self.loop_count = 0 end
-end
-function Context:enterlhs (reduce_op)
-    self.phaseDict:enterLhs(reduce_op)
-end
-function Context:enterrhs ()
-    self.phaseDict:enterRhs()
-end
-function Context:leavelhs ()
-    self.phaseDict:leaveLhs()
-end
-function Context:leaverhs ()
-    self.phaseDict:leaveRhs()
-end
-function Context:log_field_access (field, node)
-    return self.phaseDict:store(field, node)
-end
-function Context:field_usage ()
-    return self.phaseDict:export()
 end
 
 local function exec_external(exp,ctxt,default)
@@ -242,9 +223,7 @@ function ast.Assignment:check(ctxt)
     local node = self:clone()
 
     -- LHS tracked for phase-checking
-    ctxt:enterlhs(self.reduceop or nil)
     node.lvalue = self.lvalue:check(ctxt)
-    ctxt:leavelhs()
 
     local ltype  = node.lvalue.node_type
     if ltype == L.error then return node end
@@ -725,8 +704,6 @@ function ast.VectorLiteral:check(ctxt)
                      "of boolean or numeric type"
     local mt_error = "vector entries must be of the same type"
 
-    ctxt:enterrhs()
-
     veclit.elems[1]   = self.elems[1]:check(ctxt)
     local max_type    = veclit.elems[1].node_type
     if max_type == L.error then ctxt:leaverhs(); return err(self, ctxt) end
@@ -759,8 +736,6 @@ function ast.VectorLiteral:check(ctxt)
     for i = 1, #veclit.elems do
         veclit.elems[i] = try_coerce(max_type, veclit.elems[i], ctxt)
     end
-
-    ctxt:leaverhs()
 
     veclit.node_type = L.vector(max_type, #veclit.elems)
     return veclit
@@ -795,9 +770,7 @@ local function RunMacro(ctxt,src_node,the_macro,params)
 end
 
 function ast.TableLookup:check(ctxt)
-    ctxt:enterrhs()
     local tab = self.table:check(ctxt)
-    ctxt:leaverhs()
     local member = self.member
     if type(member) == "function" then --member is an escaped lua expression
       member = exec_external(member,ctxt,"<error>")
@@ -836,12 +809,12 @@ function ast.TableLookup:check(ctxt)
             local ast_node      = ast.FieldAccess:DeriveFrom(tab)
             ast_node.name       = member
             ast_node.row        = tab
+            local name = ast_node.row.name
+            if name and ctxt:liszt()['center='..name] then
+                ast_node.row.is_centered = true
+            end
             ast_node.field      = field
             ast_node.node_type  = field.type
-
-            -- log field accesses for phase analysis
-            ctxt:log_field_access(luaval, ast_node)
-
             return ast_node
 
         -- desugar macro-fields from row.macro to macro(row)
@@ -917,11 +890,9 @@ function ast.Call:check(ctxt)
     local func     = self.func:check(ctxt)
     call.params    = {}
 
-    ctxt:enterlhs()
     for i,p in ipairs(self.params) do
         call.params[i] = p:check(ctxt)
     end
-    ctxt:leavelhs()
 
     local v = func.node_type:isInternal() and func.node_type.value
     if v and L.is_function(v) then
@@ -1023,7 +994,6 @@ function ast.Where:check(ctxt)
     w.relation  = field.owner
     w.key       = self.key
     w.node_type = L.query(w.relation,{})
-    ctxt:log_field_access(field, w)
     return w
 end
 
@@ -1039,7 +1009,10 @@ function ast.LisztKernel:check(ctxt) -- hacked 2nd parameter
        L.is_relation(set.node_type.value)
     then
         kernel.relation             = set.node_type.value
-        ctxt:liszt()[kernel.name]   = L.row(kernel.relation)
+        local row_type              = L.row(kernel.relation)
+        -- record the center
+        ctxt:liszt()['center='..kernel.name] = true
+        ctxt:liszt()[kernel.name]   = row_type
         kernel.body                 = self.body:check(ctxt)
     else
         ctxt:error(kernel.set, "Expected a relation")
@@ -1061,6 +1034,5 @@ function S.check(luaenv, kernel_ast)
     local new_kernel_ast = kernel_ast:check(ctxt)
     env:leaveblock()
     diag:finishandabortiferrors("Errors during typechecking liszt", 1)
-    new_kernel_ast.field_usage = ctxt:field_usage()
     return new_kernel_ast
 end

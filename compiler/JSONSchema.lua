@@ -208,8 +208,12 @@ function JSONSchema.Object:match(tbl, report)
   -- use the wildcard to handle all the rest of the fields present
   for k,v in pairs(tbl) do
     if not self.keys[k] then
+      -- found non-string key
+      if type(k) ~= 'string' then
+        report:error("expected key to be a string")
+        success = false
       -- found optional key
-      if self.optional[k] then
+      elseif self.optional[k] then
         report:pushLocation(k)
         if not self.optional[k]:match(v, report) then
           success = false

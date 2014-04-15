@@ -8,10 +8,11 @@ local ast = require "compiler.ast"
 local Context = {}
 Context.__index = Context
 
-function Context.new(env, runtime)
+function Context.new(env, bran)
     local ctxt = setmetatable({
         env     = env,
-        runtime = runtime
+        bran    = bran,
+        germ    = bran.germ,
     }, Context)
     return ctxt
 end
@@ -24,41 +25,31 @@ end
 function Context:leaveblock()
   self.env:leaveblock()
 end
-function Context:runtime_codegen_kernel_body (kernel_node, relation)
-  return self.runtime:codegen_kernel_body(self, kernel_node, relation)
-end
-function Context:runtime_codegen_field_write (fw_node)
-  return self.runtime:codegen_field_write(self, fw_node)
-end
-function Context:runtime_codegen_field_read (fa_node)
-  return self.runtime:codegen_field_read(self, fa_node)
+
+function Context:FieldPtr(name)
+  return self.bran:fieldCode(name)
 end
 
-
-function C.codegen (kernel_ast, relation, exec_env, runtime, use_subset)
+function C.codegen (kernel_ast, bran)
   local env = terralib.newenvironment(nil)
-  local ctxt = Context.new(env, runtime)
-
-  local exec_params = exec_env.terra_struct
-
+  local ctxt = Context.new(env, bran)
 
   ctxt:enterblock()
-    local param = symbol(L.row(relation):terraType())
+    local param = symbol(L.row(ctxt.bran.relation):terraType())
     ctxt:localenv()[kernel_ast.name] = param
 
     local body  = kernel_ast.body:codegen(ctxt)
 
     local kernel_body = quote
-      for [param] = 0, exec_params.n_rows do
+      for [param] = 0, ctxt.germ.n_rows do
         [body]
       end
     end
 
-    if use_subset then
-      local _boolmask_id = exec_env.field_num['_boolmask']
+    if ctxt.bran.subset then
       kernel_body = quote
-        var boolmask = [&bool](exec_params.fields[_boolmask_id].data)
-        for [param] = 0, exec_params.n_rows do
+        var boolmask = [&bool]([ ctxt:FieldPtr('_boolmask') ])
+        for [param] = 0, ctxt.germ.n_rows do
           if boolmask[param] then -- subset guard
             [body]
           end
@@ -291,11 +282,19 @@ function ast.Assignment:codegen (ctxt)
 end
 
 function ast.FieldWrite:codegen (ctxt)
-  return ctxt:runtime_codegen_field_write(self)
+  -- just re-direct to an assignment statement for now.
+  local assign = ast.Assignment:DeriveFrom(self)
+  assign.lvalue = self.fieldaccess
+  assign.exp    = self.exp
+  if self.reduceop then assign.reduceop = self.reduceop end
+
+  return assign:codegen(ctxt)
 end
 
 function ast.FieldAccess:codegen (ctxt)
-  return ctxt:runtime_codegen_field_read(self)
+  local field = self.field
+  local index = self.row:codegen(ctxt)
+  return `@(field.data + [index])
 end
 
 function ast.Cast:codegen(ctxt)

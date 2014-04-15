@@ -553,6 +553,7 @@ end
 
 function B.terra_to_func(terrafn)
     local newfunc = Func.new()
+    newfunc.is_a_terra_func = true
     newfunc.check, newfunc.codegen = TerraCheck(terrafn), TerraCodegen(terrafn)
     return newfunc
 end

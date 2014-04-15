@@ -44,7 +44,6 @@ local LGlobal    = make_prototype("LGlobal","global")
 local LVector    = make_prototype("LVector","vector")
 local LMacro     = make_prototype("LMacro","macro")
 local Kernel     = make_prototype("LKernel","kernel")
-local KernelEnv  = make_prototype("LKernelEnv",'kernel_env')
 
 local C = terralib.require "compiler.c"
 local T = terralib.require "compiler.types"
@@ -52,7 +51,7 @@ local ast = terralib.require "compiler.ast"
 terralib.require "compiler.builtins"
 local LDB = terralib.require "compiler.ldb"
 local semant = terralib.require "compiler.semant"
-local codegen = terralib.require "compiler.codegen"
+local K = terralib.require "compiler.kernel"
 --L.LDB = LDB
 
 --[[
@@ -255,108 +254,6 @@ L.Where = L.NewMacro(function(field,key)
     q.node_type = q.exp.node_type
     return q
 end)
-
-
--------------------------------------------------------------------------------
---[[ Kernels/Runtimes                                                      ]]--
--------------------------------------------------------------------------------
-local rtlib = terralib.require 'compiler/runtimes'
-
-L.singleCore = rtlib.singleCore
-L.gpu        = rtlib.gpu
-
-local kernel_cache = {}
-local function lookup_kernel_cache(sig)
-    local str_sig = ''
-    for k,v in pairs_sorted(sig) do
-        str_sig = str_sig .. k .. '=' .. tostring(v) .. ';'
-    end
-    local lookup = kernel_cache[str_sig]
-    if not lookup then
-        lookup = {}
-        kernel_cache[str_sig] = lookup
-    end
-    return lookup
-end
-
-Kernel.__call  = function (kobj, relset)
-    if not (relset and (L.is_relation(relset) or L.is_subset(relset)))
-    then
-        error("A kernel must be called on a relation or subset.", 2)
-    end
-
-    local runtime = L.singleCore
-    --if not runtime then runtime = L.singleCore end
-    --if not rtlib.is_valid_runtime(runtime) then 
-    --    error('Argument is not a valid runtime')
-    --end
-
-    -- retreive relevant data from the kernel cache
-    local cache = lookup_kernel_cache({
-        kernel=kobj,
-        relset=relset,
-        runtime=runtime
-    })
-    if not cache.kernel_exec then
-        cache.kernel_exec, cache.kernel_env = kobj:generate(runtime, relset)
-    end
-
-    -- set up the kernel environment
-    local env_ctype = cache.kernel_env.terra_struct:get()
-
-    if L.is_relation(relset) then
-        env_ctype.n_rows = relset:Size()
-    elseif L.is_subset(relset) then
-        env_ctype.n_rows = relset:Relation():Size()
-        -- bind in the boolmask for the subset
-        local boolmask_id = cache.kernel_env.field_num['_boolmask']
-        env_ctype.fields[boolmask_id].data = relset._boolmask.data
-    end
-
-    -- launch the kernel
-    cache.kernel_exec()
-end
-
-function L.NewKernel(kernel_ast, env)
-    local new_kernel = setmetatable({}, Kernel)
-
-    new_kernel.typed_ast = semant.check(env, kernel_ast)
-
-    return new_kernel
-end
-
-function Kernel:generate (runtime, relset)
-    local relation = relset
-    if L.is_subset(relset) then relation = relset:Relation() end
-    local ast_relation = self.typed_ast.relation
-    if ast_relation ~= relation then
-        error('Kernels may only be called on relation they were typed with')
-    end
-
-    -- set up the execution environment structs
-    local n_fields = 1
-    local struct FieldEnv {
-        data : &opaque;
-    }
-    local struct EnvStruct {
-        n_rows : uint64;
-        fields : FieldEnv[n_fields];
-    }
-    local terraenv  = {
-        terra_struct = global(EnvStruct),
-        field_num = { -- which field data corresponds to this...
-            _boolmask = 0
-        },
-    }
-
-    -- do codegen
-    local use_subset = L.is_subset(relset)
-    local terrafunc = codegen.codegen(self.typed_ast, relation,
-                                      terraenv, runtime, use_subset)
-
-    return terrafunc, terraenv
-end
-
 
 
 

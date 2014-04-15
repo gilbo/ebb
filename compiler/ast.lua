@@ -192,6 +192,24 @@ function AST:passthrough(call, ctxt_arg)
 
   return copy
 end
+function AST:callthrough(call, ctxt_arg)
+  -- perform the requested call recursively on the children
+  for _,n in ipairs(self.__child_asts) do
+    local node = self[n]
+    if A.is_ast(node) then
+      node[call](node, ctxt_arg)
+    end
+  end
+  for _,n in ipairs(self.__child_ast_lists) do
+    if self[n] then
+      for i, node in ipairs(self[n]) do
+        if A.is_ast(node) then
+          node[call](node, ctxt_arg)
+        end
+      end
+    end
+  end
+end
 
 function AST:is (obj)
   return obj == getmetatable(self)

@@ -24,8 +24,8 @@ local compute_step = liszt_kernel(e : M.edges)
 	var dt   = v1.temperature - v2.temperature
 	var step = 1.0 / L.length(dp)
 
-	v1.flux -= dt * step
-	v2.flux += dt * step
+	v1.flux += -dt * step
+	v2.flux +=  dt * step
 
 	v1.jacobistep += step
 	v2.jacobistep += step
