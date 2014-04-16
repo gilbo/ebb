@@ -107,15 +107,6 @@ function Context.new(env, diag)
   }, Context)
   return ctxt
 end
---function Context:localenv()
---  --return self.env:localenv()
---end
---function Context:enterblock()
---  --self.env:enterblock()
---end
---function Context:leaveblock()
---  --self.env:leaveblock()
---end
 function Context:error(ast, ...)
   self.diag:reporterror(ast, ...)
 end
@@ -160,13 +151,6 @@ end
 function Context:logglobal(global, phase_type, node)
   local lookup = self.globals[global]
 
-  -- if this access was an error and is the first error
-  --if phase_type:isError() then
-  --  if not (lookup and lookup.phase_type:isError()) then
-  --    self:error(node, 'Non-Exclusive WRITE')
-  --  end
-  --end
-
   -- first access
   if not lookup then
     lookup = {
@@ -191,6 +175,13 @@ function Context:logglobal(global, phase_type, node)
   end
 end
 
+function Context:dumpFieldTypes()
+  local res = {}
+  for k,record in pairs(self.fields) do
+    res[k] = record.phase_type
+  end
+  return res
+end
 
 
 ------------------------------------------------------------------------------
@@ -205,6 +196,10 @@ function Phase.phasePass(kernel_ast)
   diag:begin()
     kernel_ast:phasePass(ctxt)
   diag:finishandabortiferrors("Errors during phasechecking Liszt", 1)
+
+  local field_use = ctxt:dumpFieldTypes()
+
+  return field_use
 end
 
 
@@ -252,6 +247,9 @@ function ast.Call:phasePass (ctxt)
       local centered = p.row.is_centered
       local ptype    = PT.New(PT.EXCLUSIVE, {is_centered=centered})
       ctxt:logfield(p.field, ptype, p)
+    elseif self.func.is_a_terra_func and p:is(ast.Global) then
+      self:error(p, 'Unable to verify that global field will not be '..
+                    'written by external function call.')
     else
       p:phasePass(ctxt)
     end
@@ -288,14 +286,14 @@ function ast.GenericFor:phasePass(ctxt)
   self.set:phasePass(ctxt)
   -- assert(self.set.node_type:isQuery())
 
-  -- TODO: Make Projections Count as Field-READs
-
   -- deal with any field accesses implied by projection
-  --local rel = r.set.node_type.relation
-  --for i,p in ipairs(r.set.node_type.projections) do
-  --    rel = rel[p].type.relation
-  --    assert(rel)
-  --end
+  local rel = self.set.node_type.relation
+  for i,p in ipairs(self.set.node_type.projections) do
+    local field = rel[p]
+    ctxt:logfield(field, PT.New(PT.READ), self)
+
+    rel = field.type.relation
+  end
 
   self.body:phasePass(ctxt)
 end

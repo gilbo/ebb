@@ -129,6 +129,7 @@ function L.LRelation:NewField (name, typ)
     end
 
     local field = setmetatable({}, L.LField)
+    field.data  = nil
     field.type  = typ
     field.name  = name
     field.owner = self
@@ -249,7 +250,12 @@ end
 --[[ LField methods:                                                       ]]--
 -------------------------------------------------------------------------------
 
-
+function L.LField:Name()
+    return self.name
+end
+function L.LField:FullName()
+    return self.owner._name .. '.' .. self.name
+end
 function L.LField:Size()
     return self.owner._size
 end
@@ -261,6 +267,7 @@ local bit = require "bit"
 
 -- TODO: Hide this function so it's not public
 function L.LField:Allocate()
+    if self.data then self:ClearData() end
     self.data = MallocArray(self.type:terraType(),self:Size())
 end
 
@@ -278,6 +285,48 @@ function L.LField:ClearData ()
         self.owner._index = nil
     end
 end
+
+function L.LRelation:Swap( f1_name, f2_name )
+    local f1 = self[f1_name]
+    local f2 = self[f2_name]
+    if not L.is_field(f1) then
+        error('Could not find a field named "'..f1_name..'"', 2) end
+    if not L.is_field(f2) then
+        error('Could not find a field named "'..f2_name..'"', 2) end
+    if f1.type ~= f2.type then
+        error('Cannot Swap() fields of different type', 2)
+    end
+
+    local tmp = f1.data
+    f1.data = f2.data
+    f2.data = tmp
+end
+
+function L.LRelation:Copy( p )
+    if type(p) ~= 'table' or not p.from or not p.to then
+        error("relation:Copy() should be called using the form\n"..
+              "  relation:Copy{from='f1',to='f2'}", 2)
+    end
+    local from = self[p.from]
+    local to   = self[p.to]
+    if not L.is_field(from) then
+        error('Could not find a field named "'..p.from..'"', 2) end
+    if not L.is_field(to) then
+        error('Could not find a field named "'..p.to..'"', 2) end
+    if from.type ~= to.type then
+        error('Cannot Copy() fields of different type', 2)
+    end
+
+    if not from.data then
+        error('Cannot Copy() from field with no data', 2) end
+    if not to.data then
+        to:Allocate()
+    end
+
+    local copy_size = self:Size() * terralib.sizeof(from.type:terraType())
+    C.memcpy(to.data, from.data, copy_size)
+end
+
 
 -- convert lua tables or LVectors to
 -- Terra structs used to represent vectors

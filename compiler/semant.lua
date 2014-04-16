@@ -375,6 +375,10 @@ function ast.GenericFor:check(ctxt)
     end
     local rel = r.set.node_type.relation
     for i,p in ipairs(r.set.node_type.projections) do
+        if not rel[p] then
+            ctxt:error(self,"Could not find field '"..p.."'")
+            return r
+        end
         rel = rel[p].type.relation
         assert(rel)
     end

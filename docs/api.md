@@ -102,6 +102,9 @@ relation.field:Type()
 As soon as we've created a field we probably want to load data into it.  A number of different options are available
 
 ### Loading Fields
+
+The `field:Load()` function can be used in three different ways to load in initial data to a newly created field.
+
 #### Load from constant
 ```
 relation.field:LoadConstant(constant_value)
@@ -114,7 +117,7 @@ or a velocity vector
 ```
 relation.velocity:LoadConstant({0,0,0})
 ```
-Note that we can use a Lua list of the right length to initialize a velocity field
+Note that we can use a Lua list of the right length to initialize a vector-typed field, such as velocity
 
 #### Load from list
 ```
@@ -129,19 +132,12 @@ relation.temperature:LoadList({0.1,0.2,0.3,0.4,0.5,0.4,0.3,0.2,0.1})
 ````
 relation.field:LoadFunction(lua_function)
 ```
-We can also use a lua function to compute the value to set.  The function we pass in should take one argument, specifying the row index (`0` to `N-1`) and return the value for the field at that row.  For instance, if we want to dump a bunch of heat on one row and set the rest to `0`
+We can also use a lua function to compute the value to set.  The function we pass in should take one argument, specifying the row index (`0` to `N-1`) and return the value for the field at that row.  For instance, if we want to dump a bunch of heat on one element and set the rest to `0` we could write
 ```
 relation.temperature:LoadFunction(function(i)
   if i == 0 then return 1000 else return 0 end
 end)
 ```
-
-#### Magic Load
-To simplify things, you can just call one load function
-```
-relation.field:Load(obj)
-```
-The magic `Load` function will try to figure out which of the other three specialized load functions to call for you based on what object you passed into it.
 
 ### Field Dumping
 

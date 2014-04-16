@@ -55,6 +55,10 @@ A Bran -- a Lua table
             - a germ
             - executable function
             - field/phase signature
+
+Each Kernel may have many Brans, each a compile-time specialization
+Each Bran may have a different assignment of Germ values for each execution
+
 ]]--
 
 local Bran = {}
@@ -80,13 +84,14 @@ local function seedbank_lookup(sig)
   return bran
 end
 
-local MAX_FIELDS = 16
+local MAX_FIELDS = 32
 -- Germ Terra Structs
 local struct GermField {
     data : &opaque;
 }
 local struct Germ {
     n_rows : uint64;
+    n_fields : int; -- # of fields referred to, i.e. below
     fields : GermField[MAX_FIELDS];
 }
 
@@ -100,7 +105,7 @@ function L.NewKernel(kernel_ast, env)
 
     -- All declaration time processing here
     new_kernel.typed_ast = semant.check(env, kernel_ast)
-    phase.phasePass(new_kernel.typed_ast)
+    new_kernel.field_use = phase.phasePass(new_kernel.typed_ast)
 
     return new_kernel
 end
@@ -127,15 +132,12 @@ L.LKernel.__call  = function (kobj, relset)
 
     -- set execution parameters in the germ
     local germ = bran.germ:get()
-
-    if L.is_relation(relset) then
-        germ.n_rows = relset:Size()
-    elseif L.is_subset(relset) then
-        germ.n_rows = relset:Relation():Size()
-        -- bind in the boolmask for the subset
-        bran:setFieldData('_boolmask', relset._boolmask.data)
+    germ.n_rows   = bran.relation:Size()
+    germ.n_fields = bran.n_field_ids
+    -- bind the field data
+    for field, _ in pairs(bran.field_ids) do
+      bran:getFieldGerm(field).data = field.data
     end
-
 
     -- launch the kernel
     bran.executable()
@@ -146,6 +148,7 @@ function Bran:generate()
   local kernel    = bran.kernel
   local typed_ast = bran.kernel.typed_ast
 
+  -- break out the arguments
   if L.is_relation(bran.relset) then
     bran.relation = bran.relset
   else
@@ -153,34 +156,55 @@ function Bran:generate()
     bran.subset   = bran.relset
   end
 
-
   -- type checking the kernel signature against the invocation
   if typed_ast.relation ~= bran.relation then
       error('Kernels may only be called on a relation they were typed with')
   end
 
+  -- initialize the Germ and germ related metadata
+  bran.germ         = global(Germ)
+  bran.field_ids    = {}
+  bran.n_field_ids  = 0 -- for safety
 
-  -- initialize the Germ
-  bran.germ = global(Germ)
-  bran.field_id = {
-    _boolmask = 0
-  }
+  -- fix the mapping for the fields before compiling the executable
+  if bran.subset then
+    bran:getFieldGerm(bran.subset._boolmask)
+  end
+  for field, _ in pairs(kernel.field_use) do
+    bran:getFieldGerm(field)
+  end
 
   -- compile an executable
   bran.executable = codegen.codegen(typed_ast, bran)
 end
 
-function Bran:setFieldData(field_name, value)
-  local id = self.field_id[field_name]
-  local germ = self.germ:get()
-  germ.fields[id].data = value
+function Bran:getFieldGerm(field)
+  -- get the id for the bran
+  local id = self.field_ids[field]
+  if not self.field_ids[field] then
+    if self.executable then
+      error('INTERNAL ERROR: cannot add new fields after compilation')
+    end
+    id = self.n_field_ids
+    self.field_ids[field] = id
+    self.n_field_ids = id + 1
+  end
+
+  return self.germ:get().fields[id]
 end
 
-function Bran:fieldCode(field_name)
-  local id = self.field_id[field_name]
-  local germ = self.germ
-  return `germ.fields[id].data
-end
+--function Bran:setFieldData(field_name, value)
+--  --local field_name = field:Name()
+--  local id = self.field_id[field_name]
+--  local germ = self.germ:get()
+--  germ.fields[id].data = value
+--end
+--
+--function Bran:fieldCode(field_name)
+--  local id = self.field_id[field_name]
+--  local germ = self.germ
+--  return `germ.fields[id].data
+--end
 
 
 

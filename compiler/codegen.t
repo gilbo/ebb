@@ -26,8 +26,8 @@ function Context:leaveblock()
   self.env:leaveblock()
 end
 
-function Context:FieldPtr(name)
-  return self.bran:fieldCode(name)
+function Context:FieldPtr(field)
+  return `[self.bran:getFieldGerm(field)].data
 end
 
 function C.codegen (kernel_ast, bran)
@@ -47,8 +47,9 @@ function C.codegen (kernel_ast, bran)
     end
 
     if ctxt.bran.subset then
+      local subset = ctxt.bran.subset
       kernel_body = quote
-        var boolmask = [&bool]([ ctxt:FieldPtr('_boolmask') ])
+        var boolmask = [&bool]([ ctxt:FieldPtr(subset._boolmask) ])
         for [param] = 0, ctxt.germ.n_rows do
           if boolmask[param] then -- subset guard
             [body]
@@ -304,7 +305,8 @@ end
 function ast.FieldAccess:codegen (ctxt)
   local field = self.field
   local index = self.row:codegen(ctxt)
-  return `@(field.data + [index])
+  local dataptr = `[&self.node_type:terraType()]([ ctxt:FieldPtr(field) ])
+  return `@(dataptr + [index])
 end
 
 function ast.Cast:codegen(ctxt)
@@ -439,9 +441,10 @@ function ast.Where:codegen(ctxt)
     return v
 end
 
-local function doProjection(obj,field)
+local function doProjection(obj,field,ctxt)
     assert(L.is_field(field))
-    return `field.data[obj]
+    local dataptr = `[&field:Type():terraType()]([ ctxt:FieldPtr(field) ])
+    return `dataptr[obj]
 end
 
 function ast.GenericFor:codegen (ctxt)
@@ -452,7 +455,7 @@ function ast.GenericFor:codegen (ctxt)
 
     for i,p in ipairs(self.set.node_type.projections) do
         local field = rel[p]
-        projected   = doProjection(projected,field)
+        projected   = doProjection(projected,field,ctxt)
         rel         = field.type.relation
         assert(rel)
     end
