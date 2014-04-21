@@ -32,9 +32,6 @@ cells:NewField('uninitialized', L.double)
 cells:NewField('ftype', L.float):Load(0)
 
 -- Swap Failures
---test.fail_function(function()
---  cells:Swap('f1','uninitialized')
---end, 'something')
 test.fail_function(function()
   cells:Swap('f1','noname')
 end, 'Could not find a field named "noname"')

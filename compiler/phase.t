@@ -276,7 +276,7 @@ function ast.Where:phasePass(ctxt)
 
   -- Which field is the index effectively having us read?
   local ptype = PT.New(PT.READ)
-  local field = self.relation._index
+  local field = self.relation._grouping.key_field
   ctxt:logfield(field, ptype, self)
 
   self.key:phasePass(ctxt)

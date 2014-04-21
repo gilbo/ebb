@@ -77,11 +77,12 @@ local function test_db_eq(dba, dbb)
     for rname, rela in pairs(dba) do
       local relb = dbb[rname]
 
-      -- check index equality
-      if rela._index then
-        test.eq(rela._index.name, relb._index.name)
+      -- check grouping equality
+      if rela._grouped and relb._grouped then
+        test.eq(rela._grouped.key_field:Name(),
+                relb._grouped.key_field:Name())
       else
-        test.eq(rela._index, relb._index)
+        test.eq(rela._grouped, relb._grouped)
       end
 
       -- check size equality
@@ -191,10 +192,10 @@ test.fail_function(function() L.LoadRelationSchema{
 } end, 'expected to find key \'fields\'')
 test.fail_function(function() L.LoadRelationSchema{
   file = datadir .. 'broken_simp/non_str_index.json',
-} end, '<root>.relations.cells.index: expected string')
+} end, '<root>.relations.cells.grouped_by: expected string')
 test.fail_function(function() L.LoadRelationSchema{
   file = datadir .. 'broken_simp/dangling_index.json',
-} end, 'an entry in the "fields" object could not be found.')
+} end, 'is grouped by field "abc" but that field couldn\'t be found.')
 test.fail_function(function() L.LoadRelationSchema{
   file = datadir .. 'broken_simp/invalid_field_name.json',
 } end, 'Invalid Field name')

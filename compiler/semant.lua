@@ -999,9 +999,11 @@ function ast.Where:check(ctxt)
         ctxt:error(self,"Key of where is type ",keytype,
                    " but expected type ",field.type)
     end
-    if field.owner._index ~= field then
-        ctxt:error(self,"Field ",field.name,
-                   " is not an index of ",field.owner:Name())
+    if not field.owner._grouping or
+       field.owner._grouping.key_field ~= field
+    then
+        ctxt:error(self,"Relation '"..field.owner:Name().."' is not "..
+                        "grouped by Field '"..field.name.."'")
     end
     local w     = self:clone()
     w.relation  = field.owner

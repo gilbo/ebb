@@ -39,7 +39,8 @@ local function make_prototype(objname,name)
 end
 local LRelation  = make_prototype("LRelation","relation")
 local LField     = make_prototype("LField","field")
-local LSubset    = make_prototype("LSubset", "subset")
+local LSubset    = make_prototype("LSubset","subset")
+local LIndex     = make_prototype("LIndex","index")
 local LGlobal    = make_prototype("LGlobal","global")
 local LVector    = make_prototype("LVector","vector")
 local LMacro     = make_prototype("LMacro","macro")
@@ -54,13 +55,6 @@ local semant = terralib.require "compiler.semant"
 local K = terralib.require "compiler.kernel"
 --L.LDB = LDB
 
---[[
-- An LRelation contains its size and fields as members.  The _index member
-- refers to an array of the compressed row values for the index field.
-
-- An LField stores its fieldname, type, an array of data, and a pointer
-- to another LRelation if the field itself represents relational data.
---]]
 local is_vector = L.is_vector --cache lookup for efficiency
 
 -------------------------------------------------------------------------------

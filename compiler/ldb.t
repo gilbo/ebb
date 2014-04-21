@@ -101,44 +101,30 @@ end
 -- prevent user from modifying the lua table
 function L.LRelation:__newindex(fieldname,value)
     error("Cannot assign members to LRelation object "..
-          "(did you mean to call self:NewField?)", 2)
+          "(did you mean to call self:New...?)", 2)
 end
 
-function L.LRelation:NewField (name, typ)  
-    if not name or type(name) ~= "string" then
-        error("NewField() expects a string as the first argument", 2)
-    end
-    if not is_valid_lua_identifier(name) then
-        error(valid_field_name_err_msg, 2)
-    end
-    if self[name] then
-        error("Cannot create a new field with name '"..name.."'  "..
-              "That name is already being used.", 2)
-    end
-    
-    local function is_value_or_row_type()
-        return T.isLisztType(typ) and typ:isFieldType()
-    end
-    if not L.is_relation(typ) and not is_value_or_row_type() then
-        error("NewField() expects a Liszt type or "..
-              "relation as the 2nd argument", 2)
-    end
+local function new_raw_field(rel, name, typ)
+    local field   = setmetatable({}, L.LField)
+    field.data    = nil
+    field.type    = typ
+    field.name    = name
+    field.owner   = rel
 
-    if L.is_relation(typ) then
-        typ = L.row(typ)
-    end
-
-    local field = setmetatable({}, L.LField)
-    field.data  = nil
-    field.type  = typ
-    field.name  = name
-    field.owner = self
-    rawset(self, name, field)
-    self._fields:insert(field)
     return field
 end
 
-function L.LRelation:NewFieldMacro (name, macro)  
+local function new_raw_index(rel, name, size)
+    local index = setmetatable({
+        _owner = rel,
+        _name  = name,
+    }, L.LIndex)
+    index:ReAllocate(size)
+
+    return index
+end
+
+function L.LRelation:NewFieldMacro (name, macro)
     if not name or type(name) ~= "string" then
         error("NewFieldMacro() expects a string as the first argument", 2)
     end
@@ -159,21 +145,116 @@ function L.LRelation:NewFieldMacro (name, macro)
     return macro
 end
 
-local function new_subset (relation, name)
-    local field   = setmetatable({}, L.LField)
-    field.type    = L.bool
-    field.name    = name .. '_boolmask'
-    field.owner   = relation
+function L.LRelation:GroupBy(name)
+    local key_field = self[name]
+    if self._grouping then
+        error("GroupBy(): Relation is already grouped", 2)
+    elseif not L.is_field(key_field) then
+        error("GroupBy(): Could not find a field named '"..name.."'", 2)
+    elseif not key_field.type:isRow() then
+        error("GroupBy(): Grouping by non-row-type fields is "..
+              "currently prohibited.", 2)
+    end
 
-    local subset = setmetatable({
-        _relation = relation,
-        _boolmask = field,
-        _name     = name,
-    }, L.LSubset)
+    -- WARNING: The sizing policy will break once we start supporting dead rows
+    local num_keys = key_field.type.relation:Size()
+    local num_rows = key_field:Size()
+    rawset(self,'_grouping', {
+        key_field = key_field,
+        index = new_raw_index(self, 'groupby_'..key_field:Name(), num_keys+1)
+    })
+    local indexdata = self._grouping.index._data
 
-    rawset(relation, name, subset)
-    relation._subsets:insert(subset)
-    return subset
+    local prev,pos = 0,0
+    for i = 0, num_keys - 1 do
+        indexdata[i] = pos
+        while key_field.data[pos] == i and pos < num_rows do
+            if key_field.data[pos] < prev then
+                self._grouping.index:Release()
+                self._grouping = nil
+                error("GroupBy(): Key field '"..name.."' is not sorted.")
+            end
+            prev,pos = key_field.data[pos], pos+1
+        end
+    end
+    assert(pos == num_rows)
+    indexdata[num_keys] = pos
+end
+
+--[[function L.LRelation:CreateIndex(name)
+    local f = self[name]
+    if self._index then
+        error("CreateIndex(): Relation already has an index", 2)
+    end
+    if not L.is_field(f) then
+        error("CreateIndex(): Could not find a field named '"..name.."'", 2)
+    end
+    if not f.type:isRow() then
+        error("CreateIndex(): index field must refer to a relation", 2)
+    end
+
+    local rel = f.type.relation
+    rawset(self,"_index",f)
+    local numindices = rel:Size()
+    local numvalues = f:Size()
+    rawset(self,"_indexdata",MallocArray(uint64,numindices+1))
+    local prev,pos = 0,0
+    for i = 0, numindices - 1 do
+        self._indexdata[i] = pos
+        while f.data[pos] == i and pos < numvalues do
+            if f.data[pos] < prev then
+                -- TODO: NEED TO FREE ALLOCATION SAFELY IN THIS CASE
+                error("CreateIndex(): Index field is not sorted")
+            end
+            prev,pos = f.data[pos],pos + 1
+        end
+    end
+    assert(pos == numvalues)
+    self._indexdata[numindices] = pos
+end]]
+
+
+function L.LRelation:print()
+    print(self._name, "size: ".. tostring(self._size))
+    for i,f in ipairs(self._fields) do
+        f:print()
+    end
+end
+
+
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+--[[ Indices:                                                              ]]--
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+
+function L.LIndex:Relation()
+    return self._owner
+end
+
+function L.LIndex:ReAllocate(size)
+    self:Release()
+
+    local taddr = L.addr:terraType()
+    self._data = MallocArray(taddr, size)
+    self._size = size
+end
+
+function L.LIndex:Release()
+    if self._data then
+        C.free(self._data)
+        self._data = nil
+    end
+end
+
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+--[[ Subsets:                                                              ]]--
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+
+function L.LSubset:Relation()
+    return self._owner
 end
 
 function L.LRelation:NewSubsetFromFunction (name, predicate)
@@ -194,60 +275,45 @@ function L.LRelation:NewSubsetFromFunction (name, predicate)
               "for determining membership as the second argument")
     end
 
-    local subset = new_subset(self, name)
-    subset._boolmask:LoadFunction(predicate)
+    -- setup and install the subset object
+    local subset = setmetatable({
+        _owner    = self,
+        _name     = name,
+    }, L.LSubset)
+    rawset(self, name, subset)
+    self._subsets:insert(subset)
+
+    -- NOW WE DECIDE how to encode the subset
+    -- we'll try building a mask and then decide between using a mask or index
+    local boolmask = new_raw_field(self, name..'_boolmask', L.bool)
+    local index_tbl = {}
+    local subset_size = 0
+    boolmask:LoadFunction(function(i)
+        local val = predicate(i)
+        if val then
+            table.insert(index_tbl, i)
+            subset_size = subset_size + 1
+        end
+        return val
+    end)
+
+    local SUBSET_CUTOFF_FRAC = 0.1
+    if true then --subset_size / self:Size() > SUBSET_CUTOFF then
+    -- USE MASK
+        subset._boolmask = boolmask
+    else
+    -- USE INDEX
+        boolmask:ClearData() -- free memory
+    end
+
     return subset
 end
 
-function L.LRelation:CreateIndex(name)
-    local f = self[name]
-    if self._index then
-        error("CreateIndex(): Relation already has an index")
-    end
-    if not L.is_field(f) then
-        error("CreateIndex(): No field "..name)
-    end
-    if not f.type:isRow() then
-        error("CreateIndex(): index field must refer to a relation")
-    end
-    local rel = f.type.relation
-    rawset(self,"_index",f)
-    local numindices = rel:Size()
-    local numvalues = f:Size()
-    rawset(self,"_indexdata",MallocArray(uint64,numindices+1))
-    local prev,pos = 0,0
-    for i = 0, numindices - 1 do
-        self._indexdata[i] = pos
-        while f.data[pos] == i and pos < numvalues do
-            if f.data[pos] < prev then
-                -- TODO: NEED TO FREE ALLOCATION SAFELY IN THIS CASE
-                error("CreateIndex(): Index field is not sorted")
-            end
-            prev,pos = f.data[pos],pos + 1
-        end
-    end
-    assert(pos == numvalues)
-    self._indexdata[numindices] = pos
-end
-
-
-function L.LRelation:print()
-    print(self._name, "size: ".. tostring(self._size))
-    for i,f in ipairs(self._fields) do
-        f:print()
-    end
-end
 
 -------------------------------------------------------------------------------
---[[ LSubset methods:                                                      ]]--
 -------------------------------------------------------------------------------
-
-function L.LSubset:Relation()
-    return self._relation
-end
-
+--[[ Fields:                                                               ]]--
 -------------------------------------------------------------------------------
---[[ LField methods:                                                       ]]--
 -------------------------------------------------------------------------------
 
 function L.LField:Name()
@@ -263,7 +329,31 @@ function L.LField:Type()
     return self.type
 end
 
-local bit = require "bit"
+function L.LRelation:NewField (name, typ)  
+    if not name or type(name) ~= "string" then
+        error("NewField() expects a string as the first argument", 2)
+    end
+    if not is_valid_lua_identifier(name) then
+        error(valid_field_name_err_msg, 2)
+    end
+    if self[name] then
+        error("Cannot create a new field with name '"..name.."'  "..
+              "That name is already being used.", 2)
+    end
+    
+    if L.is_relation(typ) then
+        typ = L.row(typ)
+    end
+    if not T.isLisztType(typ) or not typ:isFieldType() then
+        error("NewField() expects a Liszt type or "..
+              "relation as the 2nd argument", 2)
+    end
+
+    local field = new_raw_field(self, name, typ)
+    rawset(self, name, field)
+    self._fields:insert(field)
+    return field
+end
 
 -- TODO: Hide this function so it's not public
 function L.LField:Allocate()
@@ -278,11 +368,12 @@ function L.LField:ClearData ()
         C.free(self.data)
         self.data = nil
     end
-    -- clear index if installed on this field
-    if self.owner._index == self then
-        C.free(self.owner._indexdata)
-        self.owner._indexdata = nil
-        self.owner._index = nil
+    -- clear grouping data if set on this field
+    if self.owner._grouping and
+       self.owner._grouping.key_field == self
+    then
+        self.owner._grouping.index:Release()
+        self.owner._grouping = nil
     end
 end
 
@@ -516,6 +607,8 @@ end
 local function is_path_or_str(obj)
     return type(obj) == 'string' or PN.is_pathname(obj)
 end
+
+local bit = require "bit"
 
 
 
@@ -811,7 +904,7 @@ local schema_file_format = JSONSchema.New {
       },
       ['size'] = JSONSchema.Num,
       ['?'] = { -- optional fields
-          ['index'] = JSONSchema.String
+          ['grouped_by'] = JSONSchema.String
       }
     }
   }
@@ -943,9 +1036,9 @@ local function json_serialize_relation(relation, params)
         end
     end
 
-    -- attach an index flag if present
-    if relation._index then
-        json.index = relation._index.name
+    -- attach a grouping flag if the relation is grouped
+    if relation._grouping then
+        json.grouped_by = relation._grouping.key_field:Name()
     end
 
     return json
@@ -1203,15 +1296,13 @@ local function check_schema_json(json, opts)
 
         local relstr = 'Relation "'..rname..'"'
 
-        -- if the relation has an index, make sure it's a string and
-        -- that it's a field-name present in the fields object
-        if rjson.index then
-
-            local lookup = rjson.fields[rjson.index]
+        -- if the relation is grouped, then make sure it's a valid grouping
+        if rjson.grouped_by then
+            local lookup = rjson.fields[rjson.grouped_by]
             if not lookup then
-                error(err..relstr..' has index field "'..rjson.index..'" '..
-                      'but an entry in the "fields" object '..
-                      'could not be found.', 3)
+                error(err..relstr..' is grouped by field '..
+                      '"'..rjson.grouped_by..'" but that field '..
+                      'couldn\'t be found.', 3)
             end
         end
 
@@ -1368,9 +1459,9 @@ local interface_description = [[
             })
         end
 
-        -- reconstitute the index if one is present
-        if rjson.index then
-            rel:CreateIndex(rjson.index)
+        -- install a grouping if one was declared
+        if rjson.grouped_by then
+            rel:GroupBy(rjson.grouped_by)
         end
     end
 

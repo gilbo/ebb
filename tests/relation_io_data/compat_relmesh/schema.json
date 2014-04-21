@@ -26,7 +26,7 @@
         }
       },
       "size":24,
-      "index":"face"
+      "grouped_by":"face"
     },
     "verticesofcell":{
       "fields":{
@@ -46,7 +46,7 @@
         }
       },
       "size":16,
-      "index":"cell"
+      "grouped_by":"cell"
     },
     "cellsofvertex":{
       "fields":{
@@ -66,7 +66,7 @@
         }
       },
       "size":16,
-      "index":"vertex"
+      "grouped_by":"vertex"
     },
     "facesofedge":{
       "fields":{
@@ -93,7 +93,7 @@
         }
       },
       "size":24,
-      "index":"edge"
+      "grouped_by":"edge"
     },
     "verticesofface":{
       "fields":{
@@ -113,7 +113,7 @@
         }
       },
       "size":24,
-      "index":"face"
+      "grouped_by":"face"
     },
     "cells":{
       "size":2,
@@ -144,7 +144,7 @@
         }
       },
       "size":12,
-      "index":"cell"
+      "grouped_by":"cell"
     },
     "edges":{
       "size":12,
@@ -183,7 +183,7 @@
         }
       },
       "size":12,
-      "index":"c1"
+      "grouped_by":"c1"
     },
     "cellsofedge":{
       "fields":{
@@ -203,7 +203,7 @@
         }
       },
       "size":24,
-      "index":"edge"
+      "grouped_by":"edge"
     },
     "verticesofvertex":{
       "fields":{
@@ -223,7 +223,7 @@
         }
       },
       "size":24,
-      "index":"v1"
+      "grouped_by":"v1"
     },
     "faces":{
       "size":6,
@@ -278,7 +278,7 @@
         }
       },
       "size":24,
-      "index":"vertex"
+      "grouped_by":"vertex"
     },
     "edgesofcell":{
       "fields":{
@@ -298,7 +298,7 @@
         }
       },
       "size":24,
-      "index":"cell"
+      "grouped_by":"cell"
     },
     "edgesofvertex":{
       "fields":{
@@ -325,7 +325,7 @@
         }
       },
       "size":24,
-      "index":"vertex"
+      "grouped_by":"vertex"
     }
   },
   "notes":"",

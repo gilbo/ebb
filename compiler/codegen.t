@@ -431,10 +431,10 @@ end
 function ast.Where:codegen(ctxt)
     local key   = self.key:codegen(ctxt)
     local sType = self.node_type:terraType()
-    local index = self.relation._indexdata
+    local indexdata = self.relation._grouping.index._data
     local v = quote
         var k   = [key]
-        var idx = [index]
+        var idx = [indexdata]
     in 
         sType { idx[k], idx[k+1] }
     end

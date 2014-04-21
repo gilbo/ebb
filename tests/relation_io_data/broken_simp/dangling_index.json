@@ -12,7 +12,7 @@
           "path":"cells/temperature.field"
         }
       },
-      "index":"abc"
+      "grouped_by":"abc"
     },
     "particles":{
       "size":30,

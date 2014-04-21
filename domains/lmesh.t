@@ -93,7 +93,7 @@ function initFieldFromIndex(rel,name, key, row_idx)
     end
     f:LoadFromMemory(scratch)
     C.free(scratch)
-    rel:CreateIndex(name)
+    rel:GroupBy(name)
 end
 
 local function initMeshRelations(mesh)
