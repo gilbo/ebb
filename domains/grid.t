@@ -67,6 +67,15 @@ local function setupCells(grid)
                        c.is_up_bnd   or c.is_down_bnd
     end))
 
+    local function is_boundary(i)
+        return math.floor(i/xsize) == 0 or math.floor(i/xsize) == xsize-1
+            or i%xsize == 0 or i%xsize == xsize-1
+    end
+    grid.cells:NewSubsetFromFunction('boundary', is_boundary)
+    grid.cells:NewSubsetFromFunction('interior', function(i)
+        return not is_boundary(i)
+    end)
+
     -- Aliases
     grid.cells:NewFieldMacro('in_boundary_region', L.NewMacro(function(c)
         return liszt ` c.is_bnd
@@ -74,6 +83,7 @@ local function setupCells(grid)
     grid.cells:NewFieldMacro('in_interior', L.NewMacro(function(c)
         return liszt ` not c.is_bnd
     end))
+
 end
 
 -- There are N-1 x M-1 dual cells for an NxM grid

@@ -38,33 +38,29 @@ grid.cells.velocity_prev:LoadConstant(L.NewVector(L.float, {0,0}))
 --[[                             UPDATES                                 ]]--
 -----------------------------------------------------------------------------
 
-local vel_neumann_bnd_table = {}
-local function velocity_neumann_bnd_from(from)
-    if not vel_neumann_bnd_table[from] then
-        vel_neumann_bnd_table[from] = liszt kernel (c : grid.cells)
-            var v = c.[from]
-            if c.is_bnd then
-                if c.is_left_bnd then
-                    v = c.right.[from]
-                    v[0] = -v[0]
-                elseif c.is_right_bnd then
-                    v = c.left.[from]
-                    v[0] = -v[0]
-                elseif c.is_up_bnd then
-                    v = c.down.[from]
-                    v[1] = -v[1]
-                elseif c.is_down_bnd then
-                    v = c.up.[from]
-                    v[1] = -v[1]
-                end
-            end
-            c.velocity = v
-        end
+grid.cells:NewField('vel_shadow', L.vec2f):Load({0,0})
+local neumann_shadow_update = liszt kernel (c : grid.cells)
+    if c.is_left_bnd then
+        var v = c.right.velocity
+        c.vel_shadow = { -v[0],  v[1] }
+    elseif c.is_right_bnd then
+        var v = c.left.velocity
+        c.vel_shadow = { -v[0],  v[1] }
+    elseif c.is_up_bnd then
+        var v = c.down.velocity
+        c.vel_shadow = {  v[0], -v[1] }
+    elseif c.is_down_bnd then
+        var v = c.up.velocity
+        c.vel_shadow = {  v[0], -v[1] }
     end
-    return vel_neumann_bnd_table[from]
 end
-local velocity_update_bnd = velocity_neumann_bnd_from('velocity_prev')
-
+local neumann_cpy_update = liszt kernel (c : grid.cells)
+    c.velocity = c.vel_shadow
+end
+local function vel_neumann_bnd(cells)
+    neumann_shadow_update(cells.boundary)
+    neumann_cpy_update(cells.boundary)
+end
 
 -----------------------------------------------------------------------------
 --[[                             VELSTEP                                 ]]--
@@ -76,7 +72,6 @@ local velocity_update_bnd = velocity_neumann_bnd_from('velocity_prev')
 
 local diffuse_diagonal = L.NewGlobal(L.float, 0.0)
 local diffuse_edge     = L.NewGlobal(L.float, 0.0)
-grid.cells:NewField('diffuse_temp', L.vec2f):Load(L.NewVector(L.float, {0,0}))
 
 -- One Jacobi-Iteration
 local diffuse_lin_solve_jacobi_step = liszt kernel (c : grid.cells)
@@ -85,7 +80,7 @@ local diffuse_lin_solve_jacobi_step = liszt kernel (c : grid.cells)
             c.left.velocity + c.right.velocity +
             c.up.velocity + c.down.velocity
         )
-        c.diffuse_temp = (c.velocity_prev - edge_sum) / diffuse_diagonal
+        c.vel_shadow = (c.velocity_prev - edge_sum) / diffuse_diagonal
     end
 end
 
@@ -98,7 +93,8 @@ local function diffuse_lin_solve(edge, diagonal)
     -- do 20 Jacobi iterations
     for i=1,20 do
         diffuse_lin_solve_jacobi_step(grid.cells)
-        velocity_neumann_bnd_from('diffuse_temp')(grid.cells)
+        grid.cells:Swap('velocity','vel_shadow')
+        vel_neumann_bnd(grid.cells)
     end
 end
 
@@ -163,8 +159,7 @@ local function advect_velocity(grid)
     advect_point_locate(grid.cells)
     advect_interpolate_velocity(grid.cells)
 
-    grid.cells:Swap('velocity','velocity_prev')
-    velocity_update_bnd(grid.cells) -- COPY back to VEL from PREV
+    vel_neumann_bnd(grid.cells)
 end
 
 -----------------------------------------------------------------------------
@@ -184,22 +179,27 @@ local project_lin_solve_jacobi_step = liszt kernel (c : grid.cells)
         c.p_temp = (c.divergence - edge_sum) / project_diagonal
     end
 end
+
 -- Neumann condition
-local project_lin_solve_bnd_condition = liszt kernel (c : grid.cells)
-    var p = c.p_temp
-    if c.is_bnd then
-        if c.is_left_bnd then
-            p = c.right.p_temp
-        elseif c.is_right_bnd then
-            p = c.left.p_temp
-        elseif c.is_up_bnd then
-            p = c.down.p_temp
-        elseif c.is_down_bnd then
-            p = c.up.p_temp
-        end
+local pressure_shadow_update = liszt kernel (c : grid.cells)
+    if c.is_left_bnd then
+        c.p_temp = c.right.p
+    elseif c.is_right_bnd then
+        c.p_temp = c.left.p
+    elseif c.is_up_bnd then
+        c.p_temp = c.down.p
+    elseif c.is_down_bnd then
+        c.p_temp = c.up.p
     end
-    c.p = p
 end
+local pressure_cpy_update = liszt kernel (c : grid.cells)
+    c.p = c.p_temp
+end
+local function pressure_neumann_bnd(cells)
+    pressure_shadow_update(cells.boundary)
+    pressure_cpy_update(cells.boundary)
+end
+
 
 -- Should be called with velocity and velocity_prev both set to
 -- the previous velocity field value...
@@ -210,7 +210,8 @@ local function project_lin_solve(edge, diagonal)
     -- do 20 Jacobi iterations
     for i=1,20 do
         project_lin_solve_jacobi_step(grid.cells)
-        project_lin_solve_bnd_condition(grid.cells)
+        grid.cells:Swap('p','p_temp')
+        pressure_neumann_bnd(grid.cells)
     end
 end
 
@@ -238,17 +239,16 @@ local function project_velocity(grid)
     local edge              = -1.0
 
     compute_divergence(grid.cells)
-    grid.cells:Swap('divergence','p_temp')
-    project_lin_solve_bnd_condition(grid.cells)
-    grid.cells:Copy{from='p',to='divergence'}
+    grid.cells:Swap('divergence','p') -- move divergence into p to do bnd
+    pressure_neumann_bnd(grid.cells)
+    grid.cells:Copy{from='p',to='divergence'} -- then copy it back
 
     project_lin_solve(edge, diagonal)
 
     grid.cells:Swap('velocity','velocity_prev')
     compute_projection(grid.cells)
 
-    grid.cells:Swap('velocity','velocity_prev')
-    velocity_update_bnd(grid.cells)
+    vel_neumann_bnd(grid.cells)
 end
 
 

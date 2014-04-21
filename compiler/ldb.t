@@ -237,9 +237,9 @@ function L.LRelation:NewSubsetFromFunction (name, predicate)
               "That name is already being used.", 2)
     end
 
-    if not type(predicate) == 'function' then
+    if type(predicate) ~= 'function' then
         error("NewSubsetFromFunction() expects a predicate "..
-              "for determining membership as the second argument")
+              "for determining membership as the second argument", 2)
     end
 
     -- setup and install the subset object
@@ -279,6 +279,29 @@ function L.LRelation:NewSubsetFromFunction (name, predicate)
     return subset
 end
 
+--function L.LRelation:NewSubsetFromField (name, field_name)
+--    if not name or type(name) ~= "string" then
+--        error("NewSubsetFromField() "..
+--              "expects a string as the first argument", 2)
+--    end
+--    if not is_valid_lua_identifier(name) then
+--        error(valid_subset_name_err_msg, 2)
+--    end
+--    if self[name] then
+--        error("Cannot create a new subset with name '"..name.."'  "..
+--              "That name is already being used.", 2)
+--    end
+--
+--    local field = self[field_name]
+--    if not L.is_field(field) or not field.type == L.bool then
+--        error("NewSubsetFromField(): second argument "..
+--              "'"..tostring(field_name).."' is not a bool-type field name", 2)
+--    end
+--
+--    self:NewSubsetFromFunction(function(i)
+--        return field.data[i]
+--    end)
+--end
 
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
