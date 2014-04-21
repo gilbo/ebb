@@ -104,25 +104,6 @@ function L.LRelation:__newindex(fieldname,value)
           "(did you mean to call self:New...?)", 2)
 end
 
-local function new_raw_field(rel, name, typ)
-    local field   = setmetatable({}, L.LField)
-    field.data    = nil
-    field.type    = typ
-    field.name    = name
-    field.owner   = rel
-
-    return field
-end
-
-local function new_raw_index(rel, name, size)
-    local index = setmetatable({
-        _owner = rel,
-        _name  = name,
-    }, L.LIndex)
-    index:ReAllocate(size)
-
-    return index
-end
 
 function L.LRelation:NewFieldMacro (name, macro)
     if not name or type(name) ~= "string" then
@@ -161,7 +142,7 @@ function L.LRelation:GroupBy(name)
     local num_rows = key_field:Size()
     rawset(self,'_grouping', {
         key_field = key_field,
-        index = new_raw_index(self, 'groupby_'..key_field:Name(), num_keys+1)
+        index = L.LIndex.New(self, 'groupby_'..key_field:Name(), num_keys+1)
     })
     local indexdata = self._grouping.index._data
 
@@ -181,37 +162,6 @@ function L.LRelation:GroupBy(name)
     indexdata[num_keys] = pos
 end
 
---[[function L.LRelation:CreateIndex(name)
-    local f = self[name]
-    if self._index then
-        error("CreateIndex(): Relation already has an index", 2)
-    end
-    if not L.is_field(f) then
-        error("CreateIndex(): Could not find a field named '"..name.."'", 2)
-    end
-    if not f.type:isRow() then
-        error("CreateIndex(): index field must refer to a relation", 2)
-    end
-
-    local rel = f.type.relation
-    rawset(self,"_index",f)
-    local numindices = rel:Size()
-    local numvalues = f:Size()
-    rawset(self,"_indexdata",MallocArray(uint64,numindices+1))
-    local prev,pos = 0,0
-    for i = 0, numindices - 1 do
-        self._indexdata[i] = pos
-        while f.data[pos] == i and pos < numvalues do
-            if f.data[pos] < prev then
-                -- TODO: NEED TO FREE ALLOCATION SAFELY IN THIS CASE
-                error("CreateIndex(): Index field is not sorted")
-            end
-            prev,pos = f.data[pos],pos + 1
-        end
-    end
-    assert(pos == numvalues)
-    self._indexdata[numindices] = pos
-end]]
 
 
 function L.LRelation:print()
@@ -227,6 +177,23 @@ end
 --[[ Indices:                                                              ]]--
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
+
+function L.LIndex.New(rel, name, size_or_table)
+    local index = setmetatable({
+        _owner = rel,
+        _name  = name,
+    }, L.LIndex)
+    if type(size_or_table) == 'number' then
+        index:ReAllocate(size_or_table)
+    else
+        index:ReAllocate(#size_or_table)
+        for i=1,#size_or_table do
+            index._data[i-1] = size_or_table[i]
+        end
+    end
+
+    return index
+end
 
 function L.LIndex:Relation()
     return self._owner
@@ -284,8 +251,11 @@ function L.LRelation:NewSubsetFromFunction (name, predicate)
     self._subsets:insert(subset)
 
     -- NOW WE DECIDE how to encode the subset
-    -- we'll try building a mask and then decide between using a mask or index
-    local boolmask = new_raw_field(self, name..'_boolmask', L.bool)
+    -- we'll try building a mask and decide between using a mask or index
+    local SUBSET_CUTOFF_FRAC = 0.1
+    local SUBSET_CUTOFF = SUBSET_CUTOFF_FRAC * self:Size()
+
+    local boolmask  = L.LField.New(self, name..'_subset_boolmask', L.bool)
     local index_tbl = {}
     local subset_size = 0
     boolmask:LoadFunction(function(i)
@@ -297,12 +267,12 @@ function L.LRelation:NewSubsetFromFunction (name, predicate)
         return val
     end)
 
-    local SUBSET_CUTOFF_FRAC = 0.1
-    if true then --subset_size / self:Size() > SUBSET_CUTOFF then
+    if subset_size > SUBSET_CUTOFF then
     -- USE MASK
         subset._boolmask = boolmask
     else
     -- USE INDEX
+        subset._index = L.LIndex.New(self, name..'_subset_index', index_tbl)
         boolmask:ClearData() -- free memory
     end
 
@@ -315,6 +285,18 @@ end
 --[[ Fields:                                                               ]]--
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
+
+-- Client code should never call this constructor
+-- For internal use only.  Does not install on relation...
+function L.LField.New(rel, name, typ)
+    local field   = setmetatable({}, L.LField)
+    field.data    = nil
+    field.type    = typ
+    field.name    = name
+    field.owner   = rel
+
+    return field
+end
 
 function L.LField:Name()
     return self.name
@@ -349,7 +331,7 @@ function L.LRelation:NewField (name, typ)
               "relation as the 2nd argument", 2)
     end
 
-    local field = new_raw_field(self, name, typ)
+    local field = L.LField.New(self, name, typ)
     rawset(self, name, field)
     self._fields:insert(field)
     return field

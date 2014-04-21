@@ -25,7 +25,6 @@ local phase   = terralib.require "compiler.phase"
 local codegen = terralib.require "compiler.codegen"
 
 
-
 -------------------------------------------------------------------------------
 --[[ Kernels, Brans, Germs                                                 ]]--
 -------------------------------------------------------------------------------
@@ -89,8 +88,17 @@ local MAX_FIELDS = 32
 local struct GermField {
     data : &opaque;
 }
+local taddr = uint64 --L.addr:terraType() -- weird dependency error
+local struct GermSubset {
+    index : &taddr;
+    boolmask : &bool;
+    use_boolmask : bool;
+    use_index : bool;
+    index_size : uint64;
+}
 local struct Germ {
     n_rows : uint64;
+    subset : GermSubset;
     n_fields : int; -- # of fields referred to, i.e. below
     fields : GermField[MAX_FIELDS];
 }
@@ -134,6 +142,20 @@ L.LKernel.__call  = function (kobj, relset)
     local germ = bran.germ:get()
     germ.n_rows   = bran.relation:Size()
     germ.n_fields = bran.n_field_ids
+    -- set up the subset
+      -- defaults
+    bran:getSubsetGerm().use_boolmask = false
+    bran:getSubsetGerm().use_index    = false
+    if bran.subset then
+      if bran.subset._boolmask then
+        bran:getSubsetGerm().use_boolmask = true
+        bran:getSubsetGerm().boolmask = bran.subset._boolmask.data
+      elseif bran.subset._index then
+        bran:getSubsetGerm().use_index = true
+        bran:getSubsetGerm().index = bran.subset._index._data
+        bran:getSubsetGerm().index_size = bran.subset._index._size
+      end
+    end
     -- bind the field data
     for field, _ in pairs(bran.field_ids) do
       bran:getFieldGerm(field).data = field.data
@@ -167,9 +189,6 @@ function Bran:generate()
   bran.n_field_ids  = 0 -- for safety
 
   -- fix the mapping for the fields before compiling the executable
-  if bran.subset then
-    bran:getFieldGerm(bran.subset._boolmask)
-  end
   for field, _ in pairs(kernel.field_use) do
     bran:getFieldGerm(field)
   end
@@ -191,6 +210,10 @@ function Bran:getFieldGerm(field)
   end
 
   return self.germ:get().fields[id]
+end
+
+function Bran:getSubsetGerm()
+  return self.germ:get().subset
 end
 
 --function Bran:setFieldData(field_name, value)

@@ -29,6 +29,9 @@ end
 function Context:FieldPtr(field)
   return `[self.bran:getFieldGerm(field)].data
 end
+function Context:SubsetPtr()
+  return `[self.bran:getSubsetGerm()]
+end
 
 function C.codegen (kernel_ast, bran)
   local env = terralib.newenvironment(nil)
@@ -48,10 +51,20 @@ function C.codegen (kernel_ast, bran)
 
     if ctxt.bran.subset then
       local subset = ctxt.bran.subset
+
       kernel_body = quote
-        var boolmask = [&bool]([ ctxt:FieldPtr(subset._boolmask) ])
-        for [param] = 0, ctxt.germ.n_rows do
-          if boolmask[param] then -- subset guard
+        if [ctxt:SubsetPtr()].use_boolmask then
+          var boolmask = [ctxt:SubsetPtr()].boolmask
+          for [param] = 0, ctxt.germ.n_rows do
+            if boolmask[param] then -- subset guard
+              [body]
+            end
+          end
+        elseif [ctxt:SubsetPtr()].use_index then
+          var index = [ctxt:SubsetPtr()].index
+          var size = [ctxt:SubsetPtr()].index_size
+          for itr = 0,size do
+            var [param] = index[itr]
             [body]
           end
         end
