@@ -27,8 +27,8 @@ local vdb   = L.require 'lib.vdb'
 
 
 local grid_options = {
-    xnum = 16,
-    ynum = 16,
+    xnum = 64,
+    ynum = 64,
     pos = {0.0, 0.0},
     width = 6.28,
     height = 6.28
@@ -36,7 +36,7 @@ local grid_options = {
 
 
 local particle_options = {
-    num = 50,
+    num = 1000,
     convective_coefficient = L.NewGlobal(L.double, 0.7),
     heat_capacity = L.NewGlobal(L.double, 0.7),
     pos_max = 6.2,
@@ -60,7 +60,7 @@ local time_integrator = {
     coeff_function = {1/6, 1/3, 1/3, 1/6},
     coeff_time     = {0.5, 0.5, 1, 1},
     sim_time = 0,
-    final_time = 0.1,
+    final_time = 1.0,
     time_step = 0
 }
 
@@ -124,7 +124,7 @@ grid.cells:NewField('rho_velocity_temp', L.vec2d):
 LoadConstant(L.NewVector(L.double, {0, 0}))
 grid.cells:NewField('rho_energy_temp', L.double):
 LoadConstant(0)
--- derivatives
+-- time derivatives
 grid.cells:NewField('rho_t', L.double):
 LoadConstant(0)
 grid.cells:NewField('rho_velocity_t', L.vec2d):
@@ -363,7 +363,7 @@ local function GenerateAddInviscidGetFlux(edges)
                         ( e.cell_next.pressure +
                           e.cell_previous.pressure )
             end
-            -- TODO: I couldn't understand how skew is implemented. Setting s =
+            -- TODO: I couldnt understand how skew is implemented. Setting s =
             -- 1 for now, this should be changed.
             var s = spatial_stencil.split
             s = 1
@@ -604,7 +604,8 @@ end
 InitializeVariables()
 
 while (time_integrator.sim_time < time_integrator.final_time) do
-    print("Running time step ", time_integrator.time_step) 
+    print("Running time step ", time_integrator.time_step, ", time",
+          time_integrator.sim_time) 
     InitializeTemporaries()
     for stage = 1, 4 do
         InitializeDerivatives()
@@ -619,4 +620,5 @@ while (time_integrator.sim_time < time_integrator.final_time) do
 end
 
 --particles.position:print()
+--particles.velocity:print()
 --grid.cells.velocity:print()
