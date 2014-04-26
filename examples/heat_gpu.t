@@ -28,8 +28,8 @@ local aadd  = terralib.intrinsic("llvm.nvvm.atomic.load.add.f32.p0f32", {&float,
 --------------------------------------------------------------------------------
 --[[ Read in mesh relation, initialize fields                               ]]--
 --------------------------------------------------------------------------------
-local PN    = L.require 'lib.pathname'
-local LMesh = L.require "domains.lmesh"
+local PN    = terralib.require 'lib.pathname'
+local LMesh = terralib.require "domains.lmesh"
 local M     = LMesh.Load(PN.scriptdir():concat("rmesh.lmesh"):tostring())
 
 local function init_temp (i)
@@ -40,9 +40,9 @@ local function init_temp (i)
 	end
 end
 
-M.vertices:NewField('flux',        L.float):LoadConstant(0)
-M.vertices:NewField('jacobistep',  L.float):LoadConstant(0)
-M.vertices:NewField('temperature', L.float):LoadFromCallback(init_temp)
+M.vertices:NewField('flux',        L.float):Load(0)
+M.vertices:NewField('jacobistep',  L.float):Load(0)
+M.vertices:NewField('temperature', L.float):Load(init_temp)
 
 
 --------------------------------------------------------------------------------

@@ -11,7 +11,7 @@ for i = 0, V._size - 1 do
 end
 
 function shift(x,y,z)
-	local shift_kernel = liszt_kernel(v : M.vertices)
+	local shift_kernel = liszt kernel(v : M.vertices)
 	    v.position += {x,y,z}
 	end
 	shift_kernel(M.vertices)

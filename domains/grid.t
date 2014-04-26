@@ -381,7 +381,45 @@ local function setupInterconnects(grid)
 end
 
 
-function Grid.New2dUniformGrid(xSize, ySize, pos, w, h, boundary)
+function Grid.New2dUniformGrid(params)
+    local calling_convention = [[
+
+New2dUniformGrid should be called with named parameters:
+Grid.New2dUniformGrid{
+  size          = {#,#},    -- number of cells in x and y
+  origin        = {#,#},    -- x,y coordinates of grid origin
+  width         = #,        -- width of grid coordinate system
+  height        = #,        -- height of grid coordinate system
+  (optional)
+  boundary_size = #,        -- depth of boundary region (default value: 1)
+}]]
+    local function is_num(obj) return type(obj) == 'number' end
+    local function check_params(params)
+        local check =
+            type(params) == 'table' and
+            type(params.size) == 'table' and
+            type(params.origin) == 'table' and
+            is_num(params.size[1]) and is_num(params.size[2]) and
+            is_num(params.origin[1]) and is_num(params.origin[2]) and
+            is_num(params.width) and is_num(params.height)
+        if check and params.boundary_size then
+            check = check and is_num(params.boundary_size)
+        end
+        return check
+    end
+    if not check_params(params) then error(calling_convention, 2) end
+
+    -- default
+    params.boundary_size = params.boundary_size or 1
+
+    -- lazy: legacy translation b/w calling conventions
+    local xSize     = params.size[1]
+    local ySize     = params.size[2]
+    local pos       = {params.origin[1], params.origin[2]}
+    local w         = params.width
+    local h         = params.height
+    local boundary  = params.boundary_size
+
     boundary = boundary or 1
     if not xSize or not ySize then
         error('must supply the x and y size of the grid', 2)

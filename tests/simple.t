@@ -13,7 +13,7 @@ local com   = L.NewGlobal(L.vector(L.float, 3), {0, 0, 0})--Vector.new(float, {0
 local upval = 5
 local vv = L.NewVector(L.int, {1,2,3})
 
-local test_bool = liszt_kernel (v : mesh.vertices)
+local test_bool = liszt kernel (v : mesh.vertices)
     var q = true
     var x = q  -- Also, test re-declaring variables (symbols for 'x' should now be different)
     var z = not q
@@ -27,7 +27,7 @@ local test_bool = liszt_kernel (v : mesh.vertices)
 end
 test_bool(mesh.vertices)
 
-local test_decls = liszt_kernel(v : mesh.vertices)
+local test_decls = liszt kernel(v : mesh.vertices)
     -- DeclStatement tests --
     var c : L.int
     c = 12
@@ -59,7 +59,7 @@ end
 test_decls(mesh.vertices)
 
 
-local test_conditionals = liszt_kernel (v : mesh.vertices)
+local test_conditionals = liszt kernel (v : mesh.vertices)
     -- IfStatement tests
     var q = true
     var x = 3
@@ -108,7 +108,7 @@ end
 
 test_conditionals(mesh.vertices)
 
-local test_arith = liszt_kernel (v : mesh.vertices)
+local test_arith = liszt kernel (v : mesh.vertices)
     -- BinaryOp, UnaryOp, InitStatement, Number, Bool, and RValue codegen tests
     var x = 9
     lassert(x == 9)
@@ -153,7 +153,7 @@ local test_arith = liszt_kernel (v : mesh.vertices)
 end
 test_arith(mesh.vertices)
 
-local test_while = liszt_kernel(v : mesh.vertices)
+local test_while = liszt kernel(v : mesh.vertices)
     -- While Statement tests --
     -- if either of these while statements doesn't terminate, then our codegen scoping is wrong!
     var a = true
@@ -170,7 +170,7 @@ end
 test_while(mesh.vertices)
 
 
-local test_do = liszt_kernel (v : mesh.vertices)
+local test_do = liszt kernel (v : mesh.vertices)
     var b = false
     var x = true
     var y = 3
@@ -191,7 +191,7 @@ end
 test_do(mesh.vertices)
 
 
-local test_repeat = liszt_kernel (v : mesh.vertices)
+local test_repeat = liszt kernel (v : mesh.vertices)
     -- RepeatStatement tests -- 
     var x = 0
     var y = 0
@@ -211,7 +211,7 @@ end
 test_repeat(mesh.vertices)
 
 
-local test_for = liszt_kernel (v : mesh.vertices)
+local test_for = liszt kernel (v : mesh.vertices)
     -- Numeric for tests: --
     var x = true
     for i = 1, 5 do

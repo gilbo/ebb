@@ -18,7 +18,12 @@ local collision_spring_k = 100
 
 -- the grid's own coordinate system doesn't really matter
 -- We just make sure it's dimensioned sensibly
-local grid = Grid.New2dUniformGrid(N,N, {0,0}, width, width)
+local grid = Grid.New2dUniformGrid{
+    size   = {N,N},
+    origin = {0,0},
+    width  = width,
+    height = width,
+}
 
 ------------------------------------------------------------------------------
 
@@ -144,166 +149,6 @@ end
 ------------------------------------------------------------------------------
 
 
--- implicit cloth
-
--- We have a function F(x,v)
--- Then, we want to integrate
--- d(x,v)/dt = F(x,v)
--- (x1,v1)-(x0,v0) = dt*F(x1,v1)
--- [I - dt*F](x1,v1) = (x0,v0)
-
--- What is F?  Doing a bunch of math elsewhere, I figured out that...
--- J[F_i](y) = SUM_j [(L/E^3)*OUTER(e_ij,e_ij) + (L-E)/E * 1] * (y_i-y_j)
--- where J[F_i] is the Jacobian for output vertex i's velocity
---
--- [I - dt*F](x0+dx, v0+dv) = (x0,v0)
--- [I - dt*J](dx,dv) = (x0,v0) - [I-dt*F](x0,v0)
---                   = -dt*F(x0,v0)
--- 
-
-local edge_stretch = L.NewMacro(function(dir)
-  return liszt quote
-    var dir_len = L.length(dir)
-    var stretch : L.double = (IDEAL_LEN - dir_len) / dir_len
-  in
-    SPRING_K * stretch
-  end
-end)
-local edge_dstretch = L.NewMacro(function(dir)
-  return liszt quote
-    var dir_len = L.length(dir)
-    var dstretch : L.double = IDEAL_LEN / dir_len
-  in
-    SPRING_K * dstretch
-  end
-end)
-
-local jacobi_write = L.NewMacro(function(edge, dir)
-  return liszt quote
-    var stretch  = edge_stretch(dir)
-    var dstretch = edge_dstretch(dir)
-    var jx = dt * (dstretch * dir[0]*dir + {stretch,0,0})
-    var jy = dt * (dstretch * dir[1]*dir + {0,stretch,0})
-    var jz = dt * (dstretch * dir[2]*dir + {0,0,stretch})
-    edge.J_x = jx
-    edge.J_y = jy
-    edge.J_z = jz
-  in
-    { jx[0], jy[1], jz[2] }
-  end
-end)
-
-local jacobi_diag = L.NewMacro(function(edge)
-  return liszt ` { edge.J_x[0], edge.J_y[1], edge.J_z[2] }
-end)
-
--- We can do this wrong, but maybe it's good enough?
-local implicit_setup = liszt kernel(v : grid.vertices)
-  v.b_vel = -v.dvel
-  v.b_pos = -v.dpos
-  var diag = L.vec3d({0,0,0})
-
-  -- compute the Jacobian and store it on the edges
-  if v.has_left then
-    var ldir = v.pos - v.left.pos
-    diag += jacobi_write(v.left_edge, ldir)
-  end
-  if v.has_right then
-    var rdir = v.pos - v.right.pos
-    diag += jacobi_write(v.right_edge, rdir)
-  end
-  if v.has_up then
-    var udir = v.pos - v.up.pos
-    diag += jacobi_write(v.up_edge, udir)
-  end
-  if v.has_down then
-    var ddir = v.pos - v.down.pos
-    diag += jacobi_write(v.down_edge, ddir)
-  end
-
-  v.J_diag = {1,1,1} - diag
-end
-
-local jacobi_edge_diag = L.NewMacro(function(v, dir)
-  return liszt `{ v.J_diag[0] * dir[0],
-                  v.J_diag[1] * dir[1],
-                  v.J_diag[2] * dir[2] }
-end)
-
-local jacobi_edge = L.NewMacro(function(edge, dir)
-  return liszt quote
-    var x = L.dot(edge.J_x, dir)
-    var y = L.dot(edge.J_y, dir)
-    var z = L.dot(edge.J_z, dir)
-  in
-    { x, y, z }
-  end
-end)
-
--- We apply the following Jacobi iteration here:
--- A = D+R, so R = A-D
--- x_new = D^{-1} * (b - R * x_old) = D^{-1} * (b - A * x_old + D * x_old)
--- solve for new dpos given b_vel
-local jacobi_step = liszt kernel(v : grid.vertices)
-  -- b
-  var sum = v.b_vel
-
-  -- b - A * x_old
-  if v.has_left then
-    var ldir = v.dpos - v.left.dpos
-    sum -= jacobi_edge(v.left_edge, ldir)
-  end
-  if v.has_right then
-    var rdir = v.dpos - v.right.dpos
-    sum -= jacobi_edge(v.right_edge, rdir)
-  end
-  if v.has_up then
-    var udir = v.dpos - v.up.dpos
-    sum -= jacobi_edge(v.up_edge, udir)
-  end
-  if v.has_down then
-    var ddir = v.dpos - v.down.dpos
-    sum -= jacobi_edge(v.down_edge, ddir)
-  end
-
-  -- b - A * x_old + D * x_old
-  sum += { v.J_diag[0] * v.dpos[0],
-           v.J_diag[1] * v.dpos[1],
-           v.J_diag[2] * v.dpos[2] }
-
-  -- times D^{-1}
-  sum[0] = sum[0] / v.J_diag[0]
-  sum[1] = sum[1] / v.J_diag[1]
-  sum[2] = sum[2] / v.J_diag[2]
-
-  v.dpos_temp = sum
-end
-
-local commit_jacobi = liszt kernel(v : grid.vertices)
-  v.dpos = v.dpos_temp
-end
-
--- want to set v1 = v0 + dvel = dpos
--- So, we get dvel = dpos - v0
-local set_dvel = liszt kernel(v : grid.vertices)
-  v.dvel = v.dpos - v.vel
-end
-
-local function implicit_acceleration(vertices)
-  compute_acceleration(vertices)
-  implicit_setup(vertices)
-
-  for i=1,20 do
-    jacobi_step(vertices)
-    commit_jacobi(vertices)
-  end
-
-  set_dvel(vertices)
-end
-
-------------------------------------------------------------------------------
-
-
 local sqrt3 = math.sqrt(3)
 local draw_cloth = liszt kernel (v : grid.vertices)
   
@@ -354,7 +199,6 @@ for i=1,(total_steps+2) do
   end
 
   compute_acceleration(grid.vertices)
-  --implicit_acceleration(grid.vertices)
   apply_update(grid.vertices)
 
 end

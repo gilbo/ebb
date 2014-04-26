@@ -186,8 +186,8 @@ lang.liszt = function (P)
 			else
 				P:errorexpected("'kernel' or '`' or 'quote'")
 			end
-		elseif P:nextif("liszt_kernel") then
-			code_type = 'kernel'
+		--elseif P:nextif("liszt_kernel") then
+		--	code_type = 'kernel'
 		else
 			P:errorexpected("'liszt' or 'liszt_kernel'")
 		end

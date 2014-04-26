@@ -7,7 +7,7 @@ M.vertices:NewField('field1', L.float):LoadConstant(0)
 M.vertices:NewField('field2', L.float):LoadConstant(0)
 
 test.fail_function(function()
-  local kernel = liszt_kernel (v : M.vertices)
+  local kernel = liszt kernel (v : M.vertices)
     for nv in v.vertices do
       nv.field1 = 3
     end
@@ -15,7 +15,7 @@ test.fail_function(function()
 end, 'Non%-Exclusive WRITE')
 
 test.fail_function(function()
-  local kernel = liszt_kernel (v : M.vertices)
+  local kernel = liszt kernel (v : M.vertices)
     v.field1 = 3
     var sum : L.float = 0
     for nv in v.vertices do
@@ -25,7 +25,7 @@ test.fail_function(function()
 end, 'READ Phase is incompatible with.* EXCLUSIVE Phase')
 
 test.fail_function(function()
-  local kernel = liszt_kernel (v : M.vertices)
+  local kernel = liszt kernel (v : M.vertices)
     var sum : L.float = 0
     for nv in v.vertices do
       nv.field1 += 1
@@ -35,7 +35,7 @@ test.fail_function(function()
 end, 'READ Phase is incompatible with.* REDUCE%(%+%) Phase')
 
 test.fail_function(function()
-  local kernel = liszt_kernel (v : M.vertices)
+  local kernel = liszt kernel (v : M.vertices)
     var sum : L.float = 0
     for nv in v.vertices do
       nv.field1 += 1
@@ -45,7 +45,7 @@ test.fail_function(function()
 end, 'REDUCE%(%*%) Phase is incompatible with.* REDUCE%(%+%) Phase')
 
 -- writing and reducing exclusively should be fine
-local kernel = liszt_kernel (v : M.vertices)
+local kernel = liszt kernel (v : M.vertices)
   v.field1 = 3
   v.field1 += 1
 end

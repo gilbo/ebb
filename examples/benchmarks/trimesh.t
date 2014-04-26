@@ -54,7 +54,7 @@ local function build_edges(mesh, v1s, v2s, v3s)
   mesh.vertices:NewField('degree', L.int):Load(degrees)
 
   -- index the edges
-  mesh.edges:CreateIndex('tail')
+  mesh.edges:GroupBy('tail')
   mesh.vertices:NewFieldMacro('edges', L.NewMacro(function(v)
     return liszt ` L.Where(mesh.edges.tail, v)
   end))

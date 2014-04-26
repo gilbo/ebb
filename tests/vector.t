@@ -111,14 +111,14 @@ local mesh = LMesh.Load("examples/mesh.lmesh")
 ------------------
 -- Should pass: --
 ------------------
-local k = liszt_kernel (v : mesh.vertices)
+local k = liszt kernel (v : mesh.vertices)
 	var x       = {5, 5, 5}
 	v.position += x + {0, 1, 1}
 end
 k(mesh.vertices)
 
 local s = L.NewGlobal(L.vector(L.double, 3), {0.0, 0.0, 0.0})
-local sum_position = liszt_kernel(v : mesh.vertices)
+local sum_position = liszt kernel(v : mesh.vertices)
 	s += v.position
 end
 sum_position(mesh.vertices)

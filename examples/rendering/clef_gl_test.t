@@ -242,14 +242,14 @@ end
 
 local time_global = L.NewGlobal(L.float, 0)
 vertices:NewField('pos_temp', L.vector(L.float, 4)):Load({0,0,0,0})
-local update_pos1 = liszt_kernel (v : vertices)
+local update_pos1 = liszt kernel (v : vertices)
     var y = v.pos[1]
     if y > 0 then
-        y = 0.5 + 0.4 * C.cos(3*time_global)
+        y = L.float(0.5 + 0.4 * C.cos(3*time_global))
     end
     v.pos_temp = { v.pos[0], y, v.pos[2], v.pos[3] }
 end
-local update_pos2 = liszt_kernel (v : vertices)
+local update_pos2 = liszt kernel (v : vertices)
     var pos = v.pos_temp
     v.pos = pos
     vdb.color(v.color)

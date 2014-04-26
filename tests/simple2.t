@@ -7,7 +7,7 @@ local com = L.NewGlobal(L.vector(L.double, 3), {0, 0, 0})
 
 function center_of_mass ()
 	com:setTo({0,0,0})
-	local sum_pos = liszt_kernel (v : mesh.vertices)
+	local sum_pos = liszt kernel (v : mesh.vertices)
 		com += v.position
 	end
 	sum_pos(mesh.vertices)
@@ -16,7 +16,7 @@ end
 
 local function displace_mesh (delta_x, delta_y, delta_z)
 	local d = L.NewVector(L.double, {delta_x, delta_y, delta_z})
-	local dk = liszt_kernel (v : mesh.vertices)
+	local dk = liszt kernel (v : mesh.vertices)
 		v.position += d
 	end
 	dk(mesh.vertices)

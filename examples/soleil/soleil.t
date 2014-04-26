@@ -85,12 +85,13 @@ local flow_options = {
 
 local bnum = spatial_stencil.order/2
 local bw   = grid_options.width/grid_options.xnum * bnum
-local grid = Grid.New2dUniformGrid(grid_options.xnum + 2*bnum,
-                                   grid_options.ynum + 2*bnum,
-                                   grid_options.pos,
-                                   grid_options.width + 2*bw,
-                                   grid_options.height + 2*bw,
-                                   bnum)
+local grid = Grid.New2dUniformGrid{
+    size   = { grid_options.xnum + 2*bnum, grid_options.ynum + 2*bnum },
+    origin = grid_options.pos,
+    width  = grid_options.width + 2*bw,
+    height = grid_options.height + 2*bw,
+    boundary_size = bnum
+}
 
 -- conserved variables
 grid.cells:NewField('rho', L.double):
