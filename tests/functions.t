@@ -113,6 +113,13 @@ end
 check_3(cells)
 
 
+------------------------------
+--check that recursion fails--
+------------------------------
+test.fail_function(function()
+  local recurse = liszt function() return recurse() end
+end, "variable 'recurse' is not defined")
+
 
 
 -----------------------------------------------
