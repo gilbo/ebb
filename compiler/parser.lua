@@ -15,6 +15,7 @@ local block_terminators = {
 	['until']  = 1,
 	['break']  = 1,
 	['in']     = 1, -- for let-quotes i.e. quote ... in ... end
+	['return'] = 1, -- for functions only allowed as last statement
 }
 
 local unary_prec = 5
@@ -174,6 +175,34 @@ lang.liszt_kernel = function (P)
 	return kernel_node
 end
 
+lang.liszt_function = function (P)
+	local function_node = ast.LisztFunction:New(P)
+
+	-- parse params
+	local params  = {}
+	local open    = P:expect("(")
+	if not P:matches(')') then
+	    repeat
+	        table.insert(params,P:expect(P.name).value)
+	    until not P:nextif(',')
+	end
+	P:expectmatch(')', '(', open.linenumber)
+
+	-- parse block
+	local block = P:block()
+	-- optional terminating return statement
+	local exp   = nil
+	if P:nextif("return") then
+		exp = P:exp()
+	end
+	P:expect("end")
+
+	function_node.params 	= params
+	function_node.body		= block
+	function_node.exp 		= exp
+	return function_node
+end
+
 lang.liszt = function (P)
 		local code_type
 		if P:nextif("liszt") then
@@ -183,17 +212,22 @@ lang.liszt = function (P)
 				code_type = 'simp_quote'
 			elseif P:nextif('quote') then
 				code_type = 'let_quote'
+			elseif P:nextif('function') then
+				code_type = 'function'
 			else
-				P:errorexpected("'kernel' or '`' or 'quote'")
+				P:errorexpected("'kernel' or '`' or 'quote' or 'function'")
 			end
 		--elseif P:nextif("liszt_kernel") then
 		--	code_type = 'kernel'
 		else
-			P:errorexpected("'liszt' or 'liszt_kernel'")
+			P:errorexpected("'liszt'")
 		end
 
 		if code_type == 'kernel' then
 			return P:liszt_kernel()
+
+		elseif code_type == 'function' then
+			return P:liszt_function()
 
 		elseif code_type == 'let_quote' then
 			local let_exp = ast.QuoteExpr:New(P)

@@ -23,8 +23,6 @@ local T   = terralib.require "compiler.types"
 
 --]]
 
-local P = terralib.require 'compiler/old_phase'
-
 local Context = {}
 Context.__index = Context
 
@@ -38,9 +36,6 @@ function Context.new(env, diag)
 end
 function Context:liszt()
     return self.env:localenv()
-end
-function Context:lua()
-    return self.env:luaenv()
 end
 function Context:enterblock()
     self.env:enterblock()
@@ -60,17 +55,6 @@ end
 function Context:leaveloop()
     self.loop_count = self.loop_count - 1
     if self.loop_count < 0 then self.loop_count = 0 end
-end
-
-local function exec_external(exp,ctxt,default)
-    local status, v = pcall(function()
-        return exp(ctxt:lua())
-    end)
-    if not status then
-        ctxt:error(exp, "Error evaluating lua expression")
-        v = default
-    end
-    return v
 end
 
 local function try_coerce(target_typ, node, ctxt)
@@ -135,15 +119,6 @@ end
 
 function ast.Block:check(ctxt)
     return self:passthrough('check', ctxt)
---    local block = self:clone()
---
---    -- statements
---    block.statements = {}
---    for id, node in ipairs(self.statements) do
---        block.statements[id] = node:check(ctxt)
---    end
---
---    return block
 end
 
 function ast.IfStatement:check(ctxt)
@@ -214,9 +189,6 @@ end
 
 function ast.ExprStatement:check(ctxt)
     return self:passthrough('check', ctxt)
---    local expstmt = self:clone()
---    expstmt.exp   = self.exp:check(ctxt)
---    return expstmt
 end
 
 function ast.Assignment:check(ctxt)
@@ -278,23 +250,14 @@ function ast.Assignment:check(ctxt)
     return node
 end
 
-local function exec_type_annotation(typexp, ast_node, ctxt)
-    local typ = exec_external(typexp, ctxt, L.error)
-    if not T.isLisztType(typ) then
-        ctxt:error(ast_node, "Expected Liszt type annotation but found " ..
-                             type(typ))
-        typ = L.error
-    end
-    return typ
-end
 
 function ast.DeclStatement:check(ctxt)
     local decl = self:clone()
     -- assert(self.typeexpression or self.initializer)
 
     -- process any explicit type annotation
-    if self.typeexpression then
-        decl.node_type = exec_type_annotation(self.typeexpression, self, ctxt)
+    if self.node_type then
+        decl.node_type = self.node_type
     end
     -- check the initialization against the annotation or infer type.
     if self.initializer then
@@ -333,7 +296,6 @@ function ast.NumericFor:check(ctxt)
     local numfor     = self:clone()
     numfor.lower     = self.lower:check(ctxt)
     numfor.upper     = self.upper:check(ctxt)
-    numfor.name      = self.name
     local lower_type = numfor.lower.node_type
     local upper_type = numfor.upper.node_type
     check_num_type(lower_type)
@@ -596,76 +558,6 @@ end
 ------------------------------------------------------------------------------
 --[[                               Variables                              ]]--
 ------------------------------------------------------------------------------
--- This function attempts to produce an AST node which looks as if
--- the resulting AST subtree has just been emitted from the Parser
-local function luav_to_ast(luav, src_node)
-    -- try to construct an ast node to return...
-    local node
-
-    -- Global objects are replaced with special Global nodes
-    if L.is_global(luav) then
-        node        = ast.Global:DeriveFrom(src_node)
-        node.global = luav
-
-    -- Vector objects are expanded into literal AST trees
-    elseif L.is_vector(luav) then
-        node            = ast.VectorLiteral:DeriveFrom(src_node)
-        node.elems      = {}
-        -- We have to copy the type here b/c the values
-        -- may not imply the right type
-        node.node_type  = luav.type
-        for i,v in ipairs(luav.data) do
-            node.elems[i] = luav_to_ast(v, src_node)
-            node.elems[i].node_type = luav.type:baseType()
-        end
-    elseif B.isFunc(luav) then
-        node = NewLuaObject(src_node,luav)
-    elseif L.is_relation(luav) then
-        node = NewLuaObject(src_node,luav)
-    elseif L.is_macro(luav) then
-        node = NewLuaObject(src_node,luav)
-    elseif terralib.isfunction(luav) then
-        node = NewLuaObject(src_node,B.terra_to_func(luav))
-    elseif type(luav) == 'table' then
-        -- Determine whether this is an AST node
-        if ast.is_ast(luav) and luav:is(ast.QuoteExpr) then
-            node = luav
-        else
-            node = NewLuaObject(src_node, luav)
-        end
-    elseif type(luav) == 'number' then
-        node       = ast.Number:DeriveFrom(src_node)
-        node.value = luav
-    elseif type(luav) == 'boolean' then
-        node       = ast.Bool:DeriveFrom(src_node)
-        node.value = luav
-    else
-        return nil
-    end
-
-    -- return the constructed node if we made it here
-    return node
-end
-
--- luav_to_checked_ast wraps luav_to_ast and ensures that
--- a typed AST node is returned.
-local function luav_to_checked_ast(luav, src_node, ctxt)
-    -- convert the lua value into an ast node
-    local ast_node = luav_to_ast(luav, src_node)
-
-    -- on conversion error
-    if not ast_node then
-        ctxt:error(src_node, "could not convert Lua value to a Liszt value")
-        ast_node           = src_node:clone()
-        ast_node.node_type = L.error
-
-    -- on successful conversion to an ast node
-    else
-        ast_node = ast_node:check(ctxt)
-    end
-
-    return ast_node
-end
 
 function ast.Name:check(ctxt)
     -- try to find the name in the local Liszt scope
@@ -680,13 +572,8 @@ function ast.Name:check(ctxt)
         return node
     end
 
-    -- Otherwise, does the name exist in the lua scope?
-    local luav = ctxt:lua()[self.name]
-    if luav then
-        -- convert the lua value into an ast node
-        return luav_to_checked_ast(luav, self, ctxt)
-    end
-
+    -- Lua environment variables should already have been handled
+    -- during specialization
 
     -- failed to find this name anywhere
     ctxt:error(self, "variable '" .. self.name .. "' is not defined")
@@ -779,41 +666,27 @@ local function RunMacro(ctxt,src_node,the_macro,params)
         quoted_params[i] = QuoteParam(params[i])
     end
     local result = the_macro.genfunc(unpack(quoted_params))
-    return luav_to_checked_ast(result, src_node, ctxt)
+
+    if ast.is_ast(result) and result:is(ast.QuoteExpr) then
+        return result
+    else
+        ctxt:error(src_node, 'Macros must return quoted code')
+        local errnode     = src_node:clone()
+        errnode.node_type = L.error
+        return errnode
+    end
 end
 
 function ast.TableLookup:check(ctxt)
     local tab = self.table:check(ctxt)
     local member = self.member
-    if type(member) == "function" then --member is an escaped lua expression
-      member = exec_external(member,ctxt,"<error>")
-      if type(member) ~= "string" then
-        ctxt:error(self,"expected escape to evaluate to a string but found ",
-                        type(member))
-        member = "<error>"
-      end
-    end
     local ttype = tab.node_type
 
     if ttype == L.error then
         return err(self, ctxt)
     end
 
-    -- table is a lua table
-    if ttype:isInternal() then
-        local thetable = ttype.value
-        -- perform the lookup in the lua table,
-        -- which we assume is acting as a namespace
-        local luaval = thetable[member]
-
-        if luaval == nil then
-            return err(self, ctxt, "lua table " ..
-                       "does not have member '" .. member .. "'")
-        end
-
-        -- and then convert the lua value into an ast node
-        return luav_to_checked_ast(luaval, self, ctxt)
-    elseif ttype:isRow() then
+    if ttype:isRow() then
         local luaval = ttype.relation[member]
 
         -- create a field access normally
@@ -834,8 +707,8 @@ function ast.TableLookup:check(ctxt)
         elseif L.is_macro(luaval) then
             return RunMacro(ctxt,self,luaval,{tab})
         else
-            return err(self, ctxt, "Row "..ttype.relation:Name().." does not "..
-                                   "have field or macro-field "..
+            return err(self, ctxt, "Row "..ttype.relation:Name()..
+                                   " does not have field or macro-field "..
                                    "'"..member.."'")
         end
     elseif ttype:isQuery() then
@@ -1015,7 +888,7 @@ end
 ------------------------------------------------------------------------------
 --[[ Semantic checking called from here:                                  ]]--
 ------------------------------------------------------------------------------
-function ast.LisztKernel:check(ctxt) -- hacked 2nd parameter
+function ast.LisztKernel:check(ctxt)
     local kernel              = self:clone()
     kernel.name               = self.name
 
@@ -1038,7 +911,7 @@ end
 
 function S.check(luaenv, kernel_ast)
     -- environment for checking variables and scopes
-    local env  = terralib.newenvironment(luaenv)
+    local env  = terralib.newenvironment(nil)
     local diag = terralib.newdiagnostics()
     local ctxt = Context.new(env, diag)
 

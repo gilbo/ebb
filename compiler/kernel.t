@@ -20,6 +20,7 @@ end
 
 
 local L = terralib.require "compiler.lisztlib"
+local specialization = terralib.require "compiler.specialization"
 local semant  = terralib.require "compiler.semant"
 local phase   = terralib.require "compiler.phase"
 local codegen = terralib.require "compiler.codegen"
@@ -112,6 +113,7 @@ function L.NewKernel(kernel_ast, env)
     local new_kernel = setmetatable({}, L.LKernel)
 
     -- All declaration time processing here
+    kernel_ast           = specialization.specialize(env, kernel_ast)
     new_kernel.typed_ast = semant.check(env, kernel_ast)
     new_kernel.field_use = phase.phasePass(new_kernel.typed_ast)
 

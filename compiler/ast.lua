@@ -20,6 +20,7 @@ function A.is_ast(obj)
 end
 
 local LisztKernel     = { kind = 'kernel' }
+local LisztFunction   = { kind = 'function' }
 local Block           = { kind = 'block'  } -- Statement*
   -- store condition and block to be executed for if/elseif clauses
 local CondBlock       = { kind = 'condblock' } 
@@ -83,6 +84,7 @@ local function inherit (child, parent, child_asts, child_ast_lists)
 end
 
 inherit(LisztKernel, AST, {'set', 'body'})
+inherit(LisztFunction, AST, {'params', 'body', 'exp'})
 inherit(Expression,  AST)
 inherit(Statement,   AST)
 inherit(Block,       AST, nil, {'statements'})
@@ -117,7 +119,7 @@ inherit(Assignment,      Statement, {'lvalue','exp'})
 inherit(GlobalReduce,    Statement, {'global', 'exp'})
 inherit(FieldWrite,      Statement, {'fieldaccess','exp'})
 inherit(DeclStatement,   Statement, {'typeexpression','initializer'})
-inherit(NumericFor,      Statement, {'name','lower','upper','step','body'})
+inherit(NumericFor,      Statement, {'lower','upper','step','body'})
 inherit(GenericFor,      Statement, {'set','body'})
 inherit(Break,           Statement)
 
@@ -235,6 +237,21 @@ function LisztKernel:pretty_print (indent)
   self.body:pretty_print(indent)
 end
 
+function LisztFunction:pretty_print (indent)
+  indent = indent or ''
+  print(indent .. self.kind .. ": (params, body, exp)")
+  indent = indent .. indent_delta
+  for i = 1, #self.params do
+    self.params[i]:pretty_print(indent .. indent_delta)
+  end
+  self.body:pretty_print(indent)
+  if not self.exp then
+    print(indent..indent_delta..'nil')
+  else
+    self.exp:pretty_print(indent)
+  end
+end
+
 function Block:pretty_print (indent)
   indent = indent or ''
   print(indent .. self.kind)
@@ -282,7 +299,17 @@ end
 
 function QuoteExpr:pretty_print(indent)
     indent = indent or ''
-    print(indent .. self.kind .. ": " .. tostring(self.ast))
+    local str = indent .. self.kind .. ": ("
+    if self.block then str = str .. "block, " end
+    if self.exp then str = str .. "exp" end
+    print(str .. ")")
+    indent = indent .. indent_delta
+    if self.block then
+      self.block:pretty_print(indent)
+    end
+    if self.exp then
+      self.exp:pretty_print(indent)
+    end
 end
 
 function FieldAccess:pretty_print(indent)
@@ -458,6 +485,7 @@ end
 for k,v in pairs({
   AST             = AST,
   LisztKernel     = LisztKernel,
+  LisztFunction   = LisztFunction,
   Block           = Block,
   Expression      = Expression,
   BinaryOp        = BinaryOp,
