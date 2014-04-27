@@ -781,7 +781,7 @@ function ast.Call:check(ctxt)
     end
 
     local v = func.node_type:isInternal() and func.node_type.value
-    if v and L.is_function(v) then
+    if v and L.is_builtin(v) then
         call.func      = v
         call.node_type = v.check(call, ctxt)
     elseif v and L.is_macro(v) then

@@ -305,7 +305,7 @@ local function luav_to_ast(luav, src_node)
       node.elems[i].node_type = luav.type:baseType()
     end
 
-  elseif B.isFunc(luav) then
+  elseif B.isBuiltin(luav) then
     node = NewLuaObject(src_node,luav)
   elseif L.is_relation(luav) then
     node = NewLuaObject(src_node,luav)
