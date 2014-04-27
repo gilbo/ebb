@@ -20,7 +20,7 @@ function A.is_ast(obj)
 end
 
 local LisztKernel     = { kind = 'kernel' }
-local LisztFunction   = { kind = 'function' }
+local UserFunction    = { kind = 'user_function' }
 local Block           = { kind = 'block'  } -- Statement*
   -- store condition and block to be executed for if/elseif clauses
 local CondBlock       = { kind = 'condblock' } 
@@ -84,7 +84,7 @@ local function inherit (child, parent, child_asts, child_ast_lists)
 end
 
 inherit(LisztKernel, AST, {'set', 'body'})
-inherit(LisztFunction, AST, {'params', 'body', 'exp'})
+inherit(UserFunction, AST, {'params', 'body', 'exp'})
 inherit(Expression,  AST)
 inherit(Statement,   AST)
 inherit(Block,       AST, nil, {'statements'})
@@ -233,16 +233,20 @@ function LisztKernel:pretty_print (indent)
   print(indent .. self.kind .. ": (name, set, body)")
   indent = indent .. indent_delta
   print(indent .. self.name)
-  self.set:pretty_print(indent)
+  if self.set then
+    self.set:pretty_print(indent)
+  else
+    print(indent .. 'nil')
+  end
   self.body:pretty_print(indent)
 end
 
-function LisztFunction:pretty_print (indent)
+function UserFunction:pretty_print (indent)
   indent = indent or ''
   print(indent .. self.kind .. ": (params, body, exp)")
   indent = indent .. indent_delta
   for i = 1, #self.params do
-    self.params[i]:pretty_print(indent .. indent_delta)
+    print(indent .. self.params[i])
   end
   self.body:pretty_print(indent)
   if not self.exp then
@@ -328,10 +332,19 @@ end
 function Call:pretty_print (indent)
   indent = indent or ''
   print(indent .. self.kind .. ": (func, params)")
-  self.func:pretty_print(indent .. indent_delta)
+  if not A.is_ast(self.func) then
+    print(indent .. indent_delta .. tostring(self.func))
+  else
+    self.func:pretty_print(indent .. indent_delta)
+  end
   for i = 1, #self.params do
     self.params[i]:pretty_print(indent .. indent_delta)
   end
+end
+
+function LuaObject:pretty_print (indent)
+  indent = indent or ''
+  print(indent .. self.kind .. ": " .. tostring(self.value))
 end
 
 function TableLookup:pretty_print (indent)
@@ -405,7 +418,9 @@ end
 
 function DeclStatement:pretty_print (indent)
   indent = indent or ''
-  print(indent .. self.kind.. ":(typeexpression,initializer)")
+  local typexpstr = ''
+  if self.typeexpression then typexpstr = "typeexpression," end
+  print(indent .. self.kind.. ":(name,"..typexpstr.."initializer)")
   print(indent .. indent_delta .. self.name)
   if self.typeexpression then
       print(indent .. indent_delta ..self.typeexpression)
@@ -485,7 +500,7 @@ end
 for k,v in pairs({
   AST             = AST,
   LisztKernel     = LisztKernel,
-  LisztFunction   = LisztFunction,
+  UserFunction    = UserFunction,
   Block           = Block,
   Expression      = Expression,
   BinaryOp        = BinaryOp,

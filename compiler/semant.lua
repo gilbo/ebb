@@ -253,7 +253,8 @@ end
 
 function ast.DeclStatement:check(ctxt)
     local decl = self:clone()
-    -- assert(self.typeexpression or self.initializer)
+    --assert(self.node_type or self.initializer)
+    --assert(not self.typeexpression)
 
     -- process any explicit type annotation
     if self.node_type then
@@ -643,7 +644,6 @@ end
 
 function ast.Bool:check(ctxt)
     local boolnode     = self:clone()
-    boolnode.value     = self.value
     boolnode.node_type = L.bool
     return boolnode
 end
@@ -653,18 +653,19 @@ end
 --[[                         Miscellaneous nodes:                         ]]--
 ------------------------------------------------------------------------------
 
-local function QuoteParam(param_ast)
-    local q = ast.QuoteExpr:DeriveFrom(param_ast)
-    q.block, q.exp = nil, param_ast
-    q.node_type    = param_ast.node_type -- do not try to type-check these
-    return q
+local function QuoteParams(all_params_asts)
+    local quoted_params = {}
+    for i,param_ast in ipairs(all_params_asts) do
+        local q = ast.QuoteExpr:DeriveFrom(param_ast)
+        q.block, q.exp = nil, param_ast
+        q.node_type = param_ast.node_type -- halt type-checking here
+        quoted_params[i] = q
+    end
+    return quoted_params
 end
 
 local function RunMacro(ctxt,src_node,the_macro,params)
-    local quoted_params = {}
-    for i,v in ipairs(params) do
-        quoted_params[i] = QuoteParam(params[i])
-    end
+    local quoted_params = QuoteParams(params)
     local result = the_macro.genfunc(unpack(quoted_params))
 
     if ast.is_ast(result) and result:is(ast.QuoteExpr) then
@@ -675,6 +676,61 @@ local function RunMacro(ctxt,src_node,the_macro,params)
         errnode.node_type = L.error
         return errnode
     end
+end
+
+local function InlineUserFunc(ctxt, src_node, the_func, param_asts)
+    local f = the_func.ast
+
+    -- check that the correct number of arguments are provided
+    if #(f.params) ~= #param_asts then
+        ctxt:error(src_node,
+            'Expected '..tostring(#(f.params))..' arguments, '..
+            'but was supplied '..tostring(#param_asts)..' arguments')
+        local errnode     = src_node:clone()
+        errnode.node_type = L.error
+        return errnode
+    end
+
+    -- bind params to variables (use a quote to fake it?)
+    local statements = {}
+    for i,p_ast in ipairs(QuoteParams(param_asts)) do
+        local decl = ast.DeclStatement:DeriveFrom(src_node)
+        decl.name = f.params[i]
+        decl.initializer = p_ast
+        statements[i] = decl
+    end
+
+    -- now add the function body statements to the list
+    for _,stmt in ipairs(f.body.statements) do
+        table.insert(statements, stmt)
+    end
+    local block = ast.Block:DeriveFrom(src_node)
+    block.statements = statements
+
+    -- ultimately, the user func call is translated into a quote expression
+    -- A Let
+    -- which looks like
+    -- LET
+    --   var param_1 = ...
+    --   var param_2 = ...
+    --   ...
+    --   <body>
+    -- IN
+    --   <exp>
+    local q = ast.QuoteExpr:DeriveFrom(src_node)
+    q.block = block
+    q.exp   = f.exp
+
+    -- Lacking an expression, use a DO block instead
+    if not f.exp then
+        q = ast.DoStatement:DeriveFrom(q)
+        q.body = block
+        -- hack to make checker barf when this is used as an expression
+        q.node_type = L.internal('no-return function')
+    end
+
+    -- return the result of typechecking the quote we built
+    return q:check(ctxt)
 end
 
 function ast.TableLookup:check(ctxt)
@@ -706,6 +762,9 @@ function ast.TableLookup:check(ctxt)
         -- desugar macro-fields from row.macro to macro(row)
         elseif L.is_macro(luaval) then
             return RunMacro(ctxt,self,luaval,{tab})
+        -- desugar function-fields from row.func to func(row)
+        elseif L.is_user_func(luaval) then
+            return InlineUserFunc(ctxt,self,luaval,{tab})
         else
             return err(self, ctxt, "Row "..ttype.relation:Name()..
                                    " does not have field or macro-field "..
@@ -787,6 +846,8 @@ function ast.Call:check(ctxt)
     elseif v and L.is_macro(v) then
         -- replace the call node with the inlined AST
         call = RunMacro(ctxt, self, v, call.params)
+    elseif v and L.is_user_func(v) then
+        call = InlineUserFunc(ctxt, self, v, call.params)
     elseif v and T.isLisztType(v) and v:isValueType() then
         local params = call.params
         call = ast.Cast:DeriveFrom(self)
@@ -819,7 +880,6 @@ end
 
 function ast.Global:check(ctxt)
     local n     = self:clone()
-    n.global    = self.global
     n.node_type = self.global.type
     return n
 end
@@ -849,10 +909,7 @@ function ast.QuoteExpr:check(ctxt)
 end
 
 function ast.FieldAccess:check(ctxt)
-    local n = self:clone()
-    n.field = self.field
-    n.row   = self.row
-    return n
+    return self:passthrough('check', ctxt)
 end
 
 function ast.LuaObject:check(ctxt)

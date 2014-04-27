@@ -309,6 +309,8 @@ local function luav_to_ast(luav, src_node)
     node = NewLuaObject(src_node,luav)
   elseif L.is_relation(luav) then
     node = NewLuaObject(src_node,luav)
+  elseif L.is_user_func(luav) then
+    node = NewLuaObject(src_node,luav)
   elseif L.is_macro(luav) then
     node = NewLuaObject(src_node,luav)
   elseif terralib.isfunction(luav) then
@@ -406,6 +408,38 @@ function ast.TableLookup:specialize(ctxt)
     return lookup
   end
 end
+
+
+
+------------------------------------------------------------------------------
+--[[ AST USER FUNCTIONS:                                                  ]]--
+------------------------------------------------------------------------------
+
+function ast.UserFunction:specialize(ctxt)
+  local func = self:clone()
+
+  ctxt:enterblock()
+  -- shadow params
+  for _,name in ipairs(self.params) do
+    ctxt:liszt()[name] = true
+  end
+
+  local body = self.body:specialize(ctxt)
+  local exp = nil
+  if self.exp then
+    exp  = self.exp:specialize(ctxt)
+  end
+  ctxt:leaveblock()
+
+  func.params, func.body, func.exp = self.params, body, exp
+  return func
+end
+
+
+
+
+
+
 
 
 

@@ -353,14 +353,15 @@ function ast.DeclStatement:codegen (ctxt)
   local varname = self.name
   local tp      = self.node_type:terraType()
   local varsym  = symbol(tp)
-  ctxt:localenv()[varname] = varsym
 
   if self.initializer then
     local exp = self.initializer:codegen(ctxt)
+    ctxt:localenv()[varname] = varsym -- MUST happen after init codegen
     return quote 
       var [varsym] = [exp]
     end
   else
+    ctxt:localenv()[varname] = varsym -- MUST happen after init codegen
     return quote var [varsym] end
   end
 end

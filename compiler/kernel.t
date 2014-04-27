@@ -113,8 +113,8 @@ function L.NewKernel(kernel_ast, env)
     local new_kernel = setmetatable({}, L.LKernel)
 
     -- All declaration time processing here
-    kernel_ast           = specialization.specialize(env, kernel_ast)
-    new_kernel.typed_ast = semant.check(env, kernel_ast)
+    local specialized    = specialization.specialize(env, kernel_ast)
+    new_kernel.typed_ast = semant.check(env, specialized)
     new_kernel.field_use = phase.phasePass(new_kernel.typed_ast)
 
     return new_kernel

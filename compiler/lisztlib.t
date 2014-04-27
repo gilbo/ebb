@@ -44,6 +44,7 @@ local LIndex     = make_prototype("LIndex","index")
 local LGlobal    = make_prototype("LGlobal","global")
 local LVector    = make_prototype("LVector","vector")
 local LMacro     = make_prototype("LMacro","macro")
+local LUserFunc  = make_prototype("LUserFunc", "user_func")
 local Kernel     = make_prototype("LKernel","kernel")
 
 local C = terralib.require "compiler.c"
@@ -249,6 +250,16 @@ L.Where = L.NewMacro(function(field,key)
     return q
 end)
 
+local specialization = terralib.require('compiler.specialization')
+
+function L.NewUserFunc(func_ast, luaenv)
+    local new_user_func = setmetatable({}, L.LUserFunc)
+
+    local special = specialization.specialize(luaenv, func_ast)
+    new_user_func.ast = special
+
+    return new_user_func
+end
 
 
 

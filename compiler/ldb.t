@@ -75,6 +75,7 @@ function L.NewRelation(size, name)
         _fields    = terralib.newlist(),
         _subsets   = terralib.newlist(),
         _macros    = terralib.newlist(),
+        _functions = terralib.newlist(),
         _name      = name,
     },
     L.LRelation)
@@ -125,6 +126,29 @@ function L.LRelation:NewFieldMacro (name, macro)
     self._macros:insert(macro)
     return macro
 end
+
+function L.LRelation:NewFieldFunction (name, userfunc)
+    if not name or type(name) ~= "string" then
+        error("NewFieldFunction() expects a string as the first argument", 2)
+    end
+    if not is_valid_lua_identifier(name) then
+        error(valid_field_name_err_msg, 2)
+    end
+    if self[name] then
+        error("Cannot create a new field-function with name '"..name.."'  "..
+              "That name is already being used.", 2)
+    end
+
+    if not L.is_user_func(userfunc) then
+        error("NewFieldFunction() expects a Liszt Function "..
+              "as the 2nd argument", 2)
+    end
+
+    rawset(self, name, userfunc)
+    self._functions:insert(userfunc)
+    return userfunc
+end
+
 
 function L.LRelation:GroupBy(name)
     local key_field = self[name]

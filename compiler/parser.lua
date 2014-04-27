@@ -175,8 +175,8 @@ lang.liszt_kernel = function (P)
 	return kernel_node
 end
 
-lang.liszt_function = function (P)
-	local function_node = ast.LisztFunction:New(P)
+lang.user_function = function (P)
+	local function_node = ast.UserFunction:New(P)
 
 	-- parse params
 	local params  = {}
@@ -227,7 +227,7 @@ lang.liszt = function (P)
 			return P:liszt_kernel()
 
 		elseif code_type == 'function' then
-			return P:liszt_function()
+			return P:user_function()
 
 		elseif code_type == 'let_quote' then
 			local let_exp = ast.QuoteExpr:New(P)

@@ -22,11 +22,10 @@ local lisztlanguage = {
                 local env = env_fn()
                 return lisztlib.NewKernel(ast, env)
             end
-        elseif ast.kind == 'function' then
-            error('NOT supporting functions yet...')
+        elseif ast.kind == 'user_function' then
             return function (env_fn)
                 local env = env_fn()
-                return nil
+                return lisztlib.NewUserFunc(ast, env)
             end
         else
             return function (env_fn)
