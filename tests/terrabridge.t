@@ -22,7 +22,7 @@ local terra square(val : int)
     return val * val
 end
 
-local test_terra = liszt_kernel(f : mesh.faces)
+local test_terra = liszt kernel(f : mesh.faces)
     assert(square(5) == 25) -- call a user-defined Terra function
     assert(sqrt(5) == ans) -- call a built-in C function
 

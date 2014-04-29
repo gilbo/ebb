@@ -20,7 +20,7 @@
 
 
 local JSON = {}
-
+package.loaded["compiler.JSON"] = JSON
 
 -- Use the following to produce
 -- deterministic order of fields being serialized

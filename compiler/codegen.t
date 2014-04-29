@@ -8,10 +8,11 @@ local ast = require "compiler.ast"
 local Context = {}
 Context.__index = Context
 
-function Context.new(env, runtime)
+function Context.new(env, bran)
     local ctxt = setmetatable({
         env     = env,
-        runtime = runtime
+        bran    = bran,
+        germ    = bran.germ,
     }, Context)
     return ctxt
 end
@@ -24,26 +25,51 @@ end
 function Context:leaveblock()
   self.env:leaveblock()
 end
-function Context:runtime_codegen_kernel_body (kernel_node, relation)
-  return self.runtime:codegen_kernel_body(self, kernel_node, relation)
+
+function Context:FieldPtr(field)
+  return `[self.bran:getFieldGerm(field)].data
 end
-function Context:runtime_codegen_field_write (fw_node)
-  return self.runtime:codegen_field_write(self, fw_node)
-end
-function Context:runtime_codegen_field_read (fa_node)
-  return self.runtime:codegen_field_read(self, fa_node)
+function Context:SubsetPtr()
+  return `[self.bran:getSubsetGerm()]
 end
 
-
-function C.codegen (runtime, kernel_ast, relation)
+function C.codegen (kernel_ast, bran)
   local env = terralib.newenvironment(nil)
-  local ctxt = Context.new(env, runtime)
+  local ctxt = Context.new(env, bran)
 
   ctxt:enterblock()
-    local parameter = symbol(L.row(relation):terraType())
-    ctxt:localenv()[kernel_ast.name] = parameter
-    local kernel_body =
-      ctxt:runtime_codegen_kernel_body(kernel_ast, relation)
+    local param = symbol(L.row(ctxt.bran.relation):terraType())
+    ctxt:localenv()[kernel_ast.name] = param
+
+    local body  = kernel_ast.body:codegen(ctxt)
+
+    local kernel_body = quote
+      for [param] = 0, ctxt.germ.n_rows do
+        [body]
+      end
+    end
+
+    if ctxt.bran.subset then
+      local subset = ctxt.bran.subset
+
+      kernel_body = quote
+        if [ctxt:SubsetPtr()].use_boolmask then
+          var boolmask = [ctxt:SubsetPtr()].boolmask
+          for [param] = 0, ctxt.germ.n_rows do
+            if boolmask[param] then -- subset guard
+              [body]
+            end
+          end
+        elseif [ctxt:SubsetPtr()].use_index then
+          var index = [ctxt:SubsetPtr()].index
+          var size = [ctxt:SubsetPtr()].index_size
+          for itr = 0,size do
+            var [param] = index[itr]
+            [body]
+          end
+        end
+      end
+    end
   ctxt:leaveblock()
 
   local r = terra ()
@@ -51,6 +77,7 @@ function C.codegen (runtime, kernel_ast, relation)
   end
   return r
 end
+
 
 ----------------------------------------------------------------------------
 
@@ -268,12 +295,31 @@ function ast.Assignment:codegen (ctxt)
   return quote [lhs] = rhs end
 end
 
+function ast.GlobalReduce:codegen(ctxt)
+  -- just re-direct to an assignment statement for now.
+  local assign = ast.Assignment:DeriveFrom(self)
+  assign.lvalue = self.global
+  assign.exp    = self.exp
+  assign.reduceop = self.reduceop
+
+  return assign:codegen(ctxt)
+end
+
 function ast.FieldWrite:codegen (ctxt)
-  return ctxt:runtime_codegen_field_write(self)
+  -- just re-direct to an assignment statement for now.
+  local assign = ast.Assignment:DeriveFrom(self)
+  assign.lvalue = self.fieldaccess
+  assign.exp    = self.exp
+  if self.reduceop then assign.reduceop = self.reduceop end
+
+  return assign:codegen(ctxt)
 end
 
 function ast.FieldAccess:codegen (ctxt)
-  return ctxt:runtime_codegen_field_read(self)
+  local field = self.field
+  local index = self.row:codegen(ctxt)
+  local dataptr = `[&self.node_type:terraType()]([ ctxt:FieldPtr(field) ])
+  return `@(dataptr + [index])
 end
 
 function ast.Cast:codegen(ctxt)
@@ -307,14 +353,15 @@ function ast.DeclStatement:codegen (ctxt)
   local varname = self.name
   local tp      = self.node_type:terraType()
   local varsym  = symbol(tp)
-  ctxt:localenv()[varname] = varsym
 
   if self.initializer then
     local exp = self.initializer:codegen(ctxt)
+    ctxt:localenv()[varname] = varsym -- MUST happen after init codegen
     return quote 
       var [varsym] = [exp]
     end
   else
+    ctxt:localenv()[varname] = varsym -- MUST happen after init codegen
     return quote var [varsym] end
   end
 end
@@ -398,19 +445,20 @@ end
 function ast.Where:codegen(ctxt)
     local key   = self.key:codegen(ctxt)
     local sType = self.node_type:terraType()
-    local index = self.relation._indexdata
+    local indexdata = self.relation._grouping.index._data
     local v = quote
         var k   = [key]
-        var idx = [index]
+        var idx = [indexdata]
     in 
         sType { idx[k], idx[k+1] }
     end
     return v
 end
 
-local function doProjection(obj,field)
+local function doProjection(obj,field,ctxt)
     assert(L.is_field(field))
-    return `field.data[obj]
+    local dataptr = `[&field:Type():terraType()]([ ctxt:FieldPtr(field) ])
+    return `dataptr[obj]
 end
 
 function ast.GenericFor:codegen (ctxt)
@@ -421,7 +469,7 @@ function ast.GenericFor:codegen (ctxt)
 
     for i,p in ipairs(self.set.node_type.projections) do
         local field = rel[p]
-        projected   = doProjection(projected,field)
+        projected   = doProjection(projected,field,ctxt)
         rel         = field.type.relation
         assert(rel)
     end

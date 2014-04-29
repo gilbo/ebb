@@ -20,6 +20,7 @@ function A.is_ast(obj)
 end
 
 local LisztKernel     = { kind = 'kernel' }
+local UserFunction    = { kind = 'user_function' }
 local Block           = { kind = 'block'  } -- Statement*
   -- store condition and block to be executed for if/elseif clauses
 local CondBlock       = { kind = 'condblock' } 
@@ -45,6 +46,7 @@ local VectorLiteral   = { kind = 'vecliteral' }
 local FieldAccess     = { kind = 'fieldaccess' } -- type determined by field type
 local FieldWrite      = { kind = 'fieldwrite'  }
 local Global          = { kind = 'global'      } -- type determined by global type
+local GlobalReduce    = { kind = 'globalreduce' }
 local Cast            = { kind = 'cast'        } -- called "function" is a type, cast to that type
 
 local QuoteExpr       = { kind = 'quoteexpr'   } -- type already checked, just return checked AST
@@ -82,6 +84,7 @@ local function inherit (child, parent, child_asts, child_ast_lists)
 end
 
 inherit(LisztKernel, AST, {'set', 'body'})
+inherit(UserFunction, AST, {'params', 'body', 'exp'})
 inherit(Expression,  AST)
 inherit(Statement,   AST)
 inherit(Block,       AST, nil, {'statements'})
@@ -113,9 +116,10 @@ inherit(DoStatement,     Statement, {'body'})
 inherit(RepeatStatement, Statement, {'cond', 'body'})
 inherit(ExprStatement,   Statement, {'exp'})
 inherit(Assignment,      Statement, {'lvalue','exp'})
+inherit(GlobalReduce,    Statement, {'global', 'exp'})
 inherit(FieldWrite,      Statement, {'fieldaccess','exp'})
 inherit(DeclStatement,   Statement, {'typeexpression','initializer'})
-inherit(NumericFor,      Statement, {'name','lower','upper','step','body'})
+inherit(NumericFor,      Statement, {'lower','upper','step','body'})
 inherit(GenericFor,      Statement, {'set','body'})
 inherit(Break,           Statement)
 
@@ -192,6 +196,24 @@ function AST:passthrough(call, ctxt_arg)
 
   return copy
 end
+function AST:callthrough(call, ctxt_arg)
+  -- perform the requested call recursively on the children
+  for _,n in ipairs(self.__child_asts) do
+    local node = self[n]
+    if A.is_ast(node) then
+      node[call](node, ctxt_arg)
+    end
+  end
+  for _,n in ipairs(self.__child_ast_lists) do
+    if self[n] then
+      for i, node in ipairs(self[n]) do
+        if A.is_ast(node) then
+          node[call](node, ctxt_arg)
+        end
+      end
+    end
+  end
+end
 
 function AST:is (obj)
   return obj == getmetatable(self)
@@ -211,8 +233,27 @@ function LisztKernel:pretty_print (indent)
   print(indent .. self.kind .. ": (name, set, body)")
   indent = indent .. indent_delta
   print(indent .. self.name)
-  self.set:pretty_print(indent)
+  if self.set then
+    self.set:pretty_print(indent)
+  else
+    print(indent .. 'nil')
+  end
   self.body:pretty_print(indent)
+end
+
+function UserFunction:pretty_print (indent)
+  indent = indent or ''
+  print(indent .. self.kind .. ": (params, body, exp)")
+  indent = indent .. indent_delta
+  for i = 1, #self.params do
+    print(indent .. self.params[i])
+  end
+  self.body:pretty_print(indent)
+  if not self.exp then
+    print(indent..indent_delta..'nil')
+  else
+    self.exp:pretty_print(indent)
+  end
 end
 
 function Block:pretty_print (indent)
@@ -262,7 +303,17 @@ end
 
 function QuoteExpr:pretty_print(indent)
     indent = indent or ''
-    print(indent .. self.kind .. ": " .. tostring(self.ast))
+    local str = indent .. self.kind .. ": ("
+    if self.block then str = str .. "block, " end
+    if self.exp then str = str .. "exp" end
+    print(str .. ")")
+    indent = indent .. indent_delta
+    if self.block then
+      self.block:pretty_print(indent)
+    end
+    if self.exp then
+      self.exp:pretty_print(indent)
+    end
 end
 
 function FieldAccess:pretty_print(indent)
@@ -281,10 +332,19 @@ end
 function Call:pretty_print (indent)
   indent = indent or ''
   print(indent .. self.kind .. ": (func, params)")
-  self.func:pretty_print(indent .. indent_delta)
+  if not A.is_ast(self.func) then
+    print(indent .. indent_delta .. tostring(self.func))
+  else
+    self.func:pretty_print(indent .. indent_delta)
+  end
   for i = 1, #self.params do
     self.params[i]:pretty_print(indent .. indent_delta)
   end
+end
+
+function LuaObject:pretty_print (indent)
+  indent = indent or ''
+  print(indent .. self.kind .. ": " .. tostring(self.value))
 end
 
 function TableLookup:pretty_print (indent)
@@ -358,7 +418,9 @@ end
 
 function DeclStatement:pretty_print (indent)
   indent = indent or ''
-  print(indent .. self.kind.. ":(typeexpression,initializer)")
+  local typexpstr = ''
+  if self.typeexpression then typexpstr = "typeexpression," end
+  print(indent .. self.kind.. ":(name,"..typexpstr.."initializer)")
   print(indent .. indent_delta .. self.name)
   if self.typeexpression then
       print(indent .. indent_delta ..self.typeexpression)
@@ -378,6 +440,13 @@ function Assignment:pretty_print (indent)
   indent = indent or ''
   print(indent .. self.kind .. ': (lvalue, exp)')
   self.lvalue:pretty_print(indent .. indent_delta)
+  self.exp:pretty_print(indent .. indent_delta)
+end
+
+function GlobalReduce:pretty_print (indent)
+  indent = indent or ''
+  print(indent .. self.kind .. ": <reduction \'" .. self.reduceop .. '\'>')
+  self.global:pretty_print(indent .. indent_delta)
   self.exp:pretty_print(indent .. indent_delta)
 end
 
@@ -431,6 +500,7 @@ end
 for k,v in pairs({
   AST             = AST,
   LisztKernel     = LisztKernel,
+  UserFunction    = UserFunction,
   Block           = Block,
   Expression      = Expression,
   BinaryOp        = BinaryOp,
@@ -456,6 +526,7 @@ for k,v in pairs({
   ExprStatement   = ExprStatement,
   Assignment      = Assignment,
   FieldWrite      = FieldWrite,
+  GlobalReduce    = GlobalReduce,
   DeclStatement   = DeclStatement,
   NumericFor      = NumericFor,
   GenericFor      = GenericFor,

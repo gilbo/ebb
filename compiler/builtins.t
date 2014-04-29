@@ -8,13 +8,13 @@ local C = terralib.require "compiler.c"
 ---------------------------------------------
 --[[ Builtin functions                   ]]--
 ---------------------------------------------
-local Func = {}
-Func.__index = Func
-Func.__call = function(self,...)
+local Builtin = {}
+Builtin.__index = Builtin
+Builtin.__call = function(self,...)
     return self.luafunc(...)
 end
 
-function Func.new(luafunc)
+function Builtin.new(luafunc)
     local check = function(ast, ctxt)
         error('unimplemented builtin function typechecking')
     end
@@ -22,14 +22,14 @@ function Func.new(luafunc)
         error('unimplemented builtin function codegen')
     end
     return setmetatable({check=check, codegen=codegen, luafunc = luafunc},
-                        Func)
+                        Builtin)
 end
-function B.isFunc(f)
-    return getmetatable(f) == Func
+function B.isBuiltin(f)
+    return getmetatable(f) == Builtin
 end
 
 local id = function () error("id expects a relation row") end
-B.id = Func.new(id)
+B.id = Builtin.new(id)
 
 function B.id.check(ast, ctxt)
     local args = ast.params
@@ -52,7 +52,7 @@ end
 
 
 local UNSAFE_ROW = function() error('UNSAFE_ROW cannot be called as Lua') end
-B.UNSAFE_ROW = Func.new(UNSAFE_ROW)
+B.UNSAFE_ROW = Builtin.new(UNSAFE_ROW)
 
 function B.UNSAFE_ROW.check(ast, ctxt)
     local args = ast.params
@@ -87,7 +87,7 @@ function B.UNSAFE_ROW.codegen(ast, env)
 end
 
 
-B.assert = Func.new(assert)
+B.assert = Builtin.new(assert)
 
 function B.assert.check(ast, ctxt)
     local args = ast.params
@@ -134,7 +134,7 @@ function B.assert.codegen(ast, env)
 end
 
 
-B.print = Func.new(print)
+B.print = Builtin.new(print)
 
 function B.print.check(ast, ctxt)
     local args = ast.params
@@ -218,7 +218,7 @@ local function dot(a, b)
     return sum
 end
 
-B.dot = Func.new(dot)
+B.dot = Builtin.new(dot)
 
 function B.dot.check(ast, ctxt)
     local args = ast.params
@@ -296,7 +296,7 @@ local function cross(a, b)
     })
 end 
 
-B.cross = Func.new(cross)
+B.cross = Builtin.new(cross)
 
 function B.cross.check(ast, ctxt)
     local args = ast.params
@@ -355,7 +355,7 @@ local function length(v)
     return C.sqrt(dot(v, v))
 end
 
-B.length = Func.new(length)
+B.length = Builtin.new(length)
 
 function B.length.check(ast, ctxt)
     local args = ast.params
@@ -406,7 +406,7 @@ local function all(v)
     return true
 end
 
-B.all = Func.new(all)
+B.all = Builtin.new(all)
 
 function B.all.check(ast, ctxt)
     local args = ast.params
@@ -454,7 +454,7 @@ local function any(v)
     return false
 end
 
-B.any = Func.new(any)
+B.any = Builtin.new(any)
 
 function B.any.check(ast, ctxt)
     local args = ast.params
@@ -552,7 +552,8 @@ end
 
 
 function B.terra_to_func(terrafn)
-    local newfunc = Func.new()
+    local newfunc = Builtin.new()
+    newfunc.is_a_terra_func = true
     newfunc.check, newfunc.codegen = TerraCheck(terrafn), TerraCodegen(terrafn)
     return newfunc
 end
@@ -566,4 +567,4 @@ L.id     = B.id
 L.UNSAFE_ROW = B.UNSAFE_ROW
 L.any    = B.any
 L.all    = B.all
-L.is_function = B.isFunc
+L.is_builtin = B.isBuiltin

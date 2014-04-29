@@ -13,7 +13,7 @@ local com   = L.NewGlobal(L.vector(L.float, 3), {0, 0, 0})--Vector.new(float, {0
 local upval = 5
 local vv    = L.NewVector(L.float, {1,2,3})
 
-local test_for = liszt_kernel (f : mesh.faces)
+local test_for = liszt kernel (f : mesh.faces)
 	for v in f.vertices do
 	    lprint(f,v)
 	end

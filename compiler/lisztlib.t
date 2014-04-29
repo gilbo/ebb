@@ -1,6 +1,22 @@
 local L = {}
 package.loaded["compiler.lisztlib"] = L
 
+-- Use the following to produce
+-- deterministic order of table entries
+-- From the Lua Documentation
+function pairs_sorted(tbl, compare)
+  local arr = {}
+  for k in pairs(tbl) do table.insert(arr, k) end
+  table.sort(arr, compare)
+
+  local i = 0
+  local iter = function() -- iterator
+    i = i + 1
+    if arr[i] == nil then return nil
+    else return arr[i], tbl[arr[i]] end
+  end
+  return iter
+end
 
 -------------------------------------------------------------------------------
 --[[ Liszt modules:                                                        ]]--
@@ -23,9 +39,12 @@ local function make_prototype(objname,name)
 end
 local LRelation  = make_prototype("LRelation","relation")
 local LField     = make_prototype("LField","field")
+local LSubset    = make_prototype("LSubset","subset")
+local LIndex     = make_prototype("LIndex","index")
 local LGlobal    = make_prototype("LGlobal","global")
 local LVector    = make_prototype("LVector","vector")
 local LMacro     = make_prototype("LMacro","macro")
+local LUserFunc  = make_prototype("LUserFunc", "user_func")
 local Kernel     = make_prototype("LKernel","kernel")
 
 local C = terralib.require "compiler.c"
@@ -34,16 +53,9 @@ local ast = terralib.require "compiler.ast"
 terralib.require "compiler.builtins"
 local LDB = terralib.require "compiler.ldb"
 local semant = terralib.require "compiler.semant"
-local codegen = terralib.require "compiler.codegen"
+local K = terralib.require "compiler.kernel"
 --L.LDB = LDB
 
---[[
-- An LRelation contains its size and fields as members.  The _index member
-- refers to an array of the compressed row values for the index field.
-
-- An LField stores its fieldname, type, an array of data, and a pointer
-- to another LRelation if the field itself represents relational data.
---]]
 local is_vector = L.is_vector --cache lookup for efficiency
 
 -------------------------------------------------------------------------------
@@ -238,57 +250,19 @@ L.Where = L.NewMacro(function(field,key)
     return q
 end)
 
+local specialization = terralib.require('compiler.specialization')
 
--------------------------------------------------------------------------------
---[[ Kernels/Runtimes                                                      ]]--
--------------------------------------------------------------------------------
-local rtlib = terralib.require 'compiler/runtimes'
+function L.NewUserFunc(func_ast, luaenv)
+    local new_user_func = setmetatable({}, L.LUserFunc)
 
-L.singleCore = rtlib.singleCore
-L.gpu        = rtlib.gpu
+    local special = specialization.specialize(luaenv, func_ast)
+    new_user_func.ast = special
 
-Kernel.__call  = function (kobj, relation)
-    if not relation then
-        error("A kernel must be called on a relation.  "..
-              "No relation specified.", 2)
-    end
-    local runtime = L.singleCore
-    --if not runtime then runtime = L.singleCore end
-    --if not rtlib.is_valid_runtime(runtime) then 
-    --    error('Argument is not a valid runtime')
-    --end
-	if not kobj.__kernels[runtime] or
-       not kobj.__kernels[runtime][relation]
-    then
-        kobj:generate(runtime, relation)
-    end
-	kobj.__kernels[runtime][relation]()
+    return new_user_func
 end
 
-function L.NewKernel(kernel_ast, env)
-    local new_kernel = setmetatable({
-        __kernels={}
-    }, Kernel)
 
-    new_kernel.typed_ast = semant.check(env, kernel_ast)
 
-	return new_kernel
-end
 
-function Kernel:generate (runtime, relation)
-    -- Right now, we require that the relation match exactly
-    local ast_relation = self.typed_ast.relation
-    if ast_relation ~= relation then
-        error('Kernels may only be called on relation they were typed with')
-    end
-
-    if not self.__kernels[runtime] then
-        self.__kernels[runtime] = {}
-    end
-	if not self.__kernels[runtime][relation] then
-		self.__kernels[runtime][relation] =
-            codegen.codegen(runtime, self.typed_ast, relation)
-	end
-end
 
 

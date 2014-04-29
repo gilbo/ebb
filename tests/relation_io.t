@@ -77,11 +77,12 @@ local function test_db_eq(dba, dbb)
     for rname, rela in pairs(dba) do
       local relb = dbb[rname]
 
-      -- check index equality
-      if rela._index then
-        test.eq(rela._index.name, relb._index.name)
+      -- check grouping equality
+      if rela._grouped and relb._grouped then
+        test.eq(rela._grouped.key_field:Name(),
+                relb._grouped.key_field:Name())
       else
-        test.eq(rela._index, relb._index)
+        test.eq(rela._grouped, relb._grouped)
       end
 
       -- check size equality
@@ -156,7 +157,7 @@ test.fail_function(function() L.LoadRelationSchema{
 } end, 'Error parsing schema file')
 test.fail_function(function() L.LoadRelationSchema{
   file = datadir .. 'not_json_obj.json',
-} end, 'Schema JSON file .* did not parse to an object')
+} end, '<root>: expected object')
 
 -- should be able to read in minimum but useless schema without error
 test.seteq(L.LoadRelationSchema{ file = datadir .. 'min_schema.json' }, {})
@@ -165,7 +166,7 @@ test.seteq(L.LoadRelationSchema{ file = datadir .. 'min_schema.json' }, {})
 test.eq(L.LoadRelationSchemaNotes{ file = datadir .. 'min_schema.json' }, nil)
 test.fail_function(function() L.LoadRelationSchemaNotes{
   file = datadir .. 'min_schema_w_bad_notes.json'
-} end, "Expected 'notes' to be a string")
+} end, "<root>.notes: expected string")
 test.eq(L.LoadRelationSchemaNotes{
   file = datadir .. 'min_schema_w_notes.json'
 }, 'sample note')
@@ -176,43 +177,44 @@ test.fail_function(function() L.LoadRelationSchema{
 } end, 'Liszt relation loader only supports schema.json files of version 0.0')
 test.fail_function(function() L.LoadRelationSchema{
   file = datadir .. 'missing_relations.json',
-} end, 'Could not find \'relations\' object')
+} end, 'expected to find key \'relations\'')
 test.fail_function(function() L.LoadRelationSchema{
   file = datadir .. 'broken_simp/invalid_rel_name.json',
 } end, 'Invalid Relation name')
 test.fail_function(function() L.LoadRelationSchema{
   file = datadir .. 'broken_simp/no_rel_obj.json',
-} end, 'Relation .* was not a JSON object')
+} end, '<root>.relations.cells: expected object')
 test.fail_function(function() L.LoadRelationSchema{
   file = datadir .. 'broken_simp/no_rel_size.json',
-} end, 'Relation .* was missing a "size" count')
+} end, 'expected to find key \'size\'')
 test.fail_function(function() L.LoadRelationSchema{
   file = datadir .. 'broken_simp/no_rel_fields.json',
-} end, 'does not have a \'fields\' object')
+} end, 'expected to find key \'fields\'')
 test.fail_function(function() L.LoadRelationSchema{
   file = datadir .. 'broken_simp/non_str_index.json',
-} end, 'has an index of non%-string type') -- % is Lua pattern matching esc.
+} end, '<root>.relations.cells.grouped_by: expected string')
 test.fail_function(function() L.LoadRelationSchema{
   file = datadir .. 'broken_simp/dangling_index.json',
-} end, 'an entry in the "fields" object could not be found.')
+} end, 'is grouped by field "abc" but that field couldn\'t be found.')
 test.fail_function(function() L.LoadRelationSchema{
   file = datadir .. 'broken_simp/invalid_field_name.json',
 } end, 'Invalid Field name')
 test.fail_function(function() L.LoadRelationSchema{
   file = datadir .. 'broken_simp/no_field_obj.json',
-} end, 'Field .* was not a JSON object')
+} end, '<root>.relations.cells.fields.temperature: expected object')
 test.fail_function(function() L.LoadRelationSchema{
   file = datadir .. 'broken_simp/no_field_type.json',
-} end, 'Field .* was missing a type object')
+} end, '<root>.relations.cells.fields.temperature: '..
+       'expected to find key \'type\'')
 test.fail_function(function() L.LoadRelationSchema{
   file = datadir .. 'broken_simp/no_field_path.json',
-} end, 'Field .* was missing a path object')
+} end, 'Field "temperature" on Relation "cells" was missing a path object')
 test.fail_function(function() L.LoadRelationSchema{
   file = datadir .. 'broken_simp/invalid_field_path.json',
 } end, 'Invalid path for Field')
 test.fail_function(function() L.LoadRelationSchema{
   file = datadir .. 'broken_simp/absolute_field_path.json',
-} end, 'Absolute paths in schema files are prohibited')
+} end, 'Absolute paths are prohibited')
 
 
 -- broken type json formatting should produce the following errors

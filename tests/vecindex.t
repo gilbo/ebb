@@ -11,7 +11,7 @@ local mesh = LMesh.Load("examples/mesh.lmesh")
 ------------------
 -- Should pass: --
 ------------------
-local vk = liszt_kernel (v : mesh.vertices)
+local vk = liszt kernel (v : mesh.vertices)
     var x = {5, 4, 3}
     v.position += x
 end
@@ -20,7 +20,7 @@ vk(mesh.vertices)
 local x_out = L.NewGlobal(L.double, 0.0)
 local y_out = L.NewGlobal(L.double, 0.0)
 local y_idx = L.NewGlobal(L.int, 1)
-local read_out = liszt_kernel(v : mesh.vertices)
+local read_out = liszt kernel(v : mesh.vertices)
     x_out += v.position[0]
     y_out += v.position[y_idx]
 end
@@ -36,7 +36,7 @@ test.fuzzy_eq(avgy, 4)
 ------------------
 idx = 3.5
 test.fail_function(function()
-  liszt_kernel(v : mesh.vertices)
+  liszt kernel(v : mesh.vertices)
       v.position[idx] = 5
   end
 end, "expected an integer")

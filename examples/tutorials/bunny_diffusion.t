@@ -376,7 +376,7 @@ end
 
 -- EXTRA: (This is optional.  It demonstrates the use of VDB,
 --         a visual debugger)
-local vdb = terralib.require('ldb.vdb')
+local vdb = terralib.require('lib.vdb')
 -- The idea here is that we're going to draw all of the triangles
 -- in the mesh with a color proportional to their current
 -- temperature.  When we view this data in VDB, we'll see the
@@ -497,9 +497,9 @@ local loaded_data = L.LoadRelationSchema {
 -- construct a new version of the OFF file.
 
 
--- DumpToTable() is the inverse of the way we loaded the OFF file data
-local positions     = vertices.pos:DumpToTable()
-local temperatures  = vertices.temperature:DumpToTable()
+-- DumpToList() is the inverse of the way we loaded the OFF file data
+local positions     = vertices.pos:DumpToList()
+local temperatures  = vertices.temperature:DumpToList()
 
 -- Let's open up a file to dump this temperature data to.
 local output_temp_file = PN.scriptdir() ..

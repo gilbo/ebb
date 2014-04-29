@@ -107,14 +107,16 @@ local platform = ffi.string(c_inc.CURRENT_PLATFORM_STR());
 if platform == 'apple' then
     local glfw_path = nil
     for line in io.popen('mdfind -name libglfw'):lines() do
-        print(line)
-        if glfw_path then
-            --error('when searching for libglfw, multiple options were found. '..
-            --      'Crashing as a safety measure.')
-            break
+        local version = string.match(line, 'libglfw(.-)%.dylib')
+        if version then
+            glfw_path = line
         end
-        glfw_path = line
     end
+    print('auto-located glfw:')
+    print(glfw_path)
+
+    --if not glfw_path then error('could not find glfw*.*.*.dylib', 2) end
+
     terralib.linklibrary(glfw_path)
 else
     error('did not recognize platform')

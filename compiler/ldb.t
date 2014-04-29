@@ -40,13 +40,12 @@ local function MallocArray(T,N)
 end
 
 
-
-local valid_relation_name_err_msg =
-    "Relation names must be valid Lua Identifiers: a letter or underscore,"..
+local valid_name_err_msg =
+    "must be valid Lua Identifiers: a letter or underscore,"..
     " followed by zero or more underscores, letters, and/or numbers"
-local valid_field_name_err_msg =
-    "Field names must be valid Lua Identifiers: a letter or underscore,"..
-    " followed by zero or more underscores, letters, and/or numbers"
+local valid_relation_name_err_msg = "Relation names " .. valid_name_err_msg
+local valid_field_name_err_msg = "Field names " .. valid_name_err_msg
+local valid_subset_name_err_msg = "Subset names " .. valid_name_err_msg
 local function is_valid_lua_identifier(name)
     if type(name) ~= 'string' then return false end
 
@@ -74,7 +73,9 @@ function L.NewRelation(size, name)
     local rel = setmetatable( {
         _size      = size,
         _fields    = terralib.newlist(),
+        _subsets   = terralib.newlist(),
         _macros    = terralib.newlist(),
+        _functions = terralib.newlist(),
         _name      = name,
     },
     L.LRelation)
@@ -101,48 +102,16 @@ end
 -- prevent user from modifying the lua table
 function L.LRelation:__newindex(fieldname,value)
     error("Cannot assign members to LRelation object "..
-          "(did you mean to call self:NewField?)", 2)
+          "(did you mean to call self:New...?)", 2)
 end
 
-function L.LRelation:NewField (name, typ)  
-    if not name or type(name) ~= "string" then
-        error("NewField() expects a string as the first argument", 2)
-    end
-    if not is_valid_lua_identifier(name) then
-        error(valid_fieldName_err_msg, 2)
-    end
-    if self[name] then
-        error("Cannot create a new field with name '"..name.."'  "..
-              "That name is already being used.", 2)
-    end
-    
-    local function is_value_or_row_type()
-        return T.isLisztType(typ) and typ:isFieldType()
-    end
-    if not L.is_relation(typ) and not is_value_or_row_type() then
-        error("NewField() expects a Liszt type or "..
-              "relation as the 2nd argument", 2)
-    end
 
-    if L.is_relation(typ) then
-        typ = L.row(typ)
-    end
-
-    local field = setmetatable({}, L.LField)
-    field.type  = typ
-    field.name  = name
-    field.owner = self
-    rawset(self, name, field)
-    self._fields:insert(field)
-    return field
-end
-
-function L.LRelation:NewFieldMacro (name, macro)  
+function L.LRelation:NewFieldMacro (name, macro)
     if not name or type(name) ~= "string" then
         error("NewFieldMacro() expects a string as the first argument", 2)
     end
     if not is_valid_lua_identifier(name) then
-        error(valid_fieldName_err_msg, 2)
+        error(valid_field_name_err_msg, 2)
     end
     if self[name] then
         error("Cannot create a new field-macro with name '"..name.."'  "..
@@ -158,36 +127,65 @@ function L.LRelation:NewFieldMacro (name, macro)
     return macro
 end
 
-function L.LRelation:CreateIndex(name)
-    local f = self[name]
-    if self._index then
-        error("CreateIndex(): Relation already has an index")
+function L.LRelation:NewFieldFunction (name, userfunc)
+    if not name or type(name) ~= "string" then
+        error("NewFieldFunction() expects a string as the first argument", 2)
     end
-    if not L.is_field(f) then
-        error("CreateIndex(): No field "..name)
+    if not is_valid_lua_identifier(name) then
+        error(valid_field_name_err_msg, 2)
     end
-    if not f.type:isRow() then
-        error("CreateIndex(): index field must refer to a relation")
+    if self[name] then
+        error("Cannot create a new field-function with name '"..name.."'  "..
+              "That name is already being used.", 2)
     end
-    local rel = f.type.relation
-    rawset(self,"_index",f)
-    local numindices = rel:Size()
-    local numvalues = f:Size()
-    rawset(self,"_indexdata",MallocArray(uint64,numindices+1))
+
+    if not L.is_user_func(userfunc) then
+        error("NewFieldFunction() expects a Liszt Function "..
+              "as the 2nd argument", 2)
+    end
+
+    rawset(self, name, userfunc)
+    self._functions:insert(userfunc)
+    return userfunc
+end
+
+
+function L.LRelation:GroupBy(name)
+    local key_field = self[name]
+    if self._grouping then
+        error("GroupBy(): Relation is already grouped", 2)
+    elseif not L.is_field(key_field) then
+        error("GroupBy(): Could not find a field named '"..name.."'", 2)
+    elseif not key_field.type:isRow() then
+        error("GroupBy(): Grouping by non-row-type fields is "..
+              "currently prohibited.", 2)
+    end
+
+    -- WARNING: The sizing policy will break once we start supporting dead rows
+    local num_keys = key_field.type.relation:Size()
+    local num_rows = key_field:Size()
+    rawset(self,'_grouping', {
+        key_field = key_field,
+        index = L.LIndex.New(self, 'groupby_'..key_field:Name(), num_keys+1)
+    })
+    local indexdata = self._grouping.index._data
+
     local prev,pos = 0,0
-    for i = 0, numindices - 1 do
-        self._indexdata[i] = pos
-        while f.data[pos] == i and pos < numvalues do
-            if f.data[pos] < prev then
-                -- TODO: NEED TO FREE ALLOCATION SAFELY IN THIS CASE
-                error("CreateIndex(): Index field is not sorted")
+    for i = 0, num_keys - 1 do
+        indexdata[i] = pos
+        while key_field.data[pos] == i and pos < num_rows do
+            if key_field.data[pos] < prev then
+                self._grouping.index:Release()
+                self._grouping = nil
+                error("GroupBy(): Key field '"..name.."' is not sorted.")
             end
-            prev,pos = f.data[pos],pos + 1
+            prev,pos = key_field.data[pos], pos+1
         end
     end
-    assert(pos == numvalues)
-    self._indexdata[numindices] = pos
+    assert(pos == num_rows)
+    indexdata[num_keys] = pos
 end
+
 
 
 function L.LRelation:print()
@@ -197,11 +195,162 @@ function L.LRelation:print()
     end
 end
 
+
 -------------------------------------------------------------------------------
---[[ LField methods:                                                       ]]--
+-------------------------------------------------------------------------------
+--[[ Indices:                                                              ]]--
+-------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
 
+function L.LIndex.New(rel, name, size_or_table)
+    local index = setmetatable({
+        _owner = rel,
+        _name  = name,
+    }, L.LIndex)
+    if type(size_or_table) == 'number' then
+        index:ReAllocate(size_or_table)
+    else
+        index:ReAllocate(#size_or_table)
+        for i=1,#size_or_table do
+            index._data[i-1] = size_or_table[i]
+        end
+    end
 
+    return index
+end
+
+function L.LIndex:Relation()
+    return self._owner
+end
+
+function L.LIndex:ReAllocate(size)
+    self:Release()
+
+    local taddr = L.addr:terraType()
+    self._data = MallocArray(taddr, size)
+    self._size = size
+end
+
+function L.LIndex:Release()
+    if self._data then
+        C.free(self._data)
+        self._data = nil
+    end
+end
+
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+--[[ Subsets:                                                              ]]--
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+
+function L.LSubset:Relation()
+    return self._owner
+end
+
+function L.LRelation:NewSubsetFromFunction (name, predicate)
+    if not name or type(name) ~= "string" then
+        error("NewSubsetFromFunction() "..
+              "expects a string as the first argument", 2)
+    end
+    if not is_valid_lua_identifier(name) then
+        error(valid_subset_name_err_msg, 2)
+    end
+    if self[name] then
+        error("Cannot create a new subset with name '"..name.."'  "..
+              "That name is already being used.", 2)
+    end
+
+    if type(predicate) ~= 'function' then
+        error("NewSubsetFromFunction() expects a predicate "..
+              "for determining membership as the second argument", 2)
+    end
+
+    -- setup and install the subset object
+    local subset = setmetatable({
+        _owner    = self,
+        _name     = name,
+    }, L.LSubset)
+    rawset(self, name, subset)
+    self._subsets:insert(subset)
+
+    -- NOW WE DECIDE how to encode the subset
+    -- we'll try building a mask and decide between using a mask or index
+    local SUBSET_CUTOFF_FRAC = 0.1
+    local SUBSET_CUTOFF = SUBSET_CUTOFF_FRAC * self:Size()
+
+    local boolmask  = L.LField.New(self, name..'_subset_boolmask', L.bool)
+    local index_tbl = {}
+    local subset_size = 0
+    boolmask:LoadFunction(function(i)
+        local val = predicate(i)
+        if val then
+            table.insert(index_tbl, i)
+            subset_size = subset_size + 1
+        end
+        return val
+    end)
+
+    if subset_size > SUBSET_CUTOFF then
+    -- USE MASK
+        subset._boolmask = boolmask
+    else
+    -- USE INDEX
+        subset._index = L.LIndex.New(self, name..'_subset_index', index_tbl)
+        boolmask:ClearData() -- free memory
+    end
+
+    return subset
+end
+
+--function L.LRelation:NewSubsetFromField (name, field_name)
+--    if not name or type(name) ~= "string" then
+--        error("NewSubsetFromField() "..
+--              "expects a string as the first argument", 2)
+--    end
+--    if not is_valid_lua_identifier(name) then
+--        error(valid_subset_name_err_msg, 2)
+--    end
+--    if self[name] then
+--        error("Cannot create a new subset with name '"..name.."'  "..
+--              "That name is already being used.", 2)
+--    end
+--
+--    local field = self[field_name]
+--    if not L.is_field(field) or not field.type == L.bool then
+--        error("NewSubsetFromField(): second argument "..
+--              "'"..tostring(field_name).."' is not a bool-type field name", 2)
+--    end
+--
+--    self:NewSubsetFromFunction(function(i)
+--        return field.data[i]
+--    end)
+--end
+
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+--[[ Fields:                                                               ]]--
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+
+-- Client code should never call this constructor
+-- For internal use only.  Does not install on relation...
+function L.LField.New(rel, name, typ)
+    local field   = setmetatable({}, L.LField)
+    field.data    = nil
+    field.type    = typ
+    field.name    = name
+    field.owner   = rel
+
+    return field
+end
+
+function L.LField:Name()
+    return self.name
+end
+function L.LField:FullName()
+    return self.owner._name .. '.' .. self.name
+end
 function L.LField:Size()
     return self.owner._size
 end
@@ -209,10 +358,35 @@ function L.LField:Type()
     return self.type
 end
 
-local bit = require "bit"
+function L.LRelation:NewField (name, typ)  
+    if not name or type(name) ~= "string" then
+        error("NewField() expects a string as the first argument", 2)
+    end
+    if not is_valid_lua_identifier(name) then
+        error(valid_field_name_err_msg, 2)
+    end
+    if self[name] then
+        error("Cannot create a new field with name '"..name.."'  "..
+              "That name is already being used.", 2)
+    end
+    
+    if L.is_relation(typ) then
+        typ = L.row(typ)
+    end
+    if not T.isLisztType(typ) or not typ:isFieldType() then
+        error("NewField() expects a Liszt type or "..
+              "relation as the 2nd argument", 2)
+    end
+
+    local field = L.LField.New(self, name, typ)
+    rawset(self, name, field)
+    self._fields:insert(field)
+    return field
+end
 
 -- TODO: Hide this function so it's not public
 function L.LField:Allocate()
+    if self.data then self:ClearData() end
     self.data = MallocArray(self.type:terraType(),self:Size())
 end
 
@@ -223,13 +397,56 @@ function L.LField:ClearData ()
         C.free(self.data)
         self.data = nil
     end
-    -- clear index if installed on this field
-    if self.owner._index == self then
-        C.free(self.owner._indexdata)
-        self.owner._indexdata = nil
-        self.owner._index = nil
+    -- clear grouping data if set on this field
+    if self.owner._grouping and
+       self.owner._grouping.key_field == self
+    then
+        self.owner._grouping.index:Release()
+        self.owner._grouping = nil
     end
 end
+
+function L.LRelation:Swap( f1_name, f2_name )
+    local f1 = self[f1_name]
+    local f2 = self[f2_name]
+    if not L.is_field(f1) then
+        error('Could not find a field named "'..f1_name..'"', 2) end
+    if not L.is_field(f2) then
+        error('Could not find a field named "'..f2_name..'"', 2) end
+    if f1.type ~= f2.type then
+        error('Cannot Swap() fields of different type', 2)
+    end
+
+    local tmp = f1.data
+    f1.data = f2.data
+    f2.data = tmp
+end
+
+function L.LRelation:Copy( p )
+    if type(p) ~= 'table' or not p.from or not p.to then
+        error("relation:Copy() should be called using the form\n"..
+              "  relation:Copy{from='f1',to='f2'}", 2)
+    end
+    local from = self[p.from]
+    local to   = self[p.to]
+    if not L.is_field(from) then
+        error('Could not find a field named "'..p.from..'"', 2) end
+    if not L.is_field(to) then
+        error('Could not find a field named "'..p.to..'"', 2) end
+    if from.type ~= to.type then
+        error('Cannot Copy() fields of different type', 2)
+    end
+
+    if not from.data then
+        error('Cannot Copy() from field with no data', 2) end
+    if not to.data then
+        to:Allocate()
+    end
+
+    local copy_size = self:Size() * terralib.sizeof(from.type:terraType())
+    C.memcpy(to.data, from.data, copy_size)
+end
+
 
 -- convert lua tables or LVectors to
 -- Terra structs used to represent vectors
@@ -258,9 +475,9 @@ function L.LField:LoadFunction(lua_callback)
     end
 end
 
-function L.LField:LoadTableArray(tbl)
+function L.LField:LoadList(tbl)
     if type(tbl) ~= 'table' then
-        error('bad type passed to LoadTableArray().  Expecting a table', 2)
+        error('bad type passed to LoadList().  Expecting a table', 2)
     end
     if #tbl ~= self:Size() then
         error('argument array has the wrong number of elements: '..
@@ -306,7 +523,7 @@ function L.LField:Load(arg)
         if self.type:isVector() and #arg == self.type.N then
             return self:LoadConstant(arg)
         else
-            return self:LoadTableArray(arg)
+            return self:LoadList(arg)
         end
     end
     -- default to trying to load as a constant
@@ -333,7 +550,7 @@ local function terraval_to_lua(val, typ)
     end
 end
 
-function L.LField:DumpToTable()
+function L.LField:DumpToList()
     local arr = {}
     for i = 0, self:Size()-1 do
         arr[i+1] = terraval_to_lua(self.data[i], self.type)
@@ -419,6 +636,8 @@ end
 local function is_path_or_str(obj)
     return type(obj) == 'string' or PN.is_pathname(obj)
 end
+
+local bit = require "bit"
 
 
 
@@ -678,22 +897,61 @@ end
 --[[ Relation Schema Saving                                                ]]--
 -------------------------------------------------------------------------------
 
+local JSONSchema = terralib.require 'compiler.JSONSchema'
+
+local primitive_type_schema = {
+  basic_kind  = 'primitive',
+  primitive   = JSONSchema.String
+}
+local type_schema = JSONSchema.OR {
+  primitive_type_schema,
+  {
+    basic_kind  = 'vector',
+    base        = primitive_type_schema,
+    n           = JSONSchema.Num
+  },
+  {
+    basic_kind  = 'row',
+    relation    = JSONSchema.String
+  }
+}
+local schema_file_format = JSONSchema.New {
+  ['major_version'] = JSONSchema.Num,
+  ['minor_version'] = JSONSchema.Num,
+  ['?'] = {
+    ['notes'] = JSONSchema.String,
+  },
+  ['relations'] = {
+    ['*'] = {
+      ['fields'] = {
+        ['*'] = {
+          ['?'] = {
+            ['path'] = JSONSchema.String
+          },
+          ['type'] = type_schema
+        }
+      },
+      ['size'] = JSONSchema.Num,
+      ['?'] = { -- optional fields
+          ['grouped_by'] = JSONSchema.String
+      }
+    }
+  }
+}
 
 
-local function save_opt_hint_str(opt_str)
-    return 'Pass argument '..opt_str..' to SaveRelationSchema()\n'..
-           '  to suppress this error.'
-end
+
+
+--local function save_opt_hint_str(opt_str)
+--    return 'Pass argument '..opt_str..' to SaveRelationSchema()\n'..
+--           '  to suppress this error.'
+--end
 
 local function check_save_relations(relations, params)
     local rel_to_name       = params.rel_to_name
     local no_file_data      = params.no_file_data
 
     for rname, rel in pairs(relations) do
-        if type(rname) ~= 'string' then
-            error('SaveRelationSchema() Error: Found a non-string '..
-                  'key in the relations table', 3)
-        end
         local rstr = 'Relation "'..rname..'"'
 
         -- The relations must actually be relations
@@ -807,9 +1065,9 @@ local function json_serialize_relation(relation, params)
         end
     end
 
-    -- attach an index flag if present
-    if relation._index then
-        json.index = relation._index.name
+    -- attach a grouping flag if the relation is grouped
+    if relation._grouping then
+        json.grouped_by = relation._grouping.key_field:Name()
     end
 
     return json
@@ -994,9 +1252,14 @@ local function load_schema_json(filepath)
               err_msg, 3)
     end
 
-    if type(json_obj) ~= 'table' then
-        error('Schema JSON file "'..filepath:tostring()..'" '..
-              'did not parse to an object', 3)
+    local schema_errors = {}
+    if not JSONSchema.match(schema_file_format, json_obj, schema_errors) then
+        local match_err = 'Schema JSON file "'..filepath:tostring()..'" '..
+                          ' had formatting errors:'
+        for _,e in ipairs(schema_errors) do
+            match_err = match_err .. '\n' .. e
+        end
+        error(match_err, 3)
     end
 
     return json_obj
@@ -1027,18 +1290,8 @@ local interface_description = [[
         file = file .. 'schema.json'
     end
 
-    local json_obj = load_schema_json(file)
-
-    -- extract the notes
-    local notes = json_obj.notes
-    if notes then
-        if type(notes) ~= 'string' then
-            error('Bad Schema JSON File "'..tostring(file)..'":\n'..
-                  'Expected \'notes\' to be a string', 2)
-        end
-    end
-
-    return notes
+    local  json_obj = load_schema_json(file)
+    return json_obj.notes
 end
 
 
@@ -1061,11 +1314,6 @@ local function check_schema_json(json, opts)
               json.major_version..'.'..json.minor_version, 3)
     end
 
-    -- certify that the JSON object has relations
-    if type(json.relations) ~= 'table' then
-        error(err..'Could not find \'relations\' object', 3)
-    end
-
     -- certify each relation
     for rname, rjson in pairs(json.relations) do
         -- check for valid name
@@ -1077,29 +1325,13 @@ local function check_schema_json(json, opts)
 
         local relstr = 'Relation "'..rname..'"'
 
-        -- check that the relation object is present,
-        -- that it has a size,
-        -- and that it has fields
-        if type(rjson) ~= 'table' then
-            error(err..relstr..' was not a JSON object', 3)
-        elseif type(rjson.size) ~= 'number' then
-            error(err..relstr..' was missing a "size" count', 3)
-        elseif type(rjson.fields) ~= 'table' then
-            error(err..relstr..' does not have a \'fields\' object', 3)
-        end
-
-        -- if the relation has an index, make sure it's a string and
-        -- that it's a field-name present in the fields object
-        if rjson.index then
-            if type(rjson.index) ~= 'string' then
-                error(err..relstr..' has an index of non-string type', 3)
-            end
-
-            local lookup = rjson.fields[rjson.index]
+        -- if the relation is grouped, then make sure it's a valid grouping
+        if rjson.grouped_by then
+            local lookup = rjson.fields[rjson.grouped_by]
             if not lookup then
-                error(err..relstr..' has index field "'..rjson.index..'" '..
-                      'but an entry in the "fields" object '..
-                      'could not be found.', 3)
+                error(err..relstr..' is grouped by field '..
+                      '"'..rjson.grouped_by..'" but that field '..
+                      'couldn\'t be found.', 3)
             end
         end
 
@@ -1113,39 +1345,30 @@ local function check_schema_json(json, opts)
             end
 
             local fstr = 'Field "'..fname..'" on '..relstr
-
-            -- check that the field object is present and that it has a type
-            if type(fjson) ~= 'table' then
-                error(err..fstr..' was not a JSON object', 3)
-            elseif type(fjson.type) ~= 'table' then
-                error(err..fstr..' was missing a type object', 3)
-            end
             
             -- check that the field object has a path (if req.),
             -- that the path is a valid pathname,
             -- and that the path is relative (if req.)
-            local null_path_err -- hold any errors encountered
-            if type(fjson.path) ~= 'string' then
-                null_path_err = err..fstr..' was missing a path object'
-            else
+            if not allow_null_paths then
+                local null_path_err
+                if not fjson.path then
+                    error(err..fstr..' was missing a path object\n'..
+                          load_opt_hint_str('allow_null_paths'), 3)
+                end
+
                 local fpath
                 local status, err_msg = pcall(function()
                     fpath = Pathname.new(fjson.path)
                 end)
 
                 if not status then
-                    null_path_err = err..'Invalid path for '..fstr..'\n'..
-                                    err_msg
-                elseif fpath:is_absolute() and not allow_abs_paths then
-                    null_path_err = err..'Absolute path for '..fstr..'\n'..
-                                    'Absolute paths in schema files are '..
-                                    'prohibited\n'..
-                                    load_opt_hint_str('allow_abs_paths')
+                    error(err..'Invalid path for '..fstr..'\n'..err_msg, 3)
                 end
-            end
-            if null_path_err and not allow_null_paths then
-                error(null_path_err..'\n'..
-                      load_opt_hint_str('allow_null_paths'), 3)
+                if not allow_abs_paths and fpath:is_absolute() then
+                    error(err..'Absolute path for '..fstr..'\n'..
+                               'Absolute paths are prohibited\n'..
+                               load_opt_hint_str('allow_abs_paths'), 3)
+                end
             end
         end
     end
@@ -1172,7 +1395,7 @@ local function json_deserialize_field(fname, fjson, params)
     end
 
     -- create the field in question
-    local field = params.owner:NewField(fname, typ)
+    local field = owner:NewField(fname, typ)
 
     -- load field data if we can get a reasonable path...
     local fpath
@@ -1265,9 +1488,9 @@ local interface_description = [[
             })
         end
 
-        -- reconstitute the index if one is present
-        if rjson.index then
-            rel:CreateIndex(rjson.index)
+        -- install a grouping if one was declared
+        if rjson.grouped_by then
+            rel:GroupBy(rjson.grouped_by)
         end
     end
 

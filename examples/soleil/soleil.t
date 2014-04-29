@@ -36,7 +36,7 @@ local grid_options = {
 
 
 local particle_options = {
-    num = 100,
+    num = 50,
     convective_coefficient = L.NewGlobal(L.double, 0.7),
     heat_capacity = L.NewGlobal(L.double, 0.7),
     pos_max = 6.2,
@@ -105,6 +105,7 @@ local grid = Grid.New2dUniformGrid(grid_options.xnum + 2*bnum,
                                    grid_options.width + 2*bw,
                                    grid_options.height + 2*bw,
                                    bnum)
+
 -- conserved variables
 grid.cells:NewField('rho', L.double):
 LoadConstant(flow_options.rho)
@@ -517,6 +518,7 @@ end
 AddInviscidGetFlux.X = GenerateAddInviscidGetFlux(grid.x_edges)
 AddInviscidGetFlux.Y = GenerateAddInviscidGetFlux(grid.y_edges)
 
+
 -- Update conserved variables using flux values from previous part
 -- write conserved variables, read flux variables
 local c_dx = L.NewGlobal(L.double, grid:cellWidth())
@@ -860,6 +862,12 @@ end
 --[[                             MAIN LOOP                               ]]--
 -----------------------------------------------------------------------------
 
+
+local function InitializeVariables()
+    InitializeFlowPrimitives(grid.cells)
+    InitializeFlowConserved(grid.cells)
+    LocateParticles(particles)
+end
 
 
 local function InitializeTemporaries()
