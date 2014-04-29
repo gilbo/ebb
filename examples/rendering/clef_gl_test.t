@@ -281,7 +281,7 @@ while gl.glfwWindowShouldClose(window) == 0 do
     shader:setUniform('pvm', proj * rotation)
 
 
-    time_global:setTo(time)
+    time_global:set(time)
     update_pos1(vertices)
     update_pos2(vertices)
     triangles:UpdateGClef()

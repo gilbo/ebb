@@ -20,4 +20,4 @@ local l = liszt kernel (v : mesh.vertices)
 end
 l(mesh.vertices)
 
-test.eq(red:value(), mesh.vertices._size)
+test.eq(red:get(), mesh.vertices._size)

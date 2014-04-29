@@ -183,11 +183,11 @@ local timestep = L.NewGlobal(L.double, 1.0)
 -- The preceding line set up a Global named timestep of type L.double
 -- and gave it initial value 1.0
 
-timestep:setTo(0.45)
--- Then this line set the value using the method :setTo(...)
+timestep:set(0.45)
+-- Then this line set the value using the method :set(...)
 
-print( 'the timestep is ' .. tostring(timestep:value()) )
--- We can retreive the value of a global with the :value() method
+print( 'the timestep is ' .. tostring(timestep:get()) )
+-- We can retreive the value of a global with the :get() method
 
 -- NOTE: Globals have to be explicitly written and read from Lua code.
 

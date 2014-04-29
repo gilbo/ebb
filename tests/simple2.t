@@ -6,12 +6,12 @@ local mesh = LMesh.Load("examples/mesh.lmesh")
 local com = L.NewGlobal(L.vector(L.double, 3), {0, 0, 0})
 
 function center_of_mass ()
-	com:setTo({0,0,0})
+	com:set({0,0,0})
 	local sum_pos = liszt kernel (v : mesh.vertices)
 		com += v.position
 	end
 	sum_pos(mesh.vertices)
-	return com:value() / mesh.vertices._size
+	return com:get() / mesh.vertices._size
 end
 
 local function displace_mesh (delta_x, delta_y, delta_z)

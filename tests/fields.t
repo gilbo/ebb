@@ -132,13 +132,13 @@ local function check_write ()
 	write2(F)
 	reduce3(F)
 
-	f4:setTo({0, 0, 0, 0})
+	f4:set({0, 0, 0, 0})
 	local sum_positions = liszt kernel (f : F)
 		f4 += f.field5
 	end
 	sum_positions(F)
 
-	local avg = f4:value() / F._size
+	local avg = f4:get() / F._size
 	test.fuzzy_aeq(avg.data, {2, 4, 5, 6})
 end
 check_write()

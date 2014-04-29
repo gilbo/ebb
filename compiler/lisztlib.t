@@ -68,12 +68,12 @@ function L.NewGlobal (typ, init)
     local s  = setmetatable({type=typ}, LGlobal)
     local tt = typ:terraType()
     s.data   = terralib.cast(&tt, C.malloc(terralib.sizeof(tt)))
-    s:setTo(init)
+    s:set(init)
     return s
 end
 
 
-function LGlobal:setTo(val)
+function LGlobal:set(val)
    if not T.luaValConformsToType(val, self.type) then error("value does not conform to type of global: " .. self.type:toString(), 2) end
       if self.type:isVector() then
           local v     = is_vector(val) and val or L.NewVector(self.type:baseType(), val)
@@ -87,7 +87,7 @@ function LGlobal:setTo(val)
     end
 end
 
-function LGlobal:value()
+function LGlobal:get()
     if self.type:isPrimitive() then return self.data[0] end
 
     local ndata = {}

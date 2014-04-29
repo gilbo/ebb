@@ -92,9 +92,9 @@ end
 for i = 1,300 do
   compute_diffusion(bunny.vertices)
 
-  avg_temp_change:setTo(0.0)
+  avg_temp_change:set(0.0)
   apply_diffusion(bunny.vertices)
-  avg_temp_change:setTo( avg_temp_change:value() / bunny:nVerts())
+  avg_temp_change:set( avg_temp_change:get() / bunny:nVerts())
 
   clear_temporary(bunny.vertices)
 

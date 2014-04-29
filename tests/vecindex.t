@@ -26,8 +26,8 @@ local read_out = liszt kernel(v : mesh.vertices)
 end
 read_out(mesh.vertices)
 
-local avgx = x_out:value() / mesh.vertices._size
-local avgy = y_out:value() / mesh.vertices._size
+local avgx = x_out:get() / mesh.vertices._size
+local avgy = y_out:get() / mesh.vertices._size
 test.fuzzy_eq(avgx, 5)
 test.fuzzy_eq(avgy, 4)
 

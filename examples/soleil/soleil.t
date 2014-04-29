@@ -587,7 +587,7 @@ end
 local function UpdateTime(stage)
     time_integrator.sim_time = time_integrator.sim_time +
                                time_integrator.coeff_time[stage] *
-                               delta_time:value()
+                               delta_time:get()
     if stage == 4 then
         time_integrator.time_step = time_integrator.time_step + 1
     end

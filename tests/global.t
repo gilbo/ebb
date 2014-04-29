@@ -27,19 +27,19 @@ local f5 = liszt kernel (f : mesh.faces) si  -=   two   end
 local f6 = liszt kernel (f : mesh.faces) sb  and= false end
 
 f1(mesh.faces)
-test.fuzzy_aeq(sf3:value().data, {nf, 2*nf, 3*nf})
+test.fuzzy_aeq(sf3:get().data, {nf, 2*nf, 3*nf})
 
 f2(mesh.faces)
-test.fuzzy_aeq(si4:value().data, {1-2*nf,2-2*nf,3-2*nf,4-2*nf})
+test.fuzzy_aeq(si4:get().data, {1-2*nf,2-2*nf,3-2*nf,4-2*nf})
 
 --f3(mesh.faces)
---test.aeq(sb5:value().data, {true, false, true, false, true})
+--test.aeq(sb5:get().data, {true, false, true, false, true})
 
 f4(mesh.faces)
-test.eq(sf:value(), mesh.faces._size)
+test.eq(sf:get(), mesh.faces._size)
 
 f5(mesh.faces)
-test.eq(si:value(), -2*nf)
+test.eq(si:get(), -2*nf)
 
 f6(mesh.faces)
-test.eq(sb:value(), false)
+test.eq(sb:get(), false)

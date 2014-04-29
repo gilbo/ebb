@@ -16,7 +16,7 @@ function main ()
 	--mesh.vertices:map(sum_pos)
 	sum_pos(mesh.vertices)
 
-	local center = com:value() / mesh.vertices:Size()
+	local center = com:get() / mesh.vertices:Size()
 
 	-- output
 	print("center of mass is: (" .. center.data[1] .. ", " .. center.data[2] .. ', ' .. center.data[3] .. ")")

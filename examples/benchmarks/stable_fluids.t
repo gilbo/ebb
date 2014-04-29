@@ -92,8 +92,8 @@ end
 -- Should be called with velocity and velocity_prev both set to
 -- the previous velocity field value...
 local function diffuse_lin_solve(edge, diagonal)
-    diffuse_diagonal:setTo(diagonal)
-    diffuse_edge:setTo(edge)
+    diffuse_diagonal:set(diagonal)
+    diffuse_edge:set(edge)
 
     -- do 20 Jacobi iterations
     for i=1,20 do
@@ -105,7 +105,7 @@ end
 
 local function diffuse_velocity(grid)
     -- Why the N*N term?  I don't get that...
-    local laplacian_weight  = dt:value() * viscosity * N * N
+    local laplacian_weight  = dt:get() * viscosity * N * N
     local diagonal          = 1.0 + 4.0 * laplacian_weight
     local edge              = -laplacian_weight
 
@@ -157,7 +157,7 @@ end
 
 local function advect_velocity(grid)
     -- Why N?
-    advect_dt:setTo(dt:value() * N)
+    advect_dt:set(dt:get() * N)
 
     grid.cells:Swap('velocity','velocity_prev')
     advect_where_from(grid.cells)
@@ -209,8 +209,8 @@ end
 -- Should be called with velocity and velocity_prev both set to
 -- the previous velocity field value...
 local function project_lin_solve(edge, diagonal)
-    project_diagonal:setTo(diagonal)
-    project_edge:setTo(edge)
+    project_diagonal:set(diagonal)
+    project_edge:set(edge)
 
     -- do 20 Jacobi iterations
     for i=1,20 do

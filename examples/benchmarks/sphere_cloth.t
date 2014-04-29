@@ -186,7 +186,7 @@ end
 
 local total_sec         = 15
 local fps               = 30
-local steps_per_frame   = math.floor((1/fps)/dt:value())
+local steps_per_frame   = math.floor((1/fps)/dt:get())
 local total_steps       = steps_per_frame * fps * total_sec
 
 for i=1,(total_steps+2) do
