@@ -99,12 +99,12 @@ local newPos = grid_options.pos
 newPos[1] = newPos[1] - bnum * grid_options.width/grid_options.xnum
 newPos[2] = newPos[2] - bnum * grid_options.height/grid_options.xnum
 print(newPos[1],newPos[2])
-local grid = Grid.New2dUniformGrid(grid_options.xnum + 2*bnum,
-                                   grid_options.ynum + 2*bnum,
-                                   newPos,
-                                   grid_options.width + 2*bw,
-                                   grid_options.height + 2*bw,
-                                   bnum)
+sizeGrid = {grid_options.xnum + 2*bnum, grid_options.ynum + 2*bnum}
+local grid = Grid.New2dUniformGrid{size          = sizeGrid,
+                                   origin        = newPos,
+                                   width         = grid_options.width + 2*bw,
+                                   height        = grid_options.height + 2*bw,
+                                   boundary_size = bnum}
 
 -- conserved variables
 grid.cells:NewField('rho', L.double):
