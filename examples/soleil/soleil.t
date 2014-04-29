@@ -79,9 +79,10 @@ local fluid_options = {
     gamma = 1.4,
     cv = 51.32,
     gammaMinus1 = 0.4,
-    dynamic_viscosity_ref = L.NewGlobal(L.double, 0.00044),
+    dynamic_viscosity_ref = L.NewGlobal(L.double, 0.001),
     dynamic_viscosity_temp_ref = L.NewGlobal(L.double, 1.0),
-    prandtl = 0.7
+    prandtl = 0.7,
+    cpOverPrandtl = 1.4 * 51.32 / 0.7
 }
 
 
@@ -124,6 +125,10 @@ grid.cells:NewField('centerCoordinates', L.vec2d):
 LoadConstant(L.NewVector(L.double, {0, 0}))
 grid.cells:NewField('velocity', L.vec2d):
 LoadConstant(L.NewVector(L.double, {0, 0}))
+grid.cells:NewField('velocityGradientX', L.vec2d):
+LoadConstant(L.NewVector(L.double, {0, 0}))
+grid.cells:NewField('velocityGradientY', L.vec2d):
+LoadConstant(L.NewVector(L.double, {0, 0}))
 grid.cells:NewField('temperature', L.double):
 LoadConstant(0)
 grid.cells:NewField('pressure', L.double):
@@ -149,6 +154,10 @@ grid.cells:NewField('pressureBoundary', L.double):
 LoadConstant(0)
 grid.cells:NewField('temperatureBoundary', L.double):
 LoadConstant(0)
+grid.cells:NewField('velocityGradientXBoundary', L.vec2d):
+LoadConstant(L.NewVector(L.double, {0, 0}))
+grid.cells:NewField('velocityGradientYBoundary', L.vec2d):
+LoadConstant(L.NewVector(L.double, {0, 0}))
 
 -- scratch (temporary) fields
 -- intermediate value and copies
@@ -461,8 +470,7 @@ local AddInviscidInitialize = liszt kernel(c : grid.cells)
 end
 
 
--- Interpolation for flux values
--- read conserved variables, write flux variables
+-- Compute inviscid fluxes in X direction
 local AddInviscidGetFluxX =  liszt kernel(c : grid.cells)
     if c.in_interior or c.is_left_bnd then
         var axis = 0
@@ -533,6 +541,7 @@ local AddInviscidGetFluxX =  liszt kernel(c : grid.cells)
                              (1-s) * rhoEnergyFactorSkew
     end
 end
+-- Compute inviscid fluxes in Y direction
 local AddInviscidGetFluxY =  liszt kernel(c : grid.cells)
     if c.in_interior or c.is_down_bnd then
         var axis = 1
@@ -607,8 +616,12 @@ end
 
 -- Update conserved variables using flux values from previous part
 -- write conserved variables, read flux variables
+-- WARNING_START For non-uniform grids, the metrics used below are not 
+-- appropriate and should be changed to reflect those expressed in the 
+-- Python prototype code
 local c_dx = L.NewGlobal(L.double, grid:cellWidth())
 local c_dy = L.NewGlobal(L.double, grid:cellHeight())
+-- WARNING_END
 local AddInviscidUpdateUsingFluxX = liszt kernel(c : grid.cells)
     if c.in_interior then
         c.rho_t -= (c(0,0).rhoFlux -
@@ -624,95 +637,178 @@ local AddInviscidUpdateUsingFluxY = liszt kernel(c : grid.cells)
         c.rho_t -= (c(0,0).rhoFlux -
                     c(0,-1).rhoFlux)/c_dx
         c.rhoVelocity_t -= (c(0,0).rhoVelocityFlux -
-                            c(0,-1).rhoVelocityFlux)/c_dx
+                            c(0,-1).rhoVelocityFlux)/c_dy
         c.rhoEnergy_t -= (c(0,0).rhoEnergyFlux -
-                          c(0,-1).rhoEnergyFlux)/c_dx
+                          c(0,-1).rhoEnergyFlux)/c_dy
     end
 end
 
 
+----------
+-- Viscous
+----------
 
--------------
----- Viscous
--------------
---
----- Initialize viscous
---local AddViscousInitialize = liszt kernel(c : grid.cells)
---end
---
---
----- Interpolation for flux values
----- read conserved variables, write flux variables
---local AddViscousGetFlux = {}
---local function GenerateAddViscousGetFlux(edges)
---    return liszt kernel(e : edges)
---        if e.in_interior then
---            var numberCoeffs = spatial_stencil.numInterpolateCoeffs
---            var coeffs     = spatial_stencil.interpolateCoeffs
---            var rhoFactorDiagonal = L.double(0)
---            var rhoFactorSkew     = L.double(0)
---            var rhoVelocityFactorDiagonal = L.vec2d({0.0, 0.0})
---            var rhoVelocityFactorSkew     = L.vec2d({0.0, 0.0})
---            var rhoEnergyFactorDiagonal   = L.double(0.0)
---            var rhoEnergyFactorSkew       = L.double(0.0)
---            var epdiag = L.double(0.0)
---            var axis = e.axis
---            for i = 0, numberCoeffs do
---                rhoFactorDiagonal += coeffs[i] *
---                              ( e.cell_next.rho *
---                                e.cell_next.velocity[axis] +
---                                e.cell_previous.rho *
---                                e.cell_previous.velocity[axis] )
---                rhoVelocityFactorDiagonal += coeffs[i] *
---                                       ( e.cell_next.rhoVelocity *
---                                         e.cell_next.velocity[axis] +
---                                         e.cell_previous.rhoVelocity *
---                                         e.cell_previous.velocity[axis] )
---                rhoEnergyFactorDiagonal += coeffs[i] *
---                                     ( e.cell_next.rhoEnthalpy *
---                                       e.cell_next.velocity[axis] +
---                                       e.cell_previous.rhoEnthalpy *
---                                       e.cell_previous.velocity[axis] )
---                epdiag += coeffs[i] *
---                        ( e.cell_next.pressure +
---                          e.cell_previous.pressure )
---            end
---            -- TODO: I couldnt understand how skew is implemented. Setting s =
---            -- 1 for now, this should be changed.
---            var s = spatial_stencil.split
---            s = 1
---            e.rhoFlux          = s * rhoFactorDiagonal +
---                                  (1-s) * rhoFactorSkew
---            e.rhoVelocityFlux = s * rhoVelocityFactorDiagonal +
---                                  (1-s) * rhoVelocityFactorSkew
---            e.rhoEnergyFlux   = s * rhoEnergyFactorDiagonal +
---                                  (1-s) * rhoEnergyFactorSkew
---        end
---    end
---end
---AddViscousGetFlux.X = GenerateAddViscousGetFlux(grid.x_edges)
---AddViscousGetFlux.Y = GenerateAddViscousGetFlux(grid.y_edges)
---
----- Update conserved variables using flux values from previous part
----- write conserved variables, read flux variables
---local c_dx = L.NewGlobal(L.double, grid:cellWidth())
---local c_dy = L.NewGlobal(L.double, grid:cellHeight())
---local AddViscousUpdateUsingFlux = liszt kernel(c : grid.cells)
---    if c.in_interior then
---        c.rho_t -= (c.edge_right.rhoFlux -
---                    c.edge_left.rhoFlux)/c_dx
---        c.rho_t -= (c.edge_up.rhoFlux -
---                    c.edge_down.rhoFlux)/c_dy
---        c.rhoVelocity_t -= (c.edge_right.rhoVelocityFlux -
---                             c.edge_left.rhoVelocityFlux)/c_dx
---        c.rhoVelocity_t -= (c.edge_up.rhoVelocityFlux -
---                             c.edge_down.rhoVelocityFlux)/c_dy
---        c.rhoEnergy_t -= (c.edge_right.rhoEnergyFlux -
---                           c.edge_left.rhoEnergyFlux)/c_dx
---        c.rhoEnergy_t -= (c.edge_up.rhoEnergyFlux -
---                           c.edge_down.rhoEnergyFlux)/c_dy
---    end
---end
+-- Compute viscous fluxes in X direction
+local AddViscousGetFluxX =  liszt kernel(c : grid.cells)
+    if c.in_interior or c.is_left_bnd then
+        var muFace = 0.5 * (GetDynamicViscosity(c(0,0).temperature) +
+                            GetDynamicViscosity(c(0,0).temperature))
+        var velocityFace    = L.vec2d({0.0, 0.0})
+        var velocityX_YFace = L.double(0)
+        var velocityX_ZFace = L.double(0)
+        var velocityY_YFace = L.double(0)
+        var velocityZ_ZFace = L.double(0)
+        var numInterpolateCoeffs  = spatial_stencil.numInterpolateCoeffs
+        var interpolateCoeffs     = spatial_stencil.interpolateCoeffs
+        -- Interpolate velocity and derivatives to face
+        for ndx = 1, numInterpolateCoeffs do
+            velocityFace += interpolateCoeffs[ndx] *
+                          ( c(1-ndx,0).velocity +
+                            c(ndx,0).velocity )
+            velocityX_YFace += interpolateCoeffs[ndx] *
+                               ( c(1-ndx,0).velocityGradientY[0] +
+                                 c(ndx,0).velocityGradientY[0] )
+            velocityX_ZFace += 0.0 -- WARNING: to be updated for 3D (see Python code)
+            velocityY_YFace += interpolateCoeffs[ndx] *
+                               ( c(1-ndx,0).velocityGradientY[1] +
+                                 c(ndx,0).velocityGradientY[1] )
+            velocityZ_ZFace += 0.0 -- WARNING: to be updated for 3D (see Python code)
+        end
+
+        -- Differentiate at face
+        var velocityX_XFace = L.double(0)
+        var velocityY_XFace = L.double(0)
+        var velocityZ_XFace = L.double(0)
+        var temperature_XFace = L.double(0)
+        var numFirstDerivativeCoeffs = spatial_stencil.numFirstDerivativeCoeffs
+        var firstDerivativeCoeffs    = spatial_stencil.firstDerivativeCoeffs
+        for ndx = 1, numFirstDerivativeCoeffs do
+          velocityX_XFace += firstDerivativeCoeffs[ndx] *
+            ( c(ndx,0).velocity[0] -
+              c(1-ndx,0).velocity[0] )
+          velocityY_XFace += firstDerivativeCoeffs[ndx] *
+            ( c(ndx,0).velocity[1] -
+              c(1-ndx,0).velocity[1] )
+          velocityZ_XFace += 0.0
+          temperature_XFace += firstDerivativeCoeffs[ndx] *
+            ( c(ndx,0).temperature -
+              c(1-ndx,0).temperature )
+        end
+       
+        velocityX_XFace   /= c_dx
+        velocityY_XFace   /= c_dx
+        velocityZ_XFace   /= c_dx
+        temperature_XFace /= c_dx
+
+        -- Tensor components (at face)
+        var sigmaXX = muFace * ( 4.0 * velocityX_XFace -
+                                 2.0 * velocityY_YFace -
+                                 2.0 * velocityZ_ZFace ) / 3.0
+        var sigmaYX = muFace * ( velocityY_XFace + velocityX_YFace )
+        var sigmaZX = muFace * ( velocityZ_XFace + velocityX_ZFace )
+        var usigma = velocityFace[0] * sigmaXX +
+                     velocityFace[1] * sigmaYX
+        -- WARNING : Add term velocityFace[2] * sigmaZX to usigma for 3D
+        var heatFlux = - fluid_options.cpOverPrandtl * muFace * temperature_XFace
+
+        -- Fluxes
+        c.rhoVelocityFlux[0] = sigmaXX
+        c.rhoVelocityFlux[1] = sigmaYX
+        -- WARNING: Uncomment for 3D rhoVelocityFlux[2] = sigmaZX
+        c.rhoEnergyFlux = usigma - heatFlux
+        -- WARNING: Add SGS terms for LES
+
+    end
+end
+-- Compute viscous fluxes in Y direction
+local AddViscousGetFluxY =  liszt kernel(c : grid.cells)
+    if c.in_interior or c.is_left_bnd then
+        var muFace = 0.5 * (GetDynamicViscosity(c(0,0).temperature) +
+                            GetDynamicViscosity(c(0,0).temperature))
+        var velocityFace    = L.vec2d({0.0, 0.0})
+        var velocityY_XFace = L.double(0)
+        var velocityY_ZFace = L.double(0)
+        var velocityX_XFace = L.double(0)
+        var velocityZ_ZFace = L.double(0)
+        var numInterpolateCoeffs  = spatial_stencil.numInterpolateCoeffs
+        var interpolateCoeffs     = spatial_stencil.interpolateCoeffs
+        -- Interpolate velocity and derivatives to face
+        for ndx = 1, numInterpolateCoeffs do
+            velocityFace += interpolateCoeffs[ndx] *
+                          ( c(0,1-ndx).velocity +
+                            c(0,ndx).velocity )
+            velocityY_XFace += interpolateCoeffs[ndx] *
+                               ( c(0,1-ndx).velocityGradientX[1] +
+                                 c(0,ndx).velocityGradientX[1] )
+            velocityY_ZFace += 0.0 -- WARNING: to be updated for 3D (see Python code)
+            velocityX_XFace += interpolateCoeffs[ndx] *
+                               ( c(0,1-ndx).velocityGradientX[0] +
+                                 c(0,ndx).velocityGradientX[0] )
+            velocityZ_ZFace += 0.0 -- WARNING: to be updated for 3D (see Python code)
+        end
+
+        -- Differentiate at face
+        var velocityX_YFace = L.double(0)
+        var velocityY_YFace = L.double(0)
+        var velocityZ_YFace = L.double(0)
+        var temperature_YFace = L.double(0)
+        var numFirstDerivativeCoeffs = spatial_stencil.numFirstDerivativeCoeffs
+        var firstDerivativeCoeffs    = spatial_stencil.firstDerivativeCoeffs
+        for ndx = 1, numFirstDerivativeCoeffs do
+          velocityX_YFace += firstDerivativeCoeffs[ndx] *
+            ( c(0,ndx).velocity[0] -
+              c(0,1-ndx).velocity[0] )
+          velocityY_YFace += firstDerivativeCoeffs[ndx] *
+            ( c(0,ndx).velocity[1] -
+              c(0,1-ndx).velocity[1] )
+          velocityZ_YFace += 0.0
+          temperature_YFace += firstDerivativeCoeffs[ndx] *
+            ( c(0,ndx).temperature -
+              c(0,1-ndx).temperature )
+        end
+       
+        velocityX_YFace   /= c_dy
+        velocityY_YFace   /= c_dy
+        velocityZ_YFace   /= c_dy
+        temperature_YFace /= c_dy
+
+        -- Tensor components (at face)
+        var sigmaXY = muFace * ( velocityX_YFace + velocityY_XFace )
+        var sigmaYY = muFace * ( 4.0 * velocityY_YFace -
+                                 2.0 * velocityX_XFace -
+                                 2.0 * velocityZ_ZFace ) / 3.0
+        var sigmaZY = muFace * ( velocityZ_YFace + velocityY_ZFace )
+        var usigma = velocityFace[0] * sigmaXY +
+                     velocityFace[1] * sigmaYY
+        -- WARNING : Add term velocityFace[2] * sigmaZY to usigma for 3D
+        var heatFlux = - fluid_options.cpOverPrandtl * muFace * temperature_YFace
+
+        -- Fluxes
+        c.rhoVelocityFlux[0] = sigmaXY
+        c.rhoVelocityFlux[1] = sigmaYY
+        -- WARNING: Uncomment for 3D rhoVelocityFlux[2] = sigmaZX
+        c.rhoEnergyFlux = usigma - heatFlux
+        -- WARNING: Add SGS terms for LES
+
+    end
+end
+local AddViscousUpdateUsingFluxX = liszt kernel(c : grid.cells)
+    if c.in_interior then
+        c.rhoVelocity_t -= (c(0,0).rhoVelocityFlux -
+                            c(-1,0).rhoVelocityFlux)/c_dx
+        c.rhoEnergy_t   -= (c(0,0).rhoEnergyFlux -
+                            c(-1,0).rhoEnergyFlux)/c_dx
+    end
+end
+local AddViscousUpdateUsingFluxY = liszt kernel(c : grid.cells)
+    if c.in_interior then
+        c.rhoVelocity_t -= (c(0,0).rhoVelocityFlux -
+                            c(0,-1).rhoVelocityFlux)/c_dy
+        c.rhoEnergy_t   -= (c(0,0).rhoEnergyFlux -
+                            c(0,-1).rhoEnergyFlux)/c_dy
+    end
+end
+
 
 
 -- Update particle fields based on flow fields
@@ -1125,6 +1221,33 @@ end
 local UpdateAuxiliaryParticles = liszt kernel(p : particles)
 end
 
+local ComputeFlowVelocityGradientX = liszt kernel(c : grid.cells)
+    if c.in_interior then
+        var numFirstDerivativeCoeffs = spatial_stencil.numFirstDerivativeCoeffs
+        var firstDerivativeCoeffs    = spatial_stencil.firstDerivativeCoeffs
+        var tmp = L.vec2d({0.0, 0.0})
+        for ndx = 1, numFirstDerivativeCoeffs do
+          tmp += firstDerivativeCoeffs[ndx] * 
+                  ( c(ndx,0).velocity -
+                    c(-ndx,0).velocity )
+        end
+        c.velocityGradientX = tmp / c_dx
+    end
+end
+
+local ComputeFlowVelocityGradientY = liszt kernel(c : grid.cells)
+    if c.in_interior then
+        var numFirstDerivativeCoeffs = spatial_stencil.numFirstDerivativeCoeffs
+        var firstDerivativeCoeffs    = spatial_stencil.firstDerivativeCoeffs
+        var tmp = L.vec2d({0.0, 0.0})
+        for ndx = 1, numFirstDerivativeCoeffs do
+          tmp += firstDerivativeCoeffs[ndx] * 
+                  ( c(0,ndx).velocity -
+                    c(0,-ndx).velocity )
+        end
+        c.velocityGradientY = tmp / c_dy
+    end
+end
 
 -- kernels to draw particles and velocity for debugging purpose
 
@@ -1173,15 +1296,56 @@ local function AddInviscid()
     AddInviscidUpdateUsingFluxX(grid.cells)
     AddInviscidGetFluxY(grid.cells)
     AddInviscidUpdateUsingFluxY(grid.cells)
-    --AddInviscidGetFluxY(grid.cells)
 end
 
---local function AddViscous()
---    --AddViscousInitialize(grid.cells)
---    AddViscousGetFlux.X(grid.x_edges)
---    AddViscousGetFlux.Y(grid.y_edges)
---    AddViscousUpdateUsingFlux(grid.cells)
---end
+local UpdateGhostVelocityGradientStep1 = liszt kernel(c : grid.cells)
+    -- Note that this for now assumes the stencil uses only one point to each
+    -- side of the boundary (for example, second order central difference), and
+    -- is not able to handle higher-order schemes until a way to specify where
+    -- in the (wider-than-one-point) boundary we are
+    if c.is_left_bnd then
+        c.velocityGradientXBoundary[0] = - c(1,0).velocityGradientX[0]
+        c.velocityGradientXBoundary[1] =   c(1,0).velocityGradientX[1]
+        c.velocityGradientYBoundary[0] = - c(1,0).velocityGradientY[0]
+        c.velocityGradientYBoundary[1] =   c(1,0).velocityGradientY[1]
+    end
+    if c.is_right_bnd then
+        c.velocityGradientXBoundary[0] = - c(-1,0).velocityGradientX[0]
+        c.velocityGradientXBoundary[1] =   c(-1,0).velocityGradientX[1]
+        c.velocityGradientYBoundary[0] = - c(-1,0).velocityGradientY[0]
+        c.velocityGradientYBoundary[1] =   c(-1,0).velocityGradientY[1]
+    end
+    if c.is_down_bnd then
+        c.velocityGradientXBoundary[0] =   c(0,1).velocityGradientX[0]
+        c.velocityGradientXBoundary[1] = - c(0,1).velocityGradientX[1]
+        c.velocityGradientYBoundary[0] =   c(0,1).velocityGradientY[0]
+        c.velocityGradientYBoundary[1] = - c(0,1).velocityGradientY[1]
+    end
+    if c.is_up_bnd then
+        c.velocityGradientXBoundary[0] =   c(0,-1).velocityGradientX[0]
+        c.velocityGradientXBoundary[1] = - c(0,-1).velocityGradientX[1]
+        c.velocityGradientYBoundary[0] =   c(0,-1).velocityGradientY[0]
+        c.velocityGradientYBoundary[1] = - c(0,-1).velocityGradientY[1]
+    end
+end
+local UpdateGhostVelocityGradientStep2 = liszt kernel(c : grid.cells)
+    if c.is_bnd then
+        c.velocityGradientX = c.velocityGradientXBoundary
+        c.velocityGradientY = c.velocityGradientYBoundary
+    end
+end
+local function UpdateGhostVelocityGradient()
+    UpdateGhostVelocityGradientStep1(grid.cells)
+    UpdateGhostVelocityGradientStep2(grid.cells)
+end
+
+local function AddViscous()
+    --AddViscousInitialize(grid.cells)
+    AddViscousGetFluxX(grid.cells)
+    AddViscousUpdateUsingFluxX(grid.cells)
+    AddViscousGetFluxY(grid.cells)
+    AddViscousUpdateUsingFluxY(grid.cells)
+end
 
 
 local function AddFlowCoupling()
@@ -1201,11 +1365,16 @@ end
 
 
 
+local function ComputeFlowVelocityGradients()
+    ComputeFlowVelocityGradientX(grid.cells)
+    ComputeFlowVelocityGradientY(grid.cells)
+end
+
 local function UpdateAuxiliary()
     UpdateAuxiliaryFlowVelocity(grid.cells)
     UpdateGhostFlowConserved(grid.cells)
     UpdateGhostFlowVelocity(grid.cells)
-    --ComputeFlowVelocityGradients(grid.cells)
+    ComputeFlowVelocityGradients(grid.cells)
     UpdateAuxiliaryFlowThermodynamics(grid.cells)
     UpdateGhostFlowThermodynamics(grid.cells)
 end
@@ -1273,7 +1442,8 @@ while (time_integrator.sim_time < time_integrator.final_time) do
     for stage = 1, 4 do
         InitializeDerivatives()
         AddInviscid()
-        --AddViscous()
+        UpdateGhostVelocityGradient()
+        AddViscous()
         AddFlowCoupling()
         UpdateFlow(stage)
         UpdateParticles(stage)
