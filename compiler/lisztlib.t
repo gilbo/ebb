@@ -51,10 +51,10 @@ local C = terralib.require "compiler.c"
 local T = terralib.require "compiler.types"
 local ast = terralib.require "compiler.ast"
 terralib.require "compiler.builtins"
-local LDB = terralib.require "compiler.ldb"
+terralib.require "compiler.relations"
+terralib.require "compiler.serialization"
 local semant = terralib.require "compiler.semant"
 local K = terralib.require "compiler.kernel"
---L.LDB = LDB
 
 local is_vector = L.is_vector --cache lookup for efficiency
 
