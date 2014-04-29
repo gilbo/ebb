@@ -7,17 +7,9 @@ end
 --------------------------------------------------------------------------------
 --[[ Grab references to CUDA API                                            ]]--
 --------------------------------------------------------------------------------
-terralib.includepath = terralib.includepath..";/usr/local/cuda/include"
-local C = terralib.includecstring [[
-#include "cuda_runtime.h"
-#include <stdlib.h>
-#include <stdio.h>
-]]
-
--- Find cudasMemcpyKind enum in <cuda-include>/driver_types.h, have to
--- declare manually since terra doesnt grok enums from include files
-C.cudaMemcpyHostToDevice = 1
-C.cudaMemcpyDeviceToHost = 2
+-- CUDA headers are included in compiler.C
+-- Enums should be declared there
+local C = terralib.require "compiler.c"
 
 local tid   = cudalib.nvvm_read_ptx_sreg_tid_x   -- threadId.x
 local ntid  = cudalib.nvvm_read_ptx_sreg_ntid_x  -- terralib.intrinsic("llvm.nvvm.read.ptx.sreg.ntid.x",{} -> int)
@@ -96,7 +88,6 @@ local R = terralib.cudacompile { compute_step    = compute_step,
 --[[ Simulation:                                                            ]]-- 
 --------------------------------------------------------------------------------
 local vec3dtype = M.vertices.position.type:terraType()
-print(vec3dtype)
 terra copy_posn_data (data : &vec3dtype, N : int) : &float
 	var ret : &float = [&float](C.malloc(sizeof(float) * N * 3))
 	for i = 0, N do

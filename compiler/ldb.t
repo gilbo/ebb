@@ -704,7 +704,7 @@ local terra write_field_header(
     C.fwrite( header.type_str,          1, header.type_str_len, file )
     C.fwrite( header.hint_str,          1, header.hint_str_len, file )
     -- jump to end of header dead space
-    C.fseek ( file, header.header_size, C.SEEK_SET_value() )
+    C.fseek ( file, header.header_size, C.SEEK_SET )
 end
 
 -- allocates arrays for string
@@ -742,7 +742,7 @@ local terra read_field_header(
     C.fread( header.hint_str,           1, header.hint_str_len, file )
 
     -- jump to end of header dead space
-    C.fseek( file, header.header_size,  C.SEEK_SET_value() )
+    C.fseek( file, header.header_size,  C.SEEK_SET )
     
     return 0
 end
