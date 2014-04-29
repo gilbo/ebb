@@ -1,0 +1,5 @@
+Questions
+
+- How to call a liszt kernel with both cells and a fieldName as arguments, so
+  that the operations act directly on the field with that name (needs to be
+  defined before)
