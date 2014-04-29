@@ -95,12 +95,14 @@ local R = terralib.cudacompile { compute_step    = compute_step,
 --------------------------------------------------------------------------------
 --[[ Simulation:                                                            ]]-- 
 --------------------------------------------------------------------------------
-terra copy_posn_data (data : &vector(double, 3), N : int) : &float
+local vec3dtype = M.vertices.position.type:terraType()
+print(vec3dtype)
+terra copy_posn_data (data : &vec3dtype, N : int) : &float
 	var ret : &float = [&float](C.malloc(sizeof(float) * N * 3))
 	for i = 0, N do
-		ret[3*i]   = data[i][0]
-		ret[3*i+1] = data[i][1]
-		ret[3*i+2] = data[i][2]
+		ret[3*i]   = data[i].d[0]
+		ret[3*i+1] = data[i].d[1]
+		ret[3*i+2] = data[i].d[2]
 	end
 	return ret
 end	
