@@ -27,8 +27,8 @@ cmath.srand(cmath.time(nil));
 
 
 local grid_options = {
-    xnum = 32,
-    ynum = 32,
+    xnum = 64,
+    ynum = 64,
     pos = {0.0, 0.0},
     width = 6.28,
     height = 6.28
@@ -50,12 +50,16 @@ local particle_options = {
 local spatial_stencil = {
 --    order = 6,
 --    size = 6,
---    num_interpolate_coeffs = 4,
---    interpolate_coeffs = L.NewVector(L.double, {0, 37/60, -8/60, 1/60}),
+--    numInterpolateCoeffs = 4,
+--    interpolateCoeffs = L.NewVector(L.double, {0, 37/60, -8/60, 1/60}),
+--    numFirstDerivativeCoeffs = 4,
+--    firstDerivativeCoeffs = L.NewVector(L.double, {0.0,45.0/60.0,-9.0/60.0, 1.0/60.0}),
     order = 2,
     size = 2,
-    num_interpolate_coeffs = 2,
-    interpolate_coeffs = L.NewVector(L.double, {0, 0.5}),
+    numInterpolateCoeffs = 2,
+    interpolateCoeffs = L.NewVector(L.double, {0, 0.5}),
+    numFirstDerivativeCoeffs = 2,
+    firstDerivativeCoeffs = L.NewVector(L.double, {0, 0.5}),
     split = 0.5
 }
 
@@ -99,8 +103,9 @@ local newPos = grid_options.pos
 newPos[1] = newPos[1] - bnum * grid_options.width/grid_options.xnum
 newPos[2] = newPos[2] - bnum * grid_options.height/grid_options.xnum
 print(newPos[1],newPos[2])
-sizeGrid = {grid_options.xnum + 2*bnum, grid_options.ynum + 2*bnum}
-local grid = Grid.New2dUniformGrid{size          = sizeGrid,
+
+local grid = Grid.New2dUniformGrid{size          = {grid_options.xnum + 2*bnum,
+                                                    grid_options.ynum + 2*bnum},
                                    origin        = newPos,
                                    width         = grid_options.width + 2*bw,
                                    height        = grid_options.height + 2*bw,
@@ -138,6 +143,8 @@ grid.cells:NewField('rhoVelocityBoundary', L.vec2d):
 LoadConstant(L.NewVector(L.double, {0, 0}))
 grid.cells:NewField('rhoEnergyBoundary', L.double):
 LoadConstant(0)
+grid.cells:NewField('velocityBoundary', L.vec2d):
+LoadConstant(L.NewVector(L.double, {0, 0}))
 grid.cells:NewField('pressureBoundary', L.double):
 LoadConstant(0)
 grid.cells:NewField('temperatureBoundary', L.double):
@@ -164,23 +171,12 @@ grid.cells:NewField('rhoVelocity_t', L.vec2d):
 LoadConstant(L.NewVector(L.double, {0, 0}))
 grid.cells:NewField('rhoEnergy_t', L.double):
 LoadConstant(0)
--- flux
--- TODO: Define edge and related macros
-grid.x_edges:NewField('rhoFlux', L.double):
+-- fluxes
+grid.cells:NewField('rhoFlux', L.double):
 LoadConstant(0)
-grid.x_edges:NewField('rhoVelocityFlux', L.vec2d):
+grid.cells:NewField('rhoVelocityFlux', L.vec2d):
 LoadConstant(L.NewVector(L.double, {0, 0}))
-grid.x_edges:NewField('rhoEnergyFlux', L.double):
-LoadConstant(0)
-grid.x_edges:NewField('rhoEnthalpy', L.double):
-LoadConstant(0)
-grid.y_edges:NewField('rhoFlux', L.double):
-LoadConstant(0)
-grid.y_edges:NewField('rhoVelocityFlux', L.vec2d):
-LoadConstant(L.NewVector(L.double, {0, 0}))
-grid.y_edges:NewField('rhoEnergyFlux', L.double):
-LoadConstant(0)
-grid.y_edges:NewField('rhoEnthalpy', L.double):
+grid.cells:NewField('rhoEnergyFlux', L.double):
 LoadConstant(0)
 
 
@@ -248,8 +244,7 @@ LoadConstant(0)
 -- If you use lua variables, Liszt will treat them as constant values.
 
 local delta_time = L.NewGlobal(L.double, 0.02)
-local pi = L.NewGlobal(L.double, 3.14)
-
+local pi = L.NewGlobal(L.double, 2.0*cmath.acos(0))
 
 -----------------------------------------------------------------------------
 --[[                             LISZT MACROS                            ]]--
@@ -468,75 +463,170 @@ end
 
 -- Interpolation for flux values
 -- read conserved variables, write flux variables
-local AddInviscidGetFlux = {}
-local function GenerateAddInviscidGetFlux(edges)
-    return liszt kernel(e : edges)
-        if e.in_interior then
-            var num_coeffs = spatial_stencil.num_interpolate_coeffs
-            var coeffs     = spatial_stencil.interpolate_coeffs
-            var rho_diagonal = L.double(0)
-            var rho_skew     = L.double(0)
-            var rhoVelocity_diagonal = L.vec2d({0.0, 0.0})
-            var rhoVelocity_skew     = L.vec2d({0.0, 0.0})
-            var rhoEnergy_diagonal   = L.double(0.0)
-            var rhoEnergy_skew       = L.double(0.0)
-            var epdiag = L.double(0.0)
-            var axis = e.axis
-            for i = 0, num_coeffs do
-                rho_diagonal += coeffs[i] *
-                              ( e.cell_next.rho *
-                                e.cell_next.velocity[axis] +
-                                e.cell_previous.rho *
-                                e.cell_previous.velocity[axis] )
-                rhoVelocity_diagonal += coeffs[i] *
-                                       ( e.cell_next.rhoVelocity *
-                                         e.cell_next.velocity[axis] +
-                                         e.cell_previous.rhoVelocity *
-                                         e.cell_previous.velocity[axis] )
-                rhoEnergy_diagonal += coeffs[i] *
-                                     ( e.cell_next.rhoEnthalpy *
-                                       e.cell_next.velocity[axis] +
-                                       e.cell_previous.rhoEnthalpy *
-                                       e.cell_previous.velocity[axis] )
-                epdiag += coeffs[i] *
-                        ( e.cell_next.pressure +
-                          e.cell_previous.pressure )
-            end
-            -- TODO: I couldnt understand how skew is implemented. Setting s =
-            -- 1 for now, this should be changed.
-            var s = spatial_stencil.split
-            s = 1
-            e.rhoFlux          = s * rho_diagonal +
-                                  (1-s) * rho_skew
-            e.rhoVelocityFlux = s * rhoVelocity_diagonal +
-                                  (1-s) * rhoVelocity_skew
-            e.rhoEnergyFlux   = s * rhoEnergy_diagonal +
-                                  (1-s) * rhoEnergy_skew
+local AddInviscidGetFluxX =  liszt kernel(c : grid.cells)
+    if c.in_interior or c.is_left_bnd then
+        var axis = 0
+        var numInterpolateCoeffs  = spatial_stencil.numInterpolateCoeffs
+        var interpolateCoeffs     = spatial_stencil.interpolateCoeffs
+        var numFirstDerivativeCoeffs = spatial_stencil.numFirstDerivativeCoeffs
+        var firstDerivativeCoeffs    = spatial_stencil.firstDerivativeCoeffs
+        var rhoFactorDiagonal = L.double(0)
+        var rhoFactorSkew     = L.double(0)
+        var rhoVelocityFactorDiagonal = L.vec2d({0.0, 0.0})
+        var rhoVelocityFactorSkew     = L.vec2d({0.0, 0.0})
+        var rhoEnergyFactorDiagonal   = L.double(0.0)
+        var rhoEnergyFactorSkew       = L.double(0.0)
+        var epdiag = L.double(0.0)
+        for ndx = 1, numInterpolateCoeffs do
+            rhoFactorDiagonal += interpolateCoeffs[ndx] *
+                          ( c(1-ndx,0).rho *
+                            c(1-ndx,0).velocity[axis] +
+                            c(ndx,0).rho *
+                            c(ndx,0).velocity[axis] )
+            rhoVelocityFactorDiagonal += interpolateCoeffs[ndx] *
+                                   ( c(1-ndx,0).rhoVelocity *
+                                     c(1-ndx,0).velocity[axis] +
+                                     c(ndx,0).rhoVelocity *
+                                     c(ndx,0).velocity[axis] )
+            rhoEnergyFactorDiagonal += interpolateCoeffs[ndx] *
+                                 ( c(1-ndx,0).rhoEnthalpy *
+                                   c(1-ndx,0).velocity[axis] +
+                                   c(ndx,0).rhoEnthalpy *
+                                   c(ndx,0).velocity[axis] )
+            epdiag += interpolateCoeffs[ndx] *
+                    ( c(1-ndx,0).pressure +
+                      c(ndx,0).pressure )
         end
+
+        -- Skewed terms
+        -- mdx = -N+1,...,0
+        for mdx = 2-numFirstDerivativeCoeffs, 1 do
+          var tmp = L.double(0)
+          for ndx = 1, mdx+numFirstDerivativeCoeffs do
+            tmp += firstDerivativeCoeffs[ndx-mdx] * 
+                   c(ndx,0).velocity[axis]
+          end
+
+          rhoFactorSkew += c(mdx,0).rho * tmp
+          rhoVelocityFactorSkew += c(mdx,0).rhoVelocity * tmp
+          rhoEnergyFactorSkew += c(mdx,0).rhoEnthalpy * tmp
+        end
+        --  mdx = 1,...,N
+        for mdx = 1,numFirstDerivativeCoeffs do
+          var tmp = L.double(0)
+          for ndx = mdx-numFirstDerivativeCoeffs+1, 1 do
+            tmp += firstDerivativeCoeffs[mdx-ndx] * 
+                   c(ndx,0).velocity[axis]
+          end
+
+          rhoFactorSkew += c(mdx,0).rho * tmp
+          rhoVelocityFactorSkew += c(mdx,0).rhoVelocity * tmp
+          rhoEnergyFactorSkew += c(mdx,0).rhoEnthalpy * tmp
+        end
+
+        var s = spatial_stencil.split
+        c.rhoFlux          = s * rhoFactorDiagonal +
+                             (1-s) * rhoFactorSkew
+        c.rhoVelocityFlux  = s * rhoVelocityFactorDiagonal +
+                             (1-s) * rhoVelocityFactorSkew
+        c.rhoEnergyFlux    = s * rhoEnergyFactorDiagonal +
+                             (1-s) * rhoEnergyFactorSkew
     end
 end
-AddInviscidGetFlux.X = GenerateAddInviscidGetFlux(grid.x_edges)
-AddInviscidGetFlux.Y = GenerateAddInviscidGetFlux(grid.y_edges)
+local AddInviscidGetFluxY =  liszt kernel(c : grid.cells)
+    if c.in_interior or c.is_down_bnd then
+        var axis = 1
+        var numInterpolateCoeffs  = spatial_stencil.numInterpolateCoeffs
+        var interpolateCoeffs     = spatial_stencil.interpolateCoeffs
+        var numFirstDerivativeCoeffs = spatial_stencil.numFirstDerivativeCoeffs
+        var firstDerivativeCoeffs    = spatial_stencil.firstDerivativeCoeffs
+        var rhoFactorDiagonal = L.double(0)
+        var rhoFactorSkew     = L.double(0)
+        var rhoVelocityFactorDiagonal = L.vec2d({0.0, 0.0})
+        var rhoVelocityFactorSkew     = L.vec2d({0.0, 0.0})
+        var rhoEnergyFactorDiagonal   = L.double(0.0)
+        var rhoEnergyFactorSkew       = L.double(0.0)
+        var epdiag = L.double(0.0)
+        for ndx = 1, numInterpolateCoeffs do
+            rhoFactorDiagonal += interpolateCoeffs[ndx] *
+                          ( c(0,1-ndx).rho *
+                            c(0,1-ndx).velocity[axis] +
+                            c(0,ndx).rho *
+                            c(0,ndx).velocity[axis] )
+            rhoVelocityFactorDiagonal += interpolateCoeffs[ndx] *
+                                   ( c(0,1-ndx).rhoVelocity *
+                                     c(0,1-ndx).velocity[axis] +
+                                     c(0,ndx).rhoVelocity *
+                                     c(0,ndx).velocity[axis] )
+            rhoEnergyFactorDiagonal += interpolateCoeffs[ndx] *
+                                 ( c(0,1-ndx).rhoEnthalpy *
+                                   c(0,1-ndx).velocity[axis] +
+                                   c(0,ndx).rhoEnthalpy *
+                                   c(0,ndx).velocity[axis] )
+            epdiag += interpolateCoeffs[ndx] *
+                    ( c(0,1-ndx).pressure +
+                      c(0,ndx).pressure )
+        end
+
+        -- Skewed terms
+        -- mdx = -N+1,...,0
+        for mdx = 2-numFirstDerivativeCoeffs, 1 do
+          var tmp = L.double(0)
+          for ndx = 1, mdx+numFirstDerivativeCoeffs do
+            tmp += firstDerivativeCoeffs[ndx-mdx] * 
+                   c(0,ndx).velocity[axis]
+          end
+
+          rhoFactorSkew += c(0,mdx).rho * tmp
+          rhoVelocityFactorSkew += c(0,mdx).rhoVelocity * tmp
+          rhoEnergyFactorSkew += c(0,mdx).rhoEnthalpy * tmp
+        end
+        --  mdx = 1,...,N
+        for mdx = 1,numFirstDerivativeCoeffs do
+          var tmp = L.double(0)
+          for ndx = mdx-numFirstDerivativeCoeffs+1, 1 do
+            tmp += firstDerivativeCoeffs[mdx-ndx] * 
+                   c(0,ndx).velocity[axis]
+          end
+
+          rhoFactorSkew += c(0,mdx).rho * tmp
+          rhoVelocityFactorSkew += c(0,mdx).rhoVelocity * tmp
+          rhoEnergyFactorSkew += c(0,mdx).rhoEnthalpy * tmp
+        end
+
+        var s = spatial_stencil.split
+        c.rhoFlux          = s * rhoFactorDiagonal +
+                             (1-s) * rhoFactorSkew
+        c.rhoVelocityFlux  = s * rhoVelocityFactorDiagonal +
+                             (1-s) * rhoVelocityFactorSkew
+        c.rhoEnergyFlux    = s * rhoEnergyFactorDiagonal +
+                             (1-s) * rhoEnergyFactorSkew
+    end
+end
 
 
 -- Update conserved variables using flux values from previous part
 -- write conserved variables, read flux variables
 local c_dx = L.NewGlobal(L.double, grid:cellWidth())
 local c_dy = L.NewGlobal(L.double, grid:cellHeight())
-local AddInviscidUpdateUsingFlux = liszt kernel(c : grid.cells)
+local AddInviscidUpdateUsingFluxX = liszt kernel(c : grid.cells)
     if c.in_interior then
-        c.rho_t -= (c.edge_right.rhoFlux -
-                    c.edge_left.rhoFlux)/c_dx
-        c.rho_t -= (c.edge_up.rhoFlux -
-                    c.edge_down.rhoFlux)/c_dy
-        c.rhoVelocity_t -= (c.edge_right.rhoVelocityFlux -
-                             c.edge_left.rhoVelocityFlux)/c_dx
-        c.rhoVelocity_t -= (c.edge_up.rhoVelocityFlux -
-                             c.edge_down.rhoVelocityFlux)/c_dy
-        c.rhoEnergy_t -= (c.edge_right.rhoEnergyFlux -
-                           c.edge_left.rhoEnergyFlux)/c_dx
-        c.rhoEnergy_t -= (c.edge_up.rhoEnergyFlux -
-                           c.edge_down.rhoEnergyFlux)/c_dy
+        c.rho_t -= (c(0,0).rhoFlux -
+                    c(-1,0).rhoFlux)/c_dx
+        c.rhoVelocity_t -= (c(0,0).rhoVelocityFlux -
+                            c(-1,0).rhoVelocityFlux)/c_dx
+        c.rhoEnergy_t -= (c(0,0).rhoEnergyFlux -
+                          c(-1,0).rhoEnergyFlux)/c_dx
+    end
+end
+local AddInviscidUpdateUsingFluxY = liszt kernel(c : grid.cells)
+    if c.in_interior then
+        c.rho_t -= (c(0,0).rhoFlux -
+                    c(0,-1).rhoFlux)/c_dx
+        c.rhoVelocity_t -= (c(0,0).rhoVelocityFlux -
+                            c(0,-1).rhoVelocityFlux)/c_dx
+        c.rhoEnergy_t -= (c(0,0).rhoEnergyFlux -
+                          c(0,-1).rhoEnergyFlux)/c_dx
     end
 end
 
@@ -557,28 +647,28 @@ end
 --local function GenerateAddViscousGetFlux(edges)
 --    return liszt kernel(e : edges)
 --        if e.in_interior then
---            var num_coeffs = spatial_stencil.num_interpolate_coeffs
---            var coeffs     = spatial_stencil.interpolate_coeffs
---            var rho_diagonal = L.double(0)
---            var rho_skew     = L.double(0)
---            var rhoVelocity_diagonal = L.vec2d({0.0, 0.0})
---            var rhoVelocity_skew     = L.vec2d({0.0, 0.0})
---            var rhoEnergy_diagonal   = L.double(0.0)
---            var rhoEnergy_skew       = L.double(0.0)
+--            var numberCoeffs = spatial_stencil.numInterpolateCoeffs
+--            var coeffs     = spatial_stencil.interpolateCoeffs
+--            var rhoFactorDiagonal = L.double(0)
+--            var rhoFactorSkew     = L.double(0)
+--            var rhoVelocityFactorDiagonal = L.vec2d({0.0, 0.0})
+--            var rhoVelocityFactorSkew     = L.vec2d({0.0, 0.0})
+--            var rhoEnergyFactorDiagonal   = L.double(0.0)
+--            var rhoEnergyFactorSkew       = L.double(0.0)
 --            var epdiag = L.double(0.0)
 --            var axis = e.axis
---            for i = 0, num_coeffs do
---                rho_diagonal += coeffs[i] *
+--            for i = 0, numberCoeffs do
+--                rhoFactorDiagonal += coeffs[i] *
 --                              ( e.cell_next.rho *
 --                                e.cell_next.velocity[axis] +
 --                                e.cell_previous.rho *
 --                                e.cell_previous.velocity[axis] )
---                rhoVelocity_diagonal += coeffs[i] *
+--                rhoVelocityFactorDiagonal += coeffs[i] *
 --                                       ( e.cell_next.rhoVelocity *
 --                                         e.cell_next.velocity[axis] +
 --                                         e.cell_previous.rhoVelocity *
 --                                         e.cell_previous.velocity[axis] )
---                rhoEnergy_diagonal += coeffs[i] *
+--                rhoEnergyFactorDiagonal += coeffs[i] *
 --                                     ( e.cell_next.rhoEnthalpy *
 --                                       e.cell_next.velocity[axis] +
 --                                       e.cell_previous.rhoEnthalpy *
@@ -591,12 +681,12 @@ end
 --            -- 1 for now, this should be changed.
 --            var s = spatial_stencil.split
 --            s = 1
---            e.rhoFlux          = s * rho_diagonal +
---                                  (1-s) * rho_skew
---            e.rhoVelocityFlux = s * rhoVelocity_diagonal +
---                                  (1-s) * rhoVelocity_skew
---            e.rhoEnergyFlux   = s * rhoEnergy_diagonal +
---                                  (1-s) * rhoEnergy_skew
+--            e.rhoFlux          = s * rhoFactorDiagonal +
+--                                  (1-s) * rhoFactorSkew
+--            e.rhoVelocityFlux = s * rhoVelocityFactorDiagonal +
+--                                  (1-s) * rhoVelocityFactorSkew
+--            e.rhoEnergyFlux   = s * rhoEnergyFactorDiagonal +
+--                                  (1-s) * rhoEnergyFactorSkew
 --        end
 --    end
 --end
@@ -671,6 +761,7 @@ end
 -- Update flow variables using derivatives
 local UpdateFlowKernels = {}
 local function GenerateUpdateFlowKernels(relation, stage)
+    -- Assumes 4th-order Runge-Kutta 
     local coeff_fun  = time_integrator.coeff_function[stage]
     local coeff_time = time_integrator.coeff_time[stage]
     if stage <= 3 then
@@ -696,8 +787,8 @@ local function GenerateUpdateFlowKernels(relation, stage)
         end
     end
 end
-for i = 1, 4 do
-    UpdateFlowKernels[i] = GenerateUpdateFlowKernels(grid.cells, i)
+for sdx = 1, 4 do
+    UpdateFlowKernels[sdx] = GenerateUpdateFlowKernels(grid.cells, sdx)
 end
 
 
@@ -741,6 +832,10 @@ local UpdateAuxiliaryFlowVelocity = liszt kernel(c : grid.cells)
 end
 
 local UpdateGhostFlowFieldsStep1 = liszt kernel(c : grid.cells)
+    -- Note that this for now assumes the stencil uses only one point to each
+    -- side of the boundary (for example, second order central difference), and
+    -- is not able to handle higher-order schemes until a way to specify where
+    -- in the (wider-than-one-point) boundary we are
     if c.is_left_bnd then
         c.rhoBoundary            =   c(1,0).rho
         c.rhoVelocityBoundary[0] = - c(1,0).rhoVelocity[0]
@@ -773,8 +868,12 @@ local UpdateGhostFlowFieldsStep1 = liszt kernel(c : grid.cells)
         c.pressureBoundary       =   c(0,-1).pressure
         c.temperatureBoundary    =   c(0,-1).temperature
     end
-    L.print(L.id(c))
-    -- Corners
+    --L.print(L.id(c))
+    -- Corners:
+    -- This step is not necessary with the current numerical schemes that only 
+    -- use uni-directional stencils; but this simplifies postprocessing, 
+    -- for example plotting field with ghost cells
+    -- Currently sets the corner to the value next to it in the diagonal
     if c.is_left_bnd and c.is_down_bnd then
         c.rhoBoundary            =   c(1,1).rho
         c.rhoVelocityBoundary[0] = - c(1,1).rhoVelocity[0]
@@ -808,7 +907,6 @@ local UpdateGhostFlowFieldsStep1 = liszt kernel(c : grid.cells)
         c.temperatureBoundary    =   c(-1,-1).temperature
     end
 end
-
 local UpdateGhostFlowFieldsStep2 = liszt kernel(c : grid.cells)
     if c.is_bnd then
         c.pressure    = c.pressureBoundary
@@ -818,6 +916,193 @@ local UpdateGhostFlowFieldsStep2 = liszt kernel(c : grid.cells)
         c.pressure    = c.pressureBoundary
         c.temperature = c.temperatureBoundary
     end
+end
+local function UpdateGhost()
+    UpdateGhostFlowFieldsStep1(grid.cells)
+    UpdateGhostFlowFieldsStep2(grid.cells)
+end
+
+local UpdateGhostFlowThermodynamicsStep1 = liszt kernel(c : grid.cells)
+    -- Note that this for now assumes the stencil uses only one point to each
+    -- side of the boundary (for example, second order central difference), and
+    -- is not able to handle higher-order schemes until a way to specify where
+    -- in the (wider-than-one-point) boundary we are
+    if c.is_left_bnd then
+        c.pressureBoundary       =   c(1,0).pressure
+        c.temperatureBoundary    =   c(1,0).temperature
+    end
+    if c.is_right_bnd then
+        c.pressureBoundary       =   c(-1,0).pressure
+        c.temperatureBoundary    =   c(-1,0).temperature
+    end
+    if c.is_down_bnd then
+        c.pressureBoundary       =   c(0,1).pressure
+        c.temperatureBoundary    =   c(0,1).temperature
+    end
+    if c.is_up_bnd then
+        c.pressureBoundary       =   c(0,-1).pressure
+        c.temperatureBoundary    =   c(0,-1).temperature
+    end
+    --L.print(L.id(c))
+    -- Corners:
+    -- This step is not necessary with the current numerical schemes that only 
+    -- use uni-directional stencils; but this simplifies postprocessing, 
+    -- for example plotting field with ghost cells
+    -- Currently sets the corner to the value next to it in the diagonal
+    if c.is_left_bnd and c.is_down_bnd then
+        c.pressureBoundary       =   c(1,1).pressure
+        c.temperatureBoundary    =   c(1,1).temperature
+    end
+    if c.is_left_bnd and c.is_up_bnd then
+        c.pressureBoundary       =   c(1,-1).pressure
+        c.temperatureBoundary    =   c(1,-1).temperature
+    end
+    if c.is_right_bnd and c.is_down_bnd then
+        c.pressureBoundary       =   c(-1,1).pressure
+        c.temperatureBoundary    =   c(-1,1).temperature
+    end
+    if c.is_right_bnd and c.is_up_bnd then
+        c.pressureBoundary       =   c(-1,-1).pressure
+        c.temperatureBoundary    =   c(-1,-1).temperature
+    end
+end
+local UpdateGhostFlowThermodynamicsStep2 = liszt kernel(c : grid.cells)
+    if c.is_bnd then
+        c.pressure    = c.pressureBoundary
+        c.temperature = c.temperatureBoundary
+    end
+end
+local function UpdateGhostFlowThermodynamics()
+    UpdateGhostFlowThermodynamicsStep1(grid.cells)
+    UpdateGhostFlowThermodynamicsStep2(grid.cells)
+end
+
+local UpdateGhostFlowVelocityStep1 = liszt kernel(c : grid.cells)
+    -- Note that this for now assumes the stencil uses only one point to each
+    -- side of the boundary (for example, second order central difference), and
+    -- is not able to handle higher-order schemes until a way to specify where
+    -- in the (wider-than-one-point) boundary we are
+    if c.is_left_bnd then
+        c.velocityBoundary[0] = - c(1,0).velocity[0]
+        c.velocityBoundary[1] =   c(1,0).velocity[1]
+    end
+    if c.is_right_bnd then
+        c.velocityBoundary[0] = - c(-1,0).velocity[0]
+        c.velocityBoundary[1] =   c(-1,0).velocity[1]
+    end
+    if c.is_down_bnd then
+        c.velocityBoundary[0] =   c(0,1).velocity[0]
+        c.velocityBoundary[1] = - c(0,1).velocity[1]
+    end
+    if c.is_up_bnd then
+        c.velocityBoundary[0] =   c(0,-1).velocity[0]
+        c.velocityBoundary[1] = - c(0,-1).velocity[1]
+    end
+    --L.print(L.id(c))
+    -- Corners:
+    -- This step is not necessary with the current numerical schemes that only 
+    -- use uni-directional stencils; but this simplifies postprocessing, 
+    -- for example plotting field with ghost cells
+    -- Currently sets the corner to the value next to it in the diagonal
+    if c.is_left_bnd and c.is_down_bnd then
+        c.velocityBoundary[0] = - c(1,1).velocity[0]
+        c.velocityBoundary[1] = - c(1,1).velocity[1]
+    end
+    if c.is_left_bnd and c.is_up_bnd then
+        c.velocityBoundary[0] = - c(1,-1).velocity[0]
+        c.velocityBoundary[1] = - c(1,-1).velocity[1]
+    end
+    if c.is_right_bnd and c.is_down_bnd then
+        c.velocityBoundary[0] = - c(-1,1).velocity[0]
+        c.velocityBoundary[1] = - c(-1,1).velocity[1]
+    end
+    if c.is_right_bnd and c.is_up_bnd then
+        c.velocityBoundary[0] = - c(-1,-1).velocity[0]
+        c.velocityBoundary[1] = - c(-1,-1).velocity[1]
+    end
+end
+local UpdateGhostFlowVelocityStep2 = liszt kernel(c : grid.cells)
+    if c.is_bnd then
+        c.velocity = c.velocityBoundary
+    end
+end
+local function UpdateGhostFlowVelocity()
+    UpdateGhostFlowVelocityStep1(grid.cells)
+    UpdateGhostFlowVelocityStep2(grid.cells)
+end
+
+
+local UpdateGhostFlowConservedStep1 = liszt kernel(c : grid.cells)
+    -- Note that this for now assumes the stencil uses only one point to each
+    -- side of the boundary (for example, second order central difference), and
+    -- is not able to handle higher-order schemes until a way to specify where
+    -- in the (wider-than-one-point) boundary we are
+    if c.is_left_bnd then
+        c.rhoBoundary            =   c(1,0).rho
+        c.rhoVelocityBoundary[0] = - c(1,0).rhoVelocity[0]
+        c.rhoVelocityBoundary[1] =   c(1,0).rhoVelocity[1]
+        c.rhoEnergyBoundary      =   c(1,0).rhoEnergy
+    end
+    if c.is_right_bnd then
+        c.rhoBoundary            =   c(-1,0).rho
+        c.rhoVelocityBoundary[0] = - c(-1,0).rhoVelocity[0]
+        c.rhoVelocityBoundary[1] =   c(-1,0).rhoVelocity[1]
+        c.rhoEnergyBoundary      =   c(-1,0).rhoEnergy
+    end
+    if c.is_down_bnd then
+        c.rhoBoundary            =   c(0,1).rho
+        c.rhoVelocityBoundary[0] =   c(0,1).rhoVelocity[0]
+        c.rhoVelocityBoundary[1] = - c(0,1).rhoVelocity[1]
+        c.rhoEnergyBoundary      =   c(0,1).rhoEnergy
+    end
+    if c.is_up_bnd then
+        c.rhoBoundary            =   c(0,-1).rho
+        c.rhoVelocityBoundary[0] =   c(0,-1).rhoVelocity[0]
+        c.rhoVelocityBoundary[1] = - c(0,-1).rhoVelocity[1]
+        c.rhoEnergyBoundary      =   c(0,-1).rhoEnergy
+    end
+    --L.print(L.id(c))
+    -- Corners:
+    -- This step is not necessary with the current numerical schemes that only 
+    -- use uni-directional stencils; but this simplifies postprocessing, 
+    -- for example plotting field with ghost cells
+    -- Currently sets the corner to the value next to it in the diagonal
+    if c.is_left_bnd and c.is_down_bnd then
+        c.rhoBoundary            =   c(1,1).rho
+        c.rhoVelocityBoundary[0] = - c(1,1).rhoVelocity[0]
+        c.rhoVelocityBoundary[1] = - c(1,1).rhoVelocity[1]
+        c.rhoEnergyBoundary      =   c(1,1).rhoEnergy
+    end
+    if c.is_left_bnd and c.is_up_bnd then
+        c.rhoBoundary            =   c(1,-1).rho
+        c.rhoVelocityBoundary[0] = - c(1,-1).rhoVelocity[0]
+        c.rhoVelocityBoundary[1] = - c(1,-1).rhoVelocity[1]
+        c.rhoEnergyBoundary      =   c(1,-1).rhoEnergy
+    end
+    if c.is_right_bnd and c.is_down_bnd then
+        c.rhoBoundary            =   c(-1,1).rho
+        c.rhoVelocityBoundary[0] = - c(-1,1).rhoVelocity[0]
+        c.rhoVelocityBoundary[1] = - c(-1,1).rhoVelocity[1]
+        c.rhoEnergyBoundary      =   c(-1,1).rhoEnergy
+    end
+    if c.is_right_bnd and c.is_up_bnd then
+        c.rhoBoundary            =   c(-1,-1).rho
+        c.rhoVelocityBoundary[0] = - c(-1,-1).rhoVelocity[0]
+        c.rhoVelocityBoundary[1] = - c(-1,-1).rhoVelocity[1]
+        c.rhoEnergyBoundary      =   c(-1,-1).rhoEnergy
+    end
+end
+local UpdateGhostFlowConservedStep2 = liszt kernel(c : grid.cells)
+    if c.is_bnd then
+        c.pressure    = c.pressureBoundary
+        c.rho         = c.rhoBoundary
+        c.rhoVelocity = c.rhoVelocityBoundary
+        c.rhoEnergy   = c.rhoEnergyBoundary
+    end
+end
+local function UpdateGhostFlowConserved()
+    UpdateGhostFlowConservedStep1(grid.cells)
+    UpdateGhostFlowConservedStep2(grid.cells)
 end
 
 
@@ -884,9 +1169,11 @@ end
 
 local function AddInviscid()
     AddInviscidInitialize(grid.cells)
-    AddInviscidGetFlux.X(grid.x_edges)
-    AddInviscidGetFlux.Y(grid.y_edges)
-    AddInviscidUpdateUsingFlux(grid.cells)
+    AddInviscidGetFluxX(grid.cells)
+    AddInviscidUpdateUsingFluxX(grid.cells)
+    AddInviscidGetFluxY(grid.cells)
+    AddInviscidUpdateUsingFluxY(grid.cells)
+    --AddInviscidGetFluxY(grid.cells)
 end
 
 --local function AddViscous()
@@ -913,20 +1200,20 @@ local function UpdateParticles(i)
 end
 
 
+
 local function UpdateAuxiliary()
     UpdateAuxiliaryFlowVelocity(grid.cells)
+    UpdateGhostFlowConserved(grid.cells)
+    UpdateGhostFlowVelocity(grid.cells)
+    --ComputeFlowVelocityGradients(grid.cells)
     UpdateAuxiliaryFlowThermodynamics(grid.cells)
-end
-
-local function UpdateGhost()
-    UpdateGhostFlowFieldsStep1(grid.cells)
-    UpdateGhostFlowFieldsStep2(grid.cells)
+    UpdateGhostFlowThermodynamics(grid.cells)
 end
 
 
 -- Update time function
-local function UpdateTime(stage)
-    time_integrator.sim_time = time_integrator.sim_time +
+local function UpdateTime(timeOld, stage)
+    time_integrator.sim_time = timeOld +
                                time_integrator.coeff_time[stage] *
                                delta_time:value()
     if stage == 4 then
@@ -935,15 +1222,15 @@ local function UpdateTime(stage)
 end
 
 
-local function WriteOutput()
-    outputFileName = "soleilOutput/output_" ..
-      tostring(time_integrator.time_step)
-    WriteCellsField(outputFileName .. "_flow",
-      grid:xSize(),grid:ySize(),grid.cells.typeFlag)
-    WriteCellsField(outputFileName .. "_flow",
-      grid:xSize(),grid:ySize(),grid.cells.temperature)
-    WriteCellsField(outputFileName .. "_flow",
-      grid:xSize(),grid:ySize(),grid.cells.rho)
+local function WriteOutput(outputFileNamePrefix,timeStep)
+    local outputFileName = outputFileNamePrefix .. "_" ..
+      tostring(timeStep)
+    --WriteCellsField(outputFileName .. "_flow",
+    --  grid:xSize(),grid:ySize(),grid.cells.typeFlag)
+    --WriteCellsField(outputFileName .. "_flow",
+    --  grid:xSize(),grid:ySize(),grid.cells.temperature)
+    --WriteCellsField(outputFileName .. "_flow",
+    --  grid:xSize(),grid:ySize(),grid.cells.rho)
     WriteCellsField(outputFileName .. "_flow",
       grid:xSize(),grid:ySize(),grid.cells.pressure)
     WriteParticlesArray(outputFileName .. "_particles",
@@ -965,7 +1252,6 @@ local function InitializeVariables()
     InitializeFlowPrimitives(grid.cells)
     UpdateConservedFromPrimitive(grid.cells)
     UpdateAuxiliary()
-    UpdateGhost()
     LocateParticles(particles)
     SetParticleVelocitiesToFlow(particles)
 end
@@ -973,15 +1259,17 @@ end
 
 InitializeVariables()
 
-outputFileName = "soleilOutput/output"
-WriteCellsField(outputFileName,grid:xSize(),grid:ySize(),grid.cells.centerCoordinates)
-WriteParticlesArray(outputFileName .. "_particles",
+outputFileNamePrefix = "../soleilOutput/output"
+WriteCellsField(outputFileNamePrefix,grid:xSize(),grid:ySize(),grid.cells.centerCoordinates)
+WriteParticlesArray(outputFileNamePrefix .. "_particles",
   particles.diameter)
 while (time_integrator.sim_time < time_integrator.final_time) do
     print("Running time step ", time_integrator.time_step, ", time",
           time_integrator.sim_time) 
-    WriteOutput(time_integrator.time_step)
+    WriteOutput(outputFileNamePrefix,
+                time_integrator.time_step)
     InitializeTemporaries()
+    local timeOld = time_integrator.sim_time
     for stage = 1, 4 do
         InitializeDerivatives()
         AddInviscid()
@@ -989,7 +1277,7 @@ while (time_integrator.sim_time < time_integrator.final_time) do
         AddFlowCoupling()
         UpdateFlow(stage)
         UpdateParticles(stage)
-        UpdateTime(stage)
+        UpdateTime(timeOld, stage)
         UpdateAuxiliary()
     end
 --    DrawParticles()
