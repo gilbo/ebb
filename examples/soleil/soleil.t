@@ -122,7 +122,7 @@ grid.cells:NewField('temperature', L.double):
 LoadConstant(0)
 grid.cells:NewField('pressure', L.double):
 LoadConstant(0)
-grid.cells:NewField('rho_enthalpy', L.double):
+grid.cells:NewField('rhoEnthalpy', L.double):
 LoadConstant(0)
 grid.cells:NewField('sgsEnergy', L.double):
 LoadConstant(0)
@@ -165,21 +165,21 @@ grid.cells:NewField('rhoEnergy_t', L.double):
 LoadConstant(0)
 -- flux
 -- TODO: Define edge and related macros
-grid.x_edges:NewField('rho_flux', L.double):
+grid.x_edges:NewField('rhoFlux', L.double):
 LoadConstant(0)
-grid.x_edges:NewField('rhoVelocity_flux', L.vec2d):
+grid.x_edges:NewField('rhoVelocityFlux', L.vec2d):
 LoadConstant(L.NewVector(L.double, {0, 0}))
-grid.x_edges:NewField('rhoEnergy_flux', L.double):
+grid.x_edges:NewField('rhoEnergyFlux', L.double):
 LoadConstant(0)
-grid.x_edges:NewField('rho_enthalpy', L.double):
+grid.x_edges:NewField('rhoEnthalpy', L.double):
 LoadConstant(0)
-grid.y_edges:NewField('rho_flux', L.double):
+grid.y_edges:NewField('rhoFlux', L.double):
 LoadConstant(0)
-grid.y_edges:NewField('rhoVelocity_flux', L.vec2d):
+grid.y_edges:NewField('rhoVelocityFlux', L.vec2d):
 LoadConstant(L.NewVector(L.double, {0, 0}))
-grid.y_edges:NewField('rhoEnergy_flux', L.double):
+grid.y_edges:NewField('rhoEnergyFlux', L.double):
 LoadConstant(0)
-grid.y_edges:NewField('rho_enthalpy', L.double):
+grid.y_edges:NewField('rhoEnthalpy', L.double):
 LoadConstant(0)
 
 
@@ -455,10 +455,13 @@ local InitializeParticleDerivatives = liszt kernel(p : particles)
     p.temperature_t = L.double(0)
 end
 
+-----------
+-- Inviscid
+-----------
 
 -- Initialize enthalpy and derivatives
 local AddInviscidInitialize = liszt kernel(c : grid.cells)
-    c.rho_enthalpy = c.rhoEnergy + c.pressure
+    c.rhoEnthalpy = c.rhoEnergy + c.pressure
 end
 
 
@@ -490,9 +493,9 @@ local function GenerateAddInviscidGetFlux(edges)
                                          e.cell_previous.rhoVelocity *
                                          e.cell_previous.velocity[axis] )
                 rhoEnergy_diagonal += coeffs[i] *
-                                     ( e.cell_next.rho_enthalpy *
+                                     ( e.cell_next.rhoEnthalpy *
                                        e.cell_next.velocity[axis] +
-                                       e.cell_previous.rho_enthalpy *
+                                       e.cell_previous.rhoEnthalpy *
                                        e.cell_previous.velocity[axis] )
                 epdiag += coeffs[i] *
                         ( e.cell_next.pressure +
@@ -502,11 +505,11 @@ local function GenerateAddInviscidGetFlux(edges)
             -- 1 for now, this should be changed.
             var s = spatial_stencil.split
             s = 1
-            e.rho_flux          = s * rho_diagonal +
+            e.rhoFlux          = s * rho_diagonal +
                                   (1-s) * rho_skew
-            e.rhoVelocity_flux = s * rhoVelocity_diagonal +
+            e.rhoVelocityFlux = s * rhoVelocity_diagonal +
                                   (1-s) * rhoVelocity_skew
-            e.rhoEnergy_flux   = s * rhoEnergy_diagonal +
+            e.rhoEnergyFlux   = s * rhoEnergy_diagonal +
                                   (1-s) * rhoEnergy_skew
         end
     end
@@ -514,27 +517,110 @@ end
 AddInviscidGetFlux.X = GenerateAddInviscidGetFlux(grid.x_edges)
 AddInviscidGetFlux.Y = GenerateAddInviscidGetFlux(grid.y_edges)
 
-
 -- Update conserved variables using flux values from previous part
 -- write conserved variables, read flux variables
 local c_dx = L.NewGlobal(L.double, grid:cellWidth())
 local c_dy = L.NewGlobal(L.double, grid:cellHeight())
 local AddInviscidUpdateUsingFlux = liszt kernel(c : grid.cells)
     if c.in_interior then
-        c.rho_t -= (c.edge_right.rho_flux -
-                    c.edge_left.rho_flux)/c_dx
-        c.rho_t -= (c.edge_up.rho_flux -
-                    c.edge_down.rho_flux)/c_dy
-        c.rhoVelocity_t -= (c.edge_right.rhoVelocity_flux -
-                             c.edge_left.rhoVelocity_flux)/c_dx
-        c.rhoVelocity_t -= (c.edge_up.rhoVelocity_flux -
-                             c.edge_down.rhoVelocity_flux)/c_dy
-        c.rhoEnergy_t -= (c.edge_right.rhoEnergy_flux -
-                           c.edge_left.rhoEnergy_flux)/c_dx
-        c.rhoEnergy_t -= (c.edge_up.rhoEnergy_flux -
-                           c.edge_down.rhoEnergy_flux)/c_dy
+        c.rho_t -= (c.edge_right.rhoFlux -
+                    c.edge_left.rhoFlux)/c_dx
+        c.rho_t -= (c.edge_up.rhoFlux -
+                    c.edge_down.rhoFlux)/c_dy
+        c.rhoVelocity_t -= (c.edge_right.rhoVelocityFlux -
+                             c.edge_left.rhoVelocityFlux)/c_dx
+        c.rhoVelocity_t -= (c.edge_up.rhoVelocityFlux -
+                             c.edge_down.rhoVelocityFlux)/c_dy
+        c.rhoEnergy_t -= (c.edge_right.rhoEnergyFlux -
+                           c.edge_left.rhoEnergyFlux)/c_dx
+        c.rhoEnergy_t -= (c.edge_up.rhoEnergyFlux -
+                           c.edge_down.rhoEnergyFlux)/c_dy
     end
 end
+
+
+
+-------------
+---- Viscous
+-------------
+--
+---- Initialize viscous
+--local AddViscousInitialize = liszt kernel(c : grid.cells)
+--end
+--
+--
+---- Interpolation for flux values
+---- read conserved variables, write flux variables
+--local AddViscousGetFlux = {}
+--local function GenerateAddViscousGetFlux(edges)
+--    return liszt kernel(e : edges)
+--        if e.in_interior then
+--            var num_coeffs = spatial_stencil.num_interpolate_coeffs
+--            var coeffs     = spatial_stencil.interpolate_coeffs
+--            var rho_diagonal = L.double(0)
+--            var rho_skew     = L.double(0)
+--            var rhoVelocity_diagonal = L.vec2d({0.0, 0.0})
+--            var rhoVelocity_skew     = L.vec2d({0.0, 0.0})
+--            var rhoEnergy_diagonal   = L.double(0.0)
+--            var rhoEnergy_skew       = L.double(0.0)
+--            var epdiag = L.double(0.0)
+--            var axis = e.axis
+--            for i = 0, num_coeffs do
+--                rho_diagonal += coeffs[i] *
+--                              ( e.cell_next.rho *
+--                                e.cell_next.velocity[axis] +
+--                                e.cell_previous.rho *
+--                                e.cell_previous.velocity[axis] )
+--                rhoVelocity_diagonal += coeffs[i] *
+--                                       ( e.cell_next.rhoVelocity *
+--                                         e.cell_next.velocity[axis] +
+--                                         e.cell_previous.rhoVelocity *
+--                                         e.cell_previous.velocity[axis] )
+--                rhoEnergy_diagonal += coeffs[i] *
+--                                     ( e.cell_next.rhoEnthalpy *
+--                                       e.cell_next.velocity[axis] +
+--                                       e.cell_previous.rhoEnthalpy *
+--                                       e.cell_previous.velocity[axis] )
+--                epdiag += coeffs[i] *
+--                        ( e.cell_next.pressure +
+--                          e.cell_previous.pressure )
+--            end
+--            -- TODO: I couldnt understand how skew is implemented. Setting s =
+--            -- 1 for now, this should be changed.
+--            var s = spatial_stencil.split
+--            s = 1
+--            e.rhoFlux          = s * rho_diagonal +
+--                                  (1-s) * rho_skew
+--            e.rhoVelocityFlux = s * rhoVelocity_diagonal +
+--                                  (1-s) * rhoVelocity_skew
+--            e.rhoEnergyFlux   = s * rhoEnergy_diagonal +
+--                                  (1-s) * rhoEnergy_skew
+--        end
+--    end
+--end
+--AddViscousGetFlux.X = GenerateAddViscousGetFlux(grid.x_edges)
+--AddViscousGetFlux.Y = GenerateAddViscousGetFlux(grid.y_edges)
+--
+---- Update conserved variables using flux values from previous part
+---- write conserved variables, read flux variables
+--local c_dx = L.NewGlobal(L.double, grid:cellWidth())
+--local c_dy = L.NewGlobal(L.double, grid:cellHeight())
+--local AddViscousUpdateUsingFlux = liszt kernel(c : grid.cells)
+--    if c.in_interior then
+--        c.rho_t -= (c.edge_right.rhoFlux -
+--                    c.edge_left.rhoFlux)/c_dx
+--        c.rho_t -= (c.edge_up.rhoFlux -
+--                    c.edge_down.rhoFlux)/c_dy
+--        c.rhoVelocity_t -= (c.edge_right.rhoVelocityFlux -
+--                             c.edge_left.rhoVelocityFlux)/c_dx
+--        c.rhoVelocity_t -= (c.edge_up.rhoVelocityFlux -
+--                             c.edge_down.rhoVelocityFlux)/c_dy
+--        c.rhoEnergy_t -= (c.edge_right.rhoEnergyFlux -
+--                           c.edge_left.rhoEnergyFlux)/c_dx
+--        c.rhoEnergy_t -= (c.edge_up.rhoEnergyFlux -
+--                           c.edge_down.rhoEnergyFlux)/c_dy
+--    end
+--end
 
 
 -- Update particle fields based on flow fields
@@ -557,6 +643,18 @@ local AddFlowCouplingPartOne = liszt kernel(p: particles)
     p.delta_temperature_term = pi * cmath.pow(p.diameter, 2) *
         particle_options.convective_coefficient *
         (flow_temperature - p.temperature)
+end
+
+-- Set particle velocities to flow for initialization
+local SetParticleVelocitiesToFlow = liszt kernel(p: particles)
+    var dc = p.dual_cell
+    var flow_density     = L.double(0)
+    var flow_velocity    = L.vec2d({0, 0})
+    var flow_temperature = L.double(0)
+    var flow_dyn_viscosity = L.double(0)
+    var pos = p.position
+    flow_velocity    = InterpolateBilinear(dc, pos, Velocity)
+    p.velocity = flow_velocity
 end
 
 
@@ -673,6 +771,7 @@ local UpdateGhostFlowFieldsStep1 = liszt kernel(c : grid.cells)
         c.pressureBoundary       =   c(0,-1).pressure
         c.temperatureBoundary    =   c(0,-1).temperature
     end
+    L.print(L.id(c))
     -- Corners
     if c.is_left_bnd and c.is_down_bnd then
         c.rhoBoundary            =   c(1,1).rho
@@ -782,6 +881,13 @@ local function AddInviscid()
     AddInviscidUpdateUsingFlux(grid.cells)
 end
 
+--local function AddViscous()
+--    --AddViscousInitialize(grid.cells)
+--    AddViscousGetFlux.X(grid.x_edges)
+--    AddViscousGetFlux.Y(grid.y_edges)
+--    AddViscousUpdateUsingFlux(grid.cells)
+--end
+
 
 local function AddFlowCoupling()
     LocateParticles(particles)
@@ -853,6 +959,7 @@ local function InitializeVariables()
     UpdateAuxiliary()
     UpdateGhost()
     LocateParticles(particles)
+    SetParticleVelocitiesToFlow(particles)
 end
 
 
@@ -870,6 +977,7 @@ while (time_integrator.sim_time < time_integrator.final_time) do
     for stage = 1, 4 do
         InitializeDerivatives()
         AddInviscid()
+        --AddViscous()
         AddFlowCoupling()
         UpdateFlow(stage)
         UpdateParticles(stage)
