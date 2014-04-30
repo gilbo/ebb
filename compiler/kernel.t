@@ -151,16 +151,16 @@ L.LKernel.__call  = function (kobj, relset)
     if bran.subset then
       if bran.subset._boolmask then
         bran:getSubsetGerm().use_boolmask = true
-        bran:getSubsetGerm().boolmask = bran.subset._boolmask.data
+        bran:getSubsetGerm().boolmask = bran.subset._boolmask:DataPtr()
       elseif bran.subset._index then
         bran:getSubsetGerm().use_index = true
-        bran:getSubsetGerm().index = bran.subset._index._data
-        bran:getSubsetGerm().index_size = bran.subset._index._size
+        bran:getSubsetGerm().index = bran.subset._index:DataPtr()
+        bran:getSubsetGerm().index_size = bran.subset._index:Size()
       end
     end
     -- bind the field data
     for field, _ in pairs(bran.field_ids) do
-      bran:getFieldGerm(field).data = field.data
+      bran:getFieldGerm(field).data = field:DataPtr()
     end
 
     -- launch the kernel
@@ -217,20 +217,6 @@ end
 function Bran:getSubsetGerm()
   return self.germ:get().subset
 end
-
---function Bran:setFieldData(field_name, value)
---  --local field_name = field:Name()
---  local id = self.field_id[field_name]
---  local germ = self.germ:get()
---  germ.fields[id].data = value
---end
---
---function Bran:fieldCode(field_name)
---  local id = self.field_id[field_name]
---  local germ = self.germ
---  return `germ.fields[id].data
---end
-
 
 
 

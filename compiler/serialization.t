@@ -137,7 +137,7 @@ local terra read_field_header(
 end
 
 function L.LField:SaveToFile(filename)
-    assert(self.data)
+    assert(self.array)
 
     -- open the file for writing
     local file = C.fopen(filename, 'wb')
@@ -191,7 +191,7 @@ function L.LField:SaveToFile(filename)
     end
 
     -- write data block out
-    C.fwrite( self.data, tsize, n_rows, file )
+    C.fwrite( self.array:ptr(), tsize, n_rows, file )
     if C.ferror(file) ~= 0 then
         C.perror('field file data write error: ')
         err("error writing field file data to "..filename)
@@ -264,10 +264,10 @@ function L.LField:LoadFromFile(filename)
     -- read data block out
     self:Allocate()
     local type_size = terralib.sizeof(self.type:terraType())
-    C.fread( self.data, type_size, array_size, file )
+    C.fread( self.array:ptr(), type_size, array_size, file )
     if C.ferror(file) ~= 0 then
         C.perror('field file data read error: ')
-        C.free(self.data)
+        self:ClearData()
         err('error reading data')
     end
 
@@ -401,7 +401,7 @@ local function check_save_relations(relations, params)
 
             -- Ensure that data is present
             if not no_file_data then
-                if f.data == nil then -- in case of cdata pointer
+                if not f.array then -- in case of cdata pointer
                     error('SaveRelationSchema() Error: '..fstr..' is '..
                           'uninitialized; it has no data', 3)
                 end

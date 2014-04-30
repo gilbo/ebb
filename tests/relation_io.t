@@ -44,13 +44,13 @@ local function compare_field_data(fa, fb, fname)
     for i=0,N-1 do res = res .. tostring(cdata.d[i]) .. ',' end
     return res .. '}'
   end
-  local i = comparefn(fa.data, fb.data, fa:Size())
+  local i = comparefn(fa:DataPtr(), fb:DataPtr(), fa:Size())
   if i ~= fa:Size() then
-    local da = tostring(fa.data[i])
-    local db = tostring(fb.data[i])
+    local da = tostring(fa:DataPtr()[i])
+    local db = tostring(fb:DataPtr()[i])
     if fa.type:isVector() then
-      da = vecprint(fa.data[i])
-      db = vecprint(fb.data[i])
+      da = vecprint(fa:DataPtr()[i])
+      db = vecprint(fb:DataPtr()[i])
     end
     error('data inconsistency in field "'..fname..
           '" at position #'..tostring(i)..

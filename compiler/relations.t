@@ -13,17 +13,6 @@ local PN = terralib.require "lib.pathname"
 local JSON = require('compiler.JSON')
 
 
-terra allocateAligned(alignment : uint64, size : uint64)
-    var r : &opaque
-    C.posix_memalign(&r,alignment,size)
-    return r
-end
--- vector(double,4) requires 32-byte alignment
--- note: it _is safe_ to free memory allocated this way with C.free
-local function MallocArray(T,N)
-    return terralib.cast(&T,allocateAligned(32,N * terralib.sizeof(T)))
-end
-
 
 local valid_name_err_msg =
     "must be valid Lua Identifiers: a letter or underscore,"..
@@ -41,6 +30,166 @@ function L.is_valid_lua_identifier(name)
 
     return true
 end
+
+
+-------------------------------------------------------------------------------
+--[[ DataArray methods                                                     ]]--
+-------------------------------------------------------------------------------
+
+local DataArray = {}
+DataArray.__index = DataArray
+
+function DataArray.New(params)
+    params.processor = params.processor or L.default_processor
+    params.size = params.size or 0
+    if not params.type then error('must provide type') end
+
+    local array = setmetatable({
+        _size = params.size,
+        _processor = params.processor,
+        _type = params.type,
+        _data = nil,
+    }, DataArray)
+
+    if array._size > 0 then array:allocate() end
+    return array
+end
+
+function DataArray:ptr()
+    return self._data
+end
+
+-- State:
+function DataArray:isallocated()   return self._data ~= nil     end
+ -- These do not check allocation
+function DataArray:size()           return self._size            end
+function DataArray:location()       return self._processor       end
+
+
+
+terra allocateAligned(alignment : uint64, size : uint64)
+    var r : &opaque
+    C.posix_memalign(&r,alignment,size)
+    return r
+end
+-- vector(double,4) requires 32-byte alignment
+-- note: it _is safe_ to free memory allocated this way with C.free
+local function MallocArray(T,N)
+    return terralib.cast(&T,allocateAligned(32,N * terralib.sizeof(T)))
+end
+local function cpu_allocate(array)
+    return MallocArray(array._type:terraType(), array._size)
+end
+local function cpu_free(data)
+    C.free(data)
+end
+local function cpu_cpu_copy(dst, src) -- arrays
+    C.memcpy(dst:ptr(), src:ptr(),
+             terralib.sizeof(src._type:terraType()) *
+                math.min(dst:size(),src:size()))
+end
+
+local function gpu_allocate(typ, size)
+    error('gpu not supported')
+end
+local function gpu_free(data)
+    error('gpu not supported')
+end
+local function cpu_gpu_copy(dst, src) -- arrays
+    error('gpu not supported')
+end
+local function gpu_cpu_copy(dst, src) -- arrays
+    error('gpu not supported')
+end
+local function gpu_gpu_copy(dst, src) -- arrays
+    error('gpu not supported')
+end
+
+-- idempotent
+function DataArray:allocate()
+    if self._data then return end
+    if self._size == 0 then return end -- do not allocate if size 0
+
+    if self._processor == L.CPU then
+        self._data = cpu_allocate(self)
+    elseif self._processor == L.GPU then
+        self._data = gpu_allocate(self)
+    else
+        error('unrecognized processor')
+    end
+end
+
+-- idempotent
+function DataArray:free()
+    if self._data then
+        if self._processor == L.CPU then
+            cpu_free(self._data)
+        elseif self._processor == L.GPU then
+            gpu_free(self._data)
+        else
+            error('unrecognized processor')
+        end
+        self._data = nil
+    end
+end
+
+-- copy as much data as possible given sizes
+function DataArray:copy(src)
+    local dst = self
+    if not src._data or not dst._data then return end
+
+    if     dst._processor == L.CPU and src._processor == L.CPU then
+        cpu_cpu_copy( dst, src )
+    elseif dst._processor == L.CPU and src._processor == L.GPU then
+        cpu_gpu_copy( dst, src )
+    elseif dst._processor == L.CPU and src._processor == L.GPU then
+        gpu_cpu_copy( dst, src )
+    elseif dst._processor == L.CPU and src._processor == L.GPU then
+        gpu_gpu_copy( dst, src )
+    else
+        error('unsupported processor')
+    end
+end
+
+-- general purpose relocation/resizing of data
+function DataArray:reallocate(params)
+    -- If no change detected, and we have allocated data, then short-circuit
+    if params.processor == self._processor and
+       params.size == self._size and
+       self._data
+    then
+        return
+    end
+
+    -- allocate new data
+    local new_array = DataArray.New {
+        processor = params.processor,
+        size = params.size,
+        type = self._type,
+    }
+
+    -- if we're already allocated, copy and self-destruct
+    if self:isallocated() then
+        new_array:copy(self)
+        self:free()
+    end
+
+    -- write the new array values over into self
+    self._processor  = new_array._processor
+    self._size       = new_array._size
+    self._data       = new_array._data
+end
+
+-- single dimension re-allocations
+function DataArray:moveto(new_location)
+    self:reallocate{ processor = new_location, size = self._size }
+end
+function DataArray:resize(new_size)
+    self:reallocate{ processor = self._processor, size = new_size }
+end
+
+
+
 
 
 -------------------------------------------------------------------------------
@@ -153,20 +302,25 @@ function L.LRelation:GroupBy(name)
     local num_rows = key_field:Size()
     rawset(self,'_grouping', {
         key_field = key_field,
-        index = L.LIndex.New(self, 'groupby_'..key_field:Name(), num_keys+1)
+        index = L.LIndex.New{
+            owner=self,
+            name='groupby_'..key_field:Name(),
+            size=num_keys+1
+        },
     })
-    local indexdata = self._grouping.index._data
+    local indexdata = self._grouping.index:DataPtr()
 
     local prev,pos = 0,0
+    local keyptr = key_field.array:ptr()
     for i = 0, num_keys - 1 do
         indexdata[i] = pos
-        while key_field.data[pos] == i and pos < num_rows do
-            if key_field.data[pos] < prev then
+        while keyptr[pos] == i and pos < num_rows do
+            if keyptr[pos] < prev then
                 self._grouping.index:Release()
                 self._grouping = nil
                 error("GroupBy(): Key field '"..name.."' is not sorted.")
             end
-            prev,pos = key_field.data[pos], pos+1
+            prev,pos = keyptr[pos], pos+1
         end
     end
     assert(pos == num_rows)
@@ -189,21 +343,39 @@ end
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
 
-function L.LIndex.New(rel, name, size_or_table)
+function L.LIndex.New(params)
+    if not L.is_relation(params.owner) or
+       type(params.name) ~= 'string' or
+       not (params.size or params.data)
+    then
+        error('bad parameters')
+    end
+
     local index = setmetatable({
-        _owner = rel,
-        _name  = name,
+        _owner = params.owner,
+        _name  = params.name,
     }, L.LIndex)
-    if type(size_or_table) == 'number' then
-        index:ReAllocate(size_or_table)
-    else
-        index:ReAllocate(#size_or_table)
-        for i=1,#size_or_table do
-            index._data[i-1] = size_or_table[i]
+
+    index._array = DataArray.New {
+        size = params.size or (#params.data),
+        type = L.addr,
+    }
+
+    if params.data then
+        local ptr = index._array:ptr()
+        for i=1,#params.data do
+            ptr[i-1] = params.data[i]
         end
     end
 
     return index
+end
+
+function L.LIndex:DataPtr()
+    return self._array:ptr()
+end
+function L.LIndex:Size()
+    return self._array:size()
 end
 
 function L.LIndex:Relation()
@@ -211,17 +383,13 @@ function L.LIndex:Relation()
 end
 
 function L.LIndex:ReAllocate(size)
-    self:Release()
-
-    local taddr = L.addr:terraType()
-    self._data = MallocArray(taddr, size)
-    self._size = size
+    self._array:resize(size)
 end
 
 function L.LIndex:Release()
-    if self._data then
-        C.free(self._data)
-        self._data = nil
+    if self._array then
+        self._array:free()
+        self._array = nil
     end
 end
 
@@ -283,36 +451,17 @@ function L.LRelation:NewSubsetFromFunction (name, predicate)
         subset._boolmask = boolmask
     else
     -- USE INDEX
-        subset._index = L.LIndex.New(self, name..'_subset_index', index_tbl)
+        subset._index = L.LIndex.New{
+            owner=self,
+            name=name..'_subset_index',
+            data=index_tbl
+        }
         boolmask:ClearData() -- free memory
     end
 
     return subset
 end
 
---function L.LRelation:NewSubsetFromField (name, field_name)
---    if not name or type(name) ~= "string" then
---        error("NewSubsetFromField() "..
---              "expects a string as the first argument", 2)
---    end
---    if not L.is_valid_lua_identifier(name) then
---        error(L.valid_name_err_msg.subset, 2)
---    end
---    if self[name] then
---        error("Cannot create a new subset with name '"..name.."'  "..
---              "That name is already being used.", 2)
---    end
---
---    local field = self[field_name]
---    if not L.is_field(field) or not field.type == L.bool then
---        error("NewSubsetFromField(): second argument "..
---              "'"..tostring(field_name).."' is not a bool-type field name", 2)
---    end
---
---    self:NewSubsetFromFunction(function(i)
---        return field.data[i]
---    end)
---end
 
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
@@ -324,7 +473,7 @@ end
 -- For internal use only.  Does not install on relation...
 function L.LField.New(rel, name, typ)
     local field   = setmetatable({}, L.LField)
-    field.data    = nil
+    field.array   = nil
     field.type    = typ
     field.name    = name
     field.owner   = rel
@@ -343,6 +492,9 @@ function L.LField:Size()
 end
 function L.LField:Type()
     return self.type
+end
+function L.LField:DataPtr()
+    return self.array:ptr()
 end
 
 function L.LRelation:NewField (name, typ)  
@@ -373,16 +525,21 @@ end
 
 -- TODO: Hide this function so it's not public
 function L.LField:Allocate()
-    if self.data then self:ClearData() end
-    self.data = MallocArray(self.type:terraType(),self:Size())
+    if not self.array then
+        self.array = DataArray.New{
+            size = self:Size(),
+            type = self:Type()
+        }
+    end
+    self.array:allocate()
 end
 
 -- TODO: Hide this function so it's not public
 -- remove allocated data and clear any depedent data, such as indices
 function L.LField:ClearData ()
-    if self.data then
-        C.free(self.data)
-        self.data = nil
+    if self.array then
+        self.array:free()
+        self.array = nil
     end
     -- clear grouping data if set on this field
     if self.owner._grouping and
@@ -404,9 +561,9 @@ function L.LRelation:Swap( f1_name, f2_name )
         error('Cannot Swap() fields of different type', 2)
     end
 
-    local tmp = f1.data
-    f1.data = f2.data
-    f2.data = tmp
+    local tmp = f1.array
+    f1.array = f2.array
+    f2.array = tmp
 end
 
 function L.LRelation:Copy( p )
@@ -424,14 +581,13 @@ function L.LRelation:Copy( p )
         error('Cannot Copy() fields of different type', 2)
     end
 
-    if not from.data then
+    if not from.array then
         error('Cannot Copy() from field with no data', 2) end
-    if not to.data then
+    if not to.array then
         to:Allocate()
     end
 
-    local copy_size = self:Size() * terralib.sizeof(from.type:terraType())
-    C.memcpy(to.data, from.data, copy_size)
+    to.array:copy(from.array)
 end
 
 
@@ -450,14 +606,15 @@ end
 
 function L.LField:LoadFunction(lua_callback)
     self:Allocate()
+    local dataptr = self:DataPtr()
     if self.type:isVector() then
         for i = 0, self:Size() - 1 do
             local val = lua_callback(i)
-            self.data[i] = convert_vec(val, self.type)
+            dataptr[i] = convert_vec(val, self.type)
         end
     else
         for i = 0, self:Size() - 1 do
-            self.data[i] = lua_callback(i)
+            dataptr[i] = lua_callback(i)
         end
     end
 end
@@ -480,7 +637,7 @@ end
 function L.LField:LoadFromMemory(mem)
     self:Allocate()
     local copy_size = self:Size() * terralib.sizeof(self.type:terraType())
-    C.memcpy(self.data, mem, copy_size)
+    C.memcpy(self.array:ptr(), mem, copy_size)
 end
 
 function L.LField:LoadConstant(constant)
@@ -489,8 +646,9 @@ function L.LField:LoadConstant(constant)
         constant = convert_vec(constant, self.type)
     end
 
+    local dataptr = self:DataPtr()
     for i = 0, self:Size() - 1 do
-        self.data[i] = constant
+        dataptr[i] = constant
     end
 end
 
@@ -539,8 +697,9 @@ end
 
 function L.LField:DumpToList()
     local arr = {}
+    local dataptr = self:DataPtr()
     for i = 0, self:Size()-1 do
-        arr[i+1] = terraval_to_lua(self.data[i], self.type)
+        arr[i+1] = terraval_to_lua(dataptr[i], self.type)
     end
     return arr
 end
@@ -549,32 +708,34 @@ end
 --      i:      which row we're outputting (starting at 0)
 --      val:    the value of this field for the ith row
 function L.LField:DumpFunction(lua_callback)
+    local dataptr = self:DataPtr()
     for i = 0, self:Size()-1 do
-        local val = terraval_to_lua(self.data[i], self.type)
+        local val = terraval_to_lua(dataptr[i], self.type)
         lua_callback(i, val)
     end
 end
 
 function L.LField:print()
     print(self.name..": <" .. tostring(self.type:terraType()) .. '>')
-    if not self.data then
+    if not self.array then
         print("...not initialized")
         return
     end
 
     local N = self.owner._size
+    local dataptr = self:DataPtr()
     if (self.type:isVector()) then
         for i = 0, N-1 do
             local s = ''
             for j = 0, self.type.N-1 do
-                local t = tostring(self.data[i].d[j]):gsub('ULL','')
+                local t = tostring(dataptr[i].d[j]):gsub('ULL','')
                 s = s .. t .. ' '
             end
             print("", i, s)
         end
     else
         for i = 0, N-1 do
-            local t = tostring(self.data[i]):gsub('ULL', '')
+            local t = tostring(dataptr[i]):gsub('ULL', '')
             print("", i, t)
         end
     end
@@ -606,7 +767,7 @@ function L.LField:getDLD()
         type            = terra_type,
         type_n          = n,
         logical_size    = self.owner:Size(),
-        data            = self.data,
+        data            = self.array:ptr(),
         compact         = true,
     })
 

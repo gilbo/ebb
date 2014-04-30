@@ -445,7 +445,7 @@ end
 function ast.Where:codegen(ctxt)
     local key   = self.key:codegen(ctxt)
     local sType = self.node_type:terraType()
-    local indexdata = self.relation._grouping.index._data
+    local indexdata = self.relation._grouping.index:DataPtr()
     local v = quote
         var k   = [key]
         var idx = [indexdata]
