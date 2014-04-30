@@ -18,8 +18,22 @@ double rand_unity() {
 ]]
 
 cmath.srand(cmath.time(nil));
---local vdb   = L.require 'lib.vdb'
+local vdb   = L.require 'lib.vdb'
 
+
+
+-----------------------------------------------------------------------------
+--[[                            LISZT GLOBALS                            ]]--
+-----------------------------------------------------------------------------
+
+
+-- If you want to use global variables like scalar values or vectors within
+-- a Liszt kernel (variables that are not constants), declare them here.
+-- If you use lua variables, Liszt will treat them as constant values.
+
+local delta_time = L.NewGlobal(L.double, 0.007)
+local pi = 2.0*cmath.acos(0)
+local twoPi = 4.0*cmath.acos(0)
 
 -----------------------------------------------------------------------------
 --[[                             OPTIONS                                 ]]--
@@ -30,8 +44,8 @@ local grid_options = {
     xnum = 64,
     ynum = 64,
     pos = {0.0, 0.0},
-    width = 6.28,
-    height = 6.28
+    width = twoPi,
+    height = twoPi
 }
 
 
@@ -68,7 +82,7 @@ local time_integrator = {
     coeff_function = {1/6, 1/3, 1/3, 1/6},
     coeff_time     = {0.5, 0.5, 1, 1},
     sim_time = 0,
-    final_time = 1.0,
+    final_time = 100.0,
     time_step = 0
 }
 
@@ -79,7 +93,7 @@ local fluid_options = {
     gamma = 1.4,
     cv = 51.32,
     gammaMinus1 = 0.4,
-    dynamic_viscosity_ref = L.NewGlobal(L.double, 0.001),
+    dynamic_viscosity_ref = L.NewGlobal(L.double, 0.01),
     dynamic_viscosity_temp_ref = L.NewGlobal(L.double, 1.0),
     prandtl = 0.7,
     cpOverPrandtl = 1.4 * 51.32 / 0.7
@@ -242,19 +256,6 @@ LoadConstant(L.NewVector(L.double, {0, 0}))
 particles:NewField('temperature_t', L.double):
 LoadConstant(0)
 
-
------------------------------------------------------------------------------
---[[                            LISZT GLOBALS                            ]]--
------------------------------------------------------------------------------
-
-
--- If you want to use global variables like scalar values or vectors within
--- a Liszt kernel (variables that are not constants), declare them here.
--- If you use lua variables, Liszt will treat them as constant values.
-
-local delta_time = L.NewGlobal(L.double, 0.02)
-local pi = L.NewGlobal(L.double, 2.0*cmath.acos(0))
-
 -----------------------------------------------------------------------------
 --[[                             LISZT MACROS                            ]]--
 -----------------------------------------------------------------------------
@@ -399,6 +400,7 @@ local WriteCellsField = function (outputFileNamePrefix,xSize,ySize,field)
            io.write("", i, ' ', t,"\n")
        end
    end
+   io.close()
 end
 
 -- Write particles field to output file
@@ -428,6 +430,7 @@ local WriteParticlesArray = function (outputFileNamePrefix,field)
            io.write("", i, ' ', t,"\n")
        end
    end
+   io.close()
 end
 
 
@@ -724,7 +727,7 @@ local AddViscousGetFluxX =  liszt kernel(c : grid.cells)
 end
 -- Compute viscous fluxes in Y direction
 local AddViscousGetFluxY =  liszt kernel(c : grid.cells)
-    if c.in_interior or c.is_left_bnd then
+    if c.in_interior or c.is_down_bnd then
         var muFace = 0.5 * (GetDynamicViscosity(c(0,0).temperature) +
                             GetDynamicViscosity(c(0,0).temperature))
         var velocityFace    = L.vec2d({0.0, 0.0})
@@ -796,17 +799,17 @@ local AddViscousGetFluxY =  liszt kernel(c : grid.cells)
 end
 local AddViscousUpdateUsingFluxX = liszt kernel(c : grid.cells)
     if c.in_interior then
-        c.rhoVelocity_t -= (c(0,0).rhoVelocityFlux -
+        c.rhoVelocity_t += (c(0,0).rhoVelocityFlux -
                             c(-1,0).rhoVelocityFlux)/c_dx
-        c.rhoEnergy_t   -= (c(0,0).rhoEnergyFlux -
+        c.rhoEnergy_t   += (c(0,0).rhoEnergyFlux -
                             c(-1,0).rhoEnergyFlux)/c_dx
     end
 end
 local AddViscousUpdateUsingFluxY = liszt kernel(c : grid.cells)
     if c.in_interior then
-        c.rhoVelocity_t -= (c(0,0).rhoVelocityFlux -
+        c.rhoVelocity_t += (c(0,0).rhoVelocityFlux -
                             c(0,-1).rhoVelocityFlux)/c_dy
-        c.rhoEnergy_t   -= (c(0,0).rhoEnergyFlux -
+        c.rhoEnergy_t   += (c(0,0).rhoEnergyFlux -
                             c(0,-1).rhoEnergyFlux)/c_dy
     end
 end
@@ -1253,19 +1256,19 @@ end
 
 -- kernels to draw particles and velocity for debugging purpose
 
---local DrawParticlesKernel = liszt kernel (p : particles)
---    var color = {1.0,1.0,0.0}
---    vdb.color(color)
---    var pmax = L.double(particle_options.pos_max)
---    var pos : L.vec3d = { p.position[0]/pmax,
---                          p.position[1]/pmax,
---                          0.0 }
---    vdb.point(pos)
---    --var vel = p.velocity
---    --var v = L.vec3d({ vel[0], vel[1], 0.0 })
---    --v = 200 * v + L.vec3d({2, 2, 0})
---    --vdb.line(pos, pos+v)
---end
+local DrawParticlesKernel = liszt kernel (p : particles)
+    var color = {1.0,1.0,0.0}
+    vdb.color(color)
+    var pmax = L.double(particle_options.pos_max)
+    var pos : L.vec3d = { p.position[0]/pmax,
+                          p.position[1]/pmax,
+                          0.0 }
+    vdb.point(pos)
+    --var vel = p.velocity
+    --var v = L.vec3d({ vel[0], vel[1], 0.0 })
+    --v = 200 * v + L.vec3d({2, 2, 0})
+    --vdb.line(pos, pos+v)
+end
 
 
 -----------------------------------------------------------------------------
@@ -1342,7 +1345,6 @@ local function UpdateGhostVelocityGradient()
 end
 
 local function AddViscous()
-    --AddViscousInitialize(grid.cells)
     AddViscousGetFluxX(grid.cells)
     AddViscousUpdateUsingFluxX(grid.cells)
     AddViscousGetFluxY(grid.cells)
@@ -1411,12 +1413,12 @@ local function WriteOutput(outputFileNamePrefix,timeStep)
     WriteParticlesArray(outputFileName .. "_particles",
       particles.temperature)
 end
---local function DrawParticles()
---    vdb.vbegin()
---    vdb.frame()
---    DrawParticlesKernel(particles)
---    vdb.vend()
---end
+local function DrawParticles()
+    vdb.vbegin()
+    vdb.frame()
+    DrawParticlesKernel(particles)
+    vdb.vend()
+end
 
 local function InitializeVariables()
     InitializeCenterCoordinates(grid.cells)
@@ -1452,7 +1454,7 @@ while (time_integrator.sim_time < time_integrator.final_time) do
         UpdateTime(timeOld, stage)
         UpdateAuxiliary()
     end
---    DrawParticles()
+    DrawParticles()
 end
 
 --particles.position:print()
