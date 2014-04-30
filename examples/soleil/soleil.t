@@ -381,12 +381,13 @@ local WriteCellsField = function (outputFileNamePrefix,xSize,ySize,field)
    local outputFile = io.output(outputFileName)
    -- Write data
    local N = field.owner._size
+   local dataptr = field:DataPtr()
    if (field.type:isVector()) then
        io.write("# ", xSize, " ", ySize, " ", N, " ", field.type.N, "\n")
        for i = 0, N-1 do
            local s = ''
            for j = 0, field.type.N-1 do
-               local t = tostring(field.data[i].d[j]):gsub('ULL',' ')
+               local t = tostring(dataptr[i].d[j]):gsub('ULL',' ')
                s = s .. ' ' .. t .. ''
            end
            io.write("", i, s,"\n")
@@ -394,7 +395,7 @@ local WriteCellsField = function (outputFileNamePrefix,xSize,ySize,field)
    else
        io.write("# ", xSize, " ", ySize, " ", N, " ", 1, "\n")
        for i = 0, N-1 do
-           local t = tostring(field.data[i]):gsub('ULL', ' ')
+           local t = tostring(dataptr[i]):gsub('ULL', ' ')
            io.write("", i, ' ', t,"\n")
        end
    end
@@ -409,12 +410,13 @@ local WriteParticlesArray = function (outputFileNamePrefix,field)
    local outputFile = io.output(outputFileName)
    -- Write data
    local N = field.owner._size
+   local dataptr = field:DataPtr()
    if (field.type:isVector()) then
        io.write("# ", N, " ", field.type.N, "\n")
        for i = 0, N-1 do
            local s = ''
            for j = 0, field.type.N-1 do
-               local t = tostring(field.data[i].d[j]):gsub('ULL',' ')
+               local t = tostring(dataptr[i].d[j]):gsub('ULL',' ')
                s = s .. ' ' .. t .. ''
            end
            io.write("", i, s,"\n")
@@ -422,7 +424,7 @@ local WriteParticlesArray = function (outputFileNamePrefix,field)
    else
        io.write("# ", N, " ", 1, "\n")
        for i = 0, N-1 do
-           local t = tostring(field.data[i]):gsub('ULL', ' ')
+           local t = tostring(dataptr[i]):gsub('ULL', ' ')
            io.write("", i, ' ', t,"\n")
        end
    end
@@ -1384,7 +1386,7 @@ end
 local function UpdateTime(timeOld, stage)
     time_integrator.sim_time = timeOld +
                                time_integrator.coeff_time[stage] *
-                               delta_time:value()
+                               delta_time:get()
     if stage == 4 then
         time_integrator.time_step = time_integrator.time_step + 1
     end
