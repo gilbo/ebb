@@ -31,8 +31,11 @@ end
 --[[ Liszt Constants:                                                      ]]--
 -------------------------------------------------------------------------------
 
-L.CPU = {}
-L.GPU = {}
+local ProcConstant = {}
+ProcConstant.__index = ProcConstant
+ProcConstant.__tostring = function(proc) return proc.str end
+L.CPU = setmetatable({ str = 'CPU' }, ProcConstant)
+L.GPU = setmetatable({ str = 'GPU' }, ProcConstant)
 L.default_processor = L.CPU
 
 -------------------------------------------------------------------------------
