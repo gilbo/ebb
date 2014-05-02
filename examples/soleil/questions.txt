@@ -3,3 +3,13 @@ Questions
 - How to call a liszt kernel with both cells and a fieldName as arguments, so
   that the operations act directly on the field with that name (needs to be
   defined before)
+- Semantics of calling UpdateFlowKernels[sdx](grid.cells) when the function is
+  defined as
+    for sdx = 1, 4 do
+        UpdateFlowKernels[sdx] = GenerateUpdateFlowKernels(grid.cells, sdx)
+    end
+  and then called as
+    UpdateFlowKernels[sdx](grid.cells)
+  Is the grid.cells redundant, as it was already specified as the first argument
+  of GenerateUpdateFlowKernels?
+- Add built-in method to retrieve min/max of field?
