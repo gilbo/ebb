@@ -1,4 +1,5 @@
 import "compiler.liszt"
+--L.default_processor = L.GPU
 
 local Grid  = L.require 'domains.grid'
 local cmath = terralib.includecstring [[
@@ -26,7 +27,7 @@ local grid = Grid.New2dUniformGrid{
 }
 
 local viscosity     = 0.08
-local dt            = L.NewGlobal(L.float, 0.01)
+local dt            = 0.01--L.NewGlobal(L.float, 0.01)
 
 
 grid.cells:NewField('velocity', L.vec2f)
@@ -75,8 +76,8 @@ end
 --[[                             DIFFUSE                                 ]]--
 -----------------------------------------------------------------------------
 
-local diffuse_diagonal = L.NewGlobal(L.float, 0.0)
-local diffuse_edge     = L.NewGlobal(L.float, 0.0)
+local diffuse_diagonal = 1+4*dt*viscosity*N*N--L.NewGlobal(L.float, 0.0)
+local diffuse_edge     = -dt*viscosity*N*N--L.NewGlobal(L.float, 0.0)
 
 -- One Jacobi-Iteration
 local diffuse_lin_solve_jacobi_step = liszt kernel (c : grid.cells)
@@ -92,8 +93,8 @@ end
 -- Should be called with velocity and velocity_prev both set to
 -- the previous velocity field value...
 local function diffuse_lin_solve(edge, diagonal)
-    diffuse_diagonal:set(diagonal)
-    diffuse_edge:set(edge)
+    --diffuse_diagonal:set(diagonal)
+    --diffuse_edge:set(edge)
 
     -- do 20 Jacobi iterations
     for i=1,20 do
@@ -105,7 +106,7 @@ end
 
 local function diffuse_velocity(grid)
     -- Why the N*N term?  I don't get that...
-    local laplacian_weight  = dt:get() * viscosity * N * N
+    local laplacian_weight  = dt*viscosity*N*N--dt:get() * viscosity * N * N
     local diagonal          = 1.0 + 4.0 * laplacian_weight
     local edge              = -laplacian_weight
 
@@ -120,14 +121,14 @@ end
 local cell_w = grid:cellWidth()
 local cell_h = grid:cellHeight()
 
-local advect_dt = L.NewGlobal(L.float, 0.0)
+local advect_dt = dt * N --L.NewGlobal(L.float, 0.0)
 grid.cells:NewField('lookup_pos', L.vec2f):Load(L.NewVector(L.float, {0,0}))
 grid.cells:NewField('lookup_from', grid.dual_cells):Load(0)
 
 local advect_where_from = liszt kernel(c : grid.cells)
     var offset      = - c.velocity_prev
     -- Make sure all our lookups are appropriately confined
-    c.lookup_pos    = grid.snap_to_grid(c.center + advect_dt * offset)
+    c.lookup_pos    = grid.snap_to_grid(c.center + L.float(advect_dt) * offset)
 end
 
 local advect_point_locate = liszt kernel(c : grid.cells)
@@ -157,7 +158,7 @@ end
 
 local function advect_velocity(grid)
     -- Why N?
-    advect_dt:set(dt:get() * N)
+    --advect_dt:set(dt:get() * N)
 
     grid.cells:Swap('velocity','velocity_prev')
     advect_where_from(grid.cells)
@@ -171,8 +172,8 @@ end
 --[[                             PROJECT                                 ]]--
 -----------------------------------------------------------------------------
 
-local project_diagonal = L.NewGlobal(L.float, 0.0)
-local project_edge     = L.NewGlobal(L.float, 0.0)
+local project_diagonal = 4.0--L.NewGlobal(L.float, 0.0)
+local project_edge     = -1--L.NewGlobal(L.float, 0.0)
 grid.cells:NewField('divergence', L.float):Load(0)
 grid.cells:NewField('p', L.float):Load(0)
 grid.cells:NewField('p_temp', L.float):Load(0)
@@ -209,8 +210,8 @@ end
 -- Should be called with velocity and velocity_prev both set to
 -- the previous velocity field value...
 local function project_lin_solve(edge, diagonal)
-    project_diagonal:set(diagonal)
-    project_edge:set(edge)
+    --project_diagonal:set(diagonal)
+    --project_edge:set(edge)
 
     -- do 20 Jacobi iterations
     for i=1,20 do
@@ -295,9 +296,9 @@ local compute_particle_velocity = liszt kernel (p : particles)
 end
 
 local update_particle_pos = liszt kernel (p : particles)
-    var r = L.vec2f({ cmath.rand_float() - 0.5, cmath.rand_float() - 0.5 })
-    var pos = p.next_pos + dt * r
-    p.pos = grid.snap_to_grid(pos)
+    --var r = L.vec2f({ cmath.rand_float() - 0.5, cmath.rand_float() - 0.5 })
+    --var pos = p.next_pos + L.float(dt) * r
+    p.pos = grid.snap_to_grid(p.next_pos)
 end
 
 
@@ -313,9 +314,9 @@ local source_velocity = liszt kernel (c : grid.cells)
        cmath.fabs(c.center[1]) < 1.75
     then
         if not c.is_bnd then
-            c.velocity += dt * source_strength * { 0.0, 1.0 }
+            c.velocity += L.float(dt) * source_strength * { 0.0, 1.0 }
         else
-            c.velocity += dt * source_strength * { 0.0, -1.0 }
+            c.velocity += L.float(dt) * source_strength * { 0.0, -1.0 }
         end
     end
 end
@@ -337,7 +338,8 @@ local draw_particles = liszt kernel (p : particles)
     vdb.point(pos)
 end
 
-for i = 1, 500 do
+local STEPS = 1000 -- use 500 on my local machine
+for i = 1, STEPS do
     if math.floor(i / 70) % 2 == 0 then
         source_velocity(grid.cells)
     end
@@ -354,13 +356,13 @@ for i = 1, 500 do
     update_particle_pos(particles)
     locate_particles(particles)
 
-    if i % 5 == 0 then
+    --[[if i % 5 == 0 then
         vdb.vbegin()
             vdb.frame()
             --draw_grid(grid.cells)
             draw_particles(particles)
         vdb.vend()
-    end
+    end]]
 end
 
 --grid.cells:print()

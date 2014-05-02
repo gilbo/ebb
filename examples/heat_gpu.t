@@ -80,9 +80,12 @@ local terra clear_temp_vars (flux : &float, jacobistep : &float)
   jacobistep[vid] = 0.0
 end
 
-local R = terralib.cudacompile { compute_step    = compute_step,
-                                 propagate_temp  = propagate_temp,
-                                 clear_temp_vars = clear_temp_vars }
+--local R = terralib.cudacompile { compute_step    = compute_step,
+--                                 propagate_temp  = propagate_temp,
+--                                 clear_temp_vars = clear_temp_vars }
+local R1 = terralib.cudacompile { compute_step = compute_step }
+local R2 = terralib.cudacompile { propagate_temp = propagate_temp }
+local R3 = terralib.cudacompile { clear_temp_vars = clear_temp_vars }
 
 
 --------------------------------------------------------------------------------
@@ -117,11 +120,11 @@ local terra run_simulation (iters : uint64)
 
   -- run kernels!
   for i = 0, iters do
-    R.compute_step(&eLaunch,    head_ddata, tail_ddata, flux_ddata,
+    R1.compute_step(&eLaunch,    head_ddata, tail_ddata, flux_ddata,
                                 jaco_ddata, temp_ddata,
                                 [&double](posn_ddata))
-    R.propagate_temp(&vLaunch,  temp_ddata, flux_ddata, jaco_ddata)
-    R.clear_temp_vars(&vLaunch, flux_ddata, jaco_ddata)
+    R2.propagate_temp(&vLaunch,  temp_ddata, flux_ddata, jaco_ddata)
+    R3.clear_temp_vars(&vLaunch, flux_ddata, jaco_ddata)
   end
 end
 

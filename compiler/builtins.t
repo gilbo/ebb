@@ -111,9 +111,16 @@ local terra lisztAssert(test : bool, file : rawstring, line : int)
     end
 end
 
-function B.assert.codegen(ast, env)
+-- NADA FOR NOW
+local terra gpuAssert(test : bool, file : rawstring, line : int) end
+
+function B.assert.codegen(ast, ctxt)
     local test = ast.params[1]
-    local code = test:codegen(env)
+    local code = test:codegen(ctxt)
+    
+    local tassert = lisztAssert
+    if ctxt:onGPU() then tassert = gpuAssert end
+
     if test.node_type:isVector() then
         local N      = test.node_type.N
         local vec    = symbol(test.node_type:terraType())
@@ -126,10 +133,10 @@ function B.assert.codegen(ast, env)
         return quote
             var [vec] = [code]
         in
-            lisztAssert(all, ast.filename, ast.linenumber)
+            tassert(all, ast.filename, ast.linenumber)
         end
     else
-        return quote lisztAssert(code, ast.filename, ast.linenumber) end
+        return quote tassert(code, ast.filename, ast.linenumber) end
     end
 end
 

@@ -1,7 +1,21 @@
-local C = {}
-package.loaded["compiler.codegen"] = C
+local Codegen = {}
+package.loaded["compiler.codegen"] = Codegen
 
 local ast = require "compiler.ast"
+
+local C = terralib.require 'compiler.c'
+
+local thread_id
+local block_id
+local aadd
+
+if terralib.cudacompile then
+  thread_id = cudalib.nvvm_read_ptx_sreg_tid_x
+  block_id  = cudalib.nvvm_read_ptx_sreg_ctaid_x
+  --ntid  = cudalib.nvvm_read_ptx_sreg_ntid_x  -- terralib.intrinsic("llvm.nvvm.read.ptx.sreg.ntid.x",{} -> int)
+  --sqrt  = cudalib.nvvm_sqrt_rm_d             -- floating point sqrt, round to nearest
+  aadd  = terralib.intrinsic("llvm.nvvm.atomic.load.add.f32.p0f32", {&float,float} -> {float})
+end
 
 ----------------------------------------------------------------------------
 
@@ -12,7 +26,6 @@ function Context.new(env, bran)
     local ctxt = setmetatable({
         env     = env,
         bran    = bran,
-        germ    = bran.germ,
     }, Context)
     return ctxt
 end
@@ -26,36 +39,45 @@ function Context:leaveblock()
   self.env:leaveblock()
 end
 
+function Context:onGPU()
+  return self.bran.location == L.GPU
+end
+
 function Context:FieldPtr(field)
-  return `[self.bran:getFieldGerm(field)].data
+  return `[self.bran:getRuntimeFieldGerm(field)].data
 end
 function Context:SubsetPtr()
-  return `[self.bran:getSubsetGerm()]
+  return `[self.bran:getRuntimeSubsetGerm()]
+end
+function Context:runtimeGerm()
+  return self.bran.runtime_germ:ptr()
+end
+function Context:cpuGerm()
+  return self.bran.cpu_germ:ptr()
 end
 
-function C.codegen (kernel_ast, bran)
-  local env = terralib.newenvironment(nil)
-  local ctxt = Context.new(env, bran)
+----------------------------------------------------------------------------
+
+local function cpu_codegen (kernel_ast, ctxt)
 
   ctxt:enterblock()
+    -- declare the symbol for iteration
     local param = symbol(L.row(ctxt.bran.relation):terraType())
     ctxt:localenv()[kernel_ast.name] = param
 
     local body  = kernel_ast.body:codegen(ctxt)
 
     local kernel_body = quote
-      for [param] = 0, ctxt.germ.n_rows do
+      for [param] = 0, [ctxt:runtimeGerm()].n_rows do
         [body]
       end
     end
 
     if ctxt.bran.subset then
-      local subset = ctxt.bran.subset
-
       kernel_body = quote
         if [ctxt:SubsetPtr()].use_boolmask then
           var boolmask = [ctxt:SubsetPtr()].boolmask
-          for [param] = 0, ctxt.germ.n_rows do
+          for [param] = 0, [ctxt:runtimeGerm()].n_rows do
             if boolmask[param] then -- subset guard
               [body]
             end
@@ -76,6 +98,85 @@ function C.codegen (kernel_ast, bran)
     [kernel_body]
   end
   return r
+end
+
+local function gpu_codegen (kernel_ast, ctxt)
+  local BLOCK_SIZE = 32
+
+  ctxt:enterblock()
+    -- declare the symbol for iteration
+    local param = symbol(L.row(ctxt.bran.relation):terraType())
+    ctxt:localenv()[kernel_ast.name] = param
+
+    local body  = kernel_ast.body:codegen(ctxt)
+
+    local kernel_body = quote
+      var id : uint64 = block_id() * BLOCK_SIZE + thread_id()
+      var [param] = id
+      if [param] < [ctxt:runtimeGerm()].n_rows then
+        [body]
+      end
+    end
+
+    if ctxt.bran.subset then
+      kernel_body = quote
+        var id : uint64 = block_id() * BLOCK_SIZE + thread_id()
+        if [ctxt:SubsetPtr()].use_boolmask then
+          var [param] = id
+          if [param] < [ctxt:runtimeGerm()].n_rows and
+             [ctxt:SubsetPtr()].boolmask[param]
+          then
+            [body]
+          end
+        elseif [ctxt:SubsetPtr()].use_index then
+          if id < [ctxt:SubsetPtr()].index_size then
+            var [param] = [ctxt:SubsetPtr()].index[id]
+            [body]
+          end
+        end
+      end
+    end
+  ctxt:leaveblock()
+
+  local cuda_kernel = terra ()
+    [kernel_body]
+  end
+  local M = terralib.cudacompile { cuda_kernel = cuda_kernel }
+
+  local launcher = terra ()
+    var n_blocks = uint(C.ceil(
+      [ctxt:cpuGerm()].n_rows / float(BLOCK_SIZE)))
+    var params = terralib.CUDAParams {
+      n_blocks, 1, 1,
+      BLOCK_SIZE, 1, 1,
+      0, nil
+    }
+
+    if [ctxt:cpuGerm().subset].use_index then
+      var n_blocks = uint(C.ceil(
+        [ctxt:cpuGerm().subset].index_size / float(BLOCK_SIZE)))
+      params = terralib.CUDAParams {
+        n_blocks, 1, 1,
+        BLOCK_SIZE, 1, 1,
+        0, nil
+      }
+    end
+
+    M.cuda_kernel(&params)
+  end
+
+  return launcher
+end
+
+function Codegen.codegen (kernel_ast, bran)
+  local env = terralib.newenvironment(nil)
+  local ctxt = Context.new(env, bran)
+
+  if ctxt:onGPU() then
+    return gpu_codegen(kernel_ast, ctxt)
+  else
+    return cpu_codegen(kernel_ast, ctxt)
+  end
 end
 
 
@@ -105,7 +206,7 @@ function ast.QuoteExpr:codegen (ctxt)
   end
 end
 
--- DON'T CODEGEN THE KERNEL THIS WAY; HANDLE IN C.codegen()
+-- DON'T CODEGEN THE KERNEL THIS WAY; HANDLE IN Codegen.codegen()
 --function ast.LisztKernel:codegen (ctxt)
 --end
 
@@ -306,13 +407,17 @@ function ast.GlobalReduce:codegen(ctxt)
 end
 
 function ast.FieldWrite:codegen (ctxt)
-  -- just re-direct to an assignment statement for now.
-  local assign = ast.Assignment:DeriveFrom(self)
-  assign.lvalue = self.fieldaccess
-  assign.exp    = self.exp
-  if self.reduceop then assign.reduceop = self.reduceop end
+  --if ctxt:onGPU() and self.reduceop then
+    -- use aadd etc
+  --else
+    -- just re-direct to an assignment statement for now.
+    local assign = ast.Assignment:DeriveFrom(self)
+    assign.lvalue = self.fieldaccess
+    assign.exp    = self.exp
+    if self.reduceop then assign.reduceop = self.reduceop end
 
-  return assign:codegen(ctxt)
+    return assign:codegen(ctxt)
+  --end
 end
 
 function ast.FieldAccess:codegen (ctxt)
