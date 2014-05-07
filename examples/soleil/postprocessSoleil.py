@@ -31,6 +31,8 @@ $ python ../plotParticles.py \
     sliceIndex \
     particlesSizeFactor \
     particlesArrowFactor \
+    fieldMin \
+    fieldMax \
     outputFileNamePrefix
 """
 
@@ -247,7 +249,9 @@ fieldName            = sys.argv[3]
 sliceIndex           = sys.argv[4]
 particlesSizeFactor  = float(sys.argv[5])
 particlesArrowFactor = float(sys.argv[6])
-outputFileNamePrefix = sys.argv[7]
+fieldMin             = sys.argv[7]
+fieldMax             = sys.argv[8]
+outputFileNamePrefix = sys.argv[9]
 
 
 # Flow
@@ -310,8 +314,6 @@ particlesDiameter = numpy.loadtxt(particlesDiameterInputFileName,
 particlesTemperature = numpy.loadtxt(particlesTemperatureInputFileName,
                                 usecols = (1,), unpack = True,
                                 skiprows = 1)
-print fieldArray
-print particlesTemperature
 
 xCoor = numpy.array(coordinatesList)[:xSize,1]
 yCoor = numpy.array(coordinatesList)[::xSize,2]
@@ -321,8 +323,8 @@ coorXToPlot = numpy.array(xCoor)
 coorYToPlot = numpy.array(yCoor)
 
 
-interp='nearest'
-#interp='bilinear'
+#interp='nearest'
+interp='bilinear'
 
 fig = plt.figure(figsize=(8,6))
 fig.suptitle(fieldName + ' field at slice ' + str(sliceIndex) + ' with particles')
@@ -330,8 +332,14 @@ ax = fig.add_subplot(111, aspect='equal', autoscale_on=False,
                      xlim=(coorXToPlot.min(), coorXToPlot.max()),
                      ylim=(coorYToPlot.min(), coorYToPlot.max()))
 ax.grid()
-vmin = fieldToPlot.min()
-vmax = fieldToPlot.max()
+if fieldMin == "auto":
+    vmin = fieldToPlot.min()
+else:
+    vmin = float(fieldMin)
+if fieldMax == "auto":
+    vmax = fieldToPlot.max()
+else:
+    vmax = float(fieldMax)
 
 norm = colors.Normalize(vmin = vmin, vmax = vmax)
 im = image.NonUniformImage(ax, interpolation=interp,
@@ -349,7 +357,8 @@ particlesPlot = \
   plt.scatter(particlesX,particlesY,
               s=particlesSizeFactor*particlesDiameter,
               alpha=0.8,
-              c=particlesTemperature)
+              c=particlesTemperature,
+              cmap='hot')
 plt.colorbar(im)
 plt.colorbar(particlesPlot)
 
@@ -357,7 +366,7 @@ plt.colorbar(particlesPlot)
 particlesVelocityPlot = \
   plt.quiver(particlesX, particlesY,
              particlesVelocityX, particlesVelocityY,
-             particlesTemperature,
+             particlesTemperature, cmap='hot',
              scale=particlesArrowFactor,
              alpha=0.8)
 
