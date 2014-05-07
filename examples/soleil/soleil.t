@@ -86,7 +86,7 @@ local timeIntegrator = {
     simTime = 0,
     final_time = 100.00001,
     timeStep = 0,
-    cfl = 1.2,
+    cfl = 2.0,
     outputEveryTimeSteps = 100
 }
 
@@ -95,12 +95,12 @@ local deltaTime = L.NewGlobal(L.double, 0.01)
 local fluid_options = {
     gasConstant = 20.4128,
     gamma = 1.4,
-    dynamic_viscosity_ref = 0.01,
+    dynamic_viscosity_ref = 0.00044,
     dynamic_viscosity_temp_ref = 1.0,
     prandtl = 0.7
 }
 
-local particle_options = {
+local particles_options = {
     num = 1000,
     convective_coefficient = L.NewGlobal(L.double, 0.7),
     heat_capacity = L.NewGlobal(L.double, 0.7),
@@ -224,13 +224,13 @@ LoadConstant(0)
 
 -- Declare and initialize particle relation and fields over the particle
 
-local particles = L.NewRelation(particle_options.num, 'particles')
+local particles = L.NewRelation(particles_options.num, 'particles')
 
 particles:NewField('dual_cell', grid.dual_cells):
 LoadConstant(0)
 particles:NewField('position', L.vec2d):
 Load(function(i)
-    local pmax = particle_options.pos_max
+    local pmax = particles_options.pos_max
     local p1 = cmath.fmod(cmath.rand_double(), pmax)
     local p2 = cmath.fmod(cmath.rand_double(), pmax)
     return {p1, p2}
@@ -238,17 +238,17 @@ end)
 particles:NewField('velocity', L.vec2d):
 LoadConstant(L.NewVector(L.double, {0, 0}))
 particles:NewField('temperature', L.double):
-LoadConstant(particle_options.temperature)
+LoadConstant(particles_options.temperature)
 particles:NewField('position_periodic', L.vec2d):
 LoadConstant(L.NewVector(L.double, {0, 0}))
 
 particles:NewField('diameter', L.double):
 Load(function(i)
-    return cmath.rand_unity() * particle_options.diameter_m +
-        particle_options.diameter_a
+    return cmath.rand_unity() * particles_options.diameter_m +
+        particles_options.diameter_a
 end)
 particles:NewField('density', L.double):
-LoadConstant(particle_options.density)
+LoadConstant(particles_options.density)
 
 particles:NewField('delta_velocity_over_relaxation_time', L.vec2d):
 LoadConstant(L.NewVector(L.double, {0, 0}))
@@ -854,7 +854,7 @@ local FlowAddViscousUpdateUsingFluxY = liszt kernel(c : grid.cells)
 end
 
 -- Update particle fields based on flow fields
-local AddFlowCouplingPartOne = liszt kernel(p: particles)
+local ParticlesAddFlowCouplingPartOne = liszt kernel(p: particles)
     var dc = p.dual_cell
     var flow_density     = L.double(0)
     var flow_velocity    = L.vec2d({0, 0})
@@ -871,8 +871,14 @@ local AddFlowCouplingPartOne = liszt kernel(p: particles)
     p.delta_velocity_over_relaxation_time = (flow_velocity - p.velocity)/
         relaxation_time
     p.delta_temperature_term = pi * cmath.pow(p.diameter, 2) *
-        particle_options.convective_coefficient *
+        particles_options.convective_coefficient *
         (flow_temperature - p.temperature)
+end
+local ParticlesAddFlowCouplingPartTwo = liszt kernel(p : particles)
+    p.velocity_t += p.delta_velocity_over_relaxation_time
+    var particles_mass = pi * p.density * cmath.pow(p.diameter, 3) / 6.0
+    p.temperature_t += p.delta_temperature_term/
+        (particles_mass * particles_options.heat_capacity)
 end
 
 -- Set particle velocities to flow for initialization
@@ -885,14 +891,6 @@ local ParticlesSetVelocitiesToFlow = liszt kernel(p: particles)
     var pos = p.position
     flow_velocity    = InterpolateBilinear(dc, pos, Velocity)
     p.velocity = flow_velocity
-end
-
-
-local AddFlowCouplingPartTwo = liszt kernel(p : particles)
-    p.velocity_t += p.delta_velocity_over_relaxation_time
-    var particle_mass = pi * p.density * cmath.pow(p.diameter, 3) / 6.0
-    p.temperature_t += p.delta_temperature_term/
-        (particle_mass * particle_options.heat_capacity)
 end
 
 
@@ -1332,10 +1330,15 @@ end
 local DrawParticlesKernel = liszt kernel (p : particles)
     var color = {1.0,1.0,0.0}
     vdb.color(color)
-    var pmax = L.double(particle_options.pos_max)
+    var pmax = L.double(particles_options.pos_max)
+    var tmax = 10.0
+    var color : L.vec3d = {p.temperature/particles_options.temperature,
+                           1-p.temperature/particles_options.temperature,
+                           0}
     var pos : L.vec3d = { p.position[0]/pmax,
                           p.position[1]/pmax,
                           0.0 }
+    vdb.color(color)
     vdb.point(pos)
     --var vel = p.velocity
     --var v = L.vec3d({ vel[0], vel[1], 0.0 })
@@ -1418,10 +1421,10 @@ local function FlowAddViscous()
 end
 
 
-local function AddFlowCoupling()
+local function ParticlesAddFlowCoupling()
     ParticlesLocate(particles)
-    AddFlowCouplingPartOne(particles)
-    AddFlowCouplingPartTwo(particles)
+    ParticlesAddFlowCouplingPartOne(particles)
+    ParticlesAddFlowCouplingPartTwo(particles)
 end
 
 local function FlowUpdate(stage)
@@ -1480,8 +1483,8 @@ local function WriteOutput(outputFileNamePrefix,timeStep)
           tostring(timeStep)
         --WriteCellsField(outputFileName .. "_flow",
         --  grid:xSize(),grid:ySize(),grid.cells.typeFlag)
-        --WriteCellsField(outputFileName .. "_flow",
-        --  grid:xSize(),grid:ySize(),grid.cells.temperature)
+        WriteCellsField(outputFileName .. "_flow",
+          grid:xSize(),grid:ySize(),grid.cells.temperature)
         --WriteCellsField(outputFileName .. "_flow",
         --  grid:xSize(),grid:ySize(),grid.cells.rho)
         WriteCellsField(outputFileName .. "_flow",
@@ -1517,7 +1520,7 @@ local function ComputeDFunctionDt()
     FlowAddInviscid()
     FlowUpdateGhostVelocityGradient()
     FlowAddViscous()
-    AddFlowCoupling()
+    ParticlesAddFlowCoupling()
 end
 
 local function UpdateSolution(stage)
@@ -1541,21 +1544,60 @@ local function AdvanceTimeStep()
 
 end
 
-local globalAveragePressure = L.NewGlobal(L.double, 0.0)
-local globalNumberOfInteriorCells = L.NewGlobal(L.int, 0)
-local ComputePressureAverage= liszt kernel(c : grid.cells)
+-- Integral quantities
+
+local globalGridNumberOfInteriorCells = L.NewGlobal(L.int, 0)
+local globalFlowAveragePressure = L.NewGlobal(L.double, 0.0)
+local globalFlowAverageTemperature = L.NewGlobal(L.double, 0.0)
+local globalParticlesAverageTemperature= L.NewGlobal(L.double, 0.0)
+
+local FlowIntegrateQuantities = liszt kernel(c : grid.cells)
     if c.in_interior then
-        globalNumberOfInteriorCells += 1
-        globalAveragePressure += c.pressure
+        -- WARNING: update cellArea computation for non-uniform grids
+        --var cellArea = c.cellWidth() * c.cellHeight()
+        var cellArea = c_dx * c_dy
+        globalGridNumberOfInteriorCells += 1
+        globalFlowAveragePressure += 
+          c.pressure * cellArea
+        globalFlowAverageTemperature += 
+          c.temperature * cellArea
     end
 end
 
+local ParticlesIntegrateQuantities = liszt kernel(p : particles)
+    globalParticlesAverageTemperature += 
+      p.temperature
+end
+
+local function ResetAverages()
+    globalGridNumberOfInteriorCells:set(0)
+    globalFlowAveragePressure:set(0.0)
+    globalFlowAverageTemperature:set(0.0)
+    globalParticlesAverageTemperature:set(0.0)
+end
+
+local function CalculateAverages(grid, particles)
+    -- Flow
+    local gridArea = grid:width() * grid:height()
+    globalFlowAveragePressure:set(
+      globalFlowAveragePressure:get()/
+      gridArea)
+    globalFlowAverageTemperature:set(
+      globalFlowAverageTemperature:get()/
+      gridArea)
+
+    -- Particles
+    globalParticlesAverageTemperature:set(
+      globalParticlesAverageTemperature:get()/
+      particles:Size())
+
+end
+
 local function ComputeAverages()
-    globalAveragePressure:set(0.0)
-    globalNumberOfInteriorCells:set(0)
-    ComputePressureAverage(grid.cells)
-    globalAveragePressure:set(
-      globalAveragePressure:get() / globalNumberOfInteriorCells:get())
+    ResetAverages()
+    FlowIntegrateQuantities(grid.cells)
+    ParticlesIntegrateQuantities(particles)
+    CalculateAverages(grid, particles)
 end
 
 local globalConvectiveSpectralRadius = L.NewGlobal(L.double, 0.0)
@@ -1655,10 +1697,13 @@ WriteParticlesArray(outputFileNamePrefix .. "_particles",
 while (timeIntegrator.simTime < timeIntegrator.final_time) do
 
     ComputeAverages()
-    print("Running time step ", timeIntegrator.timeStep, 
-          ", deltaTime", deltaTime:get(),
-          ", time", timeIntegrator.simTime,
-          "globalAveragePressure", globalAveragePressure:get()) 
+    print("Time step ", string.format("%d",timeIntegrator.timeStep), 
+          ", dt", string.format("%10.8f",deltaTime:get()),
+          ", t", string.format("%10.8f",timeIntegrator.simTime),
+          "flowP", string.format("%10.8f",globalFlowAveragePressure:get()),
+          "flowT", string.format("%10.8f",globalFlowAverageTemperature:get()),
+          "particlesT", string.format("%10.8f",globalParticlesAverageTemperature:get())
+          ) 
 
     WriteOutput(outputFileNamePrefix,timeIntegrator.timeStep)
 
