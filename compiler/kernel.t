@@ -25,6 +25,8 @@ local semant  = terralib.require "compiler.semant"
 local phase   = terralib.require "compiler.phase"
 local codegen = terralib.require "compiler.codegen"
 
+local DataArray = terralib.require('compiler.rawdata').DataArray
+
 
 -------------------------------------------------------------------------------
 --[[ Kernels, Brans, Germs                                                 ]]--
@@ -104,6 +106,9 @@ local struct Germ {
     fields : GermField[MAX_FIELDS];
 }
 
+-- export Germ
+K.Germ = Germ
+
 -------------------------------------------------------------------------------
 --[[ Kernels                                                               ]]--
 -------------------------------------------------------------------------------
@@ -127,40 +132,56 @@ L.LKernel.__call  = function (kobj, relset)
         error("A kernel must be called on a relation or subset.", 2)
     end
 
+    local proc = L.default_processor
 
     -- retreive the correct bran or create a new one
     local bran = seedbank_lookup({
         kernel=kobj,
-        relset=relset
+        relset=relset,
+        proc=proc,
     })
     if not bran.executable then
       bran.relset = relset
       bran.kernel = kobj
+      bran.location = proc
       bran:generate()
     end
 
+    -- Check that the fields are resident on the correct processor
+    for field, _ in pairs(bran.field_ids) do
+      if field.array:location() ~= bran.location then
+        error("cannot execute kernel because field "..field:FullName()..
+              " is not currently located on "..tostring(bran.location), 2)
+      end
+    end
 
     -- set execution parameters in the germ
-    local germ = bran.germ:get()
-    germ.n_rows   = bran.relation:Size()
-    germ.n_fields = bran.n_field_ids
+    local cpu_germ = bran.cpu_germ:ptr()
+    cpu_germ.n_rows   = bran.relation:Size()
+    cpu_germ.n_fields = bran.n_field_ids
     -- set up the subset
       -- defaults
-    bran:getSubsetGerm().use_boolmask = false
-    bran:getSubsetGerm().use_index    = false
+    local subset_germ = bran:getCPUSubsetGerm()
+    subset_germ.use_boolmask = false
+    subset_germ.use_index    = false
     if bran.subset then
       if bran.subset._boolmask then
-        bran:getSubsetGerm().use_boolmask = true
-        bran:getSubsetGerm().boolmask = bran.subset._boolmask:DataPtr()
+        subset_germ.use_boolmask = true
+        subset_germ.boolmask = bran.subset._boolmask:DataPtr()
       elseif bran.subset._index then
-        bran:getSubsetGerm().use_index = true
-        bran:getSubsetGerm().index = bran.subset._index:DataPtr()
-        bran:getSubsetGerm().index_size = bran.subset._index:Size()
+        subset_germ.use_index = true
+        subset_germ.index = bran.subset._index:DataPtr()
+        subset_germ.index_size = bran.subset._index:Size()
       end
     end
     -- bind the field data
     for field, _ in pairs(bran.field_ids) do
-      bran:getFieldGerm(field).data = field:DataPtr()
+      bran:getCPUFieldGerm(field).data = field:DataPtr()
+    end
+
+    -- Load the germ data into the runtime location
+    if bran.runtime_germ:location() == L.GPU then
+      bran.runtime_germ:copy(bran.cpu_germ)
     end
 
     -- launch the kernel
@@ -185,24 +206,35 @@ function Bran:generate()
       error('Kernels may only be called on a relation they were typed with')
   end
 
-  -- initialize the Germ and germ related metadata
-  bran.germ         = global(Germ)
-  bran.field_ids    = {}
-  bran.n_field_ids  = 0 -- for safety
+  -- set up the (possibly 2) copies of the germ
+  bran.cpu_germ = DataArray.New{
+    size = 1,
+    type = Germ,
+    processor = L.CPU -- DON'T MOVE
+  }
+  bran.runtime_germ = bran.cpu_germ
+  if bran.location == L.GPU then
+    bran.runtime_germ = DataArray.New{
+      size = 1,
+      type = Germ,
+      processor = L.GPU,  -- DON'T MOVE
+    }
+  end
 
   -- fix the mapping for the fields before compiling the executable
+  bran.field_ids    = {}
+  bran.n_field_ids  = 0 -- for safety
   for field, _ in pairs(kernel.field_use) do
-    bran:getFieldGerm(field)
+    bran:getFieldId(field)
   end
 
   -- compile an executable
   bran.executable = codegen.codegen(typed_ast, bran)
 end
 
-function Bran:getFieldGerm(field)
-  -- get the id for the bran
+function Bran:getFieldId(field)
   local id = self.field_ids[field]
-  if not self.field_ids[field] then
+  if not id then
     if self.executable then
       error('INTERNAL ERROR: cannot add new fields after compilation')
     end
@@ -210,12 +242,25 @@ function Bran:getFieldGerm(field)
     self.field_ids[field] = id
     self.n_field_ids = id + 1
   end
-
-  return self.germ:get().fields[id]
+  return id
 end
 
-function Bran:getSubsetGerm()
-  return self.germ:get().subset
+function Bran:getRuntimeFieldGerm(field)
+  local id = self:getFieldId(field)
+  return self.runtime_germ:ptr().fields[id]
+end
+
+function Bran:getCPUFieldGerm(field)
+  local id = self:getFieldId(field)
+  return self.cpu_germ:ptr().fields[id]
+end
+
+function Bran:getRuntimeSubsetGerm()
+  return self.runtime_germ:ptr().subset
+end
+
+function Bran:getCPUSubsetGerm()
+  return self.cpu_germ:ptr().subset
 end
 
 

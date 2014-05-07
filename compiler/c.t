@@ -27,7 +27,6 @@ if terralib.cudacompile then
   cuda_include = [[
   #include "cuda_runtime.h"
   #include "driver_types.h"
-
   ]]
   for _,enum in ipairs({
     {str='cudaMemcpyHostToHost',ctype='int',ttype=int},

@@ -401,62 +401,70 @@ end
 
 -- Write cells field to output file
 local WriteCellsField = function (outputFileNamePrefix,xSize,ySize,field)
-   -- Make up complete file name based on name of field
-   local outputFileName = outputFileNamePrefix .. "_" ..
-                          field['name'] .. ".txt"
-   -- Open file
-   local outputFile = io.output(outputFileName)
-   -- Write data
-   local N = field.owner._size
-   local dataptr = field:DataPtr()
-   if (field.type:isVector()) then
-       io.write("# ", xSize, " ", ySize, " ", N, " ", field.type.N, "\n")
-       for i = 0, N-1 do
-           local s = ''
-           for j = 0, field.type.N-1 do
-               local t = tostring(dataptr[i].d[j]):gsub('ULL',' ')
-               s = s .. ' ' .. t .. ''
-           end
-           io.write("", i, s,"\n")
-       end
-   else
-       io.write("# ", xSize, " ", ySize, " ", N, " ", 1, "\n")
-       for i = 0, N-1 do
-           local t = tostring(dataptr[i]):gsub('ULL', ' ')
-           io.write("", i, ' ', t,"\n")
-       end
-   end
-   io.close()
+    -- Make up complete file name based on name of field
+    local outputFileName = outputFileNamePrefix .. "_" ..
+                           field:Name() .. ".txt"
+    -- Open file
+    local outputFile = io.output(outputFileName)
+    -- Write data
+    local values = field:DumpToList()
+    local N      = field:Size()
+
+    if field:Type():isVector() then
+        local veclen = field:Type().N
+        io.write("# ", xSize, " ", ySize, " ", N, " ", veclen, "\n")
+        for i=1,N do
+            local s = ''
+            for j=1,veclen do
+                local t = tostring(values[i][j]):gsub('ULL',' ')
+                s = s .. ' ' .. t .. ''
+            end
+            -- i-1 to return to 0 indexing
+            io.write("", i-1, s, "\n")
+        end
+    else
+        io.write("# ", xSize, " ", ySize, " ", N, " ", 1, "\n")
+        for i=1,N do
+            local t = tostring(values[i]):gsub('ULL', ' ')
+            -- i-1 to return to 0 indexing
+            io.write("", i-1, ' ', t,"\n")
+        end
+    end
+    io.close()
 end
 
 -- Write particles field to output file
 local WriteParticlesArray = function (outputFileNamePrefix,field)
-   -- Make up complete file name based on name of field
-   local outputFileName = outputFileNamePrefix .. "_" ..
-                          field['name'] .. ".txt"
-   -- Open file
-   local outputFile = io.output(outputFileName)
-   -- Write data
-   local N = field.owner._size
-   local dataptr = field:DataPtr()
-   if (field.type:isVector()) then
-       io.write("# ", N, " ", field.type.N, "\n")
-       for i = 0, N-1 do
-           local s = ''
-           for j = 0, field.type.N-1 do
-               local t = tostring(dataptr[i].d[j]):gsub('ULL',' ')
-               s = s .. ' ' .. t .. ''
-           end
-           io.write("", i, s,"\n")
-       end
-   else
-       io.write("# ", N, " ", 1, "\n")
-       for i = 0, N-1 do
-           local t = tostring(dataptr[i]):gsub('ULL', ' ')
-           io.write("", i, ' ', t,"\n")
-       end
-   end
-   io.close()
+    -- Make up complete file name based on name of field
+    local outputFileName = outputFileNamePrefix .. "_" ..
+                           field:Name() .. ".txt"
+    -- Open file
+    local outputFile = io.output(outputFileName)
+    -- Write data
+    local values = field:DumpToList()
+    local N      = field:Size()
+
+    if field:Type():isVector() then
+        local veclen = field:Type().N
+        io.write("# ", N, " ", veclen, "\n")
+        for i=1,N do
+            local s = ''
+            for j=1,veclen do
+                local t = tostring(values[i][j]):gsub('ULL',' ')
+                s = s .. ' ' .. t .. ''
+            end
+            -- i-1 to return to 0 indexing
+            io.write("", i-1, s, "\n")
+        end
+    else
+        io.write("# ", N, " ", 1, "\n")
+        for i=1,N do
+            local t = tostring(values[i]):gsub('ULL', ' ')
+            -- i-1 to return to 0 indexing
+            io.write("", i-1, ' ', t,"\n")
+        end
+    end
+    io.close()
 end
 
 
@@ -1637,18 +1645,14 @@ local FlowCalculateSpectralRadii = liszt kernel(c : grid.cells)
 end
 
 local GetMaximumOfField = function (field)
+    local maxval = -1.0e20 -- something big for -INFINITY
 
-   local N = field.owner._size
-   local dataptr = field:DataPtr()
-   local maxValue = dataptr[0]
-   for i = 0, N-1 do
-       if dataptr[i] > maxValue then
-           maxValue = dataptr[i]
-       end
-   end
+    local function test_row_larger(id, val)
+        if val > maxval then maxval = val end
+    end
 
-   return maxValue
-
+    field:DumpFunction(test_row_larger)
+    return maxval
 end
 
 local function CalculateDeltaTime()
