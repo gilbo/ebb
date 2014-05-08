@@ -54,26 +54,28 @@ local grid_options = {
 local spatial_stencil = {
 --  Splitting parameter (for skew
     split = 0.5,
---  Order 2
-    order = 2,
-    size = 2,
-    numInterpolateCoeffs = 2,
-    interpolateCoeffs = L.NewVector(L.double, {0, 0.5}),
-    numFirstDerivativeCoeffs = 2,
-    firstDerivativeCoeffs = L.NewVector(L.double, {0, 0.5}),
-    firstDerivativeModifiedWaveNumber = 1.0,
-    secondDerivativeModifiedWaveNumber = 4.0,
-----  Order 6
---    order = 6,
---    size = 6,
---    numInterpolateCoeffs = 4,
---    interpolateCoeffs = L.NewVector(L.double, {0, 37/60, -8/60, 1/60}),
---    numFirstDerivativeCoeffs = 4,
---    firstDerivativeCoeffs = L.NewVector(L.double, {0.0,45.0/60.0,-9.0/60.0, 1.0/60.0}),
---    firstDerivativeModifiedWaveNumber = 1.59,
---    secondDerivativeModifiedWaveNumber = 6.04
+----  Order 2
+--    order = 2,
+--    size = 2,
+--    numInterpolateCoeffs = 2,
+--    interpolateCoeffs = L.NewVector(L.double, {0, 0.5}),
+--    numFirstDerivativeCoeffs = 2,
+--    firstDerivativeCoeffs = L.NewVector(L.double, {0, 0.5}),
+--    firstDerivativeModifiedWaveNumber = 1.0,
+--    secondDerivativeModifiedWaveNumber = 4.0,
+--  Order 6
+    order = 6,
+    size = 6,
+    numInterpolateCoeffs = 4,
+    interpolateCoeffs = L.NewVector(L.double, {0, 37/60, -8/60, 1/60}),
+    numFirstDerivativeCoeffs = 4,
+    firstDerivativeCoeffs = L.NewVector(L.double, {0.0,45.0/60.0,-9.0/60.0, 1.0/60.0}),
+    firstDerivativeModifiedWaveNumber = 1.59,
+    secondDerivativeModifiedWaveNumber = 6.04
 }
 
+-- Define offsets for boundary conditions in flow solver
+-- Periodic
 local xoffsetLeft  = grid_options.xnum
 local xoffsetRight = grid_options.xnum
 local yoffsetDown  = grid_options.ynum
@@ -100,6 +102,10 @@ local fluid_options = {
     prandtl = 0.7
 }
 
+local flow_options = {
+    bodyForce = L.NewGlobal(L.vec2d, {0,-0.01})
+}
+
 local particles_options = {
     num = 1000,
     convective_coefficient = L.NewGlobal(L.double, 0.7),
@@ -108,7 +114,8 @@ local particles_options = {
     temperature = 20,
     density = 1000,
     diameter_m = 0.01,
-    diameter_a = 0.001
+    diameter_a = 0.001,
+    bodyForce = L.NewGlobal(L.vec2d, {0,-0.01})
 }
 
 
@@ -861,6 +868,19 @@ local FlowAddViscousUpdateUsingFluxY = liszt kernel(c : grid.cells)
     end
 end
 
+
+--------------
+-- BODY FORCES
+--------------
+
+local FlowAddBodyForces = liszt kernel(c : grid.cells)
+    if c.in_interior then
+        -- Add body forces to momentum equation
+        c.rhoVelocity_t += c.rho *
+                           flow_options.bodyForce
+    end
+end
+
 -- Update particle fields based on flow fields
 local ParticlesAddFlowCouplingPartOne = liszt kernel(p: particles)
     var dc = p.dual_cell
@@ -887,6 +907,14 @@ local ParticlesAddFlowCouplingPartTwo = liszt kernel(p : particles)
     var particles_mass = pi * p.density * cmath.pow(p.diameter, 3) / 6.0
     p.temperature_t += p.delta_temperature_term/
         (particles_mass * particles_options.heat_capacity)
+end
+
+--------------
+-- BODY FORCES
+--------------
+
+local ParticlesAddBodyForces= liszt kernel(p : particles)
+    p.velocity_t += particles_options.bodyForce
 end
 
 -- Set particle velocities to flow for initialization
@@ -1528,7 +1556,9 @@ local function ComputeDFunctionDt()
     FlowAddInviscid()
     FlowUpdateGhostVelocityGradient()
     FlowAddViscous()
+    FlowAddBodyForces(grid.cells)
     ParticlesAddFlowCoupling()
+    ParticlesAddBodyForces(particles)
 end
 
 local function UpdateSolution(stage)
