@@ -1414,28 +1414,28 @@ local FlowUpdateGhostVelocityGradientStep1 = liszt kernel(c : grid.cells)
     -- is not able to handle higher-order schemes until a way to specify where
     -- in the (wider-than-one-point) boundary we are
     if c.is_left_bnd then
-        c.velocityGradientXBoundary[0] = - c(1,0).velocityGradientX[0]
-        c.velocityGradientXBoundary[1] =   c(1,0).velocityGradientX[1]
-        c.velocityGradientYBoundary[0] = - c(1,0).velocityGradientY[0]
-        c.velocityGradientYBoundary[1] =   c(1,0).velocityGradientY[1]
+        c.velocityGradientXBoundary[0] = - c(xoffsetLeft,0).velocityGradientX[0]
+        c.velocityGradientXBoundary[1] =   c(xoffsetLeft,0).velocityGradientX[1]
+        c.velocityGradientYBoundary[0] = - c(xoffsetLeft,0).velocityGradientY[0]
+        c.velocityGradientYBoundary[1] =   c(xoffsetLeft,0).velocityGradientY[1]
     end
     if c.is_right_bnd then
-        c.velocityGradientXBoundary[0] = - c(-1,0).velocityGradientX[0]
-        c.velocityGradientXBoundary[1] =   c(-1,0).velocityGradientX[1]
-        c.velocityGradientYBoundary[0] = - c(-1,0).velocityGradientY[0]
-        c.velocityGradientYBoundary[1] =   c(-1,0).velocityGradientY[1]
+        c.velocityGradientXBoundary[0] = - c(-xoffsetRight,0).velocityGradientX[0]
+        c.velocityGradientXBoundary[1] =   c(-xoffsetRight,0).velocityGradientX[1]
+        c.velocityGradientYBoundary[0] = - c(-xoffsetRight,0).velocityGradientY[0]
+        c.velocityGradientYBoundary[1] =   c(-xoffsetRight,0).velocityGradientY[1]
     end
     if c.is_down_bnd then
-        c.velocityGradientXBoundary[0] =   c(0,1).velocityGradientX[0]
-        c.velocityGradientXBoundary[1] = - c(0,1).velocityGradientX[1]
-        c.velocityGradientYBoundary[0] =   c(0,1).velocityGradientY[0]
-        c.velocityGradientYBoundary[1] = - c(0,1).velocityGradientY[1]
+        c.velocityGradientXBoundary[0] =   c(0,yoffsetDown).velocityGradientX[0]
+        c.velocityGradientXBoundary[1] = - c(0,yoffsetDown).velocityGradientX[1]
+        c.velocityGradientYBoundary[0] =   c(0,yoffsetDown).velocityGradientY[0]
+        c.velocityGradientYBoundary[1] = - c(0,yoffsetDown).velocityGradientY[1]
     end
     if c.is_up_bnd then
-        c.velocityGradientXBoundary[0] =   c(0,-1).velocityGradientX[0]
-        c.velocityGradientXBoundary[1] = - c(0,-1).velocityGradientX[1]
-        c.velocityGradientYBoundary[0] =   c(0,-1).velocityGradientY[0]
-        c.velocityGradientYBoundary[1] = - c(0,-1).velocityGradientY[1]
+        c.velocityGradientXBoundary[0] =   c(0,-yoffsetUp).velocityGradientX[0]
+        c.velocityGradientXBoundary[1] = - c(0,-yoffsetUp).velocityGradientX[1]
+        c.velocityGradientYBoundary[0] =   c(0,-yoffsetUp).velocityGradientY[0]
+        c.velocityGradientYBoundary[1] = - c(0,-yoffsetUp).velocityGradientY[1]
     end
 end
 local FlowUpdateGhostVelocityGradientStep2 = liszt kernel(c : grid.cells)
