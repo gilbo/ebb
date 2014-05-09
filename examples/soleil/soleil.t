@@ -49,8 +49,6 @@ local grid_options = {
     height = twoPi
 }
 
-
-
 local spatial_stencil = {
 --  Splitting parameter (for skew
     split = 0.5,
@@ -103,23 +101,29 @@ local fluid_options = {
 }
 
 local flow_options = {
-    bodyForce = L.NewGlobal(L.vec2d, {0,-0.01})
+    bodyForce = L.NewGlobal(L.vec2d, {0,-0.001})
 }
 
 local particles_options = {
     num = 1000,
-    convective_coefficient = L.NewGlobal(L.double, 0.7),
-    heat_capacity = L.NewGlobal(L.double, 0.7),
+    convective_coefficient = L.NewGlobal(L.double, 0.7), -- W m^-2 K^-1
+    heat_capacity = L.NewGlobal(L.double, 0.7), -- J Kg^-1 K^-1
     pos_max = 6.2,
-    temperature = 20,
+    initialTemperature = 20,
     density = 1000,
     diameter_m = 0.01,
     diameter_a = 0.001,
-    bodyForce = L.NewGlobal(L.vec2d, {0,-0.01})
+    bodyForce = L.NewGlobal(L.vec2d, {0,-0.001}),
+    emissivity = 0.5,
+    absorptivity = 0.5 -- Equal to emissivity in thermal equilibrium
+                       -- (Kirchhoff law of thermal radiation)
 }
 
+local radiation_options = {
+    radiationIntensity = 1000.0
+}
 
------------------------------------------------------------------------------
+----------------------------------------------------------------------------
 --[[                       FLOW/ PARTICLE RELATIONS                      ]]--
 -----------------------------------------------------------------------------
 
@@ -245,7 +249,7 @@ end)
 particles:NewField('velocity', L.vec2d):
 LoadConstant(L.NewVector(L.double, {0, 0}))
 particles:NewField('temperature', L.double):
-LoadConstant(particles_options.temperature)
+LoadConstant(particles_options.initialTemperature)
 particles:NewField('position_periodic', L.vec2d):
 LoadConstant(L.NewVector(L.double, {0, 0}))
 
@@ -257,9 +261,9 @@ end)
 particles:NewField('density', L.double):
 LoadConstant(particles_options.density)
 
-particles:NewField('delta_velocity_over_relaxation_time', L.vec2d):
+particles:NewField('deltaVelocityOverRelaxationTime', L.vec2d):
 LoadConstant(L.NewVector(L.double, {0, 0}))
-particles:NewField('delta_temperature_term', L.double):
+particles:NewField('deltaTemperatureTerm', L.double):
 LoadConstant(0)
 
 -- scratch (temporary) fields
@@ -285,6 +289,40 @@ particles:NewField('temperature_t', L.double):
 LoadConstant(0)
 
 -----------------------------------------------------------------------------
+--[[                       USER DEFINED FUNCTIONS                        ]]--
+-----------------------------------------------------------------------------
+
+-- Norm of a vector
+local norm = liszt function(v)
+    return L.dot(v, v)
+end
+
+-- Compute fluid dynamic viscosity from fluid temperature
+local GetDynamicViscosity = liszt function(temperature)
+    return fluid_options.dynamic_viscosity_ref *
+        cmath.pow(temperature/fluid_options.dynamic_viscosity_temp_ref, 0.75)
+end
+
+-- Compute fluid flow sound speed based on temperature
+local GetSoundSpeed = liszt function(temperature)
+    return cmath.sqrt(fluid_options.gamma * 
+                      fluid_options.gasConstant *
+                      temperature)
+end
+
+-- Function to retrieve particle area, volume and mass
+-- These are Liszt user-defined function that behave like a field
+particles:NewFieldFunction('area', liszt function(p)
+    return pi * cmath.pow(p.diameter, 2)
+end)
+particles:NewFieldFunction('volume', liszt function(p)
+    return pi * cmath.pow(p.diameter, 3) / 6.0
+end)
+particles:NewFieldFunction('mass', liszt function(p)
+    return p.volume * p.density
+end)
+
+------------------------------------------------------------------------------
 --[[                             LISZT MACROS                            ]]--
 -----------------------------------------------------------------------------
 
@@ -318,15 +356,6 @@ local InterpolateBilinear = L.NewMacro(function(dc, xy, Field)
     in
         (delta_d*f1 + delta_u*f2) / (delta_d + delta_u)
     end
-end)
-
-local GetDynamicViscosity = L.NewMacro(function(temperature)
-    return liszt `fluid_options.dynamic_viscosity_ref *
-        cmath.pow(temperature/fluid_options.dynamic_viscosity_temp_ref, 0.75)
-end)
-
-local GetSoundSpeed = L.NewMacro(function(temperature)
-    return liszt `fluid_options.gamma * fluid_options.gasConstant * temperature
 end)
 
 -----------------------------------------------------------------------------
@@ -869,8 +898,28 @@ local FlowAddViscousUpdateUsingFluxY = liszt kernel(c : grid.cells)
 end
 
 
+--------------------
+-- Particle coupling
+--------------------
+
+local FlowAddParticleCoupling = liszt kernel(p : particles)
+    -- WARNING: Assumes that deltaVelocityOverRelaxationTime and 
+    -- deltaTemperatureTerm have been computed previously (for example, when
+    -- adding the flow coupling to the particles, which should be called before 
+    -- in the time stepper)
+
+    -- Retrieve cell containing this particle
+    var cell = p.dual_cell.downleft
+    -- Add contribution to momentum and energy equations from the previously
+    -- computed deltaVelocityOverRelaxationTime and deltaTemperatureTerm
+    cell.rhoVelocity_t +=
+      - p.mass * p.deltaVelocityOverRelaxationTime
+    cell.rhoEnergy_t +=
+      - p.deltaTemperatureTerm
+end
+
 --------------
--- BODY FORCES
+-- Body Forces
 --------------
 
 local FlowAddBodyForces = liszt kernel(c : grid.cells)
@@ -881,32 +930,42 @@ local FlowAddBodyForces = liszt kernel(c : grid.cells)
     end
 end
 
+------------
+-- Particles
+------------
+
+----------------
+-- Flow Coupling
+----------------
+
 -- Update particle fields based on flow fields
 local ParticlesAddFlowCouplingPartOne = liszt kernel(p: particles)
     var dc = p.dual_cell
-    var flow_density     = L.double(0)
-    var flow_velocity    = L.vec2d({0, 0})
-    var flow_temperature = L.double(0)
-    var flow_dyn_viscosity = L.double(0)
+    var flowDensity     = L.double(0)
+    var flowVelocity    = L.vec2d({0, 0})
+    var flowTemperature = L.double(0)
+    var flowDynamicViscosity = L.double(0)
     var pos = p.position
-    flow_density     = InterpolateBilinear(dc, pos, Rho)
-    flow_velocity    = InterpolateBilinear(dc, pos, Velocity)
-    flow_temperature = InterpolateBilinear(dc, pos, Temperature)
-    flow_dyn_viscosity = GetDynamicViscosity(flow_temperature)
+    flowDensity     = InterpolateBilinear(dc, pos, Rho)
+    flowVelocity    = InterpolateBilinear(dc, pos, Velocity)
+    flowTemperature = InterpolateBilinear(dc, pos, Temperature)
+    flowDynamicViscosity = GetDynamicViscosity(flowTemperature)
     p.position_t    += p.velocity
-    var relaxation_time = p.density * cmath.pow(p.diameter, 2) /
-        (18.0 * flow_dyn_viscosity)
-    p.delta_velocity_over_relaxation_time = (flow_velocity - p.velocity)/
-        relaxation_time
-    p.delta_temperature_term = pi * cmath.pow(p.diameter, 2) *
+    -- Relaxation time for small particles (not necessarily Stokesian)
+    var particleReynoldsNumber = 0
+    --  (p.density * norm(flowVelocity - p.velocity) * p.diameter) / 
+    --  flowDynamicViscosity
+    var relaxationTime = 
+      ( p.density * cmath.pow(p.diameter,2) / (18.0 * flowDynamicViscosity) ) /
+      ( 1.0 + 0.15 * cmath.pow(particleReynoldsNumber,0.687) )
+    p.deltaVelocityOverRelaxationTime = 
+      (flowVelocity - p.velocity) / relaxationTime
+    p.deltaTemperatureTerm = pi * cmath.pow(p.diameter, 2) *
         particles_options.convective_coefficient *
-        (flow_temperature - p.temperature)
-end
-local ParticlesAddFlowCouplingPartTwo = liszt kernel(p : particles)
-    p.velocity_t += p.delta_velocity_over_relaxation_time
-    var particles_mass = pi * p.density * cmath.pow(p.diameter, 3) / 6.0
-    p.temperature_t += p.delta_temperature_term/
-        (particles_mass * particles_options.heat_capacity)
+        (flowTemperature - p.temperature)
+    p.velocity_t += p.deltaVelocityOverRelaxationTime
+    p.temperature_t += p.deltaTemperatureTerm/
+        (p.mass * particles_options.heat_capacity)
 end
 
 --------------
@@ -917,13 +976,31 @@ local ParticlesAddBodyForces= liszt kernel(p : particles)
     p.velocity_t += particles_options.bodyForce
 end
 
+------------
+-- RADIATION
+------------
+
+local ParticlesAddRadiation = liszt kernel(p : particles)
+    -- Calculate absorbed radiation intensity considering optically thin
+    -- particles, for a collimated radiation source with negligible blackbody
+    -- self radiation
+    var absorbedRadiationIntensity =
+      particles_options.absorptivity *
+      radiation_options.radiationIntensity *
+      p.area / 4
+
+    -- Add contribution to particle temperature time evolution
+    p.temperature_t += absorbedRadiationIntensity
+
+end
+
 -- Set particle velocities to flow for initialization
 local ParticlesSetVelocitiesToFlow = liszt kernel(p: particles)
     var dc = p.dual_cell
     var flow_density     = L.double(0)
     var flow_velocity    = L.vec2d({0, 0})
     var flow_temperature = L.double(0)
-    var flow_dyn_viscosity = L.double(0)
+    var flowDynamicViscosity = L.double(0)
     var pos = p.position
     flow_velocity    = InterpolateBilinear(dc, pos, Velocity)
     p.velocity = flow_velocity
@@ -1368,9 +1445,10 @@ local DrawParticlesKernel = liszt kernel (p : particles)
     vdb.color(color)
     var pmax = L.double(particles_options.pos_max)
     var tmax = 10.0
-    var color : L.vec3d = {p.temperature/particles_options.temperature,
-                           1-p.temperature/particles_options.temperature,
-                           0}
+    var color : L.vec3d = 
+      {p.temperature/particles_options.initialTemperature,
+       1-p.temperature/particles_options.initialTemperature,
+       0}
     var pos : L.vec3d = { p.position[0]/pmax,
                           p.position[1]/pmax,
                           0.0 }
@@ -1460,7 +1538,7 @@ end
 local function ParticlesAddFlowCoupling()
     ParticlesLocate(particles)
     ParticlesAddFlowCouplingPartOne(particles)
-    ParticlesAddFlowCouplingPartTwo(particles)
+    --ParticlesAddFlowCouplingPartTwo(particles)
 end
 
 local function FlowUpdate(stage)
@@ -1559,6 +1637,8 @@ local function ComputeDFunctionDt()
     FlowAddBodyForces(grid.cells)
     ParticlesAddFlowCoupling()
     ParticlesAddBodyForces(particles)
+    ParticlesAddRadiation(particles)
+    FlowAddParticleCoupling(particles)
 end
 
 local function UpdateSolution(stage)
@@ -1585,6 +1665,7 @@ end
 -- Integral quantities
 
 local globalGridNumberOfInteriorCells = L.NewGlobal(L.int, 0)
+local globalGridAreaInterior = L.NewGlobal(L.double, 0)
 local globalFlowAveragePressure = L.NewGlobal(L.double, 0.0)
 local globalFlowAverageTemperature = L.NewGlobal(L.double, 0.0)
 local globalParticlesAverageTemperature= L.NewGlobal(L.double, 0.0)
@@ -1595,6 +1676,7 @@ local FlowIntegrateQuantities = liszt kernel(c : grid.cells)
         --var cellArea = c.cellWidth() * c.cellHeight()
         var cellArea = c_dx * c_dy
         globalGridNumberOfInteriorCells += 1
+        globalGridAreaInterior += cellArea
         globalFlowAveragePressure += 
           c.pressure * cellArea
         globalFlowAverageTemperature += 
@@ -1609,6 +1691,7 @@ end
 
 local function ResetAverages()
     globalGridNumberOfInteriorCells:set(0)
+    globalGridAreaInterior:set(0)
     globalFlowAveragePressure:set(0.0)
     globalFlowAverageTemperature:set(0.0)
     globalParticlesAverageTemperature:set(0.0)
@@ -1616,13 +1699,12 @@ end
 
 local function CalculateAverages(grid, particles)
     -- Flow
-    local gridArea = grid:width() * grid:height()
     globalFlowAveragePressure:set(
       globalFlowAveragePressure:get()/
-      gridArea)
+      globalGridAreaInterior:get())
     globalFlowAverageTemperature:set(
       globalFlowAverageTemperature:get()/
-      gridArea)
+      globalGridAreaInterior:get())
 
     -- Particles
     globalParticlesAverageTemperature:set(
