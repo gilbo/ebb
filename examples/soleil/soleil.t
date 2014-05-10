@@ -49,6 +49,8 @@ local grid_options = {
     height = twoPi
 }
 
+
+
 local spatial_stencil = {
 --  Splitting parameter (for skew
     split = 0.5,
@@ -123,7 +125,7 @@ local radiation_options = {
     radiationIntensity = 1000.0
 }
 
-----------------------------------------------------------------------------
+-----------------------------------------------------------------------------
 --[[                       FLOW/ PARTICLE RELATIONS                      ]]--
 -----------------------------------------------------------------------------
 
@@ -139,12 +141,12 @@ originWithGhosts[1] = originWithGhosts[1] - bnum * grid_options.width/grid_optio
 originWithGhosts[2] = originWithGhosts[2] - bnum * grid_options.height/grid_options.xnum
 print(originWithGhosts[1],originWithGhosts[2])
 
-local grid = Grid.New2dUniformGrid{size          = {grid_options.xnum + 2*bnum,
-                                                    grid_options.ynum + 2*bnum},
-                                   origin        = originWithGhosts,
-                                   width         = grid_options.width + 2*bw,
-                                   height        = grid_options.height + 2*bw,
-                                   boundary_size = bnum}
+local grid = Grid.NewGrid2d{size          = {grid_options.xnum + 2*bnum,
+                                             grid_options.ynum + 2*bnum},
+                            origin        = originWithGhosts,
+                            width         = grid_options.width + 2*bw,
+                            height        = grid_options.height + 2*bw,
+                            boundary_size = bnum}
 
 -- conserved variables
 grid.cells:NewField('rho', L.double):
@@ -345,10 +347,10 @@ end)
 
 local InterpolateBilinear = L.NewMacro(function(dc, xy, Field)
     return liszt quote
-        var cdl = dc.downleft
-        var cul = dc.upleft
-        var cdr = dc.downright
-        var cur = dc.upright
+        var cdl = dc.vertex.cell(-1,-1)
+        var cul = dc.vertex.cell(-1,0)
+        var cdr = dc.vertex.cell(0,-1)
+        var cur = dc.vertex.cell(0,0)
         var delta_l = xy[1] - cdl.center[1]
         var delta_r = cur.center[1] - xy[1]
         var f1 = (delta_l*Field(cdl) + delta_r*Field(cul)) / (delta_l + delta_r)
@@ -398,16 +400,16 @@ local FlowInitializePrimitives = liszt kernel(c : grid.cells)
             taylorGreenPressure + (factorA*factorB - 2.0) / 16.0
         c.typeFlag = 0
     end
-    if c.is_left_bnd then
+    if c.xneg_depth > 0 then
         c.typeFlag = 1
     end
-    if c.is_right_bnd then
+    if c.xpos_depth > 0 then
         c.typeFlag = 2
     end
-    if c.is_down_bnd then
+    if c.yneg_depth > 0 then
         c.typeFlag = 3
     end
-    if c.is_up_bnd then
+    if c.ypos_depth > 0 then
         c.typeFlag = 4
     end
 end
@@ -545,7 +547,7 @@ end
 
 -- Compute inviscid fluxes in X direction
 local FlowAddInviscidGetFluxX =  liszt kernel(c : grid.cells)
-    if c.in_interior or c.is_left_bnd then
+    if c.in_interior or c.xneg_depth > 0 then
         var directionIdx = 0
         var numInterpolateCoeffs  = spatial_stencil.numInterpolateCoeffs
         var interpolateCoeffs     = spatial_stencil.interpolateCoeffs
@@ -619,7 +621,7 @@ local FlowAddInviscidGetFluxX =  liszt kernel(c : grid.cells)
 end
 -- Compute inviscid fluxes in Y direction
 local FlowAddInviscidGetFluxY =  liszt kernel(c : grid.cells)
-    if c.in_interior or c.is_down_bnd then
+    if c.in_interior or c.yneg_depth > 0 then
         var directionIdx = 1
         var numInterpolateCoeffs  = spatial_stencil.numInterpolateCoeffs
         var interpolateCoeffs     = spatial_stencil.interpolateCoeffs
@@ -729,7 +731,7 @@ end
 
 -- Compute viscous fluxes in X direction
 local FlowAddViscousGetFluxX =  liszt kernel(c : grid.cells)
-    if c.in_interior or c.is_left_bnd then
+    if c.in_interior or c.xneg_depth > 0 then
         var muFace = 0.5 * (GetDynamicViscosity(c(0,0).temperature) +
                             GetDynamicViscosity(c(1,0).temperature))
         var velocityFace    = L.vec2d({0.0, 0.0})
@@ -804,7 +806,7 @@ local FlowAddViscousGetFluxX =  liszt kernel(c : grid.cells)
 end
 -- Compute viscous fluxes in Y direction
 local FlowAddViscousGetFluxY =  liszt kernel(c : grid.cells)
-    if c.in_interior or c.is_down_bnd then
+    if c.in_interior or c.yneg_depth > 0 then
         var muFace = 0.5 * (GetDynamicViscosity(c(0,0).temperature) +
                             GetDynamicViscosity(c(0,1).temperature))
         var velocityFace    = L.vec2d({0.0, 0.0})
@@ -1089,7 +1091,7 @@ local FlowUpdateGhostFieldsStep1 = liszt kernel(c : grid.cells)
     -- side of the boundary (for example, second order central difference), and
     -- is not able to handle higher-order schemes until a way to specify where
     -- in the (wider-than-one-point) boundary we are
-    if c.is_left_bnd then
+    if c.xneg_depth > 0 then
         c.rhoBoundary            =   c(xoffsetLeft,0).rho
         c.rhoVelocityBoundary[0] =   c(xoffsetLeft,0).rhoVelocity[0] * signDouble
         c.rhoVelocityBoundary[1] =   c(xoffsetLeft,0).rhoVelocity[1]
@@ -1099,7 +1101,7 @@ local FlowUpdateGhostFieldsStep1 = liszt kernel(c : grid.cells)
         c.pressureBoundary       =   c(xoffsetLeft,0).pressure
         c.temperatureBoundary    =   c(xoffsetLeft,0).temperature
     end
-    if c.is_right_bnd then
+    if c.xpos_depth > 0 then
         c.rhoBoundary            =   c(-xoffsetRight,0).rho
         c.rhoVelocityBoundary[0] =   c(-xoffsetRight,0).rhoVelocity[0] * signDouble
         c.rhoVelocityBoundary[1] =   c(-xoffsetRight,0).rhoVelocity[1]
@@ -1109,7 +1111,7 @@ local FlowUpdateGhostFieldsStep1 = liszt kernel(c : grid.cells)
         c.pressureBoundary       =   c(-xoffsetRight,0).pressure
         c.temperatureBoundary    =   c(-xoffsetRight,0).temperature
     end
-    if c.is_down_bnd then
+    if c.yneg_depth > 0 then
         c.rhoBoundary            =   c(0,yoffsetDown).rho
         c.rhoVelocityBoundary[0] =   c(0,yoffsetDown).rhoVelocity[0]
         c.rhoVelocityBoundary[1] =   c(0,yoffsetDown).rhoVelocity[1] * signDouble
@@ -1119,7 +1121,7 @@ local FlowUpdateGhostFieldsStep1 = liszt kernel(c : grid.cells)
         c.pressureBoundary       =   c(0,yoffsetDown).pressure
         c.temperatureBoundary    =   c(0,yoffsetDown).temperature
     end
-    if c.is_up_bnd then
+    if c.ypos_depth > 0 then
         c.rhoBoundary            =   c(0,-yoffsetUp).rho
         c.rhoVelocityBoundary[0] =   c(0,-yoffsetUp).rhoVelocity[0]
         c.rhoVelocityBoundary[1] =   c(0,-yoffsetUp).rhoVelocity[1] * signDouble
@@ -1134,7 +1136,7 @@ local FlowUpdateGhostFieldsStep1 = liszt kernel(c : grid.cells)
     -- use uni-directional stencils; but this simplifies postprocessing, 
     -- for example plotting field with ghost cells
     -- Currently sets the corner to the value next to it in the diagonal
-    if c.is_left_bnd and c.is_down_bnd then
+    if c.xneg_depth > 0 and c.yneg_depth > 0 then
         c.rhoBoundary            =   c(1,1).rho
         c.rhoVelocityBoundary[0] =   c(1,1).rhoVelocity[0]
         c.rhoVelocityBoundary[1] =   c(1,1).rhoVelocity[1]
@@ -1144,7 +1146,7 @@ local FlowUpdateGhostFieldsStep1 = liszt kernel(c : grid.cells)
         c.pressureBoundary       =   c(1,1).pressure
         c.temperatureBoundary    =   c(1,1).temperature
     end
-    if c.is_left_bnd and c.is_up_bnd then
+    if c.xneg_depth > 0 and c.ypos_depth > 0 then
         c.rhoBoundary            =   c(1,-1).rho
         c.rhoVelocityBoundary[0] = - c(1,-1).rhoVelocity[0]
         c.rhoVelocityBoundary[1] = - c(1,-1).rhoVelocity[1]
@@ -1154,7 +1156,7 @@ local FlowUpdateGhostFieldsStep1 = liszt kernel(c : grid.cells)
         c.pressureBoundary       =   c(1,-1).pressure
         c.temperatureBoundary    =   c(1,-1).temperature
     end
-    if c.is_right_bnd and c.is_down_bnd then
+    if c.xpos_depth > 0 and c.yneg_depth > 0 then
         c.rhoBoundary            =   c(-1,1).rho
         c.rhoVelocityBoundary[0] =   c(-1,1).rhoVelocity[0]
         c.rhoVelocityBoundary[1] =   c(-1,1).rhoVelocity[1]
@@ -1164,7 +1166,7 @@ local FlowUpdateGhostFieldsStep1 = liszt kernel(c : grid.cells)
         c.pressureBoundary       =   c(-1,1).pressure
         c.temperatureBoundary    =   c(-1,1).temperature
     end
-    if c.is_right_bnd and c.is_up_bnd then
+    if c.xpos_depth > 0 and c.ypos_depth > 0 then
         c.rhoBoundary            =   c(-1,-1).rho
         c.rhoVelocityBoundary[0] =   c(-1,-1).rhoVelocity[0]
         c.rhoVelocityBoundary[1] =   c(-1,-1).rhoVelocity[1]
@@ -1176,18 +1178,18 @@ local FlowUpdateGhostFieldsStep1 = liszt kernel(c : grid.cells)
     end
 end
 local FlowUpdateGhostFieldsStep2 = liszt kernel(c : grid.cells)
-    if c.is_bnd then
+    --if c.in_boundary then
         c.pressure    = c.pressureBoundary
         c.rho         = c.rhoBoundary
         c.rhoVelocity = c.rhoVelocityBoundary
         c.rhoEnergy   = c.rhoEnergyBoundary
         c.pressure    = c.pressureBoundary
         c.temperature = c.temperatureBoundary
-    end
+    --end
 end
 local function FlowUpdateGhost()
-    FlowUpdateGhostFieldsStep1(grid.cells)
-    FlowUpdateGhostFieldsStep2(grid.cells)
+    FlowUpdateGhostFieldsStep1(grid.cells.boundary)
+    FlowUpdateGhostFieldsStep2(grid.cells.boundary)
 end
 
 local FlowUpdateGhostThermodynamicsStep1 = liszt kernel(c : grid.cells)
@@ -1195,19 +1197,19 @@ local FlowUpdateGhostThermodynamicsStep1 = liszt kernel(c : grid.cells)
     -- side of the boundary (for example, second order central difference), and
     -- is not able to handle higher-order schemes until a way to specify where
     -- in the (wider-than-one-point) boundary we are
-    if c.is_left_bnd then
+    if c.xneg_depth > 0 then
         c.pressureBoundary       =   c(xoffsetLeft,0).pressure
         c.temperatureBoundary    =   c(xoffsetLeft,0).temperature
     end
-    if c.is_right_bnd then
+    if c.xpos_depth > 0 then
         c.pressureBoundary       =   c(-xoffsetRight,0).pressure
         c.temperatureBoundary    =   c(-xoffsetRight,0).temperature
     end
-    if c.is_down_bnd then
+    if c.yneg_depth > 0 then
         c.pressureBoundary       =   c(0,yoffsetDown).pressure
         c.temperatureBoundary    =   c(0,yoffsetDown).temperature
     end
-    if c.is_up_bnd then
+    if c.ypos_depth > 0 then
         c.pressureBoundary       =   c(0,-yoffsetUp).pressure
         c.temperatureBoundary    =   c(0,-yoffsetUp).temperature
     end
@@ -1216,25 +1218,25 @@ local FlowUpdateGhostThermodynamicsStep1 = liszt kernel(c : grid.cells)
     -- use uni-directional stencils; but this simplifies postprocessing, 
     -- for example plotting field with ghost cells
     -- Currently sets the corner to the value next to it in the diagonal
-    if c.is_left_bnd and c.is_down_bnd then
+    if c.xneg_depth > 0 and c.yneg_depth > 0 then
         c.pressureBoundary       =   c(1,1).pressure
         c.temperatureBoundary    =   c(1,1).temperature
     end
-    if c.is_left_bnd and c.is_up_bnd then
+    if c.xneg_depth > 0 and c.ypos_depth > 0 then
         c.pressureBoundary       =   c(1,-1).pressure
         c.temperatureBoundary    =   c(1,-1).temperature
     end
-    if c.is_right_bnd and c.is_down_bnd then
+    if c.xpos_depth > 0 and c.yneg_depth > 0 then
         c.pressureBoundary       =   c(-1,1).pressure
         c.temperatureBoundary    =   c(-1,1).temperature
     end
-    if c.is_right_bnd and c.is_up_bnd then
+    if c.xpos_depth > 0 and c.ypos_depth > 0 then
         c.pressureBoundary       =   c(-1,-1).pressure
         c.temperatureBoundary    =   c(-1,-1).temperature
     end
 end
 local FlowUpdateGhostThermodynamicsStep2 = liszt kernel(c : grid.cells)
-    if c.is_bnd then
+    if c.in_boundary then
         c.pressure    = c.pressureBoundary
         c.temperature = c.temperatureBoundary
     end
@@ -1249,19 +1251,19 @@ local FlowUpdateGhostVelocityStep1 = liszt kernel(c : grid.cells)
     -- side of the boundary (for example, second order central difference), and
     -- is not able to handle higher-order schemes until a way to specify where
     -- in the (wider-than-one-point) boundary we are
-    if c.is_left_bnd then
+    if c.xneg_depth > 0 then
         c.velocityBoundary[0] =   c(xoffsetLeft,0).velocity[0] * signDouble
         c.velocityBoundary[1] =   c(xoffsetLeft,0).velocity[1]
     end
-    if c.is_right_bnd then
+    if c.xpos_depth > 0 then
         c.velocityBoundary[0] =   c(-xoffsetRight,0).velocity[0] * signDouble
         c.velocityBoundary[1] =   c(-xoffsetRight,0).velocity[1]
     end
-    if c.is_down_bnd then
+    if c.yneg_depth > 0 then
         c.velocityBoundary[0] =   c(0,yoffsetDown).velocity[0]
         c.velocityBoundary[1] =   c(0,yoffsetDown).velocity[1] * signDouble
     end
-    if c.is_up_bnd then
+    if c.ypos_depth > 0 then
         c.velocityBoundary[0] =   c(0,-yoffsetUp).velocity[0]
         c.velocityBoundary[1] =   c(0,-yoffsetUp).velocity[1] * signDouble
     end
@@ -1270,25 +1272,25 @@ local FlowUpdateGhostVelocityStep1 = liszt kernel(c : grid.cells)
     -- use uni-directional stencils; but this simplifies postprocessing, 
     -- for example plotting field with ghost cells
     -- Currently sets the corner to the value next to it in the diagonal
-    if c.is_left_bnd and c.is_down_bnd then
+    if c.xneg_depth > 0 and c.yneg_depth > 0 then
         c.velocityBoundary[0] = - c(1,1).velocity[0]
         c.velocityBoundary[1] = - c(1,1).velocity[1]
     end
-    if c.is_left_bnd and c.is_up_bnd then
+    if c.xneg_depth > 0 and c.ypos_depth > 0 then
         c.velocityBoundary[0] = - c(1,-1).velocity[0]
         c.velocityBoundary[1] = - c(1,-1).velocity[1]
     end
-    if c.is_right_bnd and c.is_down_bnd then
+    if c.xpos_depth > 0 and c.yneg_depth > 0 then
         c.velocityBoundary[0] = - c(-1,1).velocity[0]
         c.velocityBoundary[1] = - c(-1,1).velocity[1]
     end
-    if c.is_right_bnd and c.is_up_bnd then
+    if c.xpos_depth > 0 and c.ypos_depth > 0 then
         c.velocityBoundary[0] = - c(-1,-1).velocity[0]
         c.velocityBoundary[1] = - c(-1,-1).velocity[1]
     end
 end
 local FlowUpdateGhostVelocityStep2 = liszt kernel(c : grid.cells)
-    if c.is_bnd then
+    if c.in_boundary then
         c.velocity = c.velocityBoundary
     end
 end
@@ -1303,25 +1305,25 @@ local FlowUpdateGhostConservedStep1 = liszt kernel(c : grid.cells)
     -- side of the boundary (for example, second order central difference), and
     -- is not able to handle higher-order schemes until a way to specify where
     -- in the (wider-than-one-point) boundary we are
-    if c.is_left_bnd then
+    if c.xneg_depth > 0 then
         c.rhoBoundary            =   c(xoffsetLeft,0).rho
         c.rhoVelocityBoundary[0] =   c(xoffsetLeft,0).rhoVelocity[0] * signDouble
         c.rhoVelocityBoundary[1] =   c(xoffsetLeft,0).rhoVelocity[1]
         c.rhoEnergyBoundary      =   c(xoffsetLeft,0).rhoEnergy
     end
-    if c.is_right_bnd then
+    if c.xpos_depth > 0 then
         c.rhoBoundary            =   c(-xoffsetRight,0).rho
         c.rhoVelocityBoundary[0] =   c(-xoffsetRight,0).rhoVelocity[0] * signDouble
         c.rhoVelocityBoundary[1] =   c(-xoffsetRight,0).rhoVelocity[1]
         c.rhoEnergyBoundary      =   c(-xoffsetRight,0).rhoEnergy
     end
-    if c.is_down_bnd then
+    if c.yneg_depth > 0 then
         c.rhoBoundary            =   c(0,yoffsetDown).rho
         c.rhoVelocityBoundary[0] =   c(0,yoffsetDown).rhoVelocity[0]
         c.rhoVelocityBoundary[1] =   c(0,yoffsetDown).rhoVelocity[1] * signDouble
         c.rhoEnergyBoundary      =   c(0,yoffsetDown).rhoEnergy
     end
-    if c.is_up_bnd then
+    if c.ypos_depth > 0 then
         c.rhoBoundary            =   c(0,-yoffsetUp).rho
         c.rhoVelocityBoundary[0] =   c(0,-yoffsetUp).rhoVelocity[0]
         c.rhoVelocityBoundary[1] =   c(0,-yoffsetUp).rhoVelocity[1] * signDouble
@@ -1332,25 +1334,25 @@ local FlowUpdateGhostConservedStep1 = liszt kernel(c : grid.cells)
     -- use uni-directional stencils; but this simplifies postprocessing, 
     -- for example plotting field with ghost cells
     -- Currently sets the corner to the value next to it in the diagonal
-    if c.is_left_bnd and c.is_down_bnd then
+    if c.xneg_depth > 0 and c.yneg_depth > 0 then
         c.rhoBoundary            =   c(1,1).rho
         c.rhoVelocityBoundary[0] = - c(1,1).rhoVelocity[0]
         c.rhoVelocityBoundary[1] = - c(1,1).rhoVelocity[1]
         c.rhoEnergyBoundary      =   c(1,1).rhoEnergy
     end
-    if c.is_left_bnd and c.is_up_bnd then
+    if c.xneg_depth > 0 and c.ypos_depth > 0 then
         c.rhoBoundary            =   c(1,-1).rho
         c.rhoVelocityBoundary[0] = - c(1,-1).rhoVelocity[0]
         c.rhoVelocityBoundary[1] = - c(1,-1).rhoVelocity[1]
         c.rhoEnergyBoundary      =   c(1,-1).rhoEnergy
     end
-    if c.is_right_bnd and c.is_down_bnd then
+    if c.xpos_depth > 0 and c.yneg_depth > 0 then
         c.rhoBoundary            =   c(-1,1).rho
         c.rhoVelocityBoundary[0] = - c(-1,1).rhoVelocity[0]
         c.rhoVelocityBoundary[1] = - c(-1,1).rhoVelocity[1]
         c.rhoEnergyBoundary      =   c(-1,1).rhoEnergy
     end
-    if c.is_right_bnd and c.is_up_bnd then
+    if c.xpos_depth > 0 and c.ypos_depth > 0 then
         c.rhoBoundary            =   c(-1,-1).rho
         c.rhoVelocityBoundary[0] = - c(-1,-1).rhoVelocity[0]
         c.rhoVelocityBoundary[1] = - c(-1,-1).rhoVelocity[1]
@@ -1358,7 +1360,7 @@ local FlowUpdateGhostConservedStep1 = liszt kernel(c : grid.cells)
     end
 end
 local FlowUpdateGhostConservedStep2 = liszt kernel(c : grid.cells)
-    if c.is_bnd then
+    if c.in_boundary then
         c.pressure    = c.pressureBoundary
         c.rho         = c.rhoBoundary
         c.rhoVelocity = c.rhoVelocityBoundary
@@ -1490,25 +1492,25 @@ local FlowUpdateGhostVelocityGradientStep1 = liszt kernel(c : grid.cells)
     -- side of the boundary (for example, second order central difference), and
     -- is not able to handle higher-order schemes until a way to specify where
     -- in the (wider-than-one-point) boundary we are
-    if c.is_left_bnd then
+    if c.xneg_depth > 0 then
         c.velocityGradientXBoundary[0] = - c(xoffsetLeft,0).velocityGradientX[0]
         c.velocityGradientXBoundary[1] =   c(xoffsetLeft,0).velocityGradientX[1]
         c.velocityGradientYBoundary[0] = - c(xoffsetLeft,0).velocityGradientY[0]
         c.velocityGradientYBoundary[1] =   c(xoffsetLeft,0).velocityGradientY[1]
     end
-    if c.is_right_bnd then
+    if c.xpos_depth > 0 then
         c.velocityGradientXBoundary[0] = - c(-xoffsetRight,0).velocityGradientX[0]
         c.velocityGradientXBoundary[1] =   c(-xoffsetRight,0).velocityGradientX[1]
         c.velocityGradientYBoundary[0] = - c(-xoffsetRight,0).velocityGradientY[0]
         c.velocityGradientYBoundary[1] =   c(-xoffsetRight,0).velocityGradientY[1]
     end
-    if c.is_down_bnd then
+    if c.yneg_depth then
         c.velocityGradientXBoundary[0] =   c(0,yoffsetDown).velocityGradientX[0]
         c.velocityGradientXBoundary[1] = - c(0,yoffsetDown).velocityGradientX[1]
         c.velocityGradientYBoundary[0] =   c(0,yoffsetDown).velocityGradientY[0]
         c.velocityGradientYBoundary[1] = - c(0,yoffsetDown).velocityGradientY[1]
     end
-    if c.is_up_bnd then
+    if c.ypos_depth > 0 then
         c.velocityGradientXBoundary[0] =   c(0,-yoffsetUp).velocityGradientX[0]
         c.velocityGradientXBoundary[1] = - c(0,-yoffsetUp).velocityGradientX[1]
         c.velocityGradientYBoundary[0] =   c(0,-yoffsetUp).velocityGradientY[0]
@@ -1516,7 +1518,7 @@ local FlowUpdateGhostVelocityGradientStep1 = liszt kernel(c : grid.cells)
     end
 end
 local FlowUpdateGhostVelocityGradientStep2 = liszt kernel(c : grid.cells)
-    if c.is_bnd then
+    if c.in_boundary then
         c.velocityGradientX = c.velocityGradientXBoundary
         c.velocityGradientY = c.velocityGradientYBoundary
     end
