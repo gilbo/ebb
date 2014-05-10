@@ -86,8 +86,8 @@ local timeIntegrator = {
     simTime = 0,
     final_time = 100.00001,
     timeStep = 0,
-    cfl = 2.0,
-    outputEveryTimeSteps = 100
+    cfl = 1.2,
+    outputEveryTimeSteps = 63
 }
 
 local deltaTime = L.NewGlobal(L.double, 0.01)
@@ -95,7 +95,7 @@ local deltaTime = L.NewGlobal(L.double, 0.01)
 local fluid_options = {
     gasConstant = 20.4128,
     gamma = 1.4,
-    dynamic_viscosity_ref = 0.00044,
+    dynamic_viscosity_ref = 0.0044,
     dynamic_viscosity_temp_ref = 1.0,
     prandtl = 0.7
 }
@@ -168,6 +168,8 @@ LoadConstant(0)
 grid.cells:NewField('pressure', L.double):
 LoadConstant(0)
 grid.cells:NewField('rhoEnthalpy', L.double):
+LoadConstant(0)
+grid.cells:NewField('kineticEnergy', L.double):
 LoadConstant(0)
 grid.cells:NewField('sgsEnergy', L.double):
 LoadConstant(0)
@@ -294,7 +296,7 @@ LoadConstant(0)
 
 -- Norm of a vector
 local norm = liszt function(v)
-    return L.dot(v, v)
+    return cmath.sqrt(L.dot(v, v))
 end
 
 -- Compute fluid dynamic viscosity from fluid temperature
@@ -380,12 +382,7 @@ local FlowInitializePrimitives = liszt kernel(c : grid.cells)
         var taylorGreenPressure = 100.0
         -- Initialize
         var xy = c.center
-        var sx = cmath.sin(xy[0])
-        var sy = cmath.sin(xy[1])
-        var cx = cmath.cos(xy[0])
-        var cy = cmath.cos(xy[1])
         var coorZ = 0
-        c.velocity = L.vec2d({sy, cx})
         c.rho = 1.0
         c.velocity = 
             L.vec2d({cmath.sin(xy[0]) * 
@@ -1081,7 +1078,9 @@ end
 
 local FlowUpdateAuxiliaryVelocity = liszt kernel(c : grid.cells)
     if c.in_interior then
-        c.velocity = c.rhoVelocity / c.rho
+        var velocity = c.rhoVelocity / c.rho
+        c.velocity = velocity
+        c.kineticEnergy = 0.5 *  L.dot(velocity,velocity)
     end
 end
 
@@ -1592,7 +1591,7 @@ local function WriteOutput(outputFileNamePrefix,timeStep)
 
     --Check if it is time to output
     if timeStep  % timeIntegrator.outputEveryTimeSteps == 0 then
-        print("Time to output")
+        --print("Time to output")
         local outputFileName = outputFileNamePrefix .. "_" ..
           tostring(timeStep)
         --WriteCellsField(outputFileName .. "_flow",
@@ -1603,6 +1602,8 @@ local function WriteOutput(outputFileNamePrefix,timeStep)
         --  grid:xSize(),grid:ySize(),grid.cells.rho)
         WriteCellsField(outputFileName .. "_flow",
           grid:xSize(),grid:ySize(),grid.cells.pressure)
+        WriteCellsField(outputFileName .. "_flow",
+          grid:xSize(),grid:ySize(),grid.cells.kineticEnergy)
         WriteParticlesArray(outputFileName .. "_particles",
           particles.position)
         WriteParticlesArray(outputFileName .. "_particles",
@@ -1636,9 +1637,9 @@ local function ComputeDFunctionDt()
     FlowAddViscous()
     FlowAddBodyForces(grid.cells)
     ParticlesAddFlowCoupling()
+    FlowAddParticleCoupling(particles)
     ParticlesAddBodyForces(particles)
     ParticlesAddRadiation(particles)
-    FlowAddParticleCoupling(particles)
 end
 
 local function UpdateSolution(stage)
@@ -1668,6 +1669,7 @@ local globalGridNumberOfInteriorCells = L.NewGlobal(L.int, 0)
 local globalGridAreaInterior = L.NewGlobal(L.double, 0)
 local globalFlowAveragePressure = L.NewGlobal(L.double, 0.0)
 local globalFlowAverageTemperature = L.NewGlobal(L.double, 0.0)
+local globalFlowAverageKineticEnergy = L.NewGlobal(L.double, 0.0)
 local globalParticlesAverageTemperature= L.NewGlobal(L.double, 0.0)
 
 local FlowIntegrateQuantities = liszt kernel(c : grid.cells)
@@ -1681,6 +1683,8 @@ local FlowIntegrateQuantities = liszt kernel(c : grid.cells)
           c.pressure * cellArea
         globalFlowAverageTemperature += 
           c.temperature * cellArea
+        globalFlowAverageKineticEnergy += 
+          c.kineticEnergy * cellArea
     end
 end
 
@@ -1694,6 +1698,7 @@ local function ResetAverages()
     globalGridAreaInterior:set(0)
     globalFlowAveragePressure:set(0.0)
     globalFlowAverageTemperature:set(0.0)
+    globalFlowAverageKineticEnergy:set(0.0)
     globalParticlesAverageTemperature:set(0.0)
 end
 
@@ -1704,6 +1709,9 @@ local function CalculateAverages(grid, particles)
       globalGridAreaInterior:get())
     globalFlowAverageTemperature:set(
       globalFlowAverageTemperature:get()/
+      globalGridAreaInterior:get())
+    globalFlowAverageKineticEnergy:set(
+      globalFlowAverageKineticEnergy:get()/
       globalGridAreaInterior:get())
 
     -- Particles
@@ -1794,7 +1802,7 @@ local function CalculateDeltaTime()
       spectralRadius = diffusiveSpectralRadius
     end
     deltaTime:set(timeIntegrator.cfl / spectralRadius)
-    --deltaTime:set(0.001)
+    --deltaTime:set(0.005)
 
 end
 
@@ -1818,9 +1826,9 @@ while (timeIntegrator.simTime < timeIntegrator.final_time) do
           ", t", string.format("%10.8f",timeIntegrator.simTime),
           "flowP", string.format("%10.8f",globalFlowAveragePressure:get()),
           "flowT", string.format("%10.8f",globalFlowAverageTemperature:get()),
+          "kineticEnergy", string.format("%10.8f",globalFlowAverageKineticEnergy:get()),
           "particlesT", string.format("%10.8f",globalParticlesAverageTemperature:get())
           ) 
-
     WriteOutput(outputFileNamePrefix,timeIntegrator.timeStep)
 
     CalculateDeltaTime()
