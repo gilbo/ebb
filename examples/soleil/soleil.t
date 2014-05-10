@@ -141,12 +141,12 @@ originWithGhosts[1] = originWithGhosts[1] - bnum * grid_options.width/grid_optio
 originWithGhosts[2] = originWithGhosts[2] - bnum * grid_options.height/grid_options.xnum
 print(originWithGhosts[1],originWithGhosts[2])
 
-local grid = Grid.NewGrid2d{size          = {grid_options.xnum + 2*bnum,
-                                             grid_options.ynum + 2*bnum},
-                            origin        = originWithGhosts,
-                            width         = grid_options.width + 2*bw,
-                            height        = grid_options.height + 2*bw,
-                            boundary_size = bnum}
+local grid = Grid.NewGrid2d{size           = {grid_options.xnum + 2*bnum,
+                                              grid_options.ynum + 2*bnum},
+                            origin         = originWithGhosts,
+                            width          = grid_options.width + 2*bw,
+                            height         = grid_options.height + 2*bw,
+                            boundary_depth = bnum}
 
 -- conserved variables
 grid.cells:NewField('rho', L.double):
@@ -908,13 +908,11 @@ local FlowAddParticleCoupling = liszt kernel(p : particles)
     -- in the time stepper)
 
     -- Retrieve cell containing this particle
-    var cell = p.dual_cell.downleft
+    var cell = p.dual_cell.vertex.cell(-1,-1)
     -- Add contribution to momentum and energy equations from the previously
     -- computed deltaVelocityOverRelaxationTime and deltaTemperatureTerm
-    cell.rhoVelocity_t +=
-      - p.mass * p.deltaVelocityOverRelaxationTime
-    cell.rhoEnergy_t +=
-      - p.deltaTemperatureTerm
+    cell.rhoVelocity_t -= p.mass * p.deltaVelocityOverRelaxationTime
+    cell.rhoEnergy_t   -= p.deltaTemperatureTerm
 end
 
 --------------
@@ -1504,7 +1502,7 @@ local FlowUpdateGhostVelocityGradientStep1 = liszt kernel(c : grid.cells)
         c.velocityGradientYBoundary[0] = - c(-xoffsetRight,0).velocityGradientY[0]
         c.velocityGradientYBoundary[1] =   c(-xoffsetRight,0).velocityGradientY[1]
     end
-    if c.yneg_depth then
+    if c.yneg_depth > 0 then
         c.velocityGradientXBoundary[0] =   c(0,yoffsetDown).velocityGradientX[0]
         c.velocityGradientXBoundary[1] = - c(0,yoffsetDown).velocityGradientX[1]
         c.velocityGradientYBoundary[0] =   c(0,yoffsetDown).velocityGradientY[0]
