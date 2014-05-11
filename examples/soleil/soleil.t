@@ -1377,7 +1377,7 @@ function TimeIntegrator.InitializeTemporaries()
 end
 
 
-function InitializeTimeDerivatives()
+function TimeIntegrator.InitializeTimeDerivatives()
     Flow.InitializeTimeDerivatives(grid.cells)
     Particles.InitializeTimeDerivatives(particles)
 end
@@ -1470,19 +1470,19 @@ function Flow.UpdateAuxiliary()
     Flow.UpdateGhostThermodynamics()
 end
 
-function  Particles.UpdateAuxiliary()
+function Particles.UpdateAuxiliary()
     Particles.UpdateAuxiliaryStep1(particles)
     Particles.UpdateAuxiliaryStep2(particles)
 end
 
-function UpdateAuxiliary()
+function TimeIntegrator.UpdateAuxiliary()
     Flow.UpdateAuxiliary()
     Particles.UpdateAuxiliary()
 end
 
 
 -- Update time function
-function UpdateTime(timeOld, stage)
+function TimeIntegrator.UpdateTime(timeOld, stage)
     TimeIntegrator.simTime = timeOld +
                              TimeIntegrator.coeff_time[stage] *
                              TimeIntegrator.deltaTime:get()
@@ -1499,7 +1499,7 @@ function TimeIntegrator.InitializeVariables()
     --Particles.SetVelocitiesToFlow(particles)
 end
 
-function ComputeDFunctionDt()
+function TimeIntegrator.ComputeDFunctionDt()
     Flow.AddInviscid()
     Flow.UpdateGhostVelocityGradient()
     Flow.AddViscous()
@@ -1510,7 +1510,7 @@ function ComputeDFunctionDt()
     Particles.AddRadiation(particles)
 end
 
-function UpdateSolution(stage)
+function TimeIntegrator.UpdateSolution(stage)
     Flow.Update(stage)
     Particles.Update(stage)
 end
@@ -1520,11 +1520,11 @@ function TimeIntegrator.AdvanceTimeStep()
     TimeIntegrator.InitializeTemporaries()
     local timeOld = TimeIntegrator.simTime
     for stage = 1, 4 do
-        InitializeTimeDerivatives()
-        ComputeDFunctionDt()
-        UpdateSolution(stage)
-        UpdateAuxiliary()
-        UpdateTime(timeOld, stage)
+        TimeIntegrator.InitializeTimeDerivatives()
+        TimeIntegrator.ComputeDFunctionDt()
+        TimeIntegrator.UpdateSolution(stage)
+        TimeIntegrator.UpdateAuxiliary()
+        TimeIntegrator.UpdateTime(timeOld, stage)
     end
 
     TimeIntegrator.timeStep = TimeIntegrator.timeStep + 1
@@ -1532,9 +1532,8 @@ function TimeIntegrator.AdvanceTimeStep()
 end
 
 -- Integral quantities
-
--- numberOfInteriorCells and areaInterior could be defined as variables from
--- grid instead of Flow. Here Flow is used to avoid adding things to grid
+-- Note: - numberOfInteriorCells and areaInterior could be defined as variables
+-- from grid instead of Flow. Here Flow is used to avoid adding things to grid
 -- externally
 Flow.numberOfInteriorCells = L.NewGlobal(L.int, 0)
 Flow.areaInterior = L.NewGlobal(L.double, 0)
@@ -1550,18 +1549,14 @@ Flow.IntegrateQuantities = liszt kernel(c : grid.cells)
         var cellArea = c_dx * c_dy
         Flow.numberOfInteriorCells += 1
         Flow.areaInterior += cellArea
-        Flow.averagePressure += 
-          c.pressure * cellArea
-        Flow.averageTemperature += 
-          c.temperature * cellArea
-        Flow.averageKineticEnergy += 
-          c.kineticEnergy * cellArea
+        Flow.averagePressure += c.pressure * cellArea
+        Flow.averageTemperature += c.temperature * cellArea
+        Flow.averageKineticEnergy += c.kineticEnergy * cellArea
     end
 end
 
 Particles.IntegrateQuantities = liszt kernel(p : particles)
-    Particles.averageTemperature += 
-      p.temperature
+    Particles.averageTemperature += p.temperature
 end
 
 function Statistics.ResetSpatialAverages()
@@ -1630,8 +1625,12 @@ Flow.CalculateSpectralRadii = liszt kernel(c : grid.cells)
 
 end
 
-GetMaximumOfField = function (field)
-    local maxval = -1.0e20 -- something big for -INFINITY
+-- Get maximum of field
+-- Note: This should likely be built-in within grid.t. Here it is placed under
+-- the Flow namespace to avoid interference with grid (where it seems more
+-- appropriate)
+Flow.GetMaximumOfField = function (field)
+    local maxval = - math.huge
 
     local function test_row_larger(id, val)
         if val > maxval then maxval = val end
@@ -1647,12 +1646,11 @@ function TimeIntegrator.CalculateDeltaTime()
 
     -- Get maximum spectral radii in the domain
     local convectiveSpectralRadius = 
-            GetMaximumOfField(grid.cells.convectiveSpectralRadius)
+            Flow.GetMaximumOfField(grid.cells.convectiveSpectralRadius)
     local viscousSpectralRadius =
-            GetMaximumOfField(grid.cells.viscousSpectralRadius)
+            Flow.GetMaximumOfField(grid.cells.viscousSpectralRadius)
     local heatConductionSpectralRadius =
-            GetMaximumOfField(grid.cells.heatConductionSpectralRadius)
-
+            Flow.GetMaximumOfField(grid.cells.heatConductionSpectralRadius)
 
     -- Calculate diffusive spectral radius as the maximum between
     -- heat conduction and convective spectral radii
