@@ -21,19 +21,21 @@ cmath.srand(cmath.time(nil));
 local vdb   = L.require 'lib.vdb'
 
 -----------------------------------------------------------------------------
---[[                            LISZT GLOBALS                            ]]--
------------------------------------------------------------------------------
-
--- If you want to use global variables like scalar values or vectors within
--- a Liszt kernel (variables that are not constants), declare them here.
--- If you use lua variables, Liszt will treat them as constant values.
-
------------------------------------------------------------------------------
 --[[                            CONSTANT VARIABLES                       ]]--
 -----------------------------------------------------------------------------
 
 local pi = 2.0*cmath.acos(0)
 local twoPi = 2.0*pi
+
+-----------------------------------------------------------------------------
+--[[                            NAMESPACES                               ]]--
+-----------------------------------------------------------------------------
+
+local Flow = {};
+local Particles = {};
+local TimeIntegrator = {};
+local Statistics = {};
+local IO = {};
 
 -----------------------------------------------------------------------------
 --[[                             OPTIONS                                 ]]--
@@ -78,17 +80,15 @@ local yoffsetDown  = grid_options.ynum
 local yoffsetUp    = grid_options.ynum
 local signDouble   = 1
 
-local timeIntegrator = {
-    coeff_function = {1/6, 1/3, 1/3, 1/6},
-    coeff_time     = {0.5, 0.5, 1, 1},
-    simTime = 0,
-    final_time = 100.00001,
-    timeStep = 0,
-    cfl = 1.2,
-    outputEveryTimeSteps = 63
-}
-
-local deltaTime = L.NewGlobal(L.double, 0.01)
+-- Time integrator
+TimeIntegrator.coeff_function       = {1/6, 1/3, 1/3, 1/6}
+TimeIntegrator.coeff_time           = {0.5, 0.5, 1, 1}
+TimeIntegrator.simTime              = 0
+TimeIntegrator.final_time           = 100.00001
+TimeIntegrator.timeStep             = 0
+TimeIntegrator.cfl                  = 1.2
+TimeIntegrator.outputEveryTimeSteps = 63
+TimeIntegrator.deltaTime            = L.NewGlobal(L.double, 0.01)
 
 local fluid_options = {
     gasConstant = 20.4128,
@@ -120,6 +120,9 @@ local particles_options = {
 local radiation_options = {
     radiationIntensity = 1000.0
 }
+
+-- IO
+IO.outputFileNamePrefix = "../soleilOutput/output"
 
 -----------------------------------------------------------------------------
 --[[                       FLOW/ PARTICLE RELATIONS                      ]]--
@@ -361,19 +364,22 @@ end)
 --[[                            LISZT KERNELS                            ]]--
 -----------------------------------------------------------------------------
 
-
 -- Locate particles
-local ParticlesLocate = liszt kernel(p : particles)
+Particles.Locate = liszt kernel(p : particles)
     p.dual_cell = grid.dual_locate(p.position)
 end
 
 
 -- Initialize flow variables
-local InitializeCenterCoordinates= liszt kernel(c : grid.cells)
+-- Cell center coordinates are stored in the grid field macro 'center'. 
+-- Here, we use a field for convenience when outputting to file, but this is
+-- to be removed after grid outputing is well defined from within the grid.t 
+-- module
+Flow.InitializeCenterCoordinates = liszt kernel(c : grid.cells)
     var xy = c.center
     c.centerCoordinates = L.vec2d({xy[0], xy[1]})
 end
-local FlowInitializePrimitives = liszt kernel(c : grid.cells)
+Flow.InitializePrimitives = liszt kernel(c : grid.cells)
     -- Define Taylor Green Vortex
     var taylorGreenPressure = 100.0
     -- Initialize
@@ -393,7 +399,7 @@ local FlowInitializePrimitives = liszt kernel(c : grid.cells)
     c.pressure = 
         taylorGreenPressure + (factorA*factorB - 2.0) / 16.0
 end
-local FlowUpdateConservedFromPrimitive = liszt kernel(c : grid.cells)
+Flow.UpdateConservedFromPrimitive = liszt kernel(c : grid.cells)
     -- Equation of state: T = p / ( R * rho )
     var tmpTemperature = c.pressure /(fluid_options.gasConstant * c.rho)
     var velocity = c.velocity
@@ -413,7 +419,7 @@ local FlowUpdateConservedFromPrimitive = liszt kernel(c : grid.cells)
 end
 
 -- Initialize temporaries
-local FlowInitializeTemporaries = liszt kernel(c : grid.cells)
+Flow.InitializeTemporaries = liszt kernel(c : grid.cells)
     c.rho_old         = c.rho
     c.rhoVelocity_old = c.rhoVelocity
     c.rhoEnergy_old   = c.rhoEnergy
@@ -421,7 +427,7 @@ local FlowInitializeTemporaries = liszt kernel(c : grid.cells)
     c.rhoVelocity_new = c.rhoVelocity
     c.rhoEnergy_new   = c.rhoEnergy
 end
-local ParticlesInitializeTemporaries = liszt kernel(p : particles)
+Particles.InitializeTemporaries = liszt kernel(p : particles)
     p.position_old    = p.position
     p.velocity_old    = p.velocity
     p.temperature_old = p.temperature
@@ -432,12 +438,12 @@ end
 
 
 -- Initialize derivatives
-local FlowInitializeTimeDerivatives = liszt kernel(c : grid.cells)
+Flow.InitializeTimeDerivatives = liszt kernel(c : grid.cells)
     c.rho_t = L.double(0)
     c.rhoVelocity_t = L.vec2d({0, 0})
     c.rhoEnergy_t = L.double(0)
 end
-local ParticlesInitializeTimeDerivatives = liszt kernel(p : particles)
+Particles.InitializeTimeDerivatives = liszt kernel(p : particles)
     p.position_t = L.vec2d({0, 0})
     p.velocity_t = L.vec2d({0, 0})
     p.temperature_t = L.double(0)
@@ -448,13 +454,13 @@ end
 -----------
 
 -- Initialize enthalpy and derivatives
-local FlowAddInviscidInitialize = liszt kernel(c : grid.cells)
+Flow.AddInviscidInitialize = liszt kernel(c : grid.cells)
     c.rhoEnthalpy = c.rhoEnergy + c.pressure
     --L.print(c.rho, c.rhoEnergy, c.pressure, c.rhoEnthalpy)
 end
 
 -- Compute inviscid fluxes in X direction
-local FlowAddInviscidGetFluxX =  liszt kernel(c : grid.cells)
+Flow.AddInviscidGetFluxX =  liszt kernel(c : grid.cells)
     if c.in_interior or c.xneg_depth > 0 then
         var directionIdx = 0
         var numInterpolateCoeffs  = spatial_stencil.numInterpolateCoeffs
@@ -529,7 +535,7 @@ local FlowAddInviscidGetFluxX =  liszt kernel(c : grid.cells)
 end
 
 -- Compute inviscid fluxes in Y direction
-local FlowAddInviscidGetFluxY =  liszt kernel(c : grid.cells)
+Flow.AddInviscidGetFluxY =  liszt kernel(c : grid.cells)
     if c.in_interior or c.yneg_depth > 0 then
         var directionIdx = 1
         var numInterpolateCoeffs  = spatial_stencil.numInterpolateCoeffs
@@ -611,7 +617,7 @@ end
 local c_dx = L.NewGlobal(L.double, grid:cellWidth())
 local c_dy = L.NewGlobal(L.double, grid:cellHeight())
 -- WARNING_END
-local FlowAddInviscidUpdateUsingFluxX = liszt kernel(c : grid.cells)
+Flow.AddInviscidUpdateUsingFluxX = liszt kernel(c : grid.cells)
     if c.in_interior then
         c.rho_t -= (c(0,0).rhoFlux -
                     c(-1,0).rhoFlux)/c_dx
@@ -621,7 +627,7 @@ local FlowAddInviscidUpdateUsingFluxX = liszt kernel(c : grid.cells)
                           c(-1,0).rhoEnergyFlux)/c_dx
     end
 end
-local FlowAddInviscidUpdateUsingFluxY = liszt kernel(c : grid.cells)
+Flow.AddInviscidUpdateUsingFluxY = liszt kernel(c : grid.cells)
     if c.in_interior then
         c.rho_t -= (c(0,0).rhoFlux -
                     c(0,-1).rhoFlux)/c_dx
@@ -637,7 +643,7 @@ end
 ----------
 
 -- Compute viscous fluxes in X direction
-local FlowAddViscousGetFluxX =  liszt kernel(c : grid.cells)
+Flow.AddViscousGetFluxX =  liszt kernel(c : grid.cells)
     if c.in_interior or c.xneg_depth > 0 then
         var muFace = 0.5 * (GetDynamicViscosity(c(0,0).temperature) +
                             GetDynamicViscosity(c(1,0).temperature))
@@ -713,7 +719,7 @@ local FlowAddViscousGetFluxX =  liszt kernel(c : grid.cells)
 end
 
 -- Compute viscous fluxes in Y direction
-local FlowAddViscousGetFluxY =  liszt kernel(c : grid.cells)
+Flow.AddViscousGetFluxY =  liszt kernel(c : grid.cells)
     if c.in_interior or c.yneg_depth > 0 then
         var muFace = 0.5 * (GetDynamicViscosity(c(0,0).temperature) +
                             GetDynamicViscosity(c(0,1).temperature))
@@ -788,7 +794,7 @@ local FlowAddViscousGetFluxY =  liszt kernel(c : grid.cells)
     end
 end
 
-local FlowAddViscousUpdateUsingFluxX = liszt kernel(c : grid.cells)
+Flow.AddViscousUpdateUsingFluxX = liszt kernel(c : grid.cells)
     if c.in_interior then
         c.rhoVelocity_t += (c(0,0).rhoVelocityFlux -
                             c(-1,0).rhoVelocityFlux)/c_dx
@@ -797,7 +803,7 @@ local FlowAddViscousUpdateUsingFluxX = liszt kernel(c : grid.cells)
     end
 end
 
-local FlowAddViscousUpdateUsingFluxY = liszt kernel(c : grid.cells)
+Flow.AddViscousUpdateUsingFluxY = liszt kernel(c : grid.cells)
     if c.in_interior then
         c.rhoVelocity_t += (c(0,0).rhoVelocityFlux -
                             c(0,-1).rhoVelocityFlux)/c_dy
@@ -811,7 +817,7 @@ end
 -- Particle coupling
 --------------------
 
-local FlowAddParticleCoupling = liszt kernel(p : particles)
+Flow.AddParticleCoupling = liszt kernel(p : particles)
     -- WARNING: Assumes that deltaVelocityOverRelaxationTime and 
     -- deltaTemperatureTerm have been computed previously (for example, when
     -- adding the flow coupling to the particles, which should be called before 
@@ -829,7 +835,7 @@ end
 -- Body Forces
 --------------
 
-local FlowAddBodyForces = liszt kernel(c : grid.cells)
+Flow.AddBodyForces = liszt kernel(c : grid.cells)
     if c.in_interior then
         -- Add body forces to momentum equation
         c.rhoVelocity_t += c.rho *
@@ -846,7 +852,7 @@ end
 ----------------
 
 -- Update particle fields based on flow fields
-local ParticlesAddFlowCouplingPartOne = liszt kernel(p: particles)
+Particles.AddFlowCouplingPartOne = liszt kernel(p: particles)
     var dc = p.dual_cell
     var flowDensity     = L.double(0)
     var flowVelocity    = L.vec2d({0, 0})
@@ -879,7 +885,7 @@ end
 -- BODY FORCES
 --------------
 
-local ParticlesAddBodyForces= liszt kernel(p : particles)
+Particles.AddBodyForces= liszt kernel(p : particles)
     p.velocity_t += particles_options.bodyForce
 end
 
@@ -887,7 +893,7 @@ end
 -- RADIATION
 ------------
 
-local ParticlesAddRadiation = liszt kernel(p : particles)
+Particles.AddRadiation = liszt kernel(p : particles)
     -- Calculate absorbed radiation intensity considering optically thin
     -- particles, for a collimated radiation source with negligible blackbody
     -- self radiation
@@ -902,7 +908,7 @@ local ParticlesAddRadiation = liszt kernel(p : particles)
 end
 
 -- Set particle velocities to flow for initialization
-local ParticlesSetVelocitiesToFlow = liszt kernel(p: particles)
+Particles.SetVelocitiesToFlow = liszt kernel(p: particles)
     var dc = p.dual_cell
     var flow_density     = L.double(0)
     var flow_velocity    = L.vec2d({0, 0})
@@ -917,11 +923,12 @@ end
 
 
 -- Update flow variables using derivatives
-local FlowUpdateKernels = {}
-local function GenerateUpdateFlowKernels(relation, stage)
+Flow.UpdateKernels = {}
+function Flow.GenerateUpdateKernels(relation, stage)
     -- Assumes 4th-order Runge-Kutta 
-    local coeff_fun  = timeIntegrator.coeff_function[stage]
-    local coeff_time = timeIntegrator.coeff_time[stage]
+    local coeff_fun  = TimeIntegrator.coeff_function[stage]
+    local coeff_time = TimeIntegrator.coeff_time[stage]
+    local deltaTime  = TimeIntegrator.deltaTime
     if stage <= 3 then
         return liszt kernel(r : relation)
             r.rho_new  += coeff_fun * deltaTime * r.rho_t
@@ -948,15 +955,16 @@ local function GenerateUpdateFlowKernels(relation, stage)
     end
 end
 for sdx = 1, 4 do
-    FlowUpdateKernels[sdx] = GenerateUpdateFlowKernels(grid.cells, sdx)
+    Flow.UpdateKernels[sdx] = Flow.GenerateUpdateKernels(grid.cells, sdx)
 end
 
 
 -- Update particle variables using derivatives
-local ParticlesUpdateKernels = {}
-local function ParticlesGenerateUpdateKernels(relation, stage)
-    local coeff_fun  = timeIntegrator.coeff_function[stage]
-    local coeff_time = timeIntegrator.coeff_time[stage]
+Particles.UpdateKernels = {}
+function Particles.GenerateUpdateKernels(relation, stage)
+    local coeff_fun  = TimeIntegrator.coeff_function[stage]
+    local coeff_time = TimeIntegrator.coeff_time[stage]
+    local deltaTime  = TimeIntegrator.deltaTime
     if stage <= 3 then
         return liszt kernel(r : relation)
             r.position_new += 
@@ -984,17 +992,17 @@ local function ParticlesGenerateUpdateKernels(relation, stage)
     end
 end
 for i = 1, 4 do
-    ParticlesUpdateKernels[i] = ParticlesGenerateUpdateKernels(particles, i)
+    Particles.UpdateKernels[i] = Particles.GenerateUpdateKernels(particles, i)
 end
 
 
-local FlowUpdateAuxiliaryVelocity = liszt kernel(c : grid.cells)
+Flow.UpdateAuxiliaryVelocity = liszt kernel(c : grid.cells)
     var velocity = c.rhoVelocity / c.rho
     c.velocity = velocity
     c.kineticEnergy = 0.5 *  L.dot(velocity,velocity)
 end
 
-local FlowUpdateGhostFieldsStep1 = liszt kernel(c : grid.cells)
+Flow.UpdateGhostFieldsStep1 = liszt kernel(c : grid.cells)
     -- Note that this for now assumes the stencil uses only one point to each
     -- side of the boundary (for example, second order central difference), and
     -- is not able to handle higher-order schemes until a way to specify where
@@ -1085,7 +1093,7 @@ local FlowUpdateGhostFieldsStep1 = liszt kernel(c : grid.cells)
         c.temperatureBoundary    =   c(-1,-1).temperature
     end
 end
-local FlowUpdateGhostFieldsStep2 = liszt kernel(c : grid.cells)
+Flow.UpdateGhostFieldsStep2 = liszt kernel(c : grid.cells)
     c.pressure    = c.pressureBoundary
     c.rho         = c.rhoBoundary
     c.rhoVelocity = c.rhoVelocityBoundary
@@ -1093,12 +1101,12 @@ local FlowUpdateGhostFieldsStep2 = liszt kernel(c : grid.cells)
     c.pressure    = c.pressureBoundary
     c.temperature = c.temperatureBoundary
 end
-local function FlowUpdateGhost()
-    FlowUpdateGhostFieldsStep1(grid.cells.boundary)
-    FlowUpdateGhostFieldsStep2(grid.cells.boundary)
+function Flow.UpdateGhost()
+    Flow.UpdateGhostFieldsStep1(grid.cells.boundary)
+    Flow.UpdateGhostFieldsStep2(grid.cells.boundary)
 end
 
-local FlowUpdateGhostThermodynamicsStep1 = liszt kernel(c : grid.cells)
+Flow.UpdateGhostThermodynamicsStep1 = liszt kernel(c : grid.cells)
     -- Note that this for now assumes the stencil uses only one point to each
     -- side of the boundary (for example, second order central difference), and
     -- is not able to handle higher-order schemes until a way to specify where
@@ -1141,18 +1149,18 @@ local FlowUpdateGhostThermodynamicsStep1 = liszt kernel(c : grid.cells)
         c.temperatureBoundary    =   c(-1,-1).temperature
     end
 end
-local FlowUpdateGhostThermodynamicsStep2 = liszt kernel(c : grid.cells)
+Flow.UpdateGhostThermodynamicsStep2 = liszt kernel(c : grid.cells)
     if c.in_boundary then
         c.pressure    = c.pressureBoundary
         c.temperature = c.temperatureBoundary
     end
 end
-local function FlowUpdateGhostThermodynamics()
-    FlowUpdateGhostThermodynamicsStep1(grid.cells.boundary)
-    FlowUpdateGhostThermodynamicsStep2(grid.cells.boundary)
+function Flow.UpdateGhostThermodynamics()
+    Flow.UpdateGhostThermodynamicsStep1(grid.cells.boundary)
+    Flow.UpdateGhostThermodynamicsStep2(grid.cells.boundary)
 end
 
-local FlowUpdateGhostVelocityStep1 = liszt kernel(c : grid.cells)
+Flow.UpdateGhostVelocityStep1 = liszt kernel(c : grid.cells)
     -- Note that this for now assumes the stencil uses only one point to each
     -- side of the boundary (for example, second order central difference), and
     -- is not able to handle higher-order schemes until a way to specify where
@@ -1195,16 +1203,16 @@ local FlowUpdateGhostVelocityStep1 = liszt kernel(c : grid.cells)
         c.velocityBoundary[1] = - c(-1,-1).velocity[1]
     end
 end
-local FlowUpdateGhostVelocityStep2 = liszt kernel(c : grid.cells)
+Flow.UpdateGhostVelocityStep2 = liszt kernel(c : grid.cells)
     c.velocity = c.velocityBoundary
 end
-local function FlowUpdateGhostVelocity()
-    FlowUpdateGhostVelocityStep1(grid.cells.boundary)
-    FlowUpdateGhostVelocityStep2(grid.cells.boundary)
+function Flow.UpdateGhostVelocity()
+    Flow.UpdateGhostVelocityStep1(grid.cells.boundary)
+    Flow.UpdateGhostVelocityStep2(grid.cells.boundary)
 end
 
 
-local FlowUpdateGhostConservedStep1 = liszt kernel(c : grid.cells)
+Flow.UpdateGhostConservedStep1 = liszt kernel(c : grid.cells)
     -- Note that this for now assumes the stencil uses only one point to each
     -- side of the boundary (for example, second order central difference), and
     -- is not able to handle higher-order schemes until a way to specify where
@@ -1263,19 +1271,19 @@ local FlowUpdateGhostConservedStep1 = liszt kernel(c : grid.cells)
         c.rhoEnergyBoundary      =   c(-1,-1).rhoEnergy
     end
 end
-local FlowUpdateGhostConservedStep2 = liszt kernel(c : grid.cells)
+Flow.UpdateGhostConservedStep2 = liszt kernel(c : grid.cells)
     c.pressure    = c.pressureBoundary
     c.rho         = c.rhoBoundary
     c.rhoVelocity = c.rhoVelocityBoundary
     c.rhoEnergy   = c.rhoEnergyBoundary
 end
-local function FlowUpdateGhostConserved()
-    FlowUpdateGhostConservedStep1(grid.cells.boundary)
-    FlowUpdateGhostConservedStep2(grid.cells.boundary)
+function Flow.UpdateGhostConserved()
+    Flow.UpdateGhostConservedStep1(grid.cells.boundary)
+    Flow.UpdateGhostConservedStep2(grid.cells.boundary)
 end
 
 
-local FlowUpdateAuxiliaryThermodynamics = liszt kernel(c : grid.cells)
+Flow.UpdateAuxiliaryThermodynamics = liszt kernel(c : grid.cells)
     var kineticEnergy = 
       0.5 * c.rho * L.dot(c.velocity,c.velocity)
     -- Define temporary pressure variable to avoid error like this:
@@ -1290,7 +1298,7 @@ local FlowUpdateAuxiliaryThermodynamics = liszt kernel(c : grid.cells)
 end
 
 
-local ParticlesUpdateAuxiliaryStep1 = liszt kernel(p : particles)
+Particles.UpdateAuxiliaryStep1 = liszt kernel(p : particles)
     p.position_periodic[0] = p.position[0]
     p.position_periodic[1] = p.position[1]
     if p.position[0] < gridOriginX then
@@ -1307,11 +1315,11 @@ local ParticlesUpdateAuxiliaryStep1 = liszt kernel(p : particles)
     end
 end
 
-local ParticlesUpdateAuxiliaryStep2 = liszt kernel(p : particles)
+Particles.UpdateAuxiliaryStep2 = liszt kernel(p : particles)
     p.position = p.position_periodic
 end
 
-local FlowComputeVelocityGradientX = liszt kernel(c : grid.cells)
+Flow.ComputeVelocityGradientX = liszt kernel(c : grid.cells)
     var numFirstDerivativeCoeffs = spatial_stencil.numFirstDerivativeCoeffs
     var firstDerivativeCoeffs    = spatial_stencil.firstDerivativeCoeffs
     var tmp = L.vec2d({0.0, 0.0})
@@ -1323,7 +1331,7 @@ local FlowComputeVelocityGradientX = liszt kernel(c : grid.cells)
     c.velocityGradientX = tmp / c_dx
 end
 
-local FlowComputeVelocityGradientY = liszt kernel(c : grid.cells)
+Flow.ComputeVelocityGradientY = liszt kernel(c : grid.cells)
     var numFirstDerivativeCoeffs = spatial_stencil.numFirstDerivativeCoeffs
     var firstDerivativeCoeffs    = spatial_stencil.firstDerivativeCoeffs
     var tmp = L.vec2d({0.0, 0.0})
@@ -1337,7 +1345,7 @@ end
 
 -- kernels to draw particles and velocity for debugging purpose
 
-local DrawParticlesKernel = liszt kernel (p : particles)
+Particles.DrawKernel = liszt kernel (p : particles)
     var color = {1.0,1.0,0.0}
     vdb.color(color)
     var pmax = L.double(particles_options.pos_max)
@@ -1363,27 +1371,27 @@ end
 -----------------------------------------------------------------------------
 
 
-local function InitializeTemporaries()
-    FlowInitializeTemporaries(grid.cells)
-    ParticlesInitializeTemporaries(particles)
+function TimeIntegrator.InitializeTemporaries()
+    Flow.InitializeTemporaries(grid.cells)
+    Particles.InitializeTemporaries(particles)
 end
 
 
-local function InitializeTimeDerivatives()
-    FlowInitializeTimeDerivatives(grid.cells)
-    ParticlesInitializeTimeDerivatives(particles)
+function InitializeTimeDerivatives()
+    Flow.InitializeTimeDerivatives(grid.cells)
+    Particles.InitializeTimeDerivatives(particles)
 end
 
 
-local function FlowAddInviscid()
-    FlowAddInviscidInitialize(grid.cells)
-    FlowAddInviscidGetFluxX(grid.cells)
-    FlowAddInviscidUpdateUsingFluxX(grid.cells)
-    FlowAddInviscidGetFluxY(grid.cells)
-    FlowAddInviscidUpdateUsingFluxY(grid.cells)
+function Flow.AddInviscid()
+    Flow.AddInviscidInitialize(grid.cells)
+    Flow.AddInviscidGetFluxX(grid.cells)
+    Flow.AddInviscidUpdateUsingFluxX(grid.cells)
+    Flow.AddInviscidGetFluxY(grid.cells)
+    Flow.AddInviscidUpdateUsingFluxY(grid.cells)
 end
 
-local FlowUpdateGhostVelocityGradientStep1 = liszt kernel(c : grid.cells)
+Flow.UpdateGhostVelocityGradientStep1 = liszt kernel(c : grid.cells)
     -- Note that this for now assumes the stencil uses only one point to each
     -- side of the boundary (for example, second order central difference), and
     -- is not able to handle higher-order schemes until a way to specify where
@@ -1413,108 +1421,104 @@ local FlowUpdateGhostVelocityGradientStep1 = liszt kernel(c : grid.cells)
         c.velocityGradientYBoundary[1] = - c(0,-yoffsetUp).velocityGradientY[1]
     end
 end
-local FlowUpdateGhostVelocityGradientStep2 = liszt kernel(c : grid.cells)
+Flow.UpdateGhostVelocityGradientStep2 = liszt kernel(c : grid.cells)
     if c.in_boundary then
         c.velocityGradientX = c.velocityGradientXBoundary
         c.velocityGradientY = c.velocityGradientYBoundary
     end
 end
-local function FlowUpdateGhostVelocityGradient()
-    FlowUpdateGhostVelocityGradientStep1(grid.cells)
-    FlowUpdateGhostVelocityGradientStep2(grid.cells)
+function Flow.UpdateGhostVelocityGradient()
+    Flow.UpdateGhostVelocityGradientStep1(grid.cells)
+    Flow.UpdateGhostVelocityGradientStep2(grid.cells)
 end
 
-local function FlowAddViscous()
-    FlowAddViscousGetFluxX(grid.cells)
-    FlowAddViscousUpdateUsingFluxX(grid.cells)
-    FlowAddViscousGetFluxY(grid.cells)
-    FlowAddViscousUpdateUsingFluxY(grid.cells)
-end
-
-
-local function ParticlesAddFlowCoupling()
-    ParticlesLocate(particles)
-    ParticlesAddFlowCouplingPartOne(particles)
-    --ParticlesAddFlowCouplingPartTwo(particles)
-end
-
-local function FlowUpdate(stage)
-    FlowUpdateKernels[stage](grid.cells)
+function Flow.AddViscous()
+    Flow.AddViscousGetFluxX(grid.cells)
+    Flow.AddViscousUpdateUsingFluxX(grid.cells)
+    Flow.AddViscousGetFluxY(grid.cells)
+    Flow.AddViscousUpdateUsingFluxY(grid.cells)
 end
 
 
-local function ParticlesUpdate(stage)
-    ParticlesUpdateKernels[stage](particles)
+function Particles.AddFlowCoupling()
+    Particles.Locate(particles)
+    Particles.AddFlowCouplingPartOne(particles)
 end
 
-
-
-local function FlowComputeVelocityGradients()
-    FlowComputeVelocityGradientX(grid.cells.interior)
-    FlowComputeVelocityGradientY(grid.cells.interior)
-end
-local function FlowUpdateAuxiliaryVelocityConservedAndGradients()
-    FlowUpdateAuxiliaryVelocity(grid.cells.interior)
-    FlowUpdateGhostConserved()
-    FlowUpdateGhostVelocity()
-    FlowComputeVelocityGradients()
+function Flow.Update(stage)
+    Flow.UpdateKernels[stage](grid.cells)
 end
 
-local function FlowUpdateAuxiliary()
-    FlowUpdateAuxiliaryVelocityConservedAndGradients()
-    FlowUpdateAuxiliaryThermodynamics(grid.cells.interior)
-    FlowUpdateGhostThermodynamics()
+function Particles.Update(stage)
+    Particles.UpdateKernels[stage](particles)
 end
 
-local function  ParticlesUpdateAuxiliary()
-    ParticlesUpdateAuxiliaryStep1(particles)
-    ParticlesUpdateAuxiliaryStep2(particles)
+function Flow.ComputeVelocityGradients()
+    Flow.ComputeVelocityGradientX(grid.cells.interior)
+    Flow.ComputeVelocityGradientY(grid.cells.interior)
+end
+function Flow.UpdateAuxiliaryVelocityConservedAndGradients()
+    Flow.UpdateAuxiliaryVelocity(grid.cells.interior)
+    Flow.UpdateGhostConserved()
+    Flow.UpdateGhostVelocity()
+    Flow.ComputeVelocityGradients()
 end
 
-local function UpdateAuxiliary()
-    FlowUpdateAuxiliary()
-    ParticlesUpdateAuxiliary()
+function Flow.UpdateAuxiliary()
+    Flow.UpdateAuxiliaryVelocityConservedAndGradients()
+    Flow.UpdateAuxiliaryThermodynamics(grid.cells.interior)
+    Flow.UpdateGhostThermodynamics()
+end
+
+function  Particles.UpdateAuxiliary()
+    Particles.UpdateAuxiliaryStep1(particles)
+    Particles.UpdateAuxiliaryStep2(particles)
+end
+
+function UpdateAuxiliary()
+    Flow.UpdateAuxiliary()
+    Particles.UpdateAuxiliary()
 end
 
 
 -- Update time function
-local function UpdateTime(timeOld, stage)
-    timeIntegrator.simTime = timeOld +
-                             timeIntegrator.coeff_time[stage] *
-                             deltaTime:get()
+function UpdateTime(timeOld, stage)
+    TimeIntegrator.simTime = timeOld +
+                             TimeIntegrator.coeff_time[stage] *
+                             TimeIntegrator.deltaTime:get()
 end
 
-local function InitializeVariables()
-    InitializeCenterCoordinates(grid.cells)
-    FlowInitializePrimitives(grid.cells.interior)
-    FlowUpdateConservedFromPrimitive(grid.cells.interior)
-    FlowUpdateGhost()
-    FlowUpdateAuxiliary()
+function TimeIntegrator.InitializeVariables()
+    Flow.InitializeCenterCoordinates(grid.cells)
+    Flow.InitializePrimitives(grid.cells.interior)
+    Flow.UpdateConservedFromPrimitive(grid.cells.interior)
+    Flow.UpdateGhost()
+    Flow.UpdateAuxiliary()
 
-    ParticlesLocate(particles)
-    --ParticlesSetVelocitiesToFlow(particles)
+    Particles.Locate(particles)
+    --Particles.SetVelocitiesToFlow(particles)
 end
 
-local function ComputeDFunctionDt()
-    FlowAddInviscid()
-    FlowUpdateGhostVelocityGradient()
-    FlowAddViscous()
-    FlowAddBodyForces(grid.cells)
-    ParticlesAddFlowCoupling()
-    FlowAddParticleCoupling(particles)
-    ParticlesAddBodyForces(particles)
-    ParticlesAddRadiation(particles)
+function ComputeDFunctionDt()
+    Flow.AddInviscid()
+    Flow.UpdateGhostVelocityGradient()
+    Flow.AddViscous()
+    Flow.AddBodyForces(grid.cells)
+    Particles.AddFlowCoupling()
+    Flow.AddParticleCoupling(particles)
+    Particles.AddBodyForces(particles)
+    Particles.AddRadiation(particles)
 end
 
-local function UpdateSolution(stage)
-    FlowUpdate(stage)
-    ParticlesUpdate(stage)
+function UpdateSolution(stage)
+    Flow.Update(stage)
+    Particles.Update(stage)
 end
 
-local function AdvanceTimeStep()
+function TimeIntegrator.AdvanceTimeStep()
 
-    InitializeTemporaries()
-    local timeOld = timeIntegrator.simTime
+    TimeIntegrator.InitializeTemporaries()
+    local timeOld = TimeIntegrator.simTime
     for stage = 1, 4 do
         InitializeTimeDerivatives()
         ComputeDFunctionDt()
@@ -1523,81 +1527,79 @@ local function AdvanceTimeStep()
         UpdateTime(timeOld, stage)
     end
 
-    timeIntegrator.timeStep = timeIntegrator.timeStep + 1
+    TimeIntegrator.timeStep = TimeIntegrator.timeStep + 1
 
 end
 
 -- Integral quantities
 
-local globalGridNumberOfInteriorCells = L.NewGlobal(L.int, 0)
-local globalGridAreaInterior = L.NewGlobal(L.double, 0)
-local globalFlowAveragePressure = L.NewGlobal(L.double, 0.0)
-local globalFlowAverageTemperature = L.NewGlobal(L.double, 0.0)
-local globalFlowAverageKineticEnergy = L.NewGlobal(L.double, 0.0)
-local globalParticlesAverageTemperature= L.NewGlobal(L.double, 0.0)
+-- numberOfInteriorCells and areaInterior could be defined as variables from
+-- grid instead of Flow. Here Flow is used to avoid adding things to grid
+-- externally
+Flow.numberOfInteriorCells = L.NewGlobal(L.int, 0)
+Flow.areaInterior = L.NewGlobal(L.double, 0)
+Flow.averagePressure = L.NewGlobal(L.double, 0.0)
+Flow.averageTemperature = L.NewGlobal(L.double, 0.0)
+Flow.averageKineticEnergy = L.NewGlobal(L.double, 0.0)
+Particles.averageTemperature= L.NewGlobal(L.double, 0.0)
 
-local FlowIntegrateQuantities = liszt kernel(c : grid.cells)
+Flow.IntegrateQuantities = liszt kernel(c : grid.cells)
     if c.in_interior then
         -- WARNING: update cellArea computation for non-uniform grids
         --var cellArea = c.cellWidth() * c.cellHeight()
         var cellArea = c_dx * c_dy
-        globalGridNumberOfInteriorCells += 1
-        globalGridAreaInterior += cellArea
-        globalFlowAveragePressure += 
+        Flow.numberOfInteriorCells += 1
+        Flow.areaInterior += cellArea
+        Flow.averagePressure += 
           c.pressure * cellArea
-        globalFlowAverageTemperature += 
+        Flow.averageTemperature += 
           c.temperature * cellArea
-        globalFlowAverageKineticEnergy += 
+        Flow.averageKineticEnergy += 
           c.kineticEnergy * cellArea
     end
 end
 
-local ParticlesIntegrateQuantities = liszt kernel(p : particles)
-    globalParticlesAverageTemperature += 
+Particles.IntegrateQuantities = liszt kernel(p : particles)
+    Particles.averageTemperature += 
       p.temperature
 end
 
-local function ResetAverages()
-    globalGridNumberOfInteriorCells:set(0)
-    globalGridAreaInterior:set(0)
-    globalFlowAveragePressure:set(0.0)
-    globalFlowAverageTemperature:set(0.0)
-    globalFlowAverageKineticEnergy:set(0.0)
-    globalParticlesAverageTemperature:set(0.0)
+function Statistics.ResetSpatialAverages()
+    Flow.numberOfInteriorCells:set(0)
+    Flow.areaInterior:set(0)
+    Flow.averagePressure:set(0.0)
+    Flow.averageTemperature:set(0.0)
+    Flow.averageKineticEnergy:set(0.0)
+    Particles.averageTemperature:set(0.0)
 end
 
-local function CalculateAverages(grid, particles)
+function Statistics.UpdateSpatialAverages(grid, particles)
     -- Flow
-    globalFlowAveragePressure:set(
-      globalFlowAveragePressure:get()/
-      globalGridAreaInterior:get())
-    globalFlowAverageTemperature:set(
-      globalFlowAverageTemperature:get()/
-      globalGridAreaInterior:get())
-    globalFlowAverageKineticEnergy:set(
-      globalFlowAverageKineticEnergy:get()/
-      globalGridAreaInterior:get())
+    Flow.averagePressure:set(
+      Flow.averagePressure:get()/
+      Flow.areaInterior:get())
+    Flow.averageTemperature:set(
+      Flow.averageTemperature:get()/
+      Flow.areaInterior:get())
+    Flow.averageKineticEnergy:set(
+      Flow.averageKineticEnergy:get()/
+      Flow.areaInterior:get())
 
     -- Particles
-    globalParticlesAverageTemperature:set(
-      globalParticlesAverageTemperature:get()/
+    Particles.averageTemperature:set(
+      Particles.averageTemperature:get()/
       particles:Size())
 
 end
 
-local function ComputeAverages()
-    ResetAverages()
-    FlowIntegrateQuantities(grid.cells)
-    ParticlesIntegrateQuantities(particles)
-    CalculateAverages(grid, particles)
+function Statistics.ComputeSpatialAverages()
+    Statistics.ResetSpatialAverages()
+    Flow.IntegrateQuantities(grid.cells)
+    Particles.IntegrateQuantities(particles)
+    Statistics.UpdateSpatialAverages(grid, particles)
 end
 
-local globalConvectiveSpectralRadius = L.NewGlobal(L.double, 0.0)
-local globalViscousSpectralRadius = L.NewGlobal(L.double, 0.0)
-local globalaHeatConductionSpectralRadius = L.NewGlobal(L.double, 0.0)
-
-
-local FlowCalculateSpectralRadii = liszt kernel(c : grid.cells)
+Flow.CalculateSpectralRadii = liszt kernel(c : grid.cells)
     var dXYInverseSquare = 1.0/c_dx * 1.0/c_dx +
                            1.0/c_dy * 1.0/c_dy
     -- Convective spectral radii
@@ -1628,7 +1630,7 @@ local FlowCalculateSpectralRadii = liszt kernel(c : grid.cells)
 
 end
 
-local GetMaximumOfField = function (field)
+GetMaximumOfField = function (field)
     local maxval = -1.0e20 -- something big for -INFINITY
 
     local function test_row_larger(id, val)
@@ -1639,9 +1641,9 @@ local GetMaximumOfField = function (field)
     return maxval
 end
 
-local function CalculateDeltaTime()
+function TimeIntegrator.CalculateDeltaTime()
 
-    FlowCalculateSpectralRadii(grid.cells)
+    Flow.CalculateSpectralRadii(grid.cells)
 
     -- Get maximum spectral radii in the domain
     local convectiveSpectralRadius = 
@@ -1665,8 +1667,8 @@ local function CalculateDeltaTime()
     if diffusiveSpectralRadius > convectiveSpectralRadius then
       spectralRadius = diffusiveSpectralRadius
     end
-    deltaTime:set(timeIntegrator.cfl / spectralRadius)
-    --deltaTime:set(0.005)
+    TimeIntegrator.deltaTime:set(TimeIntegrator.cfl / spectralRadius)
+    --TimeIntegrator.deltaTime:set(0.005)
 
 end
 
@@ -1675,7 +1677,7 @@ end
 -----------------------------------------------------------------------------
 
 -- Write cells field to output file
-local WriteCellsField = function (outputFileNamePrefix,xSize,ySize,field)
+Flow.WriteField = function (outputFileNamePrefix,xSize,ySize,field)
     -- Make up complete file name based on name of field
     local outputFileName = outputFileNamePrefix .. "_" ..
                            field:Name() .. ".txt"
@@ -1709,7 +1711,7 @@ local WriteCellsField = function (outputFileNamePrefix,xSize,ySize,field)
 end
 
 -- Write particles field to output file
-local WriteParticlesArray = function (outputFileNamePrefix,field)
+Particles.WriteField = function (outputFileNamePrefix,field)
     -- Make up complete file name based on name of field
     local outputFileName = outputFileNamePrefix .. "_" ..
                            field:Name() .. ".txt"
@@ -1742,33 +1744,44 @@ local WriteParticlesArray = function (outputFileNamePrefix,field)
     io.close()
 end
 
-local function WriteOutput(outputFileNamePrefix,timeStep)
+function IO.WriteOutput(timeStep)
 
-    --Check if it is time to output
-    if timeStep  % timeIntegrator.outputEveryTimeSteps == 0 then
+    -- Output log message
+    print("Time step ", string.format("%d",TimeIntegrator.timeStep), 
+          ", dt", string.format("%10.8f",TimeIntegrator.deltaTime:get()),
+          ", t", string.format("%10.8f",TimeIntegrator.simTime),
+          "flowP", string.format("%10.8f",Flow.averagePressure:get()),
+          "flowT", string.format("%10.8f",Flow.averageTemperature:get()),
+          "kineticEnergy", string.format("%10.8f",Flow.averageKineticEnergy:get()),
+          "particlesT", string.format("%10.8f",Particles.averageTemperature:get())
+          )
+
+    -- Check if it is time to output to file
+    if timeStep  % TimeIntegrator.outputEveryTimeSteps == 0 then
         --print("Time to output")
-        local outputFileName = outputFileNamePrefix .. "_" ..
+        local outputFileName = IO.outputFileNamePrefix .. "_" ..
           tostring(timeStep)
-        WriteCellsField(outputFileName .. "_flow",
+        Flow.WriteField(outputFileName .. "_flow",
           grid:xSize(),grid:ySize(),grid.cells.temperature)
-        --WriteCellsField(outputFileName .. "_flow",
+        --Flow.WriteField(outputFileName .. "_flow",
         --  grid:xSize(),grid:ySize(),grid.cells.rho)
-        WriteCellsField(outputFileName .. "_flow",
+        Flow.WriteField(outputFileName .. "_flow",
           grid:xSize(),grid:ySize(),grid.cells.pressure)
-        WriteCellsField(outputFileName .. "_flow",
+        Flow.WriteField(outputFileName .. "_flow",
           grid:xSize(),grid:ySize(),grid.cells.kineticEnergy)
-        WriteParticlesArray(outputFileName .. "_particles",
+        Particles.WriteField(outputFileName .. "_particles",
           particles.position)
-        WriteParticlesArray(outputFileName .. "_particles",
+        Particles.WriteField(outputFileName .. "_particles",
           particles.velocity)
-        WriteParticlesArray(outputFileName .. "_particles",
+        Particles.WriteField(outputFileName .. "_particles",
           particles.temperature)
     end
 end
-local function DrawParticles()
+
+function Particles.Draw()
     vdb.vbegin()
     vdb.frame()
-    DrawParticlesKernel(particles)
+    Particles.DrawKernel(particles)
     vdb.vend()
 end
 
@@ -1776,34 +1789,22 @@ end
 --[[                            MAIN EXECUTION                           ]]--
 -----------------------------------------------------------------------------
 
-InitializeVariables()
+TimeIntegrator.InitializeVariables()
 
-outputFileNamePrefix = "../soleilOutput/output"
-WriteCellsField(outputFileNamePrefix,
+Flow.WriteField(IO.outputFileNamePrefix,
                 grid:xSize(),grid:ySize(),
                 grid.cells.centerCoordinates)
-WriteParticlesArray(outputFileNamePrefix .. "_particles",
-                    particles.diameter)
+Particles.WriteField(IO.outputFileNamePrefix .. "_particles",
+                     particles.diameter)
 
 -- Time loop
-while (timeIntegrator.simTime < timeIntegrator.final_time) do
+while (TimeIntegrator.simTime < TimeIntegrator.final_time) do
 
-    ComputeAverages()
-    print("Time step ", string.format("%d",timeIntegrator.timeStep), 
-          ", dt", string.format("%10.8f",deltaTime:get()),
-          ", t", string.format("%10.8f",timeIntegrator.simTime),
-          "flowP", string.format("%10.8f",globalFlowAveragePressure:get()),
-          "flowT", string.format("%10.8f",globalFlowAverageTemperature:get()),
-          "kineticEnergy", string.format("%10.8f",globalFlowAverageKineticEnergy:get()),
-          "particlesT", string.format("%10.8f",globalParticlesAverageTemperature:get())
-          ) 
-    WriteOutput(outputFileNamePrefix,timeIntegrator.timeStep)
+    TimeIntegrator.CalculateDeltaTime()
+    TimeIntegrator.AdvanceTimeStep()
+    Statistics.ComputeSpatialAverages()
+    IO.WriteOutput(TimeIntegrator.timeStep)
 
-    CalculateDeltaTime()
-    AdvanceTimeStep()
-
-    -- VDB_Start
-    DrawParticles()
-    -- VDB_End
+    Particles.Draw()
 
 end
