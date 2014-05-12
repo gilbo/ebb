@@ -62,7 +62,7 @@ local spatial_stencil = {
 --    firstDerivativeCoeffs = L.NewVector(L.double, {0, 0.5}),
 --    firstDerivativeModifiedWaveNumber = 1.0,
 --    secondDerivativeModifiedWaveNumber = 4.0,
---  Order 6
+----  Order 6
     order = 6,
     size = 6,
     numInterpolateCoeffs = 4,
