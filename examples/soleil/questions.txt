@@ -13,3 +13,4 @@ Questions
   Is the grid.cells redundant, as it was already specified as the first argument
   of GenerateUpdateFlowKernels?
 - Add built-in method to retrieve min/max of field?
+- Objects in Lua + Terra + Liszt?
