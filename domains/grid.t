@@ -64,6 +64,16 @@ local function setupCells(grid)
             yorigin + cell_height * (L.double(c.yid) + 0.5) })
     end))
 
+    grid.cell_locate = L.NewMacro(function(xy_vec)
+        return liszt quote
+            var xy = xy_vec -- prevent duplication
+            var xidx = L.addr((xy[0] - xorigin)/cell_width)
+            var yidx = L.addr((xy[1] - yorigin)/cell_height)
+        in
+            L.UNSAFE_ROW(xidx + yidx * xsize, grid.cells)
+        end
+    end)
+
     -- boundary depths
     grid.cells:NewFieldMacro('xneg_depth', L.NewMacro(function(c)
         return liszt `max(L.int(n_bd - c.xid), 0)

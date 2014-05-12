@@ -55,23 +55,23 @@ local spatial_stencil = {
 --  Splitting parameter (for skew
     split = 0.5,
 --  Order 2
-    order = 2,
-    size = 2,
-    numInterpolateCoeffs = 2,
-    interpolateCoeffs = L.NewVector(L.double, {0, 0.5}),
-    numFirstDerivativeCoeffs = 2,
-    firstDerivativeCoeffs = L.NewVector(L.double, {0, 0.5}),
-    firstDerivativeModifiedWaveNumber = 1.0,
-    secondDerivativeModifiedWaveNumber = 4.0,
+--    order = 2,
+--    size = 2,
+--    numInterpolateCoeffs = 2,
+--    interpolateCoeffs = L.NewVector(L.double, {0, 0.5}),
+--    numFirstDerivativeCoeffs = 2,
+--    firstDerivativeCoeffs = L.NewVector(L.double, {0, 0.5}),
+--    firstDerivativeModifiedWaveNumber = 1.0,
+--    secondDerivativeModifiedWaveNumber = 4.0,
 ----  Order 6
---    order = 6,
---    size = 6,
---    numInterpolateCoeffs = 4,
---    interpolateCoeffs = L.NewVector(L.double, {0, 37/60, -8/60, 1/60}),
---    numFirstDerivativeCoeffs = 4,
---    firstDerivativeCoeffs = L.NewVector(L.double, {0.0,45.0/60.0,-9.0/60.0, 1.0/60.0}),
---    firstDerivativeModifiedWaveNumber = 1.59,
---    secondDerivativeModifiedWaveNumber = 6.04
+    order = 6,
+    size = 6,
+    numInterpolateCoeffs = 4,
+    interpolateCoeffs = L.NewVector(L.double, {0, 37/60, -8/60, 1/60}),
+    numFirstDerivativeCoeffs = 4,
+    firstDerivativeCoeffs = L.NewVector(L.double, {0.0,45.0/60.0,-9.0/60.0, 1.0/60.0}),
+    firstDerivativeModifiedWaveNumber = 1.59,
+    secondDerivativeModifiedWaveNumber = 6.04
 }
 
 local xoffsetLeft  = grid_options.xnum
@@ -128,12 +128,12 @@ originWithGhosts[1] = originWithGhosts[1] - bnum * grid_options.width/grid_optio
 originWithGhosts[2] = originWithGhosts[2] - bnum * grid_options.height/grid_options.xnum
 print(originWithGhosts[1],originWithGhosts[2])
 
-local grid = Grid.NewGrid2d{size          = {grid_options.xnum + 2*bnum,
-                                             grid_options.ynum + 2*bnum},
-                            origin        = originWithGhosts,
-                            width         = grid_options.width + 2*bw,
-                            height        = grid_options.height + 2*bw,
-                            boundary_size = bnum}
+local grid = Grid.NewGrid2d{size           = {grid_options.xnum + 2*bnum,
+                                              grid_options.ynum + 2*bnum},
+                            origin         = originWithGhosts,
+                            width          = grid_options.width + 2*bw,
+                            height         = grid_options.height + 2*bw,
+                            boundary_depth = bnum}
 
 -- conserved variables
 grid.cells:NewField('rho', L.double):

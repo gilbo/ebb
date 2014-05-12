@@ -13,9 +13,9 @@ local function init_temp (i)
 	end
 end
 
-M.vertices:NewField('flux',        L.float):LoadConstant(0)
-M.vertices:NewField('jacobistep',  L.float):LoadConstant(0)
-M.vertices:NewField('temperature', L.float):LoadFunction(init_temp)
+M.vertices:NewField('flux',        L.float):Load(0)
+M.vertices:NewField('jacobistep',  L.float):Load(0)
+M.vertices:NewField('temperature', L.float):Load(init_temp)
 
 local compute_step = liszt kernel(e : M.edges)
 	var v1   = e.head
