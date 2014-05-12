@@ -327,7 +327,7 @@ coorYToPlot = numpy.array(yCoor)
 interp='bilinear'
 
 fig = plt.figure(figsize=(8,6))
-fig.suptitle(fieldName + ' field at slice ' + str(sliceIndex) + ' with particles')
+#fig.suptitle(fieldName + ' field at slice ' + str(sliceIndex) + ' with particles')
 ax = fig.add_subplot(111, aspect='equal', autoscale_on=False,
                      xlim=(coorXToPlot.min(), coorXToPlot.max()),
                      ylim=(coorYToPlot.min(), coorYToPlot.max()))
@@ -349,7 +349,7 @@ im.set_data(coorXToPlot,coorYToPlot,
 ax.images.append(im)
 ax.set_xlim(coorXToPlot.min(),coorXToPlot.max())
 ax.set_ylim(coorYToPlot.min(),coorYToPlot.max())
-ax.set_title(interp)
+#ax.set_title(interp)
 evolutionText = ax.text(0.02, 0.90, '', transform=ax.transAxes)
 
 # Particles as circles at {X, Y} locations scaled by their diameter
