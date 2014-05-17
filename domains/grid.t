@@ -231,13 +231,13 @@ Grid.New2dUniformGrid{
             is_num(params.width) and is_num(params.height)
         if check and params.boundary_depth then
             check = check and
-                    is_table(params.boundary_depth) and
+                    type(params.boundary_depth) == 'table' and
                     is_num(params.boundary_depth[1]) and
                     is_num(params.boundary_depth[2])
         end
         if check and params.periodic_boundary then
             check = check and
-                    is_table(params.periodic_boundary) and
+                    type(params.periodic_boundary) == 'table' and
                     is_bool(params.periodic_boundary[1]) and
                     is_bool(params.periodic_boundary[2])
         end
