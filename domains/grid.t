@@ -35,10 +35,10 @@ local function setupCells(grid)
     grid.cells:NewFieldMacro('__apply_macro',
         L.NewMacro(function(c,xoff,yoff)
             return liszt quote
-                var xo = (c.xid + xoff + xsize)%xsize
-                var yo = (c.yid + yoff + ysize)%ysize
-                var xi = L.addr(xo)
-                var yi = L.addr(yo)
+                var xp = (xoff + xsize)
+                var yp = (yoff + ysize)
+                var xi = L.addr((xp + c.xid) % xsize)
+                var yi = L.addr((yp + c.yid) % ysize)
             in
                 L.UNSAFE_ROW( xi + yi * xsize, grid.cells )
             end
@@ -118,10 +118,10 @@ local function setupDualCells(grid)
     grid.dual_cells:NewFieldMacro('__apply_macro',
         L.NewMacro(function(dc,xoff,yoff)
             return liszt quote
-                var xo = (c.xid + xoff + xsize)%xsize
-                var yo = (c.yid + yoff + ysize)%ysize
-                var xi = L.addr(xo)
-                var yi = L.addr(yo)
+                var xp = (xoff + xsize)
+                var yp = (yoff + ysize)
+                var xi = L.addr((xp + c.xid) % xsize)
+                var yi = L.addr((yp + c.yid) % ysize)
             in
                 L.UNSAFE_ROW( xi + yi * xsize, grid.dual_cells )
             end
@@ -166,10 +166,10 @@ local function setupVertices(grid)
     grid.vertices:NewFieldMacro('__apply_macro',
         L.NewMacro(function(v,xoff,yoff)
             return liszt quote
-                var xo = (c.xid + xoff + xsize)%xsize
-                var yo = (c.yid + yoff + ysize)%ysize
-                var xi = L.addr(xo)
-                var yi = L.addr(yo)
+                var xp = (xoff + xsize)
+                var yp = (yoff + ysize)
+                var xi = L.addr((xp + c.xid) % xsize)
+                var yi = L.addr((yp + c.yid) % ysize)
             in
                 L.UNSAFE_ROW( xi + yi * xsize, grid.vertices )
             end
