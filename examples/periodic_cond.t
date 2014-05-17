@@ -8,6 +8,7 @@ local grid = Grid.NewGrid2d{size           = {xn, yn},
                             origin         = {0, 0},
                             width          = 1,
                             height         = 1,
+                            boundary_depth = {1, 1},
                             periodic_boundary = {true, true} }
 
 grid.cells:NewField('field', L.uint64):LoadConstant(0)
@@ -29,3 +30,6 @@ end
 
 Init(grid.cells)
 Check(grid.cells)
+
+print(grid:xBoundaryDepth())
+print(grid:yBoundaryDepth())
