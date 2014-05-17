@@ -34,11 +34,11 @@ local function setupCells(grid)
     -- relative offset
     grid.cells:NewFieldMacro('__apply_macro',
         L.NewMacro(function(c,xoff,yoff)
-            --return liszt `
-            --    L.UNSAFE_ROW( L.id(c) + yoff * xsize + xoff,  grid.cells )
             return liszt quote
-                var xi = L.addr((c.xid + xoff) % xsize)
-                var yi = L.addr((c.yid + yoff) % ysize)
+                var xo = (c.xid + xoff + xsize)%xsize
+                var yo = (c.yid + yoff + ysize)%ysize
+                var xi = L.addr(xo)
+                var yi = L.addr(yo)
             in
                 L.UNSAFE_ROW( xi + yi * xsize, grid.cells )
             end
@@ -117,12 +117,11 @@ local function setupDualCells(grid)
     -- relative offset
     grid.dual_cells:NewFieldMacro('__apply_macro',
         L.NewMacro(function(dc,xoff,yoff)
-            --return liszt `
-            --    L.UNSAFE_ROW( L.id(dc) + yoff * xsize + xoff,
-            --                  grid.dual_cells )
             return liszt quote
-                var xi = L.addr((c.xid + xoff) % xsize)
-                var yi = L.addr((c.yid + yoff) % ysize)
+                var xo = (c.xid + xoff + xsize)%xsize
+                var yo = (c.yid + yoff + ysize)%ysize
+                var xi = L.addr(xo)
+                var yi = L.addr(yo)
             in
                 L.UNSAFE_ROW( xi + yi * xsize, grid.dual_cells )
             end
@@ -166,11 +165,11 @@ local function setupVertices(grid)
     -- relative offset
     grid.vertices:NewFieldMacro('__apply_macro',
         L.NewMacro(function(v,xoff,yoff)
-            --return liszt `
-            --    L.UNSAFE_ROW( L.id(v) + yoff * xsize + xoff,  grid.vertices )
             return liszt quote
-                var xi = L.addr((c.xid + xoff) % xsize)
-                var yi = L.addr((c.yid + yoff) % ysize)
+                var xo = (c.xid + xoff + xsize)%xsize
+                var yo = (c.yid + yoff + ysize)%ysize
+                var xi = L.addr(xo)
+                var yi = L.addr(yo)
             in
                 L.UNSAFE_ROW( xi + yi * xsize, grid.vertices )
             end
