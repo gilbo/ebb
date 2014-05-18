@@ -145,7 +145,7 @@ local grid = Grid.NewGrid2d{size           = {grid_options.xnum + 2*bnum,
                             origin         = originWithGhosts,
                             width          = grid_options.width + 2*bw,
                             height         = grid_options.height + 2*bw,
-                            boundary_depth = bnum}
+                            boundary_depth = {bnum, bnum} }
 
 -- Conserved variables
 grid.cells:NewField('rho', L.double):
