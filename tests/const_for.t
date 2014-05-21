@@ -5,7 +5,7 @@ require "tests/test"
 local grid = L.require 'domains.grid'
 
 local N = 4
-local grid = Grid.New2dUniformGrid(N,N, {0,0}, N, N)
+local grid = Grid.NewGrid2d(N,N, {0,0}, N, N)
 
 ------------------------------------------------------------------------------
 

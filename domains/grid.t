@@ -208,8 +208,8 @@ end
 function Grid.NewGrid2d(params)
     local calling_convention = [[
 
-New2dUniformGrid should be called with named parameters:
-Grid.New2dUniformGrid{
+NewGrid2d should be called with named parameters:
+Grid.NewGrid2d{
   size          = {#,#},            -- number of cells in x and y
   origin        = {#,#},            -- x,y coordinates of grid origin
   width         = #,                -- width of grid coordinate system

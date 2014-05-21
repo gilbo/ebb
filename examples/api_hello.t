@@ -4,7 +4,7 @@ local Grid = L.require('domains.grid')
 
 local N = 5 -- 5x5 cell 2d grid
 local width = 2.0 -- with size 2.0 x 2.0, and bottom-left at 0,0
-local grid = Grid.New2dUniformGrid{
+local grid = Grid.NewGrid2d{
     size   = {N,N},
     origin = {0,0},
     width  = width,
@@ -21,7 +21,7 @@ grid.cells:NewField('d_temperature', L.double):Load(0)
 local K = L.NewGlobal(L.double, 1.0)
 
 local compute_diffuse = liszt kernel ( c : grid.cells )
-  if not c.is_bnd then
+  if not c.in_boundary then
     var sum_diff = c( 1,0).temperature - c.temperature
                  + c(-1,0).temperature - c.temperature
                  + c(0, 1).temperature - c.temperature

@@ -18,7 +18,7 @@ local collision_spring_k = 100
 
 -- the grid's own coordinate system doesn't really matter
 -- We just make sure it's dimensioned sensibly
-local grid = Grid.New2dUniformGrid{
+local grid = Grid.NewGrid2d{
     size   = {N,N},
     origin = {0,0},
     width  = width,
