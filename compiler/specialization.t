@@ -191,6 +191,7 @@ end
 ------------------------------------------------------------------------------
 --[[ AST Name Related:                                                    ]]--
 ------------------------------------------------------------------------------
+-- We must re-write names with symbols in this pass...
 
 function ast.DeclStatement:specialize(ctxt)
   local decl = self:clone()
@@ -206,8 +207,10 @@ function ast.DeclStatement:specialize(ctxt)
     decl.initializer = self.initializer:specialize(ctxt)
   end
 
-  -- SHADOW NAME
-  ctxt:liszt()[decl.name] = true
+  -- REGISTER SYMBOL
+  local name_str = decl.name
+  decl.name = ast.GenSymbol(name_str)
+  ctxt:liszt()[name_str] = decl.name
 
   return decl
 end
@@ -222,8 +225,10 @@ function ast.NumericFor:specialize(ctxt)
   end
 
   ctxt:enterblock()
-  -- SHADOW NAME
-  ctxt:liszt()[numfor.name] = true
+  -- REGISTER SYMBOL
+  local name_str = numfor.name
+  numfor.name = ast.GenSymbol(name_str)
+  ctxt:liszt()[name_str] = numfor.name
   numfor.body = self.body:specialize(ctxt)
   ctxt:leaveblock()
 
@@ -249,8 +254,10 @@ function ast.GenericFor:specialize(ctxt)
   --end
 
   ctxt:enterblock()
-  -- SHADOW NAME
-  ctxt:liszt()[r.name] = true
+  -- REGISTER SYMBOL
+  local name_str = r.name
+  r.name = ast.GenSymbol(name_str)
+  ctxt:liszt()[name_str] = r.name
   r.body = self.body:specialize(ctxt)
   ctxt:leaveblock()
 
@@ -262,8 +269,10 @@ function ast.LisztKernel:specialize(ctxt)
 
   kernel.set                  = self.set:specialize(ctxt)
 
-  -- SHADOW NAME
-  ctxt:liszt()[kernel.name]   = true
+  -- REGISTER SYMBOL
+  local name_str              = kernel.name
+  kernel.name                 = ast.GenSymbol(name_str)
+  ctxt:liszt()[name_str]      = kernel.name
   kernel.body                 = self.body:specialize(ctxt)
 
   return kernel
@@ -340,9 +349,11 @@ end
 
 function ast.Name:specialize(ctxt)
   -- try to find the name in the local Liszt scope
-  local shadowed = ctxt:liszt()[self.name]
-  if shadowed then
-    return self:clone()
+  local symbol = ctxt:liszt()[self.name]
+  if symbol then
+    local name_clone = self:clone()
+    name_clone.name  = symbol
+    return name_clone
   end
 
   -- Otherwise, does the name exist in the lua scope?
@@ -419,9 +430,12 @@ function ast.UserFunction:specialize(ctxt)
   local func = self:clone()
 
   ctxt:enterblock()
-  -- shadow params
-  for _,name in ipairs(self.params) do
-    ctxt:liszt()[name] = true
+  -- register symbols for params
+  local params = {}
+  for i=1,#(self.params) do
+    local name_str = self.params[i]
+    params[i] = ast.GenSymbol(name_str)
+    ctxt:liszt()[name_str] = params[i]
   end
 
   local body = self.body:specialize(ctxt)
@@ -431,7 +445,7 @@ function ast.UserFunction:specialize(ctxt)
   end
   ctxt:leaveblock()
 
-  func.params, func.body, func.exp = self.params, body, exp
+  func.params, func.body, func.exp = params, body, exp
   return func
 end
 

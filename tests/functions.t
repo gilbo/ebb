@@ -72,6 +72,22 @@ local t5 = liszt kernel (c : cells)
 end
 t5(cells)
 
+----------------------------
+--Test Dynamic Scoping Bug--
+----------------------------
+-- (symbols fixed this bug w/o alpha-renaming)
+local dyn_prod = liszt function(d, x) -- the two parameters is important
+  return d*x
+end
+local dyn_outer = liszt function(d)
+  return dyn_prod(1, d+d)
+end
+local dyn_kern = liszt kernel (c : cells)
+    var r = dyn_outer(2)
+    assert(r == 4)
+end
+dyn_kern(cells)
+
 
 ------------------
 --Empty Function--
