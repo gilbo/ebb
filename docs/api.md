@@ -12,7 +12,7 @@ local Grid = L.require('domains.grid')
 
 local N = 5 -- 5x5 cell 2d grid
 local width = 2.0 -- with size 2.0 x 2.0, and bottom-left at 0,0
-local grid = Grid.New2dUniformGrid(N,N,{0,0},width,width)
+local grid = Grid.NewGrid2d(N,N,{0,0},width,width)
 
 -- load via a function...
 grid.cells:NewField('temperature', L.double):Load(function(i)
