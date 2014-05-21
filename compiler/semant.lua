@@ -31,6 +31,7 @@ function Context.new(env, diag)
         env         = env,
         diag        = diag,
         loop_count  = 0,
+        centers     = {}, -- variable symbols bound to the centered row
     }, Context)
     return ctxt
 end
@@ -56,11 +57,11 @@ function Context:leaveloop()
     self.loop_count = self.loop_count - 1
     if self.loop_count < 0 then self.loop_count = 0 end
 end
-function Context:setcenter(sym)
-    self.center = sym
+function Context:recordcenter(sym)
+    self.centers[sym] = true
 end
 function Context:iscenter(sym)
-    return self.center == sym
+    return self.centers[sym]
 end
 
 local function try_coerce(target_typ, node, ctxt)
@@ -276,6 +277,15 @@ function ast.DeclStatement:check(ctxt)
                 try_coerce(decl.node_type, decl.initializer, ctxt)
         else
             decl.node_type = exptyp
+        end
+        -- if the rhs is a centered row, try to propagate that information
+        -- NOTE: this pseudo-constant propagation is strong b/c
+        -- we don't allow re-assignment of row-type variables
+        if exptyp:isRow() and decl.initializer.is_centered then
+            --print('name')
+            ctxt:recordcenter(decl.name)
+            --print('hey')
+            --print(decl.linenumber..':'..decl.offset)
         end
     end
 
@@ -576,6 +586,9 @@ function ast.Name:check(ctxt)
         local node     = ast.Name:DeriveFrom(self)
         node.node_type = typ
         node.name      = self.name
+        if ctxt:iscenter(self.name) then
+            node.is_centered = true
+        end
         return node
     end
 
@@ -740,6 +753,7 @@ local function QuoteParams(all_params_asts)
     for i,param_ast in ipairs(all_params_asts) do
         local q = ast.QuoteExpr:DeriveFrom(param_ast)
         q.block, q.exp = nil, param_ast
+        if param_ast.is_centered then q.is_centered = true end
         q.node_type = param_ast.node_type -- halt type-checking here
         quoted_params[i] = q
     end
@@ -1038,7 +1052,7 @@ function ast.LisztKernel:check(ctxt)
         kernel.relation             = set.node_type.value
         local row_type              = L.row(kernel.relation)
         -- record the center
-        ctxt:setcenter(kernel.name)
+        ctxt:recordcenter(kernel.name)
         ctxt:liszt()[kernel.name]   = row_type
         kernel.body                 = self.body:check(ctxt)
     else
