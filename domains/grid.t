@@ -5,14 +5,12 @@ package.loaded["domains.grid"] = Grid
 
 local L = terralib.require "compiler.lisztlib"
 
-
-
 local Grid2d = {}
 local Grid3d = {}
 Grid2d.__index = Grid2d
 Grid3d.__index = Grid3d
 
-local max = L.NewMacro(function(a,b)
+local max_impl = L.NewMacro(function(a,b)
     return liszt quote
         var ret = a
         if b > a then ret = b end
@@ -83,16 +81,16 @@ local function setupCells(grid)
 
     -- boundary depths
     grid.cells:NewFieldMacro('xneg_depth', L.NewMacro(function(c)
-        return liszt `max(L.int(xn_bd - c.xid), 0)
+        return liszt `max_impl(L.int(xn_bd - c.xid), 0)
     end))
     grid.cells:NewFieldMacro('xpos_depth', L.NewMacro(function(c)
-        return liszt `max(L.int(c.xid - (xsize-1 - xn_bd)), 0)
+        return liszt `max_impl(L.int(c.xid - (xsize-1 - xn_bd)), 0)
     end))
     grid.cells:NewFieldMacro('yneg_depth', L.NewMacro(function(c)
-        return liszt `max(L.int(yn_bd - c.yid), 0)
+        return liszt `max_impl(L.int(yn_bd - c.yid), 0)
     end))
     grid.cells:NewFieldMacro('ypos_depth', L.NewMacro(function(c)
-        return liszt `max(L.int(c.yid - (ysize-1 - yn_bd)), 0)
+        return liszt `max_impl(L.int(c.yid - (ysize-1 - yn_bd)), 0)
     end))
 
     grid.cells:NewFieldMacro('in_boundary', L.NewMacro(function(c)

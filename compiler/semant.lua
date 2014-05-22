@@ -536,7 +536,8 @@ function ast.BinaryOp:check(ctxt)
         return binop
     end
 
-    -- We should never get here...
+    -- We will get here if the user attempts to use the min/max operators inline.
+    -- Currently they are only supported as reductions.
     return err(binop, ctxt, "Failed to recognize operator '"..binop.op.."'")
 end
 
