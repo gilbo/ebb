@@ -31,6 +31,7 @@ function Context.new(env, diag)
         env         = env,
         diag        = diag,
         loop_count  = 0,
+        centers     = {}, -- variable symbols bound to the centered row
     }, Context)
     return ctxt
 end
@@ -55,6 +56,12 @@ end
 function Context:leaveloop()
     self.loop_count = self.loop_count - 1
     if self.loop_count < 0 then self.loop_count = 0 end
+end
+function Context:recordcenter(sym)
+    self.centers[sym] = true
+end
+function Context:iscenter(sym)
+    return self.centers[sym]
 end
 
 local function try_coerce(target_typ, node, ctxt)
@@ -270,6 +277,15 @@ function ast.DeclStatement:check(ctxt)
                 try_coerce(decl.node_type, decl.initializer, ctxt)
         else
             decl.node_type = exptyp
+        end
+        -- if the rhs is a centered row, try to propagate that information
+        -- NOTE: this pseudo-constant propagation is strong b/c
+        -- we don't allow re-assignment of row-type variables
+        if exptyp:isRow() and decl.initializer.is_centered then
+            --print('name')
+            ctxt:recordcenter(decl.name)
+            --print('hey')
+            --print(decl.linenumber..':'..decl.offset)
         end
     end
 
@@ -570,6 +586,9 @@ function ast.Name:check(ctxt)
         local node     = ast.Name:DeriveFrom(self)
         node.node_type = typ
         node.name      = self.name
+        if ctxt:iscenter(self.name) then
+            node.is_centered = true
+        end
         return node
     end
 
@@ -649,15 +668,92 @@ function ast.Bool:check(ctxt)
 end
 
 
+----------------------------
+--[[ AST Alpha-Renaming ]]--
+----------------------------
+    
+    function ast.UserFunction:alpha_rename()
+        local symbol_remap = {}
+        local func = self:clone()
+
+        func.params = {}
+        for i=1,#(self.params) do
+            func.params[i] = self.params[i]:UniqueCopy()
+            symbol_remap[self.params[i]] = func.params[i]
+        end
+
+        func.body = self.body:alpha_rename(symbol_remap)
+        if self.exp then
+            func.exp = self.exp:alpha_rename(symbol_remap)
+        end
+
+        return func
+    end
+
+    function ast.AST:alpha_rename(symbol_remap)
+        return self:passthrough('alpha_rename', symbol_remap)
+    end
+
+    function ast.DeclStatement:alpha_rename(remap)
+        local decl = self:clone()
+        if self.initializer then
+            decl.initializer = self.initializer:alpha_rename(remap)
+        end
+
+        decl.name = self.name:UniqueCopy()
+        remap[self.name] = decl.name
+        return decl
+    end
+
+    function ast.NumericFor:alpha_rename(remap)
+        local numfor        = self:clone()
+        numfor.lower        = self.lower:alpha_rename(remap)
+        numfor.upper        = self.upper:alpha_rename(remap)
+
+        if self.step then numfor.step = self.step:alpha_rename(remap) end
+
+        numfor.name = self.name:UniqueCopy()
+        remap[self.name] = numfor.name
+
+        numfor.body = self.body:alpha_rename(remap)
+
+        return numfor
+    end
+
+    function ast.GenericFor:alpha_rename(remap)
+        local r = self:clone()
+        r.set   = self.set:alpha_rename(remap)
+
+        r.name  = self.name:UniqueCopy()
+        remap[self.name] = r.name
+
+        r.body  = self.body:alpha_rename(remap)
+
+        return r
+    end
+
+    function ast.LisztKernel:alpha_rename(remap)
+        error('should never try to alpha rename a whole kernel')
+        -- even though a kernel does define names
+    end
+
+    function ast.Name:alpha_rename(remap)
+        local n = self:clone()
+        n.name = remap[self.name] -- remapped symbol
+        return n
+    end
+
 ------------------------------------------------------------------------------
 --[[                         Miscellaneous nodes:                         ]]--
 ------------------------------------------------------------------------------
+
 
 local function QuoteParams(all_params_asts)
     local quoted_params = {}
     for i,param_ast in ipairs(all_params_asts) do
         local q = ast.QuoteExpr:DeriveFrom(param_ast)
         q.block, q.exp = nil, param_ast
+        if param_ast.is_centered then q.is_centered = true end
         q.node_type = param_ast.node_type -- halt type-checking here
         quoted_params[i] = q
     end
@@ -679,7 +775,7 @@ local function RunMacro(ctxt,src_node,the_macro,params)
 end
 
 local function InlineUserFunc(ctxt, src_node, the_func, param_asts)
-    local f = the_func.ast
+    local f = the_func.ast:alpha_rename()
 
     -- check that the correct number of arguments are provided
     if #(f.params) ~= #param_asts then
@@ -752,7 +848,7 @@ function ast.TableLookup:check(ctxt)
             ast_node.name       = member
             ast_node.row        = tab
             local name = ast_node.row.name
-            if name and ctxt:liszt()['center='..name] then
+            if name and ctxt:iscenter(name) then
                 ast_node.row.is_centered = true
             end
             ast_node.field      = field
@@ -956,7 +1052,7 @@ function ast.LisztKernel:check(ctxt)
         kernel.relation             = set.node_type.value
         local row_type              = L.row(kernel.relation)
         -- record the center
-        ctxt:liszt()['center='..kernel.name] = true
+        ctxt:recordcenter(kernel.name)
         ctxt:liszt()[kernel.name]   = row_type
         kernel.body                 = self.body:check(ctxt)
     else
