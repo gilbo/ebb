@@ -23,10 +23,3 @@ local min_kernel = liszt kernel (v : M.vertices)
 end
 min_kernel(M.vertices)
 test.aeq(min_pos:get().data, {-1, -1, -1})
-
-local k = liszt kernel (v : M.vertices)
-	var x = 1 + 2 max 3
-	L.print(x)
-end
-
-k(M.vertices)
