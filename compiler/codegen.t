@@ -306,6 +306,32 @@ function ast.Name:codegen(ctxt)
   return `[s]
 end
 
+local function min(lhe, rhe)
+  return quote
+    var a = [lhe]
+    var b = [rhe]
+    var min = a
+    if b < a then
+      min = b
+    end
+    in
+    min
+  end
+end
+
+local function max(lhe, rhe)
+  return quote
+    var a = [lhe]
+    var b = [rhe]
+    var max = a
+    if b > a then
+      max = b
+    end
+    in
+    max
+  end
+end
+
 local function bin_exp (op, lhe, rhe)
   if     op == '+'   then return `[lhe] +   [rhe]
   elseif op == '-'   then return `[lhe] -   [rhe]
@@ -321,6 +347,8 @@ local function bin_exp (op, lhe, rhe)
   elseif op == '>='  then return `[lhe] >=  [rhe]
   elseif op == '=='  then return `[lhe] ==  [rhe]
   elseif op == '~='  then return `[lhe] ~=  [rhe]
+  elseif op == 'max' then return max(lhe, rhe)
+  elseif op == 'min' then return min(lhe, rhe)
   end
 end
 
