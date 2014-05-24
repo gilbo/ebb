@@ -84,6 +84,9 @@ lang.exp = pratt.Pratt() -- returns a pratt parser
 :infix('/',   4,   leftbinaryred)
 :infix('%',   4,   leftbinary)
 
+:infix('max', 5,   leftbinaryred)
+:infix('min', 5,   leftbinaryred)
+
 :infix('^',   6,   rightbinary)
 :infix('.',   7, function(P,lhs)
     local node = ast.TableLookup:New(P)

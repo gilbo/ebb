@@ -4,6 +4,25 @@
 local A = {}
 package.loaded["compiler.ast"] = A
 
+
+
+-----------------
+--[[ Symbols ]]--
+-----------------
+
+A.Symbol = {}
+A.Symbol.__index = A.Symbol
+A.GenSymbol = function(name)
+  return setmetatable({namestr=name}, A.Symbol)
+end
+function A.Symbol:UniqueCopy() -- use during sub-tree substitution
+  return A.GenSymbol(self.namestr)
+end
+function A.Symbol:__tostring()
+  return self.namestr
+end
+
+
 ---------------------------
 --[[ Declare AST types ]]--
 ---------------------------
@@ -219,6 +238,7 @@ function AST:is (obj)
   return obj == getmetatable(self)
 end
 
+
 ---------------------------
 --[[ AST tree printing ]]--
 ---------------------------
@@ -232,7 +252,7 @@ function LisztKernel:pretty_print (indent)
   indent = indent or ''
   print(indent .. self.kind .. ": (name, set, body)")
   indent = indent .. indent_delta
-  print(indent .. self.name)
+  print(indent .. tostring(self.name))
   if self.set then
     self.set:pretty_print(indent)
   else
@@ -246,7 +266,7 @@ function UserFunction:pretty_print (indent)
   print(indent .. self.kind .. ": (params, body, exp)")
   indent = indent .. indent_delta
   for i = 1, #self.params do
-    print(indent .. self.params[i])
+    print(indent .. tostring(self.params[i]))
   end
   self.body:pretty_print(indent)
   if not self.exp then
@@ -292,7 +312,7 @@ end
 function Global:pretty_print(indent)
   indent = indent or ''
   local name = self.name or ""
-  print(indent .. self.kind .. ": " .. name)
+  print(indent .. self.kind .. ": " .. tostring(name))
 end
 
 function Cast:pretty_print(indent)
@@ -367,7 +387,7 @@ end
 
 function Name:pretty_print (indent)
   indent = indent or ''
-  print(indent .. self.kind .. ": " .. self.name)
+  print(indent .. self.kind .. ": " .. tostring(self.name))
 end
 
 function Number:pretty_print (indent)
@@ -421,7 +441,7 @@ function DeclStatement:pretty_print (indent)
   local typexpstr = ''
   if self.typeexpression then typexpstr = "typeexpression," end
   print(indent .. self.kind.. ":(name,"..typexpstr.."initializer)")
-  print(indent .. indent_delta .. self.name)
+  print(indent .. indent_delta .. tostring(self.name))
   if self.typeexpression then
       print(indent .. indent_delta ..self.typeexpression)
   end
@@ -473,7 +493,7 @@ function NumericFor:pretty_print (indent)
   else
     print(indent .. self.kind .. ": (name, lower, upper, body)")
   end
-  self.name:pretty_print(indent .. indent_delta)
+  print(indent .. indent_delta .. tostring(self.name))
   self.lower:pretty_print(indent .. indent_delta)
   self.upper:pretty_print(indent .. indent_delta)
   if self.step then self.step:pretty_print(indent .. indent_delta) end
@@ -483,7 +503,7 @@ end
 function GenericFor:pretty_print (indent)
   indent = indent or ''
   print(indent .. self.kind .. ": (name, set, body)")
-  print(indent .. indent_delta .. self.name)
+  print(indent .. indent_delta .. tostring(self.name))
   self.set:pretty_print(indent  .. indent_delta)
   self.body:pretty_print(indent .. indent_delta)
 end
