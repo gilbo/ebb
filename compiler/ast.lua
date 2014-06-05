@@ -86,7 +86,6 @@ A.Statement :NewKind('FieldWrite',       {'fieldaccess','exp'})
 A.Statement :NewKind('GlobalReduce',     {'global','exp'})
 
   -- Quotes mark pre-typechecked sub-trees, and compile to nothing
---A.Expression:NewKind('QuoteExpr',        {'block', 'exp'})
 A.Expression:NewKind('Quote',            {'code'})
 A.Expression:NewKind('LetExpr',          {'block', 'exp'})
   -- multi-purpose internal stub for objects captured from the environment
@@ -333,20 +332,6 @@ function A.Cast:pretty_print(indent)
   self.value:pretty_print(indent .. indent_delta)
 end
 
---function A.QuoteExpr:pretty_print(indent)
---  indent = indent or ''
---  local str = indent .. self.kind .. ": ("
---  if self.block then str = str .. "block, " end
---  if self.exp then str = str .. "exp" end
---  print(str .. ")")
---  indent = indent .. indent_delta
---  if self.block then
---    self.block:pretty_print(indent)
---  end
---  if self.exp then
---    self.exp:pretty_print(indent)
---  end
---end
 function A.Quote:pretty_print(indent)
   indent = indent or ''
   print(indent .. self.kind .. ":")

@@ -996,30 +996,6 @@ function ast.Global:check(ctxt)
     return n
 end
 
---function ast.QuoteExpr:check(ctxt)
---    -- Ensure quotes are only typed once
---    -- By typing the quote at declaration, we make it safe
---    -- to included it in other code as is
---    if not self.node_type then
---        local q     = self:clone()
---        if not self.block and not self.exp then
---            ctxt:error('Found a Quote with no block and no expression.')
---        else
---            ctxt:enterblock()
---            if self.block then
---                q.block = self.block:check(ctxt)
---            end
---            q.exp       = self.exp:check(ctxt)
---            ctxt:leaveblock()
---
---            q.node_type = q.exp.node_type
---        end
---        return q
---    else
---        return self
---    end
---end
-
 function ast.Quote:check(ctxt)
     -- Ensure quotes are only typed once
     -- By typing the quote at declaration, we make it safe

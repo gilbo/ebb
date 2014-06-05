@@ -164,28 +164,6 @@ function ast.CondBlock:specialize(ctxt)
   return condblk
 end
 
---function ast.QuoteExpr:specialize(ctxt)
---  -- Once quotes are typed, they should be fully specialized
---  -- Don't repeat the specialization at that point, since it
---  -- could cause some sort of hiccup? (dunno)
---  if self.node_type then
---    return self
---  else
---    local q     = self:clone()
---
---    ctxt:enterblock()
---    if self.block then
---      q.block = self.block:specialize(ctxt)
---    end
---    if self.exp then
---      q.exp   = self.exp:specialize(ctxt)
---    end
---    ctxt:leaveblock()
---
---    return q
---  end
---end
-
 function ast.Quote:specialize(ctxt)
   -- Once quotes are typed, they should be fully specialized
   -- Don't repeat the specialization at that point, since it

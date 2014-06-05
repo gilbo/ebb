@@ -191,21 +191,6 @@ function ast.ExprStatement:codegen (ctxt)
   return self.exp:codegen(ctxt)
 end
 
---function ast.QuoteExpr:codegen (ctxt)
---  if self.block then
---    assert(self.exp)
---    ctxt:enterblock()
---    local block = self.block:codegen(ctxt)
---    local exp   = self.exp:codegen(ctxt)
---    ctxt:leaveblock()
---
---    return quote [block] in [exp] end
---  else
---    assert(self.exp)
---    return self.exp:codegen(ctxt)
---  end
---end
-
 -- complete no-op
 function ast.Quote:codegen (ctxt)
   return self.code:codegen(ctxt)
