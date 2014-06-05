@@ -207,9 +207,7 @@ end
 --[[ AST Nodes:                                                           ]]--
 ------------------------------------------------------------------------------
 
-function ast.AST:phasePass(ctxt)
-  self:callthrough('phasePass', ctxt)
-end
+ast.NewInertPass('phasePass')
 
 
 

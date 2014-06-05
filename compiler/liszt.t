@@ -17,17 +17,17 @@ local lisztlanguage = {
 
 	expression = function(self, lexer)
 		local ast = P.Parse(lexer)
-        if ast.kind == 'kernel' then
+        if ast.kind == 'LisztKernel' then
             return function (env_fn) 
                 local env = env_fn()
                 return lisztlib.NewKernel(ast, env)
             end
-        elseif ast.kind == 'user_function' then
+        elseif ast.kind == 'UserFunction' then
             return function (env_fn)
                 local env = env_fn()
                 return lisztlib.NewUserFunc(ast, env)
             end
-        else
+        else -- quote
             return function (env_fn)
                 local env = env_fn()
 

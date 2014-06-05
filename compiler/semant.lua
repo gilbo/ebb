@@ -125,7 +125,14 @@ function ast.AST:check(ctxt)
 end
 
 function ast.Block:check(ctxt)
-    return self:passthrough('check', ctxt)
+    local copy = self:clone()
+
+    copy.statements = {}
+    for i,node in ipairs(self.statements) do
+        copy.statements[i] = self.statements[i]:check(ctxt)
+    end
+
+    return copy
 end
 
 function ast.IfStatement:check(ctxt)
@@ -195,7 +202,9 @@ function ast.RepeatStatement:check(ctxt)
 end
 
 function ast.ExprStatement:check(ctxt)
-    return self:passthrough('check', ctxt)
+    local copy = self:clone()
+    copy.exp   = self.exp:check(ctxt)
+    return copy
 end
 
 function ast.Assignment:check(ctxt)
@@ -673,6 +682,8 @@ end
 --[[ AST Alpha-Renaming ]]--
 ----------------------------
     
+    ast.NewCopyPass('alpha_rename')
+    
     function ast.UserFunction:alpha_rename()
         local symbol_remap = {}
         local func = self:clone()
@@ -689,10 +700,6 @@ end
         end
 
         return func
-    end
-
-    function ast.AST:alpha_rename(symbol_remap)
-        return self:passthrough('alpha_rename', symbol_remap)
     end
 
     function ast.DeclStatement:alpha_rename(remap)
@@ -752,8 +759,8 @@ end
 local function QuoteParams(all_params_asts)
     local quoted_params = {}
     for i,param_ast in ipairs(all_params_asts) do
-        local q = ast.QuoteExpr:DeriveFrom(param_ast)
-        q.block, q.exp = nil, param_ast
+        local q = ast.Quote:DeriveFrom(param_ast)
+        q.code = param_ast
         if param_ast.is_centered then q.is_centered = true end
         q.node_type = param_ast.node_type -- halt type-checking here
         quoted_params[i] = q
@@ -765,7 +772,7 @@ local function RunMacro(ctxt,src_node,the_macro,params)
     local quoted_params = QuoteParams(params)
     local result = the_macro.genfunc(unpack(quoted_params))
 
-    if ast.is_ast(result) and result:is(ast.QuoteExpr) then
+    if ast.is_ast(result) and result:is(ast.Quote) then
         return result
     else
         ctxt:error(src_node, 'Macros must return quoted code')
@@ -776,6 +783,9 @@ local function RunMacro(ctxt,src_node,the_macro,params)
 end
 
 local function InlineUserFunc(ctxt, src_node, the_func, param_asts)
+    -- note that this alpha rename is safe because the
+    -- param_asts haven't been attached yet.  We know from
+    -- specialization that there are no free variables in the function.
     local f = the_func.ast:alpha_rename()
 
     -- check that the correct number of arguments are provided
@@ -804,8 +814,7 @@ local function InlineUserFunc(ctxt, src_node, the_func, param_asts)
     local block = ast.Block:DeriveFrom(src_node)
     block.statements = statements
 
-    -- ultimately, the user func call is translated into a quote expression
-    -- A Let
+    -- ultimately, the user func call is translated into a let expression
     -- which looks like
     -- LET
     --   var param_1 = ...
@@ -814,17 +823,23 @@ local function InlineUserFunc(ctxt, src_node, the_func, param_asts)
     --   <body>
     -- IN
     --   <exp>
-    local q = ast.QuoteExpr:DeriveFrom(src_node)
-    q.block = block
-    q.exp   = f.exp
+    -- unless we're missing an expression to return, in which
+    -- case we expand into a do-statement instead
+    local expansion = ast.LetExpr:DeriveFrom(src_node)
+    expansion.block = block
+    expansion.exp   = f.exp
 
     -- Lacking an expression, use a DO block instead
     if not f.exp then
-        q = ast.DoStatement:DeriveFrom(q)
-        q.body = block
+        expansion = ast.DoStatement:DeriveFrom(src_node)
+        expansion.body = block
         -- hack to make checker barf when this is used as an expression
-        q.node_type = L.internal('no-return function')
+        expansion.node_type = L.internal('no-return function')
     end
+
+    -- wrap up in a quote
+    local q = ast.Quote:DeriveFrom(src_node)
+    q.code = expansion
 
     -- return the result of typechecking the quote we built
     return q:check(ctxt)
@@ -981,32 +996,61 @@ function ast.Global:check(ctxt)
     return n
 end
 
-function ast.QuoteExpr:check(ctxt)
+--function ast.QuoteExpr:check(ctxt)
+--    -- Ensure quotes are only typed once
+--    -- By typing the quote at declaration, we make it safe
+--    -- to included it in other code as is
+--    if not self.node_type then
+--        local q     = self:clone()
+--        if not self.block and not self.exp then
+--            ctxt:error('Found a Quote with no block and no expression.')
+--        else
+--            ctxt:enterblock()
+--            if self.block then
+--                q.block = self.block:check(ctxt)
+--            end
+--            q.exp       = self.exp:check(ctxt)
+--            ctxt:leaveblock()
+--
+--            q.node_type = q.exp.node_type
+--        end
+--        return q
+--    else
+--        return self
+--    end
+--end
+
+function ast.Quote:check(ctxt)
     -- Ensure quotes are only typed once
     -- By typing the quote at declaration, we make it safe
     -- to included it in other code as is
-    if not self.node_type then
-        local q     = self:clone()
-        if not self.block and not self.exp then
-            ctxt:error('Found a Quote with no block and no expression.')
-        else
-            ctxt:enterblock()
-            if self.block then
-                q.block = self.block:check(ctxt)
-            end
-            q.exp       = self.exp:check(ctxt)
-            ctxt:leaveblock()
-
-            q.node_type = q.exp.node_type
-        end
-        return q
-    else
+    if self.node_type then
         return self
+    else
+        local q = self:clone()
+
+        q.code = self.code:check(ctxt)
+        q.node_type = q.code.node_type
+
+        return q
     end
 end
 
+function ast.LetExpr:check(ctxt)
+    local let = self:clone()
+
+    ctxt:enterblock()
+    let.block = self.block:check(ctxt)
+    let.exp   = self.exp:check(ctxt)
+    ctxt:leaveblock()
+
+    let.node_type = let.exp.node_type
+    return let
+end
+
+
 function ast.FieldAccess:check(ctxt)
-    return self:passthrough('check', ctxt)
+    return self:clone()
 end
 
 function ast.LuaObject:check(ctxt)
