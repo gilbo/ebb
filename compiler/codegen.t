@@ -194,19 +194,18 @@ function ast.ExprStatement:codegen (ctxt)
   return self.exp:codegen(ctxt)
 end
 
-function ast.QuoteExpr:codegen (ctxt)
-  if self.block then
-    assert(self.exp)
-    ctxt:enterblock()
-    local block = self.block:codegen(ctxt)
-    local exp   = self.exp:codegen(ctxt)
-    ctxt:leaveblock()
+-- complete no-op
+function ast.Quote:codegen (ctxt)
+  return self.code:codegen(ctxt)
+end
 
-    return quote [block] in [exp] end
-  else
-    assert(self.exp)
-    return self.exp:codegen(ctxt)
-  end
+function ast.LetExpr:codegen (ctxt)
+  ctxt:enterblock()
+  local block = self.block:codegen(ctxt)
+  local exp   = self.exp:codegen(ctxt)
+  ctxt:leaveblock()
+
+  return quote [block] in [exp] end
 end
 
 -- DON'T CODEGEN THE KERNEL THIS WAY; HANDLE IN Codegen.codegen()

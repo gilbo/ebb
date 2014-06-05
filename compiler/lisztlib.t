@@ -278,9 +278,9 @@ L.Where = L.NewMacro(function(field,key)
     local w = ast.Where:DeriveFrom(field)
     w.field = field
     w.key   = key
-    local q = ast.QuoteExpr:DeriveFrom(field)
-    q.exp   = semant.check({}, w)
-    q.node_type = q.exp.node_type
+    local q = ast.Quote:DeriveFrom(field)
+    q.code  = semant.check({}, w)
+    q.node_type = q.code.node_type
     return q
 end)
 
