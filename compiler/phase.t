@@ -183,6 +183,13 @@ function Context:dumpFieldTypes()
   return res
 end
 
+function Context:dumpGlobalTypes()
+  local res = {}
+  for k, record in pairs(self.globals) do
+    res[k] = record.phase_type
+  end
+  return res
+end
 
 ------------------------------------------------------------------------------
 --[[ Phase Pass:                                                          ]]--
@@ -198,8 +205,9 @@ function Phase.phasePass(kernel_ast)
   diag:finishandabortiferrors("Errors during phasechecking Liszt", 1)
 
   local field_use = ctxt:dumpFieldTypes()
+  local global_use = ctxt:dumpGlobalTypes()
 
-  return field_use
+  return field_use, global_use
 end
 
 

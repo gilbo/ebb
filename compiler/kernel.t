@@ -20,10 +20,11 @@ end
 
 
 local L = terralib.require "compiler.lisztlib"
+
 local specialization = terralib.require "compiler.specialization"
-local semant  = terralib.require "compiler.semant"
-local phase   = terralib.require "compiler.phase"
-local codegen = terralib.require "compiler.codegen"
+local semant         = terralib.require "compiler.semant"
+local phase          = terralib.require "compiler.phase"
+local codegen        = terralib.require "compiler.codegen"
 
 local DataArray = terralib.require('compiler.rawdata').DataArray
 
@@ -86,9 +87,13 @@ local function seedbank_lookup(sig)
   return bran
 end
 
-local MAX_FIELDS = 32
+local MAX_FIELDS  = 32
+local MAX_GLOBALS = 32
 -- Germ Terra Structs
 local struct GermField {
+    data : &opaque;
+}
+local struct GermGlobal {
     data : &opaque;
 }
 local taddr = uint64 --L.addr:terraType() -- weird dependency error
@@ -103,7 +108,9 @@ local struct Germ {
     n_rows : uint64;
     subset : GermSubset;
     n_fields : int; -- # of fields referred to, i.e. below
+    n_globals : int;
     fields : GermField[MAX_FIELDS];
+    globals : GermGlobal[MAX_GLOBALS];
 }
 
 -- export Germ
@@ -120,7 +127,7 @@ function L.NewKernel(kernel_ast, env)
     -- All declaration time processing here
     local specialized    = specialization.specialize(env, kernel_ast)
     new_kernel.typed_ast = semant.check(env, specialized)
-    new_kernel.field_use = phase.phasePass(new_kernel.typed_ast)
+    new_kernel.field_use, new_kernel.global_use = phase.phasePass(new_kernel.typed_ast)
 
     return new_kernel
 end
@@ -178,7 +185,9 @@ L.LKernel.__call  = function (kobj, relset)
     for field, _ in pairs(bran.field_ids) do
       bran:getCPUFieldGerm(field).data = field:DataPtr()
     end
-
+    for global, _ in pairs(bran.global_ids) do
+      bran:getCPUGlobalGerm(global).data = global:DataPtr()
+    end
     -- Load the germ data into the runtime location
     if bran.runtime_germ:location() == L.GPU then
       bran.runtime_germ:copy(bran.cpu_germ)
@@ -224,8 +233,13 @@ function Bran:generate()
   -- fix the mapping for the fields before compiling the executable
   bran.field_ids    = {}
   bran.n_field_ids  = 0 -- for safety
+  bran.global_ids   = {}
+  bran.n_global_ids = 0
   for field, _ in pairs(kernel.field_use) do
     bran:getFieldId(field)
+  end
+  for globl, _ in pairs(kernel.global_use) do
+    bran:getGlobalId(globl)
   end
 
   -- compile an executable
@@ -245,14 +259,37 @@ function Bran:getFieldId(field)
   return id
 end
 
+function Bran:getGlobalId(global)
+  local id = self.global_ids[global]
+  if not id then
+    if self.executable then
+      error('INTERNAL ERROR: cannot add new global variables after compilation')
+    end
+    id = self.n_global_ids
+    self.global_ids[global] = id
+    self.n_global_ids = id + 1
+  end
+  return id
+end
+
 function Bran:getRuntimeFieldGerm(field)
   local id = self:getFieldId(field)
   return self.runtime_germ:ptr().fields[id]
 end
 
+function Bran:getRuntimeGlobalGerm(global)
+  local id = self:getGlobalId(global)
+  return self.runtime_germ:ptr().globals[id]
+end
+
 function Bran:getCPUFieldGerm(field)
   local id = self:getFieldId(field)
   return self.cpu_germ:ptr().fields[id]
+end
+
+function Bran:getCPUGlobalGerm(global)
+  local id = self:getGlobalId(global)
+  return self.cpu_germ:ptr().globals[id]
 end
 
 function Bran:getRuntimeSubsetGerm()

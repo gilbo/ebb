@@ -1,5 +1,6 @@
 local L = {}
 package.loaded["compiler.lisztlib"] = L
+local DataArray = terralib.require('compiler.rawdata').DataArray
 
 -- Use the following to produce
 -- deterministic order of table entries
@@ -78,36 +79,58 @@ function L.NewGlobal (typ, init)
 
     local s  = setmetatable({type=typ}, LGlobal)
     local tt = typ:terraType()
-    s.data   = terralib.cast(&tt, C.malloc(terralib.sizeof(tt)))
+
+    s.data = DataArray.New({size=1,type=tt})
     s:set(init)
     return s
 end
 
+local function set_cpu_value (_type, data, val)
+  if _type:isVector() then
+    local v     = is_vector(val) and val or L.NewVector(_type:baseType(), val)
+    local sdata = terralib.cast(&_type:terraBaseType(), data:ptr())
+    for i = 0, v.N-1 do
+      sdata[i] = v.data[i+1]
+    end
+
+  -- primitive is easy - just copy it over
+  else
+    data:ptr()[0] = _type == L.int and val - val % 1 or val
+  end
+end
 
 function LGlobal:set(val)
    if not T.luaValConformsToType(val, self.type) then error("value does not conform to type of global: " .. self.type:toString(), 2) end
-      if self.type:isVector() then
-          local v     = is_vector(val) and val or L.NewVector(self.type:baseType(), val)
-          local sdata = terralib.cast(&self.type:terraBaseType(), self.data)
-          for i = 0, v.N-1 do
-              sdata[i] = v.data[i+1]
-          end
-    -- primitive is easy - just copy it over
-    else
-        self.data[0] = self.type == L.int and val - val % 1 or val
-    end
+   local original_proc = self.data:location()
+   -- TODO(crystal) - probably want to generate gpu kernels to update globals on the GPU
+   -- instead of copying back and forth
+   self.data:moveto(L.CPU)
+   set_cpu_value(self.type, self.data, val)
+   self.data:moveto(original_proc)
 end
 
+
 function LGlobal:get()
-    if self.type:isPrimitive() then return self.data[0] end
+    local original_proc = self.data:location()
+    self.data:moveto(L.CPU)
+
+    if self.type:isPrimitive() then
+        local return_val = self.data:ptr()[0]
+        self.data:moveto(original_proc)
+        return return_val
+    end
 
     local ndata = {}
-    local sdata = terralib.cast(&self.type:terraBaseType(), self.data)
+    local sdata = terralib.cast(&self.type:terraBaseType(), self.data:ptr())
     for i = 1, self.type.N do ndata[i] = sdata[i-1] end
 
+    self.data:moveto(original_proc)
     return L.NewVector(self.type:baseType(), ndata)
 end
 
+function LGlobal:DataPtr()
+    return self.data:ptr()
+end
 
 -------------------------------------------------------------------------------
 --[[ LVectors:                                                             ]]--

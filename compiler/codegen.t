@@ -46,6 +46,9 @@ end
 function Context:FieldPtr(field)
   return `[self.bran:getRuntimeFieldGerm(field)].data
 end
+function Context:GlobalPtr(global)
+  return `[self.bran:getRuntimeGlobalGerm(global)].data
+end
 function Context:SubsetPtr()
   return `[self.bran:getRuntimeSubsetGerm()]
 end
@@ -513,9 +516,8 @@ function ast.VectorLiteral:codegen (ctxt)
 end
 
 function ast.Global:codegen (ctxt)
-  local d = self.global.data
-  local s = symbol(&self.global.type:terraType())
-  return `@d
+  local data = ctxt:GlobalPtr(self.global)
+  return `@[&self.global.type:terraType()](data)
 end
 
 function ast.VectorIndex:codegen (ctxt)
