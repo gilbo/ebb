@@ -13,6 +13,10 @@ L = lisztlib
 local lisztlanguage = {
 	name        = "liszt", -- name for debugging
 	entrypoints = {"liszt_kernel", "liszt"},
+    -- including max and min as keywords is necessary to get
+    -- the parser to interpret them as operators.  This has the
+    -- unfortunate affect of not allowing anyone to use 'min' or 'max
+    -- as variable names within Liszt code.
 	keywords    = {"var", "kernel", "quote", "max", "min"},
 
 	expression = function(self, lexer)
