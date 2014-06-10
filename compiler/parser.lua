@@ -375,6 +375,22 @@ lang.statement = function (P)
 			return node_nf
 		end
 
+		--[[ insert statement ]]--
+	elseif P:nextif("insert") then
+		local insert   	= ast.InsertStatement:New(P)
+		local record   	= P:record()
+										  P:expect("into")
+		local relation	= P:exp()
+		insert.record, insert.relation = record, relation
+		return insert
+
+		--[[ delete statement ]]--
+	elseif P:nextif("delete") then
+		local delete = ast.DeleteStatement:New(P)
+		local row    = P:exp()
+		delete.row   = row
+		return delete
+
 		--[[ expression statement / assignment statement ]]--
 	else
 		local expr = P:exp()
@@ -396,6 +412,25 @@ lang.statement = function (P)
 			return e
 		end
 	end
+end
+
+lang.record = function (P)
+	local open_curly = P:expect('{')
+
+	local record = ast.RecordLiteral:New(P)
+	local names = {}
+	local exprs = {}
+	repeat
+		local field_name  = P:expect(P.name).value
+												P:expect('=')
+		local field_value	= P:exp()
+		table.insert(names, field_name)
+		table.insert(exprs, field_value)
+	until not P:nextif(',')
+	P:expectmatch('}','{', open_curly.linenumber)
+
+	record.names, record.exprs = names, exprs
+	return record
 end
 
 lang.block = function (P)

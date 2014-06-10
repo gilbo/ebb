@@ -138,7 +138,7 @@ local function check_write ()
 	end
 	sum_positions(F)
 
-	local avg = f4:get() / F._size
+	local avg = f4:get() / F:Size()
 	test.fuzzy_aeq(avg.data, {2, 4, 5, 6})
 end
 check_write()

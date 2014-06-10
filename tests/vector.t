@@ -123,5 +123,5 @@ local sum_position = liszt kernel(v : mesh.vertices)
 end
 sum_position(mesh.vertices)
 
-local f = s:get() / mesh.vertices._size
+local f = s:get() / mesh.vertices:Size()
 test.fuzzy_aeq(f.data, {5, 6, 6})

@@ -11,7 +11,7 @@ function shift(x,y,z)
 end
 
 function check(x,y,z)
-	for i = 0, M.vertices._size - 1 do
+	for i = 0, M.vertices:Size() - 1 do
 		local v = M.vertices.position:DataPtr()[i]
 		assert(v.d[0] == x)
 		assert(v.d[1] == y)

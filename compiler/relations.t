@@ -12,7 +12,7 @@ local PN = terralib.require "lib.pathname"
 
 local JSON = require('compiler.JSON')
 
-local DataArray = terralib.require('compiler.rawdata').DataArray
+local DynamicArray = terralib.require('compiler.rawdata').DynamicArray
 
 
 
@@ -49,22 +49,66 @@ function L.NewRelation(size, name)
 
   -- construct and return the relation
   local rel = setmetatable( {
-    _size      = size,
+    _concrete_size = size,
+    _logical_size  = size,
+
     _fields    = terralib.newlist(),
     _subsets   = terralib.newlist(),
     _macros    = terralib.newlist(),
     _functions = terralib.newlist(),
+
+    _incoming_refs = {}, -- used for walking reference graph
     _name      = name,
+    _typestate = {
+      --groupedby   = false, -- use _grouping entry's presence instead
+      fragmented  = false,
+      --has_subsets = false, -- use #_subsets
+    },
   },
   L.LRelation)
+
+  -- create a mask to track which rows are live.
+  rawset(rel, '_is_live_mask', L.LField.New(rel, '_is_live_mask', L.bool))
+  rel._is_live_mask:Load(true)
+
   return rel
 end
 
 function L.LRelation:Size()
-  return self._size
+  return self._logical_size
+end
+function L.LRelation:ConcreteSize()
+  return self._concrete_size
 end
 function L.LRelation:Name()
   return self._name
+end
+
+function L.LRelation:ResizeConcrete(new_size)
+  if self:isGrouped() then
+    error('cannot resize a grouped relation', 2)
+  end
+  if self:hasSubsets() then
+    error('cannot resize a relation with subsets', 2)
+  end
+  self._is_live_mask.array:resize(new_size)
+  for _,field in ipairs(self._fields) do
+    field.array:resize(new_size)
+  end
+  self._concrete_size = new_size
+end
+
+function L.LRelation:isFragmented()
+  return self._typestate.fragmented
+end
+function L.LRelation:isCompact()
+  return not self._typestate.fragmented
+end
+function L.LRelation:hasSubsets()
+  return #self._subsets ~= 0
+end
+function L.LRelation:isGrouped()
+  return self._grouping ~= nil
 end
 
 -- returns a record type
@@ -80,7 +124,7 @@ end
 -- prevent user from modifying the lua table
 function L.LRelation:__newindex(fieldname,value)
   error("Cannot assign members to LRelation object "..
-      "(did you mean to call self:New...?)", 2)
+      "(did you mean to call relation:New...?)", 2)
 end
 
 
@@ -127,9 +171,9 @@ function L.LRelation:NewFieldFunction (name, userfunc)
   return userfunc
 end
 
-
 function L.LRelation:GroupBy(name)
   local key_field = self[name]
+  local live_mask = self._is_live_mask
   if self._grouping then
     error("GroupBy(): Relation is already grouped", 2)
   elseif not L.is_field(key_field) then
@@ -139,9 +183,16 @@ function L.LRelation:GroupBy(name)
           "currently prohibited.", 2)
   end
 
-  -- WARNING: The sizing policy will break once we start supporting dead rows
-  local num_keys = key_field.type.relation:Size()
-  local num_rows = key_field:Size()
+  -- WARNING: The sizing policy will break with dead rows
+  if self:isFragmented() then
+    error("GroupBy(): Cannot group a fragmented relation", 2)
+  end
+  if key_field.type.relation:isFragmented() then
+    error("GroupBy(): Cannot group by a fragmented relation", 2)
+  end
+
+  local num_keys = key_field.type.relation:ConcreteSize() -- # possible keys
+  local num_rows = key_field:ConcreteSize()
   rawset(self,'_grouping', {
     key_field = key_field,
     index = L.LIndex.New{
@@ -169,7 +220,10 @@ function L.LRelation:GroupBy(name)
     end) -- key_field read
     assert(pos == num_rows)
     indexdata[num_keys] = pos
-  end) -- index write
+  end) -- indexdata write
+
+  -- record reference from this relation to the relation it's grouped by
+  key_field.type.relation._incoming_refs[self] = 'group'
 end
 
 function L.LRelation:MoveTo( proc )
@@ -177,6 +231,7 @@ function L.LRelation:MoveTo( proc )
     error('must specify valid processor to move to', 2)
   end
 
+  self._is_live_mask:MoveTo(proc)
   for _,f in ipairs(self._fields) do f:MoveTo(proc) end
   for _,s in ipairs(self._subsets) do s:MoveTo(proc) end
   if self._grouping then self._grouping.index:MoveTo(proc) end
@@ -184,12 +239,57 @@ end
 
 
 function L.LRelation:print()
-  print(self._name, "size: ".. tostring(self._size))
+  print(self._name, "size: ".. tostring(self:Size()),
+                    "concrete size: "..tostring(self:ConcreteSize()))
   for i,f in ipairs(self._fields) do
     f:print()
   end
 end
 
+
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+--[[ Insert / Delete                                                       ]]--
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+
+-- returns a useful error message 
+function L.LRelation:UnsafeToDelete()
+  if self:isGrouped() then
+    return 'Cannot delete from relation '..self:Name()..
+           ' because it\'s grouped'
+  end
+  if self:hasSubsets() then
+    return 'Cannot delete from relation '..self:Name()..
+           ' because it has subsets'
+  end
+  -- check whether this relation is being referred to by another relation
+  local msg = ''
+  for ref,kind in pairs(self._incoming_refs) do
+    if kind == 'row_field' then
+      msg = msg ..
+        '\n  it\'s referred to by a field: '..ref:FullName()
+    elseif kind == 'group' then
+      msg = msg ..
+        '\n  it\'s being used to group another relation: '..ref:Name()
+    end
+  end
+  if #msg > 0 then
+    return 'Cannot delete from relation '..self:Name()..' because'..msg
+  end
+end
+
+function L.LRelation:UnsafeToInsert(record_type)
+  -- duplicate above checks
+  local msg = self:UnsafeToDelete()
+  if msg then
+    return msg:gsub('delete from','insert into')
+  end
+
+  if record_type ~= self:StructuralType() then
+    return 'inserted record type does not match relation'
+  end
+end
 
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
@@ -210,7 +310,7 @@ function L.LIndex.New(params)
     _name  = params.name,
   }, L.LIndex)
 
-  index._array = DataArray.New {
+  index._array = DynamicArray.New {
     size = params.size or (#params.data),
     type = L.addr:terraType(),
     processor = params.processor or L.default_processor,
@@ -290,6 +390,12 @@ function L.LRelation:NewSubsetFromFunction (name, predicate)
           "for determining membership as the second argument", 2)
   end
 
+  -- SIMPLIFYING HACK FOR NOW
+  if self:isFragmented() then
+    error("NewSubsetFromFunction(): Cannot build subsets "..
+          "on a fragmented relation", 2)
+  end
+
   -- setup and install the subset object
   local subset = setmetatable({
     _owner    = self,
@@ -346,6 +452,7 @@ function L.LField.New(rel, name, typ)
   field.type    = typ
   field.name    = name
   field.owner   = rel
+  field:Allocate()
 
   return field
 end
@@ -357,13 +464,19 @@ function L.LField:FullName()
   return self.owner._name .. '.' .. self.name
 end
 function L.LField:Size()
-  return self.owner._size
+  return self.owner:Size()
+end
+function L.LField:ConcreteSize()
+  return self.owner:ConcreteSize()
 end
 function L.LField:Type()
   return self.type
 end
 function L.LField:DataPtr()
   return self.array:ptr()
+end
+function L.LField:Relation()
+  return self.owner
 end
 
 function L.LRelation:NewField (name, typ)  
@@ -386,21 +499,31 @@ function L.LRelation:NewField (name, typ)
           "relation as the 2nd argument", 2)
   end
 
+  if self:isFragmented() then
+    error("NewField() cannot be called on a fragmented relation.", 2)
+  end
+
+  -- create the field
   local field = L.LField.New(self, name, typ)
   rawset(self, name, field)
   self._fields:insert(field)
+
+  -- record reverse pointers for row-type field references
+  if typ:isRow() then
+    typ.relation._incoming_refs[field] = 'row_field'
+  end
+
   return field
 end
 
 -- TODO: Hide this function so it's not public
 function L.LField:Allocate()
   if not self.array then
-    self.array = DataArray.New{
-      size = self:Size(),
+    self.array = DynamicArray.New{
+      size = self:ConcreteSize(),
       type = self:Type():terraType()
     }
   end
-  self.array:allocate()
 end
 
 -- TODO: Hide this function so it's not public
@@ -482,8 +605,12 @@ local function convert_vec(vec_val, typ)
 end
 
 function L.LField:LoadFunction(lua_callback)
+  if self.owner:isFragmented() then
+    error('cannot load into fragmented relation', 2)
+  end
   self:Allocate()
 
+  -- NEEDS REVISION FOR CASE OF FRAGMENTATION
   self.array:write_ptr(function(dataptr)
     if self.type:isVector() then
       for i = 0, self:Size() - 1 do
@@ -499,6 +626,9 @@ function L.LField:LoadFunction(lua_callback)
 end
 
 function L.LField:LoadList(tbl)
+  if self.owner:isFragmented() then
+    error('cannot load into fragmented relation', 2)
+  end
   if type(tbl) ~= 'table' then
     error('bad type passed to LoadList().  Expecting a table', 2)
   end
@@ -514,11 +644,16 @@ end
 
 -- TODO: Hide this function so it's not public  (maybe not?)
 function L.LField:LoadFromMemory(mem)
+  if self.owner:isFragmented() then
+    error('cannot load into fragmented relation', 2)
+  end
   self:Allocate()
 
+  -- NEEDS REVISION FOR CASE OF FRAGMENTATION
+
   -- avoid extra copies by wrapping and using the standard copy
-  local wrapped = DataArray.Wrap{
-    size = self:Size(),
+  local wrapped = DynamicArray.Wrap{
+    size = self:ConcreteSize(),
     type = self.type:terraType(),
     data = mem,
     processor = L.CPU,
@@ -527,13 +662,16 @@ function L.LField:LoadFromMemory(mem)
 end
 
 function L.LField:LoadConstant(constant)
+  if self.owner:isFragmented() then
+    error('cannot load into fragmented relation', 2)
+  end
   self:Allocate()
   if self.type:isVector() then
     constant = convert_vec(constant, self.type)
   end
 
   self.array:write_ptr(function(dataptr)
-    for i = 0, self:Size() - 1 do
+    for i = 0, self:ConcreteSize() - 1 do
       dataptr[i] = constant
     end
   end) -- write_ptr
@@ -541,6 +679,9 @@ end
 
 -- generic dispatch function for loads
 function L.LField:Load(arg)
+  if self.owner:isFragmented() then
+    error('cannot load into fragmented relation', 2)
+  end
   -- load from lua callback
   if      type(arg) == 'function' then
     return self:LoadFunction(arg)
@@ -583,9 +724,12 @@ local function terraval_to_lua(val, typ)
 end
 
 function L.LField:DumpToList()
+  if self.owner:isFragmented() then
+    error('cannot dump from fragmented relation', 2)
+  end
   local arr = {}
   self.array:read_ptr(function(dataptr)
-    for i = 0, self:Size()-1 do
+    for i = 0, self:ConcreteSize()-1 do
       arr[i+1] = terraval_to_lua(dataptr[i], self.type)
     end
   end) -- read_ptr
@@ -596,8 +740,11 @@ end
 --      i:      which row we're outputting (starting at 0)
 --      val:    the value of this field for the ith row
 function L.LField:DumpFunction(lua_callback)
+  if self.owner:isFragmented() then
+    error('cannot dump from fragmented relation', 2)
+  end
   self.array:read_ptr(function(dataptr)
-    for i = 0, self:Size()-1 do
+    for i = 0, self:ConcreteSize()-1 do
       local val = terraval_to_lua(dataptr[i], self.type)
       lua_callback(i, val)
     end
@@ -609,29 +756,38 @@ function L.LField:print()
   if not self.array then
     print("...not initialized")
     return
+  else
+    print("  . == live  x == dead")
   end
 
-  local N = self.owner._size
+  local N = self.owner:ConcreteSize()
+  local livemask = self.owner._is_live_mask
+
+  livemask.array:read_ptr(function(liveptr)
   self.array:read_ptr(function(dataptr)
+    local alive
     if (self.type:isVector()) then
       for i = 0, N-1 do
+        if liveptr[i] then alive = ' .'
+        else                alive = ' x' end
         local s = ''
         for j = 0, self.type.N-1 do
           local t = tostring(dataptr[i].d[j]):gsub('ULL','')
           s = s .. t .. ' '
         end
-        print("", i, s)
+        print("", tostring(i) .. alive, s)
       end
     else
       for i = 0, N-1 do
+        if liveptr[i] then alive = ' .'
+        else                alive = ' x' end
         local t = tostring(dataptr[i]):gsub('ULL', '')
-        print("", i, t)
+        print("", tostring(i) .. alive, t)
       end
     end
-  end) -- read_ptr
+  end) -- dataptr
+  end) -- liveptr
 end
-
-
 
 
 -------------------------------------------------------------------------------
@@ -642,6 +798,9 @@ end
 
 
 function L.LField:getDLD()
+  if self.owner:isFragmented() then
+    error('cannot get DLD from fragmented relation', 2)
+  end
   if not self.type:isPrimitive() and not self.type:isVector() then
     error('Can only return DLDs for primitives and vectors, '..
         'not Row types or other types given to fields')
@@ -656,7 +815,7 @@ function L.LField:getDLD()
   local dld = DLD.new({
     type            = terra_type,
     type_n          = n,
-    logical_size    = self.owner:Size(),
+    logical_size    = self.owner:ConcreteSize(),
     data            = self:DataPtr(),
     compact         = true,
   })

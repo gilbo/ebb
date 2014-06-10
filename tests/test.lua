@@ -71,9 +71,13 @@ end
 
 -- This code is based off tests/coverage.t from the terra project
 function test.fail_function(fn, match)
-	local success, msg = pcall(fn)
+	local msg = ''
+	local function handler ( errobj )
+		msg = tostring(errobj) .. '\n' .. debug.traceback()
+	end
+	local success = xpcall(fn, handler)
 	if success then
-		error("Function did not produce the expected failure.", 2)
+		error("Expected function to fail, but it succeeded.", 2)
 	elseif not string.match(msg,match) then
 		error("Function did not produce the expected error: " .. msg, 2)
 	end

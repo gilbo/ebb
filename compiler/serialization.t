@@ -152,7 +152,7 @@ function L.LField:SaveToFile(filename)
         bit.lshift(bit.bor(bit.lshift(major_version, 8), minor_version), 16)
 
     -- compute some useful values...
-    local n_rows    = self.owner._size
+    local n_rows    = self:Size()
     local tsize     = terralib.sizeof(self.type:terraType())
     local type_str  = self.type:toString()
     local hint_str  = "" -- for future use?
@@ -417,7 +417,7 @@ local function json_serialize_relation(relation, params)
     local no_file_data  = params.no_file_data
 
     local json = {
-        size    = relation._size,
+        size    = relation:Size(),
         fields  = {},
     }
     -- serialize fields

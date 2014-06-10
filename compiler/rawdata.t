@@ -138,26 +138,26 @@ function DataArray:free()
   end
 end
 
-Raw.copy_count = 0
 -- copy as much data as possible given sizes
-function DataArray:copy(src)
+function DataArray:copy(src, size)
   local dst = self
   if not src._data or not dst._data then return end
 
-  local size = terralib.sizeof(src._type) * math.min(dst:size(), src:size())
+  -- adjust size to a byte_count
+  if not size then size = math.min(dst:size(), src:size()) end
+  local byte_size = size * terralib.sizeof(src._type)
 
   if     dst._processor == L.CPU and src._processor == L.CPU then
-    cpu_cpu_copy( dst, src, size )
+    cpu_cpu_copy( dst, src, byte_size )
   elseif dst._processor == L.CPU and src._processor == L.GPU then
-    cpu_gpu_copy( dst, src, size )
+    cpu_gpu_copy( dst, src, byte_size )
   elseif dst._processor == L.GPU and src._processor == L.CPU then
-    gpu_cpu_copy( dst, src, size )
+    gpu_cpu_copy( dst, src, byte_size )
   elseif dst._processor == L.GPU and src._processor == L.GPU then
-    gpu_gpu_copy( dst, src, size )
+    gpu_gpu_copy( dst, src, byte_size )
   else
     error('unsupported processor')
   end
-  Raw.copy_count = Raw.copy_count + 1
 end
 
 -- general purpose relocation/resizing of data
@@ -231,4 +231,94 @@ function DataArray:readwrite_ptr(f)
   f(self:ptr())
   self:moveto(loc)
 end
+
+
+
+-------------------------------------------------------------------------------
+--[[ DynamicArray                                                          ]]--
+-------------------------------------------------------------------------------
+
+
+
+
+
+local DynamicArray = {}
+DynamicArray.__index = DynamicArray
+Raw.DynamicArray = DynamicArray
+
+function DynamicArray.New(params)
+  if not params.type then error('must provide type') end
+
+  local data_array = DataArray.New(params)
+  local dyn = setmetatable({
+    _data_array = data_array,
+    _used_size  = params.size, -- different than the backing size
+  }, DynamicArray)
+  return dyn
+end
+
+function DynamicArray.Wrap(params)
+  if not params.size then error('must provide size') end
+  if not params.processor then error('must provide location') end
+  if not params.type then error('must provide type') end
+  if not params.data then error('must provide data to wrap') end
+
+  local da = DataArray.Wrap(params)
+  local dyn = setmetatable({
+    _data_array = da,
+    _used_size  = params.size
+  }, DynamicArray)
+  return dyn
+end
+
+function DynamicArray:ptr()
+  return self._data_array:ptr()
+end
+
+ -- These do not check allocation
+function DynamicArray:size()       return self._used_size              end
+function DynamicArray:location()   return self._data_array:location()  end
+
+function DynamicArray:free()
+  if not self._data_array then return end
+  self._data_array:free()
+  self._data_array = nil
+  self._used_size = 0
+end
+
+
+-- (SHOULD THIS RESIZE THINGS? DOESN'T NOW)
+function DynamicArray:copy(src)
+  local dst  = self
+  local size = math.min(dst:size(), src:size())
+  dst._data_array:copy(src._data_array, size)
+end
+
+
+function DynamicArray:moveto(new_location)
+  self._data_array:moveto(new_location)
+end
+function DynamicArray:resize(new_size)
+  -- Try to short circuit most resize requests
+  local old_actual_size = self._data_array:size()
+  if new_size > old_actual_size then
+    -- if we have to,
+    -- increase capacity by at least doubling space (policy choice)
+    local new_actual_size = math.max(new_size, old_actual_size*2)
+    self._data_array:resize(new_actual_size)
+  end
+
+  self._used_size = new_size
+end
+
+function DynamicArray:write_ptr(f)
+  self._data_array:write_ptr(f)
+end
+function DynamicArray:read_ptr(f)
+  self._data_array:read_ptr(f)
+end
+function DynamicArray:readwrite_ptr(f)
+  self._data_array:readwrite_ptr(f)
+end
+
 

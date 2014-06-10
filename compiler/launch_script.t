@@ -12,14 +12,23 @@
 local return_code = 0
 
 local function top_level_err_handler ( errobj )
-    print(errobj)
-    print(debug.traceback())
-    os.exit(1)
-    return false
+  local err = tostring(errobj)
+  if string.match(err, 'stack traceback:') then
+    print(err)
+  else
+    print(err .. '\n' .. debug.traceback())
+  end
+  os.exit(1)
 end
 
 script_filename = arg[1]
 
-xpcall( function ()
+success = xpcall( function ()
   assert(terralib.loadfile(script_filename))()
 end, top_level_err_handler)
+
+if success then
+  os.exit(0)
+else
+  os.exit(1)
+end

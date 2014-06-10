@@ -291,10 +291,7 @@ function ast.DeclStatement:check(ctxt)
         -- NOTE: this pseudo-constant propagation is strong b/c
         -- we don't allow re-assignment of row-type variables
         if exptyp:isRow() and decl.initializer.is_centered then
-            --print('name')
             ctxt:recordcenter(decl.name)
-            --print('hey')
-            --print(decl.linenumber..':'..decl.offset)
         end
     end
 
@@ -385,6 +382,69 @@ function ast.Break:check(ctxt)
         ctxt:error(self, "cannot have a break statement outside a loop")
     end
     return self:clone()
+end
+
+function ast.InsertStatement:check(ctxt)
+    local insert        = self:clone()
+
+    -- check relation
+    insert.relation     = self.relation:check(ctxt)
+    local reltyp        = insert.relation.node_type
+    local rel           = reltyp:isInternal() and reltyp.value
+    if not rel or not L.is_relation(rel) then
+        ctxt:error(self,"Expected a relation to insert into")
+        return insert
+    end
+    -- check record child
+    local record        = self.record:clone()
+    insert.record       = record
+    record.names        = self.record.names
+    record.exprs        = {}
+
+    local rectyp_proto  = {}
+    insert.fieldindex   = {}
+    for i,name in ipairs(self.record.names) do
+        local exp           = self.record.exprs[i]:check(ctxt)
+        local field         = rel[name]
+
+        if not field then
+            ctxt:error(self, 'cannot insert a value into field '..
+                rel:Name()..'.'..name..' because it is undefined')
+            return insert
+        end
+        -- coercion?
+        if field:Type() ~= exp.node_type then
+            exp = try_coerce(field:Type(), exp, ctxt)
+            if not exp then return insert end
+        end
+        if not exp or exp.node_type == L.error then return insert end
+
+        record.exprs[i]     = exp
+        rectyp_proto[name]  = exp.node_type
+        insert.fieldindex[field] = i
+    end
+
+    -- save record type
+    record.node_type    = L.record(rectyp_proto)
+    insert.record_type  = record.node_type
+    -- type compatibility with the relation will be checked
+    -- in the phase pass
+
+    return insert
+end
+
+function ast.DeleteStatement:check(ctxt)
+    local delete = self:clone()
+
+    delete.row   = self.row:check(ctxt)
+    local rowtyp = delete.row.node_type
+
+    if not rowtyp:isRow() or not delete.row.is_centered then
+        ctxt:error(self,"Only centered rows may be deleted")
+        return delete
+    end
+
+    return delete
 end
 
 function ast.CondBlock:check(ctxt)
@@ -626,6 +686,12 @@ function ast.Number:check(ctxt)
     return number
 end
 
+function ast.Bool:check(ctxt)
+    local boolnode     = self:clone()
+    boolnode.node_type = L.bool
+    return boolnode
+end
+
 function ast.VectorLiteral:check(ctxt)
     local veclit      = self:clone()
     veclit.elems      = {}
@@ -671,11 +737,30 @@ function ast.VectorLiteral:check(ctxt)
     return veclit
 end
 
-function ast.Bool:check(ctxt)
-    local boolnode     = self:clone()
-    boolnode.node_type = L.bool
-    return boolnode
-end
+--function ast.RecordLiteral:check(ctxt)
+--    local record      = self:clone()
+--    record.names      = self.names
+--    record.exprs      = {}
+--
+--    local rectyp_proto = {}
+--    local found_error = false
+--    for i,n in ipairs(self.names) do
+--        local e = self.exprs[i]
+--
+--        local exp           = e:check(ctxt)
+--        record.exprs[i]     = exp
+--        rectyp_proto[n]     = exp.node_type
+--        if exp.node_type == L.error then found_error = true end
+--    end
+--
+--    if found_error then
+--        record.node_type = L.error
+--    else
+--        record.node_type = L.record(rectyp_proto)
+--    end
+--    return record
+--end
+
 
 
 ----------------------------
