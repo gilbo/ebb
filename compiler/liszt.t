@@ -11,17 +11,21 @@ local semant = terralib.require "compiler.semant"
 L = lisztlib
 
 local lisztlanguage = {
-	name        = "liszt", -- name for debugging
-	entrypoints = {"liszt"},
-	keywords    = {
+    name        = "liszt", -- name for debugging
+    entrypoints = {"liszt"},
+    -- including max and min as keywords is necessary to get
+    -- the parser to interpret them as operators.  This has the
+    -- unfortunate affect of not allowing anyone to use 'min' or 'max
+    -- as variable names within Liszt code.
+    keywords    = {
         "kernel", "quote",
         "max", "min",
         "var",
         "insert", "into", "delete",
     },
 
-	expression = function(self, lexer)
-		local ast = P.Parse(lexer)
+    expression = function(self, lexer)
+        local ast = P.Parse(lexer)
         if ast.kind == 'LisztKernel' then
             return function (env_fn) 
                 local env = env_fn()
@@ -42,7 +46,7 @@ local lisztlanguage = {
                 return checked
             end
         end
-	end
+    end
 }
 
 return lisztlanguage

@@ -20,10 +20,11 @@ end
 
 
 local L = terralib.require "compiler.lisztlib"
+
 local specialization = terralib.require "compiler.specialization"
-local semant  = terralib.require "compiler.semant"
-local phase   = terralib.require "compiler.phase"
-local codegen = terralib.require "compiler.codegen"
+local semant         = terralib.require "compiler.semant"
+local phase          = terralib.require "compiler.phase"
+local codegen        = terralib.require "compiler.codegen"
 
 local DataArray = terralib.require('compiler.rawdata').DataArray
 
@@ -99,11 +100,16 @@ GermTemplate.__index = GermTemplate
 function GermTemplate.New()
   return setmetatable({
     fields    = terralib.newlist(),
+    globals   = terralib.newlist(),
   }, GermTemplate)
 end
 
 function GermTemplate:addField(name, typ)
   table.insert(self.fields, { field=name, type=&typ })
+end
+
+function GermTemplate:addGlobal(name, typ)
+  table.insert(self.globals, { field=name, type=&typ })
 end
 
 function GermTemplate:turnSubsetOn()
@@ -133,9 +139,15 @@ function GermTemplate:TerraStruct()
   end
   -- add fields
   for _,v in ipairs(self.fields) do table.insert(terrastruct.entries, v) end
+  -- add globals
+  for _,v in ipairs(self.globals) do table.insert(terrastruct.entries, v) end
 
   self.terrastruct = terrastruct
   return terrastruct
+end
+
+function GermTemplate:isGenerated()
+  return self.terrastruct ~= nil
 end
 
 
@@ -152,10 +164,11 @@ function L.NewKernel(kernel_ast, env)
     local specialized    = specialization.specialize(env, kernel_ast)
     new_kernel.typed_ast = semant.check(env, specialized)
 
-    local phase_results  = phase.phasePass(new_kernel.typed_ast)
-    new_kernel.field_use = phase_results.field_use
-    new_kernel.inserts   = phase_results.inserts
-    new_kernel.deletes   = phase_results.deletes
+    local phase_results   = phase.phasePass(new_kernel.typed_ast)
+    new_kernel.field_use  = phase_results.field_use
+    new_kernel.global_use = phase_results.global_use
+    new_kernel.inserts    = phase_results.inserts
+    new_kernel.deletes    = phase_results.deletes
 
     return new_kernel
 end
@@ -229,7 +242,9 @@ L.LKernel.__call  = function (kobj, relset)
     for field, _ in pairs(bran.field_ids) do
       bran:setCPUField(field)
     end
-
+    for globl, _ in pairs(bran.global_ids) do
+      bran:setCPUGlobal(globl)
+    end
     -- Load the germ data into the runtime location
     if bran.runtime_germ:location() == L.GPU then
       bran.runtime_germ:copy(bran.cpu_germ)
@@ -294,6 +309,12 @@ function Bran:generate()
     bran:getFieldId(field)
   end
   bran:getFieldId(bran.relation._is_live_mask)
+  -- fix the mapping for the globals before compiling the executable
+  bran.global_ids   = {}
+  bran.n_global_ids = 0
+  for globl, _ in pairs(kernel.global_use) do
+    bran:getGlobalId(globl)
+  end
   -- setup subsets?
   if bran.subset then bran.germ_template:turnSubsetOn() end
 
@@ -328,8 +349,8 @@ end
 function Bran:getFieldId(field)
   local id = self.field_ids[field]
   if not id then
-    if self.executable then
-      error('INTERNAL ERROR: cannot add new fields after compilation')
+    if self.germ_template:isGenerated() then
+      error('INTERNAL ERROR: cannot add new fields after struct gen')
     end
     id = 'field_'..tostring(self.n_field_ids)..'_'..field:Name()
     self.n_field_ids = self.n_field_ids+1
@@ -340,17 +361,39 @@ function Bran:getFieldId(field)
   return id
 end
 
+function Bran:getGlobalId(global)
+  local id = self.global_ids[global]
+  if not id then
+    if self.germ_template:isGenerated() then
+      error('INTERNAL ERROR: cannot add new globals after struct gen')
+    end
+    id = 'global_'..tostring(self.n_global_ids) -- no global names
+    self.n_global_ids = self.n_global_ids+1
+
+    self.global_ids[global] = id
+    self.germ_template:addGlobal(id, global.type:terraType())
+  end
+  return id
+end
+
 function Bran:setCPUField(field)
   local id = self:getFieldId(field)
   local dataptr = field:DataPtr()
+  self.cpu_germ:ptr()[id] = dataptr
+end
+function Bran:setCPUGlobal(global)
+  local id = self:getGlobalId(global)
+  local dataptr = global:DataPtr()
   self.cpu_germ:ptr()[id] = dataptr
 end
 function Bran:getRuntimeFieldPtr(field)
   local id = self:getFieldId(field)
   return `[self.runtime_germ:ptr()].[id]
 end
-
-
+function Bran:getRuntimeGlobalPtr(global)
+  local id = self:getGlobalId(global)
+  return `[self.runtime_germ:ptr()].[id]
+end
 
 function Bran:dynamicChecks()
   -- Check that the fields are resident on the correct processor
@@ -379,8 +422,6 @@ function Bran:dynamicChecks()
 end
 
 
-
-
 function Bran:generateInserts()
   local bran = self
   assert(bran.location == L.CPU)
@@ -391,6 +432,8 @@ function Bran:generateInserts()
     record_type = ast_nodes[1].record_type,
     n_inserted  = L.NewGlobal(L.addr, 0),
   }
+  -- register the global variable
+  bran:getGlobalId(bran.insert_data.n_inserted)
 
   -- prep all the fields we want to be able to write to.
   for _,field in ipairs(rel._fields) do
@@ -409,6 +452,8 @@ function Bran:generateDeletes()
     relation = rel,
     updated_size = L.NewGlobal(L.addr, 0)
   }
+  -- register global variable
+  bran:getGlobalId(bran.delete_data.updated_size)
 end
 
 

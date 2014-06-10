@@ -222,6 +222,14 @@ function Context:dumpFieldTypes()
   return res
 end
 
+function Context:dumpGlobalTypes()
+  local res = {}
+  for k, record in pairs(self.globals) do
+    res[k] = record.phase_type
+  end
+  return res
+end
+
 function Context:dumpInserts()
   local ret = {}
   for relation,record in pairs(self.inserts) do
@@ -258,14 +266,16 @@ function Phase.phasePass(kernel_ast)
     kernel_ast:phasePass(ctxt)
   diag:finishandabortiferrors("Errors during phasechecking Liszt", 1)
 
-  local field_use = ctxt:dumpFieldTypes()
-  local inserts   = ctxt:dumpInserts()
-  local deletes   = ctxt:dumpDeletes()
+  local field_use   = ctxt:dumpFieldTypes()
+  local global_use  = ctxt:dumpGlobalTypes()
+  local inserts     = ctxt:dumpInserts()
+  local deletes     = ctxt:dumpDeletes()
 
   return {
-    field_use = field_use,
-    inserts   = inserts,
-    deletes   = deletes,
+    field_use   = field_use,
+    global_use  = global_use,
+    inserts     = inserts,
+    deletes     = deletes,
   }
 end
 

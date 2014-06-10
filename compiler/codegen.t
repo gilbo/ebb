@@ -46,6 +46,9 @@ end
 function Context:FieldPtr(field)
   return self.bran:getRuntimeFieldPtr(field)
 end
+function Context:GlobalPtr(global)
+  return self.bran:getRuntimeGlobalPtr(global)
+end
 function Context:runtimeGerm()
   return self.bran.runtime_germ:ptr()
 end
@@ -59,9 +62,7 @@ end
 function Context:deleteSizeVar()
   local dd = self.bran.delete_data
   if dd then
-    -- codegen a global access
-    local dataptr = dd.updated_size.data
-    return `@dataptr
+    return `@[self:GlobalPtr(dd.updated_size)]
   end
 end
 function Context:getInsertIndex()
@@ -69,7 +70,7 @@ function Context:getInsertIndex()
 end
 function Context:incrementInsertIndex()
   local insert_index = self:getInsertIndex()
-  local counter = self.bran.insert_data.n_inserted.data
+  local counter = self:GlobalPtr(self.bran.insert_data.n_inserted)
 
   return quote
     insert_index = insert_index + 1
@@ -474,9 +475,8 @@ function ast.FieldWrite:codegen (ctxt)
 end
 
 function ast.FieldAccess:codegen (ctxt)
-  local field = self.field
   local index = self.row:codegen(ctxt)
-  local dataptr = ctxt:FieldPtr(field)
+  local dataptr = ctxt:FieldPtr(self.field)
   return `@(dataptr + [index])
 end
 
@@ -538,9 +538,8 @@ function ast.VectorLiteral:codegen (ctxt)
 end
 
 function ast.Global:codegen (ctxt)
-  local d = self.global.data
-  local s = symbol(&self.global.type:terraType())
-  return `@d
+  local dataptr = ctxt:GlobalPtr(self.global)
+  return `@dataptr
 end
 
 function ast.VectorIndex:codegen (ctxt)

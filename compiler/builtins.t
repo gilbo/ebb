@@ -18,7 +18,7 @@ function Builtin.new(luafunc)
     local check = function(ast, ctxt)
         error('unimplemented builtin function typechecking')
     end
-    local codegen = function(ast, env)
+    local codegen = function(ast, ctxt)
         error('unimplemented builtin function codegen')
     end
     return setmetatable({check=check, codegen=codegen, luafunc = luafunc},
@@ -46,8 +46,8 @@ function B.id.check(ast, ctxt)
     return L.addr
 end
 
-function B.id.codegen(ast, env)
-    return ast.params[1]:codegen(env)
+function B.id.codegen(ast, ctxt)
+    return ast.params[1]:codegen(ctxt)
 end
 
 
@@ -82,8 +82,8 @@ function B.UNSAFE_ROW.check(ast, ctxt)
 
     return ret_type
 end
-function B.UNSAFE_ROW.codegen(ast, env)
-    return ast.params[1]:codegen(env)
+function B.UNSAFE_ROW.codegen(ast, ctxt)
+    return ast.params[1]:codegen(ctxt)
 end
 
 
@@ -156,10 +156,10 @@ function B.print.check(ast, ctxt)
     end
 end
 
-local function printOne(env,output)
+local function printOne(ctxt,output)
     local lt   = output.node_type
     local tt   = lt:terraType()
-    local code = output:codegen(env)
+    local code = output:codegen(ctxt)
     if lt:isVector() then
         local printSpec = "{"
         local sym = symbol()
@@ -195,11 +195,11 @@ local function printOne(env,output)
         assert(false and "printed object should always be number, bool, or vector")
     end
 end
-function B.print.codegen(ast, env)
+function B.print.codegen(ast, ctxt)
     local output = ast.params[1]
     local stmts = {}
     for i,output in ipairs(ast.params) do
-        table.insert(stmts, printOne(env,output))
+        table.insert(stmts, printOne(ctxt,output))
         local t = ast.params[i+1] and " " or "\n"
         table.insert(stmts,`C.printf(t))
     end
@@ -253,14 +253,14 @@ function B.dot.check(ast, ctxt)
     return L.error
 end
 
-function B.dot.codegen(ast, env)
+function B.dot.codegen(ast, ctxt)
     local args = ast.params
 
     local N     = args[1].node_type.N
     local lhtyp = args[1].node_type:terraType()
     local rhtyp = args[2].node_type:terraType()
-    local lhe   = args[1]:codegen(env)
-    local rhe   = args[2]:codegen(env)
+    local lhe   = args[1]:codegen(ctxt)
+    local rhe   = args[2]:codegen(ctxt)
 
     local lhval = symbol(lhtyp)
     local rhval = symbol(rhtyp)
@@ -332,13 +332,13 @@ function B.cross.check(ast, ctxt)
     return L.error
 end
 
-function B.cross.codegen(ast, env)
+function B.cross.codegen(ast, ctxt)
     local args = ast.params
 
     local lhtyp = args[1].node_type:terraType()
     local rhtyp = args[2].node_type:terraType()
-    local lhe   = args[1]:codegen(env)
-    local rhe   = args[2]:codegen(env)
+    local lhe   = args[1]:codegen(ctxt)
+    local rhe   = args[2]:codegen(ctxt)
 
     local typ = T.type_meet(args[1].node_type, args[2].node_type)
 
@@ -381,12 +381,12 @@ function B.length.check(ast, ctxt)
     return L.float
 end
 
-function B.length.codegen(ast, env)
+function B.length.codegen(ast, ctxt)
     local args = ast.params
 
     local N      = args[1].node_type.N
     local typ    = args[1].node_type:terraType()
-    local exp    = args[1]:codegen(env)
+    local exp    = args[1]:codegen(ctxt)
 
     local vec    = symbol(typ)
 
@@ -429,12 +429,12 @@ function B.all.check(ast, ctxt)
     return L.bool
 end
 
-function B.all.codegen(ast, env)
+function B.all.codegen(ast, ctxt)
     local args = ast.params
 
     local N      = args[1].node_type.N
     local typ    = args[1].node_type:terraType()
-    local exp    = args[1]:codegen(env)
+    local exp    = args[1]:codegen(ctxt)
 
     local val    = symbol(typ)
 
@@ -477,12 +477,12 @@ function B.any.check(ast, ctxt)
     return L.bool
 end
 
-function B.any.codegen(ast, env)
+function B.any.codegen(ast, ctxt)
     local args   = ast.params
 
     local N      = args[1].node_type.N
     local typ    = args[1].node_type:terraType()
-    local exp    = args[1]:codegen(env)
+    local exp    = args[1]:codegen(ctxt)
 
     local val    = symbol(typ)
 
@@ -542,12 +542,12 @@ local function TerraCheck(func)
 end
 
 local function TerraCodegen(func)
-    return function (ast, env)
+    return function (ast, ctxt)
         local args = ast.params
         local argsyms = map(GetTypedSymbol, args)
         local init_params = quote end
         for i = 1, #args do
-            local code = args[i]:codegen(env)
+            local code = args[i]:codegen(ctxt)
             init_params = quote
                 init_params
                 var [argsyms[i]] = code
