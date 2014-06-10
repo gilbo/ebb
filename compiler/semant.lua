@@ -1111,7 +1111,9 @@ end
 
 
 function ast.FieldAccess:check(ctxt)
-    return self:clone()
+    local fa = self:clone()
+    fa.row = self.row:check(ctxt)
+    return fa
 end
 
 function ast.LuaObject:check(ctxt)
@@ -1139,6 +1141,7 @@ function ast.Where:check(ctxt)
     end
     local w     = self:clone()
     w.relation  = field.owner
+    w.field     = self.field -- for safety/completeness
     w.key       = self.key
     w.node_type = L.query(w.relation,{})
     return w

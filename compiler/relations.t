@@ -819,7 +819,6 @@ function L.LField:getDLD()
     data            = self:DataPtr(),
     compact         = true,
   })
-
   return dld
 end
 

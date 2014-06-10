@@ -114,14 +114,13 @@ local position_attr_id = 0
 local color_attr_id = 1
 
 --for k,v in pairs(getmetatable(triangles)) do print(k,v) end
-triangles:CreateGClef({
+triangles:CreateGClef {
     triangle = { 'v0', 'v1', 'v2' },
     attr_ids = {
         pos   = position_attr_id,
         color = color_attr_id,
     }
-})
-
+}
 
 -----------------------------------------------------------------------------
 --[[                             INIT SHADER                             ]]--
