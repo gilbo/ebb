@@ -145,8 +145,8 @@ print(originWithGhosts[1],originWithGhosts[2])
 local grid = Grid.NewGrid2d{size           = {grid_options.xnum + 2*bnum,
                                               grid_options.ynum + 2*bnum},
                             origin         = originWithGhosts,
-                            width          = grid_options.width + 2*bw,
-                            height         = grid_options.height + 2*bw,
+                            width          = {grid_options.width + 2*bw,
+                                              grid_options.height + 2*bw},
                             boundary_depth = {bnum, bnum} }
 
 -- Conserved variables
@@ -614,8 +614,8 @@ end
 -- WARNING_START For non-uniform grids, the metrics used below are not 
 -- appropriate and should be changed to reflect those expressed in the 
 -- Python prototype code
-local c_dx = L.NewGlobal(L.double, grid:cellWidth())
-local c_dy = L.NewGlobal(L.double, grid:cellHeight())
+local c_dx = L.NewGlobal(L.double, grid:xCellWidth())
+local c_dy = L.NewGlobal(L.double, grid:yCellWidth())
 -- WARNING_END
 Flow.AddInviscidUpdateUsingFluxX = liszt kernel(c : grid.cells)
     if c.in_interior then
@@ -1545,7 +1545,7 @@ Particles.averageTemperature= L.NewGlobal(L.double, 0.0)
 Flow.IntegrateQuantities = liszt kernel(c : grid.cells)
     if c.in_interior then
         -- WARNING: update cellArea computation for non-uniform grids
-        --var cellArea = c.cellWidth() * c.cellHeight()
+        --var cellArea = c.xCellWidth() * c.yCellWidth()
         var cellArea = c_dx * c_dy
         Flow.numberOfInteriorCells += 1
         Flow.areaInterior += cellArea

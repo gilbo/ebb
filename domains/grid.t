@@ -51,14 +51,18 @@ local float_to_addr_mod = L.NewMacro(function(x, m)
     end
 end)
 
+local function copy_table(tbl)
+    local cpy = {}
+    for k,v in pairs(tbl) do cpy[k] = v end
+    return cpy
+end
+
 
 -- There are N x M cells for an NxM grid
 local function setup2dCells(grid)
     local xsize, ysize      = grid:xSize(), grid:ySize()
-    local cell_width        = grid:cellWidth()
-    local cell_height       = grid:cellHeight()
-    local xorigin           = grid:xOrigin()
-    local yorigin           = grid:yOrigin()
+    local xcwidth, ycwidth  = grid:xCellWidth(), grid:yCellWidth()
+    local xorigin, yorigin  = grid:xOrigin(), grid:yOrigin()
     local xn_bd             = grid:xBoundaryDepth()
     local yn_bd             = grid:yBoundaryDepth()
 
@@ -98,15 +102,16 @@ local function setup2dCells(grid)
 
     grid.cells:NewFieldMacro('center', L.NewMacro(function(c)
         return liszt ` L.vec2f({
-            xorigin + cell_width  * (L.double(c.xid) + 0.5),
-            yorigin + cell_height * (L.double(c.yid) + 0.5) })
+            xorigin + xcwidth * (L.double(c.xid) + 0.5),
+            yorigin + ycwidth * (L.double(c.yid) + 0.5)
+        })
     end))
 
     grid.cell_locate = L.NewMacro(function(xy_vec)
         return liszt quote
             var xy = xy_vec -- prevent duplication
-            var xval = (xy[0] - xorigin)/cell_width
-            var yval = (xy[1] - yorigin)/cell_height
+            var xval = (xy[0] - xorigin)/xcwidth
+            var yval = (xy[1] - yorigin)/ycwidth
             var xidx = L.addr(clamp_impl(L.int(xval), 0, xsize-1))
             var yidx = L.addr(clamp_impl(L.int(yval), 0, ysize-1))
         in
@@ -140,15 +145,13 @@ end
 -- There are (N+1) x (M+1) dual cells for an NxM grid
 -- unless perdiodicity...
 local function setup2dDualCells(grid)
-    local xpd, ypd      = grid:xUsePeriodic(), grid:yUsePeriodic()
-    local xsize         = grid:xSize() + (xpd and 0 or 1)
-    local ysize         = grid:ySize() + (ypd and 0 or 1)
-    local cell_width    = grid:cellWidth()
-    local cell_height   = grid:cellHeight()
-    local xorigin       = grid:xOrigin()
-    local yorigin       = grid:yOrigin()
-    local xn_bd         = grid:xBoundaryDepth()
-    local yn_bd         = grid:yBoundaryDepth()
+    local xpd, ypd          = grid:xUsePeriodic(), grid:yUsePeriodic()
+    local xsize             = grid:xSize() + (xpd and 0 or 1)
+    local ysize             = grid:ySize() + (ypd and 0 or 1)
+    local xcwidth, ycwidth  = grid:xCellWidth(), grid:yCellWidth()
+    local xorigin, yorigin  = grid:xOrigin(), grid:yOrigin()
+    local xn_bd             = grid:xBoundaryDepth()
+    local yn_bd             = grid:yBoundaryDepth()
 
     -- relative offset
     grid.dual_cells:NewFieldMacro('__apply_macro',
@@ -173,8 +176,8 @@ local function setup2dDualCells(grid)
     if not xpd and not ypd then
         grid.dual_cells:NewFieldMacro('center', L.NewMacro(function(dc)
             return liszt `L.vec2f({
-                xorigin +  cell_width * (L.double(dc.xid)),
-                yorigin + cell_height * (L.double(dc.yid))
+                xorigin + xcwidth * (L.double(dc.xid)),
+                yorigin + ycwidth * (L.double(dc.yid))
             })
         end))
     end
@@ -182,8 +185,8 @@ local function setup2dDualCells(grid)
     grid.dual_locate = L.NewMacro(function(xy_vec)
         return liszt quote
             var xy = xy_vec -- prevent duplication
-            var xval = (xy[0] - xorigin)/cell_width + 0.5
-            var yval = (xy[1] - yorigin)/cell_height + 0.5
+            var xval = (xy[0] - xorigin)/xcwidth + 0.5
+            var yval = (xy[1] - yorigin)/ycwidth + 0.5
             var xidx : L.addr
             var yidx : L.addr
             if xpd then
@@ -205,15 +208,13 @@ end
 -- There are (N+1) x (M+1) vertices for an NxM grid
 -- unless perdiodicity...
 local function setup2dVertices(grid)
-    local xpd, ypd      = grid:xUsePeriodic(), grid:yUsePeriodic()
-    local xsize         = grid:xSize() + (xpd and 0 or 1)
-    local ysize         = grid:ySize() + (ypd and 0 or 1)
-    local cell_width    = grid:cellWidth()
-    local cell_height   = grid:cellHeight()
-    local xorigin       = grid:xOrigin()
-    local yorigin       = grid:yOrigin()
-    local xn_bd         = grid:xBoundaryDepth()
-    local yn_bd         = grid:yBoundaryDepth()
+    local xpd, ypd          = grid:xUsePeriodic(), grid:yUsePeriodic()
+    local xsize             = grid:xSize() + (xpd and 0 or 1)
+    local ysize             = grid:ySize() + (ypd and 0 or 1)
+    local xcwidth, ycwidth  = grid:xCellWidth(), grid:yCellWidth()
+    local xorigin, yorigin  = grid:xOrigin(), grid:yOrigin()
+    local xn_bd             = grid:xBoundaryDepth()
+    local yn_bd             = grid:yBoundaryDepth()
 
     -- relative offset
     grid.vertices:NewFieldMacro('__apply_macro',
@@ -267,8 +268,7 @@ NewGrid2d should be called with named parameters:
 Grid.NewGrid2d{
   size          = {#,#},            -- number of cells in x and y
   origin        = {#,#},            -- x,y coordinates of grid origin
-  width         = #,                -- width of grid coordinate system
-  height        = #,                -- height of grid coordinate system
+  width         = {#,#},            -- x,y width of grid in coordinate system
   (optional)
   boundary_depth    = {#,#},        -- depth of boundary region (default value: {1,1})
   periodic_boundary = {bool,bool},  -- use periodic boundary conditions (default value: {false,false})
@@ -282,7 +282,7 @@ Grid.NewGrid2d{
             type(params.origin) == 'table' and
             is_num(params.size[1]) and is_num(params.size[2]) and
             is_num(params.origin[1]) and is_num(params.origin[2]) and
-            is_num(params.width) and is_num(params.height)
+            is_num(params.width[1]) and is_num(params.width[2])
         if check and params.boundary_depth then
             check = check and
                     type(params.boundary_depth) == 'table' and
@@ -322,11 +322,11 @@ Grid.NewGrid2d{
     local nVerts        = nDualCells
 
     local grid = setmetatable({
-        _n_xy       = params.size,
-        _origin     = params.origin,
-        _dims       = {params.width, params.height},
-        _bd_depth   = params.boundary_depth,
-        _periodic   = params.periodic_boundary,
+        _n_xy       = copy_table(params.size),
+        _origin     = copy_table(params.origin),
+        _dims       = copy_table(params.width),
+        _bd_depth   = copy_table(params.boundary_depth),
+        _periodic   = copy_table(params.periodic_boundary),
         -- relations
         cells       = L.NewRelation(nCells, 'cells'),
         dual_cells  = L.NewRelation(nDualCells, 'dual_cells'),
@@ -345,14 +345,14 @@ function Grid2d:xSize()             return self._n_xy[1]            end
 function Grid2d:ySize()             return self._n_xy[2]            end
 function Grid2d:xOrigin()           return self._origin[1]          end
 function Grid2d:yOrigin()           return self._origin[2]          end
-function Grid2d:width()             return self._dims[1]            end
-function Grid2d:height()            return self._dims[2]            end
+function Grid2d:xWidth()            return self._dims[1]            end
+function Grid2d:yWidth()            return self._dims[2]            end
 function Grid2d:xBoundaryDepth()    return self._bd_depth[1]        end
 function Grid2d:yBoundaryDepth()    return self._bd_depth[2]        end
 function Grid2d:xUsePeriodic()      return self._periodic[1]        end
 function Grid2d:yUsePeriodic()      return self._periodic[2]        end
-function Grid2d:cellWidth()   return self:width() / (1.0 * self:xSize())  end
-function Grid2d:cellHeight()  return self:height() / (1.0 * self:ySize()) end
+function Grid2d:xCellWidth()  return self:xWidth() / (1.0 * self:xSize()) end
+function Grid2d:yCellWidth()  return self:yWidth() / (1.0 * self:ySize()) end
 
 
 -- There are N x M x L cells for an NxMxL grid
@@ -695,11 +695,11 @@ Grid.NewGrid3d{
     local nVerts        = nDualCells
 
     local grid = setmetatable({
-        _n_xyz      = params.size,
-        _origin     = params.origin,
-        _dims       = params.width,
-        _bd_depth   = params.boundary_depth,
-        _periodic   = params.periodic_boundary,
+        _n_xyz      = copy_table(params.size),
+        _origin     = copy_table(params.origin),
+        _dims       = copy_table(params.width),
+        _bd_depth   = copy_table(params.boundary_depth),
+        _periodic   = copy_table(params.periodic_boundary),
         -- relations
         cells       = L.NewRelation(nCells, 'cells'),
         dual_cells  = L.NewRelation(nDualCells, 'dual_cells'),

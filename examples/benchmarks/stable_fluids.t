@@ -31,8 +31,7 @@ end
 local grid = Grid.NewGrid2d {
     size   = {N, N},
     origin = origin,
-    width  = N,
-    height = N,
+    width  = {N, N},
     periodic_boundary = period,
 }
 
@@ -130,8 +129,8 @@ end
 --[[                             ADVECT                                  ]]--
 -----------------------------------------------------------------------------
 
-local cell_w = grid:cellWidth()
-local cell_h = grid:cellHeight()
+local cell_w = grid:xCellWidth()
+local cell_h = grid:yCellWidth()
 
 local advect_dt = L.NewGlobal(L.float, 0.0)
 grid.cells:NewField('lookup_pos', L.vec2f):Load(L.NewVector(L.float, {0,0}))
@@ -139,9 +138,9 @@ grid.cells:NewField('lookup_from', grid.dual_cells):Load(0)
 
 local epsilon = 1.0e-5 * math.max(cell_w, cell_h)
 local min_x = grid:xOrigin() + cell_w/2 + epsilon
-local max_x = grid:xOrigin() + grid:width() - cell_w/2 - epsilon
+local max_x = grid:xOrigin() + grid:xWidth() - cell_w/2 - epsilon
 local min_y = grid:yOrigin() + cell_h/2 + epsilon
-local max_y = grid:yOrigin() + grid:height() - cell_h/2 - epsilon
+local max_y = grid:yOrigin() + grid:yWidth() - cell_h/2 - epsilon
 local snap_to_grid = liszt function(p)
     var pxy : L.vec2f = p
     if      pxy[0] < min_x then pxy[0] = L.float(min_x)
@@ -152,11 +151,11 @@ local snap_to_grid = liszt function(p)
 end
 if PERIODIC then
     min_x = grid:xOrigin()
-    max_x = grid:xOrigin() + grid:width()
+    max_x = grid:xOrigin() + grid:xWidth()
     min_y = grid:yOrigin()
-    max_y = grid:yOrigin() + grid:height()
-    local d_x = grid:width()
-    local d_y = grid:height()
+    max_y = grid:yOrigin() + grid:yWidth()
+    local d_x = grid:xWidth()
+    local d_y = grid:yWidth()
     local wrap_func = liszt function(val, lower, upper)
         var diff    = upper-lower
         var temp    = val - lower
