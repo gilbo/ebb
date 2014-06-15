@@ -362,7 +362,7 @@ function ast.Name:specialize(ctxt)
 
   -- Otherwise, does the name exist in the lua scope?
   local luav = ctxt:lua()[self.name]
-  if luav then
+  if luav ~= nil then
     -- convert the lua value into an ast node
     local ast = luav_to_ast(luav, self)
     if ast then

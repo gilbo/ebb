@@ -21,15 +21,26 @@ cmath.srand(cmath.time(nil));
 local vdb   = L.require 'lib.vdb'
 
 local N = 150
+local PERIODIC = true
+local period = {false,false}
+local origin = {-N/2.0, -1.0}
+if PERIODIC then
+    period = {true,true}
+    origin = {-N/2, -N/2}
+end
 local grid = Grid.NewGrid2d {
     size   = {N, N},
-    origin = {-N/2.0, -1.0},
+    origin = origin,
     width  = N,
     height = N,
+    periodic_boundary = period,
 }
 
+local XORIGIN       = origin[1]
+local YORIGIN       = origin[2]
 local viscosity     = 0.08
 local dt            = L.NewGlobal(L.float, 0.01)
+
 
 
 grid.cells:NewField('velocity', L.vec2f)
@@ -83,11 +94,9 @@ local diffuse_edge     = L.NewGlobal(L.float, 0.0)
 
 -- One Jacobi-Iteration
 local diffuse_lin_solve_jacobi_step = liszt kernel (c : grid.cells)
-if not c.in_boundary then
     var edge_sum = diffuse_edge * ( c(-1,0).velocity + c(1,0).velocity +
                                     c(0,-1).velocity + c(0,1).velocity )
     c.vel_shadow = (c.velocity_prev - edge_sum) / diffuse_diagonal
-end
 end
 
 -- Should be called with velocity and velocity_prev both set to
@@ -96,11 +105,14 @@ local function diffuse_lin_solve(edge, diagonal)
     diffuse_diagonal:set(diagonal)
     diffuse_edge:set(edge)
 
+    local domain = grid.cells.interior
+    if PERIODIC then domain = grid.cells end
+
     -- do 20 Jacobi iterations
     for i=1,20 do
-        diffuse_lin_solve_jacobi_step(grid.cells)
+        diffuse_lin_solve_jacobi_step(domain)
         grid.cells:Swap('velocity','vel_shadow')
-        vel_neumann_bnd(grid.cells)
+        if not PERIODIC then vel_neumann_bnd(grid.cells) end
     end
 end
 
@@ -138,6 +150,29 @@ local snap_to_grid = liszt function(p)
     elseif  pxy[1] > max_y then pxy[1] = L.float(max_y) end
     return  pxy
 end
+if PERIODIC then
+    min_x = grid:xOrigin()
+    max_x = grid:xOrigin() + grid:width()
+    min_y = grid:yOrigin()
+    max_y = grid:yOrigin() + grid:height()
+    local d_x = grid:width()
+    local d_y = grid:height()
+    local wrap_func = liszt function(val, lower, upper)
+        var diff    = upper-lower
+        var temp    = val - lower
+        temp        = L.float(cmath.fmod(temp, diff))
+        if temp < 0 then
+            temp    = temp+diff
+        end
+        return temp + lower
+    end
+    snap_to_grid = liszt function(p)
+        var pxy : L.vec2f = p
+        pxy[0] = L.float(wrap_func(pxy[0], min_x, max_x))
+        pxy[1] = L.float(wrap_func(pxy[1], min_y, max_y))
+        return pxy
+    end
+end
 
 local advect_where_from = liszt kernel(c : grid.cells)
     var offset      = - c.velocity_prev
@@ -150,12 +185,12 @@ local advect_point_locate = liszt kernel(c : grid.cells)
 end
 
 local advect_interpolate_velocity = liszt kernel(c : grid.cells)
-if not c.in_boundary then
+    -- lookup cell (this is the bottom left corner)
     var dc      = c.lookup_from
-    var frac    = c.lookup_pos - dc.center
+
     -- figure out fractional position in the dual cell in range [0.0, 1.0]
-    var xfrac   = frac[0] / cell_w + 0.5 
-    var yfrac   = frac[1] / cell_h + 0.5
+    var xfrac   = cmath.fmod((c.lookup_pos[0] - XORIGIN)/cell_w + 0.5, 1.0)
+    var yfrac   = cmath.fmod((c.lookup_pos[1] - YORIGIN)/cell_h + 0.5, 1.0)
 
     -- interpolation constants
     var x1      = L.float(xfrac)
@@ -163,13 +198,12 @@ if not c.in_boundary then
     var x0      = L.float(1.0 - xfrac)
     var y0      = L.float(1.0 - yfrac)
 
-    -- lookup cell
-    var lc = dc.vertex.cell(-1,-1)
+    -- velocity interpolation
+    var lc      = dc.vertex.cell(-1,-1)
     c.velocity  = x0 * y0 * lc(0,0).velocity_prev
                 + x1 * y0 * lc(1,0).velocity_prev
                 + x0 * y1 * lc(0,1).velocity_prev
                 + x1 * y1 * lc(1,1).velocity_prev
-end
 end
 
 local function advect_velocity(grid)
@@ -179,9 +213,12 @@ local function advect_velocity(grid)
     grid.cells:Swap('velocity','velocity_prev')
     advect_where_from(grid.cells)
     advect_point_locate(grid.cells)
-    advect_interpolate_velocity(grid.cells)
-
-    vel_neumann_bnd(grid.cells)
+    if PERIODIC then
+        advect_interpolate_velocity(grid.cells)
+    else
+        advect_interpolate_velocity(grid.cells.interior)
+        vel_neumann_bnd(grid.cells)
+    end
 end
 
 -----------------------------------------------------------------------------
@@ -195,11 +232,9 @@ grid.cells:NewField('p', L.float):Load(0)
 grid.cells:NewField('p_temp', L.float):Load(0)
 
 local project_lin_solve_jacobi_step = liszt kernel (c : grid.cells)
-    if not c.in_boundary then
     var edge_sum = project_edge * ( c(-1,0).p + c(1,0).p +
                                     c(0,-1).p + c(0,1).p )
     c.p_temp = (c.divergence - edge_sum) / project_diagonal
-end
 end
 
 -- Neumann condition
@@ -229,48 +264,56 @@ local function project_lin_solve(edge, diagonal)
     project_diagonal:set(diagonal)
     project_edge:set(edge)
 
+    local domain = grid.cells.interior
+    if PERIODIC then domain = grid.cells end
+
     -- do 20 Jacobi iterations
     for i=1,20 do
-        project_lin_solve_jacobi_step(grid.cells)
+        project_lin_solve_jacobi_step(domain)
         grid.cells:Swap('p','p_temp')
-        pressure_neumann_bnd(grid.cells)
+        if not PERIODIC then
+            pressure_neumann_bnd(grid.cells)
+        end
     end
 end
 
 local compute_divergence = liszt kernel (c : grid.cells)
-    if c.in_boundary then
-        c.divergence = 0
-    else
     -- why the factor of N?
     var vx_dx = c(1,0).velocity[0] - c(-1,0).velocity[0]
     var vy_dy = c(0,1).velocity[1] - c(0,-1).velocity[1]
     c.divergence = L.float(-(0.5/N)*(vx_dx + vy_dy))
 end
-end
 
 local compute_projection = liszt kernel (c : grid.cells)
-if not c.in_boundary then
     var grad = L.vec2f(0.5 * N * { c(1,0).p - c(-1,0).p,
                                    c(0,1).p - c(0,-1).p })
     c.velocity = c.velocity_prev - grad
-end
 end
 
 local function project_velocity(grid)
     local diagonal          =  4.0
     local edge              = -1.0
 
-    compute_divergence(grid.cells)
-    grid.cells:Swap('divergence','p') -- move divergence into p to do bnd
-    pressure_neumann_bnd(grid.cells)
-    grid.cells:Copy{from='p',to='divergence'} -- then copy it back
+    local domain = grid.cells.interior
+    if PERIODIC then domain = grid.cells end
+
+    compute_divergence(domain)
+    if PERIODIC then
+        grid.cells:Copy{from='divergence', to='p'}
+    else
+        grid.cells:Swap('divergence','p') -- move divergence into p to do bnd
+        pressure_neumann_bnd(grid.cells)
+        grid.cells:Copy{from='p',to='divergence'} -- then copy it back
+    end
 
     project_lin_solve(edge, diagonal)
 
     grid.cells:Swap('velocity','velocity_prev')
-    compute_projection(grid.cells)
+    compute_projection(domain)
 
-    vel_neumann_bnd(grid.cells)
+    if not PERIODIC then
+        vel_neumann_bnd(grid.cells)
+    end
 end
 
 
@@ -278,19 +321,23 @@ end
 --[[                            PARTICLES                                ]]--
 -----------------------------------------------------------------------------
 
-local N_particles = (N-1)*(N-1)
+local PARTICLE_LEN = N - (PERIODIC and 0 or 1)
+local N_particles = PARTICLE_LEN * PARTICLE_LEN
 local particles = L.NewRelation(N_particles, 'particles')
 
 particles:NewField('dual_cell', grid.dual_cells):Load(function(i)
-    local xid = math.floor(i%(N-1))
-    local yid = math.floor(i/(N-1))
-    return (xid+1) + (N+1)*(yid+1)
+    local xid = math.floor(i%PARTICLE_LEN)
+    local yid = math.floor(i/PARTICLE_LEN)
+    if PERIODIC then    return xid + N*yid
+    else                return (xid+1) + (N+1)*(yid+1)
+    end
 end)
 
 particles:NewField('next_pos', L.vec2f):Load(L.NewVector(L.float, {0,0}))
 particles:NewField('pos', L.vec2f):Load(L.NewVector(L.float, {0,0}))
 (liszt kernel (p : particles) -- init...
-    p.pos = p.dual_cell.center
+    p.pos = p.dual_cell.vertex.cell(-1,-1).center +
+            L.vec2f({cell_w/2.0, cell_h/2.0})
 end)(particles)
 
 local locate_particles = liszt kernel (p : particles)
@@ -298,11 +345,12 @@ local locate_particles = liszt kernel (p : particles)
 end
 
 local compute_particle_velocity = liszt kernel (p : particles)
+    -- lookup cell (this is the bottom left corner)
     var dc      = p.dual_cell
-    var frac    = p.pos - dc.center
+
     -- figure out fractional position in the dual cell in range [0.0, 1.0]
-    var xfrac   = frac[0] / cell_w + 0.5 
-    var yfrac   = frac[1] / cell_h + 0.5
+    var xfrac   = cmath.fmod((p.pos[0] - XORIGIN)/cell_w + 0.5, 1.0)
+    var yfrac   = cmath.fmod((p.pos[1] - YORIGIN)/cell_h + 0.5, 1.0)
 
     -- interpolation constants
     var x1      = L.float(xfrac)
@@ -310,7 +358,7 @@ local compute_particle_velocity = liszt kernel (p : particles)
     var x0      = L.float(1.0 - xfrac)
     var y0      = L.float(1.0 - yfrac)
 
-    -- lookup cell
+    -- velocity interpolation
     var lc = dc.vertex.cell(-1,-1)
     p.next_pos  = p.pos + N *
         ( x0 * y0 * lc(0,0).velocity_prev
@@ -344,6 +392,16 @@ local source_velocity = liszt kernel (c : grid.cells)
         end
     end
 end
+if PERIODIC then
+    source_strength = 5.0
+    source_velocity = liszt kernel (c : grid.cells)
+        if cmath.fabs(c.center[0]) < 1.75 and
+           cmath.fabs(c.center[1]) < 1.75
+        then
+            c.velocity += L.float(dt) * source_strength * { 0.0, 1.0 }
+        end
+    end
+end
 
 local draw_grid = liszt kernel (c : grid.cells)
     var color = {1.0, 1.0, 1.0}
@@ -351,7 +409,6 @@ local draw_grid = liszt kernel (c : grid.cells)
     var p : L.vec3f = { c.center[0],   c.center[1],   0.0 }
     var vel = c.velocity
     var v = L.vec3f({ vel[0], vel[1], 0.0 })
-    --if not c.in_boundary then
     vdb.line(p, p+v*N*10)
 end
 
