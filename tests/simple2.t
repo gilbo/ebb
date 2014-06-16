@@ -11,7 +11,7 @@ function center_of_mass ()
 		com += v.position
 	end
 	sum_pos(mesh.vertices)
-	return com:get() / mesh.vertices._size
+	return com:get() / mesh.vertices:Size()
 end
 
 local function displace_mesh (delta_x, delta_y, delta_z)

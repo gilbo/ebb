@@ -111,7 +111,7 @@ function L.LRelation:CreateGClef(args)
         data        = MallocArray(uint, n_tri*3)
     }
     tri_index_build(n_tri, clef.tri_index.data,
-        trif[1].data, trif[2].data, trif[3].data)
+        trif[1]:DataPtr(), trif[2]:DataPtr(), trif[3]:DataPtr())
     clef.tri_index.dld = DLD.new({
         type            = uint,
         logical_size    = n_tri * 3,

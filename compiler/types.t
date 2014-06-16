@@ -161,7 +161,8 @@ local function recordType (rec)
        not (typ:isValueType() or typ:isRow())
     then
       error('invalid argument to record type constructor:\n'..
-            '  table values must be valid types for fields', 2)
+            '  table values must be valid types for fields, not '..
+            tostring(typ), 2)
     end
     unique_str = unique_str .. tostring(name) .. '=' .. tostring(typ) .. ','
   end
@@ -264,7 +265,6 @@ function Type:toString()
   elseif self:isInternal()  then return 'Internal('..tostring(self.value)..')'
   elseif self:isError()     then return 'error'
   end
-  print(debug.traceback())
   error('toString method not implemented for this type!', 2)
 end
 Type.__tostring = Type.toString

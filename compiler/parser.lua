@@ -233,20 +233,22 @@ lang.liszt = function (P)
 			return P:user_function()
 
 		elseif code_type == 'let_quote' then
-			local let_exp = ast.QuoteExpr:New(P)
+			local let_exp = ast.LetExpr:New(P)
 			local block 	= P:block()
 											P:expect('in')
 			local exp   	= P:exp()
 											P:expect('end')
-
 			let_exp.block, let_exp.exp = block, exp
-			return let_exp
+
+			local q = ast.Quote:New(P)
+			q.code = let_exp
+			return q
 
 		else -- code_type == 'simp_quote'
-			local q       = ast.QuoteExpr:New(P)
+			local q       = ast.Quote:New(P)
 			local exp   	= P:exp()
 			
-			q.block, q.exp = nil, exp
+			q.code = exp
 			return q
 
  		end
@@ -373,6 +375,22 @@ lang.statement = function (P)
 			return node_nf
 		end
 
+		--[[ insert statement ]]--
+	elseif P:nextif("insert") then
+		local insert   	= ast.InsertStatement:New(P)
+		local record   	= P:record()
+										  P:expect("into")
+		local relation	= P:exp()
+		insert.record, insert.relation = record, relation
+		return insert
+
+		--[[ delete statement ]]--
+	elseif P:nextif("delete") then
+		local delete = ast.DeleteStatement:New(P)
+		local row    = P:exp()
+		delete.row   = row
+		return delete
+
 		--[[ expression statement / assignment statement ]]--
 	else
 		local expr = P:exp()
@@ -394,6 +412,25 @@ lang.statement = function (P)
 			return e
 		end
 	end
+end
+
+lang.record = function (P)
+	local open_curly = P:expect('{')
+
+	local record = ast.RecordLiteral:New(P)
+	local names = {}
+	local exprs = {}
+	repeat
+		local field_name  = P:expect(P.name).value
+												P:expect('=')
+		local field_value	= P:exp()
+		table.insert(names, field_name)
+		table.insert(exprs, field_value)
+	until not P:nextif(',')
+	P:expectmatch('}','{', open_curly.linenumber)
+
+	record.names, record.exprs = names, exprs
+	return record
 end
 
 lang.block = function (P)

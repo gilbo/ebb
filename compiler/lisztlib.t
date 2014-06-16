@@ -1,5 +1,6 @@
 local L = {}
 package.loaded["compiler.lisztlib"] = L
+local DataArray = terralib.require('compiler.rawdata').DataArray
 
 -- Use the following to produce
 -- deterministic order of table entries
@@ -78,36 +79,65 @@ function L.NewGlobal (typ, init)
 
     local s  = setmetatable({type=typ}, LGlobal)
     local tt = typ:terraType()
-    s.data   = terralib.cast(&tt, C.malloc(terralib.sizeof(tt)))
+
+    s.data = DataArray.New({size=1,type=tt})
     s:set(init)
     return s
 end
 
+local function set_cpu_value (_type, data, val)
+  if _type:isVector() then
+    local v     = is_vector(val) and val or L.NewVector(_type:baseType(), val)
+    local sdata = terralib.cast(&_type:terraBaseType(), data:ptr())
+    for i = 0, v.N-1 do
+      sdata[i] = v.data[i+1]
+    end
+
+  -- primitive is easy - just copy it over
+  else
+    data:ptr()[0] = _type == L.int and val - val % 1 or val
+  end
+end
 
 function LGlobal:set(val)
-   if not T.luaValConformsToType(val, self.type) then error("value does not conform to type of global: " .. self.type:toString(), 2) end
-      if self.type:isVector() then
-          local v     = is_vector(val) and val or L.NewVector(self.type:baseType(), val)
-          local sdata = terralib.cast(&self.type:terraBaseType(), self.data)
-          for i = 0, v.N-1 do
-              sdata[i] = v.data[i+1]
-          end
-    -- primitive is easy - just copy it over
-    else
-        self.data[0] = self.type == L.int and val - val % 1 or val
-    end
+    if not T.luaValConformsToType(val, self.type) then error("value does not conform to type of global: " .. self.type:toString(), 2) end
+
+    self.data:write_ptr(function(ptr)
+        if self.type:isVector() then
+            if not L.is_vector(val) then
+                val = L.NewVector(self.type:baseType(), val)
+            end
+            for i=0, val.N-1 do
+                ptr[0].d[i] = val.data[i+1]
+            end
+        else
+            ptr[0] = val
+        end
+    end)
 end
+
 
 function LGlobal:get()
-    if self.type:isPrimitive() then return self.data[0] end
+    local value
 
-    local ndata = {}
-    local sdata = terralib.cast(&self.type:terraBaseType(), self.data)
-    for i = 1, self.type.N do ndata[i] = sdata[i-1] end
+    self.data:read_ptr(function(ptr)
+        if self.type:isPrimitive() then
+            value = ptr[0]
+        else
+            value = {}
+            for i=0, self.type.N-1 do
+                value[i+1] = ptr[0].d[i]
+            end
+            value = L.NewVector(self.type:baseType(), value)
+        end
+    end)
 
-    return L.NewVector(self.type:baseType(), ndata)
+    return value
 end
 
+function LGlobal:DataPtr()
+    return self.data:ptr()
+end
 
 -------------------------------------------------------------------------------
 --[[ LVectors:                                                             ]]--
@@ -255,9 +285,9 @@ L.Where = L.NewMacro(function(field,key)
     local w = ast.Where:DeriveFrom(field)
     w.field = field
     w.key   = key
-    local q = ast.QuoteExpr:DeriveFrom(field)
-    q.exp   = semant.check({}, w)
-    q.node_type = q.exp.node_type
+    local q = ast.Quote:DeriveFrom(field)
+    q.code  = semant.check({}, w)
+    q.node_type = q.code.node_type
     return q
 end)
 

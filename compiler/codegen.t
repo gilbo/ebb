@@ -44,10 +44,10 @@ function Context:onGPU()
 end
 
 function Context:FieldPtr(field)
-  return `[self.bran:getRuntimeFieldGerm(field)].data
+  return self.bran:getRuntimeFieldPtr(field)
 end
-function Context:SubsetPtr()
-  return `[self.bran:getRuntimeSubsetGerm()]
+function Context:GlobalPtr(global)
+  return self.bran:getRuntimeGlobalPtr(global)
 end
 function Context:runtimeGerm()
   return self.bran.runtime_germ:ptr()
@@ -55,36 +55,64 @@ end
 function Context:cpuGerm()
   return self.bran.cpu_germ:ptr()
 end
+function Context:isLiveCheck(param_var)
+  local ptr = self:FieldPtr(self.bran.relation._is_live_mask)
+  return `ptr[param_var]
+end
+function Context:deleteSizeVar()
+  local dd = self.bran.delete_data
+  if dd then
+    return `@[self:GlobalPtr(dd.updated_size)]
+  end
+end
+function Context:getInsertIndex()
+  return `[self:runtimeGerm()].insert_write
+end
+function Context:incrementInsertIndex()
+  local insert_index = self:getInsertIndex()
+  local counter = self:GlobalPtr(self.bran.insert_data.n_inserted)
+
+  return quote
+    insert_index = insert_index + 1
+    @counter = @counter + 1
+  end
+end
 
 ----------------------------------------------------------------------------
 
 local function cpu_codegen (kernel_ast, ctxt)
-
   ctxt:enterblock()
     -- declare the symbol for iteration
     local param = symbol(L.row(ctxt.bran.relation):terraType())
     ctxt:localenv()[kernel_ast.name] = param
 
-    local body  = kernel_ast.body:codegen(ctxt)
+    -- insert a check for the live row mask
+    local body  = quote
+      if [ctxt:isLiveCheck(param)] then
+        [kernel_ast.body:codegen(ctxt)]
+      end
+    end
 
+    -- by default on CPU just iterate over all the possible rows
     local kernel_body = quote
       for [param] = 0, [ctxt:runtimeGerm()].n_rows do
         [body]
       end
     end
 
+    -- special iteration logic for subset-mapped kernels
     if ctxt.bran.subset then
       kernel_body = quote
-        if [ctxt:SubsetPtr()].use_boolmask then
-          var boolmask = [ctxt:SubsetPtr()].boolmask
+        if [ctxt:runtimeGerm()].use_boolmask then
+          var boolmask = [ctxt:runtimeGerm()].boolmask
           for [param] = 0, [ctxt:runtimeGerm()].n_rows do
             if boolmask[param] then -- subset guard
               [body]
             end
           end
-        elseif [ctxt:SubsetPtr()].use_index then
-          var index = [ctxt:SubsetPtr()].index
-          var size = [ctxt:SubsetPtr()].index_size
+        else
+          var index = [ctxt:runtimeGerm()].index
+          var size = [ctxt:runtimeGerm()].index_size
           for itr = 0,size do
             var [param] = index[itr]
             [body]
@@ -121,16 +149,16 @@ local function gpu_codegen (kernel_ast, ctxt)
     if ctxt.bran.subset then
       kernel_body = quote
         var id : uint64 = block_id() * BLOCK_SIZE + thread_id()
-        if [ctxt:SubsetPtr()].use_boolmask then
+        if [ctxt:runtimeGerm()].use_boolmask then
           var [param] = id
           if [param] < [ctxt:runtimeGerm()].n_rows and
-             [ctxt:SubsetPtr()].boolmask[param]
+             [ctxt:runtimeGerm()].boolmask[param]
           then
             [body]
           end
-        elseif [ctxt:SubsetPtr()].use_index then
-          if id < [ctxt:SubsetPtr()].index_size then
-            var [param] = [ctxt:SubsetPtr()].index[id]
+        else
+          if id < [ctxt:runtimeGerm()].index_size then
+            var [param] = [ctxt:runtimeGerm()].index[id]
             [body]
           end
         end
@@ -152,9 +180,9 @@ local function gpu_codegen (kernel_ast, ctxt)
       0, nil
     }
 
-    if [ctxt:cpuGerm().subset].use_index then
+    if [ctxt.bran.subset ~= nil] and not [ctxt:cpuGerm()].use_boolmask then
       var n_blocks = uint(C.ceil(
-        [ctxt:cpuGerm().subset].index_size / float(BLOCK_SIZE)))
+        [ctxt:cpuGerm()].index_size / float(BLOCK_SIZE)))
       params = terralib.CUDAParams {
         n_blocks, 1, 1,
         BLOCK_SIZE, 1, 1,
@@ -183,7 +211,6 @@ end
 ----------------------------------------------------------------------------
 
 function ast.AST:codegen (ctxt)
-  print(debug.traceback())
   error("Codegen not implemented for AST node " .. self.kind)
 end
 
@@ -191,19 +218,18 @@ function ast.ExprStatement:codegen (ctxt)
   return self.exp:codegen(ctxt)
 end
 
-function ast.QuoteExpr:codegen (ctxt)
-  if self.block then
-    assert(self.exp)
-    ctxt:enterblock()
-    local block = self.block:codegen(ctxt)
-    local exp   = self.exp:codegen(ctxt)
-    ctxt:leaveblock()
+-- complete no-op
+function ast.Quote:codegen (ctxt)
+  return self.code:codegen(ctxt)
+end
 
-    return quote [block] in [exp] end
-  else
-    assert(self.exp)
-    return self.exp:codegen(ctxt)
-  end
+function ast.LetExpr:codegen (ctxt)
+  ctxt:enterblock()
+  local block = self.block:codegen(ctxt)
+  local exp   = self.exp:codegen(ctxt)
+  ctxt:leaveblock()
+
+  return quote [block] in [exp] end
 end
 
 -- DON'T CODEGEN THE KERNEL THIS WAY; HANDLE IN Codegen.codegen()
@@ -449,9 +475,8 @@ function ast.FieldWrite:codegen (ctxt)
 end
 
 function ast.FieldAccess:codegen (ctxt)
-  local field = self.field
   local index = self.row:codegen(ctxt)
-  local dataptr = `[&self.node_type:terraType()]([ ctxt:FieldPtr(field) ])
+  local dataptr = ctxt:FieldPtr(self.field)
   return `@(dataptr + [index])
 end
 
@@ -513,9 +538,8 @@ function ast.VectorLiteral:codegen (ctxt)
 end
 
 function ast.Global:codegen (ctxt)
-  local d = self.global.data
-  local s = symbol(&self.global.type:terraType())
-  return `@d
+  local dataptr = ctxt:GlobalPtr(self.global)
+  return `@dataptr
 end
 
 function ast.VectorIndex:codegen (ctxt)
@@ -590,7 +614,7 @@ end
 
 local function doProjection(obj,field,ctxt)
     assert(L.is_field(field))
-    local dataptr = `[&field:Type():terraType()]([ ctxt:FieldPtr(field) ])
+    local dataptr = ctxt:FieldPtr(field)
     return `dataptr[obj]
 end
 
@@ -620,3 +644,51 @@ function ast.GenericFor:codegen (ctxt)
     end
     return code
 end
+
+
+----------------------------------------------------------------------------
+
+function ast.DeleteStatement:codegen (ctxt)
+  local relation  = self.row.node_type.relation
+
+  local row       = self.row:codegen(ctxt)
+  local live_mask = ctxt:FieldPtr(relation._is_live_mask)
+  local set_mask_stmt = quote live_mask[row] = false end
+
+  local updated_size     = ctxt:deleteSizeVar()
+  local size_update_stmt = quote [updated_size] = [updated_size]-1 end
+
+  return quote set_mask_stmt size_update_stmt end
+end
+
+function ast.InsertStatement:codegen (ctxt)
+  local relation = self.relation.node_type.value -- to insert into
+
+  -- index to write to
+  local index = ctxt:getInsertIndex()
+
+  -- start with writing the live mask
+  local live_mask  = ctxt:FieldPtr(relation._is_live_mask)
+  local write_code = quote live_mask[index] = true end
+
+  -- the rest of the fields should be assigned values based on the
+  -- record literal specified as an argument to the insert statement
+  for field,i in pairs(self.fieldindex) do
+    local exp_code = self.record.exprs[i]:codegen(ctxt)
+    local fieldptr = ctxt:FieldPtr(field)
+
+    write_code = quote
+      write_code
+      fieldptr[index] = exp_code
+    end
+  end
+
+  local inc_stmt = ctxt:incrementInsertIndex()
+
+  return quote
+    write_code
+    inc_stmt
+  end
+end
+
+

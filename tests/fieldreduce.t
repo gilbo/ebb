@@ -7,7 +7,7 @@ local P = V.position
 
 loc_data = {}
 local Pdata = P:DataPtr()
-for i = 0, V._size - 1 do
+for i = 0, V:Size() - 1 do
 	loc_data[i] = {Pdata[i].d[0], Pdata[i].d[1], Pdata[i].d[2]}
 end
 
@@ -17,7 +17,7 @@ function shift(x,y,z)
 	end
 	shift_kernel(M.vertices)
 
-	for i = 0, V._size - 1 do
+	for i = 0, V:Size() - 1 do
 		local v = Pdata[i]
 		local d = loc_data[i]
 

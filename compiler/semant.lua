@@ -125,7 +125,14 @@ function ast.AST:check(ctxt)
 end
 
 function ast.Block:check(ctxt)
-    return self:passthrough('check', ctxt)
+    local copy = self:clone()
+
+    copy.statements = {}
+    for i,node in ipairs(self.statements) do
+        copy.statements[i] = self.statements[i]:check(ctxt)
+    end
+
+    return copy
 end
 
 function ast.IfStatement:check(ctxt)
@@ -195,7 +202,9 @@ function ast.RepeatStatement:check(ctxt)
 end
 
 function ast.ExprStatement:check(ctxt)
-    return self:passthrough('check', ctxt)
+    local copy = self:clone()
+    copy.exp   = self.exp:check(ctxt)
+    return copy
 end
 
 function ast.Assignment:check(ctxt)
@@ -282,10 +291,7 @@ function ast.DeclStatement:check(ctxt)
         -- NOTE: this pseudo-constant propagation is strong b/c
         -- we don't allow re-assignment of row-type variables
         if exptyp:isRow() and decl.initializer.is_centered then
-            --print('name')
             ctxt:recordcenter(decl.name)
-            --print('hey')
-            --print(decl.linenumber..':'..decl.offset)
         end
     end
 
@@ -376,6 +382,69 @@ function ast.Break:check(ctxt)
         ctxt:error(self, "cannot have a break statement outside a loop")
     end
     return self:clone()
+end
+
+function ast.InsertStatement:check(ctxt)
+    local insert        = self:clone()
+
+    -- check relation
+    insert.relation     = self.relation:check(ctxt)
+    local reltyp        = insert.relation.node_type
+    local rel           = reltyp:isInternal() and reltyp.value
+    if not rel or not L.is_relation(rel) then
+        ctxt:error(self,"Expected a relation to insert into")
+        return insert
+    end
+    -- check record child
+    local record        = self.record:clone()
+    insert.record       = record
+    record.names        = self.record.names
+    record.exprs        = {}
+
+    local rectyp_proto  = {}
+    insert.fieldindex   = {}
+    for i,name in ipairs(self.record.names) do
+        local exp           = self.record.exprs[i]:check(ctxt)
+        local field         = rel[name]
+
+        if not field then
+            ctxt:error(self, 'cannot insert a value into field '..
+                rel:Name()..'.'..name..' because it is undefined')
+            return insert
+        end
+        -- coercion?
+        if field:Type() ~= exp.node_type then
+            exp = try_coerce(field:Type(), exp, ctxt)
+            if not exp then return insert end
+        end
+        if not exp or exp.node_type == L.error then return insert end
+
+        record.exprs[i]     = exp
+        rectyp_proto[name]  = exp.node_type
+        insert.fieldindex[field] = i
+    end
+
+    -- save record type
+    record.node_type    = L.record(rectyp_proto)
+    insert.record_type  = record.node_type
+    -- type compatibility with the relation will be checked
+    -- in the phase pass
+
+    return insert
+end
+
+function ast.DeleteStatement:check(ctxt)
+    local delete = self:clone()
+
+    delete.row   = self.row:check(ctxt)
+    local rowtyp = delete.row.node_type
+
+    if not rowtyp:isRow() or not delete.row.is_centered then
+        ctxt:error(self,"Only centered rows may be deleted")
+        return delete
+    end
+
+    return delete
 end
 
 function ast.CondBlock:check(ctxt)
@@ -617,6 +686,12 @@ function ast.Number:check(ctxt)
     return number
 end
 
+function ast.Bool:check(ctxt)
+    local boolnode     = self:clone()
+    boolnode.node_type = L.bool
+    return boolnode
+end
+
 function ast.VectorLiteral:check(ctxt)
     local veclit      = self:clone()
     veclit.elems      = {}
@@ -662,16 +737,37 @@ function ast.VectorLiteral:check(ctxt)
     return veclit
 end
 
-function ast.Bool:check(ctxt)
-    local boolnode     = self:clone()
-    boolnode.node_type = L.bool
-    return boolnode
-end
+--function ast.RecordLiteral:check(ctxt)
+--    local record      = self:clone()
+--    record.names      = self.names
+--    record.exprs      = {}
+--
+--    local rectyp_proto = {}
+--    local found_error = false
+--    for i,n in ipairs(self.names) do
+--        local e = self.exprs[i]
+--
+--        local exp           = e:check(ctxt)
+--        record.exprs[i]     = exp
+--        rectyp_proto[n]     = exp.node_type
+--        if exp.node_type == L.error then found_error = true end
+--    end
+--
+--    if found_error then
+--        record.node_type = L.error
+--    else
+--        record.node_type = L.record(rectyp_proto)
+--    end
+--    return record
+--end
+
 
 
 ----------------------------
 --[[ AST Alpha-Renaming ]]--
 ----------------------------
+    
+    ast.NewCopyPass('alpha_rename')
     
     function ast.UserFunction:alpha_rename()
         local symbol_remap = {}
@@ -689,10 +785,6 @@ end
         end
 
         return func
-    end
-
-    function ast.AST:alpha_rename(symbol_remap)
-        return self:passthrough('alpha_rename', symbol_remap)
     end
 
     function ast.DeclStatement:alpha_rename(remap)
@@ -752,8 +844,8 @@ end
 local function QuoteParams(all_params_asts)
     local quoted_params = {}
     for i,param_ast in ipairs(all_params_asts) do
-        local q = ast.QuoteExpr:DeriveFrom(param_ast)
-        q.block, q.exp = nil, param_ast
+        local q = ast.Quote:DeriveFrom(param_ast)
+        q.code = param_ast
         if param_ast.is_centered then q.is_centered = true end
         q.node_type = param_ast.node_type -- halt type-checking here
         quoted_params[i] = q
@@ -765,7 +857,7 @@ local function RunMacro(ctxt,src_node,the_macro,params)
     local quoted_params = QuoteParams(params)
     local result = the_macro.genfunc(unpack(quoted_params))
 
-    if ast.is_ast(result) and result:is(ast.QuoteExpr) then
+    if ast.is_ast(result) and result:is(ast.Quote) then
         return result
     else
         ctxt:error(src_node, 'Macros must return quoted code')
@@ -776,6 +868,9 @@ local function RunMacro(ctxt,src_node,the_macro,params)
 end
 
 local function InlineUserFunc(ctxt, src_node, the_func, param_asts)
+    -- note that this alpha rename is safe because the
+    -- param_asts haven't been attached yet.  We know from
+    -- specialization that there are no free variables in the function.
     local f = the_func.ast:alpha_rename()
 
     -- check that the correct number of arguments are provided
@@ -804,8 +899,7 @@ local function InlineUserFunc(ctxt, src_node, the_func, param_asts)
     local block = ast.Block:DeriveFrom(src_node)
     block.statements = statements
 
-    -- ultimately, the user func call is translated into a quote expression
-    -- A Let
+    -- ultimately, the user func call is translated into a let expression
     -- which looks like
     -- LET
     --   var param_1 = ...
@@ -814,17 +908,23 @@ local function InlineUserFunc(ctxt, src_node, the_func, param_asts)
     --   <body>
     -- IN
     --   <exp>
-    local q = ast.QuoteExpr:DeriveFrom(src_node)
-    q.block = block
-    q.exp   = f.exp
+    -- unless we're missing an expression to return, in which
+    -- case we expand into a do-statement instead
+    local expansion = ast.LetExpr:DeriveFrom(src_node)
+    expansion.block = block
+    expansion.exp   = f.exp
 
     -- Lacking an expression, use a DO block instead
     if not f.exp then
-        q = ast.DoStatement:DeriveFrom(q)
-        q.body = block
+        expansion = ast.DoStatement:DeriveFrom(src_node)
+        expansion.body = block
         -- hack to make checker barf when this is used as an expression
-        q.node_type = L.internal('no-return function')
+        expansion.node_type = L.internal('no-return function')
     end
+
+    -- wrap up in a quote
+    local q = ast.Quote:DeriveFrom(src_node)
+    q.code = expansion
 
     -- return the result of typechecking the quote we built
     return q:check(ctxt)
@@ -981,32 +1081,39 @@ function ast.Global:check(ctxt)
     return n
 end
 
-function ast.QuoteExpr:check(ctxt)
+function ast.Quote:check(ctxt)
     -- Ensure quotes are only typed once
     -- By typing the quote at declaration, we make it safe
     -- to included it in other code as is
-    if not self.node_type then
-        local q     = self:clone()
-        if not self.block and not self.exp then
-            ctxt:error('Found a Quote with no block and no expression.')
-        else
-            ctxt:enterblock()
-            if self.block then
-                q.block = self.block:check(ctxt)
-            end
-            q.exp       = self.exp:check(ctxt)
-            ctxt:leaveblock()
-
-            q.node_type = q.exp.node_type
-        end
-        return q
-    else
+    if self.node_type then
         return self
+    else
+        local q = self:clone()
+
+        q.code = self.code:check(ctxt)
+        q.node_type = q.code.node_type
+
+        return q
     end
 end
 
+function ast.LetExpr:check(ctxt)
+    local let = self:clone()
+
+    ctxt:enterblock()
+    let.block = self.block:check(ctxt)
+    let.exp   = self.exp:check(ctxt)
+    ctxt:leaveblock()
+
+    let.node_type = let.exp.node_type
+    return let
+end
+
+
 function ast.FieldAccess:check(ctxt)
-    return self:passthrough('check', ctxt)
+    local fa = self:clone()
+    fa.row = self.row:check(ctxt)
+    return fa
 end
 
 function ast.LuaObject:check(ctxt)
@@ -1034,6 +1141,7 @@ function ast.Where:check(ctxt)
     end
     local w     = self:clone()
     w.relation  = field.owner
+    w.field     = self.field -- for safety/completeness
     w.key       = self.key
     w.node_type = L.query(w.relation,{})
     return w

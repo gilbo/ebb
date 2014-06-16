@@ -3,7 +3,7 @@ require "tests/test"
 local LMesh = L.require "domains.lmesh"
 local mesh = LMesh.Load("examples/mesh.lmesh")
 
-nf = mesh.faces._size
+nf = mesh.faces:Size()
 sf = L.NewGlobal(L.float, 0.0)
 si = L.NewGlobal(L.int,     0)
 sb = L.NewGlobal(L.bool, true)
@@ -36,7 +36,7 @@ test.fuzzy_aeq(si4:get().data, {1-2*nf,2-2*nf,3-2*nf,4-2*nf})
 --test.aeq(sb5:get().data, {true, false, true, false, true})
 
 f4(mesh.faces)
-test.eq(sf:get(), mesh.faces._size)
+test.eq(sf:get(), mesh.faces:Size())
 
 f5(mesh.faces)
 test.eq(si:get(), -2*nf)

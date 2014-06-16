@@ -90,11 +90,13 @@ end
 ------------------------------------------------------------------------------
 --[[ AST Structural Junk:                                                 ]]--
 ------------------------------------------------------------------------------
-function ast.AST:specialize(ctxt)
-  return self:passthrough('specialize', ctxt)
+--function ast.AST:specialize(ctxt)
+--  return self:passthrough('specialize', ctxt)
+--
+--  --error("Specialization not implemented for AST node " .. self.kind)
+--end
 
-  --error("Specialization not implemented for AST node " .. self.kind)
-end
+ast.NewCopyPass('specialize')
 
 -- Passthrough
 --  ast.Block
@@ -162,26 +164,28 @@ function ast.CondBlock:specialize(ctxt)
   return condblk
 end
 
-function ast.QuoteExpr:specialize(ctxt)
+function ast.Quote:specialize(ctxt)
   -- Once quotes are typed, they should be fully specialized
   -- Don't repeat the specialization at that point, since it
   -- could cause some sort of hiccup? (dunno)
   if self.node_type then
     return self
   else
-    local q     = self:clone()
-
-    ctxt:enterblock()
-    if self.block then
-      q.block = self.block:specialize(ctxt)
-    end
-    if self.exp then
-      q.exp   = self.exp:specialize(ctxt)
-    end
-    ctxt:leaveblock()
-
+    local q = self:clone()
+    q.code  = self.code:specialize(ctxt)
     return q
   end
+end
+
+function ast.LetExpr:specialize(ctxt)
+  local let = self:clone()
+
+  ctxt:enterblock()
+  let.block = self.block:specialize(ctxt)
+  let.exp   = self.exp:specialize(ctxt)
+  ctxt:leaveblock()
+
+  return let
 end
 
 
@@ -326,7 +330,7 @@ local function luav_to_ast(luav, src_node)
     node = NewLuaObject(src_node,B.terra_to_func(luav))
   elseif type(luav) == 'table' then
     -- Determine whether this is an AST node
-    if ast.is_ast(luav) and luav:is(ast.QuoteExpr) then
+    if ast.is_ast(luav) and luav:is(ast.Quote) then
       node = luav
     else
       node = NewLuaObject(src_node, luav)
@@ -358,7 +362,7 @@ function ast.Name:specialize(ctxt)
 
   -- Otherwise, does the name exist in the lua scope?
   local luav = ctxt:lua()[self.name]
-  if luav then
+  if luav ~= nil then
     -- convert the lua value into an ast node
     local ast = luav_to_ast(luav, self)
     if ast then

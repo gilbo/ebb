@@ -28,7 +28,6 @@ end
 check2(cells)
 
 -- Check for errors
-cells:NewField('uninitialized', L.double)
 cells:NewField('ftype', L.float):Load(0)
 
 -- Swap Failures
@@ -41,9 +40,6 @@ end, 'Cannot Swap%(%) fields of different type')
 
 -- Copy Failures
 test.fail_function(function()
-  cells:Copy{from='uninitialized',to='f1'}
-end, 'Cannot Copy%(%) from field with no data')
-test.fail_function(function()
   cells:Copy{from='f1',to='noname'}
 end, 'Could not find a field named "noname"')
 test.fail_function(function()
@@ -53,8 +49,6 @@ test.fail_function(function()
   cells:Copy('f1','f2')
 end, 'Copy%(%) should be called.*relation%:Copy%{from=\'f1\',to=\'f2\'%}')
 
--- Swap Success with null ptr
-cells:Swap('f2','uninitialized')
 -- Copy Success using auto-allocate
 cells:Copy{from='f1',to='f2'}
 

@@ -135,7 +135,7 @@ local function initMeshRelations(mesh)
                 var exp  : uint32 = 8 * [terralib.sizeof(uint32)] - 1
                 var mask : uint32 = C.pow(2,exp) - 1
 
-                for i = 0, rel._size do
+                for i = 0, [rel:Size()] do
                     ordata[i] = bool(srcdata[i] >> exp)
                     vdata[i]  = srcdata[i] and mask
                 end

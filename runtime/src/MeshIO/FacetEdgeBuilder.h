@@ -4,6 +4,7 @@
 #include "Common.h"
 #include "LisztFormat.h"
 #include <iostream>
+#include <vector>
 //Warning: Silly pointer hacks to make these structures 64 bytes
 //vert_cell[0]'s high bit holds if it is hf 1 or one.
 //this enables use to store pointers to HalfFacets that can recover the pointer

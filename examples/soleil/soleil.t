@@ -179,7 +179,7 @@ local radiation_options = {
 IO.outputFileNamePrefix = "../soleilOutput/output"
 
 -----------------------------------------------------------------------------
---[[                       FLOW/ PARTICLE RELATIONS                      ]]--
+--[[                       FLOW/PARTICLES RELATIONS                      ]]--
 -----------------------------------------------------------------------------
 
 -- Check boundary type consistency
@@ -467,6 +467,12 @@ end)
 --[[                            LISZT KERNELS                            ]]--
 -----------------------------------------------------------------------------
 
+-- Locate particles
+Particles.Locate = liszt kernel(p : particles)
+    p.dual_cell = grid.dual_locate(p.position)
+end
+
+
 -- Initialize flow variables
 -- Cell center coordinates are stored in the grid field macro 'center'. 
 -- Here, we use a field for convenience when outputting to file, but this is
@@ -533,6 +539,7 @@ Particles.InitializeTemporaries = liszt kernel(p : particles)
     p.velocity_new    = p.velocity
     p.temperature_new = p.temperature
 end
+
 
 -- Initialize derivatives
 Flow.InitializeTimeDerivatives = liszt kernel(c : grid.cells)
@@ -715,8 +722,8 @@ end
 -- WARNING_START For non-uniform grids, the metrics used below are not 
 -- appropriate and should be changed to reflect those expressed in the 
 -- Python prototype code
-local c_dx = L.NewGlobal(L.double, grid:cellWidth())
-local c_dy = L.NewGlobal(L.double, grid:cellHeight())
+local c_dx = L.NewGlobal(L.double, grid:xCellWidth())
+local c_dy = L.NewGlobal(L.double, grid:yCellWidth())
 -- WARNING_END
 Flow.AddInviscidUpdateUsingFluxX = liszt kernel(c : grid.cells)
     if c.in_interior then
@@ -1104,6 +1111,10 @@ Flow.UpdateAuxiliaryVelocity = liszt kernel(c : grid.cells)
 end
 
 Flow.UpdateGhostFieldsStep1 = liszt kernel(c : grid.cells)
+    -- Note that this for now assumes the stencil uses only one point to each
+    -- side of the boundary (for example, second order central difference), and
+    -- is not able to handle higher-order schemes until a way to specify where
+    -- in the (wider-than-one-point) boundary we are
     if c.xneg_depth > 0 then
         var xoffset = XOffset(c.xneg_depth)
         c.rhoBoundary            =   c(xoffset,0).rho
@@ -1163,6 +1174,10 @@ function Flow.UpdateGhost()
 end
 
 Flow.UpdateGhostThermodynamicsStep1 = liszt kernel(c : grid.cells)
+    -- Note that this for now assumes the stencil uses only one point to each
+    -- side of the boundary (for example, second order central difference), and
+    -- is not able to handle higher-order schemes until a way to specify where
+    -- in the (wider-than-one-point) boundary we are
     if c.xneg_depth > 0 then
         var xoffset = XOffset(c.xneg_depth)
         c.pressureBoundary       =   c(xoffset,0).pressure
@@ -1196,6 +1211,10 @@ function Flow.UpdateGhostThermodynamics()
 end
 
 Flow.UpdateGhostVelocityStep1 = liszt kernel(c : grid.cells)
+    -- Note that this for now assumes the stencil uses only one point to each
+    -- side of the boundary (for example, second order central difference), and
+    -- is not able to handle higher-order schemes until a way to specify where
+    -- in the (wider-than-one-point) boundary we are
     if c.xneg_depth > 0 then
         var xoffset = XOffset(c.xneg_depth)
         c.velocityBoundary[0] =   c(xoffset,0).velocity[0] * xSignDouble
@@ -1227,6 +1246,10 @@ end
 
 
 Flow.UpdateGhostConservedStep1 = liszt kernel(c : grid.cells)
+    -- Note that this for now assumes the stencil uses only one point to each
+    -- side of the boundary (for example, second order central difference), and
+    -- is not able to handle higher-order schemes until a way to specify where
+    -- in the (wider-than-one-point) boundary we are
     if c.xneg_depth > 0 then
         var xoffset = XOffset(c.xneg_depth)
         c.rhoBoundary            =   c(xoffset,0).rho
@@ -1381,15 +1404,18 @@ end
 --[[                             MAIN LOOP                               ]]--
 -----------------------------------------------------------------------------
 
+
 function TimeIntegrator.InitializeTemporaries()
     Flow.InitializeTemporaries(grid.cells)
     Particles.InitializeTemporaries(particles)
 end
 
+
 function TimeIntegrator.InitializeTimeDerivatives()
     Flow.InitializeTimeDerivatives(grid.cells)
     Particles.InitializeTimeDerivatives(particles)
 end
+
 
 function Flow.AddInviscid()
     Flow.AddInviscidInitialize(grid.cells)
@@ -1400,6 +1426,10 @@ function Flow.AddInviscid()
 end
 
 Flow.UpdateGhostVelocityGradientStep1 = liszt kernel(c : grid.cells)
+    -- Note that this for now assumes the stencil uses only one point to each
+    -- side of the boundary (for example, second order central difference), and
+    -- is not able to handle higher-order schemes until a way to specify where
+    -- in the (wider-than-one-point) boundary we are
     if c.xneg_depth > 0 then
         var xoffset = XOffset(c.xneg_depth)
         c.velocityGradientXBoundary[0] = - c(xoffset,0).velocityGradientX[0]
@@ -1445,6 +1475,12 @@ function Flow.AddViscous()
     Flow.AddViscousUpdateUsingFluxX(grid.cells)
     Flow.AddViscousGetFluxY(grid.cells)
     Flow.AddViscousUpdateUsingFluxY(grid.cells)
+end
+
+
+function Particles.AddFlowCoupling()
+    Particles.Locate(particles)
+    Particles.AddFlowCouplingPartOne(particles)
 end
 
 function Flow.Update(stage)
@@ -1546,7 +1582,7 @@ Particles.averageTemperature= L.NewGlobal(L.double, 0.0)
 
 Flow.IntegrateQuantities = liszt kernel(c : grid.cells)
     -- WARNING: update cellArea computation for non-uniform grids
-    --var cellArea = c.cellWidth() * c.cellHeight()
+    --var cellArea = c.xCellWidth() * c.yCellWidth()
     var cellArea = c_dx * c_dy
     Flow.numberOfInteriorCells += 1
     Flow.areaInterior += cellArea
