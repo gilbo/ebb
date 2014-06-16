@@ -47,7 +47,19 @@ local grid_options = {
     ynum = 64,
     origin = {0.0, 0.0},
     width = twoPi,
-    height = twoPi
+    height = twoPi,
+    --xBCLeft  = 'symmetry',
+    --xBCRight = 'symmetry',
+    --yBCLeft  = 'symmetry',
+    --yBCRight = 'symmetry',
+    --xBCLeft  = 'periodic',
+    --xBCRight = 'periodic',
+    --yBCLeft  = 'periodic',
+    --yBCRight = 'periodic',
+    xBCLeft  = 'dummy_periodic',
+    xBCRight = 'dummy_periodic',
+    yBCLeft  = 'dummy_periodic',
+    yBCRight = 'dummy_periodic',
 }
 
 local spatial_stencil = {
@@ -74,10 +86,53 @@ local spatial_stencil = {
 }
 
 -- Define offsets for boundary conditions in flow solver
--- Periodic
-local xoffset    = grid_options.xnum
-local yoffset    = grid_options.ynum
-local signDouble = 1
+local xSignDouble
+-- Offset liszt functions
+local XOffsetDummyPeriodic = liszt function(boundaryPointDepth)
+  return grid_options.xnum
+end
+local XOffsetSymmetry = liszt function(boundaryPointDepth)
+  return 2*boundaryPointDepth-1
+end
+if grid_options.xBCLeft  == "periodic" and 
+       grid_options.xBCRight == "periodic" then
+  XOffset = XOffsetDummyPeriodic
+elseif grid_options.xBCLeft  == "dummy_periodic" and 
+   grid_options.xBCRight == "dummy_periodic" then
+  XOffset = XOffsetDummyPeriodic
+  xSignDouble = 1
+elseif grid_options.xBCLeft == "symmetry" and 
+       grid_options.xBCRight == "symmetry" then
+  XOffset = XOffsetSymmetry
+  xSignDouble = -1
+else
+  error("Boundary conditions in x not implemented")
+end
+
+local ySignDouble
+local YOffsetDummyPeriodic = liszt function(boundaryPointDepth)
+  return grid_options.ynum
+end
+local YOffsetSymmetry = liszt function(boundaryPointDepth)
+  return 2*boundaryPointDepth-1
+end
+if grid_options.yBCLeft  == "periodic" and 
+       grid_options.yBCRight == "periodic" then
+  YOffset = YOffsetDummyPeriodic
+elseif grid_options.yBCLeft  == "dummy_periodic" and 
+   grid_options.yBCRight == "dummy_periodic" then
+  YOffset = YOffsetDummyPeriodic
+  ySignDouble = 1
+elseif grid_options.yBCLeft  == "symmetry" and 
+       grid_options.yBCRight == "symmetry" then
+  YOffset = YOffsetSymmetry
+  ySignDouble = -1 -- Irrelevant
+else
+  error("Boundary conditions in y not implemented")
+end
+
+--local xoffset    = grid_options.xnum
+--local yoffset    = grid_options.ynum
 
 -- Time integrator
 TimeIntegrator.coeff_function       = {1/6, 1/3, 1/3, 1/6}
@@ -127,25 +182,73 @@ IO.outputFileNamePrefix = "../soleilOutput/output"
 --[[                       FLOW/ PARTICLE RELATIONS                      ]]--
 -----------------------------------------------------------------------------
 
+-- Check boundary type consistency
+if ( grid_options.xBCLeft  == 'periodic' and 
+     grid_options.xBCRight ~= 'periodic' ) or 
+   ( grid_options.xBCLeft  ~= 'periodic' and 
+     grid_options.xBCRight == 'periodic' ) then
+    error("Boundary conditions in x should match periodicity")
+end
+if ( grid_options.yBCLeft  == 'periodic' and 
+     grid_options.yBCRight ~= 'periodic' ) or 
+   ( grid_options.yBCLeft  ~= 'periodic' and 
+     grid_options.yBCRight == 'periodic' ) then
+    error("Boundary conditions in y should match periodicity")
+end
+if ( grid_options.xBCLeft  == 'periodic' and 
+     grid_options.xBCRight == 'periodic' ) then
+  xBCPeriodic = true
+else
+  xBCPeriodic = false
+end
+if ( grid_options.yBCLeft  == 'periodic' and 
+     grid_options.yBCRight == 'periodic' ) then
+  yBCPeriodic = true
+else
+  yBCPeriodic = false
+end
+
 
 -- Declare and initialize grid and related fields
 
 local bnum = spatial_stencil.order/2
-local bw   = grid_options.width/grid_options.xnum * bnum
+if xBCPeriodic then
+  xBnum = 0
+else
+  xBnum = bnum
+end
+if yBCPeriodic then
+  yBnum = 0
+else
+  yBnum = bnum
+end
+local xBw   = grid_options.width/grid_options.xnum * xBnum
+local yBh   = grid_options.height/grid_options.ynum * yBnum
 local gridOriginX = grid_options.origin[1]
 local gridOriginY = grid_options.origin[2]
 local originWithGhosts = grid_options.origin
 originWithGhosts[1] = originWithGhosts[1] - 
-                      bnum * grid_options.width/grid_options.xnum
+                      xBnum * grid_options.width/grid_options.xnum
 originWithGhosts[2] = originWithGhosts[2] - 
-                      bnum * grid_options.height/grid_options.xnum
+                      yBnum * grid_options.height/grid_options.xnum
 
-local grid = Grid.NewGrid2d{size           = {grid_options.xnum + 2*bnum,
-                                              grid_options.ynum + 2*bnum},
+local grid = Grid.NewGrid2d{size           = {grid_options.xnum + 2*xBnum,
+                                              grid_options.ynum + 2*yBnum},
                             origin         = originWithGhosts,
-                            width          = grid_options.width + 2*bw,
-                            height         = grid_options.height + 2*bw,
-                            boundary_depth = {bnum, bnum} }
+                            width          = grid_options.width + 2*xBw,
+                            height         = grid_options.height + 2*yBh,
+                            boundary_depth = {xBnum, yBnum},
+                            periodic_boundary = {xBCPeriodic, yBCPeriodic} }
+
+print("xBoundaryDepth()", grid:xBoundaryDepth())
+print("yBoundaryDepth()", grid:yBoundaryDepth())
+print("grid xOrigin()", grid:xOrigin())
+print("grid yOrigin()", grid:yOrigin())
+print("grid width()", grid:width())
+print("grid height()", grid:height())
+print("originWithGhosts", originWithGhosts[1], originWithGhosts[2])
+
+
 
 -- Conserved variables
 grid.cells:NewField('rho', L.double):
@@ -252,7 +355,7 @@ particles:NewField('velocity', L.vec2d):
 LoadConstant(L.NewVector(L.double, {0, 0}))
 particles:NewField('temperature', L.double):
 LoadConstant(particles_options.initialTemperature)
-particles:NewField('position_periodic', L.vec2d):
+particles:NewField('position_ghost', L.vec2d):
 LoadConstant(L.NewVector(L.double, {0, 0}))
 
 particles:NewField('diameter', L.double):
@@ -394,6 +497,7 @@ Flow.InitializePrimitives = liszt kernel(c : grid.cells)
         taylorGreenPressure + (factorA*factorB - 2.0) / 16.0
 end
 Flow.UpdateConservedFromPrimitive = liszt kernel(c : grid.cells)
+
     -- Equation of state: T = p / ( R * rho )
     var tmpTemperature = c.pressure /(fluid_options.gasConstant * c.rho)
     var velocity = c.velocity
@@ -1001,8 +1105,9 @@ end
 
 Flow.UpdateGhostFieldsStep1 = liszt kernel(c : grid.cells)
     if c.xneg_depth > 0 then
+        var xoffset = XOffset(c.xneg_depth)
         c.rhoBoundary            =   c(xoffset,0).rho
-        c.rhoVelocityBoundary[0] =   c(xoffset,0).rhoVelocity[0] * signDouble
+        c.rhoVelocityBoundary[0] =   c(xoffset,0).rhoVelocity[0] * xSignDouble
         c.rhoVelocityBoundary[1] =   c(xoffset,0).rhoVelocity[1]
         c.rhoEnergyBoundary      =   c(xoffset,0).rhoEnergy
         c.velocityBoundary[0]    =   c(xoffset,0).velocity[0]
@@ -1011,8 +1116,9 @@ Flow.UpdateGhostFieldsStep1 = liszt kernel(c : grid.cells)
         c.temperatureBoundary    =   c(xoffset,0).temperature
     end
     if c.xpos_depth > 0 then
+        var xoffset = XOffset(c.xpos_depth)
         c.rhoBoundary            =   c(-xoffset,0).rho
-        c.rhoVelocityBoundary[0] =   c(-xoffset,0).rhoVelocity[0] * signDouble
+        c.rhoVelocityBoundary[0] =   c(-xoffset,0).rhoVelocity[0] * xSignDouble
         c.rhoVelocityBoundary[1] =   c(-xoffset,0).rhoVelocity[1]
         c.rhoEnergyBoundary      =   c(-xoffset,0).rhoEnergy
         c.velocityBoundary[0]    =   c(-xoffset,0).velocity[0]
@@ -1021,9 +1127,10 @@ Flow.UpdateGhostFieldsStep1 = liszt kernel(c : grid.cells)
         c.temperatureBoundary    =   c(-xoffset,0).temperature
     end
     if c.yneg_depth > 0 then
+        var yoffset = YOffset(c.yneg_depth)
         c.rhoBoundary            =   c(0,yoffset).rho
         c.rhoVelocityBoundary[0] =   c(0,yoffset).rhoVelocity[0]
-        c.rhoVelocityBoundary[1] =   c(0,yoffset).rhoVelocity[1] * signDouble
+        c.rhoVelocityBoundary[1] =   c(0,yoffset).rhoVelocity[1] * ySignDouble
         c.rhoEnergyBoundary      =   c(0,yoffset).rhoEnergy
         c.velocityBoundary[0]    =   c(0,yoffset).velocity[0]
         c.velocityBoundary[1]    =   c(0,yoffset).velocity[1]
@@ -1031,9 +1138,10 @@ Flow.UpdateGhostFieldsStep1 = liszt kernel(c : grid.cells)
         c.temperatureBoundary    =   c(0,yoffset).temperature
     end
     if c.ypos_depth > 0 then
+        var yoffset = YOffset(c.ypos_depth)
         c.rhoBoundary            =   c(0,-yoffset).rho
         c.rhoVelocityBoundary[0] =   c(0,-yoffset).rhoVelocity[0]
-        c.rhoVelocityBoundary[1] =   c(0,-yoffset).rhoVelocity[1] * signDouble
+        c.rhoVelocityBoundary[1] =   c(0,-yoffset).rhoVelocity[1] * ySignDouble
         c.rhoEnergyBoundary      =   c(0,-yoffset).rhoEnergy
         c.velocityBoundary[0]    =   c(0,-yoffset).velocity[0]
         c.velocityBoundary[1]    =   c(0,-yoffset).velocity[1]
@@ -1056,18 +1164,22 @@ end
 
 Flow.UpdateGhostThermodynamicsStep1 = liszt kernel(c : grid.cells)
     if c.xneg_depth > 0 then
+        var xoffset = XOffset(c.xneg_depth)
         c.pressureBoundary       =   c(xoffset,0).pressure
         c.temperatureBoundary    =   c(xoffset,0).temperature
     end
     if c.xpos_depth > 0 then
+        var xoffset = XOffset(c.xpos_depth)
         c.pressureBoundary       =   c(-xoffset,0).pressure
         c.temperatureBoundary    =   c(-xoffset,0).temperature
     end
     if c.yneg_depth > 0 then
+        var yoffset = YOffset(c.yneg_depth)
         c.pressureBoundary       =   c(0,yoffset).pressure
         c.temperatureBoundary    =   c(0,yoffset).temperature
     end
     if c.ypos_depth > 0 then
+        var yoffset = YOffset(c.ypos_depth)
         c.pressureBoundary       =   c(0,-yoffset).pressure
         c.temperatureBoundary    =   c(0,-yoffset).temperature
     end
@@ -1085,20 +1197,24 @@ end
 
 Flow.UpdateGhostVelocityStep1 = liszt kernel(c : grid.cells)
     if c.xneg_depth > 0 then
-        c.velocityBoundary[0] =   c(xoffset,0).velocity[0] * signDouble
+        var xoffset = XOffset(c.xneg_depth)
+        c.velocityBoundary[0] =   c(xoffset,0).velocity[0] * xSignDouble
         c.velocityBoundary[1] =   c(xoffset,0).velocity[1]
     end
     if c.xpos_depth > 0 then
-        c.velocityBoundary[0] =   c(-xoffset,0).velocity[0] * signDouble
+        var xoffset = XOffset(c.xpos_depth)
+        c.velocityBoundary[0] =   c(-xoffset,0).velocity[0] * xSignDouble
         c.velocityBoundary[1] =   c(-xoffset,0).velocity[1]
     end
     if c.yneg_depth > 0 then
+        var yoffset = YOffset(c.yneg_depth)
         c.velocityBoundary[0] =   c(0,yoffset).velocity[0]
-        c.velocityBoundary[1] =   c(0,yoffset).velocity[1] * signDouble
+        c.velocityBoundary[1] =   c(0,yoffset).velocity[1] * ySignDouble
     end
     if c.ypos_depth > 0 then
+        var yoffset = YOffset(c.ypos_depth)
         c.velocityBoundary[0] =   c(0,-yoffset).velocity[0]
-        c.velocityBoundary[1] =   c(0,-yoffset).velocity[1] * signDouble
+        c.velocityBoundary[1] =   c(0,-yoffset).velocity[1] * ySignDouble
     end
 end
 Flow.UpdateGhostVelocityStep2 = liszt kernel(c : grid.cells)
@@ -1112,27 +1228,31 @@ end
 
 Flow.UpdateGhostConservedStep1 = liszt kernel(c : grid.cells)
     if c.xneg_depth > 0 then
+        var xoffset = XOffset(c.xneg_depth)
         c.rhoBoundary            =   c(xoffset,0).rho
-        c.rhoVelocityBoundary[0] =   c(xoffset,0).rhoVelocity[0] * signDouble
+        c.rhoVelocityBoundary[0] =   c(xoffset,0).rhoVelocity[0] * xSignDouble
         c.rhoVelocityBoundary[1] =   c(xoffset,0).rhoVelocity[1]
         c.rhoEnergyBoundary      =   c(xoffset,0).rhoEnergy
     end
     if c.xpos_depth > 0 then
+        var xoffset = XOffset(c.xpos_depth)
         c.rhoBoundary            =   c(-xoffset,0).rho
-        c.rhoVelocityBoundary[0] =   c(-xoffset,0).rhoVelocity[0] * signDouble
+        c.rhoVelocityBoundary[0] =   c(-xoffset,0).rhoVelocity[0] * xSignDouble
         c.rhoVelocityBoundary[1] =   c(-xoffset,0).rhoVelocity[1]
         c.rhoEnergyBoundary      =   c(-xoffset,0).rhoEnergy
     end
     if c.yneg_depth > 0 then
+        var yoffset = YOffset(c.yneg_depth)
         c.rhoBoundary            =   c(0,yoffset).rho
         c.rhoVelocityBoundary[0] =   c(0,yoffset).rhoVelocity[0]
-        c.rhoVelocityBoundary[1] =   c(0,yoffset).rhoVelocity[1] * signDouble
+        c.rhoVelocityBoundary[1] =   c(0,yoffset).rhoVelocity[1] * ySignDouble
         c.rhoEnergyBoundary      =   c(0,yoffset).rhoEnergy
     end
     if c.ypos_depth > 0 then
+        var yoffset = YOffset(c.ypos_depth)
         c.rhoBoundary            =   c(0,-yoffset).rho
         c.rhoVelocityBoundary[0] =   c(0,-yoffset).rhoVelocity[0]
-        c.rhoVelocityBoundary[1] =   c(0,-yoffset).rhoVelocity[1] * signDouble
+        c.rhoVelocityBoundary[1] =   c(0,-yoffset).rhoVelocity[1] * ySignDouble
         c.rhoEnergyBoundary      =   c(0,-yoffset).rhoEnergy
     end
 end
@@ -1164,24 +1284,24 @@ end
 
 
 Particles.UpdateAuxiliaryStep1 = liszt kernel(p : particles)
-    p.position_periodic[0] = p.position[0]
-    p.position_periodic[1] = p.position[1]
+    p.position_ghost[0] = p.position[0]
+    p.position_ghost[1] = p.position[1]
     if p.position[0] < gridOriginX then
-        p.position_periodic[0] = p.position[0] + grid_options.width
+        p.position_ghost[0] = p.position[0] + grid_options.width
     end
     if p.position[0] > gridOriginX + grid_options.width then
-        p.position_periodic[0] = p.position[0] - grid_options.width
+        p.position_ghost[0] = p.position[0] - grid_options.width
     end
     if p.position[1] < gridOriginY then
-        p.position_periodic[1] = p.position[1] + grid_options.width
+        p.position_ghost[1] = p.position[1] + grid_options.width
     end
     if p.position[1] > gridOriginY + grid_options.height then
-        p.position_periodic[1] = p.position[1] - grid_options.height
+        p.position_ghost[1] = p.position[1] - grid_options.height
     end
 end
 
 Particles.UpdateAuxiliaryStep2 = liszt kernel(p : particles)
-    p.position = p.position_periodic
+    p.position = p.position_ghost
 end
 
 Flow.ComputeVelocityGradientX = liszt kernel(c : grid.cells)
@@ -1281,24 +1401,28 @@ end
 
 Flow.UpdateGhostVelocityGradientStep1 = liszt kernel(c : grid.cells)
     if c.xneg_depth > 0 then
+        var xoffset = XOffset(c.xneg_depth)
         c.velocityGradientXBoundary[0] = - c(xoffset,0).velocityGradientX[0]
         c.velocityGradientXBoundary[1] =   c(xoffset,0).velocityGradientX[1]
         c.velocityGradientYBoundary[0] = - c(xoffset,0).velocityGradientY[0]
         c.velocityGradientYBoundary[1] =   c(xoffset,0).velocityGradientY[1]
     end
     if c.xpos_depth > 0 then
+        var xoffset = XOffset(c.xpos_depth)
         c.velocityGradientXBoundary[0] = - c(-xoffset,0).velocityGradientX[0]
         c.velocityGradientXBoundary[1] =   c(-xoffset,0).velocityGradientX[1]
         c.velocityGradientYBoundary[0] = - c(-xoffset,0).velocityGradientY[0]
         c.velocityGradientYBoundary[1] =   c(-xoffset,0).velocityGradientY[1]
     end
     if c.yneg_depth > 0 then
+        var yoffset = YOffset(c.yneg_depth)
         c.velocityGradientXBoundary[0] =   c(0,yoffset).velocityGradientX[0]
         c.velocityGradientXBoundary[1] = - c(0,yoffset).velocityGradientX[1]
         c.velocityGradientYBoundary[0] =   c(0,yoffset).velocityGradientY[0]
         c.velocityGradientYBoundary[1] = - c(0,yoffset).velocityGradientY[1]
     end
     if c.ypos_depth > 0 then
+        var yoffset = YOffset(c.ypos_depth)
         c.velocityGradientXBoundary[0] =   c(0,-yoffset).velocityGradientX[0]
         c.velocityGradientXBoundary[1] = - c(0,-yoffset).velocityGradientX[1]
         c.velocityGradientYBoundary[0] =   c(0,-yoffset).velocityGradientY[0]
@@ -1470,6 +1594,9 @@ function Statistics.ComputeSpatialAverages()
     Statistics.UpdateSpatialAverages(grid, particles)
 end
 
+local maxConvectiveSpectralRadius = L.NewGlobal(L.double, 0)
+local maxViscousSpectralRadius  = L.NewGlobal(L.double, 0)
+local maxHeatConductionSpectralRadius  = L.NewGlobal(L.double, 0)
 Flow.CalculateSpectralRadii = liszt kernel(c : grid.cells)
     var dXYInverseSquare = 1.0/c_dx * 1.0/c_dx +
                            1.0/c_dy * 1.0/c_dy
@@ -1499,6 +1626,10 @@ Flow.CalculateSpectralRadii = liszt kernel(c : grid.cells)
        ((kappa + c.sgsEddyKappa) / (cv * c.rho) * dXYInverseSquare) *
        spatial_stencil.secondDerivativeModifiedWaveNumber
 
+    maxConvectiveSpectralRadius     max= c.convectiveSpectralRadius
+    maxViscousSpectralRadius        max= c.viscousSpectralRadius
+    maxHeatConductionSpectralRadius max= c.heatConductionSpectralRadius
+
 end
 
 -- Get maximum of field
@@ -1516,31 +1647,28 @@ Flow.GetMaximumOfField = function (field)
     return maxval
 end
 
+--local max_kernel = liszt kernel (c : grid.cells)
+--    maxConvectiveSpectralRadius     max= c.convectiveSpectralRadius
+--    maxViscousSpectralRadius        max= c.viscousSpectralRadius
+--    maxHeatConductionSpectralRadius max= c.heatConductionSpectralRadius
+--end
+
 function TimeIntegrator.CalculateDeltaTime()
 
     Flow.CalculateSpectralRadii(grid.cells)
 
-    -- Get maximum spectral radii in the domain
-    local convectiveSpectralRadius = 
-            Flow.GetMaximumOfField(grid.cells.convectiveSpectralRadius)
-    local viscousSpectralRadius =
-            Flow.GetMaximumOfField(grid.cells.viscousSpectralRadius)
-    local heatConductionSpectralRadius =
-            Flow.GetMaximumOfField(grid.cells.heatConductionSpectralRadius)
+    local maxV = maxViscousSpectralRadius:get()
+    local maxH = maxHeatConductionSpectralRadius:get()
+    local maxC = maxConvectiveSpectralRadius:get()
 
     -- Calculate diffusive spectral radius as the maximum between
     -- heat conduction and convective spectral radii
-    local diffusiveSpectralRadius = viscousSpectralRadius
-    if heatConductionSpectralRadius > viscousSpectralRadius then
-      diffusiveSpectralRadius = heatConductionSpectralRadius
-    end
+    local maxD = ( maxV > maxH ) and maxV or maxH
 
     -- Calculate global spectral radius as the maximum between the convective 
     -- and diffusive spectral radii
-    local spectralRadius = convectiveSpectralRadius
-    if diffusiveSpectralRadius > convectiveSpectralRadius then
-      spectralRadius = diffusiveSpectralRadius
-    end
+    local spectralRadius = ( maxD > maxC ) and maxD or maxC
+
     TimeIntegrator.deltaTime:set(TimeIntegrator.cfl / spectralRadius)
     --TimeIntegrator.deltaTime:set(0.005)
 
