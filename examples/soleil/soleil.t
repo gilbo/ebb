@@ -52,14 +52,14 @@ local grid_options = {
     --xBCRight = 'symmetry',
     --yBCLeft  = 'symmetry',
     --yBCRight = 'symmetry',
-    --xBCLeft  = 'periodic',
-    --xBCRight = 'periodic',
-    --yBCLeft  = 'periodic',
-    --yBCRight = 'periodic',
-    xBCLeft  = 'dummy_periodic',
-    xBCRight = 'dummy_periodic',
-    yBCLeft  = 'dummy_periodic',
-    yBCRight = 'dummy_periodic',
+    xBCLeft  = 'periodic',
+    xBCRight = 'periodic',
+    yBCLeft  = 'periodic',
+    yBCRight = 'periodic',
+    --xBCLeft  = 'dummy_periodic',
+    --xBCRight = 'dummy_periodic',
+    --yBCLeft  = 'dummy_periodic',
+    --yBCRight = 'dummy_periodic',
 }
 
 local spatial_stencil = {
@@ -86,7 +86,7 @@ local spatial_stencil = {
 }
 
 -- Define offsets for boundary conditions in flow solver
-local xSignDouble
+local xSign
 -- Offset liszt functions
 local XOffsetDummyPeriodic = liszt function(boundaryPointDepth)
   return grid_options.xnum
@@ -97,19 +97,20 @@ end
 if grid_options.xBCLeft  == "periodic" and 
        grid_options.xBCRight == "periodic" then
   XOffset = XOffsetDummyPeriodic
+  xSign = 1
 elseif grid_options.xBCLeft  == "dummy_periodic" and 
    grid_options.xBCRight == "dummy_periodic" then
   XOffset = XOffsetDummyPeriodic
-  xSignDouble = 1
+  xSign = 1
 elseif grid_options.xBCLeft == "symmetry" and 
        grid_options.xBCRight == "symmetry" then
   XOffset = XOffsetSymmetry
-  xSignDouble = -1
+  xSign = -1
 else
   error("Boundary conditions in x not implemented")
 end
 
-local ySignDouble
+local ySign
 local YOffsetDummyPeriodic = liszt function(boundaryPointDepth)
   return grid_options.ynum
 end
@@ -119,14 +120,15 @@ end
 if grid_options.yBCLeft  == "periodic" and 
        grid_options.yBCRight == "periodic" then
   YOffset = YOffsetDummyPeriodic
+  ySign = 1
 elseif grid_options.yBCLeft  == "dummy_periodic" and 
    grid_options.yBCRight == "dummy_periodic" then
   YOffset = YOffsetDummyPeriodic
-  ySignDouble = 1
+  ySign = 1
 elseif grid_options.yBCLeft  == "symmetry" and 
        grid_options.yBCRight == "symmetry" then
   YOffset = YOffsetSymmetry
-  ySignDouble = -1 -- Irrelevant
+  ySign = -1 -- Irrelevant
 else
   error("Boundary conditions in y not implemented")
 end
@@ -235,8 +237,8 @@ originWithGhosts[2] = originWithGhosts[2] -
 local grid = Grid.NewGrid2d{size           = {grid_options.xnum + 2*xBnum,
                                               grid_options.ynum + 2*yBnum},
                             origin         = originWithGhosts,
-                            width          = grid_options.width + 2*xBw,
-                            height         = grid_options.height + 2*yBh,
+                            width          = {grid_options.width + 2*xBw,
+                                              grid_options.height + 2*yBh},
                             boundary_depth = {xBnum, yBnum},
                             periodic_boundary = {xBCPeriodic, yBCPeriodic} }
 
@@ -244,8 +246,8 @@ print("xBoundaryDepth()", grid:xBoundaryDepth())
 print("yBoundaryDepth()", grid:yBoundaryDepth())
 print("grid xOrigin()", grid:xOrigin())
 print("grid yOrigin()", grid:yOrigin())
-print("grid width()", grid:width())
-print("grid height()", grid:height())
+print("grid width()", grid:xWidth())
+print("grid height()", grid:yWidth())
 print("originWithGhosts", originWithGhosts[1], originWithGhosts[2])
 
 
@@ -1118,7 +1120,7 @@ Flow.UpdateGhostFieldsStep1 = liszt kernel(c : grid.cells)
     if c.xneg_depth > 0 then
         var xoffset = XOffset(c.xneg_depth)
         c.rhoBoundary            =   c(xoffset,0).rho
-        c.rhoVelocityBoundary[0] =   c(xoffset,0).rhoVelocity[0] * xSignDouble
+        c.rhoVelocityBoundary[0] =   c(xoffset,0).rhoVelocity[0] * xSign
         c.rhoVelocityBoundary[1] =   c(xoffset,0).rhoVelocity[1]
         c.rhoEnergyBoundary      =   c(xoffset,0).rhoEnergy
         c.velocityBoundary[0]    =   c(xoffset,0).velocity[0]
@@ -1129,7 +1131,7 @@ Flow.UpdateGhostFieldsStep1 = liszt kernel(c : grid.cells)
     if c.xpos_depth > 0 then
         var xoffset = XOffset(c.xpos_depth)
         c.rhoBoundary            =   c(-xoffset,0).rho
-        c.rhoVelocityBoundary[0] =   c(-xoffset,0).rhoVelocity[0] * xSignDouble
+        c.rhoVelocityBoundary[0] =   c(-xoffset,0).rhoVelocity[0] * xSign
         c.rhoVelocityBoundary[1] =   c(-xoffset,0).rhoVelocity[1]
         c.rhoEnergyBoundary      =   c(-xoffset,0).rhoEnergy
         c.velocityBoundary[0]    =   c(-xoffset,0).velocity[0]
@@ -1141,7 +1143,7 @@ Flow.UpdateGhostFieldsStep1 = liszt kernel(c : grid.cells)
         var yoffset = YOffset(c.yneg_depth)
         c.rhoBoundary            =   c(0,yoffset).rho
         c.rhoVelocityBoundary[0] =   c(0,yoffset).rhoVelocity[0]
-        c.rhoVelocityBoundary[1] =   c(0,yoffset).rhoVelocity[1] * ySignDouble
+        c.rhoVelocityBoundary[1] =   c(0,yoffset).rhoVelocity[1] * ySign
         c.rhoEnergyBoundary      =   c(0,yoffset).rhoEnergy
         c.velocityBoundary[0]    =   c(0,yoffset).velocity[0]
         c.velocityBoundary[1]    =   c(0,yoffset).velocity[1]
@@ -1152,7 +1154,7 @@ Flow.UpdateGhostFieldsStep1 = liszt kernel(c : grid.cells)
         var yoffset = YOffset(c.ypos_depth)
         c.rhoBoundary            =   c(0,-yoffset).rho
         c.rhoVelocityBoundary[0] =   c(0,-yoffset).rhoVelocity[0]
-        c.rhoVelocityBoundary[1] =   c(0,-yoffset).rhoVelocity[1] * ySignDouble
+        c.rhoVelocityBoundary[1] =   c(0,-yoffset).rhoVelocity[1] * ySign
         c.rhoEnergyBoundary      =   c(0,-yoffset).rhoEnergy
         c.velocityBoundary[0]    =   c(0,-yoffset).velocity[0]
         c.velocityBoundary[1]    =   c(0,-yoffset).velocity[1]
@@ -1217,23 +1219,23 @@ Flow.UpdateGhostVelocityStep1 = liszt kernel(c : grid.cells)
     -- in the (wider-than-one-point) boundary we are
     if c.xneg_depth > 0 then
         var xoffset = XOffset(c.xneg_depth)
-        c.velocityBoundary[0] =   c(xoffset,0).velocity[0] * xSignDouble
+        c.velocityBoundary[0] =   c(xoffset,0).velocity[0] * xSign
         c.velocityBoundary[1] =   c(xoffset,0).velocity[1]
     end
     if c.xpos_depth > 0 then
         var xoffset = XOffset(c.xpos_depth)
-        c.velocityBoundary[0] =   c(-xoffset,0).velocity[0] * xSignDouble
+        c.velocityBoundary[0] =   c(-xoffset,0).velocity[0] * xSign
         c.velocityBoundary[1] =   c(-xoffset,0).velocity[1]
     end
     if c.yneg_depth > 0 then
         var yoffset = YOffset(c.yneg_depth)
         c.velocityBoundary[0] =   c(0,yoffset).velocity[0]
-        c.velocityBoundary[1] =   c(0,yoffset).velocity[1] * ySignDouble
+        c.velocityBoundary[1] =   c(0,yoffset).velocity[1] * ySign
     end
     if c.ypos_depth > 0 then
         var yoffset = YOffset(c.ypos_depth)
         c.velocityBoundary[0] =   c(0,-yoffset).velocity[0]
-        c.velocityBoundary[1] =   c(0,-yoffset).velocity[1] * ySignDouble
+        c.velocityBoundary[1] =   c(0,-yoffset).velocity[1] * ySign
     end
 end
 Flow.UpdateGhostVelocityStep2 = liszt kernel(c : grid.cells)
@@ -1253,14 +1255,14 @@ Flow.UpdateGhostConservedStep1 = liszt kernel(c : grid.cells)
     if c.xneg_depth > 0 then
         var xoffset = XOffset(c.xneg_depth)
         c.rhoBoundary            =   c(xoffset,0).rho
-        c.rhoVelocityBoundary[0] =   c(xoffset,0).rhoVelocity[0] * xSignDouble
+        c.rhoVelocityBoundary[0] =   c(xoffset,0).rhoVelocity[0] * xSign
         c.rhoVelocityBoundary[1] =   c(xoffset,0).rhoVelocity[1]
         c.rhoEnergyBoundary      =   c(xoffset,0).rhoEnergy
     end
     if c.xpos_depth > 0 then
         var xoffset = XOffset(c.xpos_depth)
         c.rhoBoundary            =   c(-xoffset,0).rho
-        c.rhoVelocityBoundary[0] =   c(-xoffset,0).rhoVelocity[0] * xSignDouble
+        c.rhoVelocityBoundary[0] =   c(-xoffset,0).rhoVelocity[0] * xSign
         c.rhoVelocityBoundary[1] =   c(-xoffset,0).rhoVelocity[1]
         c.rhoEnergyBoundary      =   c(-xoffset,0).rhoEnergy
     end
@@ -1268,14 +1270,14 @@ Flow.UpdateGhostConservedStep1 = liszt kernel(c : grid.cells)
         var yoffset = YOffset(c.yneg_depth)
         c.rhoBoundary            =   c(0,yoffset).rho
         c.rhoVelocityBoundary[0] =   c(0,yoffset).rhoVelocity[0]
-        c.rhoVelocityBoundary[1] =   c(0,yoffset).rhoVelocity[1] * ySignDouble
+        c.rhoVelocityBoundary[1] =   c(0,yoffset).rhoVelocity[1] * ySign
         c.rhoEnergyBoundary      =   c(0,yoffset).rhoEnergy
     end
     if c.ypos_depth > 0 then
         var yoffset = YOffset(c.ypos_depth)
         c.rhoBoundary            =   c(0,-yoffset).rho
         c.rhoVelocityBoundary[0] =   c(0,-yoffset).rhoVelocity[0]
-        c.rhoVelocityBoundary[1] =   c(0,-yoffset).rhoVelocity[1] * ySignDouble
+        c.rhoVelocityBoundary[1] =   c(0,-yoffset).rhoVelocity[1] * ySign
         c.rhoEnergyBoundary      =   c(0,-yoffset).rhoEnergy
     end
 end
@@ -1477,11 +1479,6 @@ function Flow.AddViscous()
     Flow.AddViscousUpdateUsingFluxY(grid.cells)
 end
 
-
-function Particles.AddFlowCoupling()
-    Particles.Locate(particles)
-    Particles.AddFlowCouplingPartOne(particles)
-end
 
 function Flow.Update(stage)
     Flow.UpdateKernels[stage](grid.cells)
