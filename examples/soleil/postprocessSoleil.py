@@ -253,6 +253,19 @@ fieldMin             = sys.argv[7]
 fieldMax             = sys.argv[8]
 outputFileNamePrefix = sys.argv[9]
 
+print "inputFileNamePrefix   ", inputFileNamePrefix  
+print "timeStep              ", timeStep             
+print "fieldName             ", fieldName            
+print "sliceIndex            ", sliceIndex           
+print "particlesSizeFactor   ", particlesSizeFactor  
+print "particlesArrowFactor  ", particlesArrowFactor 
+print "fieldMin              ", fieldMin             
+print "fieldMax              ", fieldMax             
+print "outputFileNamePrefix  ", outputFileNamePrefix 
+
+
+
+
 
 # Flow
 inputFileNameCoordinates = inputFileNamePrefix + "_centerCoordinates.txt"
