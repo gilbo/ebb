@@ -584,13 +584,13 @@ local function setup3dVertices(grid)
         end))
 
     -- Should these be hidden?
-    grid.dual_cells:NewFieldMacro('xid', L.NewMacro(function(v)
+    grid.vertices:NewFieldMacro('xid', L.NewMacro(function(v)
         return liszt ` L.id(v) % L.addr(xsize)
     end))
-    grid.dual_cells:NewFieldMacro('yid', L.NewMacro(function(v)
+    grid.vertices:NewFieldMacro('yid', L.NewMacro(function(v)
         return liszt ` (L.id(v) / L.addr(xsize)) % L.addr(ysize)
     end))
-    grid.dual_cells:NewFieldMacro('zid', L.NewMacro(function(v)
+    grid.vertices:NewFieldMacro('zid', L.NewMacro(function(v)
         return liszt ` L.id(v) / L.addr(xysize)
     end))
 end
@@ -704,7 +704,7 @@ Grid.NewGrid3d{
         cells       = L.NewRelation(nCells, 'cells'),
         dual_cells  = L.NewRelation(nDualCells, 'dual_cells'),
         vertices    = L.NewRelation(nVerts, 'vertices'),
-    }, Grid2d)
+    }, Grid3d)
 
     setup3dCells(grid)
     setup3dDualCells(grid)
@@ -716,9 +716,9 @@ end
 
 
 
-function Grid3d:xSize()             return self._n_xy[1]            end
-function Grid3d:ySize()             return self._n_xy[2]            end
-function Grid3d:zSize()             return self._n_xy[3]            end
+function Grid3d:xSize()             return self._n_xyz[1]            end
+function Grid3d:ySize()             return self._n_xyz[2]            end
+function Grid3d:zSize()             return self._n_xyz[3]            end
 function Grid3d:xOrigin()           return self._origin[1]          end
 function Grid3d:yOrigin()           return self._origin[2]          end
 function Grid3d:zOrigin()           return self._origin[3]          end
