@@ -39,12 +39,26 @@ local IO = {};
 local Visualization = {};
 
 -----------------------------------------------------------------------------
+--[[                           INIT CASES                                ]]--
+-----------------------------------------------------------------------------
+Flow.Uniform           = L.NewGlobal(L.int, 0)
+Flow.TaylorGreenVortex = L.NewGlobal(L.int, 1)
+
+Particles.PositionsConstant = L.NewGlobal(L.int, 0)
+Particles.PositionsRandom   = L.NewGlobal(L.int, 1)
+Particles.PositionsUQCase   = L.NewGlobal(L.int, 2)
+
+Particles.VelocitiesConstant = L.NewGlobal(L.int, 0)
+Particles.VelocitiesToFlow   = L.NewGlobal(L.int, 1)
+Particles.VelocitiesUQCase   = L.NewGlobal(L.int, 2)
+
+-----------------------------------------------------------------------------
 --[[                             OPTIONS                                 ]]--
 -----------------------------------------------------------------------------
 
 local grid_options = {
-    xnum = 64,
-    ynum = 64,
+    xnum = 16,
+    ynum = 16,
     origin = {0.0, 0.0},
     width = twoPi,
     height = twoPi,
@@ -65,24 +79,24 @@ local grid_options = {
 local spatial_stencil = {
 --  Splitting parameter (for skew
     split = 0.5,
-----  Order 2
---    order = 2,
---    size = 2,
---    numInterpolateCoeffs = 2,
---    interpolateCoeffs = L.NewVector(L.double, {0, 0.5}),
---    numFirstDerivativeCoeffs = 2,
---    firstDerivativeCoeffs = L.NewVector(L.double, {0, 0.5}),
---    firstDerivativeModifiedWaveNumber = 1.0,
---    secondDerivativeModifiedWaveNumber = 4.0,
+--  Order 2
+    order = 2,
+    size = 2,
+    numInterpolateCoeffs = 2,
+    interpolateCoeffs = L.NewVector(L.double, {0, 0.5}),
+    numFirstDerivativeCoeffs = 2,
+    firstDerivativeCoeffs = L.NewVector(L.double, {0, 0.5}),
+    firstDerivativeModifiedWaveNumber = 1.0,
+    secondDerivativeModifiedWaveNumber = 4.0,
 ----  Order 6
-    order = 6,
-    size = 6,
-    numInterpolateCoeffs = 4,
-    interpolateCoeffs = L.NewVector(L.double, {0, 37/60, -8/60, 1/60}),
-    numFirstDerivativeCoeffs = 4,
-    firstDerivativeCoeffs = L.NewVector(L.double, {0.0,45.0/60.0,-9.0/60.0, 1.0/60.0}),
-    firstDerivativeModifiedWaveNumber = 1.59,
-    secondDerivativeModifiedWaveNumber = 6.04
+--    order = 6,
+--    size = 6,
+--    numInterpolateCoeffs = 4,
+--    interpolateCoeffs = L.NewVector(L.double, {0, 37/60, -8/60, 1/60}),
+--    numFirstDerivativeCoeffs = 4,
+--    firstDerivativeCoeffs = L.NewVector(L.double, {0.0,45.0/60.0,-9.0/60.0, 1.0/60.0}),
+--    firstDerivativeModifiedWaveNumber = 1.59,
+--    secondDerivativeModifiedWaveNumber = 6.04
 }
 
 -- Define offsets for boundary conditions in flow solver
@@ -143,31 +157,48 @@ TimeIntegrator.simTime              = 0
 TimeIntegrator.final_time           = 1000.00001
 TimeIntegrator.timeStep             = 0
 TimeIntegrator.cfl                  = 1.2
-TimeIntegrator.outputEveryTimeSteps = 63
+TimeIntegrator.outputEveryTimeSteps = 100 --63
 TimeIntegrator.deltaTime            = L.NewGlobal(L.double, 0.01)
 
 local fluid_options = {
     gasConstant = 20.4128,
     gamma = 1.4,
-    dynamic_viscosity_ref = 0.0008,
+    dynamic_viscosity_ref = 0.001,
     dynamic_viscosity_temp_ref = 1.0,
     prandtl = 0.7
 }
 
 local flow_options = {
-    bodyForce = L.NewGlobal(L.vec2d, {0,-0.001})
+    --initCase = Flow.TaylorGreenVortex,
+    initCase = Flow.Uniform,
+    --bodyForce = L.NewGlobal(L.vec2d, {0,-0.01})
+    bodyForce = L.NewGlobal(L.vec2d, {0,-0.0})
 }
 
 local particles_options = {
-    num = 1000,
+    --initCasePositions  = Particles.PositionsRandom,
+    --initCaseVelocities = Particles.VelocitiesToFlow,
+    --initCasePositions  = Particles.PositionsConstant,
+    --initCaseVelocities = Particles.VelocitiesConstant,
+    initCasePositions  = Particles.PositionsUQCase,
+    initCaseVelocities = Particles.VelocitiesUQCase,
+    num = 10,
     convective_coefficient = L.NewGlobal(L.double, 0.7), -- W m^-2 K^-1
     heat_capacity = L.NewGlobal(L.double, 0.7), -- J Kg^-1 K^-1
-    pos_max = 6.2,
+    xPos_min = 3.2,
+    yPos_min = 3.2,
+    xPos_delta = 1.2,
+    yPos_delta = 1.2,
+    xVel_min = -10,
+    yVel_min = -3.2,
+    xVel_delta = 1.2,
+    yVel_delta = 1.2,
     initialTemperature = 20,
     density = 1000,
-    diameter_m = 0.01,
-    diameter_a = 0.001,
-    bodyForce = L.NewGlobal(L.vec2d, {0,-0.001}),
+    diameter_mean = 0.01,
+    diameter_maxDeviation = 0.01,
+    --bodyForce = L.NewGlobal(L.vec2d, {0,-0.01}),
+    bodyForce = L.NewGlobal(L.vec2d, {0,-1.1}),
     emissivity = 0.5,
     absorptivity = 0.5 -- Equal to emissivity in thermal equilibrium
                        -- (Kirchhoff law of thermal radiation)
@@ -347,12 +378,7 @@ LoadConstant(0)
 particles:NewField('cell', grid.cells):
 LoadConstant(0)
 particles:NewField('position', L.vec2d):
-Load(function(i)
-    local pmax = particles_options.pos_max
-    local p1 = cmath.fmod(cmath.rand_double(), pmax)
-    local p2 = cmath.fmod(cmath.rand_double(), pmax)
-    return {p1, p2}
-end)
+LoadConstant(L.NewVector(L.double, {0, 0}))
 particles:NewField('velocity', L.vec2d):
 LoadConstant(L.NewVector(L.double, {0, 0}))
 particles:NewField('temperature', L.double):
@@ -361,9 +387,11 @@ particles:NewField('position_ghost', L.vec2d):
 LoadConstant(L.NewVector(L.double, {0, 0}))
 
 particles:NewField('diameter', L.double):
+-- Initialize to random distribution with given mean value and maximum 
+-- deviation from it
 Load(function(i)
-    return cmath.rand_unity() * particles_options.diameter_m +
-        particles_options.diameter_a
+    return cmath.rand_unity() * particles_options.diameter_maxDeviation +
+           particles_options.diameter_mean
 end)
 particles:NewField('density', L.double):
 LoadConstant(particles_options.density)
@@ -485,24 +513,30 @@ Flow.InitializeCenterCoordinates = liszt kernel(c : grid.cells)
     c.centerCoordinates = L.vec2d({xy[0], xy[1]})
 end
 Flow.InitializePrimitives = liszt kernel(c : grid.cells)
-    -- Define Taylor Green Vortex
-    var taylorGreenPressure = 100.0
-    -- Initialize
-    var xy = c.center
-    var coorZ = 0
-    c.rho = 1.0
-    c.velocity = 
-        L.vec2d({cmath.sin(xy[0]) * 
-                 cmath.cos(xy[1]) *
-                 cmath.cos(coorZ),
-               - cmath.cos(xy[0]) *
-                 cmath.sin(xy[1]) *
-                 cmath.cos(coorZ)})
-    var factorA = cmath.cos(2.0*coorZ) + 2.0
-    var factorB = cmath.cos(2.0*xy[0]) +
-                  cmath.cos(2.0*xy[1])
-    c.pressure = 
-        taylorGreenPressure + (factorA*factorB - 2.0) / 16.0
+    if flow_options.initCase == Flow.TaylorGreenVortex then
+      -- Define Taylor Green Vortex
+      var taylorGreenPressure = 100.0
+      -- Initialize
+      var xy = c.center
+      var coorZ = 0
+      c.rho = 1.0
+      c.velocity = 
+          L.vec2d({cmath.sin(xy[0]) * 
+                   cmath.cos(xy[1]) *
+                   cmath.cos(coorZ),
+                 - cmath.cos(xy[0]) *
+                   cmath.sin(xy[1]) *
+                   cmath.cos(coorZ)})
+      var factorA = cmath.cos(2.0*coorZ) + 2.0
+      var factorB = cmath.cos(2.0*xy[0]) +
+                    cmath.cos(2.0*xy[1])
+      c.pressure = 
+          taylorGreenPressure + (factorA*factorB - 2.0) / 16.0
+    elseif flow_options.initCase == Flow.Uniform then
+      c.rho = 1.0
+      c.velocity = L.vec2d({-1.0,0.0})
+      c.pressure = 100.0
+    end
 end
 Flow.UpdateConservedFromPrimitive = liszt kernel(c : grid.cells)
 
@@ -569,7 +603,7 @@ end
 Flow.AddInviscidGetFluxX =  liszt kernel(c : grid.cells)
     -- Consider first boundary element (c.xneg_depth == 1) to define left flux
     -- on first interior cell
-    if c.in_interior or c.xneg_depth == 1  then
+    if c.in_interior or c.xneg_depth == 1 then
         var directionIdx = 0
         var numInterpolateCoeffs  = spatial_stencil.numInterpolateCoeffs
         var interpolateCoeffs     = spatial_stencil.interpolateCoeffs
@@ -1019,6 +1053,52 @@ Particles.AddRadiation = liszt kernel(p : particles)
 end
 
 -- Set particle velocities to flow for initialization
+Particles.InitializePrimitives = liszt kernel(p: particles)
+    -- Positions
+    if particles_options.initCasePositions == 
+         Particles.PositionsRandom then
+      -- Particles randomly distributed inside box limits defined in by options
+      p.position[0] = cmath.fmod(cmath.rand_double(), 
+                                 particles_options.xPos_delta)
+                      + particles_options.xPos_min
+      p.position[1] = cmath.fmod(cmath.rand_double(), 
+                                 particles_options.yPos_delta)
+                      + particles_options.yPos_min
+    elseif particles_options.initCasePositions == 
+             Particles.PositionsConstant then
+      -- Particles at location given by options
+      p.position[0] = particles_options.xPos_min
+      p.position[1] = particles_options.yPos_min
+    end
+
+    -- Velocities
+    if particles_options.initCaseVelocities == 
+         Particles.VelocitiesToFlow then
+      p.dual_cell = grid.dual_locate(p.position)
+      var flow_density     = L.double(0)
+      var flow_velocity    = L.vec2d({0, 0})
+      var flow_temperature = L.double(0)
+      var flowDynamicViscosity = L.double(0)
+      p.velocity = InterpolateBilinear(p.dual_cell, p.position, Velocity)
+    elseif particles_options.initCaseVelocities == 
+         Particles.VelocitiesConstant then
+      p.velocity[0] = particles_options.xVel_min
+      p.velocity[1] = particles_options.yVel_min
+    end
+
+    -- UQ case
+    if particles_options.initCasePositions == 
+             Particles.PositionsUQCase and
+       particles_options.initCaseVelocities == 
+             Particles.VelocitiesUQCase then
+      p.position[0] = particles_options.xPos_min
+      p.position[1] = particles_options.yPos_min
+      p.velocity[0] = particles_options.xVel_min
+      p.velocity[1] = particles_options.yVel_min
+    end
+
+end
+-- Set particle velocities to flow for initialization
 Particles.SetVelocitiesToFlow = liszt kernel(p: particles)
     p.dual_cell = grid.dual_locate(p.position)
     var flow_density     = L.double(0)
@@ -1359,8 +1439,10 @@ local unity = L.NewVector(L.float,{1.0,1.0,1.0})
 local cold = L.NewVector(L.float,{1.0,1.0,1.0})
 local hot  = L.NewVector(L.float,{1.0,0.0,0.0})
 Flow.DrawKernel = liszt kernel (c : grid.cells)
-    var xMax = L.double(grid_options.width)
-    var yMax = L.double(grid_options.height)
+    --var xMax = L.double(grid_options.width)
+    --var yMax = L.double(grid_options.height)
+    var xMax = 1.0
+    var yMax = 1.0
     var posA : L.vec3d = { c(0,0).center[0]/xMax,
                            c(0,0).center[1]/yMax,
                            0.0 }
@@ -1388,8 +1470,10 @@ Flow.DrawKernel = liszt kernel (c : grid.cells)
 end
 
 Particles.DrawKernel = liszt kernel (p : particles)
-    var xMax = L.double(grid_options.width)
-    var yMax = L.double(grid_options.height)
+    --var xMax = L.double(grid_options.width)
+    --var yMax = L.double(grid_options.height)
+    var xMax = 1.0
+    var yMax = 1.0
     var scale = p.temperature/particles_options.initialTemperature
     vdb.color(scale*hot)
     var pos : L.vec3d = { p.position[0]/xMax,
@@ -1530,6 +1614,7 @@ function TimeIntegrator.InitializeVariables()
     Flow.UpdateGhost()
     Flow.UpdateAuxiliary()
 
+    Particles.InitializePrimitives(particles)
     --Particles.Locate(particles)
     --Particles.SetVelocitiesToFlow(particles)
 end
@@ -1540,9 +1625,9 @@ function TimeIntegrator.ComputeDFunctionDt()
     Flow.AddViscous()
     Flow.AddBodyForces(grid.cells.interior)
     Particles.AddFlowCoupling(particles)
-    Flow.AddParticlesCoupling(particles)
+    --Flow.AddParticlesCoupling(particles)
     Particles.AddBodyForces(particles)
-    Particles.AddRadiation(particles)
+    --Particles.AddRadiation(particles)
 end
 
 function TimeIntegrator.UpdateSolution(stage)
