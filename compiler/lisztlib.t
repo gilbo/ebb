@@ -1,5 +1,9 @@
 local L = {}
 package.loaded["compiler.lisztlib"] = L
+
+-- Liszt types are created here
+local T = terralib.require 'compiler.types'
+
 local DataArray = terralib.require('compiler.rawdata').DataArray
 
 -- Use the following to produce

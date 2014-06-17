@@ -4,6 +4,7 @@ package.loaded["compiler.codegen"] = Codegen
 local ast = require "compiler.ast"
 
 local C = terralib.require 'compiler.c'
+local L = terralib.require 'compiler.lisztlib'
 
 local thread_id
 local block_id
@@ -12,19 +13,19 @@ local aadd
 if terralib.cudacompile then
   thread_id = cudalib.nvvm_read_ptx_sreg_tid_x
   block_id  = cudalib.nvvm_read_ptx_sreg_ctaid_x
-  --ntid  = cudalib.nvvm_read_ptx_sreg_ntid_x  -- terralib.intrinsic("llvm.nvvm.read.ptx.sreg.ntid.x",{} -> int)
-  --sqrt  = cudalib.nvvm_sqrt_rm_d             -- floating point sqrt, round to nearest
-  aadd  = terralib.intrinsic("llvm.nvvm.atomic.load.add.f32.p0f32", {&float,float} -> {float})
+  aadd_fl   = terralib.intrinsic("llvm.nvvm.atomic.load.add.f32.p0f32", {&float,float} -> {float})
 end
+
 
 ----------------------------------------------------------------------------
 
 local Context = {}
 Context.__index = Context
 
-function Context.new(env, bran)
+function Context.new(env, diag, bran)
     local ctxt = setmetatable({
         env     = env,
+        diag    = diag,
         bran    = bran,
     }, Context)
     return ctxt
@@ -76,6 +77,10 @@ function Context:incrementInsertIndex()
     insert_index = insert_index + 1
     @counter = @counter + 1
   end
+end
+
+function Context:error(ast, ...)
+  self.diag:reporterror(ast, ...)
 end
 
 ----------------------------------------------------------------------------
@@ -170,41 +175,61 @@ local function gpu_codegen (kernel_ast, ctxt)
     [kernel_body]
   end
   local M = terralib.cudacompile { cuda_kernel = cuda_kernel }
-
-  local launcher = terra ()
-    var n_blocks = uint(C.ceil(
-      [ctxt:cpuGerm()].n_rows / float(BLOCK_SIZE)))
-    var params = terralib.CUDAParams {
-      n_blocks, 1, 1,
-      BLOCK_SIZE, 1, 1,
-      0, nil
-    }
-
-    if [ctxt.bran.subset ~= nil] and not [ctxt:cpuGerm()].use_boolmask then
+  -- germ type will have a use_boolmask field only if it was generated for a subset
+  -- kernel
+  if ctxt.bran.subset then
+    local launcher = terra ()
       var n_blocks = uint(C.ceil(
-        [ctxt:cpuGerm()].index_size / float(BLOCK_SIZE)))
-      params = terralib.CUDAParams {
+        [ctxt:cpuGerm()].n_rows / float(BLOCK_SIZE)))
+      var params = terralib.CUDAParams {
         n_blocks, 1, 1,
         BLOCK_SIZE, 1, 1,
         0, nil
       }
+
+      if not [ctxt:cpuGerm()].use_boolmask then
+        var n_blocks = uint(C.ceil(
+          [ctxt:cpuGerm()].index_size / float(BLOCK_SIZE)))
+        params = terralib.CUDAParams {
+          n_blocks, 1, 1,
+          BLOCK_SIZE, 1, 1,
+          0, nil
+        }
+      end
+      M.cuda_kernel(&params)
     end
+    return launcher
 
-    M.cuda_kernel(&params)
+  else
+    local launcher = terra ()
+      var n_blocks = uint(C.ceil(
+        [ctxt:cpuGerm()].n_rows / float(BLOCK_SIZE)))
+      var params = terralib.CUDAParams {
+        n_blocks, 1, 1,
+        BLOCK_SIZE, 1, 1,
+        0, nil
+      }
+      M.cuda_kernel(&params)
+    end
+    return launcher
   end
-
-  return launcher
 end
 
 function Codegen.codegen (kernel_ast, bran)
-  local env = terralib.newenvironment(nil)
-  local ctxt = Context.new(env, bran)
+  local env  = terralib.newenvironment(nil)
+  local diag = terralib.newdiagnostics()
+  local ctxt = Context.new(env, diag, bran)
 
+  diag:begin()
+  local res
   if ctxt:onGPU() then
-    return gpu_codegen(kernel_ast, ctxt)
+    res = gpu_codegen(kernel_ast, ctxt)
   else
-    return cpu_codegen(kernel_ast, ctxt)
+    res = cpu_codegen(kernel_ast, ctxt)
   end
+
+  diag:finishandabortiferrors("Errors when attempting to generate code for liszt kernel", 1)
+  return res
 end
 
 
@@ -378,6 +403,28 @@ local function bin_exp (op, lhe, rhe)
   end
 end
 
+local gpu_reductions_for_type = {
+  [L.float] = {
+      ['+'] = true,
+      ['-'] = true,
+    },
+  [L.double] = {}, -- unsupported types
+  [L.int]    = {},
+  [L.uint64] = {},
+  [L.bool]   = {},
+}
+
+local function red_exp (op, typ, lvalptr, update)
+  if typ == L.float then
+    if     op == '+' then return `aadd_fl(lvalptr, update)
+    elseif op == '-' then return `aadd_fl(lvalptr, -update)
+    end
+    return nil
+  elseif typ == L.int then
+    return nil
+  end
+end
+
 function let_vec_binding(typ, N, exp)
   local val = symbol(typ:terraType())
   local let_binding = quote var [val] = [exp] end
@@ -437,6 +484,30 @@ function vec_bin_exp(op, result_typ, lhe, rhe, lhtyp, rhtyp)
   return q
 end
 
+function vec_red_exp(op, result_typ, lval, rhe, rhtyp)
+  if not result_typ:isVector() then
+    return red_exp(op, result_typ, `&lval, rhe)
+  end
+
+  local N = result_typ.N
+  local rhbind, rhcoords = let_vec_binding(rhtyp, N, rhe)
+
+  local v = symbol() -- pointer to vector location of reduction result
+
+  local result = quote end
+  for i = 0, N-1 do
+    result = quote
+      [result]
+      [red_exp(op, result_typ:baseType(), `v+i, rhcoords[i+1])]
+    end
+  end
+  return quote
+      var [v] : &result_typ:terraBaseType() = [&result_typ:terraBaseType()](&[lval])
+      [rhbind]
+    in
+      [result]
+    end
+end
 
 function ast.Assignment:codegen (ctxt)
   local lhs   = self.lvalue:codegen(ctxt)
@@ -451,7 +522,23 @@ function ast.Assignment:codegen (ctxt)
 end
 
 function ast.GlobalReduce:codegen(ctxt)
-  -- just re-direct to an assignment statement for now.
+  -- GPU impl:
+  if ctxt:onGPU() then
+    -- Check supported reduction types
+    local lbasetype  = self.global.node_type:baseType()
+    local reductions = gpu_reductions_for_type[lbasetype]
+    if not reductions[self.reduceop] then
+      ctxt:error(self, "Reduce operator \"" .. self.reduceop .. "\" for type \"" .. lbasetype:toString() ..
+               "\" is not supported on the GPU")
+      return quote end
+    else
+      local lval = self.global:codegen(ctxt)
+      local rexp = self.exp:codegen(ctxt)
+      return vec_red_exp(self.reduceop, self.global.node_type, lval, rexp, self.exp.node_type)
+    end
+  end
+
+  -- CPU impl forwards to assignment codegen
   local assign = ast.Assignment:DeriveFrom(self)
   assign.lvalue = self.global
   assign.exp    = self.exp
@@ -460,10 +547,23 @@ function ast.GlobalReduce:codegen(ctxt)
   return assign:codegen(ctxt)
 end
 
+
 function ast.FieldWrite:codegen (ctxt)
-  --if ctxt:onGPU() and self.reduceop then
-    -- use aadd etc
-  --else
+  if ctxt:onGPU() and self.reduceop and not self.fieldaccess.row.is_centered then
+    -- Check supported reduction types
+    local lbasetype = self.fieldaccess.node_type:baseType()
+    local reductions = gpu_reductions_for_type[lbasetype]
+    if not reductions[self.reduceop] then
+      ctxt:error(self, "Reduce operator \"" .. self.reduceop .. "\" for type \"" .. lbasetype:toString() ..
+                 "\" is not supported on the GPU")
+      return quote end
+    else
+      local lval = self.fieldaccess:codegen(ctxt)
+      local rexp = self.exp:codegen(ctxt)
+      return vec_red_exp(self.reduceop, self.fieldaccess.node_type, lval, rexp, self.exp.node_type)
+    end
+
+  else
     -- just re-direct to an assignment statement for now.
     local assign = ast.Assignment:DeriveFrom(self)
     assign.lvalue = self.fieldaccess
@@ -471,7 +571,7 @@ function ast.FieldWrite:codegen (ctxt)
     if self.reduceop then assign.reduceop = self.reduceop end
 
     return assign:codegen(ctxt)
-  --end
+  end
 end
 
 function ast.FieldAccess:codegen (ctxt)

@@ -1,6 +1,8 @@
-
 local T = {}
-package.loaded["compiler.types"] = T
+-- Warning: DO NOT UNCOMMENT this line!
+-- Circular dependencies for types.t cannot be resolved this way because Liszt
+-- types are defined inline when this file is first executed.
+-- packed.loaded["compiler.types"] = T
 
 local L = terralib.require "compiler.lisztlib"
 
@@ -529,3 +531,4 @@ T.luaValConformsToType  = luaValConformsToType
 T.terraToLisztType      = terraToLisztType
 T.Type = Type
 
+return T
