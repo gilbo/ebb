@@ -71,7 +71,7 @@ local grid_options = {
     xnum = 32,
     ynum = 32,
     znum = 32,
-    origin = {0.0, 0.0},
+    origin = {0.0, 0.0, 0.0},
     xWidth = twoPi,
     --xWidth = 2*twoPi,
     yWidth = twoPi,
@@ -206,8 +206,8 @@ local flow_options = {
     --initCase = Flow.Uniform,
     --initParams = L.NewGlobal(L.vector(L.double,4),
     --                           {1.0,10,1.0,0.0}),
-    --bodyForce = L.NewGlobal(L.vec2d, {0,0.01})
-    bodyForce = L.NewGlobal(L.vec2d, {0,0.0})
+    --bodyForce = L.NewGlobal(L.vec3d, {0,0.01,0.0})
+    bodyForce = L.NewGlobal(L.vec3d, {0,0.0,0})
 }
 
 local particles_options = {
@@ -229,8 +229,8 @@ local particles_options = {
     --                           {pi,pi,pi,2*pi,2*pi,2*pi}), 
     -- UQCase
     feederType = Particles.FeederUQCase,
-    feederParams = L.NewGlobal(L.vector(L.double,18),
-                       {pi/4,pi/2,pi/2,0.1*pi,0.1*pi,pi/2,4,4,0,0.1,
+    feederParams = L.NewGlobal(L.vector(L.double,20),
+                       {pi/4,  pi/2,pi/2,0.1*pi,0.1*pi,pi/2,4, 4,0,0.1,
                         pi/4,3*pi/2,pi/2,0.1*pi,0.1*pi,pi/2,4,-4,0,0.5}),
 
     -- Collector is defined by a type and a set of parameters
@@ -341,43 +341,55 @@ originWithGhosts[1] = originWithGhosts[1] -
 originWithGhosts[2] = originWithGhosts[2] - 
                       yBnum * grid_options.yWidth/grid_options.ynum
 originWithGhosts[3] = originWithGhosts[3] - 
-                      yBnum * grid_options.zWidth/grid_options.znum
+                      zBnum * grid_options.zWidth/grid_options.znum
+print {grid_options.xnum + 2*xBnum,
+                                grid_options.ynum + 2*yBnum,
+                                grid_options.znum + 2*zBnum}
 
-local grid = Grid.NewGrid2d{size           = {grid_options.xnum + 2*xBnum,
-                                              grid_options.ynum + 2*yBnum},
-                            origin         = originWithGhosts,
-                            width          = {grid_options.xWidth + 2*xBw,
-                                              grid_options.yWidth + 2*yBw},
-                            boundary_depth = {xBnum, yBnum},
-                            periodic_boundary = {xBCPeriodic, yBCPeriodic} }
+local grid = Grid.NewGrid3d{
+              size           = {grid_options.xnum + 2*xBnum,
+                                grid_options.ynum + 2*yBnum,
+                                grid_options.znum + 2*zBnum},
+              origin         = originWithGhosts,
+              width          = {grid_options.xWidth + 2*xBw,
+                                grid_options.yWidth + 2*yBw,
+                                grid_options.zWidth + 2*zBw},
+              boundary_depth = {xBnum, yBnum, zBnum},
+              periodic_boundary = {xBCPeriodic, yBCPeriodic, zBCPeriodic} }
 
 print("xBoundaryDepth()", grid:xBoundaryDepth())
 print("yBoundaryDepth()", grid:yBoundaryDepth())
+print("zBoundaryDepth()", grid:zBoundaryDepth())
 print("grid xOrigin()", grid:xOrigin())
 print("grid yOrigin()", grid:yOrigin())
+print("grid zOrigin()", grid:zOrigin())
 print("grid xWidth()", grid:xWidth())
 print("grid yWidth()", grid:yWidth())
-print("originWithGhosts", originWithGhosts[1], originWithGhosts[2])
+print("grid zWidth()", grid:zWidth())
+print("originWithGhosts",
+       originWithGhosts[1], 
+       originWithGhosts[2],
+       originWithGhosts[3])
 
 
 
 -- Conserved variables
 grid.cells:NewField('rho', L.double):
 LoadConstant(0)
-grid.cells:NewField('rhoVelocity', L.vec2d):
-LoadConstant(L.NewVector(L.double, {0, 0}))
+grid.cells:NewField('rhoVelocity', L.vec3d):
+LoadConstant(L.NewVector(L.double, {0, 0, 0}))
 grid.cells:NewField('rhoEnergy', L.double):
 LoadConstant(0)
 
 -- Primitive variables
-grid.cells:NewField('centerCoordinates', L.vec2d):
-LoadConstant(L.NewVector(L.double, {0, 0}))
-grid.cells:NewField('velocity', L.vec2d):
-LoadConstant(L.NewVector(L.double, {0, 0}))
-grid.cells:NewField('velocityGradientX', L.vec2d):
-LoadConstant(L.NewVector(L.double, {0, 0}))
-grid.cells:NewField('velocityGradientY', L.vec2d):
-LoadConstant(L.NewVector(L.double, {0, 0}))
+grid.cells:NewField('centerCoordinates', L.vec3d):
+LoadConstant(L.NewVector(L.double, {0, 0, 0}))
+grid.cells:NewField('velocity', L.vec3d):
+LoadConstant(L.NewVector(L.double, {0, 0, 0}))
+grid.cells:NewField('velocityGradientX', L.vec3d):
+LoadConstant(L.NewVector(L.double, {0, 0, 0}))
+grid.cells:NewField('velocityGradientY', L.vec3d):
+LoadConstant(L.NewVector(L.double, {0, 0, 0}))
 grid.cells:NewField('temperature', L.double):
 LoadConstant(0)
 grid.cells:NewField('pressure', L.double):
@@ -402,47 +414,47 @@ LoadConstant(0)
 -- Fields for boundary treatment
 grid.cells:NewField('rhoBoundary', L.double):
 LoadConstant(0)
-grid.cells:NewField('rhoVelocityBoundary', L.vec2d):
-LoadConstant(L.NewVector(L.double, {0, 0}))
+grid.cells:NewField('rhoVelocityBoundary', L.vec3d):
+LoadConstant(L.NewVector(L.double, {0, 0, 0}))
 grid.cells:NewField('rhoEnergyBoundary', L.double):
 LoadConstant(0)
-grid.cells:NewField('velocityBoundary', L.vec2d):
-LoadConstant(L.NewVector(L.double, {0, 0}))
+grid.cells:NewField('velocityBoundary', L.vec3d):
+LoadConstant(L.NewVector(L.double, {0, 0, 0}))
 grid.cells:NewField('pressureBoundary', L.double):
 LoadConstant(0)
 grid.cells:NewField('temperatureBoundary', L.double):
 LoadConstant(0)
-grid.cells:NewField('velocityGradientXBoundary', L.vec2d):
-LoadConstant(L.NewVector(L.double, {0, 0}))
-grid.cells:NewField('velocityGradientYBoundary', L.vec2d):
-LoadConstant(L.NewVector(L.double, {0, 0}))
+grid.cells:NewField('velocityGradientXBoundary', L.vec3d):
+LoadConstant(L.NewVector(L.double, {0, 0, 0}))
+grid.cells:NewField('velocityGradientYBoundary', L.vec3d):
+LoadConstant(L.NewVector(L.double, {0, 0, 0}))
 
 -- scratch (temporary) fields
 -- intermediate value and copies
 grid.cells:NewField('rho_old', L.double):
 LoadConstant(0)
-grid.cells:NewField('rhoVelocity_old', L.vec2d):
-LoadConstant(L.NewVector(L.double, {0, 0}))
+grid.cells:NewField('rhoVelocity_old', L.vec3d):
+LoadConstant(L.NewVector(L.double, {0, 0, 0}))
 grid.cells:NewField('rhoEnergy_old', L.double):
 LoadConstant(0)
 grid.cells:NewField('rho_new', L.double):
 LoadConstant(0)
-grid.cells:NewField('rhoVelocity_new', L.vec2d):
-LoadConstant(L.NewVector(L.double, {0, 0}))
+grid.cells:NewField('rhoVelocity_new', L.vec3d):
+LoadConstant(L.NewVector(L.double, {0, 0, 0}))
 grid.cells:NewField('rhoEnergy_new', L.double):
 LoadConstant(0)
 -- time derivatives
 grid.cells:NewField('rho_t', L.double):
 LoadConstant(0)
-grid.cells:NewField('rhoVelocity_t', L.vec2d):
-LoadConstant(L.NewVector(L.double, {0, 0}))
+grid.cells:NewField('rhoVelocity_t', L.vec3d):
+LoadConstant(L.NewVector(L.double, {0, 0, 0}))
 grid.cells:NewField('rhoEnergy_t', L.double):
 LoadConstant(0)
 -- fluxes
 grid.cells:NewField('rhoFlux', L.double):
 LoadConstant(0)
-grid.cells:NewField('rhoVelocityFlux', L.vec2d):
-LoadConstant(L.NewVector(L.double, {0, 0}))
+grid.cells:NewField('rhoVelocityFlux', L.vec3d):
+LoadConstant(L.NewVector(L.double, {0, 0, 0}))
 grid.cells:NewField('rhoEnergyFlux', L.double):
 LoadConstant(0)
 
@@ -455,14 +467,14 @@ particles:NewField('dual_cell', grid.dual_cells):
 LoadConstant(0)
 particles:NewField('cell', grid.cells):
 LoadConstant(0)
-particles:NewField('position', L.vec2d):
-LoadConstant(L.NewVector(L.double, {0, 0}))
-particles:NewField('velocity', L.vec2d):
-LoadConstant(L.NewVector(L.double, {0, 0}))
+particles:NewField('position', L.vec3d):
+LoadConstant(L.NewVector(L.double, {0, 0, 0}))
+particles:NewField('velocity', L.vec3d):
+LoadConstant(L.NewVector(L.double, {0, 0, 0}))
 particles:NewField('temperature', L.double):
 LoadConstant(particles_options.initialTemperature)
-particles:NewField('position_ghost', L.vec2d):
-LoadConstant(L.NewVector(L.double, {0, 0}))
+particles:NewField('position_ghost', L.vec3d):
+LoadConstant(L.NewVector(L.double, {0, 0, 0}))
 
 particles:NewField('diameter', L.double):
 -- Initialize to random distribution with given mean value and maximum 
@@ -474,8 +486,8 @@ end)
 particles:NewField('density', L.double):
 LoadConstant(particles_options.density)
 
-particles:NewField('deltaVelocityOverRelaxationTime', L.vec2d):
-LoadConstant(L.NewVector(L.double, {0, 0}))
+particles:NewField('deltaVelocityOverRelaxationTime', L.vec3d):
+LoadConstant(L.NewVector(L.double, {0, 0, 0}))
 particles:NewField('deltaTemperatureTerm', L.double):
 LoadConstant(0)
 -- state of a particle:
@@ -498,23 +510,23 @@ LoadConstant(0)
 
 -- scratch (temporary) fields
 -- intermediate values and copies
-particles:NewField('position_old', L.vec2d):
-LoadConstant(L.NewVector(L.double, {0, 0}))
-particles:NewField('velocity_old', L.vec2d):
-LoadConstant(L.NewVector(L.double, {0, 0}))
+particles:NewField('position_old', L.vec3d):
+LoadConstant(L.NewVector(L.double, {0, 0, 0}))
+particles:NewField('velocity_old', L.vec3d):
+LoadConstant(L.NewVector(L.double, {0, 0, 0}))
 particles:NewField('temperature_old', L.double):
 LoadConstant(0)
-particles:NewField('position_new', L.vec2d):
-LoadConstant(L.NewVector(L.double, {0, 0}))
-particles:NewField('velocity_new', L.vec2d):
-LoadConstant(L.NewVector(L.double, {0, 0}))
+particles:NewField('position_new', L.vec3d):
+LoadConstant(L.NewVector(L.double, {0, 0, 0}))
+particles:NewField('velocity_new', L.vec3d):
+LoadConstant(L.NewVector(L.double, {0, 0, 0}))
 particles:NewField('temperature_new', L.double):
 LoadConstant(0)
 -- derivatives
-particles:NewField('position_t', L.vec2d):
-LoadConstant(L.NewVector(L.double, {0, 0}))
-particles:NewField('velocity_t', L.vec2d):
-LoadConstant(L.NewVector(L.double, {0, 0}))
+particles:NewField('position_t', L.vec3d):
+LoadConstant(L.NewVector(L.double, {0, 0, 0}))
+particles:NewField('velocity_t', L.vec3d):
+LoadConstant(L.NewVector(L.double, {0, 0, 0}))
 particles:NewField('temperature_t', L.double):
 LoadConstant(0)
 
@@ -587,22 +599,22 @@ local Temperature = L.NewMacro(function(r)
     return liszt `r.temperature
 end)
 
-local InterpolateBilinear = L.NewMacro(function(dc, xy, Field)
-    return liszt quote
-        var cdl = dc.vertex.cell(-1,-1)
-        var cul = dc.vertex.cell(-1,0)
-        var cdr = dc.vertex.cell(0,-1)
-        var cur = dc.vertex.cell(0,0)
-        var delta_l = xy[1] - cdl.center[1]
-        var delta_r = cur.center[1] - xy[1]
-        var f1 = (delta_l*Field(cdl) + delta_r*Field(cul)) / (delta_l + delta_r)
-        var f2 = (delta_l*Field(cdr) + delta_r*Field(cur)) / (delta_l + delta_r)
-        var delta_d = xy[0] - cdl.center[0]
-        var delta_u = cur.center[0] - xy[0]
-    in
-        (delta_d*f1 + delta_u*f2) / (delta_d + delta_u)
-    end
-end)
+--local InterpolateBilinear = L.NewMacro(function(dc, xy, Field)
+--    return liszt quote
+--        var cdl = dc.vertex.cell(-1,-1)
+--        var cul = dc.vertex.cell(-1,0)
+--        var cdr = dc.vertex.cell(0,-1)
+--        var cur = dc.vertex.cell(0,0)
+--        var delta_l = xy[1] - cdl.center[1]
+--        var delta_r = cur.center[1] - xy[1]
+--        var f1 = (delta_l*Field(cdl) + delta_r*Field(cul)) / (delta_l + delta_r)
+--        var f2 = (delta_l*Field(cdr) + delta_r*Field(cur)) / (delta_l + delta_r)
+--        var delta_d = xy[0] - cdl.center[0]
+--        var delta_u = cur.center[0] - xy[0]
+--    in
+--        (delta_d*f1 + delta_u*f2) / (delta_d + delta_u)
+--    end
+--end)
 
 -----------------------------------------------------------------------------
 --[[                            LISZT KERNELS                            ]]--
@@ -619,7 +631,7 @@ end)
 -- module
 Flow.InitializeCenterCoordinates = liszt kernel(c : grid.cells)
     var xy = c.center
-    c.centerCoordinates = L.vec2d({xy[0], xy[1]})
+    c.centerCoordinates = L.vec3d({xy[0], xy[1], xy[2]})
 end
 Flow.InitializePrimitives = liszt kernel(c : grid.cells)
     if flow_options.initCase == Flow.TaylorGreenVortex then
@@ -633,12 +645,13 @@ Flow.InitializePrimitives = liszt kernel(c : grid.cells)
       c.rho = taylorGreenDensity
       c.velocity = 
           taylorGreenVelocity *
-          L.vec2d({cmath.sin(xy[0]) * 
+          L.vec3d({cmath.sin(xy[0]) * 
                    cmath.cos(xy[1]) *
                    cmath.cos(coorZ),
                  - cmath.cos(xy[0]) *
                    cmath.sin(xy[1]) *
-                   cmath.cos(coorZ)})
+                   cmath.cos(coorZ),
+                   0})
       var factorA = cmath.cos(2.0*coorZ) + 2.0
       var factorB = cmath.cos(2.0*xy[0]) +
                     cmath.cos(2.0*xy[1])
@@ -651,6 +664,7 @@ Flow.InitializePrimitives = liszt kernel(c : grid.cells)
       c.pressure    = flow_options.initParams[1]
       c.velocity[0] = flow_options.initParams[2]
       c.velocity[1] = flow_options.initParams[3]
+      c.velocity[2] = 0
     end
 end
 Flow.UpdateConservedFromPrimitive = liszt kernel(c : grid.cells)
@@ -687,7 +701,7 @@ end
 -- Initialize derivatives
 Flow.InitializeTimeDerivatives = liszt kernel(c : grid.cells)
     c.rho_t = L.double(0)
-    c.rhoVelocity_t = L.vec2d({0, 0})
+    c.rhoVelocity_t = L.vec3d({0, 0, 0})
     c.rhoEnergy_t = L.double(0)
 end
 
@@ -714,57 +728,57 @@ Flow.AddInviscidGetFluxX =  liszt kernel(c : grid.cells)
 
         -- Diagonal terms
         var rhoFactorDiagonal = L.double(0)
-        var rhoVelocityFactorDiagonal = L.vec2d({0.0, 0.0})
+        var rhoVelocityFactorDiagonal = L.vec3d({0.0, 0.0, 0.0})
         var rhoEnergyFactorDiagonal   = L.double(0.0)
         var fpdiag = L.double(0.0)
         for ndx = 1, numInterpolateCoeffs do
             rhoFactorDiagonal += interpolateCoeffs[ndx] *
-                          ( c(1-ndx,0).rho *
-                            c(1-ndx,0).velocity[directionIdx] +
-                            c(ndx,0).rho *
-                            c(ndx,0).velocity[directionIdx] )
+                          ( c(1-ndx,0,0).rho *
+                            c(1-ndx,0,0).velocity[directionIdx] +
+                            c(ndx,0,0).rho *
+                            c(ndx,0,0).velocity[directionIdx] )
             rhoVelocityFactorDiagonal += interpolateCoeffs[ndx] *
-                                   ( c(1-ndx,0).rhoVelocity *
-                                     c(1-ndx,0).velocity[directionIdx] +
-                                     c(ndx,0).rhoVelocity *
-                                     c(ndx,0).velocity[directionIdx] )
+                                   ( c(1-ndx,0,0).rhoVelocity *
+                                     c(1-ndx,0,0).velocity[directionIdx] +
+                                     c(ndx,0,0).rhoVelocity *
+                                     c(ndx,0,0).velocity[directionIdx] )
             rhoEnergyFactorDiagonal += interpolateCoeffs[ndx] *
-                                 ( c(1-ndx,0).rhoEnthalpy *
-                                   c(1-ndx,0).velocity[directionIdx] +
-                                   c(ndx,0).rhoEnthalpy *
-                                   c(ndx,0).velocity[directionIdx] )
+                                 ( c(1-ndx,0,0).rhoEnthalpy *
+                                   c(1-ndx,0,0).velocity[directionIdx] +
+                                   c(ndx,0,0).rhoEnthalpy *
+                                   c(ndx,0,0).velocity[directionIdx] )
             fpdiag += interpolateCoeffs[ndx] *
-                    ( c(1-ndx,0).pressure +
-                      c(ndx,0).pressure )
+                    ( c(1-ndx,0,0).pressure +
+                      c(ndx,0,0).pressure )
         end
 
         -- Skewed terms
         var rhoFactorSkew         = L.double(0)
-        var rhoVelocityFactorSkew = L.vec2d({0.0, 0.0})
+        var rhoVelocityFactorSkew = L.vec3d({0.0, 0.0, 0.0})
         var rhoEnergyFactorSkew   = L.double(0.0)
         -- mdx = -N+1,...,0
         for mdx = 2-numFirstDerivativeCoeffs, 1 do
           var tmp = L.double(0)
           for ndx = 1, mdx+numFirstDerivativeCoeffs do
             tmp += firstDerivativeCoeffs[ndx-mdx] * 
-                   c(ndx,0).velocity[directionIdx]
+                   c(ndx,0,0).velocity[directionIdx]
           end
 
-          rhoFactorSkew += c(mdx,0).rho * tmp
-          rhoVelocityFactorSkew += c(mdx,0).rhoVelocity * tmp
-          rhoEnergyFactorSkew += c(mdx,0).rhoEnthalpy * tmp
+          rhoFactorSkew += c(mdx,0,0).rho * tmp
+          rhoVelocityFactorSkew += c(mdx,0,0).rhoVelocity * tmp
+          rhoEnergyFactorSkew += c(mdx,0,0).rhoEnthalpy * tmp
         end
         --  mdx = 1,...,N
         for mdx = 1,numFirstDerivativeCoeffs do
           var tmp = L.double(0)
           for ndx = mdx-numFirstDerivativeCoeffs+1, 1 do
             tmp += firstDerivativeCoeffs[mdx-ndx] * 
-                   c(ndx,0).velocity[directionIdx]
+                   c(ndx,0,0).velocity[directionIdx]
           end
 
-          rhoFactorSkew += c(mdx,0).rho * tmp
-          rhoVelocityFactorSkew += c(mdx,0).rhoVelocity * tmp
-          rhoEnergyFactorSkew += c(mdx,0).rhoEnthalpy * tmp
+          rhoFactorSkew += c(mdx,0,0).rho * tmp
+          rhoVelocityFactorSkew += c(mdx,0,0).rhoVelocity * tmp
+          rhoEnergyFactorSkew += c(mdx,0,0).rhoEnthalpy * tmp
         end
 
         var s = spatial_stencil.split
@@ -791,57 +805,57 @@ Flow.AddInviscidGetFluxY =  liszt kernel(c : grid.cells)
         var rhoFactorDiagonal = L.double(0)
 
         -- Diagonal terms
-        var rhoVelocityFactorDiagonal = L.vec2d({0.0, 0.0})
+        var rhoVelocityFactorDiagonal = L.vec3d({0.0, 0.0, 0.0})
         var rhoEnergyFactorDiagonal   = L.double(0.0)
         var fpdiag = L.double(0.0)
         for ndx = 1, numInterpolateCoeffs do
             rhoFactorDiagonal += interpolateCoeffs[ndx] *
-                          ( c(0,1-ndx).rho *
-                            c(0,1-ndx).velocity[directionIdx] +
-                            c(0,ndx).rho *
-                            c(0,ndx).velocity[directionIdx] )
+                          ( c(0,1-ndx,0).rho *
+                            c(0,1-ndx,0).velocity[directionIdx] +
+                            c(0,ndx,0).rho *
+                            c(0,ndx,0).velocity[directionIdx] )
             rhoVelocityFactorDiagonal += interpolateCoeffs[ndx] *
-                                   ( c(0,1-ndx).rhoVelocity *
-                                     c(0,1-ndx).velocity[directionIdx] +
-                                     c(0,ndx).rhoVelocity *
-                                     c(0,ndx).velocity[directionIdx] )
+                                   ( c(0,1-ndx,0).rhoVelocity *
+                                     c(0,1-ndx,0).velocity[directionIdx] +
+                                     c(0,ndx,0).rhoVelocity *
+                                     c(0,ndx,0).velocity[directionIdx] )
             rhoEnergyFactorDiagonal += interpolateCoeffs[ndx] *
-                                 ( c(0,1-ndx).rhoEnthalpy *
-                                   c(0,1-ndx).velocity[directionIdx] +
-                                   c(0,ndx).rhoEnthalpy *
-                                   c(0,ndx).velocity[directionIdx] )
+                                 ( c(0,1-ndx,0).rhoEnthalpy *
+                                   c(0,1-ndx,0).velocity[directionIdx] +
+                                   c(0,ndx,0).rhoEnthalpy *
+                                   c(0,ndx,0).velocity[directionIdx] )
             fpdiag += interpolateCoeffs[ndx] *
-                    ( c(0,1-ndx).pressure +
-                      c(0,ndx).pressure )
+                    ( c(0,1-ndx,0).pressure +
+                      c(0,ndx,0).pressure )
         end
 
         -- Skewed terms
         var rhoFactorSkew     = L.double(0)
-        var rhoVelocityFactorSkew     = L.vec2d({0.0, 0.0})
+        var rhoVelocityFactorSkew     = L.vec3d({0.0, 0.0, 0.0})
         var rhoEnergyFactorSkew       = L.double(0.0)
         -- mdx = -N+1,...,0
         for mdx = 2-numFirstDerivativeCoeffs, 1 do
           var tmp = L.double(0)
           for ndx = 1, mdx+numFirstDerivativeCoeffs do
             tmp += firstDerivativeCoeffs[ndx-mdx] * 
-                   c(0,ndx).velocity[directionIdx]
+                   c(0,ndx,0).velocity[directionIdx]
           end
 
-          rhoFactorSkew += c(0,mdx).rho * tmp
-          rhoVelocityFactorSkew += c(0,mdx).rhoVelocity * tmp
-          rhoEnergyFactorSkew += c(0,mdx).rhoEnthalpy * tmp
+          rhoFactorSkew += c(0,mdx,0).rho * tmp
+          rhoVelocityFactorSkew += c(0,mdx,0).rhoVelocity * tmp
+          rhoEnergyFactorSkew += c(0,mdx,0).rhoEnthalpy * tmp
         end
         --  mdx = 1,...,N
         for mdx = 1,numFirstDerivativeCoeffs do
           var tmp = L.double(0)
           for ndx = mdx-numFirstDerivativeCoeffs+1, 1 do
             tmp += firstDerivativeCoeffs[mdx-ndx] * 
-                   c(0,ndx).velocity[directionIdx]
+                   c(0,ndx,0).velocity[directionIdx]
           end
 
-          rhoFactorSkew += c(0,mdx).rho * tmp
-          rhoVelocityFactorSkew += c(0,mdx).rhoVelocity * tmp
-          rhoEnergyFactorSkew += c(0,mdx).rhoEnthalpy * tmp
+          rhoFactorSkew += c(0,mdx,0).rho * tmp
+          rhoVelocityFactorSkew += c(0,mdx,0).rhoVelocity * tmp
+          rhoEnergyFactorSkew += c(0,mdx,0).rhoEnthalpy * tmp
         end
 
         var s = spatial_stencil.split
@@ -865,22 +879,22 @@ local c_dy = L.NewGlobal(L.double, grid:yCellWidth())
 -- WARNING_END
 Flow.AddInviscidUpdateUsingFluxX = liszt kernel(c : grid.cells)
     if c.in_interior then
-        c.rho_t -= (c(0,0).rhoFlux -
-                    c(-1,0).rhoFlux)/c_dx
-        c.rhoVelocity_t -= (c(0,0).rhoVelocityFlux -
-                            c(-1,0).rhoVelocityFlux)/c_dx
-        c.rhoEnergy_t -= (c(0,0).rhoEnergyFlux -
-                          c(-1,0).rhoEnergyFlux)/c_dx
+        c.rho_t -= (c(0,0,0).rhoFlux -
+                    c(-1,0,0).rhoFlux)/c_dx
+        c.rhoVelocity_t -= (c(0,0,0).rhoVelocityFlux -
+                            c(-1,0,0).rhoVelocityFlux)/c_dx
+        c.rhoEnergy_t -= (c(0,0,0).rhoEnergyFlux -
+                          c(-1,0,0).rhoEnergyFlux)/c_dx
     end
 end
 Flow.AddInviscidUpdateUsingFluxY = liszt kernel(c : grid.cells)
     if c.in_interior then
-        c.rho_t -= (c(0,0).rhoFlux -
-                    c(0,-1).rhoFlux)/c_dx
-        c.rhoVelocity_t -= (c(0,0).rhoVelocityFlux -
-                            c(0,-1).rhoVelocityFlux)/c_dy
-        c.rhoEnergy_t -= (c(0,0).rhoEnergyFlux -
-                          c(0,-1).rhoEnergyFlux)/c_dy
+        c.rho_t -= (c(0,0,0).rhoFlux -
+                    c(0,-1,0).rhoFlux)/c_dx
+        c.rhoVelocity_t -= (c(0,0,0).rhoVelocityFlux -
+                            c(0,-1,0).rhoVelocityFlux)/c_dy
+        c.rhoEnergy_t -= (c(0,0,0).rhoEnergyFlux -
+                          c(0,-1,0).rhoEnergyFlux)/c_dy
     end
 end
 
@@ -893,9 +907,9 @@ Flow.AddViscousGetFluxX =  liszt kernel(c : grid.cells)
     -- Consider first boundary element (c.xneg_depth == 1) to define left flux
     -- on first interior cell
     if c.in_interior or c.xneg_depth == 1 then
-        var muFace = 0.5 * (GetDynamicViscosity(c(0,0).temperature) +
-                            GetDynamicViscosity(c(1,0).temperature))
-        var velocityFace    = L.vec2d({0.0, 0.0})
+        var muFace = 0.5 * (GetDynamicViscosity(c(0,0,0).temperature) +
+                            GetDynamicViscosity(c(1,0,0).temperature))
+        var velocityFace    = L.vec3d({0.0, 0.0, 0.0})
         var velocityX_YFace = L.double(0)
         var velocityX_ZFace = L.double(0)
         var velocityY_YFace = L.double(0)
@@ -905,15 +919,15 @@ Flow.AddViscousGetFluxX =  liszt kernel(c : grid.cells)
         -- Interpolate velocity and derivatives to face
         for ndx = 1, numInterpolateCoeffs do
             velocityFace += interpolateCoeffs[ndx] *
-                          ( c(1-ndx,0).velocity +
-                            c(ndx,0).velocity )
+                          ( c(1-ndx,0,0).velocity +
+                            c(ndx,0,0).velocity )
             velocityX_YFace += interpolateCoeffs[ndx] *
-                               ( c(1-ndx,0).velocityGradientY[0] +
-                                 c(ndx,0).velocityGradientY[0] )
+                               ( c(1-ndx,0,0).velocityGradientY[0] +
+                                 c(ndx,0,0).velocityGradientY[0] )
             velocityX_ZFace += 0.0 -- WARNING: to be updated for 3D (see Python code)
             velocityY_YFace += interpolateCoeffs[ndx] *
-                               ( c(1-ndx,0).velocityGradientY[1] +
-                                 c(ndx,0).velocityGradientY[1] )
+                               ( c(1-ndx,0,0).velocityGradientY[1] +
+                                 c(ndx,0,0).velocityGradientY[1] )
             velocityZ_ZFace += 0.0 -- WARNING: to be updated for 3D (see Python code)
         end
 
@@ -926,15 +940,15 @@ Flow.AddViscousGetFluxX =  liszt kernel(c : grid.cells)
         var firstDerivativeCoeffs    = spatial_stencil.firstDerivativeCoeffs
         for ndx = 1, numFirstDerivativeCoeffs do
           velocityX_XFace += firstDerivativeCoeffs[ndx] *
-            ( c(ndx,0).velocity[0] -
-              c(1-ndx,0).velocity[0] )
+            ( c(ndx,0,0).velocity[0] -
+              c(1-ndx,0,0).velocity[0] )
           velocityY_XFace += firstDerivativeCoeffs[ndx] *
-            ( c(ndx,0).velocity[1] -
-              c(1-ndx,0).velocity[1] )
+            ( c(ndx,0,0).velocity[1] -
+              c(1-ndx,0,0).velocity[1] )
           velocityZ_XFace += 0.0
           temperature_XFace += firstDerivativeCoeffs[ndx] *
-            ( c(ndx,0).temperature -
-              c(1-ndx,0).temperature )
+            ( c(ndx,0,0).temperature -
+              c(1-ndx,0,0).temperature )
         end
        
         velocityX_XFace   /= c_dx
@@ -971,9 +985,9 @@ Flow.AddViscousGetFluxY =  liszt kernel(c : grid.cells)
     -- Consider first boundary element (c.yneg_depth == 1) to define down flux
     -- on first interior cell
     if c.in_interior or c.yneg_depth == 1 then
-        var muFace = 0.5 * (GetDynamicViscosity(c(0,0).temperature) +
-                            GetDynamicViscosity(c(0,1).temperature))
-        var velocityFace    = L.vec2d({0.0, 0.0})
+        var muFace = 0.5 * (GetDynamicViscosity(c(0,0,0).temperature) +
+                            GetDynamicViscosity(c(0,1,0).temperature))
+        var velocityFace    = L.vec3d({0.0, 0.0, 0.0})
         var velocityY_XFace = L.double(0)
         var velocityY_ZFace = L.double(0)
         var velocityX_XFace = L.double(0)
@@ -983,15 +997,15 @@ Flow.AddViscousGetFluxY =  liszt kernel(c : grid.cells)
         -- Interpolate velocity and derivatives to face
         for ndx = 1, numInterpolateCoeffs do
             velocityFace += interpolateCoeffs[ndx] *
-                          ( c(0,1-ndx).velocity +
-                            c(0,ndx).velocity )
+                          ( c(0,1-ndx,0).velocity +
+                            c(0,ndx,0).velocity )
             velocityY_XFace += interpolateCoeffs[ndx] *
-                               ( c(0,1-ndx).velocityGradientX[1] +
-                                 c(0,ndx).velocityGradientX[1] )
+                               ( c(0,1-ndx,0).velocityGradientX[1] +
+                                 c(0,ndx,0).velocityGradientX[1] )
             velocityY_ZFace += 0.0 -- WARNING: to be updated for 3D (see Python code)
             velocityX_XFace += interpolateCoeffs[ndx] *
-                               ( c(0,1-ndx).velocityGradientX[0] +
-                                 c(0,ndx).velocityGradientX[0] )
+                               ( c(0,1-ndx,0).velocityGradientX[0] +
+                                 c(0,ndx,0).velocityGradientX[0] )
             velocityZ_ZFace += 0.0 -- WARNING: to be updated for 3D (see Python code)
         end
 
@@ -1004,15 +1018,15 @@ Flow.AddViscousGetFluxY =  liszt kernel(c : grid.cells)
         var firstDerivativeCoeffs    = spatial_stencil.firstDerivativeCoeffs
         for ndx = 1, numFirstDerivativeCoeffs do
           velocityX_YFace += firstDerivativeCoeffs[ndx] *
-            ( c(0,ndx).velocity[0] -
-              c(0,1-ndx).velocity[0] )
+            ( c(0,ndx,0).velocity[0] -
+              c(0,1-ndx,0).velocity[0] )
           velocityY_YFace += firstDerivativeCoeffs[ndx] *
-            ( c(0,ndx).velocity[1] -
-              c(0,1-ndx).velocity[1] )
+            ( c(0,ndx,0).velocity[1] -
+              c(0,1-ndx,0).velocity[1] )
           velocityZ_YFace += 0.0
           temperature_YFace += firstDerivativeCoeffs[ndx] *
-            ( c(0,ndx).temperature -
-              c(0,1-ndx).temperature )
+            ( c(0,ndx,0).temperature -
+              c(0,1-ndx,0).temperature )
         end
        
         velocityX_YFace   /= c_dy
@@ -1046,19 +1060,19 @@ end
 
 Flow.AddViscousUpdateUsingFluxX = liszt kernel(c : grid.cells)
     if c.in_interior then
-        c.rhoVelocity_t += (c(0,0).rhoVelocityFlux -
-                            c(-1,0).rhoVelocityFlux)/c_dx
-        c.rhoEnergy_t   += (c(0,0).rhoEnergyFlux -
-                            c(-1,0).rhoEnergyFlux)/c_dx
+        c.rhoVelocity_t += (c(0,0,0).rhoVelocityFlux -
+                            c(-1,0,0).rhoVelocityFlux)/c_dx
+        c.rhoEnergy_t   += (c(0,0,0).rhoEnergyFlux -
+                            c(-1,0,0).rhoEnergyFlux)/c_dx
     end
 end
 
 Flow.AddViscousUpdateUsingFluxY = liszt kernel(c : grid.cells)
     if c.in_interior then
-        c.rhoVelocity_t += (c(0,0).rhoVelocityFlux -
-                            c(0,-1).rhoVelocityFlux)/c_dy
-        c.rhoEnergy_t   += (c(0,0).rhoEnergyFlux -
-                            c(0,-1).rhoEnergyFlux)/c_dy
+        c.rhoVelocity_t += (c(0,0,0).rhoVelocityFlux -
+                            c(0,-1,0).rhoVelocityFlux)/c_dy
+        c.rhoEnergy_t   += (c(0,0,0).rhoEnergyFlux -
+                            c(0,-1,0).rhoEnergyFlux)/c_dy
     end
 end
 
@@ -1066,21 +1080,21 @@ end
 -- Particles coupling
 ---------------------
 
-Flow.AddParticlesCoupling = liszt kernel(p : particles)
-    if p.state == 1 then
-        -- WARNING: Assumes that deltaVelocityOverRelaxationTime and 
-        -- deltaTemperatureTerm have been computed previously 
-        -- (for example, when adding the flow coupling to the particles, 
-        -- which should be called before in the time stepper)
-
-        -- Retrieve cell containing this particle
-        p.cell = grid.cell_locate(p.position)
-        -- Add contribution to momentum and energy equations from the previously
-        -- computed deltaVelocityOverRelaxationTime and deltaTemperatureTerm
-        p.cell.rhoVelocity_t -= p.mass * p.deltaVelocityOverRelaxationTime
-        p.cell.rhoEnergy_t   -= p.deltaTemperatureTerm
-    end
-end
+--Flow.AddParticlesCoupling = liszt kernel(p : particles)
+--    if p.state == 1 then
+--        -- WARNING: Assumes that deltaVelocityOverRelaxationTime and 
+--        -- deltaTemperatureTerm have been computed previously 
+--        -- (for example, when adding the flow coupling to the particles, 
+--        -- which should be called before in the time stepper)
+--
+--        -- Retrieve cell containing this particle
+--        p.cell = grid.cell_locate(p.position)
+--        -- Add contribution to momentum and energy equations from the previously
+--        -- computed deltaVelocityOverRelaxationTime and deltaTemperatureTerm
+--        p.cell.rhoVelocity_t -= p.mass * p.deltaVelocityOverRelaxationTime
+--        p.cell.rhoEnergy_t   -= p.deltaTemperatureTerm
+--    end
+--end
 
 --------------
 -- Body Forces
@@ -1141,47 +1155,47 @@ end
 Flow.UpdateGhostFieldsStep1 = liszt kernel(c : grid.cells)
     if c.xneg_depth > 0 then
         var xoffset = XOffset(c.xneg_depth)
-        c.rhoBoundary            =   c(xoffset,0).rho
-        c.rhoVelocityBoundary[0] =   c(xoffset,0).rhoVelocity[0] * xSign
-        c.rhoVelocityBoundary[1] =   c(xoffset,0).rhoVelocity[1]
-        c.rhoEnergyBoundary      =   c(xoffset,0).rhoEnergy
-        c.velocityBoundary[0]    =   c(xoffset,0).velocity[0]
-        c.velocityBoundary[1]    =   c(xoffset,0).velocity[1]
-        c.pressureBoundary       =   c(xoffset,0).pressure
-        c.temperatureBoundary    =   c(xoffset,0).temperature
+        c.rhoBoundary            =   c(xoffset,0,0).rho
+        c.rhoVelocityBoundary[0] =   c(xoffset,0,0).rhoVelocity[0] * xSign
+        c.rhoVelocityBoundary[1] =   c(xoffset,0,0).rhoVelocity[1]
+        c.rhoEnergyBoundary      =   c(xoffset,0,0).rhoEnergy
+        c.velocityBoundary[0]    =   c(xoffset,0,0).velocity[0]
+        c.velocityBoundary[1]    =   c(xoffset,0,0).velocity[1]
+        c.pressureBoundary       =   c(xoffset,0,0).pressure
+        c.temperatureBoundary    =   c(xoffset,0,0).temperature
     end
     if c.xpos_depth > 0 then
         var xoffset = XOffset(c.xpos_depth)
-        c.rhoBoundary            =   c(-xoffset,0).rho
-        c.rhoVelocityBoundary[0] =   c(-xoffset,0).rhoVelocity[0] * xSign
-        c.rhoVelocityBoundary[1] =   c(-xoffset,0).rhoVelocity[1]
-        c.rhoEnergyBoundary      =   c(-xoffset,0).rhoEnergy
-        c.velocityBoundary[0]    =   c(-xoffset,0).velocity[0]
-        c.velocityBoundary[1]    =   c(-xoffset,0).velocity[1]
-        c.pressureBoundary       =   c(-xoffset,0).pressure
-        c.temperatureBoundary    =   c(-xoffset,0).temperature
+        c.rhoBoundary            =   c(-xoffset,0,0).rho
+        c.rhoVelocityBoundary[0] =   c(-xoffset,0,0).rhoVelocity[0] * xSign
+        c.rhoVelocityBoundary[1] =   c(-xoffset,0,0).rhoVelocity[1]
+        c.rhoEnergyBoundary      =   c(-xoffset,0,0).rhoEnergy
+        c.velocityBoundary[0]    =   c(-xoffset,0,0).velocity[0]
+        c.velocityBoundary[1]    =   c(-xoffset,0,0).velocity[1]
+        c.pressureBoundary       =   c(-xoffset,0,0).pressure
+        c.temperatureBoundary    =   c(-xoffset,0,0).temperature
     end
     if c.yneg_depth > 0 then
         var yoffset = YOffset(c.yneg_depth)
-        c.rhoBoundary            =   c(0,yoffset).rho
-        c.rhoVelocityBoundary[0] =   c(0,yoffset).rhoVelocity[0]
-        c.rhoVelocityBoundary[1] =   c(0,yoffset).rhoVelocity[1] * ySign
-        c.rhoEnergyBoundary      =   c(0,yoffset).rhoEnergy
-        c.velocityBoundary[0]    =   c(0,yoffset).velocity[0]
-        c.velocityBoundary[1]    =   c(0,yoffset).velocity[1]
-        c.pressureBoundary       =   c(0,yoffset).pressure
-        c.temperatureBoundary    =   c(0,yoffset).temperature
+        c.rhoBoundary            =   c(0,yoffset,0).rho
+        c.rhoVelocityBoundary[0] =   c(0,yoffset,0).rhoVelocity[0]
+        c.rhoVelocityBoundary[1] =   c(0,yoffset,0).rhoVelocity[1] * ySign
+        c.rhoEnergyBoundary      =   c(0,yoffset,0).rhoEnergy
+        c.velocityBoundary[0]    =   c(0,yoffset,0).velocity[0]
+        c.velocityBoundary[1]    =   c(0,yoffset,0).velocity[1]
+        c.pressureBoundary       =   c(0,yoffset,0).pressure
+        c.temperatureBoundary    =   c(0,yoffset,0).temperature
     end
     if c.ypos_depth > 0 then
         var yoffset = YOffset(c.ypos_depth)
-        c.rhoBoundary            =   c(0,-yoffset).rho
-        c.rhoVelocityBoundary[0] =   c(0,-yoffset).rhoVelocity[0]
-        c.rhoVelocityBoundary[1] =   c(0,-yoffset).rhoVelocity[1] * ySign
-        c.rhoEnergyBoundary      =   c(0,-yoffset).rhoEnergy
-        c.velocityBoundary[0]    =   c(0,-yoffset).velocity[0]
-        c.velocityBoundary[1]    =   c(0,-yoffset).velocity[1]
-        c.pressureBoundary       =   c(0,-yoffset).pressure
-        c.temperatureBoundary    =   c(0,-yoffset).temperature
+        c.rhoBoundary            =   c(0,-yoffset,0).rho
+        c.rhoVelocityBoundary[0] =   c(0,-yoffset,0).rhoVelocity[0]
+        c.rhoVelocityBoundary[1] =   c(0,-yoffset,0).rhoVelocity[1] * ySign
+        c.rhoEnergyBoundary      =   c(0,-yoffset,0).rhoEnergy
+        c.velocityBoundary[0]    =   c(0,-yoffset,0).velocity[0]
+        c.velocityBoundary[1]    =   c(0,-yoffset,0).velocity[1]
+        c.pressureBoundary       =   c(0,-yoffset,0).pressure
+        c.temperatureBoundary    =   c(0,-yoffset,0).temperature
     end
 end
 Flow.UpdateGhostFieldsStep2 = liszt kernel(c : grid.cells)
@@ -1200,23 +1214,23 @@ end
 Flow.UpdateGhostThermodynamicsStep1 = liszt kernel(c : grid.cells)
     if c.xneg_depth > 0 then
         var xoffset = XOffset(c.xneg_depth)
-        c.pressureBoundary       =   c(xoffset,0).pressure
-        c.temperatureBoundary    =   c(xoffset,0).temperature
+        c.pressureBoundary       =   c(xoffset,0,0).pressure
+        c.temperatureBoundary    =   c(xoffset,0,0).temperature
     end
     if c.xpos_depth > 0 then
         var xoffset = XOffset(c.xpos_depth)
-        c.pressureBoundary       =   c(-xoffset,0).pressure
-        c.temperatureBoundary    =   c(-xoffset,0).temperature
+        c.pressureBoundary       =   c(-xoffset,0,0).pressure
+        c.temperatureBoundary    =   c(-xoffset,0,0).temperature
     end
     if c.yneg_depth > 0 then
         var yoffset = YOffset(c.yneg_depth)
-        c.pressureBoundary       =   c(0,yoffset).pressure
-        c.temperatureBoundary    =   c(0,yoffset).temperature
+        c.pressureBoundary       =   c(0,yoffset,0).pressure
+        c.temperatureBoundary    =   c(0,yoffset,0).temperature
     end
     if c.ypos_depth > 0 then
         var yoffset = YOffset(c.ypos_depth)
-        c.pressureBoundary       =   c(0,-yoffset).pressure
-        c.temperatureBoundary    =   c(0,-yoffset).temperature
+        c.pressureBoundary       =   c(0,-yoffset,0).pressure
+        c.temperatureBoundary    =   c(0,-yoffset,0).temperature
     end
 end
 Flow.UpdateGhostThermodynamicsStep2 = liszt kernel(c : grid.cells)
@@ -1233,23 +1247,23 @@ end
 Flow.UpdateGhostVelocityStep1 = liszt kernel(c : grid.cells)
     if c.xneg_depth > 0 then
         var xoffset = XOffset(c.xneg_depth)
-        c.velocityBoundary[0] =   c(xoffset,0).velocity[0] * xSign
-        c.velocityBoundary[1] =   c(xoffset,0).velocity[1]
+        c.velocityBoundary[0] =   c(xoffset,0,0).velocity[0] * xSign
+        c.velocityBoundary[1] =   c(xoffset,0,0).velocity[1]
     end
     if c.xpos_depth > 0 then
         var xoffset = XOffset(c.xpos_depth)
-        c.velocityBoundary[0] =   c(-xoffset,0).velocity[0] * xSign
-        c.velocityBoundary[1] =   c(-xoffset,0).velocity[1]
+        c.velocityBoundary[0] =   c(-xoffset,0,0).velocity[0] * xSign
+        c.velocityBoundary[1] =   c(-xoffset,0,0).velocity[1]
     end
     if c.yneg_depth > 0 then
         var yoffset = YOffset(c.yneg_depth)
-        c.velocityBoundary[0] =   c(0,yoffset).velocity[0]
-        c.velocityBoundary[1] =   c(0,yoffset).velocity[1] * ySign
+        c.velocityBoundary[0] =   c(0,yoffset,0).velocity[0]
+        c.velocityBoundary[1] =   c(0,yoffset,0).velocity[1] * ySign
     end
     if c.ypos_depth > 0 then
         var yoffset = YOffset(c.ypos_depth)
-        c.velocityBoundary[0] =   c(0,-yoffset).velocity[0]
-        c.velocityBoundary[1] =   c(0,-yoffset).velocity[1] * ySign
+        c.velocityBoundary[0] =   c(0,-yoffset,0).velocity[0]
+        c.velocityBoundary[1] =   c(0,-yoffset,0).velocity[1] * ySign
     end
 end
 Flow.UpdateGhostVelocityStep2 = liszt kernel(c : grid.cells)
@@ -1263,31 +1277,31 @@ end
 Flow.UpdateGhostConservedStep1 = liszt kernel(c : grid.cells)
     if c.xneg_depth > 0 then
         var xoffset = XOffset(c.xneg_depth)
-        c.rhoBoundary            =   c(xoffset,0).rho
-        c.rhoVelocityBoundary[0] =   c(xoffset,0).rhoVelocity[0] * xSign
-        c.rhoVelocityBoundary[1] =   c(xoffset,0).rhoVelocity[1]
-        c.rhoEnergyBoundary      =   c(xoffset,0).rhoEnergy
+        c.rhoBoundary            =   c(xoffset,0,0).rho
+        c.rhoVelocityBoundary[0] =   c(xoffset,0,0).rhoVelocity[0] * xSign
+        c.rhoVelocityBoundary[1] =   c(xoffset,0,0).rhoVelocity[1]
+        c.rhoEnergyBoundary      =   c(xoffset,0,0).rhoEnergy
     end
     if c.xpos_depth > 0 then
         var xoffset = XOffset(c.xpos_depth)
-        c.rhoBoundary            =   c(-xoffset,0).rho
-        c.rhoVelocityBoundary[0] =   c(-xoffset,0).rhoVelocity[0] * xSign
-        c.rhoVelocityBoundary[1] =   c(-xoffset,0).rhoVelocity[1]
-        c.rhoEnergyBoundary      =   c(-xoffset,0).rhoEnergy
+        c.rhoBoundary            =   c(-xoffset,0,0).rho
+        c.rhoVelocityBoundary[0] =   c(-xoffset,0,0).rhoVelocity[0] * xSign
+        c.rhoVelocityBoundary[1] =   c(-xoffset,0,0).rhoVelocity[1]
+        c.rhoEnergyBoundary      =   c(-xoffset,0,0).rhoEnergy
     end
     if c.yneg_depth > 0 then
         var yoffset = YOffset(c.yneg_depth)
-        c.rhoBoundary            =   c(0,yoffset).rho
-        c.rhoVelocityBoundary[0] =   c(0,yoffset).rhoVelocity[0]
-        c.rhoVelocityBoundary[1] =   c(0,yoffset).rhoVelocity[1] * ySign
-        c.rhoEnergyBoundary      =   c(0,yoffset).rhoEnergy
+        c.rhoBoundary            =   c(0,yoffset,0).rho
+        c.rhoVelocityBoundary[0] =   c(0,yoffset,0).rhoVelocity[0]
+        c.rhoVelocityBoundary[1] =   c(0,yoffset,0).rhoVelocity[1] * ySign
+        c.rhoEnergyBoundary      =   c(0,yoffset,0).rhoEnergy
     end
     if c.ypos_depth > 0 then
         var yoffset = YOffset(c.ypos_depth)
-        c.rhoBoundary            =   c(0,-yoffset).rho
-        c.rhoVelocityBoundary[0] =   c(0,-yoffset).rhoVelocity[0]
-        c.rhoVelocityBoundary[1] =   c(0,-yoffset).rhoVelocity[1] * ySign
-        c.rhoEnergyBoundary      =   c(0,-yoffset).rhoEnergy
+        c.rhoBoundary            =   c(0,-yoffset,0).rho
+        c.rhoVelocityBoundary[0] =   c(0,-yoffset,0).rhoVelocity[0]
+        c.rhoVelocityBoundary[1] =   c(0,-yoffset,0).rhoVelocity[1] * ySign
+        c.rhoEnergyBoundary      =   c(0,-yoffset,0).rhoEnergy
     end
 end
 Flow.UpdateGhostConservedStep2 = liszt kernel(c : grid.cells)
@@ -1322,11 +1336,11 @@ end
 Flow.ComputeVelocityGradientX = liszt kernel(c : grid.cells)
     var numFirstDerivativeCoeffs = spatial_stencil.numFirstDerivativeCoeffs
     var firstDerivativeCoeffs    = spatial_stencil.firstDerivativeCoeffs
-    var tmp = L.vec2d({0.0, 0.0})
+    var tmp = L.vec3d({0.0, 0.0, 0.0})
     for ndx = 1, numFirstDerivativeCoeffs do
       tmp += firstDerivativeCoeffs[ndx] * 
-              ( c(ndx,0).velocity -
-                c(-ndx,0).velocity )
+              ( c(ndx,0,0).velocity -
+                c(-ndx,0,0).velocity )
     end
     c.velocityGradientX = tmp / c_dx
 end
@@ -1334,11 +1348,11 @@ end
 Flow.ComputeVelocityGradientY = liszt kernel(c : grid.cells)
     var numFirstDerivativeCoeffs = spatial_stencil.numFirstDerivativeCoeffs
     var firstDerivativeCoeffs    = spatial_stencil.firstDerivativeCoeffs
-    var tmp = L.vec2d({0.0, 0.0})
+    var tmp = L.vec3d({0.0, 0.0, 0.0})
     for ndx = 1, numFirstDerivativeCoeffs do
       tmp += firstDerivativeCoeffs[ndx] * 
-              ( c(0,ndx).velocity -
-                c(0,-ndx).velocity )
+              ( c(0,ndx,0).velocity -
+                c(0,-ndx,0).velocity )
     end
     c.velocityGradientY = tmp / c_dy
 end
@@ -1346,31 +1360,31 @@ end
 Flow.UpdateGhostVelocityGradientStep1 = liszt kernel(c : grid.cells)
     if c.xneg_depth > 0 then
         var xoffset = XOffset(c.xneg_depth)
-        c.velocityGradientXBoundary[0] = - c(xoffset,0).velocityGradientX[0]
-        c.velocityGradientXBoundary[1] =   c(xoffset,0).velocityGradientX[1]
-        c.velocityGradientYBoundary[0] = - c(xoffset,0).velocityGradientY[0]
-        c.velocityGradientYBoundary[1] =   c(xoffset,0).velocityGradientY[1]
+        c.velocityGradientXBoundary[0] = - c(xoffset,0,0).velocityGradientX[0]
+        c.velocityGradientXBoundary[1] =   c(xoffset,0,0).velocityGradientX[1]
+        c.velocityGradientYBoundary[0] = - c(xoffset,0,0).velocityGradientY[0]
+        c.velocityGradientYBoundary[1] =   c(xoffset,0,0).velocityGradientY[1]
     end
     if c.xpos_depth > 0 then
         var xoffset = XOffset(c.xpos_depth)
-        c.velocityGradientXBoundary[0] = - c(-xoffset,0).velocityGradientX[0]
-        c.velocityGradientXBoundary[1] =   c(-xoffset,0).velocityGradientX[1]
-        c.velocityGradientYBoundary[0] = - c(-xoffset,0).velocityGradientY[0]
-        c.velocityGradientYBoundary[1] =   c(-xoffset,0).velocityGradientY[1]
+        c.velocityGradientXBoundary[0] = - c(-xoffset,0,0).velocityGradientX[0]
+        c.velocityGradientXBoundary[1] =   c(-xoffset,0,0).velocityGradientX[1]
+        c.velocityGradientYBoundary[0] = - c(-xoffset,0,0).velocityGradientY[0]
+        c.velocityGradientYBoundary[1] =   c(-xoffset,0,0).velocityGradientY[1]
     end
     if c.yneg_depth > 0 then
         var yoffset = YOffset(c.yneg_depth)
-        c.velocityGradientXBoundary[0] =   c(0,yoffset).velocityGradientX[0]
-        c.velocityGradientXBoundary[1] = - c(0,yoffset).velocityGradientX[1]
-        c.velocityGradientYBoundary[0] =   c(0,yoffset).velocityGradientY[0]
-        c.velocityGradientYBoundary[1] = - c(0,yoffset).velocityGradientY[1]
+        c.velocityGradientXBoundary[0] =   c(0,yoffset,0).velocityGradientX[0]
+        c.velocityGradientXBoundary[1] = - c(0,yoffset,0).velocityGradientX[1]
+        c.velocityGradientYBoundary[0] =   c(0,yoffset,0).velocityGradientY[0]
+        c.velocityGradientYBoundary[1] = - c(0,yoffset,0).velocityGradientY[1]
     end
     if c.ypos_depth > 0 then
         var yoffset = YOffset(c.ypos_depth)
-        c.velocityGradientXBoundary[0] =   c(0,-yoffset).velocityGradientX[0]
-        c.velocityGradientXBoundary[1] = - c(0,-yoffset).velocityGradientX[1]
-        c.velocityGradientYBoundary[0] =   c(0,-yoffset).velocityGradientY[0]
-        c.velocityGradientYBoundary[1] = - c(0,-yoffset).velocityGradientY[1]
+        c.velocityGradientXBoundary[0] =   c(0,-yoffset,0).velocityGradientX[0]
+        c.velocityGradientXBoundary[1] = - c(0,-yoffset,0).velocityGradientX[1]
+        c.velocityGradientYBoundary[0] =   c(0,-yoffset,0).velocityGradientY[0]
+        c.velocityGradientYBoundary[1] = - c(0,-yoffset,0).velocityGradientY[1]
     end
 end
 Flow.UpdateGhostVelocityGradientStep2 = liszt kernel(c : grid.cells)
@@ -1488,30 +1502,30 @@ Flow.DrawKernel = liszt kernel (c : grid.cells)
     --var yMax = L.double(grid_options.yWidth)
     var xMax = 1.0
     var yMax = 1.0
-    var posA : L.vec3d = { c(0,0).center[0]/xMax,
-                           c(0,0).center[1]/yMax,
-                           0.0 }
-    var posB : L.vec3d = { c(0,1).center[0]/xMax,
-                           c(0,1).center[1]/yMax,
-                           0.0 }
-    var posC : L.vec3d = { c(1,1).center[0]/xMax,
-                           c(1,1).center[1]/yMax,
-                           0.0 }
-    var posD : L.vec3d = { c(1,0).center[0]/xMax,
-                           c(1,0).center[1]/yMax,
-                           0.0 }
-    var value =
-      (c(0,0).temperature + 
-       c(1,0).temperature +
-       c(0,1).temperature +
-       c(1,1).temperature) / 4.0
-    var minValue = Flow.minTemperature
-    var maxValue = Flow.maxTemperature
-    -- compute a display value in the range 0.0 to 1.0 from the value
-    var scale = (value - minValue)/(maxValue - minValue)
-    vdb.color((1.0-scale)*cold)
-    vdb.triangle(posA, posB, posC)
-    vdb.triangle(posA, posD, posC)
+--3DINCOMPATIBLE    var posA : L.vec3d = { c(0,0).center[0]/xMax,
+--3DINCOMPATIBLE                           c(0,0).center[1]/yMax,
+--3DINCOMPATIBLE                           0.0 }
+--3DINCOMPATIBLE    var posB : L.vec3d = { c(0,1).center[0]/xMax,
+--3DINCOMPATIBLE                           c(0,1).center[1]/yMax,
+--3DINCOMPATIBLE                           0.0 }
+--3DINCOMPATIBLE    var posC : L.vec3d = { c(1,1).center[0]/xMax,
+--3DINCOMPATIBLE                           c(1,1).center[1]/yMax,
+--3DINCOMPATIBLE                           0.0 }
+--3DINCOMPATIBLE    var posD : L.vec3d = { c(1,0).center[0]/xMax,
+--3DINCOMPATIBLE                           c(1,0).center[1]/yMax,
+--3DINCOMPATIBLE                           0.0 }
+--3DINCOMPATIBLE    var value =
+--3DINCOMPATIBLE      (c(0,0).temperature + 
+--3DINCOMPATIBLE       c(1,0).temperature +
+--3DINCOMPATIBLE       c(0,1).temperature +
+--3DINCOMPATIBLE       c(1,1).temperature) / 4.0
+--3DINCOMPATIBLE    var minValue = Flow.minTemperature
+--3DINCOMPATIBLE    var maxValue = Flow.maxTemperature
+--3DINCOMPATIBLE    -- compute a display value in the range 0.0 to 1.0 from the value
+--3DINCOMPATIBLE    var scale = (value - minValue)/(maxValue - minValue)
+--3DINCOMPATIBLE    vdb.color((1.0-scale)*cold)
+--3DINCOMPATIBLE    vdb.triangle(posA, posB, posC)
+--3DINCOMPATIBLE    vdb.triangle(posA, posD, posC)
 end
 
 ------------
@@ -1535,682 +1549,684 @@ Particles.InitializeTemporaries = liszt kernel(p : particles)
     end
 end
 
-----------------
--- Flow Coupling
-----------------
-
--- Initialize time derivative for each stage of time stepper
-Particles.InitializeTimeDerivatives = liszt kernel(p : particles)
-    if p.state == 1 then
-        p.position_t = L.vec2d({0, 0})
-        p.velocity_t = L.vec2d({0, 0})
-        p.temperature_t = L.double(0)
-    end
-end
-
--- Update particle fields based on flow fields
-Particles.AddFlowCoupling = liszt kernel(p: particles)
-    if p.state == 1 then
-      p.dual_cell = grid.dual_locate(p.position)
-      var flowDensity     = L.double(0)
-      var flowVelocity    = L.vec2d({0, 0})
-      var flowTemperature = L.double(0)
-      var flowDynamicViscosity = L.double(0)
-      flowDensity     = InterpolateBilinear(p.dual_cell, p.position, Rho)
-      flowVelocity    = InterpolateBilinear(p.dual_cell, p.position, Velocity)
-      flowTemperature = InterpolateBilinear(p.dual_cell, p.position, Temperature)
-      flowDynamicViscosity = GetDynamicViscosity(flowTemperature)
-      p.position_t    += p.velocity
-      -- Relaxation time for small particles 
-      -- - particles Reynolds number (set to zero for Stokesian)
-      var particleReynoldsNumber =
-        (p.density * norm(flowVelocity - p.velocity) * p.diameter) / 
-        flowDynamicViscosity
-      var relaxationTime = 
-        ( p.density * cmath.pow(p.diameter,2) / (18.0 * flowDynamicViscosity) ) /
-        ( 1.0 + 0.15 * cmath.pow(particleReynoldsNumber,0.687) )
-      p.deltaVelocityOverRelaxationTime = 
-        (flowVelocity - p.velocity) / relaxationTime
-      p.deltaTemperatureTerm = pi * cmath.pow(p.diameter, 2) *
-          particles_options.convective_coefficient *
-          (flowTemperature - p.temperature)
-      p.velocity_t += p.deltaVelocityOverRelaxationTime
-      p.temperature_t += p.deltaTemperatureTerm/
-          (p.mass * particles_options.heat_capacity)
-    end
-end
-
---------------
--- Body forces
---------------
-
-Particles.AddBodyForces= liszt kernel(p : particles)
-    if p.state == 1 then
-        p.velocity_t += particles_options.bodyForce
-    end
-end
-
-------------
--- Radiation
-------------
-
-Particles.AddRadiation = liszt kernel(p : particles)
-    if p.state == 1 then
-        -- Calculate absorbed radiation intensity considering optically thin
-        -- particles, for a collimated radiation source with negligible 
-        -- blackbody self radiation
-        var absorbedRadiationIntensity =
-          particles_options.absorptivity *
-          radiation_options.radiationIntensity *
-          p.area / 4
-
-        -- Add contribution to particle temperature time evolution
-        p.temperature_t += absorbedRadiationIntensity /
-                           (p.mass * particles_options.heat_capacity)
-    end
-end
-
--- Set particle velocities to underlying flow velocity for initialization
-Particles.SetVelocitiesToFlow = liszt kernel(p: particles)
-    p.dual_cell = grid.dual_locate(p.position)
-    var flow_density     = L.double(0)
-    var flow_velocity    = L.vec2d({0, 0})
-    var flow_temperature = L.double(0)
-    var flowDynamicViscosity = L.double(0)
-    flow_velocity    = InterpolateBilinear(p.dual_cell, p.position, Velocity)
-    p.velocity = flow_velocity
-end
-
--- Update particle variables using derivatives
-Particles.UpdateKernels = {}
-function Particles.GenerateUpdateKernels(relation, stage)
-    local coeff_fun  = TimeIntegrator.coeff_function[stage]
-    local coeff_time = TimeIntegrator.coeff_time[stage]
-    local deltaTime  = TimeIntegrator.deltaTime
-    if stage <= 3 then
-        return liszt kernel(r : relation)
-            if r.state == 1 then
-              r.position_new += 
-                 coeff_fun * deltaTime * r.position_t
-              r.position       = r.position_old +
-                 coeff_time * deltaTime * r.position_t
-              r.velocity_new += 
-                 coeff_fun * deltaTime * r.velocity_t
-              r.velocity       = r.velocity_old +
-                 coeff_time * deltaTime * r.velocity_t
-              r.temperature_new += 
-                 coeff_fun * deltaTime * r.temperature_t
-              r.temperature       = r.temperature_old +
-                 coeff_time * deltaTime * r.temperature_t
-            end
-        end
-    elseif stage == 4 then
-        return liszt kernel(r : relation)
-            if r.state == 1 then
-              r.position = r.position_new +
-                 coeff_fun * deltaTime * r.position_t
-              r.velocity = r.velocity_new +
-                 coeff_fun * deltaTime * r.velocity_t
-              r.temperature = r.temperature_new +
-                 coeff_fun * deltaTime * r.temperature_t
-            end
-        end
-    end
-end
-for i = 1, 4 do
-    Particles.UpdateKernels[i] = Particles.GenerateUpdateKernels(particles, i)
-end
-
-Particles.UpdateAuxiliaryStep1 = liszt kernel(p : particles)
-    if p.state == 1 then
-        p.position_ghost[0] = p.position[0]
-        p.position_ghost[1] = p.position[1]
-        if p.position[0] < gridOriginX then
-            p.position_ghost[0] = p.position[0] + grid_options.xWidth
-        end
-        if p.position[0] > gridOriginX + grid_options.xWidth then
-            p.position_ghost[0] = p.position[0] - grid_options.xWidth
-        end
-        if p.position[1] < gridOriginY then
-            p.position_ghost[1] = p.position[1] + grid_options.xWidth
-        end
-        if p.position[1] > gridOriginY + grid_options.yWidth then
-            p.position_ghost[1] = p.position[1] - grid_options.yWidth
-        end
-    end
-end
-Particles.UpdateAuxiliaryStep2 = liszt kernel(p : particles)
-    if p.state == 1 then
-        p.position = p.position_ghost
-    end
-end
-
----------
--- Feeder
----------
-
--- Particles feeder
-Particles.Feed = liszt kernel(p: particles)
-
-    if p.state == 0 then
-
-      p.position[0] = 0
-      p.position[1] = 0
-      p.position[2] = 0
-      p.velocity[0] = 0
-      p.velocity[1] = 0
-      p.velocity[2] = 0
-      p.state = 0
-
-      -- Initialize based on feeder type
-      if particles_options.feederType == 
-           Particles.FeederAtStartTimeInRandomBox then
-
-        -- Particles randomly distributed inside box limits defined 
-        -- by options
-        -- Specialize feederParams from options
-        var centerX   = particles_options.feederParams[0]
-        var centerY   = particles_options.feederParams[1]
-        var centerZ   = particles_options.feederParams[2]
-        var widthX    = particles_options.feederParams[3]
-        var widthY    = particles_options.feederParams[4]
-        var widthZ    = particles_options.feederParams[5]
-
-        p.position[0] = centerX + (cmath.rand_unity()-0.5) * widthX
-        p.position[1] = centerY + (cmath.rand_unity()-0.5) * widthY
-        p.position[2] = centerZ + (cmath.rand_unity()-0.5) * widthZ
-        p.state = 1
-                        
-      elseif particles_options.feederType == 
-               Particles.FeederOverTimeInRandomBox then
-
-        -- Specialize feederParams from options
-        var injectorBox_centerX   = particles_options.feederParams[0]
-        var injectorBox_centerY   = particles_options.feederParams[1]
-        var injectorBox_centerZ   = particles_options.feederParams[2]
-        var injectorBox_widthX    = particles_options.feederParams[3]
-        var injectorBox_widthY    = particles_options.feederParams[4]
-        var injectorBox_widthZ    = particles_options.feederParams[5]
-        var injectorBox_velocityX = particles_options.feederParams[6]
-        var injectorBox_velocityY = particles_options.feederParams[7]
-        var injectorBox_velocityZ = particles_options.feederParams[8]
-        var injectorBox_particlesPerTimeStep = particles_options.feederParams[9]
-        -- Inject particle if matching timeStep requirements
-        if cmath.floor(p.id/injectorBox_particlesPerTimeStep) ==
-           TimeIntegrator.timeStep then
-            p.position[0] = injectorBox_centerX +
-                            (cmath.rand_unity()-0.5) * injectorBox_widthX
-            p.position[1] = injectorBox_centerY +
-                            (cmath.rand_unity()-0.5) * injectorBox_widthY
-            p.position[2] = injectorBox_centerZ +
-                            (cmath.rand_unity()-0.5) * injectorBox_widthZ
-            p.velocity[0] = injectorBox_velocityX
-            p.velocity[1] = injectorBox_velocityY
-            p.velocity[2] = injectorBox_velocityZ
-            p.state = 1
-        end
-
-      elseif particles_options.feederType == 
-               Particles.FeederUQCase then
-
-        -- Specialize feederParams from options
-        -- Injector A
-        var injectorA_centerX   = particles_options.feederParams[0]
-        var injectorA_centerY   = particles_options.feederParams[1]
-        var injectorA_centerZ   = particles_options.feederParams[2]
-        var injectorA_widthX    = particles_options.feederParams[3]
-        var injectorA_widthY    = particles_options.feederParams[4]
-        var injectorA_widthZ    = particles_options.feederParams[5]
-        var injectorA_velocityX = particles_options.feederParams[6]
-        var injectorA_velocityY = particles_options.feederParams[7]
-        var injectorA_velocityZ = particles_options.feederParams[8]
-        var injectorA_particlesPerTimeStep = particles_options.feederParams[9]
-        -- Injector B
-        var injectorB_centerX   = particles_options.feederParams[10]
-        var injectorB_centerY   = particles_options.feederParams[11]
-        var injectorB_centerZ   = particles_options.feederParams[12]
-        var injectorB_widthX    = particles_options.feederParams[13]
-        var injectorB_widthY    = particles_options.feederParams[14]
-        var injectorB_widthZ    = particles_options.feederParams[15]
-        var injectorB_velocityX = particles_options.feederParams[16]
-        var injectorB_velocityY = particles_options.feederParams[17]
-        var injectorB_velocityZ = particles_options.feederParams[18]
-        var injectorB_particlesPerTimeStep = particles_options.feederParams[19]
-        var numberOfParticlesInA = 
-             cmath.floor(particles_options.num*injectorA_particlesPerTimeStep/
-             (injectorA_particlesPerTimeStep+injectorB_particlesPerTimeStep))
-        var numberOfParticlesInB = 
-             cmath.ceil(particles_options.num*injectorB_particlesPerTimeStep/
-             (injectorA_particlesPerTimeStep+injectorB_particlesPerTimeStep))
-        -- Inject particles at injectorA if matching timeStep requirements
-        if cmath.floor(p.id/injectorA_particlesPerTimeStep) ==
-           TimeIntegrator.timeStep then
-            p.position[0] = injectorA_centerX +
-                            (cmath.rand_unity()-0.5) * injectorA_widthX
-            p.position[1] = injectorA_centerY +
-                            (cmath.rand_unity()-0.5) * injectorA_widthY
-            p.position[2] = injectorA_centerZ +
-                            (cmath.rand_unity()-0.5) * injectorA_widthZ
-            p.velocity[0] = injectorA_velocityX
-            p.velocity[1] = injectorA_velocityY
-            p.velocity[2] = injectorA_velocityZ
-            p.state = 1
-            p.groupID = 0
-        end
-        -- Inject particles at injectorB if matching timeStep requirements
-        -- (if injectorA has injected this particle at this timeStep, it
-        -- will get over-riden by injector B; this can only occur at the same
-        -- timeStep, as otherwise p.state is already set to 1 and the program 
-        -- will not enter this route)
-        if cmath.floor((p.id-numberOfParticlesInA)/
-                       injectorB_particlesPerTimeStep) ==
-           TimeIntegrator.timeStep then
-            p.position[0] = injectorB_centerX +
-                            (cmath.rand_unity()-0.5) * injectorB_widthX
-            p.position[1] = injectorB_centerY +
-                            (cmath.rand_unity()-0.5) * injectorB_widthY
-            p.position[2] = injectorB_centerZ +
-                            (cmath.rand_unity()-0.5) * injectorB_widthZ
-            p.velocity[0] = injectorB_velocityX
-            p.velocity[1] = injectorB_velocityY
-            p.velocity[2] = injectorB_velocityZ
-            p.state = 1
-            p.groupID = 1
-        end
-
-      end
-
-    end
-
-end
-
-------------
--- Collector 
-------------
-
--- Particles collector 
-Particles.Collect = liszt kernel(p: particles)
-
-    if p.state == 1 then
-
-      if particles_options.collectorType == 
-           Particles.CollectorOutOfBox then
-
-        -- Specialize collectorParams from options
-        var minX = particles_options.collectorParams[0]
-        var minY = particles_options.collectorParams[1]
-        var minZ = particles_options.collectorParams[3]
-        var maxX = particles_options.collectorParams[4]
-        var maxY = particles_options.collectorParams[5]
-        var maxZ = particles_options.collectorParams[6]
-        if p.position[0] < minX or
-           p.position[0] > maxX or
-           p.position[1] < minY or
-           p.position[1] > maxY or
-           p.position[2] < minZ or
-           p.position[2] > maxZ then
-          p.state = 2
-        end
-                       
-      end
-
-    end
-
-end
-
-
--------------
--- Statistics
--------------
-
-Particles.IntegrateQuantities = liszt kernel(p : particles)
-    if p.state == 1 then
-        Particles.averageTemperature += p.temperature
-    end
-end
-
--------------
--- Output
--------------
-
--- Write particles field to output file
-Particles.WriteField = function (outputFileNamePrefix,field)
-    -- Make up complete file name based on name of field
-    local outputFileName = outputFileNamePrefix .. "_" ..
-                           field:Name() .. ".txt"
-    -- Open file
-    local outputFile = io.output(outputFileName)
-    -- Write data
-    local values = field:DumpToList()
-    local N      = field:Size()
-
-    if field:Type():isVector() then
-        local veclen = field:Type().N
-        io.write("# ", N, " ", veclen, "\n")
-        for i=1,N do
-            local s = ''
-            for j=1,veclen do
-                local t = tostring(values[i][j]):gsub('ULL',' ')
-                s = s .. ' ' .. t .. ''
-            end
-            -- i-1 to return to 0 indexing
-            io.write("", i-1, s, "\n")
-        end
-    else
-        io.write("# ", N, " ", 1, "\n")
-        for i=1,N do
-            local t = tostring(values[i]):gsub('ULL', ' ')
-            -- i-1 to return to 0 indexing
-            io.write("", i-1, ' ', t,"\n")
-        end
-    end
-    io.close()
-end
-
-----------------
--- Visualization
-----------------
-
-Particles.DrawKernel = liszt kernel (p : particles)
-    --var xMax = L.double(grid_options.xWidth)
-    --var yMax = L.double(grid_options.yWidth)
-    var xMax = 1.0
-    var yMax = 1.0
-    --var scale = p.temperature/particles_options.initialTemperature
-    var scale = p.groupID
-    vdb.color(scale*blue)
-    var pos : L.vec3d = { p.position[0]/xMax,
-                          p.position[1]/yMax,
-                          -0.01 }
-    vdb.point(pos)
-    var vel = p.velocity
-    var v = L.vec3d({ vel[0], vel[1], 0.0 })
-    vdb.line(pos, pos+0.1*v)
-end
-
-
------------------------------------------------------------------------------
---[[                                MAIN FUNCTIONS                       ]]--
------------------------------------------------------------------------------
-
--------
--- FLOW
--------
-
-function Flow.AddInviscid()
-    Flow.AddInviscidInitialize(grid.cells)
-    Flow.AddInviscidGetFluxX(grid.cells)
-    Flow.AddInviscidUpdateUsingFluxX(grid.cells)
-    Flow.AddInviscidGetFluxY(grid.cells)
-    Flow.AddInviscidUpdateUsingFluxY(grid.cells)
-end
-
-function Flow.UpdateGhostVelocityGradient()
-    Flow.UpdateGhostVelocityGradientStep1(grid.cells)
-    Flow.UpdateGhostVelocityGradientStep2(grid.cells)
-end
-
-function Flow.AddViscous()
-    Flow.AddViscousGetFluxX(grid.cells)
-    Flow.AddViscousUpdateUsingFluxX(grid.cells)
-    Flow.AddViscousGetFluxY(grid.cells)
-    Flow.AddViscousUpdateUsingFluxY(grid.cells)
-end
-
-function Flow.Update(stage)
-    Flow.UpdateKernels[stage](grid.cells)
-end
-
-function Flow.ComputeVelocityGradients()
-    Flow.ComputeVelocityGradientX(grid.cells.interior)
-    Flow.ComputeVelocityGradientY(grid.cells.interior)
-end
-
-function Flow.UpdateAuxiliaryVelocityConservedAndGradients()
-    Flow.UpdateAuxiliaryVelocity(grid.cells.interior)
-    Flow.UpdateGhostConserved()
-    Flow.UpdateGhostVelocity()
-    Flow.ComputeVelocityGradients()
-end
-
-function Flow.UpdateAuxiliary()
-    Flow.UpdateAuxiliaryVelocityConservedAndGradients()
-    Flow.UpdateAuxiliaryThermodynamics(grid.cells.interior)
-    Flow.UpdateGhostThermodynamics()
-end
-
-------------
--- PARTICLES
-------------
-
-function Particles.Update(stage)
-    Particles.UpdateKernels[stage](particles)
-end
-
-function Particles.UpdateAuxiliary()
-    Particles.UpdateAuxiliaryStep1(particles)
-    Particles.UpdateAuxiliaryStep2(particles)
-end
-
 ------------------
--- TIME INTEGRATOR
+---- Flow Coupling
 ------------------
-
-function TimeIntegrator.SetupTimeStep()
-    Particles.Feed(particles)
-    Flow.InitializeTemporaries(grid.cells)
-    Particles.InitializeTemporaries(particles)
-end
-
-function TimeIntegrator.ConcludeTimeStep()
-    Particles.Collect(particles)
-end
-
-function TimeIntegrator.InitializeTimeDerivatives()
-    Flow.InitializeTimeDerivatives(grid.cells)
-    Particles.InitializeTimeDerivatives(particles)
-end
-
-function TimeIntegrator.UpdateAuxiliary()
-    Flow.UpdateAuxiliary()
-    Particles.UpdateAuxiliary()
-end
-
-function TimeIntegrator.UpdateTime(timeOld, stage)
-    TimeIntegrator.simTime:set(timeOld +
-                               TimeIntegrator.coeff_time[stage] *
-                               TimeIntegrator.deltaTime:get())
-end
-
-function TimeIntegrator.InitializeVariables()
-    Flow.InitializeCenterCoordinates(grid.cells)
-    Flow.InitializePrimitives(grid.cells.interior)
-    Flow.UpdateConservedFromPrimitive(grid.cells.interior)
-    Flow.UpdateGhost()
-    Flow.UpdateAuxiliary()
-
-    Particles.Feed(particles)
-    --Particles.Locate(particles)
-    --Particles.SetVelocitiesToFlow(particles)
-end
-
-function TimeIntegrator.ComputeDFunctionDt()
-    Flow.AddInviscid()
-    Flow.UpdateGhostVelocityGradient()
-    Flow.AddViscous()
-    Flow.AddBodyForces(grid.cells.interior)
-    Particles.AddFlowCoupling(particles)
-    --Flow.AddParticlesCoupling(particles)
-    Particles.AddBodyForces(particles)
-    --Particles.AddRadiation(particles)
-end
-
-function TimeIntegrator.UpdateSolution(stage)
-    Flow.Update(stage)
-    Particles.Update(stage)
-end
-
-function TimeIntegrator.AdvanceTimeStep()
-
-    TimeIntegrator.SetupTimeStep()
-    local timeOld = TimeIntegrator.simTime:get()
-    for stage = 1, 4 do
-        TimeIntegrator.InitializeTimeDerivatives()
-        TimeIntegrator.ComputeDFunctionDt()
-        TimeIntegrator.UpdateSolution(stage)
-        TimeIntegrator.UpdateAuxiliary()
-        TimeIntegrator.UpdateTime(timeOld, stage)
-    end
-    TimeIntegrator.ConcludeTimeStep()
-
-    TimeIntegrator.timeStep:set(TimeIntegrator.timeStep:get() + 1)
-
-end
-
-function TimeIntegrator.CalculateDeltaTime()
-
-    Flow.CalculateSpectralRadii(grid.cells)
-
-    local maxV = maxViscousSpectralRadius:get()
-    local maxH = maxHeatConductionSpectralRadius:get()
-    local maxC = maxConvectiveSpectralRadius:get()
-
-    -- Calculate diffusive spectral radius as the maximum between
-    -- heat conduction and convective spectral radii
-    local maxD = ( maxV > maxH ) and maxV or maxH
-
-    -- Calculate global spectral radius as the maximum between the convective 
-    -- and diffusive spectral radii
-    local spectralRadius = ( maxD > maxC ) and maxD or maxC
-
-    TimeIntegrator.deltaTime:set(TimeIntegrator.cfl / spectralRadius)
-    --TimeIntegrator.deltaTime:set(0.01)
-
-end
-
--------------
--- STATISTICS
--------------
-
-function Statistics.ResetSpatialAverages()
-    Flow.numberOfInteriorCells:set(0)
-    Flow.areaInterior:set(0)
-    Flow.averagePressure:set(0.0)
-    Flow.averageTemperature:set(0.0)
-    Flow.averageKineticEnergy:set(0.0)
-    Flow.minTemperature:set(0.0)
-    Flow.maxTemperature:set(0.0)
-    Particles.averageTemperature:set(0.0)
-end
-
-function Statistics.UpdateSpatialAverages(grid, particles)
-    -- Flow
-    Flow.averagePressure:set(
-      Flow.averagePressure:get()/
-      Flow.areaInterior:get())
-    Flow.averageTemperature:set(
-      Flow.averageTemperature:get()/
-      Flow.areaInterior:get())
-    Flow.averageKineticEnergy:set(
-      Flow.averageKineticEnergy:get()/
-      Flow.areaInterior:get())
-
-    -- Fix minTemperature (getaround until min= operator is fixed, as it
-    -- currently returns zero instead of the actual min value)
-    -- (similarly if attempting to use max= of the negative field)
-    Flow.minTemperature:set(1000-Flow.minTemperature:get())
-
-    -- Particles
-    Particles.averageTemperature:set(
-      Particles.averageTemperature:get()/
-      particles:Size())
-
-end
-
-function Statistics.ComputeSpatialAverages()
-    Statistics.ResetSpatialAverages()
-    Flow.IntegrateQuantities(grid.cells.interior)
-    Particles.IntegrateQuantities(particles)
-    Statistics.UpdateSpatialAverages(grid, particles)
-end
-
------
--- IO
------
-
-function IO.WriteOutput(timeStep)
-
-    -- Output log message
-    print("Time step ", string.format("%d",timeStep), 
-          ", dt", string.format("%10.8f",TimeIntegrator.deltaTime:get()),
-          ", t", string.format("%10.8f",TimeIntegrator.simTime:get()),
-          "flowP", string.format("%10.8f",Flow.averagePressure:get()),
-          "flowT", string.format("%10.8f",Flow.averageTemperature:get()),
-          "flowMinT", string.format("%10.8f",Flow.minTemperature:get()),
-          "flowMaxT", string.format("%10.8f",Flow.maxTemperature:get()),
-          "kineticEnergy", string.format("%10.8f",Flow.averageKineticEnergy:get()),
-          "particlesT", string.format("%10.8f",Particles.averageTemperature:get())
-          )
-
-    -- Check if it is time to output to file
-    if timeStep  % TimeIntegrator.outputEveryTimeSteps == 0 then
-        --print("Time to output")
-        local outputFileName = IO.outputFileNamePrefix .. "_" ..
-          tostring(timeStep)
-        Flow.WriteField(outputFileName .. "_flow",
-          grid:xSize(),grid:ySize(),grid.cells.temperature)
-        --Flow.WriteField(outputFileName .. "_flow",
-        --  grid:xSize(),grid:ySize(),grid.cells.rho)
-        Flow.WriteField(outputFileName .. "_flow",
-          grid:xSize(),grid:ySize(),grid.cells.pressure)
-        Flow.WriteField(outputFileName .. "_flow",
-          grid:xSize(),grid:ySize(),grid.cells.kineticEnergy)
-        Particles.WriteField(outputFileName .. "_particles",
-          particles.position)
-        Particles.WriteField(outputFileName .. "_particles",
-          particles.velocity)
-        Particles.WriteField(outputFileName .. "_particles",
-          particles.temperature)
-        Particles.WriteField(outputFileName .. "_particles",
-          particles.state)
-        Particles.WriteField(outputFileName .. "_particles",
-          particles.id)
-        Particles.WriteField(outputFileName .. "_particles",
-          particles.groupID)
-    end
-end
-
+--
+---- Initialize time derivative for each stage of time stepper
+--Particles.InitializeTimeDerivatives = liszt kernel(p : particles)
+--    if p.state == 1 then
+--        p.position_t = L.vec3d({0, 0, 0})
+--        p.velocity_t = L.vec3d({0, 0, 0})
+--        p.temperature_t = L.double(0)
+--    end
+--end
+--
+---- Update particle fields based on flow fields
+--Particles.AddFlowCoupling = liszt kernel(p: particles)
+--    if p.state == 1 then
+--      p.dual_cell = grid.dual_locate(p.position)
+--      var flowDensity     = L.double(0)
+--      var flowVelocity    = L.vec3d({0, 0, 0})
+--      var flowTemperature = L.double(0)
+--      var flowDynamicViscosity = L.double(0)
+--      flowDensity     = InterpolateBilinear(p.dual_cell, p.position, Rho)
+--      flowVelocity    = InterpolateBilinear(p.dual_cell, p.position, Velocity)
+--      flowTemperature = InterpolateBilinear(p.dual_cell, p.position, Temperature)
+--      flowDynamicViscosity = GetDynamicViscosity(flowTemperature)
+--      p.position_t    += p.velocity
+--      -- Relaxation time for small particles 
+--      -- - particles Reynolds number (set to zero for Stokesian)
+--      var particleReynoldsNumber =
+--        (p.density * norm(flowVelocity - p.velocity) * p.diameter) / 
+--        flowDynamicViscosity
+--      var relaxationTime = 
+--        ( p.density * cmath.pow(p.diameter,2) / (18.0 * flowDynamicViscosity) ) /
+--        ( 1.0 + 0.15 * cmath.pow(particleReynoldsNumber,0.687) )
+--      p.deltaVelocityOverRelaxationTime = 
+--        (flowVelocity - p.velocity) / relaxationTime
+--      p.deltaTemperatureTerm = pi * cmath.pow(p.diameter, 2) *
+--          particles_options.convective_coefficient *
+--          (flowTemperature - p.temperature)
+--      p.velocity_t += p.deltaVelocityOverRelaxationTime
+--      p.temperature_t += p.deltaTemperatureTerm/
+--          (p.mass * particles_options.heat_capacity)
+--    end
+--end
+--
 ----------------
--- VISUALIZATION
+---- Body forces
 ----------------
-
-function Visualization.Draw()
-    vdb.vbegin()
-    vdb.frame()
-    Flow.DrawKernel(grid.cells.interior)
-    Particles.DrawKernel(particles)
-    vdb.vend()
-end
-
------------------------------------------------------------------------------
---[[                            MAIN EXECUTION                           ]]--
------------------------------------------------------------------------------
-
-TimeIntegrator.InitializeVariables()
-
-Flow.WriteField(IO.outputFileNamePrefix,
-                grid:xSize(),grid:ySize(),
-                grid.cells.centerCoordinates)
-Particles.WriteField(IO.outputFileNamePrefix .. "_particles",
-                     particles.diameter)
-
--- Time loop
-while (TimeIntegrator.simTime:get() < TimeIntegrator.final_time) do
-
-    TimeIntegrator.CalculateDeltaTime()
-    TimeIntegrator.AdvanceTimeStep()
-    Statistics.ComputeSpatialAverages()
-    IO.WriteOutput(TimeIntegrator.timeStep:get())
-    Visualization.Draw()
-
-end
+--
+--Particles.AddBodyForces= liszt kernel(p : particles)
+--    if p.state == 1 then
+--        p.velocity_t += particles_options.bodyForce
+--    end
+--end
+--
+--------------
+---- Radiation
+--------------
+--
+--Particles.AddRadiation = liszt kernel(p : particles)
+--    if p.state == 1 then
+--        -- Calculate absorbed radiation intensity considering optically thin
+--        -- particles, for a collimated radiation source with negligible 
+--        -- blackbody self radiation
+--        var absorbedRadiationIntensity =
+--          particles_options.absorptivity *
+--          radiation_options.radiationIntensity *
+--          p.area / 4
+--
+--        -- Add contribution to particle temperature time evolution
+--        p.temperature_t += absorbedRadiationIntensity /
+--                           (p.mass * particles_options.heat_capacity)
+--    end
+--end
+--
+---- Set particle velocities to underlying flow velocity for initialization
+--Particles.SetVelocitiesToFlow = liszt kernel(p: particles)
+--    p.dual_cell = grid.dual_locate(p.position)
+--    var flow_density     = L.double(0)
+--    var flow_velocity    = L.vec3d({0, 0, 0})
+--    var flow_temperature = L.double(0)
+--    var flowDynamicViscosity = L.double(0)
+--    flow_velocity    = InterpolateBilinear(p.dual_cell, p.position, Velocity)
+--    p.velocity = flow_velocity
+--end
+--
+---- Update particle variables using derivatives
+--Particles.UpdateKernels = {}
+--function Particles.GenerateUpdateKernels(relation, stage)
+--    local coeff_fun  = TimeIntegrator.coeff_function[stage]
+--    local coeff_time = TimeIntegrator.coeff_time[stage]
+--    local deltaTime  = TimeIntegrator.deltaTime
+--    if stage <= 3 then
+--        return liszt kernel(r : relation)
+--            if r.state == 1 then
+--              r.position_new += 
+--                 coeff_fun * deltaTime * r.position_t
+--              r.position       = r.position_old +
+--                 coeff_time * deltaTime * r.position_t
+--              r.velocity_new += 
+--                 coeff_fun * deltaTime * r.velocity_t
+--              r.velocity       = r.velocity_old +
+--                 coeff_time * deltaTime * r.velocity_t
+--              r.temperature_new += 
+--                 coeff_fun * deltaTime * r.temperature_t
+--              r.temperature       = r.temperature_old +
+--                 coeff_time * deltaTime * r.temperature_t
+--            end
+--        end
+--    elseif stage == 4 then
+--        return liszt kernel(r : relation)
+--            if r.state == 1 then
+--              r.position = r.position_new +
+--                 coeff_fun * deltaTime * r.position_t
+--              r.velocity = r.velocity_new +
+--                 coeff_fun * deltaTime * r.velocity_t
+--              r.temperature = r.temperature_new +
+--                 coeff_fun * deltaTime * r.temperature_t
+--            end
+--        end
+--    end
+--end
+--for i = 1, 4 do
+--    Particles.UpdateKernels[i] = Particles.GenerateUpdateKernels(particles, i)
+--end
+--
+--Particles.UpdateAuxiliaryStep1 = liszt kernel(p : particles)
+--    if p.state == 1 then
+--        p.position_ghost[0] = p.position[0]
+--        p.position_ghost[1] = p.position[1]
+--        if p.position[0] < gridOriginX then
+--            p.position_ghost[0] = p.position[0] + grid_options.xWidth
+--        end
+--        if p.position[0] > gridOriginX + grid_options.xWidth then
+--            p.position_ghost[0] = p.position[0] - grid_options.xWidth
+--        end
+--        if p.position[1] < gridOriginY then
+--            p.position_ghost[1] = p.position[1] + grid_options.xWidth
+--        end
+--        if p.position[1] > gridOriginY + grid_options.yWidth then
+--            p.position_ghost[1] = p.position[1] - grid_options.yWidth
+--        end
+--    end
+--end
+--Particles.UpdateAuxiliaryStep2 = liszt kernel(p : particles)
+--    if p.state == 1 then
+--        p.position = p.position_ghost
+--    end
+--end
+--
+-----------
+---- Feeder
+-----------
+--
+---- Particles feeder
+--Particles.Feed = liszt kernel(p: particles)
+--
+--    if p.state == 0 then
+--
+--      p.position[0] = 0
+--      p.position[1] = 0
+--      p.position[2] = 0
+--      p.velocity[0] = 0
+--      p.velocity[1] = 0
+--      p.velocity[2] = 0
+--      p.state = 0
+--
+--      -- Initialize based on feeder type
+--      if particles_options.feederType == 
+--           Particles.FeederAtStartTimeInRandomBox then
+--
+--        -- Particles randomly distributed inside box limits defined 
+--        -- by options
+--        -- Specialize feederParams from options
+--        var centerX   = particles_options.feederParams[0]
+--        var centerY   = particles_options.feederParams[1]
+--        var centerZ   = particles_options.feederParams[2]
+--        var widthX    = particles_options.feederParams[3]
+--        var widthY    = particles_options.feederParams[4]
+--        var widthZ    = particles_options.feederParams[5]
+--
+--        p.position[0] = centerX + (cmath.rand_unity()-0.5) * widthX
+--        p.position[1] = centerY + (cmath.rand_unity()-0.5) * widthY
+--        p.position[2] = centerZ + (cmath.rand_unity()-0.5) * widthZ
+--        p.state = 1
+--                        
+--      elseif particles_options.feederType == 
+--               Particles.FeederOverTimeInRandomBox then
+--
+--        -- Specialize feederParams from options
+--        var injectorBox_centerX   = particles_options.feederParams[0]
+--        var injectorBox_centerY   = particles_options.feederParams[1]
+--        var injectorBox_centerZ   = particles_options.feederParams[2]
+--        var injectorBox_widthX    = particles_options.feederParams[3]
+--        var injectorBox_widthY    = particles_options.feederParams[4]
+--        var injectorBox_widthZ    = particles_options.feederParams[5]
+--        var injectorBox_velocityX = particles_options.feederParams[6]
+--        var injectorBox_velocityY = particles_options.feederParams[7]
+--        var injectorBox_velocityZ = particles_options.feederParams[8]
+--        var injectorBox_particlesPerTimeStep = particles_options.feederParams[9]
+--        -- Inject particle if matching timeStep requirements
+--        if cmath.floor(p.id/injectorBox_particlesPerTimeStep) ==
+--           TimeIntegrator.timeStep then
+--            p.position[0] = injectorBox_centerX +
+--                            (cmath.rand_unity()-0.5) * injectorBox_widthX
+--            p.position[1] = injectorBox_centerY +
+--                            (cmath.rand_unity()-0.5) * injectorBox_widthY
+--            p.position[2] = injectorBox_centerZ +
+--                            (cmath.rand_unity()-0.5) * injectorBox_widthZ
+--            p.velocity[0] = injectorBox_velocityX
+--            p.velocity[1] = injectorBox_velocityY
+--            p.velocity[2] = injectorBox_velocityZ
+--            p.state = 1
+--        end
+--
+--      elseif particles_options.feederType == 
+--               Particles.FeederUQCase then
+--
+--        -- Specialize feederParams from options
+--        -- Injector A
+--        var injectorA_centerX   = particles_options.feederParams[0]
+--        var injectorA_centerY   = particles_options.feederParams[1]
+--        var injectorA_centerZ   = particles_options.feederParams[2]
+--        var injectorA_widthX    = particles_options.feederParams[3]
+--        var injectorA_widthY    = particles_options.feederParams[4]
+--        var injectorA_widthZ    = particles_options.feederParams[5]
+--        var injectorA_velocityX = particles_options.feederParams[6]
+--        var injectorA_velocityY = particles_options.feederParams[7]
+--        var injectorA_velocityZ = particles_options.feederParams[8]
+--        var injectorA_particlesPerTimeStep = particles_options.feederParams[9]
+--        -- Injector B
+--        var injectorB_centerX   = particles_options.feederParams[10]
+--        var injectorB_centerY   = particles_options.feederParams[11]
+--        var injectorB_centerZ   = particles_options.feederParams[12]
+--        var injectorB_widthX    = particles_options.feederParams[13]
+--        var injectorB_widthY    = particles_options.feederParams[14]
+--        var injectorB_widthZ    = particles_options.feederParams[15]
+--        var injectorB_velocityX = particles_options.feederParams[16]
+--        var injectorB_velocityY = particles_options.feederParams[17]
+--        var injectorB_velocityZ = particles_options.feederParams[18]
+--        var injectorB_particlesPerTimeStep = particles_options.feederParams[19]
+--        var numberOfParticlesInA = 
+--             cmath.floor(particles_options.num*injectorA_particlesPerTimeStep/
+--             (injectorA_particlesPerTimeStep+injectorB_particlesPerTimeStep))
+--        var numberOfParticlesInB = 
+--             cmath.ceil(particles_options.num*injectorB_particlesPerTimeStep/
+--             (injectorA_particlesPerTimeStep+injectorB_particlesPerTimeStep))
+--        -- Inject particles at injectorA if matching timeStep requirements
+--        if cmath.floor(p.id/injectorA_particlesPerTimeStep) ==
+--           TimeIntegrator.timeStep then
+--            p.position[0] = injectorA_centerX +
+--                            (cmath.rand_unity()-0.5) * injectorA_widthX
+--            p.position[1] = injectorA_centerY +
+--                            (cmath.rand_unity()-0.5) * injectorA_widthY
+--            p.position[2] = injectorA_centerZ +
+--                            (cmath.rand_unity()-0.5) * injectorA_widthZ
+--            p.velocity[0] = injectorA_velocityX
+--            p.velocity[1] = injectorA_velocityY
+--            p.velocity[2] = injectorA_velocityZ
+--            p.state = 1
+--            p.groupID = 0
+--        end
+--        -- Inject particles at injectorB if matching timeStep requirements
+--        -- (if injectorA has injected this particle at this timeStep, it
+--        -- will get over-riden by injector B; this can only occur at the same
+--        -- timeStep, as otherwise p.state is already set to 1 and the program 
+--        -- will not enter this route)
+--        if cmath.floor((p.id-numberOfParticlesInA)/
+--                       injectorB_particlesPerTimeStep) ==
+--           TimeIntegrator.timeStep then
+--            p.position[0] = injectorB_centerX +
+--                            (cmath.rand_unity()-0.5) * injectorB_widthX
+--            p.position[1] = injectorB_centerY +
+--                            (cmath.rand_unity()-0.5) * injectorB_widthY
+--            p.position[2] = injectorB_centerZ +
+--                            (cmath.rand_unity()-0.5) * injectorB_widthZ
+--            p.velocity[0] = injectorB_velocityX
+--            p.velocity[1] = injectorB_velocityY
+--            p.velocity[2] = injectorB_velocityZ
+--            p.state = 1
+--            p.groupID = 1
+--        end
+--
+--      end
+--
+--    end
+--
+--end
+--
+--------------
+---- Collector 
+--------------
+--
+---- Particles collector 
+--Particles.Collect = liszt kernel(p: particles)
+--
+--    if p.state == 1 then
+--
+--      if particles_options.collectorType == 
+--           Particles.CollectorOutOfBox then
+--
+--        -- Specialize collectorParams from options
+--        var minX = particles_options.collectorParams[0]
+--        var minY = particles_options.collectorParams[1]
+--        var minZ = particles_options.collectorParams[3]
+--        var maxX = particles_options.collectorParams[4]
+--        var maxY = particles_options.collectorParams[5]
+--        var maxZ = particles_options.collectorParams[6]
+--        if p.position[0] < minX or
+--           p.position[0] > maxX or
+--           p.position[1] < minY or
+--           p.position[1] > maxY or
+--           p.position[2] < minZ or
+--           p.position[2] > maxZ then
+--          p.state = 2
+--        end
+--                       
+--      end
+--
+--    end
+--
+--end
+--
+--
+---------------
+---- Statistics
+---------------
+--
+--Particles.IntegrateQuantities = liszt kernel(p : particles)
+--    if p.state == 1 then
+--        Particles.averageTemperature += p.temperature
+--    end
+--end
+--
+---------------
+---- Output
+---------------
+--
+---- Write particles field to output file
+--Particles.WriteField = function (outputFileNamePrefix,field)
+--    -- Make up complete file name based on name of field
+--    local outputFileName = outputFileNamePrefix .. "_" ..
+--                           field:Name() .. ".txt"
+--    -- Open file
+--    local outputFile = io.output(outputFileName)
+--    -- Write data
+--    local values = field:DumpToList()
+--    local N      = field:Size()
+--
+--    if field:Type():isVector() then
+--        local veclen = field:Type().N
+--        io.write("# ", N, " ", veclen, "\n")
+--        for i=1,N do
+--            local s = ''
+--            for j=1,veclen do
+--                local t = tostring(values[i][j]):gsub('ULL',' ')
+--                s = s .. ' ' .. t .. ''
+--            end
+--            -- i-1 to return to 0 indexing
+--            io.write("", i-1, s, "\n")
+--        end
+--    else
+--        io.write("# ", N, " ", 1, "\n")
+--        for i=1,N do
+--            local t = tostring(values[i]):gsub('ULL', ' ')
+--            -- i-1 to return to 0 indexing
+--            io.write("", i-1, ' ', t,"\n")
+--        end
+--    end
+--    io.close()
+--end
+--
+------------------
+---- Visualization
+------------------
+--
+--Particles.DrawKernel = liszt kernel (p : particles)
+--    --var xMax = L.double(grid_options.xWidth)
+--    --var yMax = L.double(grid_options.yWidth)
+--    --var zMax = L.double(grid_options.zWidth)
+--    var xMax = 1.0
+--    var yMax = 1.0
+--    var zMax = 1.0
+--    --var scale = p.temperature/particles_options.initialTemperature
+--    var scale = p.groupID
+--    vdb.color(scale*blue)
+--    var pos : L.vec3d = { p.position[0]/xMax,
+--                          p.position[1]/yMax,
+--                          p.position[2]/zMax }
+--    vdb.point(pos)
+--    var vel = p.velocity
+--    var v = L.vec3d({ vel[0], vel[1], vel[2] })
+--    vdb.line(pos, pos+0.1*v)
+--end
+--
+--
+-------------------------------------------------------------------------------
+----[[                                MAIN FUNCTIONS                       ]]--
+-------------------------------------------------------------------------------
+--
+---------
+---- FLOW
+---------
+--
+--function Flow.AddInviscid()
+--    Flow.AddInviscidInitialize(grid.cells)
+--    Flow.AddInviscidGetFluxX(grid.cells)
+--    Flow.AddInviscidUpdateUsingFluxX(grid.cells)
+--    Flow.AddInviscidGetFluxY(grid.cells)
+--    Flow.AddInviscidUpdateUsingFluxY(grid.cells)
+--end
+--
+--function Flow.UpdateGhostVelocityGradient()
+--    Flow.UpdateGhostVelocityGradientStep1(grid.cells)
+--    Flow.UpdateGhostVelocityGradientStep2(grid.cells)
+--end
+--
+--function Flow.AddViscous()
+--    Flow.AddViscousGetFluxX(grid.cells)
+--    Flow.AddViscousUpdateUsingFluxX(grid.cells)
+--    Flow.AddViscousGetFluxY(grid.cells)
+--    Flow.AddViscousUpdateUsingFluxY(grid.cells)
+--end
+--
+--function Flow.Update(stage)
+--    Flow.UpdateKernels[stage](grid.cells)
+--end
+--
+--function Flow.ComputeVelocityGradients()
+--    Flow.ComputeVelocityGradientX(grid.cells.interior)
+--    Flow.ComputeVelocityGradientY(grid.cells.interior)
+--end
+--
+--function Flow.UpdateAuxiliaryVelocityConservedAndGradients()
+--    Flow.UpdateAuxiliaryVelocity(grid.cells.interior)
+--    Flow.UpdateGhostConserved()
+--    Flow.UpdateGhostVelocity()
+--    Flow.ComputeVelocityGradients()
+--end
+--
+--function Flow.UpdateAuxiliary()
+--    Flow.UpdateAuxiliaryVelocityConservedAndGradients()
+--    Flow.UpdateAuxiliaryThermodynamics(grid.cells.interior)
+--    Flow.UpdateGhostThermodynamics()
+--end
+--
+--------------
+---- PARTICLES
+--------------
+--
+--function Particles.Update(stage)
+--    Particles.UpdateKernels[stage](particles)
+--end
+--
+--function Particles.UpdateAuxiliary()
+--    Particles.UpdateAuxiliaryStep1(particles)
+--    Particles.UpdateAuxiliaryStep2(particles)
+--end
+--
+--------------------
+---- TIME INTEGRATOR
+--------------------
+--
+--function TimeIntegrator.SetupTimeStep()
+--    Particles.Feed(particles)
+--    Flow.InitializeTemporaries(grid.cells)
+--    Particles.InitializeTemporaries(particles)
+--end
+--
+--function TimeIntegrator.ConcludeTimeStep()
+--    Particles.Collect(particles)
+--end
+--
+--function TimeIntegrator.InitializeTimeDerivatives()
+--    Flow.InitializeTimeDerivatives(grid.cells)
+--    Particles.InitializeTimeDerivatives(particles)
+--end
+--
+--function TimeIntegrator.UpdateAuxiliary()
+--    Flow.UpdateAuxiliary()
+--    Particles.UpdateAuxiliary()
+--end
+--
+--function TimeIntegrator.UpdateTime(timeOld, stage)
+--    TimeIntegrator.simTime:set(timeOld +
+--                               TimeIntegrator.coeff_time[stage] *
+--                               TimeIntegrator.deltaTime:get())
+--end
+--
+--function TimeIntegrator.InitializeVariables()
+--    Flow.InitializeCenterCoordinates(grid.cells)
+--    Flow.InitializePrimitives(grid.cells.interior)
+--    Flow.UpdateConservedFromPrimitive(grid.cells.interior)
+--    Flow.UpdateGhost()
+--    Flow.UpdateAuxiliary()
+--
+--    Particles.Feed(particles)
+--    --Particles.Locate(particles)
+--    --Particles.SetVelocitiesToFlow(particles)
+--end
+--
+--function TimeIntegrator.ComputeDFunctionDt()
+--    Flow.AddInviscid()
+--    Flow.UpdateGhostVelocityGradient()
+--    Flow.AddViscous()
+--    Flow.AddBodyForces(grid.cells.interior)
+--    Particles.AddFlowCoupling(particles)
+--    --Flow.AddParticlesCoupling(particles)
+--    Particles.AddBodyForces(particles)
+--    --Particles.AddRadiation(particles)
+--end
+--
+--function TimeIntegrator.UpdateSolution(stage)
+--    Flow.Update(stage)
+--    Particles.Update(stage)
+--end
+--
+--function TimeIntegrator.AdvanceTimeStep()
+--
+--    TimeIntegrator.SetupTimeStep()
+--    local timeOld = TimeIntegrator.simTime:get()
+--    for stage = 1, 4 do
+--        TimeIntegrator.InitializeTimeDerivatives()
+--        TimeIntegrator.ComputeDFunctionDt()
+--        TimeIntegrator.UpdateSolution(stage)
+--        TimeIntegrator.UpdateAuxiliary()
+--        TimeIntegrator.UpdateTime(timeOld, stage)
+--    end
+--    TimeIntegrator.ConcludeTimeStep()
+--
+--    TimeIntegrator.timeStep:set(TimeIntegrator.timeStep:get() + 1)
+--
+--end
+--
+--function TimeIntegrator.CalculateDeltaTime()
+--
+--    Flow.CalculateSpectralRadii(grid.cells)
+--
+--    local maxV = maxViscousSpectralRadius:get()
+--    local maxH = maxHeatConductionSpectralRadius:get()
+--    local maxC = maxConvectiveSpectralRadius:get()
+--
+--    -- Calculate diffusive spectral radius as the maximum between
+--    -- heat conduction and convective spectral radii
+--    local maxD = ( maxV > maxH ) and maxV or maxH
+--
+--    -- Calculate global spectral radius as the maximum between the convective 
+--    -- and diffusive spectral radii
+--    local spectralRadius = ( maxD > maxC ) and maxD or maxC
+--
+--    TimeIntegrator.deltaTime:set(TimeIntegrator.cfl / spectralRadius)
+--    --TimeIntegrator.deltaTime:set(0.01)
+--
+--end
+--
+---------------
+---- STATISTICS
+---------------
+--
+--function Statistics.ResetSpatialAverages()
+--    Flow.numberOfInteriorCells:set(0)
+--    Flow.areaInterior:set(0)
+--    Flow.averagePressure:set(0.0)
+--    Flow.averageTemperature:set(0.0)
+--    Flow.averageKineticEnergy:set(0.0)
+--    Flow.minTemperature:set(0.0)
+--    Flow.maxTemperature:set(0.0)
+--    Particles.averageTemperature:set(0.0)
+--end
+--
+--function Statistics.UpdateSpatialAverages(grid, particles)
+--    -- Flow
+--    Flow.averagePressure:set(
+--      Flow.averagePressure:get()/
+--      Flow.areaInterior:get())
+--    Flow.averageTemperature:set(
+--      Flow.averageTemperature:get()/
+--      Flow.areaInterior:get())
+--    Flow.averageKineticEnergy:set(
+--      Flow.averageKineticEnergy:get()/
+--      Flow.areaInterior:get())
+--
+--    -- Fix minTemperature (getaround until min= operator is fixed, as it
+--    -- currently returns zero instead of the actual min value)
+--    -- (similarly if attempting to use max= of the negative field)
+--    Flow.minTemperature:set(1000-Flow.minTemperature:get())
+--
+--    -- Particles
+--    Particles.averageTemperature:set(
+--      Particles.averageTemperature:get()/
+--      particles:Size())
+--
+--end
+--
+--function Statistics.ComputeSpatialAverages()
+--    Statistics.ResetSpatialAverages()
+--    Flow.IntegrateQuantities(grid.cells.interior)
+--    Particles.IntegrateQuantities(particles)
+--    Statistics.UpdateSpatialAverages(grid, particles)
+--end
+--
+-------
+---- IO
+-------
+--
+--function IO.WriteOutput(timeStep)
+--
+--    -- Output log message
+--    print("Time step ", string.format("%d",timeStep), 
+--          ", dt", string.format("%10.8f",TimeIntegrator.deltaTime:get()),
+--          ", t", string.format("%10.8f",TimeIntegrator.simTime:get()),
+--          "flowP", string.format("%10.8f",Flow.averagePressure:get()),
+--          "flowT", string.format("%10.8f",Flow.averageTemperature:get()),
+--          "flowMinT", string.format("%10.8f",Flow.minTemperature:get()),
+--          "flowMaxT", string.format("%10.8f",Flow.maxTemperature:get()),
+--          "kineticEnergy", string.format("%10.8f",Flow.averageKineticEnergy:get()),
+--          "particlesT", string.format("%10.8f",Particles.averageTemperature:get())
+--          )
+--
+--    -- Check if it is time to output to file
+--    if timeStep  % TimeIntegrator.outputEveryTimeSteps == 0 then
+--        --print("Time to output")
+--        local outputFileName = IO.outputFileNamePrefix .. "_" ..
+--          tostring(timeStep)
+--        Flow.WriteField(outputFileName .. "_flow",
+--          grid:xSize(),grid:ySize(),grid.cells.temperature)
+--        --Flow.WriteField(outputFileName .. "_flow",
+--        --  grid:xSize(),grid:ySize(),grid.cells.rho)
+--        Flow.WriteField(outputFileName .. "_flow",
+--          grid:xSize(),grid:ySize(),grid.cells.pressure)
+--        Flow.WriteField(outputFileName .. "_flow",
+--          grid:xSize(),grid:ySize(),grid.cells.kineticEnergy)
+--        Particles.WriteField(outputFileName .. "_particles",
+--          particles.position)
+--        Particles.WriteField(outputFileName .. "_particles",
+--          particles.velocity)
+--        Particles.WriteField(outputFileName .. "_particles",
+--          particles.temperature)
+--        Particles.WriteField(outputFileName .. "_particles",
+--          particles.state)
+--        Particles.WriteField(outputFileName .. "_particles",
+--          particles.id)
+--        Particles.WriteField(outputFileName .. "_particles",
+--          particles.groupID)
+--    end
+--end
+--
+------------------
+---- VISUALIZATION
+------------------
+--
+--function Visualization.Draw()
+--    vdb.vbegin()
+--    vdb.frame()
+--    Flow.DrawKernel(grid.cells.interior)
+--    Particles.DrawKernel(particles)
+--    vdb.vend()
+--end
+--
+-------------------------------------------------------------------------------
+----[[                            MAIN EXECUTION                           ]]--
+-------------------------------------------------------------------------------
+--
+--TimeIntegrator.InitializeVariables()
+--
+--Flow.WriteField(IO.outputFileNamePrefix,
+--                grid:xSize(),grid:ySize(),
+--                grid.cells.centerCoordinates)
+--Particles.WriteField(IO.outputFileNamePrefix .. "_particles",
+--                     particles.diameter)
+--
+---- Time loop
+--while (TimeIntegrator.simTime:get() < TimeIntegrator.final_time) do
+--
+--    TimeIntegrator.CalculateDeltaTime()
+--    TimeIntegrator.AdvanceTimeStep()
+--    Statistics.ComputeSpatialAverages()
+--    IO.WriteOutput(TimeIntegrator.timeStep:get())
+--    Visualization.Draw()
+--
+--end
