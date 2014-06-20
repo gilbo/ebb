@@ -15,18 +15,18 @@ local grid = Grid.NewGrid2d{size           = {xn, yn},
 
 function main ()
 	-- declare a global to store the computed centroid of the grid
-	local com = L.NewGlobal(L.vector(L.float, 3), {0, 0, 0})
+	local com = L.NewGlobal(L.vector(L.float, 2), {0, 0})
 
 	-- compute centroid
 	local sum_pos = liszt kernel(c : grid.cells)
-		com += L.vec3f(c.center)
+		com += c.center
 	end
 	sum_pos(grid.cells)
 
 	local center = com:get() / grid.cells:Size()
 
 	-- output
-	print("center of mass is: (" .. center.data[1] .. ", " .. center.data[2] .. ', ' .. center.data[3] .. ")")
+	print("center is: (" .. center.data[1] .. ", " .. center.data[2] .. ')')
 end
 
 main()
