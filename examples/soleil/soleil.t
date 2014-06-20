@@ -71,9 +71,8 @@ local grid_options = {
     xnum = 32,
     ynum = 32,
     origin = {0.0, 0.0},
-    --width = twoPi,
-    --height = twoPi,
-    width = 2*twoPi,
+    width = twoPi,
+    --width = 2*twoPi,
     height = twoPi,
     --xBCLeft  = 'symmetry',
     --xBCRight = 'symmetry',
@@ -115,6 +114,9 @@ local spatial_stencil = {
 -- Define offsets for boundary conditions in flow solver
 local xSign
 -- Offset liszt functions
+local XOffsetPeriodic = liszt function(boundaryPointDepth)
+  return 0
+end
 local XOffsetDummyPeriodic = liszt function(boundaryPointDepth)
   return grid_options.xnum
 end
@@ -123,7 +125,7 @@ local XOffsetSymmetry = liszt function(boundaryPointDepth)
 end
 if grid_options.xBCLeft  == "periodic" and 
        grid_options.xBCRight == "periodic" then
-  XOffset = XOffsetDummyPeriodic
+  XOffset = XOffsetPeriodic
   xSign = 1
 elseif grid_options.xBCLeft  == "dummy_periodic" and 
    grid_options.xBCRight == "dummy_periodic" then
@@ -170,22 +172,24 @@ TimeIntegrator.simTime              = L.NewGlobal(L.double,0)
 TimeIntegrator.final_time           = 1000.00001
 TimeIntegrator.timeStep             = L.NewGlobal(L.int,0)
 TimeIntegrator.cfl                  = 1.2
-TimeIntegrator.outputEveryTimeSteps = 2 --63
+TimeIntegrator.outputEveryTimeSteps = 10 --63
 TimeIntegrator.deltaTime            = L.NewGlobal(L.double, 0.01)
 
 local fluid_options = {
-    gasConstant = 20.4128,
+    gasConstant = 200.4128,
     gamma = 1.4,
-    dynamic_viscosity_ref = 0.00001,
+    dynamic_viscosity_ref = 0.001,
     dynamic_viscosity_temp_ref = 1.0,
     prandtl = 0.7
 }
 
 local flow_options = {
-    --initCase = Flow.TaylorGreenVortex,
-    initCase = Flow.Uniform,
-    initParams = L.NewGlobal(L.vector(L.double,4),
-                               {1.0,100,1.0,0.0}),
+    initCase = Flow.TaylorGreenVortex,
+    initParams = L.NewGlobal(L.vector(L.double,3),
+                               {1,100,2}),
+    --initCase = Flow.Uniform,
+    --initParams = L.NewGlobal(L.vector(L.double,4),
+    --                           {1.0,10,1.0,0.0}),
     --bodyForce = L.NewGlobal(L.vec2d, {0,0.01})
     bodyForce = L.NewGlobal(L.vec2d, {0,0.0})
 }
@@ -217,13 +221,13 @@ local particles_options = {
     -- Particles.Collect kernel where it is specialized
     --
     -- Do not collect particles (freely move within the domain)
-    --collectorType = Particles.CollectorNone,
-    --collectorParams = L.NewGlobal(L.vector(L.double,1),{0}),
+    collectorType = Particles.CollectorNone,
+    collectorParams = L.NewGlobal(L.vector(L.double,1),{0}),
     --
     -- Collect all particles that exit a box defined by its Cartesian 
     -- min/max coordinates
-    collectorType = Particles.CollectorOutOfBox,
-    collectorParams = L.NewGlobal(L.vector(L.double,4),{0.5,0.5,12,12}),
+    --collectorType = Particles.CollectorOutOfBox,
+    --collectorParams = L.NewGlobal(L.vector(L.double,4),{0.5,0.5,12,12}),
 
     num = 1000,
     convective_coefficient = L.NewGlobal(L.double, 0.7), -- W m^-2 K^-1
@@ -486,6 +490,8 @@ Flow.areaInterior = L.NewGlobal(L.double, 0)
 Flow.averagePressure = L.NewGlobal(L.double, 0.0)
 Flow.averageTemperature = L.NewGlobal(L.double, 0.0)
 Flow.averageKineticEnergy = L.NewGlobal(L.double, 0.0)
+Flow.minTemperature = L.NewGlobal(L.double, 0)
+Flow.maxTemperature = L.NewGlobal(L.double, 0)
 Particles.averageTemperature= L.NewGlobal(L.double, 0.0)
 
 
@@ -579,12 +585,15 @@ end
 Flow.InitializePrimitives = liszt kernel(c : grid.cells)
     if flow_options.initCase == Flow.TaylorGreenVortex then
       -- Define Taylor Green Vortex
-      var taylorGreenPressure = 100.0
+      var taylorGreenDensity  = flow_options.initParams[0]
+      var taylorGreenPressure = flow_options.initParams[1]
+      var taylorGreenVelocity = flow_options.initParams[2]
       -- Initialize
       var xy = c.center
       var coorZ = 0
-      c.rho = 1.0
+      c.rho = taylorGreenDensity
       c.velocity = 
+          taylorGreenVelocity *
           L.vec2d({cmath.sin(xy[0]) * 
                    cmath.cos(xy[1]) *
                    cmath.cos(coorZ),
@@ -595,7 +604,9 @@ Flow.InitializePrimitives = liszt kernel(c : grid.cells)
       var factorB = cmath.cos(2.0*xy[0]) +
                     cmath.cos(2.0*xy[1])
       c.pressure = 
-          taylorGreenPressure + (factorA*factorB - 2.0) / 16.0
+          taylorGreenPressure + 
+          taylorGreenDensity * cmath.pow(taylorGreenVelocity,2) / 16 *
+          factorA * factorB
     elseif flow_options.initCase == Flow.Uniform then
       c.rho         = flow_options.initParams[0]
       c.pressure    = flow_options.initParams[1]
@@ -1089,10 +1100,6 @@ Flow.UpdateAuxiliaryVelocity = liszt kernel(c : grid.cells)
 end
 
 Flow.UpdateGhostFieldsStep1 = liszt kernel(c : grid.cells)
-    -- Note that this for now assumes the stencil uses only one point to each
-    -- side of the boundary (for example, second order central difference), and
-    -- is not able to handle higher-order schemes until a way to specify where
-    -- in the (wider-than-one-point) boundary we are
     if c.xneg_depth > 0 then
         var xoffset = XOffset(c.xneg_depth)
         c.rhoBoundary            =   c(xoffset,0).rho
@@ -1152,10 +1159,6 @@ function Flow.UpdateGhost()
 end
 
 Flow.UpdateGhostThermodynamicsStep1 = liszt kernel(c : grid.cells)
-    -- Note that this for now assumes the stencil uses only one point to each
-    -- side of the boundary (for example, second order central difference), and
-    -- is not able to handle higher-order schemes until a way to specify where
-    -- in the (wider-than-one-point) boundary we are
     if c.xneg_depth > 0 then
         var xoffset = XOffset(c.xneg_depth)
         c.pressureBoundary       =   c(xoffset,0).pressure
@@ -1189,10 +1192,6 @@ function Flow.UpdateGhostThermodynamics()
 end
 
 Flow.UpdateGhostVelocityStep1 = liszt kernel(c : grid.cells)
-    -- Note that this for now assumes the stencil uses only one point to each
-    -- side of the boundary (for example, second order central difference), and
-    -- is not able to handle higher-order schemes until a way to specify where
-    -- in the (wider-than-one-point) boundary we are
     if c.xneg_depth > 0 then
         var xoffset = XOffset(c.xneg_depth)
         c.velocityBoundary[0] =   c(xoffset,0).velocity[0] * xSign
@@ -1223,10 +1222,6 @@ function Flow.UpdateGhostVelocity()
 end
 
 Flow.UpdateGhostConservedStep1 = liszt kernel(c : grid.cells)
-    -- Note that this for now assumes the stencil uses only one point to each
-    -- side of the boundary (for example, second order central difference), and
-    -- is not able to handle higher-order schemes until a way to specify where
-    -- in the (wider-than-one-point) boundary we are
     if c.xneg_depth > 0 then
         var xoffset = XOffset(c.xneg_depth)
         c.rhoBoundary            =   c(xoffset,0).rho
@@ -1310,10 +1305,6 @@ Flow.ComputeVelocityGradientY = liszt kernel(c : grid.cells)
 end
 
 Flow.UpdateGhostVelocityGradientStep1 = liszt kernel(c : grid.cells)
-    -- Note that this for now assumes the stencil uses only one point to each
-    -- side of the boundary (for example, second order central difference), and
-    -- is not able to handle higher-order schemes until a way to specify where
-    -- in the (wider-than-one-point) boundary we are
     if c.xneg_depth > 0 then
         var xoffset = XOffset(c.xneg_depth)
         c.velocityGradientXBoundary[0] = - c(xoffset,0).velocityGradientX[0]
@@ -1402,6 +1393,12 @@ Flow.IntegrateQuantities = liszt kernel(c : grid.cells)
     Flow.averagePressure += c.pressure * cellArea
     Flow.averageTemperature += c.temperature * cellArea
     Flow.averageKineticEnergy += c.kineticEnergy * cellArea
+    -- Getaround until min= operator is fixed, as it
+    -- currently returns zero instead of the actual min value)
+    -- (similarly if attempting to use max= of the negative field)
+    Flow.minTemperature max= 1000-c.temperature
+    Flow.maxTemperature max= c.temperature
+
 end
 
 ---------
@@ -1469,8 +1466,8 @@ Flow.DrawKernel = liszt kernel (c : grid.cells)
        c(1,0).temperature +
        c(0,1).temperature +
        c(1,1).temperature) / 4.0
-    var minValue = 4.874
-    var maxValue = 4.92
+    var minValue = Flow.minTemperature
+    var maxValue = Flow.maxTemperature
     -- compute a display value in the range 0.0 to 1.0 from the value
     var scale = (value - minValue)/(maxValue - minValue)
     vdb.color((1.0-scale)*cold)
@@ -2021,7 +2018,7 @@ function TimeIntegrator.CalculateDeltaTime()
     local spectralRadius = ( maxD > maxC ) and maxD or maxC
 
     TimeIntegrator.deltaTime:set(TimeIntegrator.cfl / spectralRadius)
-    --TimeIntegrator.deltaTime:set(0.005)
+    --TimeIntegrator.deltaTime:set(0.01)
 
 end
 
@@ -2035,6 +2032,8 @@ function Statistics.ResetSpatialAverages()
     Flow.averagePressure:set(0.0)
     Flow.averageTemperature:set(0.0)
     Flow.averageKineticEnergy:set(0.0)
+    Flow.minTemperature:set(0.0)
+    Flow.maxTemperature:set(0.0)
     Particles.averageTemperature:set(0.0)
 end
 
@@ -2049,6 +2048,11 @@ function Statistics.UpdateSpatialAverages(grid, particles)
     Flow.averageKineticEnergy:set(
       Flow.averageKineticEnergy:get()/
       Flow.areaInterior:get())
+
+    -- Fix minTemperature (getaround until min= operator is fixed, as it
+    -- currently returns zero instead of the actual min value)
+    -- (similarly if attempting to use max= of the negative field)
+    Flow.minTemperature:set(1000-Flow.minTemperature:get())
 
     -- Particles
     Particles.averageTemperature:set(
@@ -2076,6 +2080,8 @@ function IO.WriteOutput(timeStep)
           ", t", string.format("%10.8f",TimeIntegrator.simTime:get()),
           "flowP", string.format("%10.8f",Flow.averagePressure:get()),
           "flowT", string.format("%10.8f",Flow.averageTemperature:get()),
+          "flowMinT", string.format("%10.8f",Flow.minTemperature:get()),
+          "flowMaxT", string.format("%10.8f",Flow.maxTemperature:get()),
           "kineticEnergy", string.format("%10.8f",Flow.averageKineticEnergy:get()),
           "particlesT", string.format("%10.8f",Particles.averageTemperature:get())
           )
