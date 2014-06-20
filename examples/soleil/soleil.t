@@ -59,9 +59,9 @@ Particles.CollectorOutOfBox = L.NewGlobal(L.int, 1)
 --[[                       COLORS FOR VISUALIZATION                      ]]--
 -----------------------------------------------------------------------------
 local unity = L.NewVector(L.float,{1.0,1.0,1.0})
-local blue = L.NewVector(L.float,{0.0,0.0,1.0})
-local cold = L.NewVector(L.float,{1.0,1.0,1.0})
-local hot  = L.NewVector(L.float,{1.0,0.0,0.0})
+local blue  = L.NewVector(L.float,{0.0,0.0,1.0})
+local cold  = L.NewVector(L.float,{1.0,1.0,1.0})
+local hot   = L.NewVector(L.float,{1.0,0.0,0.0})
 
 -----------------------------------------------------------------------------
 --[[                             OPTIONS                                 ]]--
@@ -70,22 +70,24 @@ local hot  = L.NewVector(L.float,{1.0,0.0,0.0})
 local grid_options = {
     xnum = 32,
     ynum = 32,
+    znum = 32,
     origin = {0.0, 0.0},
-    width = twoPi,
-    --width = 2*twoPi,
-    height = twoPi,
+    xWidth = twoPi,
+    --xWidth = 2*twoPi,
+    yWidth = twoPi,
+    zWidth = twoPi,
     --xBCLeft  = 'symmetry',
     --xBCRight = 'symmetry',
     --yBCLeft  = 'symmetry',
     --yBCRight = 'symmetry',
+    --zBCLeft  = 'symmetry',
+    --zBCRight = 'symmetry',
     xBCLeft  = 'periodic',
     xBCRight = 'periodic',
     yBCLeft  = 'periodic',
     yBCRight = 'periodic',
-    --xBCLeft  = 'dummy_periodic',
-    --xBCRight = 'dummy_periodic',
-    --yBCLeft  = 'dummy_periodic',
-    --yBCRight = 'dummy_periodic',
+    zBCLeft  = 'periodic',
+    zBCRight = 'periodic',
 }
 
 local spatial_stencil = {
@@ -127,10 +129,6 @@ if grid_options.xBCLeft  == "periodic" and
        grid_options.xBCRight == "periodic" then
   XOffset = XOffsetPeriodic
   xSign = 1
-elseif grid_options.xBCLeft  == "dummy_periodic" and 
-   grid_options.xBCRight == "dummy_periodic" then
-  XOffset = XOffsetDummyPeriodic
-  xSign = 1
 elseif grid_options.xBCLeft == "symmetry" and 
        grid_options.xBCRight == "symmetry" then
   XOffset = XOffsetSymmetry
@@ -150,10 +148,6 @@ if grid_options.yBCLeft  == "periodic" and
        grid_options.yBCRight == "periodic" then
   YOffset = YOffsetDummyPeriodic
   ySign = 1
-elseif grid_options.yBCLeft  == "dummy_periodic" and 
-   grid_options.yBCRight == "dummy_periodic" then
-  YOffset = YOffsetDummyPeriodic
-  ySign = 1
 elseif grid_options.yBCLeft  == "symmetry" and 
        grid_options.yBCRight == "symmetry" then
   YOffset = YOffsetSymmetry
@@ -162,8 +156,30 @@ else
   error("Boundary conditions in y not implemented")
 end
 
---local xoffset    = grid_options.xnum
---local yoffset    = grid_options.ynum
+
+-- Define offsets for boundary conditions in flow solver
+local zSign
+-- Offset liszt functions
+local ZOffsetPeriodic = liszt function(boundaryPointDepth)
+  return 0
+end
+local ZOffsetDummyPeriodic = liszt function(boundaryPointDepth)
+  return grid_options.znum
+end
+local ZOffsetSymmetry = liszt function(boundaryPointDepth)
+  return 2*boundaryPointDepth-1
+end
+if grid_options.zBCLeft  == "periodic" and 
+       grid_options.zBCRight == "periodic" then
+  ZOffset = ZOffsetPeriodic
+  zSign = 1
+elseif grid_options.zBCLeft == "symmetry" and 
+       grid_options.zBCRight == "symmetry" then
+  ZOffset = ZOffsetSymmetry
+  zSign = -1
+else
+  error("Boundary conditions in z not implemented")
+end
 
 -- Time integrator
 TimeIntegrator.coeff_function       = {1/6, 1/3, 1/3, 1/6}
@@ -203,17 +219,19 @@ local particles_options = {
     -- Feed all particles at start randomly
     -- distributed on a box defined by its center and sides
     --feederType = Particles.FeederAtStartTimeInRandomBox,
-    --feederParams = L.NewGlobal(L.vector(L.double,4),{pi,pi,2*pi,2*pi}), 
+    --feederParams = L.NewGlobal(L.vector(L.double,6),
+    --                           {pi,pi,pi,2*pi,2*pi,2*pi}), 
     --
     -- Feeding a given number of particles every timestep randomly
     -- distributed on a box defined by its center and sides
     --feederType = Particles.FeederOverTimeInRandomBox,
-    --feederParams = L.NewGlobal(L.vector(L.double,4),{pi,pi,2*pi,2*pi}), 
+    --feederParams = L.NewGlobal(L.vector(L.double,6),
+    --                           {pi,pi,pi,2*pi,2*pi,2*pi}), 
     -- UQCase
     feederType = Particles.FeederUQCase,
-    feederParams = L.NewGlobal(L.vector(L.double,14),
-                               {pi/4,pi/2,0.1*pi,0.1*pi,4,4,0.1,
-                                pi/4,3*pi/2,0.1*pi,0.1*pi,4,-4,0.5}),
+    feederParams = L.NewGlobal(L.vector(L.double,18),
+                       {pi/4,pi/2,pi/2,0.1*pi,0.1*pi,pi/2,4,4,0,0.1,
+                        pi/4,3*pi/2,pi/2,0.1*pi,0.1*pi,pi/2,4,-4,0,0.5}),
 
     -- Collector is defined by a type and a set of parameters
     -- collectorParams is a vector of double values whose meaning
@@ -227,7 +245,7 @@ local particles_options = {
     -- Collect all particles that exit a box defined by its Cartesian 
     -- min/max coordinates
     --collectorType = Particles.CollectorOutOfBox,
-    --collectorParams = L.NewGlobal(L.vector(L.double,4),{0.5,0.5,12,12}),
+    --collectorParams = L.NewGlobal(L.vector(L.double,6),{0.5,0.5,12,12,6,6}),
 
     num = 1000,
     convective_coefficient = L.NewGlobal(L.double, 0.7), -- W m^-2 K^-1
@@ -236,8 +254,8 @@ local particles_options = {
     density = 1000,
     diameter_mean = 0.02,
     diameter_maxDeviation = 0.02,
-    bodyForce = L.NewGlobal(L.vec2d, {0,-0.01}),
-    --bodyForce = L.NewGlobal(L.vec2d, {0,-1.1}),
+    bodyForce = L.NewGlobal(L.vec3d, {0,-0.01,0}),
+    --bodyForce = L.NewGlobal(L.vec3d, {0,-1.1,0}),
     emissivity = 0.5,
     absorptivity = 0.5 -- Equal to emissivity in thermal equilibrium
                        -- (Kirchhoff law of thermal radiation)
@@ -267,6 +285,12 @@ if ( grid_options.yBCLeft  == 'periodic' and
      grid_options.yBCRight == 'periodic' ) then
     error("Boundary conditions in y should match periodicity")
 end
+if ( grid_options.zBCLeft  == 'periodic' and 
+     grid_options.zBCRight ~= 'periodic' ) or 
+   ( grid_options.zBCLeft  ~= 'periodic' and 
+     grid_options.zBCRight == 'periodic' ) then
+    error("Boundary conditions in z should match periodicity")
+end
 if ( grid_options.xBCLeft  == 'periodic' and 
      grid_options.xBCRight == 'periodic' ) then
   xBCPeriodic = true
@@ -278,6 +302,12 @@ if ( grid_options.yBCLeft  == 'periodic' and
   yBCPeriodic = true
 else
   yBCPeriodic = false
+end
+if ( grid_options.zBCLeft  == 'periodic' and 
+     grid_options.zBCRight == 'periodic' ) then
+  zBCPeriodic = true
+else
+  zBCPeriodic = false
 end
 
 
@@ -294,21 +324,30 @@ if yBCPeriodic then
 else
   yBnum = bnum
 end
-local xBw   = grid_options.width/grid_options.xnum * xBnum
-local yBh   = grid_options.height/grid_options.ynum * yBnum
+if zBCPeriodic then
+  zBnum = 0
+else
+  zBnum = bnum
+end
+local xBw   = grid_options.xWidth/grid_options.xnum * xBnum
+local yBw   = grid_options.yWidth/grid_options.ynum * yBnum
+local zBw   = grid_options.zWidth/grid_options.znum * zBnum
 local gridOriginX = grid_options.origin[1]
 local gridOriginY = grid_options.origin[2]
+local gridOriginZ = grid_options.origin[3]
 local originWithGhosts = grid_options.origin
 originWithGhosts[1] = originWithGhosts[1] - 
-                      xBnum * grid_options.width/grid_options.xnum
+                      xBnum * grid_options.xWidth/grid_options.xnum
 originWithGhosts[2] = originWithGhosts[2] - 
-                      yBnum * grid_options.height/grid_options.xnum
+                      yBnum * grid_options.yWidth/grid_options.ynum
+originWithGhosts[3] = originWithGhosts[3] - 
+                      yBnum * grid_options.zWidth/grid_options.znum
 
 local grid = Grid.NewGrid2d{size           = {grid_options.xnum + 2*xBnum,
                                               grid_options.ynum + 2*yBnum},
                             origin         = originWithGhosts,
-                            width          = {grid_options.width + 2*xBw,
-                                              grid_options.height + 2*yBh},
+                            width          = {grid_options.xWidth + 2*xBw,
+                                              grid_options.yWidth + 2*yBw},
                             boundary_depth = {xBnum, yBnum},
                             periodic_boundary = {xBCPeriodic, yBCPeriodic} }
 
@@ -316,8 +355,8 @@ print("xBoundaryDepth()", grid:xBoundaryDepth())
 print("yBoundaryDepth()", grid:yBoundaryDepth())
 print("grid xOrigin()", grid:xOrigin())
 print("grid yOrigin()", grid:yOrigin())
-print("grid width()", grid:xWidth())
-print("grid height()", grid:yWidth())
+print("grid xWidth()", grid:xWidth())
+print("grid yWidth()", grid:yWidth())
 print("originWithGhosts", originWithGhosts[1], originWithGhosts[2])
 
 
@@ -1445,8 +1484,8 @@ end
 
 -- kernels to draw particles and velocity for debugging purpose
 Flow.DrawKernel = liszt kernel (c : grid.cells)
-    --var xMax = L.double(grid_options.width)
-    --var yMax = L.double(grid_options.height)
+    --var xMax = L.double(grid_options.xWidth)
+    --var yMax = L.double(grid_options.yWidth)
     var xMax = 1.0
     var yMax = 1.0
     var posA : L.vec3d = { c(0,0).center[0]/xMax,
@@ -1627,16 +1666,16 @@ Particles.UpdateAuxiliaryStep1 = liszt kernel(p : particles)
         p.position_ghost[0] = p.position[0]
         p.position_ghost[1] = p.position[1]
         if p.position[0] < gridOriginX then
-            p.position_ghost[0] = p.position[0] + grid_options.width
+            p.position_ghost[0] = p.position[0] + grid_options.xWidth
         end
-        if p.position[0] > gridOriginX + grid_options.width then
-            p.position_ghost[0] = p.position[0] - grid_options.width
+        if p.position[0] > gridOriginX + grid_options.xWidth then
+            p.position_ghost[0] = p.position[0] - grid_options.xWidth
         end
         if p.position[1] < gridOriginY then
-            p.position_ghost[1] = p.position[1] + grid_options.width
+            p.position_ghost[1] = p.position[1] + grid_options.xWidth
         end
-        if p.position[1] > gridOriginY + grid_options.height then
-            p.position_ghost[1] = p.position[1] - grid_options.height
+        if p.position[1] > gridOriginY + grid_options.yWidth then
+            p.position_ghost[1] = p.position[1] - grid_options.yWidth
         end
     end
 end
@@ -1657,8 +1696,10 @@ Particles.Feed = liszt kernel(p: particles)
 
       p.position[0] = 0
       p.position[1] = 0
+      p.position[2] = 0
       p.velocity[0] = 0
       p.velocity[1] = 0
+      p.velocity[2] = 0
       p.state = 0
 
       -- Initialize based on feeder type
@@ -1670,11 +1711,14 @@ Particles.Feed = liszt kernel(p: particles)
         -- Specialize feederParams from options
         var centerX   = particles_options.feederParams[0]
         var centerY   = particles_options.feederParams[1]
-        var widthX    = particles_options.feederParams[2]
-        var widthY    = particles_options.feederParams[3]
+        var centerZ   = particles_options.feederParams[2]
+        var widthX    = particles_options.feederParams[3]
+        var widthY    = particles_options.feederParams[4]
+        var widthZ    = particles_options.feederParams[5]
 
         p.position[0] = centerX + (cmath.rand_unity()-0.5) * widthX
         p.position[1] = centerY + (cmath.rand_unity()-0.5) * widthY
+        p.position[2] = centerZ + (cmath.rand_unity()-0.5) * widthZ
         p.state = 1
                         
       elseif particles_options.feederType == 
@@ -1683,11 +1727,14 @@ Particles.Feed = liszt kernel(p: particles)
         -- Specialize feederParams from options
         var injectorBox_centerX   = particles_options.feederParams[0]
         var injectorBox_centerY   = particles_options.feederParams[1]
-        var injectorBox_widthX    = particles_options.feederParams[2]
-        var injectorBox_widthY    = particles_options.feederParams[3]
-        var injectorBox_velocityX = particles_options.feederParams[4]
-        var injectorBox_velocityY = particles_options.feederParams[5]
-        var injectorBox_particlesPerTimeStep = particles_options.feederParams[6]
+        var injectorBox_centerZ   = particles_options.feederParams[2]
+        var injectorBox_widthX    = particles_options.feederParams[3]
+        var injectorBox_widthY    = particles_options.feederParams[4]
+        var injectorBox_widthZ    = particles_options.feederParams[5]
+        var injectorBox_velocityX = particles_options.feederParams[6]
+        var injectorBox_velocityY = particles_options.feederParams[7]
+        var injectorBox_velocityZ = particles_options.feederParams[8]
+        var injectorBox_particlesPerTimeStep = particles_options.feederParams[9]
         -- Inject particle if matching timeStep requirements
         if cmath.floor(p.id/injectorBox_particlesPerTimeStep) ==
            TimeIntegrator.timeStep then
@@ -1695,8 +1742,11 @@ Particles.Feed = liszt kernel(p: particles)
                             (cmath.rand_unity()-0.5) * injectorBox_widthX
             p.position[1] = injectorBox_centerY +
                             (cmath.rand_unity()-0.5) * injectorBox_widthY
+            p.position[2] = injectorBox_centerZ +
+                            (cmath.rand_unity()-0.5) * injectorBox_widthZ
             p.velocity[0] = injectorBox_velocityX
             p.velocity[1] = injectorBox_velocityY
+            p.velocity[2] = injectorBox_velocityZ
             p.state = 1
         end
 
@@ -1707,19 +1757,25 @@ Particles.Feed = liszt kernel(p: particles)
         -- Injector A
         var injectorA_centerX   = particles_options.feederParams[0]
         var injectorA_centerY   = particles_options.feederParams[1]
-        var injectorA_widthX    = particles_options.feederParams[2]
-        var injectorA_widthY    = particles_options.feederParams[3]
-        var injectorA_velocityX = particles_options.feederParams[4]
-        var injectorA_velocityY = particles_options.feederParams[5]
-        var injectorA_particlesPerTimeStep = particles_options.feederParams[6]
+        var injectorA_centerZ   = particles_options.feederParams[2]
+        var injectorA_widthX    = particles_options.feederParams[3]
+        var injectorA_widthY    = particles_options.feederParams[4]
+        var injectorA_widthZ    = particles_options.feederParams[5]
+        var injectorA_velocityX = particles_options.feederParams[6]
+        var injectorA_velocityY = particles_options.feederParams[7]
+        var injectorA_velocityZ = particles_options.feederParams[8]
+        var injectorA_particlesPerTimeStep = particles_options.feederParams[9]
         -- Injector B
-        var injectorB_centerX   = particles_options.feederParams[7]
-        var injectorB_centerY   = particles_options.feederParams[8]
-        var injectorB_widthX    = particles_options.feederParams[9]
-        var injectorB_widthY    = particles_options.feederParams[10]
-        var injectorB_velocityX = particles_options.feederParams[11]
-        var injectorB_velocityY = particles_options.feederParams[12]
-        var injectorB_particlesPerTimeStep = particles_options.feederParams[13]
+        var injectorB_centerX   = particles_options.feederParams[10]
+        var injectorB_centerY   = particles_options.feederParams[11]
+        var injectorB_centerZ   = particles_options.feederParams[12]
+        var injectorB_widthX    = particles_options.feederParams[13]
+        var injectorB_widthY    = particles_options.feederParams[14]
+        var injectorB_widthZ    = particles_options.feederParams[15]
+        var injectorB_velocityX = particles_options.feederParams[16]
+        var injectorB_velocityY = particles_options.feederParams[17]
+        var injectorB_velocityZ = particles_options.feederParams[18]
+        var injectorB_particlesPerTimeStep = particles_options.feederParams[19]
         var numberOfParticlesInA = 
              cmath.floor(particles_options.num*injectorA_particlesPerTimeStep/
              (injectorA_particlesPerTimeStep+injectorB_particlesPerTimeStep))
@@ -1733,8 +1789,11 @@ Particles.Feed = liszt kernel(p: particles)
                             (cmath.rand_unity()-0.5) * injectorA_widthX
             p.position[1] = injectorA_centerY +
                             (cmath.rand_unity()-0.5) * injectorA_widthY
+            p.position[2] = injectorA_centerZ +
+                            (cmath.rand_unity()-0.5) * injectorA_widthZ
             p.velocity[0] = injectorA_velocityX
             p.velocity[1] = injectorA_velocityY
+            p.velocity[2] = injectorA_velocityZ
             p.state = 1
             p.groupID = 0
         end
@@ -1750,8 +1809,11 @@ Particles.Feed = liszt kernel(p: particles)
                             (cmath.rand_unity()-0.5) * injectorB_widthX
             p.position[1] = injectorB_centerY +
                             (cmath.rand_unity()-0.5) * injectorB_widthY
+            p.position[2] = injectorB_centerZ +
+                            (cmath.rand_unity()-0.5) * injectorB_widthZ
             p.velocity[0] = injectorB_velocityX
             p.velocity[1] = injectorB_velocityY
+            p.velocity[2] = injectorB_velocityZ
             p.state = 1
             p.groupID = 1
         end
@@ -1777,12 +1839,16 @@ Particles.Collect = liszt kernel(p: particles)
         -- Specialize collectorParams from options
         var minX = particles_options.collectorParams[0]
         var minY = particles_options.collectorParams[1]
-        var maxX = particles_options.collectorParams[2]
-        var maxY = particles_options.collectorParams[3]
+        var minZ = particles_options.collectorParams[3]
+        var maxX = particles_options.collectorParams[4]
+        var maxY = particles_options.collectorParams[5]
+        var maxZ = particles_options.collectorParams[6]
         if p.position[0] < minX or
            p.position[0] > maxX or
            p.position[1] < minY or
-           p.position[1] > maxY then
+           p.position[1] > maxY or
+           p.position[2] < minZ or
+           p.position[2] > maxZ then
           p.state = 2
         end
                        
@@ -1846,8 +1912,8 @@ end
 ----------------
 
 Particles.DrawKernel = liszt kernel (p : particles)
-    --var xMax = L.double(grid_options.width)
-    --var yMax = L.double(grid_options.height)
+    --var xMax = L.double(grid_options.xWidth)
+    --var yMax = L.double(grid_options.yWidth)
     var xMax = 1.0
     var yMax = 1.0
     --var scale = p.temperature/particles_options.initialTemperature
@@ -1953,7 +2019,7 @@ end
 function TimeIntegrator.UpdateTime(timeOld, stage)
     TimeIntegrator.simTime:set(timeOld +
                                TimeIntegrator.coeff_time[stage] *
-                                TimeIntegrator.deltaTime:get())
+                               TimeIntegrator.deltaTime:get())
 end
 
 function TimeIntegrator.InitializeVariables()
