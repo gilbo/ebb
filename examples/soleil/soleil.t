@@ -170,7 +170,7 @@ TimeIntegrator.simTime              = L.NewGlobal(L.double,0)
 TimeIntegrator.final_time           = 1000.00001
 TimeIntegrator.timeStep             = L.NewGlobal(L.int,0)
 TimeIntegrator.cfl                  = 1.2
-TimeIntegrator.outputEveryTimeSteps = 10 --63
+TimeIntegrator.outputEveryTimeSteps = 2 --63
 TimeIntegrator.deltaTime            = L.NewGlobal(L.double, 0.01)
 
 local fluid_options = {
@@ -217,7 +217,8 @@ local particles_options = {
     -- Particles.Collect kernel where it is specialized
     --
     -- Do not collect particles (freely move within the domain)
-    -- collectorType = Particles.CollectorNone
+    --collectorType = Particles.CollectorNone,
+    --collectorParams = L.NewGlobal(L.vector(L.double,1),{0}),
     --
     -- Collect all particles that exit a box defined by its Cartesian 
     -- min/max coordinates

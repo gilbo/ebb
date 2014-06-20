@@ -48,6 +48,7 @@ import matplotlib.colors as colors
 from mpl_toolkits.mplot3d import axes3d, Axes3D #<-- Note the capitalization! 
 from matplotlib import rc
 from scipy import interpolate
+import matplotlib.gridspec as gridspec
 
 
 # -----------------------------------------------------------------------------
@@ -251,7 +252,8 @@ particlesSizeFactor  = float(sys.argv[5])
 particlesArrowFactor = float(sys.argv[6])
 fieldMin             = sys.argv[7]
 fieldMax             = sys.argv[8]
-outputFileNamePrefix = sys.argv[9]
+histogramsBinSize    = int(sys.argv[9])
+outputFileNamePrefix = sys.argv[10]
 
 print "inputFileNamePrefix   ", inputFileNamePrefix  
 print "timeStep              ", timeStep             
@@ -262,6 +264,7 @@ print "particlesArrowFactor  ", particlesArrowFactor
 print "fieldMin              ", fieldMin             
 print "fieldMax              ", fieldMax             
 print "outputFileNamePrefix  ", outputFileNamePrefix 
+print "histogramsBinSize",      histogramsBinSize
 
 
 
@@ -310,6 +313,10 @@ particlesVelocityInputFileName = inputFileNamePrefix + "_" + \
   str(timeStep) + "_particles_velocity.txt"
 particlesTemperatureInputFileName = inputFileNamePrefix + "_" + \
   str(timeStep) + "_particles_temperature.txt"
+particlesGroupIDInputFileName = inputFileNamePrefix + "_" + \
+  str(timeStep) + "_particles_groupID.txt"
+particlesStateInputFileName = inputFileNamePrefix + "_" + \
+  str(timeStep) + "_particles_state.txt"
 particlesDiameterInputFileName = inputFileNamePrefix + "_" + \
   "particles_diameter.txt"
 with open(particlesPositionInputFileName, 'r') as f:
@@ -327,6 +334,12 @@ particlesDiameter = numpy.loadtxt(particlesDiameterInputFileName,
 particlesTemperature = numpy.loadtxt(particlesTemperatureInputFileName,
                                 usecols = (1,), unpack = True,
                                 skiprows = 1)
+particlesGroupID = numpy.loadtxt(particlesGroupIDInputFileName,
+                                 usecols = (1,), unpack = True,
+                                 skiprows = 1)
+particlesState = numpy.loadtxt(particlesStateInputFileName,
+                               usecols = (1,), unpack = True,
+                               skiprows = 1)
 
 xCoor = numpy.array(coordinatesList)[:xSize,1]
 yCoor = numpy.array(coordinatesList)[::xSize,2]
@@ -338,13 +351,35 @@ coorYToPlot = numpy.array(yCoor)
 
 #interp='nearest'
 interp='bilinear'
+figWidth=12
+figHeight=int((coorYToPlot.max()-coorYToPlot.min())/(coorXToPlot.max()-coorXToPlot.min())*figWidth)
 
-fig = plt.figure(figsize=(8,6))
+fig = plt.figure(figsize=(figWidth,figHeight))
 #fig.suptitle(fieldName + ' field at slice ' + str(sliceIndex) + ' with particles')
-ax = fig.add_subplot(111, aspect='equal', autoscale_on=False,
-                     xlim=(coorXToPlot.min(), coorXToPlot.max()),
-                     ylim=(coorYToPlot.min(), coorYToPlot.max()))
-ax.grid()
+#ax = fig.add_subplot(111, aspect='equal', autoscale_on=False,
+#                     xlim=(coorXToPlot.min(), coorXToPlot.max()),
+#                     ylim=(coorYToPlot.min(), coorYToPlot.max()))
+
+aspectRatio = 6
+
+gs1 = gridspec.GridSpec(2,2,
+                       height_ratios=(1, 3),
+                       width_ratios=(3, 1))
+
+gs1.update(bottom=0.25, top=0.98, wspace=0.05, hspace=0.05)
+ 
+ax1 = plt.subplot(gs1[0,0])
+ax2 = plt.subplot(gs1[1,0])
+ax3 = plt.subplot(gs1[1,1])
+
+#plt.subplots_adjust(wspace=0.02, hspace=0.02)
+
+ax1.xaxis.set_visible(False)
+ax1.yaxis.set_visible(False)
+ax3.xaxis.set_visible(False)
+ax3.yaxis.set_visible(False)
+
+ax2.grid()
 if fieldMin == "auto":
     vmin = fieldToPlot.min()
 else:
@@ -355,33 +390,84 @@ else:
     vmax = float(fieldMax)
 
 norm = colors.Normalize(vmin = vmin, vmax = vmax)
-im = image.NonUniformImage(ax, interpolation=interp,
+im = image.NonUniformImage(ax2, interpolation=interp,
                      cmap='jet', norm = norm)
 im.set_data(coorXToPlot,coorYToPlot,
             fieldToPlot)
-ax.images.append(im)
-ax.set_xlim(coorXToPlot.min(),coorXToPlot.max())
-ax.set_ylim(coorYToPlot.min(),coorYToPlot.max())
+ax2.images.append(im)
+ax2.set_xlim(coorXToPlot.min(),coorXToPlot.max())
+ax2.set_ylim(coorYToPlot.min(),coorYToPlot.max())
 #ax.set_title(interp)
-evolutionText = ax.text(0.02, 0.90, '', transform=ax.transAxes)
+evolutionText = ax2.text(0.02, 0.90, '', transform=ax2.transAxes)
 
 # Particles as circles at {X, Y} locations scaled by their diameter
 particlesPlot = \
-  plt.scatter(particlesX,particlesY,
+  ax2.scatter(particlesX,particlesY,
               s=particlesSizeFactor*particlesDiameter,
               alpha=0.8,
-              c=particlesTemperature,
+              c=particlesGroupID,
               cmap='hot')
-plt.colorbar(im)
-plt.colorbar(particlesPlot)
-
 # Particles velocity as quiver
 particlesVelocityPlot = \
-  plt.quiver(particlesX, particlesY,
+  ax2.quiver(particlesX, particlesY,
              particlesVelocityX, particlesVelocityY,
              particlesTemperature, cmap='hot',
              scale=particlesArrowFactor,
              alpha=0.8)
+
+# Histograms
+# Particles position in Y (all particles)
+histX_values, histX_coor  = \
+   numpy.histogram(particlesX,
+                   bins=histogramsBinSize,
+                   range=[coorXToPlot.min(),coorXToPlot.max()])
+histY_values, histY_coor = \
+   numpy.histogram(particlesY,
+                   bins=histogramsBinSize,
+                   range=[coorYToPlot.min(),coorYToPlot.max()])
+
+# Filter by groupID
+particlesX_groupA = numpy.ma.compressed(
+  numpy.ma.masked_where(particlesGroupID == 0,particlesX))
+particlesX_groupB = numpy.ma.compressed(
+  numpy.ma.masked_where(particlesGroupID == 1,particlesX))
+particlesY_groupA = numpy.ma.compressed(
+  numpy.ma.masked_where(particlesGroupID == 0,particlesY))
+particlesY_groupB = numpy.ma.compressed(
+  numpy.ma.masked_where(particlesGroupID == 1,particlesY))
+
+histX_groupA_values, histX_groupA_coor = \
+   numpy.histogram(particlesX_groupA,
+                   bins=histogramsBinSize,
+                   range=[coorXToPlot.min(),coorXToPlot.max()])
+histX_groupB_values, histX_groupB_coor = \
+   numpy.histogram(particlesX_groupB,
+                   bins=histogramsBinSize,
+                   range=[coorXToPlot.min(),coorXToPlot.max()])
+histY_groupA_values, histY_groupA_coor = \
+   numpy.histogram(particlesY_groupA,
+                   bins=histogramsBinSize,
+                   range=[coorYToPlot.min(),coorYToPlot.max()])
+histY_groupB_values, histY_groupB_coor = \
+   numpy.histogram(particlesY_groupB,
+                   bins=histogramsBinSize,
+                   range=[coorYToPlot.min(),coorYToPlot.max()])
+
+# Plot histograms
+ax1.plot(histX_coor[1:-1],histX_values[1:],'k',linewidth=2)
+ax1.plot(histX_groupA_coor[1:-1],histX_groupA_values[1:],'r',linewidth=2)
+ax1.plot(histX_groupB_coor[1:-1],histX_groupB_values[1:],'b',linewidth=2)
+ax3.plot(histY_values[1:],histY_coor[1:-1],'k',linewidth=2)
+ax3.plot(histY_groupA_values[1:],histY_groupA_coor[1:-1],'r',linewidth=2)
+ax3.plot(histY_groupB_values[1:],histY_groupB_coor[1:-1],'b',linewidth=2)
+
+gs2 = gridspec.GridSpec(2,1,
+                        height_ratios=(1,1))
+gs2.update(bottom=0.05, top=0.18, hspace=0.8)
+ax4 = plt.subplot(gs2[0])
+ax5 = plt.subplot(gs2[1])
+plt.colorbar(im, orientation='horizontal',cax=ax4)
+plt.colorbar(particlesPlot, orientation='horizontal',cax=ax5)
 
 # Write output file
 outputFileName = outputFileNamePrefix + "_" + \
