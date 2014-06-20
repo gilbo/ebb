@@ -302,7 +302,7 @@ local originWithGhosts = grid_options.origin
 originWithGhosts[1] = originWithGhosts[1] - 
                       xBnum * grid_options.width/grid_options.xnum
 originWithGhosts[2] = originWithGhosts[2] - 
-                      yBnum * grid_options.height/grid_options.xnum
+                      yBnum * grid_options.height/grid_options.ynum
 
 local grid = Grid.NewGrid2d{size           = {grid_options.xnum + 2*xBnum,
                                               grid_options.ynum + 2*yBnum},
