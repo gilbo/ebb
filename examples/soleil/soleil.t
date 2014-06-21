@@ -616,6 +616,31 @@ end)
 --    end
 --end)
 
+local InterpolateTrilinear = L.NewMacro(function(dc, xyz, Field)
+    return liszt quote
+        -- d = down, u = up, l = left, r = right, b = back, f = front
+        var c000 = dc.vertex.cell(-1, -1, -1)
+        var c100 = dc.vertex.cell( 0, -1, -1)
+        var c010 = dc.vertex.cell(-1,  0, -1)
+        var c110 = dc.vertex.cell( 0,  0, -1)
+        var c001 = dc.vertex.cell(-1, -1,  0)
+        var c101 = dc.vertex.cell( 0, -1,  0)
+        var c011 = dc.vertex.cell(-1,  0,  0)
+        var c111 = dc.vertex.cell( 0,  0,  0)
+        var dX = xyz[0] - c000.center[0]
+        var dY = xyz[1] - c000.center[1]
+        var dZ = xyz[2] - c000.center[2]
+        var weightA = Field(c000) * (1.0 - dZ) + Field(c001) * dZ
+        var weightB = Field(c010) * (1.0 - dZ) + Field(c011) * dZ
+        var weightC = Field(c100) * (1.0 - dZ) + Field(c101) * dZ
+        var weightD = Field(c110) * (1.0 - dZ) + Field(c111) * dZ
+        var weightE = weightA * (1.0 - dY) + weightB * dY
+        var weightF = weightC * (1.0 - dY) + weightD * dY
+    in
+        weightE * (1.0 - dX) + weightF * dX
+    end
+end)
+
 -----------------------------------------------------------------------------
 --[[                            LISZT KERNELS                            ]]--
 -----------------------------------------------------------------------------
@@ -1549,295 +1574,302 @@ Particles.InitializeTemporaries = liszt kernel(p : particles)
     end
 end
 
-------------------
----- Flow Coupling
-------------------
---
----- Initialize time derivative for each stage of time stepper
---Particles.InitializeTimeDerivatives = liszt kernel(p : particles)
---    if p.state == 1 then
---        p.position_t = L.vec3d({0, 0, 0})
---        p.velocity_t = L.vec3d({0, 0, 0})
---        p.temperature_t = L.double(0)
---    end
---end
---
----- Update particle fields based on flow fields
---Particles.AddFlowCoupling = liszt kernel(p: particles)
---    if p.state == 1 then
---      p.dual_cell = grid.dual_locate(p.position)
---      var flowDensity     = L.double(0)
---      var flowVelocity    = L.vec3d({0, 0, 0})
---      var flowTemperature = L.double(0)
---      var flowDynamicViscosity = L.double(0)
---      flowDensity     = InterpolateBilinear(p.dual_cell, p.position, Rho)
---      flowVelocity    = InterpolateBilinear(p.dual_cell, p.position, Velocity)
---      flowTemperature = InterpolateBilinear(p.dual_cell, p.position, Temperature)
---      flowDynamicViscosity = GetDynamicViscosity(flowTemperature)
---      p.position_t    += p.velocity
---      -- Relaxation time for small particles 
---      -- - particles Reynolds number (set to zero for Stokesian)
---      var particleReynoldsNumber =
---        (p.density * norm(flowVelocity - p.velocity) * p.diameter) / 
---        flowDynamicViscosity
---      var relaxationTime = 
---        ( p.density * cmath.pow(p.diameter,2) / (18.0 * flowDynamicViscosity) ) /
---        ( 1.0 + 0.15 * cmath.pow(particleReynoldsNumber,0.687) )
---      p.deltaVelocityOverRelaxationTime = 
---        (flowVelocity - p.velocity) / relaxationTime
---      p.deltaTemperatureTerm = pi * cmath.pow(p.diameter, 2) *
---          particles_options.convective_coefficient *
---          (flowTemperature - p.temperature)
---      p.velocity_t += p.deltaVelocityOverRelaxationTime
---      p.temperature_t += p.deltaTemperatureTerm/
---          (p.mass * particles_options.heat_capacity)
---    end
---end
---
 ----------------
----- Body forces
+-- Flow Coupling
 ----------------
---
---Particles.AddBodyForces= liszt kernel(p : particles)
---    if p.state == 1 then
---        p.velocity_t += particles_options.bodyForce
---    end
---end
---
+
+-- Initialize time derivative for each stage of time stepper
+Particles.InitializeTimeDerivatives = liszt kernel(p : particles)
+    if p.state == 1 then
+        p.position_t = L.vec3d({0, 0, 0})
+        p.velocity_t = L.vec3d({0, 0, 0})
+        p.temperature_t = L.double(0)
+    end
+end
+
+-- Update particle fields based on flow fields
+Particles.AddFlowCoupling = liszt kernel(p: particles)
+    if p.state == 1 then
+      p.dual_cell = grid.dual_locate(p.position)
+      var flowDensity     = L.double(0)
+      var flowVelocity    = L.vec3d({0, 0, 0})
+      var flowTemperature = L.double(0)
+      var flowDynamicViscosity = L.double(0)
+      flowDensity     = InterpolateTrilinear(p.dual_cell, p.position, Rho)
+      flowVelocity    = InterpolateTrilinear(p.dual_cell, p.position, Velocity)
+      flowTemperature = InterpolateTrilinear(p.dual_cell, p.position, Temperature)
+      flowDynamicViscosity = GetDynamicViscosity(flowTemperature)
+      p.position_t    += p.velocity
+      -- Relaxation time for small particles 
+      -- - particles Reynolds number (set to zero for Stokesian)
+      var particleReynoldsNumber =
+        (p.density * norm(flowVelocity - p.velocity) * p.diameter) / 
+        flowDynamicViscosity
+      var relaxationTime = 
+        ( p.density * cmath.pow(p.diameter,2) / (18.0 * flowDynamicViscosity) ) /
+        ( 1.0 + 0.15 * cmath.pow(particleReynoldsNumber,0.687) )
+      p.deltaVelocityOverRelaxationTime = 
+        (flowVelocity - p.velocity) / relaxationTime
+      p.deltaTemperatureTerm = pi * cmath.pow(p.diameter, 2) *
+          particles_options.convective_coefficient *
+          (flowTemperature - p.temperature)
+      p.velocity_t += p.deltaVelocityOverRelaxationTime
+      p.temperature_t += p.deltaTemperatureTerm/
+          (p.mass * particles_options.heat_capacity)
+    end
+end
+
 --------------
----- Radiation
+-- Body forces
 --------------
---
---Particles.AddRadiation = liszt kernel(p : particles)
---    if p.state == 1 then
---        -- Calculate absorbed radiation intensity considering optically thin
---        -- particles, for a collimated radiation source with negligible 
---        -- blackbody self radiation
---        var absorbedRadiationIntensity =
---          particles_options.absorptivity *
---          radiation_options.radiationIntensity *
---          p.area / 4
---
---        -- Add contribution to particle temperature time evolution
---        p.temperature_t += absorbedRadiationIntensity /
---                           (p.mass * particles_options.heat_capacity)
---    end
---end
---
----- Set particle velocities to underlying flow velocity for initialization
---Particles.SetVelocitiesToFlow = liszt kernel(p: particles)
---    p.dual_cell = grid.dual_locate(p.position)
---    var flow_density     = L.double(0)
---    var flow_velocity    = L.vec3d({0, 0, 0})
---    var flow_temperature = L.double(0)
---    var flowDynamicViscosity = L.double(0)
---    flow_velocity    = InterpolateBilinear(p.dual_cell, p.position, Velocity)
---    p.velocity = flow_velocity
---end
---
----- Update particle variables using derivatives
---Particles.UpdateKernels = {}
---function Particles.GenerateUpdateKernels(relation, stage)
---    local coeff_fun  = TimeIntegrator.coeff_function[stage]
---    local coeff_time = TimeIntegrator.coeff_time[stage]
---    local deltaTime  = TimeIntegrator.deltaTime
---    if stage <= 3 then
---        return liszt kernel(r : relation)
---            if r.state == 1 then
---              r.position_new += 
---                 coeff_fun * deltaTime * r.position_t
---              r.position       = r.position_old +
---                 coeff_time * deltaTime * r.position_t
---              r.velocity_new += 
---                 coeff_fun * deltaTime * r.velocity_t
---              r.velocity       = r.velocity_old +
---                 coeff_time * deltaTime * r.velocity_t
---              r.temperature_new += 
---                 coeff_fun * deltaTime * r.temperature_t
---              r.temperature       = r.temperature_old +
---                 coeff_time * deltaTime * r.temperature_t
---            end
---        end
---    elseif stage == 4 then
---        return liszt kernel(r : relation)
---            if r.state == 1 then
---              r.position = r.position_new +
---                 coeff_fun * deltaTime * r.position_t
---              r.velocity = r.velocity_new +
---                 coeff_fun * deltaTime * r.velocity_t
---              r.temperature = r.temperature_new +
---                 coeff_fun * deltaTime * r.temperature_t
---            end
---        end
---    end
---end
---for i = 1, 4 do
---    Particles.UpdateKernels[i] = Particles.GenerateUpdateKernels(particles, i)
---end
---
---Particles.UpdateAuxiliaryStep1 = liszt kernel(p : particles)
---    if p.state == 1 then
---        p.position_ghost[0] = p.position[0]
---        p.position_ghost[1] = p.position[1]
---        if p.position[0] < gridOriginX then
---            p.position_ghost[0] = p.position[0] + grid_options.xWidth
---        end
---        if p.position[0] > gridOriginX + grid_options.xWidth then
---            p.position_ghost[0] = p.position[0] - grid_options.xWidth
---        end
---        if p.position[1] < gridOriginY then
---            p.position_ghost[1] = p.position[1] + grid_options.xWidth
---        end
---        if p.position[1] > gridOriginY + grid_options.yWidth then
---            p.position_ghost[1] = p.position[1] - grid_options.yWidth
---        end
---    end
---end
---Particles.UpdateAuxiliaryStep2 = liszt kernel(p : particles)
---    if p.state == 1 then
---        p.position = p.position_ghost
---    end
---end
---
------------
----- Feeder
------------
---
----- Particles feeder
---Particles.Feed = liszt kernel(p: particles)
---
---    if p.state == 0 then
---
---      p.position[0] = 0
---      p.position[1] = 0
---      p.position[2] = 0
---      p.velocity[0] = 0
---      p.velocity[1] = 0
---      p.velocity[2] = 0
---      p.state = 0
---
---      -- Initialize based on feeder type
---      if particles_options.feederType == 
---           Particles.FeederAtStartTimeInRandomBox then
---
---        -- Particles randomly distributed inside box limits defined 
---        -- by options
---        -- Specialize feederParams from options
---        var centerX   = particles_options.feederParams[0]
---        var centerY   = particles_options.feederParams[1]
---        var centerZ   = particles_options.feederParams[2]
---        var widthX    = particles_options.feederParams[3]
---        var widthY    = particles_options.feederParams[4]
---        var widthZ    = particles_options.feederParams[5]
---
---        p.position[0] = centerX + (cmath.rand_unity()-0.5) * widthX
---        p.position[1] = centerY + (cmath.rand_unity()-0.5) * widthY
---        p.position[2] = centerZ + (cmath.rand_unity()-0.5) * widthZ
---        p.state = 1
---                        
---      elseif particles_options.feederType == 
---               Particles.FeederOverTimeInRandomBox then
---
---        -- Specialize feederParams from options
---        var injectorBox_centerX   = particles_options.feederParams[0]
---        var injectorBox_centerY   = particles_options.feederParams[1]
---        var injectorBox_centerZ   = particles_options.feederParams[2]
---        var injectorBox_widthX    = particles_options.feederParams[3]
---        var injectorBox_widthY    = particles_options.feederParams[4]
---        var injectorBox_widthZ    = particles_options.feederParams[5]
---        var injectorBox_velocityX = particles_options.feederParams[6]
---        var injectorBox_velocityY = particles_options.feederParams[7]
---        var injectorBox_velocityZ = particles_options.feederParams[8]
---        var injectorBox_particlesPerTimeStep = particles_options.feederParams[9]
---        -- Inject particle if matching timeStep requirements
---        if cmath.floor(p.id/injectorBox_particlesPerTimeStep) ==
---           TimeIntegrator.timeStep then
---            p.position[0] = injectorBox_centerX +
---                            (cmath.rand_unity()-0.5) * injectorBox_widthX
---            p.position[1] = injectorBox_centerY +
---                            (cmath.rand_unity()-0.5) * injectorBox_widthY
---            p.position[2] = injectorBox_centerZ +
---                            (cmath.rand_unity()-0.5) * injectorBox_widthZ
---            p.velocity[0] = injectorBox_velocityX
---            p.velocity[1] = injectorBox_velocityY
---            p.velocity[2] = injectorBox_velocityZ
---            p.state = 1
---        end
---
---      elseif particles_options.feederType == 
---               Particles.FeederUQCase then
---
---        -- Specialize feederParams from options
---        -- Injector A
---        var injectorA_centerX   = particles_options.feederParams[0]
---        var injectorA_centerY   = particles_options.feederParams[1]
---        var injectorA_centerZ   = particles_options.feederParams[2]
---        var injectorA_widthX    = particles_options.feederParams[3]
---        var injectorA_widthY    = particles_options.feederParams[4]
---        var injectorA_widthZ    = particles_options.feederParams[5]
---        var injectorA_velocityX = particles_options.feederParams[6]
---        var injectorA_velocityY = particles_options.feederParams[7]
---        var injectorA_velocityZ = particles_options.feederParams[8]
---        var injectorA_particlesPerTimeStep = particles_options.feederParams[9]
---        -- Injector B
---        var injectorB_centerX   = particles_options.feederParams[10]
---        var injectorB_centerY   = particles_options.feederParams[11]
---        var injectorB_centerZ   = particles_options.feederParams[12]
---        var injectorB_widthX    = particles_options.feederParams[13]
---        var injectorB_widthY    = particles_options.feederParams[14]
---        var injectorB_widthZ    = particles_options.feederParams[15]
---        var injectorB_velocityX = particles_options.feederParams[16]
---        var injectorB_velocityY = particles_options.feederParams[17]
---        var injectorB_velocityZ = particles_options.feederParams[18]
---        var injectorB_particlesPerTimeStep = particles_options.feederParams[19]
---        var numberOfParticlesInA = 
---             cmath.floor(particles_options.num*injectorA_particlesPerTimeStep/
---             (injectorA_particlesPerTimeStep+injectorB_particlesPerTimeStep))
---        var numberOfParticlesInB = 
---             cmath.ceil(particles_options.num*injectorB_particlesPerTimeStep/
---             (injectorA_particlesPerTimeStep+injectorB_particlesPerTimeStep))
---        -- Inject particles at injectorA if matching timeStep requirements
---        if cmath.floor(p.id/injectorA_particlesPerTimeStep) ==
---           TimeIntegrator.timeStep then
---            p.position[0] = injectorA_centerX +
---                            (cmath.rand_unity()-0.5) * injectorA_widthX
---            p.position[1] = injectorA_centerY +
---                            (cmath.rand_unity()-0.5) * injectorA_widthY
---            p.position[2] = injectorA_centerZ +
---                            (cmath.rand_unity()-0.5) * injectorA_widthZ
---            p.velocity[0] = injectorA_velocityX
---            p.velocity[1] = injectorA_velocityY
---            p.velocity[2] = injectorA_velocityZ
---            p.state = 1
---            p.groupID = 0
---        end
---        -- Inject particles at injectorB if matching timeStep requirements
---        -- (if injectorA has injected this particle at this timeStep, it
---        -- will get over-riden by injector B; this can only occur at the same
---        -- timeStep, as otherwise p.state is already set to 1 and the program 
---        -- will not enter this route)
---        if cmath.floor((p.id-numberOfParticlesInA)/
---                       injectorB_particlesPerTimeStep) ==
---           TimeIntegrator.timeStep then
---            p.position[0] = injectorB_centerX +
---                            (cmath.rand_unity()-0.5) * injectorB_widthX
---            p.position[1] = injectorB_centerY +
---                            (cmath.rand_unity()-0.5) * injectorB_widthY
---            p.position[2] = injectorB_centerZ +
---                            (cmath.rand_unity()-0.5) * injectorB_widthZ
---            p.velocity[0] = injectorB_velocityX
---            p.velocity[1] = injectorB_velocityY
---            p.velocity[2] = injectorB_velocityZ
---            p.state = 1
---            p.groupID = 1
---        end
---
---      end
---
---    end
---
---end
---
+
+Particles.AddBodyForces= liszt kernel(p : particles)
+    if p.state == 1 then
+        p.velocity_t += particles_options.bodyForce
+    end
+end
+
+------------
+-- Radiation
+------------
+
+Particles.AddRadiation = liszt kernel(p : particles)
+    if p.state == 1 then
+        -- Calculate absorbed radiation intensity considering optically thin
+        -- particles, for a collimated radiation source with negligible 
+        -- blackbody self radiation
+        var absorbedRadiationIntensity =
+          particles_options.absorptivity *
+          radiation_options.radiationIntensity *
+          p.area / 4.0
+
+        -- Add contribution to particle temperature time evolution
+        p.temperature_t += absorbedRadiationIntensity /
+                           (p.mass * particles_options.heat_capacity)
+    end
+end
+
+-- Set particle velocities to underlying flow velocity for initialization
+Particles.SetVelocitiesToFlow = liszt kernel(p: particles)
+    p.dual_cell = grid.dual_locate(p.position)
+    var flow_density     = L.double(0)
+    var flow_velocity    = L.vec3d({0, 0, 0})
+    var flow_temperature = L.double(0)
+    var flowDynamicViscosity = L.double(0)
+    flow_velocity    = InterpolateBilinear(p.dual_cell, p.position, Velocity)
+    p.velocity = flow_velocity
+end
+
+-- Update particle variables using derivatives
+Particles.UpdateKernels = {}
+function Particles.GenerateUpdateKernels(relation, stage)
+    local coeff_fun  = TimeIntegrator.coeff_function[stage]
+    local coeff_time = TimeIntegrator.coeff_time[stage]
+    local deltaTime  = TimeIntegrator.deltaTime
+    if stage <= 3 then
+        return liszt kernel(r : relation)
+            if r.state == 1 then
+              r.position_new += 
+                 coeff_fun * deltaTime * r.position_t
+              r.position       = r.position_old +
+                 coeff_time * deltaTime * r.position_t
+              r.velocity_new += 
+                 coeff_fun * deltaTime * r.velocity_t
+              r.velocity       = r.velocity_old +
+                 coeff_time * deltaTime * r.velocity_t
+              r.temperature_new += 
+                 coeff_fun * deltaTime * r.temperature_t
+              r.temperature       = r.temperature_old +
+                 coeff_time * deltaTime * r.temperature_t
+            end
+        end
+    elseif stage == 4 then
+        return liszt kernel(r : relation)
+            if r.state == 1 then
+              r.position = r.position_new +
+                 coeff_fun * deltaTime * r.position_t
+              r.velocity = r.velocity_new +
+                 coeff_fun * deltaTime * r.velocity_t
+              r.temperature = r.temperature_new +
+                 coeff_fun * deltaTime * r.temperature_t
+            end
+        end
+    end
+end
+for i = 1, 4 do
+    Particles.UpdateKernels[i] = Particles.GenerateUpdateKernels(particles, i)
+end
+
+Particles.UpdateAuxiliaryStep1 = liszt kernel(p : particles)
+    if p.state == 1 then
+        p.position_ghost[0] = p.position[0]
+        p.position_ghost[1] = p.position[1]
+        p.position_ghost[2] = p.position[2]
+        if p.position[0] < gridOriginX then
+            p.position_ghost[0] = p.position[0] + grid_options.xWidth
+        end
+        if p.position[0] > gridOriginX + grid_options.xWidth then
+            p.position_ghost[0] = p.position[0] - grid_options.xWidth
+        end
+        if p.position[1] < gridOriginY then
+            p.position_ghost[1] = p.position[1] + grid_options.yWidth
+        end
+        if p.position[1] > gridOriginY + grid_options.yWidth then
+            p.position_ghost[1] = p.position[1] - grid_options.yWidth
+        end
+        if p.position[2] < gridOriginZ then
+            p.position_ghost[2] = p.position[2] + grid_options.zWidth
+        end
+        if p.position[2] > gridOriginZ + grid_options.zWidth then
+            p.position_ghost[2] = p.position[2] - grid_options.zWidth
+        end
+    end
+end
+Particles.UpdateAuxiliaryStep2 = liszt kernel(p : particles)
+    if p.state == 1 then
+        p.position = p.position_ghost
+    end
+end
+
+---------
+-- Feeder
+---------
+
+-- Particles feeder
+Particles.Feed = liszt kernel(p: particles)
+
+    if p.state == 0 then
+
+      p.position[0] = 0
+      p.position[1] = 0
+      p.position[2] = 0
+      p.velocity[0] = 0
+      p.velocity[1] = 0
+      p.velocity[2] = 0
+      p.state = 0
+
+      -- Initialize based on feeder type
+      if particles_options.feederType == 
+           Particles.FeederAtStartTimeInRandomBox then
+
+        -- Particles randomly distributed inside box limits defined 
+        -- by options
+        -- Specialize feederParams from options
+        var centerX   = particles_options.feederParams[0]
+        var centerY   = particles_options.feederParams[1]
+        var centerZ   = particles_options.feederParams[2]
+        var widthX    = particles_options.feederParams[3]
+        var widthY    = particles_options.feederParams[4]
+        var widthZ    = particles_options.feederParams[5]
+
+        p.position[0] = centerX + (cmath.rand_unity()-0.5) * widthX
+        p.position[1] = centerY + (cmath.rand_unity()-0.5) * widthY
+        p.position[2] = centerZ + (cmath.rand_unity()-0.5) * widthZ
+        p.state = 1
+                        
+      elseif particles_options.feederType == 
+               Particles.FeederOverTimeInRandomBox then
+
+        -- Specialize feederParams from options
+        var injectorBox_centerX   = particles_options.feederParams[0]
+        var injectorBox_centerY   = particles_options.feederParams[1]
+        var injectorBox_centerZ   = particles_options.feederParams[2]
+        var injectorBox_widthX    = particles_options.feederParams[3]
+        var injectorBox_widthY    = particles_options.feederParams[4]
+        var injectorBox_widthZ    = particles_options.feederParams[5]
+        var injectorBox_velocityX = particles_options.feederParams[6]
+        var injectorBox_velocityY = particles_options.feederParams[7]
+        var injectorBox_velocityZ = particles_options.feederParams[8]
+        var injectorBox_particlesPerTimeStep = particles_options.feederParams[9]
+        -- Inject particle if matching timeStep requirements
+        if cmath.floor(p.id/injectorBox_particlesPerTimeStep) ==
+           TimeIntegrator.timeStep then
+            p.position[0] = injectorBox_centerX +
+                            (cmath.rand_unity()-0.5) * injectorBox_widthX
+            p.position[1] = injectorBox_centerY +
+                            (cmath.rand_unity()-0.5) * injectorBox_widthY
+            p.position[2] = injectorBox_centerZ +
+                            (cmath.rand_unity()-0.5) * injectorBox_widthZ
+            p.velocity[0] = injectorBox_velocityX
+            p.velocity[1] = injectorBox_velocityY
+            p.velocity[2] = injectorBox_velocityZ
+            p.state = 1
+        end
+
+      elseif particles_options.feederType == 
+               Particles.FeederUQCase then
+
+        -- Specialize feederParams from options
+        -- Injector A
+        var injectorA_centerX   = particles_options.feederParams[0]
+        var injectorA_centerY   = particles_options.feederParams[1]
+        var injectorA_centerZ   = particles_options.feederParams[2]
+        var injectorA_widthX    = particles_options.feederParams[3]
+        var injectorA_widthY    = particles_options.feederParams[4]
+        var injectorA_widthZ    = particles_options.feederParams[5]
+        var injectorA_velocityX = particles_options.feederParams[6]
+        var injectorA_velocityY = particles_options.feederParams[7]
+        var injectorA_velocityZ = particles_options.feederParams[8]
+        var injectorA_particlesPerTimeStep = particles_options.feederParams[9]
+        -- Injector B
+        var injectorB_centerX   = particles_options.feederParams[10]
+        var injectorB_centerY   = particles_options.feederParams[11]
+        var injectorB_centerZ   = particles_options.feederParams[12]
+        var injectorB_widthX    = particles_options.feederParams[13]
+        var injectorB_widthY    = particles_options.feederParams[14]
+        var injectorB_widthZ    = particles_options.feederParams[15]
+        var injectorB_velocityX = particles_options.feederParams[16]
+        var injectorB_velocityY = particles_options.feederParams[17]
+        var injectorB_velocityZ = particles_options.feederParams[18]
+        var injectorB_particlesPerTimeStep = particles_options.feederParams[19]
+        var numberOfParticlesInA = 
+             cmath.floor(particles_options.num*injectorA_particlesPerTimeStep/
+             (injectorA_particlesPerTimeStep+injectorB_particlesPerTimeStep))
+        var numberOfParticlesInB = 
+             cmath.ceil(particles_options.num*injectorB_particlesPerTimeStep/
+             (injectorA_particlesPerTimeStep+injectorB_particlesPerTimeStep))
+        -- Inject particles at injectorA if matching timeStep requirements
+        if cmath.floor(p.id/injectorA_particlesPerTimeStep) ==
+           TimeIntegrator.timeStep then
+            p.position[0] = injectorA_centerX +
+                            (cmath.rand_unity()-0.5) * injectorA_widthX
+            p.position[1] = injectorA_centerY +
+                            (cmath.rand_unity()-0.5) * injectorA_widthY
+            p.position[2] = injectorA_centerZ +
+                            (cmath.rand_unity()-0.5) * injectorA_widthZ
+            p.velocity[0] = injectorA_velocityX
+            p.velocity[1] = injectorA_velocityY
+            p.velocity[2] = injectorA_velocityZ
+            p.state = 1
+            p.groupID = 0
+        end
+        -- Inject particles at injectorB if matching timeStep requirements
+        -- (if injectorA has injected this particle at this timeStep, it
+        -- will get over-riden by injector B; this can only occur at the same
+        -- timeStep, as otherwise p.state is already set to 1 and the program 
+        -- will not enter this route)
+        if cmath.floor((p.id-numberOfParticlesInA)/
+                       injectorB_particlesPerTimeStep) ==
+           TimeIntegrator.timeStep then
+            p.position[0] = injectorB_centerX +
+                            (cmath.rand_unity()-0.5) * injectorB_widthX
+            p.position[1] = injectorB_centerY +
+                            (cmath.rand_unity()-0.5) * injectorB_widthY
+            p.position[2] = injectorB_centerZ +
+                            (cmath.rand_unity()-0.5) * injectorB_widthZ
+            p.velocity[0] = injectorB_velocityX
+            p.velocity[1] = injectorB_velocityY
+            p.velocity[2] = injectorB_velocityZ
+            p.state = 1
+            p.groupID = 1
+        end
+
+      end
+
+    end
+
+end
+
 --------------
 ---- Collector 
 --------------
