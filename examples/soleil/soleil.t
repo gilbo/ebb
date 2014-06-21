@@ -1633,7 +1633,7 @@ Particles.UpdateAuxiliaryStep1 = liszt kernel(p : particles)
             p.position_ghost[0] = p.position[0] - grid_options.width
         end
         if p.position[1] < gridOriginY then
-            p.position_ghost[1] = p.position[1] + grid_options.width
+            p.position_ghost[1] = p.position[1] + grid_options.height
         end
         if p.position[1] > gridOriginY + grid_options.height then
             p.position_ghost[1] = p.position[1] - grid_options.height
