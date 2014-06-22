@@ -201,12 +201,12 @@ local fluid_options = {
 }
 
 local flow_options = {
-    --initCase = Flow.TaylorGreen2DVortex,
-    --initParams = L.NewGlobal(L.vector(L.double,3),
-    --                           {1,100,2}),
-    initCase = Flow.TaylorGreen3DVortex,
+    initCase = Flow.TaylorGreen2DVortex,
     initParams = L.NewGlobal(L.vector(L.double,3),
                                {1,100,2}),
+    --initCase = Flow.TaylorGreen3DVortex,
+    --initParams = L.NewGlobal(L.vector(L.double,3),
+    --                           {1,100,2}),
     --initCase = Flow.Uniform,
     --initParams = L.NewGlobal(L.vector(L.double,4),
     --                           {1.0,10,1.0,0.0}),
@@ -224,7 +224,7 @@ local particles_options = {
     -- distributed on a box defined by its center and sides
     feederType = Particles.FeederAtStartTimeInRandomBox,
     feederParams = L.NewGlobal(L.vector(L.double,6),
-                               {pi,pi,pi,2*pi,2*pi,2*pi}), 
+                               {pi,pi,pi,2*pi,2*pi,0}), 
     
     -- Feeding a given number of particles every timestep randomly
     -- distributed on a box defined by its center and sides
@@ -1711,7 +1711,7 @@ Flow.IntegrateQuantities = liszt kernel(c : grid.cells)
     -- Getaround until min= operator is fixed, as it
     -- currently returns zero instead of the actual min value)
     -- (similarly if attempting to use max= of the negative field)
-    Flow.minTemperature max= 1000-c.temperature
+    Flow.minTemperature min= c.temperature
     Flow.maxTemperature max= c.temperature
 
 end
@@ -2387,8 +2387,8 @@ function Statistics.ResetSpatialAverages()
     Flow.averagePressure:set(0.0)
     Flow.averageTemperature:set(0.0)
     Flow.averageKineticEnergy:set(0.0)
-    Flow.minTemperature:set(0.0)
-    Flow.maxTemperature:set(0.0)
+    Flow.minTemperature:set(math.huge)
+    Flow.maxTemperature:set(-math.huge)
     Particles.averageTemperature:set(0.0)
 end
 
@@ -2403,11 +2403,6 @@ function Statistics.UpdateSpatialAverages(grid, particles)
     Flow.averageKineticEnergy:set(
       Flow.averageKineticEnergy:get()/
       Flow.areaInterior:get())
-
-    -- Fix minTemperature (getaround until min= operator is fixed, as it
-    -- currently returns zero instead of the actual min value)
-    -- (similarly if attempting to use max= of the negative field)
-    Flow.minTemperature:set(1000-Flow.minTemperature:get())
 
     -- Particles
     Particles.averageTemperature:set(
@@ -2441,32 +2436,32 @@ function IO.WriteOutput(timeStep)
           "particlesT", string.format("%10.8f",Particles.averageTemperature:get())
           )
 
---    -- Check if it is time to output to file
---    if timeStep  % TimeIntegrator.outputEveryTimeSteps == 0 then
---        --print("Time to output")
---        local outputFileName = IO.outputFileNamePrefix .. "_" ..
---          tostring(timeStep)
---        Flow.WriteField(outputFileName .. "_flow",
---          grid:xSize(),grid:ySize(),grid.cells.temperature)
---        --Flow.WriteField(outputFileName .. "_flow",
---        --  grid:xSize(),grid:ySize(),grid.cells.rho)
---        Flow.WriteField(outputFileName .. "_flow",
---          grid:xSize(),grid:ySize(),grid.cells.pressure)
---        Flow.WriteField(outputFileName .. "_flow",
---          grid:xSize(),grid:ySize(),grid.cells.kineticEnergy)
---        Particles.WriteField(outputFileName .. "_particles",
---          particles.position)
---        Particles.WriteField(outputFileName .. "_particles",
---          particles.velocity)
---        Particles.WriteField(outputFileName .. "_particles",
---          particles.temperature)
---        Particles.WriteField(outputFileName .. "_particles",
---          particles.state)
---        Particles.WriteField(outputFileName .. "_particles",
---          particles.id)
---        Particles.WriteField(outputFileName .. "_particles",
---          particles.groupID)
---    end
+    -- Check if it is time to output to file
+    if timeStep  % TimeIntegrator.outputEveryTimeSteps == 0 then
+        --print("Time to output")
+        local outputFileName = IO.outputFileNamePrefix .. "_" ..
+          tostring(timeStep)
+        Flow.WriteField(outputFileName .. "_flow",
+          grid:xSize(),grid:ySize(),grid.cells.temperature)
+        --Flow.WriteField(outputFileName .. "_flow",
+        --  grid:xSize(),grid:ySize(),grid.cells.rho)
+        Flow.WriteField(outputFileName .. "_flow",
+          grid:xSize(),grid:ySize(),grid.cells.pressure)
+        Flow.WriteField(outputFileName .. "_flow",
+          grid:xSize(),grid:ySize(),grid.cells.kineticEnergy)
+        Particles.WriteField(outputFileName .. "_particles",
+          particles.position)
+        Particles.WriteField(outputFileName .. "_particles",
+          particles.velocity)
+        Particles.WriteField(outputFileName .. "_particles",
+          particles.temperature)
+        Particles.WriteField(outputFileName .. "_particles",
+          particles.state)
+        Particles.WriteField(outputFileName .. "_particles",
+          particles.id)
+        Particles.WriteField(outputFileName .. "_particles",
+          particles.groupID)
+    end
 end
 
 ----------------
