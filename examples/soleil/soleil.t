@@ -71,7 +71,7 @@ local hot   = L.NewVector(L.float,{1.0,0.0,0.0})
 local grid_options = {
     xnum = 16,
     ynum = 16,
-    znum = 1,
+    znum = 16,
     origin = {0.0, 0.0, 0.0},
     xWidth = twoPi,
     --xWidth = 2*twoPi,
@@ -189,7 +189,7 @@ TimeIntegrator.simTime              = L.NewGlobal(L.double,0)
 TimeIntegrator.final_time           = 1000.00001
 TimeIntegrator.timeStep             = L.NewGlobal(L.int,0)
 TimeIntegrator.cfl                  = 1.2
-TimeIntegrator.outputEveryTimeSteps = 10 --63
+TimeIntegrator.outputEveryTimeSteps = 100 --63
 TimeIntegrator.deltaTime            = L.NewGlobal(L.double, 0.01)
 
 local fluid_options = {
@@ -201,12 +201,12 @@ local fluid_options = {
 }
 
 local flow_options = {
-    initCase = Flow.TaylorGreen2DVortex,
-    initParams = L.NewGlobal(L.vector(L.double,3),
-                               {1,100,2}),
-    --initCase = Flow.TaylorGreen3DVortex,
+    --initCase = Flow.TaylorGreen2DVortex,
     --initParams = L.NewGlobal(L.vector(L.double,3),
     --                           {1,100,2}),
+    initCase = Flow.TaylorGreen3DVortex,
+    initParams = L.NewGlobal(L.vector(L.double,3),
+                               {1,100,2}),
     --initCase = Flow.Uniform,
     --initParams = L.NewGlobal(L.vector(L.double,4),
     --                           {1.0,10,1.0,0.0}),
@@ -224,7 +224,7 @@ local particles_options = {
     -- distributed on a box defined by its center and sides
     feederType = Particles.FeederAtStartTimeInRandomBox,
     feederParams = L.NewGlobal(L.vector(L.double,6),
-                               {pi,pi,pi,2*pi,2*pi,0}), 
+                               {pi,pi,pi,2*pi,2*pi,2*pi}), 
     
     -- Feeding a given number of particles every timestep randomly
     -- distributed on a box defined by its center and sides
@@ -260,10 +260,10 @@ local particles_options = {
     convective_coefficient = L.NewGlobal(L.double, 0.7), -- W m^-2 K^-1
     heat_capacity = L.NewGlobal(L.double, 0.7), -- J Kg^-1 K^-1
     initialTemperature = 20,
-    density = 1000,
+    density = 10,
     diameter_mean = 0.02,
     diameter_maxDeviation = 0.02,
-    bodyForce = L.NewGlobal(L.vec3d, {0,-0.01,0}),
+    bodyForce = L.NewGlobal(L.vec3d, {0,-0.0,0}),
     --bodyForce = L.NewGlobal(L.vec3d, {0,-1.1,0}),
     emissivity = 0.5,
     absorptivity = 0.5 -- Equal to emissivity in thermal equilibrium
@@ -344,6 +344,9 @@ local zBw   = grid_options.zWidth/grid_options.znum * zBnum
 local gridOriginX = grid_options.origin[1]
 local gridOriginY = grid_options.origin[2]
 local gridOriginZ = grid_options.origin[3]
+local gridWidthX = grid_options.xWidth
+local gridWidthY = grid_options.yWidth
+local gridWidthZ = grid_options.zWidth
 local originWithGhosts = grid_options.origin
 originWithGhosts[1] = originWithGhosts[1] - 
                       xBnum * grid_options.xWidth/grid_options.xnum
@@ -612,23 +615,6 @@ local Temperature = L.NewMacro(function(r)
     return liszt `r.temperature
 end)
 
---local InterpolateBilinear = L.NewMacro(function(dc, xy, Field)
---    return liszt quote
---        var cdl = dc.vertex.cell(-1,-1)
---        var cul = dc.vertex.cell(-1,0)
---        var cdr = dc.vertex.cell(0,-1)
---        var cur = dc.vertex.cell(0,0)
---        var delta_l = xy[1] - cdl.center[1]
---        var delta_r = cur.center[1] - xy[1]
---        var f1 = (delta_l*Field(cdl) + delta_r*Field(cul)) / (delta_l + delta_r)
---        var f2 = (delta_l*Field(cdr) + delta_r*Field(cur)) / (delta_l + delta_r)
---        var delta_d = xy[0] - cdl.center[0]
---        var delta_u = cur.center[0] - xy[0]
---    in
---        (delta_d*f1 + delta_u*f2) / (delta_d + delta_u)
---    end
---end)
-
 local InterpolateTrilinear = L.NewMacro(function(dc, xyz, Field)
     return liszt quote
         -- d = down, u = up, l = left, r = right, b = back, f = front
@@ -640,17 +626,17 @@ local InterpolateTrilinear = L.NewMacro(function(dc, xyz, Field)
         var c101 = dc.vertex.cell( 0, -1,  0)
         var c011 = dc.vertex.cell(-1,  0,  0)
         var c111 = dc.vertex.cell( 0,  0,  0)
-        var dX = xyz[0] - c000.center[0]
-        var dY = xyz[1] - c000.center[1]
-        var dZ = xyz[2] - c000.center[2]
-        var weightA = Field(c000) * (1.0 - dZ) + Field(c001) * dZ
-        var weightB = Field(c010) * (1.0 - dZ) + Field(c011) * dZ
-        var weightC = Field(c100) * (1.0 - dZ) + Field(c101) * dZ
-        var weightD = Field(c110) * (1.0 - dZ) + Field(c111) * dZ
-        var weightE = weightA * (1.0 - dY) + weightB * dY
-        var weightF = weightC * (1.0 - dY) + weightD * dY
+        var dX = (xyz[0] - c000.center[0])/(c100.center[0] - c000.center[0])
+        var dY = (xyz[1] - c000.center[1])/(c010.center[1] - c000.center[1])
+        var dZ = (xyz[2] - c000.center[2])/(c001.center[2] - c000.center[2])
+        var weight00 = Field(c000) * (1.0 - dX) + Field(c100) * dX 
+        var weight10 = Field(c010) * (1.0 - dX) + Field(c110) * dX
+        var weight01 = Field(c001) * (1.0 - dX) + Field(c101) * dX
+        var weight11 = Field(c011) * (1.0 - dX) + Field(c111) * dX
+        var weight0  = weight00 * (1.0 - dY) + weight10 * dY
+        var weight1  = weight01 * (1.0 - dY) + weight11 * dY
     in
-        weightE * (1.0 - dX) + weightF * dX
+        weight0 * (1.0 - dZ) + weight1 * dZ
     end
 end)
 
@@ -1097,7 +1083,8 @@ Flow.AddViscousGetFluxX =  liszt kernel(c : grid.cells)
             ( c(ndx,0,0).velocity[0] - c(1-ndx,0,0).velocity[0] )
           velocityY_XFace += firstDerivativeCoeffs[ndx] *
             ( c(ndx,0,0).velocity[1] - c(1-ndx,0,0).velocity[1] )
-          velocityZ_XFace += 0.0
+          velocityZ_XFace += firstDerivativeCoeffs[ndx] *
+            ( c(ndx,0,0).velocity[2] - c(1-ndx,0,0).velocity[2] )
           temperature_XFace += firstDerivativeCoeffs[ndx] *
             ( c(ndx,0,0).temperature - c(1-ndx,0,0).temperature )
         end
@@ -1176,7 +1163,8 @@ Flow.AddViscousGetFluxY =  liszt kernel(c : grid.cells)
             ( c(0,ndx,0).velocity[0] - c(0,1-ndx,0).velocity[0] )
           velocityY_YFace += firstDerivativeCoeffs[ndx] *
             ( c(0,ndx,0).velocity[1] - c(0,1-ndx,0).velocity[1] )
-          velocityZ_YFace += 0.0
+          velocityZ_YFace += firstDerivativeCoeffs[ndx] *
+            ( c(0,ndx,0).velocity[2] - c(0,1-ndx,0).velocity[2] )
           temperature_YFace += firstDerivativeCoeffs[ndx] *
             ( c(0,ndx,0).temperature - c(0,1-ndx,0).temperature )
         end
@@ -1255,7 +1243,7 @@ Flow.AddViscousGetFluxZ =  liszt kernel(c : grid.cells)
             ( c(0,0,ndx).velocity[0] - c(0,0,1-ndx).velocity[0] )
           velocityY_ZFace += firstDerivativeCoeffs[ndx] *
             ( c(0,0,ndx).velocity[1] - c(0,0,1-ndx).velocity[1] )
-          velocityZ_ZFace += 
+          velocityZ_ZFace += firstDerivativeCoeffs[ndx] *
             ( c(0,0,ndx).velocity[2] - c(0,0,1-ndx).velocity[2] )
           temperature_ZFace += firstDerivativeCoeffs[ndx] *
             ( c(0,0,ndx).temperature - c(0,0,1-ndx).temperature )
@@ -1721,7 +1709,7 @@ end
 ---------
 
 -- Write cells field to output file
-Flow.WriteField = function (outputFileNamePrefix,xSize,ySize,field)
+Flow.WriteField = function (outputFileNamePrefix,xSize,ySize,zSize,field)
     -- Make up complete file name based on name of field
     local outputFileName = outputFileNamePrefix .. "_" ..
                            field:Name() .. ".txt"
@@ -1733,7 +1721,7 @@ Flow.WriteField = function (outputFileNamePrefix,xSize,ySize,field)
 
     if field:Type():isVector() then
         local veclen = field:Type().N
-        io.write("# ", xSize, " ", ySize, " ", N, " ", veclen, "\n")
+        io.write("# ", xSize, " ", ySize, " ", zSize, " ", N, " ", veclen, "\n")
         for i=1,N do
             local s = ''
             for j=1,veclen do
@@ -1744,7 +1732,7 @@ Flow.WriteField = function (outputFileNamePrefix,xSize,ySize,field)
             io.write("", i-1, s, "\n")
         end
     else
-        io.write("# ", xSize, " ", ySize, " ", N, " ", 1, "\n")
+        io.write("# ", xSize, " ", ySize, " ", zSize, " ", N, " ", 1, "\n")
         for i=1,N do
             local t = tostring(values[i]):gsub('ULL', ' ')
             -- i-1 to return to 0 indexing
@@ -1764,30 +1752,83 @@ Flow.DrawKernel = liszt kernel (c : grid.cells)
     --var yMax = L.double(grid_options.yWidth)
     var xMax = 1.0
     var yMax = 1.0
---3DINCOMPATIBLE    var posA : L.vec3d = { c(0,0).center[0]/xMax,
---3DINCOMPATIBLE                           c(0,0).center[1]/yMax,
---3DINCOMPATIBLE                           0.0 }
---3DINCOMPATIBLE    var posB : L.vec3d = { c(0,1).center[0]/xMax,
---3DINCOMPATIBLE                           c(0,1).center[1]/yMax,
---3DINCOMPATIBLE                           0.0 }
---3DINCOMPATIBLE    var posC : L.vec3d = { c(1,1).center[0]/xMax,
---3DINCOMPATIBLE                           c(1,1).center[1]/yMax,
---3DINCOMPATIBLE                           0.0 }
---3DINCOMPATIBLE    var posD : L.vec3d = { c(1,0).center[0]/xMax,
---3DINCOMPATIBLE                           c(1,0).center[1]/yMax,
---3DINCOMPATIBLE                           0.0 }
---3DINCOMPATIBLE    var value =
---3DINCOMPATIBLE      (c(0,0).temperature + 
---3DINCOMPATIBLE       c(1,0).temperature +
---3DINCOMPATIBLE       c(0,1).temperature +
---3DINCOMPATIBLE       c(1,1).temperature) / 4.0
---3DINCOMPATIBLE    var minValue = Flow.minTemperature
---3DINCOMPATIBLE    var maxValue = Flow.maxTemperature
---3DINCOMPATIBLE    -- compute a display value in the range 0.0 to 1.0 from the value
---3DINCOMPATIBLE    var scale = (value - minValue)/(maxValue - minValue)
---3DINCOMPATIBLE    vdb.color((1.0-scale)*cold)
---3DINCOMPATIBLE    vdb.triangle(posA, posB, posC)
---3DINCOMPATIBLE    vdb.triangle(posA, posD, posC)
+    var zMax = 1.0
+    if c(0,0,0).center[0] < gridOriginX+c_dx then
+      var posA : L.vec3d = { c(0,0,0).center[0]/xMax,
+                             c(0,0,0).center[1]/yMax, 
+                             c(0,0,0).center[2]/zMax }
+      var posB : L.vec3d = { c(0,0,1).center[0]/xMax,
+                             c(0,0,1).center[1]/yMax,
+                             c(0,0,1).center[2]/zMax }
+      var posC : L.vec3d = { c(0,1,1).center[0]/xMax,
+                             c(0,1,1).center[1]/yMax, 
+                             c(0,1,0).center[2]/zMax }
+      var posD : L.vec3d = { c(0,1,0).center[0]/xMax,
+                             c(0,1,0).center[1]/yMax,
+                             c(0,1,0).center[2]/zMax }
+      var value =
+        (c(0,0,0).temperature + 
+         c(0,1,0).temperature +
+         c(0,0,1).temperature +
+         c(0,1,1).temperature) / 4.0
+      var minValue = Flow.minTemperature
+      var maxValue = Flow.maxTemperature
+      -- compute a display value in the range 0.0 to 1.0 from the value
+      var scale = (value - minValue)/(maxValue - minValue)
+      vdb.color((1.0-scale)*cold)
+      vdb.triangle(posA, posB, posC)
+      vdb.triangle(posA, posD, posC)
+    elseif c(0,0,0).center[1] < gridOriginY+c_dy then
+      var posA : L.vec3d = { c(0,0,0).center[0]/xMax,
+                             c(0,0,0).center[1]/yMax, 
+                             c(0,0,0).center[2]/zMax }
+      var posB : L.vec3d = { c(0,0,1).center[0]/xMax,
+                             c(0,0,1).center[1]/yMax,
+                             c(0,0,1).center[2]/zMax }
+      var posC : L.vec3d = { c(1,0,1).center[0]/xMax,
+                             c(1,0,1).center[1]/yMax, 
+                             c(1,0,0).center[2]/zMax }
+      var posD : L.vec3d = { c(1,0,0).center[0]/xMax,
+                             c(1,0,0).center[1]/yMax,
+                             c(1,0,0).center[2]/zMax }
+      var value =
+        (c(0,0,0).temperature + 
+         c(1,0,0).temperature +
+         c(0,0,1).temperature +
+         c(1,0,1).temperature) / 4.0
+      var minValue = Flow.minTemperature
+      var maxValue = Flow.maxTemperature
+      -- compute a display value in the range 0.0 to 1.0 from the value
+      var scale = (value - minValue)/(maxValue - minValue)
+      vdb.color((1.0-scale)*cold)
+      vdb.triangle(posA, posB, posC)
+      vdb.triangle(posA, posD, posC)
+    elseif c(0,0,0).center[2] < gridOriginZ+c_dz then
+      var posA : L.vec3d = { c(0,0,0).center[0]/xMax,
+                             c(0,0,0).center[1]/yMax, 
+                             c(0,0,0).center[2]/zMax }
+      var posB : L.vec3d = { c(0,1,0).center[0]/xMax,
+                             c(0,1,0).center[1]/yMax,
+                             c(0,1,0).center[2]/zMax }
+      var posC : L.vec3d = { c(1,1,0).center[0]/xMax,
+                             c(1,1,0).center[1]/yMax, 
+                             c(1,0,0).center[2]/zMax }
+      var posD : L.vec3d = { c(1,0,0).center[0]/xMax,
+                             c(1,0,0).center[1]/yMax,
+                             c(1,0,0).center[2]/zMax }
+      var value =
+        (c(0,0,0).temperature + 
+         c(1,0,0).temperature +
+         c(0,1,0).temperature +
+         c(1,1,0).temperature) / 4.0
+      var minValue = Flow.minTemperature
+      var maxValue = Flow.maxTemperature
+      -- compute a display value in the range 0.0 to 1.0 from the value
+      var scale = (value - minValue)/(maxValue - minValue)
+      vdb.color((1.0-scale)*cold)
+      vdb.triangle(posA, posB, posC)
+      vdb.triangle(posA, posD, posC)
+    end
 end
 
 ------------
@@ -2442,13 +2483,17 @@ function IO.WriteOutput(timeStep)
         local outputFileName = IO.outputFileNamePrefix .. "_" ..
           tostring(timeStep)
         Flow.WriteField(outputFileName .. "_flow",
-          grid:xSize(),grid:ySize(),grid.cells.temperature)
+          grid:xSize(), grid:ySize(), grid:zSize(),
+          grid.cells.temperature)
         --Flow.WriteField(outputFileName .. "_flow",
-        --  grid:xSize(),grid:ySize(),grid.cells.rho)
+        --  grid:xSize(), grid:ySize(), grid:zSize(),
+        --  grid.cells.rho)
         Flow.WriteField(outputFileName .. "_flow",
-          grid:xSize(),grid:ySize(),grid.cells.pressure)
+          grid:xSize(), grid:ySize(), grid:zSize(),
+          grid.cells.pressure)
         Flow.WriteField(outputFileName .. "_flow",
-          grid:xSize(),grid:ySize(),grid.cells.kineticEnergy)
+          grid:xSize(), grid:ySize(), grid:zSize(),
+          grid.cells.kineticEnergy)
         Particles.WriteField(outputFileName .. "_particles",
           particles.position)
         Particles.WriteField(outputFileName .. "_particles",
@@ -2483,7 +2528,7 @@ end
 TimeIntegrator.InitializeVariables()
 
 Flow.WriteField(IO.outputFileNamePrefix,
-                grid:xSize(),grid:ySize(),
+                grid:xSize(), grid:ySize(), grid:zSize(),
                 grid.cells.centerCoordinates)
 Particles.WriteField(IO.outputFileNamePrefix .. "_particles",
                      particles.diameter)
