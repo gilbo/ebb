@@ -60,21 +60,22 @@ Particles.CollectorOutOfBox = L.NewGlobal(L.int, 1)
 --[[                       COLORS FOR VISUALIZATION                      ]]--
 -----------------------------------------------------------------------------
 local unity = L.NewVector(L.float,{1.0,1.0,1.0})
+local red   = L.NewVector(L.float,{1.0,0.0,0.0})
+local green = L.NewVector(L.float,{0.0,1.0,0.0})
 local blue  = L.NewVector(L.float,{0.0,0.0,1.0})
-local cold  = L.NewVector(L.float,{1.0,1.0,1.0})
-local hot   = L.NewVector(L.float,{1.0,0.0,0.0})
+local white = L.NewVector(L.float,{1.0,1.0,1.0})
 
 -----------------------------------------------------------------------------
 --[[                             OPTIONS                                 ]]--
 -----------------------------------------------------------------------------
 
 local grid_options = {
-    xnum = 16,
-    ynum = 16,
+    xnum = 32,
+    ynum = 32,
     znum = 16,
     origin = {0.0, 0.0, 0.0},
-    xWidth = twoPi,
-    --xWidth = 2*twoPi,
+    --xWidth = twoPi,
+    xWidth = 2*twoPi,
     yWidth = twoPi,
     zWidth = twoPi,
     --xBCLeft  = 'symmetry',
@@ -204,12 +205,12 @@ local flow_options = {
     --initCase = Flow.TaylorGreen2DVortex,
     --initParams = L.NewGlobal(L.vector(L.double,3),
     --                           {1,100,2}),
-    initCase = Flow.TaylorGreen3DVortex,
-    initParams = L.NewGlobal(L.vector(L.double,3),
-                               {1,100,2}),
-    --initCase = Flow.Uniform,
-    --initParams = L.NewGlobal(L.vector(L.double,4),
-    --                           {1.0,10,1.0,0.0}),
+    --initCase = Flow.TaylorGreen3DVortex,
+    --initParams = L.NewGlobal(L.vector(L.double,3),
+    --                           {1,100,2}),
+    initCase = Flow.Uniform,
+    initParams = L.NewGlobal(L.vector(L.double,4),
+                               {1.0,10,1.0,0.0}),
     --bodyForce = L.NewGlobal(L.vec3d, {0,0.01,0.0})
     bodyForce = L.NewGlobal(L.vec3d, {0,0.0,0})
 }
@@ -222,10 +223,10 @@ local particles_options = {
     --
     -- Feed all particles at start randomly
     -- distributed on a box defined by its center and sides
-    feederType = Particles.FeederAtStartTimeInRandomBox,
-    feederParams = L.NewGlobal(L.vector(L.double,6),
-                               {pi,pi,pi,2*pi,2*pi,2*pi}), 
-    
+    --feederType = Particles.FeederAtStartTimeInRandomBox,
+    --feederParams = L.NewGlobal(L.vector(L.double,6),
+    --                           {pi,pi,0.0,2*pi,2*pi,0.0}), 
+    --
     -- Feeding a given number of particles every timestep randomly
     -- distributed on a box defined by its center and sides
     --feederType = Particles.FeederOverTimeInRandomBox,
@@ -237,10 +238,10 @@ local particles_options = {
     --                           }), 
     --
     -- UQCase
-    --feederType = Particles.FeederUQCase,
-    --feederParams = L.NewGlobal(L.vector(L.double,20),
-    --                   {pi/4,  pi/2,pi/2,0.1*pi,0.1*pi,pi/2,4, 4,0,0.1,
-    --                    pi/4,3*pi/2,pi/2,0.1*pi,0.1*pi,pi/2,4,-4,0,0.5}),
+    feederType = Particles.FeederUQCase,
+    feederParams = L.NewGlobal(L.vector(L.double,20),
+                       {pi/4,  pi/2,pi/2,0.1*pi,0.1*pi,pi/2,4, 4,0,0.1,
+                        pi/4,3*pi/2,pi/2,0.1*pi,0.1*pi,pi/2,4,-4,0,0.5}),
 
     -- Collector is defined by a type and a set of parameters
     -- collectorParams is a vector of double values whose meaning
@@ -248,20 +249,20 @@ local particles_options = {
     -- Particles.Collect kernel where it is specialized
     --
     -- Do not collect particles (freely move within the domain)
-    collectorType = Particles.CollectorNone,
-    collectorParams = L.NewGlobal(L.vector(L.double,1),{0}),
+    --collectorType = Particles.CollectorNone,
+    --collectorParams = L.NewGlobal(L.vector(L.double,1),{0}),
     --
     -- Collect all particles that exit a box defined by its Cartesian 
     -- min/max coordinates
-    --collectorType = Particles.CollectorOutOfBox,
-    --collectorParams = L.NewGlobal(L.vector(L.double,6),{0.5,0.5,12,12,6,6}),
+    collectorType = Particles.CollectorOutOfBox,
+    collectorParams = L.NewGlobal(L.vector(L.double,6),{0.5,0.5,0.5,12,12,12}),
 
     num = 1000,
     convective_coefficient = L.NewGlobal(L.double, 0.7), -- W m^-2 K^-1
     heat_capacity = L.NewGlobal(L.double, 0.7), -- J Kg^-1 K^-1
     initialTemperature = 20,
-    density = 10,
-    diameter_mean = 0.02,
+    density = 1000,
+    diameter_mean = 0.03,
     diameter_maxDeviation = 0.02,
     bodyForce = L.NewGlobal(L.vec3d, {0,-0.0,0}),
     --bodyForce = L.NewGlobal(L.vec3d, {0,-1.1,0}),
@@ -341,28 +342,23 @@ end
 local xBw   = grid_options.xWidth/grid_options.xnum * xBnum
 local yBw   = grid_options.yWidth/grid_options.ynum * yBnum
 local zBw   = grid_options.zWidth/grid_options.znum * zBnum
-local gridOriginX = grid_options.origin[1]
-local gridOriginY = grid_options.origin[2]
-local gridOriginZ = grid_options.origin[3]
+local gridOriginInteriorX = grid_options.origin[1]
+local gridOriginInteriorY = grid_options.origin[2]
+local gridOriginInteriorZ = grid_options.origin[3]
 local gridWidthX = grid_options.xWidth
 local gridWidthY = grid_options.yWidth
 local gridWidthZ = grid_options.zWidth
-local originWithGhosts = grid_options.origin
-originWithGhosts[1] = originWithGhosts[1] - 
-                      xBnum * grid_options.xWidth/grid_options.xnum
-originWithGhosts[2] = originWithGhosts[2] - 
-                      yBnum * grid_options.yWidth/grid_options.ynum
-originWithGhosts[3] = originWithGhosts[3] - 
-                      zBnum * grid_options.zWidth/grid_options.znum
-print {grid_options.xnum + 2*xBnum,
-                                grid_options.ynum + 2*yBnum,
-                                grid_options.znum + 2*zBnum}
 
 local grid = Grid.NewGrid3d{
               size           = {grid_options.xnum + 2*xBnum,
                                 grid_options.ynum + 2*yBnum,
                                 grid_options.znum + 2*zBnum},
-              origin         = originWithGhosts,
+              origin         = {grid_options.origin[1] - 
+                                xBnum * grid_options.xWidth/grid_options.xnum,
+                                grid_options.origin[2] - 
+                                yBnum * grid_options.yWidth/grid_options.ynum,
+                                grid_options.origin[3] - 
+                                zBnum * grid_options.zWidth/grid_options.znum},
               width          = {grid_options.xWidth + 2*xBw,
                                 grid_options.yWidth + 2*yBw,
                                 grid_options.zWidth + 2*zBw},
@@ -378,12 +374,16 @@ print("grid zOrigin()", grid:zOrigin())
 print("grid xWidth()", grid:xWidth())
 print("grid yWidth()", grid:yWidth())
 print("grid zWidth()", grid:zWidth())
-print("originWithGhosts",
-       originWithGhosts[1], 
-       originWithGhosts[2],
-       originWithGhosts[3])
 
-
+-- Define uniform grid spacing
+-- WARNING: These are used for uniform grids and should be replaced by different
+-- metrics for non-uniform ones (see other WARNINGS throughout the code)
+local grid_originX = L.NewGlobal(L.double, grid:xOrigin())
+local grid_originY = L.NewGlobal(L.double, grid:yOrigin())
+local grid_originZ = L.NewGlobal(L.double, grid:zOrigin())
+local grid_dx = L.NewGlobal(L.double, grid:xCellWidth())
+local grid_dy = L.NewGlobal(L.double, grid:yCellWidth())
+local grid_dz = L.NewGlobal(L.double, grid:zCellWidth())
 
 -- Conserved variables
 grid.cells:NewField('rho', L.double):
@@ -617,7 +617,6 @@ end)
 
 local InterpolateTrilinear = L.NewMacro(function(dc, xyz, Field)
     return liszt quote
-        -- d = down, u = up, l = left, r = right, b = back, f = front
         var c000 = dc.vertex.cell(-1, -1, -1)
         var c100 = dc.vertex.cell( 0, -1, -1)
         var c010 = dc.vertex.cell(-1,  0, -1)
@@ -626,17 +625,42 @@ local InterpolateTrilinear = L.NewMacro(function(dc, xyz, Field)
         var c101 = dc.vertex.cell( 0, -1,  0)
         var c011 = dc.vertex.cell(-1,  0,  0)
         var c111 = dc.vertex.cell( 0,  0,  0)
-        var dX = (xyz[0] - c000.center[0])/(c100.center[0] - c000.center[0])
-        var dY = (xyz[1] - c000.center[1])/(c010.center[1] - c000.center[1])
-        var dZ = (xyz[2] - c000.center[2])/(c001.center[2] - c000.center[2])
-        var weight00 = Field(c000) * (1.0 - dX) + Field(c100) * dX 
-        var weight10 = Field(c010) * (1.0 - dX) + Field(c110) * dX
-        var weight01 = Field(c001) * (1.0 - dX) + Field(c101) * dX
-        var weight11 = Field(c011) * (1.0 - dX) + Field(c111) * dX
-        var weight0  = weight00 * (1.0 - dY) + weight10 * dY
-        var weight1  = weight01 * (1.0 - dY) + weight11 * dY
+        -- The following approach is valid for non-uniform grids, as it relies
+        -- on the cell centers of the neighboring cells of the given dual cell
+        -- (dc).
+        -- WARNING: However, it poses a problem when periodicity is applied, as
+        -- the built-in wrapping currently returns a cell which is on the
+        -- opposite end of the grid, if the dual cell is in the periodic 
+        -- boundary. Note that the field values are correctly retrieved through
+        -- the wrapping, but not the positions used to define the weights of the
+        -- interpolation
+        --var dX = (xyz[0] - c000.center[0])/(c100.center[0] - c000.center[0])
+        --var dY = (xyz[1] - c000.center[1])/(c010.center[1] - c000.center[1])
+        --var dZ = (xyz[2] - c000.center[2])/(c001.center[2] - c000.center[2])
+        -- WARNING: This assumes uniform mesh, and retrieves the position of the
+        -- particle relative to the neighboring cells without resorting to the
+        -- dual-cell itself, but purely based on grid origin and spacing
+        -- See the other approch above (commented) for the generalization to
+        -- non-uniform grids (with the current problem of not being usable if
+        -- periodicity is enforced)
+        --var dX   = cmath.fmod((xyz[0] - grid_originX)/grid_dx + 0.5, 1.0)
+        --var dY   = cmath.fmod((xyz[1] - grid_originY)/grid_dy + 0.5, 1.0)
+        --var dZ   = cmath.fmod((xyz[2] - grid_originZ)/grid_dz + 0.5, 1.0)
+        var dX   = cmath.fmod((xyz[0] - grid_originX)/grid_dx + 0.5, 1.0)
+        var dY   = cmath.fmod((xyz[1] - grid_originY)/grid_dy + 0.5, 1.0)
+        var dZ   = cmath.fmod((xyz[2] - grid_originZ)/grid_dz + 0.5, 1.0)
+
+        var oneMinusdX = 1.0 - dX
+        var oneMinusdY = 1.0 - dY
+        var oneMinusdZ = 1.0 - dZ
+        var weight00 = Field(c000) * oneMinusdX + Field(c100) * dX 
+        var weight10 = Field(c010) * oneMinusdX + Field(c110) * dX
+        var weight01 = Field(c001) * oneMinusdX + Field(c101) * dX
+        var weight11 = Field(c011) * oneMinusdX + Field(c111) * dX
+        var weight0  = weight00 * oneMinusdY + weight10 * dY
+        var weight1  = weight01 * oneMinusdY + weight11 * dY
     in
-        weight0 * (1.0 - dZ) + weight1 * dZ
+        weight0 * oneMinusdZ + weight1 * dZ
     end
 end)
 
@@ -996,41 +1020,38 @@ end
 
 -- Update conserved variables using flux values from previous part
 -- write conserved variables, read flux variables
--- WARNING_START For non-uniform grids, the metrics used below are not 
--- appropriate and should be changed to reflect those expressed in the 
--- Python prototype code
-local c_dx = L.NewGlobal(L.double, grid:xCellWidth())
-local c_dy = L.NewGlobal(L.double, grid:yCellWidth())
-local c_dz = L.NewGlobal(L.double, grid:zCellWidth())
+-- WARNING_START For non-uniform grids, the metrics used below 
+-- (grid_dx, grid_dy, grid_dz) are not  appropriate and should be changed 
+-- to reflect those expressed in the Python prototype code
 -- WARNING_END
 Flow.AddInviscidUpdateUsingFluxX = liszt kernel(c : grid.cells)
     if c.in_interior then
         c.rho_t -= (c( 0,0,0).rhoFlux -
-                    c(-1,0,0).rhoFlux)/c_dx
+                    c(-1,0,0).rhoFlux)/grid_dx
         c.rhoVelocity_t -= (c( 0,0,0).rhoVelocityFlux -
-                            c(-1,0,0).rhoVelocityFlux)/c_dx
+                            c(-1,0,0).rhoVelocityFlux)/grid_dx
         c.rhoEnergy_t -= (c( 0,0,0).rhoEnergyFlux -
-                          c(-1,0,0).rhoEnergyFlux)/c_dx
+                          c(-1,0,0).rhoEnergyFlux)/grid_dx
     end
 end
 Flow.AddInviscidUpdateUsingFluxY = liszt kernel(c : grid.cells)
     if c.in_interior then
         c.rho_t -= (c(0, 0,0).rhoFlux -
-                    c(0,-1,0).rhoFlux)/c_dx
+                    c(0,-1,0).rhoFlux)/grid_dx
         c.rhoVelocity_t -= (c(0, 0,0).rhoVelocityFlux -
-                            c(0,-1,0).rhoVelocityFlux)/c_dy
+                            c(0,-1,0).rhoVelocityFlux)/grid_dy
         c.rhoEnergy_t -= (c(0, 0,0).rhoEnergyFlux -
-                          c(0,-1,0).rhoEnergyFlux)/c_dy
+                          c(0,-1,0).rhoEnergyFlux)/grid_dy
     end
 end
 Flow.AddInviscidUpdateUsingFluxZ = liszt kernel(c : grid.cells)
     if c.in_interior then
         c.rho_t -= (c(0,0, 0).rhoFlux -
-                    c(0,0,-1).rhoFlux)/c_dx
+                    c(0,0,-1).rhoFlux)/grid_dx
         c.rhoVelocity_t -= (c(0,0, 0).rhoVelocityFlux -
-                            c(0,0,-1).rhoVelocityFlux)/c_dy
+                            c(0,0,-1).rhoVelocityFlux)/grid_dy
         c.rhoEnergy_t -= (c(0,0, 0).rhoEnergyFlux -
-                          c(0,0,-1).rhoEnergyFlux)/c_dy
+                          c(0,0,-1).rhoEnergyFlux)/grid_dy
     end
 end
 
@@ -1089,10 +1110,10 @@ Flow.AddViscousGetFluxX =  liszt kernel(c : grid.cells)
             ( c(ndx,0,0).temperature - c(1-ndx,0,0).temperature )
         end
        
-        velocityX_XFace   /= c_dx
-        velocityY_XFace   /= c_dx
-        velocityZ_XFace   /= c_dx
-        temperature_XFace /= c_dx
+        velocityX_XFace   /= grid_dx
+        velocityY_XFace   /= grid_dx
+        velocityZ_XFace   /= grid_dx
+        temperature_XFace /= grid_dx
 
         -- Tensor components (at face)
         var sigmaXX = muFace * ( 4.0 * velocityX_XFace -
@@ -1169,10 +1190,10 @@ Flow.AddViscousGetFluxY =  liszt kernel(c : grid.cells)
             ( c(0,ndx,0).temperature - c(0,1-ndx,0).temperature )
         end
        
-        velocityX_YFace   /= c_dy
-        velocityY_YFace   /= c_dy
-        velocityZ_YFace   /= c_dy
-        temperature_YFace /= c_dy
+        velocityX_YFace   /= grid_dy
+        velocityY_YFace   /= grid_dy
+        velocityZ_YFace   /= grid_dy
+        temperature_YFace /= grid_dy
 
         -- Tensor components (at face)
         var sigmaXY = muFace * ( velocityX_YFace + velocityY_XFace )
@@ -1249,10 +1270,10 @@ Flow.AddViscousGetFluxZ =  liszt kernel(c : grid.cells)
             ( c(0,0,ndx).temperature - c(0,0,1-ndx).temperature )
         end
        
-        velocityX_ZFace   /= c_dz
-        velocityZ_ZFace   /= c_dz
-        velocityZ_ZFace   /= c_dz
-        temperature_ZFace /= c_dz
+        velocityX_ZFace   /= grid_dz
+        velocityZ_ZFace   /= grid_dz
+        velocityZ_ZFace   /= grid_dz
+        temperature_ZFace /= grid_dz
 
         -- Tensor components (at face)
         var sigmaXZ = muFace * ( velocityX_ZFace + velocityZ_XFace )
@@ -1281,27 +1302,27 @@ end
 Flow.AddViscousUpdateUsingFluxX = liszt kernel(c : grid.cells)
     if c.in_interior then
         c.rhoVelocity_t += (c(0,0,0).rhoVelocityFlux -
-                            c(-1,0,0).rhoVelocityFlux)/c_dx
+                            c(-1,0,0).rhoVelocityFlux)/grid_dx
         c.rhoEnergy_t   += (c(0,0,0).rhoEnergyFlux -
-                            c(-1,0,0).rhoEnergyFlux)/c_dx
+                            c(-1,0,0).rhoEnergyFlux)/grid_dx
     end
 end
 
 Flow.AddViscousUpdateUsingFluxY = liszt kernel(c : grid.cells)
     if c.in_interior then
         c.rhoVelocity_t += (c(0,0,0).rhoVelocityFlux -
-                            c(0,-1,0).rhoVelocityFlux)/c_dy
+                            c(0,-1,0).rhoVelocityFlux)/grid_dy
         c.rhoEnergy_t   += (c(0,0,0).rhoEnergyFlux -
-                            c(0,-1,0).rhoEnergyFlux)/c_dy
+                            c(0,-1,0).rhoEnergyFlux)/grid_dy
     end
 end
 
 Flow.AddViscousUpdateUsingFluxZ = liszt kernel(c : grid.cells)
     if c.in_interior then
         c.rhoVelocity_t += (c(0,0, 0).rhoVelocityFlux -
-                            c(0,0,-1).rhoVelocityFlux)/c_dz
+                            c(0,0,-1).rhoVelocityFlux)/grid_dz
         c.rhoEnergy_t   += (c(0,0, 0).rhoEnergyFlux -
-                            c(0,0,-1).rhoEnergyFlux)/c_dz
+                            c(0,0,-1).rhoEnergyFlux)/grid_dz
     end
 end
 
@@ -1571,7 +1592,7 @@ Flow.ComputeVelocityGradientX = liszt kernel(c : grid.cells)
               ( c(ndx,0,0).velocity -
                 c(-ndx,0,0).velocity )
     end
-    c.velocityGradientX = tmp / c_dx
+    c.velocityGradientX = tmp / grid_dx
 end
 
 Flow.ComputeVelocityGradientY = liszt kernel(c : grid.cells)
@@ -1583,7 +1604,7 @@ Flow.ComputeVelocityGradientY = liszt kernel(c : grid.cells)
               ( c(0,ndx,0).velocity -
                 c(0,-ndx,0).velocity )
     end
-    c.velocityGradientY = tmp / c_dy
+    c.velocityGradientY = tmp / grid_dy
 end
 
 Flow.ComputeVelocityGradientZ = liszt kernel(c : grid.cells)
@@ -1595,7 +1616,7 @@ Flow.ComputeVelocityGradientZ = liszt kernel(c : grid.cells)
               ( c(0,0,ndx).velocity -
                 c(0,0,-ndx).velocity )
     end
-    c.velocityGradientZ = tmp / c_dz
+    c.velocityGradientZ = tmp / grid_dz
 end
 
 Flow.UpdateGhostVelocityGradientStep1 = liszt kernel(c : grid.cells)
@@ -1649,12 +1670,12 @@ local maxConvectiveSpectralRadius = L.NewGlobal(L.double, 0)
 local maxViscousSpectralRadius  = L.NewGlobal(L.double, 0)
 local maxHeatConductionSpectralRadius  = L.NewGlobal(L.double, 0)
 Flow.CalculateSpectralRadii = liszt kernel(c : grid.cells)
-    var dXYInverseSquare = 1.0/c_dx * 1.0/c_dx +
-                           1.0/c_dy * 1.0/c_dy
+    var dXYInverseSquare = 1.0/grid_dx * 1.0/grid_dx +
+                           1.0/grid_dy * 1.0/grid_dy
     -- Convective spectral radii
     c.convectiveSpectralRadius = 
-       (cmath.fabs(c.velocity[0])/c_dx  +
-        cmath.fabs(c.velocity[1])/c_dy  +
+       (cmath.fabs(c.velocity[0])/grid_dx  +
+        cmath.fabs(c.velocity[1])/grid_dy  +
         GetSoundSpeed(c.temperature) * cmath.sqrt(dXYInverseSquare)) *
        spatial_stencil.firstDerivativeModifiedWaveNumber
     
@@ -1688,14 +1709,14 @@ end
 -------------
 
 Flow.IntegrateQuantities = liszt kernel(c : grid.cells)
-    -- WARNING: update cellArea computation for non-uniform grids
-    --var cellArea = c.xCellWidth() * c.yCellWidth()
-    var cellArea = c_dx * c_dy
+    -- WARNING: update cellVolume computation for non-uniform grids
+    --var cellVolume = c.xCellWidth() * c.yCellWidth()
+    var cellVolume = grid_dx * grid_dy * grid_dz
     Flow.numberOfInteriorCells += 1
-    Flow.areaInterior += cellArea
-    Flow.averagePressure += c.pressure * cellArea
-    Flow.averageTemperature += c.temperature * cellArea
-    Flow.averageKineticEnergy += c.kineticEnergy * cellArea
+    Flow.areaInterior += cellVolume
+    Flow.averagePressure += c.pressure * cellVolume
+    Flow.averageTemperature += c.temperature * cellVolume
+    Flow.averageKineticEnergy += c.kineticEnergy * cellVolume
     -- Getaround until min= operator is fixed, as it
     -- currently returns zero instead of the actual min value)
     -- (similarly if attempting to use max= of the negative field)
@@ -1753,7 +1774,7 @@ Flow.DrawKernel = liszt kernel (c : grid.cells)
     var xMax = 1.0
     var yMax = 1.0
     var zMax = 1.0
-    if c(0,0,0).center[0] < gridOriginX+c_dx then
+    if c(0,0,0).center[0] < grid_originX+grid_dx then
       var posA : L.vec3d = { c(0,0,0).center[0]/xMax,
                              c(0,0,0).center[1]/yMax, 
                              c(0,0,0).center[2]/zMax }
@@ -1762,7 +1783,7 @@ Flow.DrawKernel = liszt kernel (c : grid.cells)
                              c(0,0,1).center[2]/zMax }
       var posC : L.vec3d = { c(0,1,1).center[0]/xMax,
                              c(0,1,1).center[1]/yMax, 
-                             c(0,1,0).center[2]/zMax }
+                             c(0,1,1).center[2]/zMax }
       var posD : L.vec3d = { c(0,1,0).center[0]/xMax,
                              c(0,1,0).center[1]/yMax,
                              c(0,1,0).center[2]/zMax }
@@ -1775,10 +1796,10 @@ Flow.DrawKernel = liszt kernel (c : grid.cells)
       var maxValue = Flow.maxTemperature
       -- compute a display value in the range 0.0 to 1.0 from the value
       var scale = (value - minValue)/(maxValue - minValue)
-      vdb.color((1.0-scale)*cold)
+      vdb.color((1.0-scale)*white)
       vdb.triangle(posA, posB, posC)
       vdb.triangle(posA, posD, posC)
-    elseif c(0,0,0).center[1] < gridOriginY+c_dy then
+    elseif c(0,0,0).center[1] < grid_originY+grid_dy then
       var posA : L.vec3d = { c(0,0,0).center[0]/xMax,
                              c(0,0,0).center[1]/yMax, 
                              c(0,0,0).center[2]/zMax }
@@ -1787,7 +1808,7 @@ Flow.DrawKernel = liszt kernel (c : grid.cells)
                              c(0,0,1).center[2]/zMax }
       var posC : L.vec3d = { c(1,0,1).center[0]/xMax,
                              c(1,0,1).center[1]/yMax, 
-                             c(1,0,0).center[2]/zMax }
+                             c(1,0,1).center[2]/zMax }
       var posD : L.vec3d = { c(1,0,0).center[0]/xMax,
                              c(1,0,0).center[1]/yMax,
                              c(1,0,0).center[2]/zMax }
@@ -1800,10 +1821,10 @@ Flow.DrawKernel = liszt kernel (c : grid.cells)
       var maxValue = Flow.maxTemperature
       -- compute a display value in the range 0.0 to 1.0 from the value
       var scale = (value - minValue)/(maxValue - minValue)
-      vdb.color((1.0-scale)*cold)
+      vdb.color((1.0-scale)*white)
       vdb.triangle(posA, posB, posC)
       vdb.triangle(posA, posD, posC)
-    elseif c(0,0,0).center[2] < gridOriginZ+c_dz then
+    elseif c(0,0,0).center[2] < grid_originZ+grid_dz then
       var posA : L.vec3d = { c(0,0,0).center[0]/xMax,
                              c(0,0,0).center[1]/yMax, 
                              c(0,0,0).center[2]/zMax }
@@ -1812,7 +1833,7 @@ Flow.DrawKernel = liszt kernel (c : grid.cells)
                              c(0,1,0).center[2]/zMax }
       var posC : L.vec3d = { c(1,1,0).center[0]/xMax,
                              c(1,1,0).center[1]/yMax, 
-                             c(1,0,0).center[2]/zMax }
+                             c(1,1,0).center[2]/zMax }
       var posD : L.vec3d = { c(1,0,0).center[0]/xMax,
                              c(1,0,0).center[1]/yMax,
                              c(1,0,0).center[2]/zMax }
@@ -1825,9 +1846,9 @@ Flow.DrawKernel = liszt kernel (c : grid.cells)
       var maxValue = Flow.maxTemperature
       -- compute a display value in the range 0.0 to 1.0 from the value
       var scale = (value - minValue)/(maxValue - minValue)
-      vdb.color((1.0-scale)*cold)
+      vdb.color((1.0-scale)*white)
       vdb.triangle(posA, posB, posC)
-      vdb.triangle(posA, posD, posC)
+      vdb.triangle(posA, posC, posD)
     end
 end
 
@@ -1983,22 +2004,22 @@ Particles.UpdateAuxiliaryStep1 = liszt kernel(p : particles)
         p.position_ghost[0] = p.position[0]
         p.position_ghost[1] = p.position[1]
         p.position_ghost[2] = p.position[2]
-        if p.position[0] < gridOriginX then
+        if p.position[0] < gridOriginInteriorX then
             p.position_ghost[0] = p.position[0] + grid_options.xWidth
         end
-        if p.position[0] > gridOriginX + grid_options.xWidth then
+        if p.position[0] > gridOriginInteriorX + grid_options.xWidth then
             p.position_ghost[0] = p.position[0] - grid_options.xWidth
         end
-        if p.position[1] < gridOriginY then
+        if p.position[1] < gridOriginInteriorY then
             p.position_ghost[1] = p.position[1] + grid_options.yWidth
         end
-        if p.position[1] > gridOriginY + grid_options.yWidth then
+        if p.position[1] > gridOriginInteriorY + grid_options.yWidth then
             p.position_ghost[1] = p.position[1] - grid_options.yWidth
         end
-        if p.position[2] < gridOriginZ then
+        if p.position[2] < gridOriginInteriorZ then
             p.position_ghost[2] = p.position[2] + grid_options.zWidth
         end
-        if p.position[2] > gridOriginZ + grid_options.zWidth then
+        if p.position[2] > gridOriginInteriorZ + grid_options.zWidth then
             p.position_ghost[2] = p.position[2] - grid_options.zWidth
         end
     end
@@ -2163,10 +2184,10 @@ Particles.Collect = liszt kernel(p: particles)
         -- Specialize collectorParams from options
         var minX = particles_options.collectorParams[0]
         var minY = particles_options.collectorParams[1]
-        var minZ = particles_options.collectorParams[3]
-        var maxX = particles_options.collectorParams[4]
-        var maxY = particles_options.collectorParams[5]
-        var maxZ = particles_options.collectorParams[6]
+        var minZ = particles_options.collectorParams[2]
+        var maxX = particles_options.collectorParams[3]
+        var maxY = particles_options.collectorParams[4]
+        var maxZ = particles_options.collectorParams[5]
         if p.position[0] < minX or
            p.position[0] > maxX or
            p.position[1] < minY or
@@ -2243,8 +2264,15 @@ Particles.DrawKernel = liszt kernel (p : particles)
     var yMax = 1.0
     var zMax = 1.0
     --var scale = p.temperature/particles_options.initialTemperature
-    var scale = 0.5 + 0.5*p.groupID
-    vdb.color(scale*blue)
+    --var scale = 0.5 + 0.5*p.groupID
+    --vdb.color(scale*blue)
+    if p.groupID == 0 then
+      vdb.color(red)
+    elseif p.groupID == 1 then
+      vdb.color(blue)
+    else
+      vdb.color(green)
+    end
     var pos : L.vec3d = { p.position[0]/xMax,
                           p.position[1]/yMax,
                           p.position[2]/zMax }
@@ -2516,7 +2544,7 @@ end
 function Visualization.Draw()
     vdb.vbegin()
     vdb.frame()
-    Flow.DrawKernel(grid.cells.interior)
+    Flow.DrawKernel(grid.cells)
     Particles.DrawKernel(particles)
     vdb.vend()
 end

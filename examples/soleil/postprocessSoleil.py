@@ -275,36 +275,42 @@ inputFileNameCoordinates = inputFileNamePrefix + "_centerCoordinates.txt"
 #inputFileNameField       = inputFileNamePrefix + "_dummyfield1.txt"
 inputFileNameField = inputFileNamePrefix + "_" + str(timeStep) + \
                      "_flow_" + fieldName + ".txt"
-with open(inputFileNameCoordinates, 'r') as f:
-  xSize, ySize, numPoints, numComponents = \
-    [int(elem) for elem in f.readline().split()[1:]]
+f = open(inputFileNameCoordinates, 'r')
+xSize, ySize, zSize, numPoints, numComponents = \
+  [int(elem) for elem in f.readline().split()[1:]]
+f.close
 
 coordinatesList = numpy.loadtxt(inputFileNameCoordinates,
-                                usecols = (0,1,2),
+                                usecols = (0,1,2,3),
                                 skiprows = 1)
 
 xCoor = numpy.array(coordinatesList)[:xSize,1]
-yCoor = numpy.array(coordinatesList)[::xSize,2]
+yCoor = numpy.array(coordinatesList)[:xSize*ySize:xSize,2]
+zCoor = numpy.array(coordinatesList)[::xSize*ySize,3]
 
 with open(inputFileNameField, 'r') as f:
-  xSizeField, ySizeField, numPointsField, numComponentsField = \
+  xSizeField, ySizeField, zSizeField, numPointsField, numComponentsField = \
     [int(elem) for elem in f.readline().split()[1:]]
 fieldArray = numpy.array(numpy.loadtxt(inputFileNameField,
                                 skiprows = 1))
 
 # Check sizes match
 if ( xSize != xSizeField or \
-     ySize != ySizeField ):
+     ySize != ySizeField or \
+     zSize != zSizeField ):
     print "ERR: sizes differ"
     exit(1)
 
 # Reshape fieldList into 2D array format
 if numComponentsField == 1:
-    fieldArray = fieldArray[:,1:].reshape(ySize,xSize)
+    fieldArray = fieldArray[:,1:].reshape(zSize,ySize,xSize)
 else:
-    fieldArray = fieldArray[:,1:].reshape(ySize,xSize,numComponentsField)
+    fieldArray = fieldArray[:,1:].reshape(zSize,ySize,xSize,numComponentsField)
 zeroPadding=8
 
+fieldToPlot = numpy.array(fieldArray[sliceIndex,:,:])
+coorXToPlot = numpy.array(xCoor)
+coorYToPlot = numpy.array(yCoor)
 
 # Particles
 particlesPositionInputFileName = inputFileNamePrefix + "_" + \
@@ -340,14 +346,6 @@ particlesGroupID = numpy.loadtxt(particlesGroupIDInputFileName,
 particlesState = numpy.loadtxt(particlesStateInputFileName,
                                usecols = (1,), unpack = True,
                                skiprows = 1)
-
-xCoor = numpy.array(coordinatesList)[:xSize,1]
-yCoor = numpy.array(coordinatesList)[::xSize,2]
-
-fieldToPlot = numpy.array(fieldArray)
-coorXToPlot = numpy.array(xCoor)
-coorYToPlot = numpy.array(yCoor)
-
 
 #interp='nearest'
 interp='bilinear'
@@ -395,8 +393,14 @@ im = image.NonUniformImage(ax2, interpolation=interp,
 im.set_data(coorXToPlot,coorYToPlot,
             fieldToPlot)
 ax2.images.append(im)
-ax2.set_xlim(coorXToPlot.min(),coorXToPlot.max())
-ax2.set_ylim(coorYToPlot.min(),coorYToPlot.max())
+#ax2.set_xlim(coorXToPlot.min(),coorXToPlot.max())
+#ax2.set_ylim(coorYToPlot.min(),coorYToPlot.max())
+deltaX = coorXToPlot[1] - coorXToPlot[0]
+deltaY = coorYToPlot[1] - coorYToPlot[0]
+ax2.set_xlim(coorXToPlot.min()-deltaX/2.0,
+             coorXToPlot.max()+deltaX/2.0)
+ax2.set_ylim(coorYToPlot.min()-deltaY/2.0,
+             coorYToPlot.max()+deltaY/2.0)
 #ax.set_title(interp)
 evolutionText = ax2.text(0.02, 0.90, '', transform=ax2.transAxes)
 
