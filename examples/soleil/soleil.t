@@ -550,6 +550,10 @@ end)
 
 local InterpolateBilinear = L.NewMacro(function(dc, xy, Field)
     return liszt quote
+        -- WARNING: This approach presents problems at the boundaries
+        -- when periodicity is used (since the coordinates of one of the cells
+        -- will be wrapped around the domain in the corresponding periodic 
+        -- direction, thus resulting in incorrect values of delta_l,r
         var cdl = dc.vertex.cell(-1,-1)
         var cul = dc.vertex.cell(-1,0)
         var cdr = dc.vertex.cell(0,-1)
