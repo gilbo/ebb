@@ -427,7 +427,7 @@ local function setup3dCells(grid)
             var zval = (xyz[2] - zorigin)/zcwidth
             var xidx = L.addr(clamp_impl(L.int(xval), 0, xsize-1))
             var yidx = L.addr(clamp_impl(L.int(yval), 0, ysize-1))
-            var yidx = L.addr(clamp_impl(L.int(zval), 0, zsize-1))
+            var zidx = L.addr(clamp_impl(L.int(zval), 0, zsize-1))
         in
             L.UNSAFE_ROW(xidx + yidx * xsize + zidx * xysize, grid.cells)
         end
