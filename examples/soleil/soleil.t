@@ -72,7 +72,7 @@ local white = L.NewVector(L.float,{1.0,1.0,1.0})
 local grid_options = {
     xnum = 32,
     ynum = 32,
-    znum = 16,
+    znum = 2,
     origin = {0.0, 0.0, 0.0},
     --xWidth = twoPi,
     xWidth = 2*twoPi,
@@ -643,9 +643,6 @@ local InterpolateTrilinear = L.NewMacro(function(dc, xyz, Field)
         -- See the other approch above (commented) for the generalization to
         -- non-uniform grids (with the current problem of not being usable if
         -- periodicity is enforced)
-        --var dX   = cmath.fmod((xyz[0] - grid_originX)/grid_dx + 0.5, 1.0)
-        --var dY   = cmath.fmod((xyz[1] - grid_originY)/grid_dy + 0.5, 1.0)
-        --var dZ   = cmath.fmod((xyz[2] - grid_originZ)/grid_dz + 0.5, 1.0)
         var dX   = cmath.fmod((xyz[0] - grid_originX)/grid_dx + 0.5, 1.0)
         var dY   = cmath.fmod((xyz[1] - grid_originY)/grid_dy + 0.5, 1.0)
         var dZ   = cmath.fmod((xyz[2] - grid_originZ)/grid_dz + 0.5, 1.0)
@@ -1037,7 +1034,7 @@ end
 Flow.AddInviscidUpdateUsingFluxY = liszt kernel(c : grid.cells)
     if c.in_interior then
         c.rho_t -= (c(0, 0,0).rhoFlux -
-                    c(0,-1,0).rhoFlux)/grid_dx
+                    c(0,-1,0).rhoFlux)/grid_dy
         c.rhoVelocity_t -= (c(0, 0,0).rhoVelocityFlux -
                             c(0,-1,0).rhoVelocityFlux)/grid_dy
         c.rhoEnergy_t -= (c(0, 0,0).rhoEnergyFlux -
@@ -1047,11 +1044,11 @@ end
 Flow.AddInviscidUpdateUsingFluxZ = liszt kernel(c : grid.cells)
     if c.in_interior then
         c.rho_t -= (c(0,0, 0).rhoFlux -
-                    c(0,0,-1).rhoFlux)/grid_dx
+                    c(0,0,-1).rhoFlux)/grid_dz
         c.rhoVelocity_t -= (c(0,0, 0).rhoVelocityFlux -
-                            c(0,0,-1).rhoVelocityFlux)/grid_dy
+                            c(0,0,-1).rhoVelocityFlux)/grid_dz
         c.rhoEnergy_t -= (c(0,0, 0).rhoEnergyFlux -
-                          c(0,0,-1).rhoEnergyFlux)/grid_dy
+                          c(0,0,-1).rhoEnergyFlux)/grid_dz
     end
 end
 
