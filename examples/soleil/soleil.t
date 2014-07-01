@@ -1,5 +1,6 @@
 import "compiler.liszt"
 local Grid  = L.require 'domains.grid'
+local ffi = require("ffi")
 local cmath = terralib.includecstring [[
 #include <math.h>
 #include <stdlib.h>
@@ -209,8 +210,8 @@ local flow_options = {
     --initParams = L.NewGlobal(L.vector(L.double,3),
     --                           {1,100,2}),
     initCase = Flow.Uniform,
-    initParams = L.NewGlobal(L.vector(L.double,4),
-                               {1.0,10,1.0,0.0}),
+    initParams = L.NewGlobal(L.vector(L.double,5),
+                               {1.0,10,1.0,0.0,0.0}),
     --bodyForce = L.NewGlobal(L.vec3d, {0,0.01,0.0})
     bodyForce = L.NewGlobal(L.vec3d, {0,0.0,0})
 }
@@ -733,7 +734,7 @@ Flow.InitializePrimitives = liszt kernel(c : grid.cells)
       c.pressure    = flow_options.initParams[1]
       c.velocity[0] = flow_options.initParams[2]
       c.velocity[1] = flow_options.initParams[3]
-      c.velocity[2] = 0
+      c.velocity[2] = flow_options.initParams[4]
     end
 end
 Flow.UpdateConservedFromPrimitive = liszt kernel(c : grid.cells)
