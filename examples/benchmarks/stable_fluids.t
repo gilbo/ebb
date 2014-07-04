@@ -22,6 +22,7 @@ local vdb   = L.require 'lib.vdb'
 
 local N = 150
 local PERIODIC = true
+local INSERT_DELETE = true -- exercise these features in periodic mode...
 local period = {false,false}
 local origin = {-N/2.0, -1.0}
 if PERIODIC then
@@ -366,10 +367,28 @@ local compute_particle_velocity = liszt kernel (p : particles)
         + x1 * y1 * lc(1,1).velocity_prev )
 end
 
+local particle_snap = liszt function(p, pos)
+    p.pos = snap_to_grid(pos)
+end
+if PERIODIC and INSERT_DELETE then
+    min_x = grid:xOrigin()
+    max_x = grid:xOrigin() + grid:xWidth()
+    min_y = grid:yOrigin()
+    max_y = grid:yOrigin() + grid:yWidth()
+
+    particle_snap = liszt function(p, pos)
+        p.pos = pos
+        if pos[0] > max_x or pos[0] < min_x or
+           pos[1] > max_y or pos[1] < min_y then
+            delete p
+        end
+    end
+end
+
 local update_particle_pos = liszt kernel (p : particles)
     var r = L.vec2f({ cmath.rand_float() - 0.5, cmath.rand_float() - 0.5 })
     var pos = p.next_pos + L.float(dt) * r
-    p.pos = snap_to_grid(pos)
+    particle_snap(p, pos)
 end
 
 
@@ -393,12 +412,31 @@ local source_velocity = liszt kernel (c : grid.cells)
 end
 if PERIODIC then
     source_strength = 5.0
+    local optional_insertion = liszt function(c) end -- no-op
+    if INSERT_DELETE then
+        optional_insertion = liszt function(c)
+            var create_particle = cmath.rand_float() < 0.01
+            if create_particle then
+                var pos = c.center + L.vec2f({
+                    cell_w * (cmath.rand_float() - 0.5),
+                    cell_h * (cmath.rand_float() - 0.5)
+                })
+                insert {
+                    dual_cell = grid.dual_locate(pos),
+                    pos = pos,
+                    next_pos = pos
+                } into particles
+            end
+        end
+    end
     source_velocity = liszt kernel (c : grid.cells)
         if cmath.fabs(c.center[0]) < 1.75 and
            cmath.fabs(c.center[1]) < 1.75
         then
             c.velocity += L.float(dt) * source_strength * { 0.0, 1.0 }
         end
+
+        optional_insertion(c)
     end
 end
 
@@ -441,6 +479,7 @@ for i = 1, STEPS do
             --draw_grid(grid.cells)
             draw_particles(particles)
         vdb.vend()
+        --print(particles:Size())
     end
     --print('push key')
     --io.read()

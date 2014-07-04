@@ -207,6 +207,17 @@ function ast.ExprStatement:check(ctxt)
     return copy
 end
 
+function check_reduce(node, ctxt)
+    local op        = node.reduceop
+    local lvalue    = node.lvalue
+    local ltype     = lvalue.node_type
+
+    --if ltype:baseType() ~= L.float then
+    --    ctxt:error(node, 'Reduce operator"'..op..'" for type '..
+    --        '"'..tostring(ltype)..'" is not currently supported.')
+    --end
+end
+
 function ast.Assignment:check(ctxt)
     local node = self:clone()
 
@@ -248,6 +259,7 @@ function ast.Assignment:check(ctxt)
     -- replace assignment with a global reduce if we see a
     -- global on the left hand side
     if node.lvalue:is(ast.Global) then
+        check_reduce(node, ctxt)
         local gr = ast.GlobalReduce:DeriveFrom(node)
         gr.global      = node.lvalue
         gr.exp         = node.exp
@@ -256,6 +268,7 @@ function ast.Assignment:check(ctxt)
     -- replace assignment with a field write if we see a
     -- field access on the left hand side
     elseif node.lvalue:is(ast.FieldAccess) then
+        check_reduce(node, ctxt)
         local fw = ast.FieldWrite:DeriveFrom(node)
         fw.fieldaccess = node.lvalue
         fw.exp         = node.exp
@@ -1047,16 +1060,28 @@ function ast.Call:check(ctxt)
         call = InlineUserFunc(ctxt, self, v, call.params)
     elseif v and T.isLisztType(v) and v:isValueType() then
         local params = call.params
-        call = ast.Cast:DeriveFrom(self)
-        if #params == 1 then
-            call.value     = params[1]
-            call.node_type = v
-        else
+        if #params ~= 1 then
             ctxt:error(self, "Cast to " .. v.toString() ..
                     " expects exactly 1 argument (instead got " .. #params ..
                     ")")
+        else
+            -- TODO: We should have more aggresive casting protection.
+            -- i.e. we should allow anything reasonable in Terra/C but
+            -- no more.
+            local pretype = params[1].node_type
+            local casttype = v
+            local one_vec = pretype:isVector() or casttype:isVector()
+            local matching_vecs = pretype:isVector() and casttype:isVector()
+                              and pretype.N == casttype.N
+            if one_vec and not matching_vecs then
+                ctxt:error(self, "Can only cast vectors to "..
+                    "other vectors with matching dimensions")
+            else
+                call = ast.Cast:DeriveFrom(self)
+                call.value     = params[1]
+                call.node_type = v
+            end
         end
-
     -- __apply_macro  i.e.  c(1,0)  for offsetting in a grid
     elseif func.node_type:isRow() then
         local apply_macro = func.node_type.relation.__apply_macro

@@ -141,7 +141,7 @@ lang.simpleexp = function(P)
 		return node
 	elseif P:matches('true') or P:matches('false') then
 		local node = ast.Bool:New(P)
-		node.value = P:next().type
+		node.value = (P:next().type == 'true')
 		return node
 	elseif P:nextif('(') then
 		local v = P:exp()

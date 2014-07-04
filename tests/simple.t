@@ -13,6 +13,8 @@ local com   = L.NewGlobal(L.vector(L.float, 3), {0, 0, 0})--Vector.new(float, {0
 local upval = 5
 local vv = L.NewVector(L.int, {1,2,3})
 
+local luavalue_true = true
+
 local test_bool = liszt kernel (v : mesh.vertices)
     var q = true
     var x = q  -- Also, test re-declaring variables (symbols for 'x' should now be different)
@@ -24,6 +26,9 @@ local test_bool = liszt kernel (v : mesh.vertices)
     lassert(z == false)
     lassert(y == true)
     lassert(t == q)
+    -- make sure that specialization preserves booleans correctly
+    -- had to hunt down this bug once already
+    lassert(luavalue_true)
 end
 test_bool(mesh.vertices)
 

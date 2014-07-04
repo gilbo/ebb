@@ -235,7 +235,8 @@ L.LKernel.__call  = function (kobj, relset)
     end
     -- bind delete data (just a global here)
     if bran.delete_data then
-      local relsize = bran.delete_data.relation._logical_size
+      -- FORCE CONVERSION OUT OF UINT64; NOTE DANGEROUS
+      local relsize = tonumber(bran.delete_data.relation._logical_size)
       bran.delete_data.updated_size:set(relsize)
     end
     -- bind the field data (MUST COME LAST)
@@ -258,7 +259,8 @@ L.LKernel.__call  = function (kobj, relset)
       local insert_rel        = bran.insert_data.relation
       local old_concrete_size = bran.insert_data.last_concrete_size
       local old_logical_size  = insert_rel._logical_size
-      local n_inserted        = bran.insert_data.n_inserted:get()
+      -- WARNING UNSAFE CONVERSION FROM UINT64 to DOUBLE
+      local n_inserted        = tonumber(bran.insert_data.n_inserted:get())
 
       -- shrink array back down to where we actually ended up writing
       local new_concrete_size = old_concrete_size + n_inserted

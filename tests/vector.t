@@ -125,3 +125,17 @@ sum_position(mesh.vertices)
 
 local f = s:get() / mesh.vertices:Size()
 test.fuzzy_aeq(f.data, {5, 6, 6})
+
+
+------------------
+-- Should fail: --
+------------------
+
+test.fail_function(function()
+	liszt kernel(v : mesh.vertices)
+		var v3 = L.vec3f({1.1, 2.2, 3.3})
+		var v2 = L.vec2f(v3)
+	end
+end, 'Can only cast vectors to other vectors with matching dimensions')
+
+
