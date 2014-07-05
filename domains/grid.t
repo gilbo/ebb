@@ -146,8 +146,7 @@ end
 -- unless perdiodicity...
 local function setup2dDualCells(grid)
     local xpd, ypd          = grid:xUsePeriodic(), grid:yUsePeriodic()
-    local xsize             = grid:xSize() + (xpd and 0 or 1)
-    local ysize             = grid:ySize() + (ypd and 0 or 1)
+    local xsize, ysize      = grid._vn_xy[1], grid._vn_xy[2]
     local xcwidth, ycwidth  = grid:xCellWidth(), grid:yCellWidth()
     local xorigin, yorigin  = grid:xOrigin(), grid:yOrigin()
     local xn_bd             = grid:xBoundaryDepth()
@@ -209,8 +208,7 @@ end
 -- unless perdiodicity...
 local function setup2dVertices(grid)
     local xpd, ypd          = grid:xUsePeriodic(), grid:yUsePeriodic()
-    local xsize             = grid:xSize() + (xpd and 0 or 1)
-    local ysize             = grid:ySize() + (ypd and 0 or 1)
+    local xsize, ysize      = grid._vn_xy[1], grid._vn_xy[2]
     local xcwidth, ycwidth  = grid:xCellWidth(), grid:yCellWidth()
     local xorigin, yorigin  = grid:xOrigin(), grid:yOrigin()
     local xn_bd             = grid:xBoundaryDepth()
@@ -222,12 +220,25 @@ local function setup2dVertices(grid)
             return liszt quote
                 var xp = (xoff + xsize)
                 var yp = (yoff + ysize)
-                var xi = L.addr((xp + c.xid) % xsize)
-                var yi = L.addr((yp + c.yid) % ysize)
+                var xi = L.addr((xp + v.xid) % xsize)
+                var yi = L.addr((yp + v.yid) % ysize)
             in
                 L.UNSAFE_ROW( xi + yi * xsize, grid.vertices )
             end
         end))
+
+    -- Boundary/Interior subsets
+    local function is_boundary(i)
+        return
+            math.floor(i/xsize) <  yn_bd or
+            math.floor(i/xsize) >= ysize-yn_bd or
+                        i%xsize <  xn_bd or
+                        i%xsize >= xsize-xn_bd
+    end
+    grid.vertices:NewSubsetFromFunction('boundary', is_boundary)
+    grid.vertices:NewSubsetFromFunction('interior', function(i)
+        return not is_boundary(i)
+    end)
 
     -- Should these be hidden?
     grid.vertices:NewFieldMacro('xid', L.NewMacro(function(v)
@@ -236,13 +247,97 @@ local function setup2dVertices(grid)
     grid.vertices:NewFieldMacro('yid', L.NewMacro(function(v)
         return liszt ` L.id(v) / L.addr(xsize)
     end))
+
+    -- boundary depths
+    grid.vertices:NewFieldMacro('xneg_depth', L.NewMacro(function(v)
+        return liszt `max_impl(L.int(xn_bd - v.xid), 0)
+    end))
+    grid.vertices:NewFieldMacro('xpos_depth', L.NewMacro(function(v)
+        return liszt `max_impl(L.int(v.xid - (xsize-1 - xn_bd)), 0)
+    end))
+    grid.vertices:NewFieldMacro('yneg_depth', L.NewMacro(function(v)
+        return liszt `max_impl(L.int(yn_bd - v.yid), 0)
+    end))
+    grid.vertices:NewFieldMacro('ypos_depth', L.NewMacro(function(v)
+        return liszt `max_impl(L.int(v.yid - (ysize-1 - yn_bd)), 0)
+    end))
+
+    grid.vertices:NewFieldMacro('in_boundary', L.NewMacro(function(v)
+        return liszt ` v.xneg_depth > 0 or v.xpos_depth > 0 or
+                       v.yneg_depth > 0 or v.ypos_depth > 0
+    end))
+    grid.vertices:NewFieldMacro('in_interior', L.NewMacro(function(v)
+        return liszt ` not v.in_boundary
+    end))
+end
+
+local function setup2dEdges(grid)
+    local xpd, ypd          = grid:xUsePeriodic(), grid:yUsePeriodic()
+    local cxsize, cysize    = grid:xSize(), grid:ySize()
+    local vxsize, vysize    = grid._vn_xy[1], grid._vn_xy[2]
+    local xcwidth, ycwidth  = grid:xCellWidth(), grid:yCellWidth()
+    local xorigin, yorigin  = grid:xOrigin(), grid:yOrigin()
+    local xn_bd             = grid:xBoundaryDepth()
+    local yn_bd             = grid:yBoundaryDepth()
+
+    -- weird edge value stuff
+    local nxedge            = cxsize * vysize
+    local nyedge            = vxsize * cysize
+    local xedge_off         = 0
+    local yedge_off         = nxedge
+
+    grid.edges:NewFieldMacro('is_x', L.NewMacro(function(e)
+        return liszt ` L.id(e) < yedge_off
+    end))
+    grid.edges:NewFieldMacro('is_y', L.NewMacro(function(e)
+        return liszt ` L.id(e) >= yedge_off
+    end))
+
+    -- in the case this is an x-aligned edge
+    grid.edges:NewFieldMacro('x_xid', L.NewMacro(function(e)
+        return liszt ` (L.id(e) - xedge_off) % L.addr(cxsize)
+    end))
+    grid.edges:NewFieldMacro('x_yid', L.NewMacro(function(e)
+        return liszt ` (L.id(e) - xedge_off) / L.addr(cxsize)
+    end))
+    -- in the case this is a y-aligned edge
+    grid.edges:NewFieldMacro('y_xid', L.NewMacro(function(e)
+        return liszt ` (L.id(e) - yedge_off) % L.addr(vxsize)
+    end))
+    grid.edges:NewFieldMacro('y_yid', L.NewMacro(function(e)
+        return liszt ` (L.id(e) - yedge_off) / L.addr(vxsize)
+    end))
+
+    -- relative offset
+    grid.edges:NewFieldMacro('__apply_macro',
+        L.NewMacro(function(e,xoff,yoff)
+            return liszt quote
+                var result : L.row(grid.edges)
+                if e.is_x then
+                    var xsize = cxsize
+                    var ysize = vysize
+                    var xi = L.addr((xoff + xsize + e.x_xid) % xsize)
+                    var yi = L.addr((yoff + ysize + e.x_yid) % ysize)
+                    result = L.UNSAFE_ROW( xedge_off + xi + yi * xsize,
+                                           grid.vertices )
+                else
+                    var xsize = vxsize
+                    var ysize = cysize
+                    var xi = L.addr((xoff + xsize + e.y_xid) % xsize)
+                    var yi = L.addr((yoff + ysize + e.y_yid) % ysize)
+                    result = L.UNSAFE_ROW( yedge_off + xi + yi * xsize,
+                                           grid.vertices )
+                end
+            in
+                result
+            end
+        end))
 end
 
 local function setup2dInterconnects(grid)
     local xpd, ypd          = grid:xUsePeriodic(), grid:yUsePeriodic()
     local cxsize, cysize    = grid:xSize(), grid:ySize()
-    local vxsize            = cxsize + (xpd and 0 or 1)
-    local vysize            = cysize + (ypd and 0 or 1)
+    local vxsize, vysize    = grid._vn_xy[1], grid._vn_xy[2]
 
     grid.dual_cells:NewFieldMacro('vertex', L.NewMacro(function(dc)
         return liszt ` L.UNSAFE_ROW( L.id(dc), grid.vertices )
@@ -258,6 +353,46 @@ local function setup2dInterconnects(grid)
     grid.vertices:NewFieldMacro('cell', L.NewMacro(function(v)
         return liszt `
             L.UNSAFE_ROW( v.xid + v.yid * cxsize, grid.cells )
+    end))
+
+    -- edge connects
+    local nxedge            = cxsize * vysize
+    local nyedge            = vxsize * cysize
+    local xedge_off         = 0
+    local yedge_off         = nxedge
+
+    grid.edges:NewFieldMacro('tail', L.NewMacro(function(e)
+        return liszt quote
+            var result : L.row(grid.vertices)
+            if e.is_x then
+                result = L.UNSAFE_ROW(
+                    xedge_off + e.x_xid + e.x_yid * vxsize, grid.vertices )
+            else
+                result = L.UNSAFE_ROW(
+                    yedge_off + e.y_xid + e.y_yid * vxsize, grid.vertices )
+            end
+        in
+            result
+        end
+    end))
+    -- just offset the tail
+    grid.edges:NewFieldMacro('head', L.NewMacro(function(e)
+        return liszt quote
+            var v = e.tail
+            if e.is_x then  v = v(1,0)
+            else            v = v(0,1)
+            end
+        in
+            v
+        end
+    end))
+    grid.vertices:NewFieldMacro('xedge', L.NewMacro(function(e)
+        return liszt `
+            L.UNSAFE_ROW( xedge_off + v.xid + v.yid * cxsize, grid.edges )
+    end))
+    grid.vertices:NewFieldMacro('yedge', L.NewMacro(function(e)
+        return liszt `
+            L.UNSAFE_ROW( yedge_off + v.xid + v.yid * vxsize, grid.edges )
     end))
 end
 
@@ -308,20 +443,21 @@ Grid.NewGrid2d{
         end
     end
 
-    local nCells        = params.size[1] * params.size[2]
-    local dcsize        = {}
-    local nDualCells    = 1
+    local vsize = copy_table(params.size)
     for i=1,2 do
-        if params.periodic_boundary[i] then
-            dcsize[i] = params.size[i]
-        else
-            dcsize[i] = params.size[i] + 1
+        if not params.periodic_boundary[i] then
+            vsize[i] = vsize[i] + 1
         end
-        nDualCells = nDualCells * dcsize[i]
     end
-    local nVerts        = nDualCells
+
+    local nCells        = params.size[1] * params.size[2]
+    local nVerts        = vsize[1] * vsize[2]
+    local nDualCells    = nVerts
+    local nEdges        = params.size[1] * vsize[2]
+                        + vsize[1] * params.size[2]
 
     local grid = setmetatable({
+        _vn_xy      = vsize, -- just for internal use, not exposed
         _n_xy       = copy_table(params.size),
         _origin     = copy_table(params.origin),
         _dims       = copy_table(params.width),
@@ -329,6 +465,7 @@ Grid.NewGrid2d{
         _periodic   = copy_table(params.periodic_boundary),
         -- relations
         cells       = L.NewRelation(nCells, 'cells'),
+        edges       = L.NewRelation(nEdges, 'edges'),
         dual_cells  = L.NewRelation(nDualCells, 'dual_cells'),
         vertices    = L.NewRelation(nVerts, 'vertices'),
     }, Grid2d)
@@ -336,6 +473,7 @@ Grid.NewGrid2d{
     setup2dCells(grid)
     setup2dDualCells(grid)
     setup2dVertices(grid)
+    setup2dEdges(grid)
     setup2dInterconnects(grid)
 
     return grid

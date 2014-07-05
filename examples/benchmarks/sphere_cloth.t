@@ -21,8 +21,7 @@ local collision_spring_k = 100
 local grid = Grid.NewGrid2d{
     size   = {N,N},
     origin = {0,0},
-    width  = width,
-    height = width,
+    width  = {width,width},
 }
 
 ------------------------------------------------------------------------------
@@ -37,9 +36,9 @@ grid.vertices:NewField('b_pos', L.vec3d):Load({0,0,0})
 grid.vertices:NewField('dpos_temp', L.vec3d):Load({0,0,0})
 
 -- Jacobian matrix...
-grid.edges:NewField('J_x', L.vec3d):Load({0,0,0})
-grid.edges:NewField('J_y', L.vec3d):Load({0,0,0})
-grid.edges:NewField('J_z', L.vec3d):Load({0,0,0})
+--grid.edges:NewField('J_x', L.vec3d):Load({0,0,0})
+--grid.edges:NewField('J_y', L.vec3d):Load({0,0,0})
+--grid.edges:NewField('J_z', L.vec3d):Load({0,0,0})
 grid.vertices:NewField('J_diag', L.vec3d):Load({0,0,0})
 
 local init_fields = liszt kernel(v : grid.vertices)
@@ -66,14 +65,90 @@ local FRICTION = 2.0
 
 local dt = L.NewGlobal(L.double, 0.00005)
 
-local spring_dvel = L.NewMacro(function(dir)
-  return liszt quote
-    var dir_len = L.length(dir)
-    var stretch = (IDEAL_LEN - dir_len) / dir_len
-  in
-    SPRING_K * stretch * dir
+local spring_dvel = liszt function(dir)
+  var dir_len = L.length(dir)
+  var stretch = (IDEAL_LEN - dir_len) / dir_len
+  return SPRING_K * stretch * dir
+end
+
+local accel_interior = liszt kernel(v : grid.vertices)
+  v.dvel = { 0, 0, 0 }
+  v.dpos = v.vel
+
+  -- gravity
+  v.dvel += { 0, 0, -GRAVITY }
+
+  -- spring force to neighbors
+  v.dvel +=
+    spring_dvel(v.pos - v(-1,0).pos) +
+    spring_dvel(v.pos - v( 1,0).pos) +
+    spring_dvel(v.pos - v(0,-1).pos) +
+    spring_dvel(v.pos - v(0, 1).pos)
+end
+
+local accel_boundary = liszt kernel(v : grid.vertices)
+  v.dvel = { 0, 0, 0 }
+  v.dpos = v.vel
+
+  -- gravity
+  v.dvel += { 0, 0, -GRAVITY }
+
+  -- spring force to neighbors
+  if v.xneg_depth == 0 then
+    v.dvel += spring_dvel(v.pos - v(-1,0).pos)
   end
-end)
+  if v.xpos_depth == 0 then
+    v.dvel += spring_dvel(v.pos - v(1,0).pos)
+  end
+  if v.yneg_depth == 0 then
+    v.dvel += spring_dvel(v.pos - v(0,-1).pos)
+  end
+  if v.ypos_depth == 0 then
+    v.dvel += spring_dvel(v.pos - v(0,1).pos)
+  end
+end
+
+local accel_collisions = liszt kernel(v : grid.vertices)
+  -- collision penalty
+  --var dir = v.pos - sphere_center
+  --var lendir = L.length(dir)
+  --if lendir < sphere_radius then
+  --  var stretch = (sphere_radius - lendir) / lendir
+  --  dvel += collision_spring_k * stretch * dir
+  --end
+
+  -- collision fix
+  var sphere_normal = v.pos-sphere_center
+  var sphere_dist = L.length(sphere_normal)
+  if sphere_dist < sphere_radius then
+    sphere_normal = sphere_normal/sphere_dist
+    var offset = (sphere_radius - sphere_dist) * sphere_normal
+    -- pull out the normal component
+    if L.dot(v.dvel,sphere_normal) < 0 then
+      v.dvel -= L.dot(v.dvel,sphere_normal)*sphere_normal
+    end
+    if L.dot(v.dpos,sphere_normal) < 0 then
+      v.dpos -= L.dot(v.dpos,sphere_normal)*sphere_normal
+    end
+    -- apply some degree of friction?
+    v.dvel += -FRICTION * v.dpos
+
+    -- offset the vertex to sit at the sphere surface
+    --dpos +=  + (offset / dt)
+
+    --if v.pos[2] < 0 then
+    --  dpos[2] = 0
+    --  dvel[2] = 0
+    --else
+    --  dpos = {0,0,0}
+    --  dvel = {0,0,0}
+    --end
+  end
+
+  -- timescale & update
+  v.pos += dt * v.dpos
+  v.vel += dt * v.dvel
+end
 
 local compute_acceleration = liszt kernel(v : grid.vertices)
   var dvel : L.vec3d = { 0, 0, 0 }
@@ -83,21 +158,21 @@ local compute_acceleration = liszt kernel(v : grid.vertices)
   dvel += { 0, 0, -GRAVITY }
 
   -- spring force to neighbors
-  if v.has_left then
-    var ldir = v.pos - v.left.pos
+  if v.xneg_depth == 0 then
+    var ldir = v.pos - v(-1,0).pos
     dvel += spring_dvel(ldir)
   end
-  if v.has_right then
-    var rdir = v.pos - v.right.pos
+  if v.xpos_depth == 0 then
+    var rdir = v.pos - v(1,0).pos
     dvel += spring_dvel(rdir)
   end
-  if v.has_up then
-    var udir = v.pos - v.up.pos
-    dvel += spring_dvel(udir)
-  end
-  if v.has_down then
-    var ddir = v.pos - v.down.pos
+  if v.yneg_depth == 0 then
+    var ddir = v.pos - v(0,-1).pos
     dvel += spring_dvel(ddir)
+  end
+  if v.ypos_depth == 0 then
+    var udir = v.pos - v(0,1).pos
+    dvel += spring_dvel(udir)
   end
 
   -- collision penalty
@@ -152,11 +227,11 @@ end
 local sqrt3 = math.sqrt(3)
 local draw_cloth = liszt kernel (v : grid.vertices)
   
-  if v.has_right and v.has_up then
-    var p00 = v.pos
-    var p01 = v.right.pos
-    var p10 = v.up.pos
-    var p11 = v.right.up.pos
+  if v.xpos_depth == 0 and v.ypos_depth == 0 then
+    var p00 = v(0,0).pos
+    var p01 = v(1,0).pos
+    var p10 = v(0,1).pos
+    var p11 = v(1,1).pos
 
     var norm = L.cross(p01-p00, p11-p01) +
                L.cross(p11-p01, p10-p11) +
@@ -198,8 +273,11 @@ for i=1,(total_steps+2) do
     --io.read()
   end
 
-  compute_acceleration(grid.vertices)
-  apply_update(grid.vertices)
+  accel_boundary(grid.vertices.boundary)
+  accel_interior(grid.vertices.interior)
+  accel_collisions(grid.vertices)
+  --compute_acceleration(grid.vertices)
+  --apply_update(grid.vertices)
 
 end
 
