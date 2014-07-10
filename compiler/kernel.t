@@ -272,9 +272,16 @@ L.LKernel.__call  = function (kobj, relset)
       bran.insert_data.relation._typestate.fragmented = true
     end
     if bran.delete_data then
-      local updated_size = bran.delete_data.updated_size:get()
-      bran.delete_data.relation._logical_size = updated_size
-      bran.delete_data.relation._typestate.fragmented = true
+      -- WARNING UNSAFE CONVERSION FROM UINT64 TO DOUBLE
+      local rel = bran.delete_data.relation
+      local updated_size = tonumber(bran.delete_data.updated_size:get())
+      rel._logical_size = updated_size
+      rel._typestate.fragmented = true
+
+      -- if we have too low an occupancy
+      if rel:Size() < 0.5 * rel:ConcreteSize() then
+        rel:Defrag()
+      end
     end
 end
 

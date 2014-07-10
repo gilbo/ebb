@@ -824,6 +824,86 @@ end
 
 
 
+-- Defrag
+
+
+function L.LRelation:Defrag()
+  -- NEED MORE CHECKS HERE
+
+  -- Check that all fields are on CPU:
+  for _,field in ipairs(self._fields) do
+    if field.array:location() ~= L.CPU then
+      error('Defrag on GPU unimplemented')
+    end
+  end
+  if self._is_live_mask.array:location() ~= L.CPU then
+    error('Defrag on GPU unimplemented')
+  end
+
+  -- ok, build a terra function that we can execute to compact
+  -- we can cache it!
+  local defrag_func = self._cpu_defrag_func
+  if not defrag_func then
+    -- read and write heads for copy
+    local dst = symbol(L.addr:terraType(), 'dst')
+    local src = symbol(L.addr:terraType(), 'src')
+
+    -- create data copying chunk for fields
+    local do_copy = quote end
+    for _,field in ipairs(self._fields) do
+      local ptr = field:DataPtr()
+      do_copy = quote
+        do_copy
+        ptr[dst] = ptr[src]
+      end
+    end
+
+    local liveptr = self._is_live_mask:DataPtr()
+    local addrtype = L.addr:terraType()
+    defrag_func = terra ( concrete_size : addrtype )
+      -- scan the write-head forward from start
+      -- and the read head backward from end
+      var [dst] = 0
+      var [src] = concrete_size - 1
+      while dst < src do
+        -- scan the src backwards looking for something
+        while (src < concrete_size) and -- underflow guard
+              not liveptr[src] -- haven't found something to copy yet
+        do
+          src = src - 1
+        end
+        -- exit on underflow
+        if (src >= concrete_size) then return end
+
+        -- scan the dst forward looking for space to copy into
+        while (dst < src) and liveptr[dst] do
+          dst = dst + 1
+        end
+
+        if dst < src then
+          -- do copy
+          [do_copy]
+          -- flip live bits
+          liveptr[dst] = true
+          liveptr[src] = false
+        end
+      end
+    end
+    rawset(self, '_cpu_defrag_func', defrag_func)
+  end
+
+  -- run the defrag func
+  defrag_func(self:ConcreteSize())
+
+  -- now cleanup by resizing the relation
+  local logical_size = self:Size()
+  -- since the data is now compact, we can shrink down the size
+  self:ResizeConcrete(logical_size)
+
+  -- mark as compact
+  self._typestate.fragmented = false
+end
+
 
 
 
