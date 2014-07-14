@@ -411,7 +411,7 @@ function ast.TableLookup:specialize(ctxt)
     if ast then
       return ast
     else
-      ctxt:error(self, "The table member '"..self.name.."' could not be "..
+      ctxt:error(self, "The table member '"..member.."' could not be "..
                        "resolved to a Liszt value")
       return self
     end

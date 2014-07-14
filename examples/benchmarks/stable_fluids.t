@@ -479,7 +479,7 @@ for i = 1, STEPS do
             --draw_grid(grid.cells)
             draw_particles(particles)
         vdb.vend()
-        --print(particles:Size())
+        --print(particles:ConcreteSize(), particles:Size())
     end
     --print('push key')
     --io.read()
