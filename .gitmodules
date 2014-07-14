@@ -1,0 +1,6 @@
+[submodule "external/cub"]
+	path = external/cub
+	url = git://github.com/NVlabs/cub
+[submodule "external/cudpp"]
+	path = external/cudpp
+	url = git://github.com/cudpp/cudpp
