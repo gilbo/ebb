@@ -3,13 +3,19 @@ if not terralib.cudacompile then
   return
 end
 --[[
-This example does a multi-staged reduction of an array on a GPU, by
-continually:
+This files contains examples for two strategies of array reductions on gpus:
+a multi-staged reduction that occurs entirely on the GPU, and a two-stage
+reduction that copies partially-reduced data back to the CPU.
+
+The multi-staged version works by continually:
  - copying a portion of the global data array to a block and reducing all
    elements on the block, then
  - copying the block result back to the global array.
 
-This example works for array sizes that are a multiple of the block size.
+The two-stage version reduces once across the block, then copies data back to
+the CPU and finishes the reduction there.
+
+These examples only work for array sizes that are a multiple of the block size.
 ]]
 
 
