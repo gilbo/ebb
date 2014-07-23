@@ -16,6 +16,7 @@ local liszt_dir = src:sub(2,-14)
 local enum_list = {
   {str='SEEK_SET',ctype='int',ttype=int},
   {str='SEEK_CUR',ctype='int',ttype=int},
+  {str='CLOCKS_PER_SEC',ctype='uint64_t',ttype=uint64}
 }
 
 
@@ -59,11 +60,11 @@ cuda_include ..
 [[
 
 #include "runtime/src/lmeshloader.h"
-#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
 #include <math.h>
+#include <time.h>
 
 FILE *get_stderr () { return stderr; }
 

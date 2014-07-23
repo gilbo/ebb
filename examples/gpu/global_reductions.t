@@ -38,7 +38,6 @@ local g_dim_z = cudalib.nvvm_read_ptx_sreg_nctaid_z
 
 local C = L.require 'compiler.c'
 
-
 -------------------------------------------------------------------------------
 -- Global Parameters                                                         -- 
 -------------------------------------------------------------------------------
@@ -46,7 +45,7 @@ local BLOCK_SIZE   = 1024
 local MAX_GRID_DIM = 65536
 local WARP_SIZE    = 32
 
-local N = 1024*1024*256
+local N = 1024*1024
 
 -- This symbol can be used to add shared block memory to
 -- a terra function intended to run on the GPU.
@@ -250,7 +249,7 @@ end
 
 terra launch_two_staged_reduction ()
     var input : &rtype, partial : &rtype, answer : &rtype
-    var num_blocks : uint64 = (N + BLOCK_SIZE - 1) / (BLOCK_SIZE*256)
+    var num_blocks : uint64 = (N + BLOCK_SIZE - 1) / (BLOCK_SIZE*32)
 
     checkCudaError(C.cudaMalloc([&&opaque](&input),   sizeof(rtype)*N))
     checkCudaError(C.cudaMalloc([&&opaque](&partial), sizeof(rtype)*num_blocks))
@@ -278,12 +277,28 @@ end
 -------------------------------------------------------------------------------
 -- Run script:                                                               -- 
 -------------------------------------------------------------------------------
---local sum = launch_two_staged_reduction()
-local sum = launch_single_reduction()
---local sum = launch_staged_reduction()
-
-if sum == N then
-    print("Success!")
-else
-    print("Fail! (Expected " .. tostring(N) .. ', computed ' .. tostring(sum) .. ')')
+function print_test_result(str, sum, expected, diff)
+    if sum == expected then
+        print(str .. ' test (size ' .. tostring(N) .. ') executed in ' .. string.gsub(tostring(diff),'ULL','') .. 'ms')
+    else
+        print(str .. " test FAIL! (Expected " .. tostring(expected) .. ', computed ' .. tostring(sum) .. ')')
+    end
 end
+
+local t0, t1, t2, t3, d1, d2, d3
+
+t0 = C.clock()
+local sum1 = launch_two_staged_reduction()
+t1 = C.clock()
+local sum2 = launch_single_reduction()
+t2 = C.clock()
+local sum3 = launch_staged_reduction()
+t3 = C.clock()
+
+d1 = (t1 - t0)*1000/C.CLOCKS_PER_SEC
+d2 = (t2 - t1)*1000/C.CLOCKS_PER_SEC
+d3 = (t3 - t2)*1000/C.CLOCKS_PER_SEC
+
+print_test_result("Two-staged",    sum1, N, d1)
+print_test_result("Single-staged", sum2, N, d2)
+print_test_result("Multi-staged",  sum3, N, d3)
