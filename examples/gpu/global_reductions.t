@@ -45,7 +45,7 @@ local BLOCK_SIZE   = 1024
 local MAX_GRID_DIM = 65536
 local WARP_SIZE    = 32
 
-local N = 1024*1024
+local N = 100000
 
 -- This symbol can be used to add shared block memory to
 -- a terra function intended to run on the GPU.
@@ -91,9 +91,10 @@ local block_id = macro(function() return `u(bid_x()) +
 local terra initialize_array(out : &rtype, max_i : uint64)
     var t : uint64 = tid()
     var b : uint64 = block_id()
-    var v : uint64 = t + b * u(BLOCK_SIZE) -- global index
-    if v < max_i then
-        out[v] = 1
+    var num_blocks : uint64 = g_dim_x() * g_dim_y() * g_dim_z()
+
+    for i = t + b*u(BLOCK_SIZE), max_i, u(BLOCK_SIZE)*num_blocks do
+        out[i] = 1
     end
 end
 
@@ -163,7 +164,7 @@ local checkCudaError = macro(function(code)
             C.printf("CUDA error: ")
             C.printf(C.cudaGetErrorString(code))
             C.printf("\n")
-            assert(0)
+            error(nil)
         end
     end
 end)
@@ -182,9 +183,7 @@ terra launch_single_reduction()
     checkCudaError(C.cudaMalloc([&&opaque](&output),      sizeof(rtype)*N))
 
     var grid_x : uint, grid_y : uint, grid_z : uint = get_grid_dimensions(num_blocks)
-    var launch = terralib.CUDAParams { grid_x,     grid_y, grid_z,
-                                       BLOCK_SIZE, 1,      1,
-                                       0,          nil}
+    var launch = terralib.CUDAParams { grid_x, grid_y, grid_z, BLOCK_SIZE, 1, 1, BLOCK_SIZE*sizeof(rtype), nil}
 
     checkCudaError(R.initialize_array(&launch, working_set, N))
     checkCudaError(R.block_reduce(&launch, working_set, output, N))
@@ -215,18 +214,14 @@ terra launch_staged_reduction()
     checkCudaError(C.cudaMalloc([&&opaque](&output), sizeof(rtype)*num_blocks))
 
     var grid_x : uint, grid_y : uint, grid_z : uint = get_grid_dimensions(num_blocks)
-    var launch = terralib.CUDAParams { grid_x,     grid_y, grid_z,
-                                       BLOCK_SIZE, 1,      1,
-                                       0,          nil}
+    var launch = terralib.CUDAParams { grid_x, grid_y, grid_z, BLOCK_SIZE, 1, 1, BLOCK_SIZE*sizeof(rtype), nil }
     R.initialize_array(&launch, input, N)
 
     var remaining_threads : uint64 = N
     while remaining_threads > 1 do
         var remaining_blocks = (remaining_threads + BLOCK_SIZE - 1) / BLOCK_SIZE
         grid_x, grid_y, grid_z = get_grid_dimensions(remaining_blocks)
-        var launch = terralib.CUDAParams { grid_x, grid_y, grid_z,
-                                           BLOCK_SIZE, 1, 1,
-                                           0, nil }
+        var launch = terralib.CUDAParams { grid_x, grid_y, grid_z, BLOCK_SIZE, 1, 1, BLOCK_SIZE*sizeof(rtype), nil }
 
         R.block_reduce(&launch, input, output, remaining_threads)
 
@@ -249,17 +244,18 @@ end
 
 terra launch_two_staged_reduction ()
     var input : &rtype, partial : &rtype, answer : &rtype
-    var num_blocks : uint64 = (N + BLOCK_SIZE - 1) / (BLOCK_SIZE*32)
+    var num_blocks : uint64 = (N + 8*BLOCK_SIZE - 1) / (BLOCK_SIZE*8)
 
     checkCudaError(C.cudaMalloc([&&opaque](&input),   sizeof(rtype)*N))
     checkCudaError(C.cudaMalloc([&&opaque](&partial), sizeof(rtype)*num_blocks))
     checkCudaError(C.cudaMalloc([&&opaque](&answer),  sizeof(rtype)*1))
 
     var grid_x : uint, grid_y : uint, grid_z : uint = get_grid_dimensions(num_blocks)
+    var launch  = terralib.CUDAParams { grid_x, grid_y, grid_z, BLOCK_SIZE, 1, 1, 0, nil }
     var launch1 = terralib.CUDAParams { grid_x, grid_y, grid_z, BLOCK_SIZE, 1, 1, BLOCK_SIZE*sizeof(rtype), nil}
     var launch2 = terralib.CUDAParams { 1, 1, 1,                BLOCK_SIZE, 1, 1, BLOCK_SIZE*sizeof(rtype), nil}
 
-    checkCudaError(R.initialize_array(&launch1,  input,   N))
+    checkCudaError(R.initialize_array(&launch,  input,   N))
     checkCudaError(R.two_staged_reduce(&launch1, input,   partial, N))
     checkCudaError(R.two_staged_reduce(&launch2, partial, answer,  num_blocks))
 
@@ -285,20 +281,14 @@ function print_test_result(str, sum, expected, diff)
     end
 end
 
-local t0, t1, t2, t3, d1, d2, d3
+function test_reduction(fn, name)
+    local t0, t1, sum
+    t0 = C.clock()
+    sum = fn()
+    t1 = C.clock()
+    print_test_result(name, sum, N, (t1 - t0)*1000/C.CLOCKS_PER_SEC)
+end
 
-t0 = C.clock()
-local sum1 = launch_two_staged_reduction()
-t1 = C.clock()
-local sum2 = launch_single_reduction()
-t2 = C.clock()
-local sum3 = launch_staged_reduction()
-t3 = C.clock()
-
-d1 = (t1 - t0)*1000/C.CLOCKS_PER_SEC
-d2 = (t2 - t1)*1000/C.CLOCKS_PER_SEC
-d3 = (t3 - t2)*1000/C.CLOCKS_PER_SEC
-
-print_test_result("Two-staged",    sum1, N, d1)
-print_test_result("Single-staged", sum2, N, d2)
-print_test_result("Multi-staged",  sum3, N, d3)
+--test_reduction(launch_single_reduction,     "Single-staged")
+--test_reduction(launch_staged_reduction,     "Multi-staged")
+test_reduction(launch_two_staged_reduction, "Two-staged")
