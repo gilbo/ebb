@@ -196,13 +196,13 @@ local function printOne(ctxt,output)
     end
 end
 function B.print.codegen(ast, ctxt)
-    local output = ast.params[1]
     local stmts = {}
     for i,output in ipairs(ast.params) do
         table.insert(stmts, printOne(ctxt,output))
-        local t = ast.params[i+1] and " " or "\n"
+        local t = ast.params[i+1] and " " or ""
         table.insert(stmts,`C.printf(t))
     end
+    table.insert(stmts,`C.printf("\n"))
 	return stmts
 end
 
