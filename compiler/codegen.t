@@ -7,7 +7,6 @@ local C = terralib.require 'compiler.c'
 local L = terralib.require 'compiler.lisztlib'
 
 local thread_id
-local block_sz
 local bid_x, bid_y, bid_z
 local g_dim_x, g_dim_y, g_dim_z
 local aadd_fl
@@ -15,7 +14,6 @@ local sync
 
 if terralib.cudacompile then
   thread_id = cudalib.nvvm_read_ptx_sreg_tid_x
-  block_sz  = cudalib.nvvm_read_ptx_sreg_ntid_x
   bid_x     = cudalib.nvvm_read_ptx_sreg_ctaid_x
   bid_y     = cudalib.nvvm_read_ptx_sreg_ctaid_y
   bid_z     = cudalib.nvvm_read_ptx_sreg_ctaid_z
@@ -347,7 +345,6 @@ local function reduce_global_shared_memory (global_shared_ptrs, ctxt, block_size
 
       [unrolled_block_reduce(reduceop, gtype, shared, tid, block_size)]
       if tid == 0 then
-
         escape
           if commit_final_value then
             local finalptr = ctxt:GlobalPtr(g)
@@ -355,12 +352,11 @@ local function reduce_global_shared_memory (global_shared_ptrs, ctxt, block_size
               @[finalptr] = [vec_bin_exp(reduceop, gtype,`@[finalptr],`[shared][0],gtype,gtype)]
             end
           else
-            emit quote          
+            emit quote
               [scratch_ptr][bid] = shared[0]
             end
           end
         end
-
       end
     end
   end
@@ -375,12 +371,12 @@ local function generate_final_reduce (global_shared_ptrs, ctxt, block_size)
   local final_reduce = quote
     var t  = thread_id()
     var b  = block_id()
-    var gt = t + block_sz() * b
+    var gt = t + [block_size] * b
     var num_blocks : uint64 = g_dim_x() * g_dim_y() * g_dim_z()
 
     [initialize_global_shared_memory(global_shared_ptrs, ctxt)]
 
-    for global_index = gt, [array_len], num_blocks do
+    for global_index = gt, [array_len], num_blocks*[block_size] do
       escape
         for g, shared in pairs(global_shared_ptrs) do
           local op = ctxt:globalPhase(g).reduceop
