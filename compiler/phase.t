@@ -31,6 +31,10 @@ function PhaseType:requiresExclusive()
   return false
 end
 
+function PhaseType:isCentered()
+  return self.centered
+end
+
 function PhaseType:isError()
   return not self.centered and self:requiresExclusive()
 end

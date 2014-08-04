@@ -7,15 +7,30 @@ local C = terralib.require 'compiler.c'
 local L = terralib.require 'compiler.lisztlib'
 
 local thread_id
-local block_id
+local block_sz
+local bid_x, bid_y, bid_z
+local g_dim_x, g_dim_y, g_dim_z
 local aadd_fl
+local sync
 
 if terralib.cudacompile then
   thread_id = cudalib.nvvm_read_ptx_sreg_tid_x
-  block_id  = cudalib.nvvm_read_ptx_sreg_ctaid_x
+  block_sz  = cudalib.nvvm_read_ptx_sreg_ntid_x
+  bid_x     = cudalib.nvvm_read_ptx_sreg_ctaid_x
+  bid_y     = cudalib.nvvm_read_ptx_sreg_ctaid_y
+  bid_z     = cudalib.nvvm_read_ptx_sreg_ctaid_z
+  g_dim_x   = cudalib.nvvm_read_ptx_sreg_nctaid_x
+  g_dim_y   = cudalib.nvvm_read_ptx_sreg_nctaid_y
+  g_dim_z   = cudalib.nvvm_read_ptx_sreg_nctaid_z
+
   aadd_fl   = terralib.intrinsic("llvm.nvvm.atomic.load.add.f32.p0f32", {&float,float} -> {float})
+
+  sync      = terralib.externfunction("cudaThreadSynchronize", {} -> int)
 end
 
+local block_id = macro(function() return `(bid_x() +
+                                           bid_y() * g_dim_x() + 
+                                           bid_z() * g_dim_y() * g_dim_x()) end)
 
 ----------------------------------------------------------------------------
 
@@ -46,14 +61,46 @@ end
 function Context:FieldPtr(field)
   return self.bran:getRuntimeFieldPtr(field)
 end
+function Context:GlobalScratchPtr(global, on_cpu)
+  if on_cpu then
+    return self.bran:getCPUScratchTablePtr(global)
+  else
+    return self.bran:getGPUScratchTablePtr(global)
+  end
+end
+function Context:ScratchTableSize()
+  return self.bran.cpu_scratch_table:byteSize()
+end
+function Context:cpuScratchTable()
+  return self.bran.cpu_scratch_table:ptr()
+end
+function Context:gpuScratchTable()
+  return self.bran.gpu_scratch_table:ptr()
+end
 function Context:GlobalPtr(global)
   return self.bran:getRuntimeGlobalPtr(global)
+end
+function Context:SetGlobalSharedPtrs(shared_ptrs)
+  self.global_shared_ptrs = shared_ptrs
+end
+function Context:GlobalSharedPtr(global, tid)
+  return quote
+    var tid = thread_id()
+  in
+    [self.global_shared_ptrs[global]][tid]
+  end
 end
 function Context:runtimeGerm()
   return self.bran.runtime_germ:ptr()
 end
 function Context:cpuGerm()
   return self.bran.cpu_germ:ptr()
+end
+function Context:fieldPhase(field)
+  return self.bran.kernel.field_use[field]
+end
+function Context:globalPhase(global)
+  return self.bran.kernel.global_use[global]
 end
 function Context:isLiveCheck(param_var)
   local ptr = self:FieldPtr(self.bran.relation._is_live_mask)
@@ -78,7 +125,9 @@ function Context:incrementInsertIndex()
   end
 end
 
-----------------------------------------------------------------------------
+--[[--------------------------------------------------------------------]]--
+--[[                         CPU Codegen                                ]]--
+--[[--------------------------------------------------------------------]]--
 
 local function cpu_codegen (kernel_ast, ctxt)
   ctxt:enterblock()
@@ -128,15 +177,301 @@ local function cpu_codegen (kernel_ast, ctxt)
   return r
 end
 
-local function gpu_codegen (kernel_ast, ctxt)
-  local BLOCK_SIZE = 32
 
+--[[--------------------------------------------------------------------]]--
+--[[                         GPU Codegen                                ]]--
+--[[--------------------------------------------------------------------]]--
+local checkCudaError = macro(function(code)
+    return quote
+        if code ~= 0 then
+            C.printf("CUDA ERROR: ")
+            error(C.cudaGetErrorString(code))
+        end
+    end
+end)
+
+local vprintf = terralib.externfunction("cudart:vprintf", {&int8,&int8} -> int)
+local function createbuffer(args)
+    local Buf = terralib.types.newstruct()
+    return quote
+        var buf : Buf
+        escape
+            for i,e in ipairs(args) do
+                local typ = e:gettype()
+                local field = "_"..tonumber(i)
+                typ = typ == float and double or typ
+                table.insert(Buf.entries,{field,typ})
+                emit quote
+                   buf.[field] = e
+                end
+            end
+        end
+    in
+        [&int8](&buf)
+    end
+end
+
+local printf = macro(function(fmt,...)
+    local buf = createbuffer({...})
+    return `vprintf(fmt,buf) 
+end)
+
+local function scalar_reduce_identity (ltype, reduceop)
+  if ltype == L.int then
+    if reduceop == '+' or reduceop == '-' then
+      return `0
+    elseif reduceop == '*' or reduceop == '/' then
+      return `1
+    elseif reduceop == 'min' then
+      return `[C.INT_MAX]
+    elseif reduceop == 'max' then
+      return `[C.INT_MIN]
+    end
+  elseif ltype == L.uint64 then
+    if reduceop == '+' or reduceop == '-' then
+      return `0
+    elseif reduceop == '*' or reduceop == '/' then
+      return `1
+    elseif reduceop == 'min' then
+      return `[C.ULONG_MAX]
+    elseif reduceop == 'max' then
+      return `0
+    end
+  elseif ltype == L.float then
+    if reduceop == '+' or reduceop == '-' then
+      return `0.0f
+    elseif reduceop == '*' or reduceop == '/' then
+      return `1.0f
+    elseif reduceop == 'min' then
+      return `[C.FLT_MAX]
+    elseif reduceop == 'max' then
+      return `[C.FLT_MIN]
+    end
+  elseif ltype == L.double then
+    if reduceop == '+' or reduceop == '-' then
+      return `0.0
+    elseif reduceop == '*' or reduceop == '/' then
+      return `1.0
+    elseif reduceop == 'min' then
+      return `[C.DBL_MAX]
+    elseif reduceop == 'max' then
+      return `[C.DBL_MIN]
+    end
+  elseif ltype == L.bool then
+    if reduceop == 'and' then
+      return `true
+    elseif reduceop == 'or' then
+      return `false
+    end
+  end
+  -- we should never reach this
+  error("scalar identity for reduction operator " .. reduceop .. 'on type '
+        .. tostring(ltype) ' not implemented')
+end
+
+local function reduce_identity(ltype, reduceop)
+  if not ltype:isVector() then
+    return scalar_reduce_identity(ltype, reduceop)
+  end
+  local scalar_id = scalar_reduce_identity(ltype:baseType(), reduceop)
+  return quote
+    var rid : ltype:terraType()
+    var tmp : &ltype:terraBaseType() = [&ltype:terraBaseType()](&rid)
+    for i = 0, [ltype.N] do
+      tmp[i] = [scalar_id]
+    end
+  in
+    [rid]
+  end
+end
+
+local function initialize_global_shared_memory (global_shared_ptrs, ctxt)
+  local tid = symbol(uint32)
+  local init_code = quote
+    var [tid] = thread_id()
+  end
+
+  for g, shared in pairs(global_shared_ptrs) do
+    local gtype = g.type
+    local reduceop = ctxt:globalPhase(g).reduceop
+
+    init_code = quote
+      [init_code]
+      [shared][tid] = [reduce_identity(gtype,reduceop)]
+    end
+  end
+  return init_code
+end
+
+local function unrolled_block_reduce (op, typ, ptr, tid, block_size)
+    local expr = quote end
+    local step = block_size
+
+    while (step > 1) do
+        step = step/2
+        expr = quote
+            [expr]
+            if tid < step then
+              [ptr][tid] = [vec_bin_exp(op, typ, `[ptr][tid], `[ptr][tid + step], typ, typ)]
+            end
+            cudalib.ptx_bar_sync(0)
+        end
+
+        -- Pairwise reductions over > 32 threads need to be synchronized b/c
+        -- they aren't guaranteed to be executed in lockstep, as they are
+        -- running in multiple warps.  But the store must be volatile or the
+        -- compiler might re-order them!
+        --if step > WARP_SIZE then
+        --    expr = quote [expr] cudalib.ptx_bar_sync(0) end
+        --end
+    end
+    return expr
+end
+
+local function reduce_global_shared_memory (global_shared_ptrs, ctxt, block_size, commit_final_value)
+  local tid = symbol(uint64) -- thread id
+  local bid = symbol(uint64) -- block id
+  local reduce_code = quote
+    var [tid] = thread_id()
+    var [bid] = block_id()
+  end
+
+  for g, shared in pairs(global_shared_ptrs) do
+
+    local gtype = g.type
+    local reduceop = ctxt:globalPhase(g).reduceop
+    local scratch_ptr = ctxt:GlobalScratchPtr(g)
+
+   reduce_code = quote
+      [reduce_code]
+
+      [unrolled_block_reduce(reduceop, gtype, shared, tid, block_size)]
+      if tid == 0 then
+
+        escape
+          if commit_final_value then
+            local finalptr = ctxt:GlobalPtr(g)
+            emit quote
+              @[finalptr] = [vec_bin_exp(reduceop, gtype,`@[finalptr],`[shared][0],gtype,gtype)]
+            end
+          else
+            emit quote          
+              [scratch_ptr][bid] = shared[0]
+            end
+          end
+        end
+
+      end
+    end
+  end
+
+  return reduce_code
+end
+
+local function generate_final_reduce (global_shared_ptrs, ctxt, block_size)
+  local array_len  = symbol(uint64)
+
+  -- read in all global reduction values corresponding to this (global) thread
+  local final_reduce = quote
+    var t  = thread_id()
+    var b  = block_id()
+    var gt = t + block_sz() * b
+    var num_blocks : uint64 = g_dim_x() * g_dim_y() * g_dim_z()
+
+    [initialize_global_shared_memory(global_shared_ptrs, ctxt)]
+
+    for global_index = gt, [array_len], num_blocks do
+      escape
+        for g, shared in pairs(global_shared_ptrs) do
+          local op = ctxt:globalPhase(g).reduceop
+          local typ = g.type
+          local gptr = ctxt:GlobalScratchPtr(g)
+          emit quote
+            [shared][t] = [vec_bin_exp(op, typ, `[shared][t], `[gptr][global_index], typ, typ)]
+          end
+        end
+      end
+    end
+    [reduce_global_shared_memory(global_shared_ptrs, ctxt, block_size, true)]
+  end
+
+  final_reduce = terra ([array_len])
+    [final_reduce] 
+  end
+
+  return terralib.cudacompile({final_reduce=final_reduce}).final_reduce
+end
+
+local terra get_grid_dimensions (num_blocks : uint64, max_grid_dim : uint64) : {uint, uint, uint}
+    if num_blocks < max_grid_dim then
+        return { num_blocks, 1, 1 }
+    elseif num_blocks / max_grid_dim < max_grid_dim then
+        return { max_grid_dim, (num_blocks + max_grid_dim - 1) / max_grid_dim, 1 }
+    else
+        return { max_grid_dim, max_grid_dim, (num_blocks - 1) / max_grid_dim / max_grid_dim + 1 }
+    end
+end
+
+local function allocate_reduction_space (n_blocks, global_shared_ptrs, ctxt)
+  local alloc_code = quote end
+
+  for g, _ in pairs(global_shared_ptrs) do
+    local ptr = `[ctxt:GlobalScratchPtr(g,true)]
+    alloc_code = quote
+      [alloc_code]
+      var sz = [sizeof(g.type:terraType())]*n_blocks
+      checkCudaError(C.cudaMalloc([&&opaque](&ptr), sz))
+    end
+  end
+
+  -- after initializing global scratch pointers in CPU memory,
+  -- copy pointers to GPU to be accessed during kernel invocation
+  alloc_code = quote
+    [alloc_code]
+    C.cudaMemcpy([ctxt:gpuScratchTable()],
+                 [ctxt:cpuScratchTable()],
+                 [ctxt:ScratchTableSize()],
+                 C.cudaMemcpyHostToDevice)
+  end
+
+  return alloc_code
+end
+
+local function free_reduction_space (global_shared_ptrs, ctxt)
+  local free_code = quote end
+
+  for g, _ in pairs(global_shared_ptrs) do
+    free_code = quote
+      [free_code]
+      C.cudaFree([ctxt:GlobalScratchPtr(g,true)])
+    end
+  end
+
+  return free_code
+end
+
+local function gpu_codegen (kernel_ast, ctxt)
+  local BLOCK_SIZE   = 256
+  local MAX_GRID_DIM = 65536
+
+  local shared_mem_size = 0
+  local global_shared_ptrs = { }
+  local kernel = ctxt.bran.kernel
+  local gb
+  for g, phase in pairs(kernel.global_use) do
+    if phase.reduceop then
+      gb = g
+      global_shared_ptrs[g] = cudalib.sharedmemory(g.type:terraType(), BLOCK_SIZE)
+      shared_mem_size = shared_mem_size + sizeof(g.type:terraType()) * BLOCK_SIZE
+    end
+  end
+  ctxt:SetGlobalSharedPtrs(global_shared_ptrs)
   ctxt:enterblock()
     -- declare the symbol for iteration
     local param = symbol(L.row(ctxt.bran.relation):terraType())
     ctxt:localenv()[kernel_ast.name] = param
 
-    local body  = quote
+    local body = quote
       if [ctxt:isLiveCheck(param)] then
         [kernel_ast.body:codegen(ctxt)]
       end
@@ -145,14 +480,28 @@ local function gpu_codegen (kernel_ast, ctxt)
     local kernel_body = quote
       var id : uint64 = block_id() * BLOCK_SIZE + thread_id()
       var [param] = id
+
+      -- initialize shared memory for global reductions
+      [initialize_global_shared_memory(global_shared_ptrs, ctxt)]
+      cudalib.ptx_bar_sync(0)
+      
       if [param] < [ctxt:runtimeGerm()].n_rows then
         [body]
       end
+
+      -- reduce L.globals to one value and copy back to GPU global memory
+      cudalib.ptx_bar_sync(0)
+      [reduce_global_shared_memory(global_shared_ptrs, ctxt, BLOCK_SIZE)]
     end
 
     if ctxt.bran.subset then
       kernel_body = quote
         var id : uint64 = block_id() * BLOCK_SIZE + thread_id()
+        
+        -- initialize shared memory for global reductions
+        [initialize_global_shared_memory(global_shared_ptrs, ctxt)]
+        cudalib.ptx_bar_sync(0)
+
         if [ctxt:runtimeGerm()].use_boolmask then
           var [param] = id
           if [param] < [ctxt:runtimeGerm()].n_rows and
@@ -166,6 +515,10 @@ local function gpu_codegen (kernel_ast, ctxt)
             [body]
           end
         end
+
+        -- reduce L.globals to one value and copy back to GPU global memory
+        cudalib.ptx_bar_sync(0)
+        [reduce_global_shared_memory(global_shared_ptrs, kernel_ast, ctxt, BLOCK_SIZE)]
       end
     end
   ctxt:leaveblock()
@@ -174,28 +527,42 @@ local function gpu_codegen (kernel_ast, ctxt)
     [kernel_body]
   end
   local M = terralib.cudacompile { cuda_kernel = cuda_kernel }
+  local reduce_global_scratch_values = generate_final_reduce(global_shared_ptrs,ctxt,BLOCK_SIZE)
   -- germ type will have a use_boolmask field only if it
   -- was generated for a subset kernel
   if ctxt.bran.subset then
     local launcher = terra ()
       var n_blocks = uint(C.ceil(
         [ctxt:cpuGerm()].n_rows / float(BLOCK_SIZE)))
+      var grid_x : uint, grid_y : uint, grid_z : uint = get_grid_dimensions(n_blocks, MAX_GRID_DIM)
       var params = terralib.CUDAParams {
-        n_blocks, 1, 1,
+        grid_x, grid_y, grid_z,
         BLOCK_SIZE, 1, 1,
-        0, nil
+        shared_mem_size, nil
       }
 
       if not [ctxt:cpuGerm()].use_boolmask then
         var n_blocks = uint(C.ceil(
           [ctxt:cpuGerm()].index_size / float(BLOCK_SIZE)))
+        var grid_x : uint, grid_y : uint, grid_z : uint = get_grid_dimensions(n_blocks, MAX_GRID_DIM)
         params = terralib.CUDAParams {
-          n_blocks, 1, 1,
+          grid_x, grid_y, grid_z,
           BLOCK_SIZE, 1, 1,
-          0, nil
+          shared_mem_size, nil
         }
       end
+
+      [allocate_reduction_space(n_blocks,global_shared_ptrs, ctxt)]
       M.cuda_kernel(&params)
+      sync() -- flush print streams
+
+      var reduce_params = terralib.CUDAParams {
+        1,1,1,
+        BLOCK_SIZE,1,1,
+        shared_mem_size, nil
+      }
+      reduce_global_scratch_values(&reduce_params,n_blocks)
+      [free_reduction_space(global_shared_ptrs, ctxt)]
     end
     return launcher
 
@@ -203,12 +570,23 @@ local function gpu_codegen (kernel_ast, ctxt)
     local launcher = terra ()
       var n_blocks = uint(C.ceil(
         [ctxt:cpuGerm()].n_rows / float(BLOCK_SIZE)))
+      var grid_x : uint, grid_y : uint, grid_z : uint = get_grid_dimensions(n_blocks, MAX_GRID_DIM)
       var params = terralib.CUDAParams {
-        n_blocks, 1, 1,
+        grid_x, grid_y, grid_z,
         BLOCK_SIZE, 1, 1,
-        0, nil
+        shared_mem_size, nil
       }
+      [allocate_reduction_space(n_blocks,global_shared_ptrs, ctxt)]
       M.cuda_kernel(&params)
+      sync() -- flush print streams
+
+      var reduce_params = terralib.CUDAParams {
+        1,1,1,
+        BLOCK_SIZE,1,1,
+        shared_mem_size, nil
+      }
+      reduce_global_scratch_values(&reduce_params,n_blocks)
+      [free_reduction_space(global_shared_ptrs, ctxt)]
     end
     return launcher
   end
@@ -227,7 +605,9 @@ function Codegen.codegen (kernel_ast, bran)
 end
 
 
-----------------------------------------------------------------------------
+--[[--------------------------------------------------------------------]]--
+--[[                      Shared Codegen                                ]]--
+--[[--------------------------------------------------------------------]]--
 
 function ast.AST:codegen (ctxt)
   error("Codegen not implemented for AST node " .. self.kind)
@@ -397,20 +777,10 @@ local function bin_exp (op, lhe, rhe)
   end
 end
 
-local gpu_reductions_for_type = {
-  [L.float] = {
-      ['+'] = true,
-      ['-'] = true,
-    },
-  [L.double] = {}, -- unsupported types
-  [L.int]    = {},
-  [L.uint64] = {},
-  [L.bool]   = {},
-}
 
-local function red_exp (op, typ, lvalptr, update)
+local function atomic_gpu_red_exp (op, typ, lvalptr, update)
   local internal_error = 'unsupported reduction, internal error; '..
-                         'this should be guaraded against in the typechecker'
+                         'this should be guarded against in the typechecker'
   if typ == L.float then
     if     op == '+' then return `aadd_fl(lvalptr, update)
     elseif op == '-' then return `aadd_fl(lvalptr, -update)
@@ -483,9 +853,9 @@ function vec_bin_exp(op, result_typ, lhe, rhe, lhtyp, rhtyp)
   return q
 end
 
-function vec_red_exp(op, result_typ, lval, rhe, rhtyp)
+function atomic_gpu_vec_red_exp(op, result_typ, lval, rhe, rhtyp)
   if not result_typ:isVector() then
-    return red_exp(op, result_typ, `&lval, rhe)
+    return atomic_gpu_red_exp(op, result_typ, `&lval, rhe)
   end
 
   local N = result_typ.N
@@ -497,7 +867,7 @@ function vec_red_exp(op, result_typ, lval, rhe, rhtyp)
   for i = 0, N-1 do
     result = quote
       [result]
-      [red_exp(op, result_typ:baseType(), `v+i, rhcoords[i+1])]
+      [atomic_gpu_red_exp(op, result_typ:baseType(), `v+i, rhcoords[i+1])]
     end
   end
   return quote
@@ -523,9 +893,10 @@ end
 function ast.GlobalReduce:codegen(ctxt)
   -- GPU impl:
   if ctxt:onGPU() then
-    local lval = self.global:codegen(ctxt)
+    local lval = ctxt:GlobalSharedPtr(self.global.global)
     local rexp = self.exp:codegen(ctxt)
-    return vec_red_exp(self.reduceop, self.global.node_type, lval, rexp, self.exp.node_type)
+    local rhs = vec_bin_exp(self.reduceop, self.global.node_type, lval, rexp, self.global.node_type, self.exp.node_type)
+    return quote [lval] = [rhs] end
   end
 
   -- CPU impl forwards to assignment codegen
@@ -539,10 +910,11 @@ end
 
 
 function ast.FieldWrite:codegen (ctxt)
-  if ctxt:onGPU() and self.reduceop then
+  local phase = ctxt:fieldPhase(self.fieldaccess.field)
+  if ctxt:onGPU() and self.reduceop and not phase:isCentered() then
     local lval = self.fieldaccess:codegen(ctxt)
     local rexp = self.exp:codegen(ctxt)
-    return vec_red_exp(self.reduceop, self.fieldaccess.node_type, lval, rexp, self.exp.node_type)
+    return atomic_gpu_vec_red_exp(self.reduceop, self.fieldaccess.node_type, lval, rexp, self.exp.node_type)
   else
     -- just re-direct to an assignment statement otherwise
     local assign = ast.Assignment:DeriveFrom(self)
