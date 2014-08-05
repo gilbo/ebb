@@ -381,16 +381,18 @@ function Bran:generate()
 
   -- allocate space to keep track of pointers to memory allocated
   -- for GPU tree-reductions on an invocation-by-invocation basis
-  bran.cpu_scratch_table = DataArray.New{
-    size=1,
-    type=bran.scratch_table_template:TerraStruct(),
-    processor=L.CPU
-  }
-  bran.gpu_scratch_table = DataArray.New{
-    size=1,
-    type=bran.scratch_table_template:TerraStruct(),
-    processor=L.GPU
-  }
+  if bran.location == L.GPU then
+    bran.cpu_scratch_table = DataArray.New{
+      size=1,
+      type=bran.scratch_table_template:TerraStruct(),
+      processor=L.CPU
+    }
+    bran.gpu_scratch_table = DataArray.New{
+      size=1,
+      type=bran.scratch_table_template:TerraStruct(),
+      processor=L.GPU
+    }
+  end
   -- compile an executable
   bran.executable = codegen.codegen(typed_ast, bran)
 end
