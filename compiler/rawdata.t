@@ -138,6 +138,10 @@ function DataArray:free()
   end
 end
 
+function DataArray:byteSize()
+  return self:size() * sizeof(self._type)
+end
+
 -- copy as much data as possible given sizes
 function DataArray:copy(src, size)
   local dst = self

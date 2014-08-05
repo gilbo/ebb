@@ -151,6 +151,34 @@ function GermTemplate:isGenerated()
 end
 
 
+-------------------------------------------------------------------------------
+--[[ GPU Global scratchpad                                                 ]]--
+-------------------------------------------------------------------------------
+-- Create a struct to hold pointers to memory allocated on a per-kernel basis
+-- This is kept separate from the Germ so that we do not have to copy the germ back
+-- and forth from the CPU every time a kernel is run.
+local ScratchTableTemplate = {}
+ScratchTableTemplate.__index = ScratchTableTemplate
+function ScratchTableTemplate.New()
+  return setmetatable({
+      globals = terralib.newlist()
+    },
+    ScratchTableTemplate)
+end
+
+function ScratchTableTemplate:addGlobal(name, typ)
+  table.insert(self.globals, {field=name, type=&typ})
+end
+
+function ScratchTableTemplate:TerraStruct()
+  if self.terrastruct then return self.terrastruct end
+
+  local terrastruct = terralib.types.newstruct(self.name)
+  for _, v in ipairs(self.globals) do table.insert(terrastruct.entries, v) end
+  self.terrastruct = terrastruct
+  return terrastruct
+end
+
 
 -------------------------------------------------------------------------------
 --[[ Kernels                                                               ]]--
@@ -310,6 +338,7 @@ function Bran:generate()
   end
 
   bran.germ_template = GermTemplate.New()
+  bran.scratch_table_template = ScratchTableTemplate.New()
 
   -- fix the mapping for the fields before compiling the executable
   bran.field_ids    = {}
@@ -335,7 +364,6 @@ function Bran:generate()
     bran:generateDeletes()
   end
 
-
   -- allocate memory for 1-2 copies of the germ
   bran.cpu_germ = DataArray.New{
     size = 1,
@@ -351,6 +379,18 @@ function Bran:generate()
     }
   end
 
+  -- allocate space to keep track of pointers to memory allocated
+  -- for GPU tree-reductions on an invocation-by-invocation basis
+  bran.cpu_scratch_table = DataArray.New{
+    size=1,
+    type=bran.scratch_table_template:TerraStruct(),
+    processor=L.CPU
+  }
+  bran.gpu_scratch_table = DataArray.New{
+    size=1,
+    type=bran.scratch_table_template:TerraStruct(),
+    processor=L.GPU
+  }
   -- compile an executable
   bran.executable = codegen.codegen(typed_ast, bran)
 end
@@ -381,6 +421,7 @@ function Bran:getGlobalId(global)
 
     self.global_ids[global] = id
     self.germ_template:addGlobal(id, global.type:terraType())
+    self.scratch_table_template:addGlobal(id, global.type:terraType())
   end
   return id
 end
@@ -398,6 +439,14 @@ end
 function Bran:getRuntimeFieldPtr(field)
   local id = self:getFieldId(field)
   return `[self.runtime_germ:ptr()].[id]
+end
+function Bran:getCPUScratchTablePtr(global)
+  local id = self:getGlobalId(global)
+  return `[self.cpu_scratch_table:ptr()].[id]
+end
+function Bran:getGPUScratchTablePtr(global)
+  local id = self:getGlobalId(global)
+  return `[self.gpu_scratch_table:ptr()].[id]
 end
 function Bran:getRuntimeGlobalPtr(global)
   local id = self:getGlobalId(global)

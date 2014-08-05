@@ -3,13 +3,12 @@ local Grid  = L.require 'domains.grid'
 
 L.default_processor = L.GPU
 
-local xn = 2
+local xn = 17
 local yn = xn
 
 local grid = Grid.NewGrid2d{size           = {xn, yn},
                             origin         = {0, 0},
-                            width          = 1,
-                            height         = 1,
+                            width          = {1, 1},
                             boundary_depth = {1, 1},
                             periodic_boundary = {true, true} }
 

@@ -8,6 +8,7 @@ local print_stuff = liszt kernel(f : mesh.faces)
     L.print(true)
     L.print(4)
     L.print(2.2)
+    L.print()
     var x = 2 + 3
     L.print(x)
     L.print(v)

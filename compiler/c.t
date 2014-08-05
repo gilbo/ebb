@@ -16,7 +16,14 @@ local liszt_dir = src:sub(2,-14)
 local enum_list = {
   {str='SEEK_SET',ctype='int',ttype=int},
   {str='SEEK_CUR',ctype='int',ttype=int},
-  {str='CLOCKS_PER_SEC',ctype='uint64_t',ttype=uint64}
+  {str='CLOCKS_PER_SEC',ctype='uint64_t',ttype=uint64},
+  {str="INT_MIN",ctype='int32_t',ttype=int32},
+  {str="INT_MAX",ctype='int32_t',ttype=int32},
+  {str="ULONG_MAX",ctype='uint64_t',ttype=uint64},
+  {str="FLT_MIN",ctype='float',ttype=float},
+  {str="FLT_MAX",ctype='float',ttype=float},
+  {str="DBL_MIN",ctype='double',ttype=double},
+  {str="DBL_MAX",ctype='double',ttype=double}
 }
 
 
@@ -63,6 +70,8 @@ cuda_include ..
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <float.h>
+#include <limits.h>
 #include <math.h>
 #include <time.h>
 
