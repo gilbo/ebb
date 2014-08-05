@@ -11,12 +11,14 @@ function shift(x,y,z)
 end
 
 function check(x,y,z)
+	M.vertices.position:MoveTo(L.CPU)
 	for i = 0, M.vertices:Size() - 1 do
 		local v = M.vertices.position:DataPtr()[i]
 		assert(v.d[0] == x)
 		assert(v.d[1] == y)
 		assert(v.d[2] == z)
 	end
+	M.vertices.position:MoveTo(L.default_processor)
 end
 
 shift(0,0,0)
