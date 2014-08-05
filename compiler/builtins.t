@@ -4,6 +4,7 @@ package.loaded["compiler.builtins"] = B
 local L = terralib.require "compiler.lisztlib"
 local T = terralib.require "compiler.types"
 local C = terralib.require "compiler.c"
+local G = terralib.require "compiler.gpu_util"
 
 ---------------------------------------------
 --[[ Builtin functions                   ]]--
@@ -140,7 +141,6 @@ function B.assert.codegen(ast, ctxt)
     end
 end
 
-
 B.print = Builtin.new(print)
 
 function B.print.check(ast, ctxt)
@@ -156,15 +156,19 @@ function B.print.check(ast, ctxt)
     end
 end
 
-local function printOne(ctxt,output)
+local function buildPrintSpec(ctxt, output, printSpec, elemQuotes, definitions)
     local lt   = output.node_type
     local tt   = lt:terraType()
     local code = output:codegen(ctxt)
+
     if lt:isVector() then
-        local printSpec = "{"
+        printSpec = printSpec .. "{"
         local sym = symbol()
-        local elemQuotes = {}
         local bt = lt:baseType()
+        definitions = quote
+            [definitions]
+            var [sym] : tt = [code]
+        end
         for i = 0, lt.N - 1 do
             if bt == L.float or bt == L.double then
                 printSpec = printSpec .. " %f"
@@ -180,30 +184,40 @@ local function printOne(ctxt,output)
             end
         end
         printSpec = printSpec .. " }"
-        return quote
-            var [sym] : tt = code
-        in
-            C.printf(printSpec, elemQuotes)
-        end
+
     elseif lt == L.bool  then
-        return quote C.printf("%s", terralib.select(code, "true", "false")) end
+        table.insert(elemQuotes, `terralib.select(code, "true", "false"))
+        printSpec = printSpec .. "%s"
     elseif lt == L.float or lt == L.double then
-        return quote C.printf("%f", [double](code)) end
+        table.insert(elemQuotes, `[double](code))
+        printSpec = printSpec .. "%f"
 	elseif lt:isNumeric() or lt:isRow() then
-        return quote C.printf("%d", code) end
+        table.insert(elemQuotes, `code)
+        printSpec = printSpec .. '%d'
     else
         assert(false and "printed object should always be number, bool, or vector")
     end
+    return printSpec, elemQuotes, definitions
+
 end
+
 function B.print.codegen(ast, ctxt)
-    local stmts = {}
+    local printSpec   = ''
+    local elemQuotes  = {}
+    local definitions = quote end
+
     for i,output in ipairs(ast.params) do
-        table.insert(stmts, printOne(ctxt,output))
+        printSpec, elemQuotes, definitions = buildPrintSpec(ctxt, output, printSpec, elemQuotes, definitions)
         local t = ast.params[i+1] and " " or ""
-        table.insert(stmts,`C.printf(t))
+        printSpec = printSpec .. t
     end
-    table.insert(stmts,`C.printf("\n"))
-	return stmts
+    printSpec = printSpec .. "\n"
+
+    local printf = C.printf
+    if (ctxt:onGPU()) then
+        printf = G.printf
+    end
+	return quote [definitions] in printf(printSpec, elemQuotes) end
 end
 
 

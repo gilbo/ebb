@@ -5,30 +5,16 @@ local ast = require "compiler.ast"
 
 local C = terralib.require 'compiler.c'
 local L = terralib.require 'compiler.lisztlib'
+local G = terralib.require 'compiler.gpu_util'
 
-local thread_id
-local bid_x, bid_y, bid_z
-local g_dim_x, g_dim_y, g_dim_z
 local aadd_fl
 local sync
 
 if terralib.cudacompile then
-  thread_id = cudalib.nvvm_read_ptx_sreg_tid_x
-  bid_x     = cudalib.nvvm_read_ptx_sreg_ctaid_x
-  bid_y     = cudalib.nvvm_read_ptx_sreg_ctaid_y
-  bid_z     = cudalib.nvvm_read_ptx_sreg_ctaid_z
-  g_dim_x   = cudalib.nvvm_read_ptx_sreg_nctaid_x
-  g_dim_y   = cudalib.nvvm_read_ptx_sreg_nctaid_y
-  g_dim_z   = cudalib.nvvm_read_ptx_sreg_nctaid_z
-
   aadd_fl   = terralib.intrinsic("llvm.nvvm.atomic.load.add.f32.p0f32", {&float,float} -> {float})
 
   sync      = terralib.externfunction("cudaThreadSynchronize", {} -> int)
 end
-
-local block_id = macro(function() return `(bid_x() +
-                                           bid_y() * g_dim_x() + 
-                                           bid_z() * g_dim_y() * g_dim_x()) end)
 
 ----------------------------------------------------------------------------
 
@@ -83,7 +69,7 @@ function Context:SetGlobalSharedPtrs(shared_ptrs)
 end
 function Context:GlobalSharedPtr(global, tid)
   return quote
-    var tid = thread_id()
+    var tid = G.thread_id()
   in
     [self.global_shared_ptrs[global]][tid]
   end
@@ -188,32 +174,6 @@ local checkCudaError = macro(function(code)
     end
 end)
 
-local vprintf = terralib.externfunction("cudart:vprintf", {&int8,&int8} -> int)
-local function createbuffer(args)
-    local Buf = terralib.types.newstruct()
-    return quote
-        var buf : Buf
-        escape
-            for i,e in ipairs(args) do
-                local typ = e:gettype()
-                local field = "_"..tonumber(i)
-                typ = typ == float and double or typ
-                table.insert(Buf.entries,{field,typ})
-                emit quote
-                   buf.[field] = e
-                end
-            end
-        end
-    in
-        [&int8](&buf)
-    end
-end
-
-local printf = macro(function(fmt,...)
-    local buf = createbuffer({...})
-    return `vprintf(fmt,buf) 
-end)
-
 local function scalar_reduce_identity (ltype, reduceop)
   if ltype == L.int then
     if reduceop == '+' or reduceop == '-' then
@@ -286,7 +246,7 @@ end
 local function initialize_global_shared_memory (global_shared_ptrs, ctxt)
   local tid = symbol(uint32)
   local init_code = quote
-    var [tid] = thread_id()
+    var [tid] = G.thread_id()
   end
 
   for g, shared in pairs(global_shared_ptrs) do
@@ -330,8 +290,8 @@ local function reduce_global_shared_memory (global_shared_ptrs, ctxt, block_size
   local tid = symbol(uint64) -- thread id
   local bid = symbol(uint64) -- block id
   local reduce_code = quote
-    var [tid] = thread_id()
-    var [bid] = block_id()
+    var [tid] = G.thread_id()
+    var [bid] = G.block_id()
   end
 
   for g, shared in pairs(global_shared_ptrs) do
@@ -369,10 +329,10 @@ local function generate_final_reduce (global_shared_ptrs, ctxt, block_size)
 
   -- read in all global reduction values corresponding to this (global) thread
   local final_reduce = quote
-    var t  = thread_id()
-    var b  = block_id()
+    var t  = G.thread_id()
+    var b  = G.block_id()
     var gt = t + [block_size] * b
-    var num_blocks : uint64 = g_dim_x() * g_dim_y() * g_dim_z()
+    var num_blocks : uint64 = G.num_blocks()
 
     [initialize_global_shared_memory(global_shared_ptrs, ctxt)]
 
@@ -396,16 +356,6 @@ local function generate_final_reduce (global_shared_ptrs, ctxt, block_size)
   end
 
   return terralib.cudacompile({final_reduce=final_reduce}).final_reduce
-end
-
-local terra get_grid_dimensions (num_blocks : uint64, max_grid_dim : uint64) : {uint, uint, uint}
-    if num_blocks < max_grid_dim then
-        return { num_blocks, 1, 1 }
-    elseif num_blocks / max_grid_dim < max_grid_dim then
-        return { max_grid_dim, (num_blocks + max_grid_dim - 1) / max_grid_dim, 1 }
-    else
-        return { max_grid_dim, max_grid_dim, (num_blocks - 1) / max_grid_dim / max_grid_dim + 1 }
-    end
 end
 
 local function allocate_reduction_space (n_blocks, global_shared_ptrs, ctxt)
@@ -474,7 +424,7 @@ local function gpu_codegen (kernel_ast, ctxt)
     end
 
     local kernel_body = quote
-      var id : uint64 = block_id() * BLOCK_SIZE + thread_id()
+      var id : uint64 = G.block_id() * BLOCK_SIZE + G.thread_id()
       var [param] = id
 
       -- initialize shared memory for global reductions
@@ -492,7 +442,7 @@ local function gpu_codegen (kernel_ast, ctxt)
 
     if ctxt.bran.subset then
       kernel_body = quote
-        var id : uint64 = block_id() * BLOCK_SIZE + thread_id()
+        var id : uint64 = G.block_id() * BLOCK_SIZE + G.thread_id()
         
         -- initialize shared memory for global reductions
         [initialize_global_shared_memory(global_shared_ptrs, ctxt)]
@@ -530,7 +480,8 @@ local function gpu_codegen (kernel_ast, ctxt)
     local launcher = terra ()
       var n_blocks = uint(C.ceil(
         [ctxt:cpuGerm()].n_rows / float(BLOCK_SIZE)))
-      var grid_x : uint, grid_y : uint, grid_z : uint = get_grid_dimensions(n_blocks, MAX_GRID_DIM)
+      var grid_x : uint, grid_y : uint, grid_z : uint = 
+        G.get_grid_dimensions(n_blocks, MAX_GRID_DIM)
       var params = terralib.CUDAParams {
         grid_x, grid_y, grid_z,
         BLOCK_SIZE, 1, 1,
@@ -540,7 +491,8 @@ local function gpu_codegen (kernel_ast, ctxt)
       if not [ctxt:cpuGerm()].use_boolmask then
         var n_blocks = uint(C.ceil(
           [ctxt:cpuGerm()].index_size / float(BLOCK_SIZE)))
-        var grid_x : uint, grid_y : uint, grid_z : uint = get_grid_dimensions(n_blocks, MAX_GRID_DIM)
+        var grid_x : uint, grid_y : uint, grid_z : uint = 
+          G.get_grid_dimensions(n_blocks, MAX_GRID_DIM)
         params = terralib.CUDAParams {
           grid_x, grid_y, grid_z,
           BLOCK_SIZE, 1, 1,
@@ -566,7 +518,8 @@ local function gpu_codegen (kernel_ast, ctxt)
     local launcher = terra ()
       var n_blocks = uint(C.ceil(
         [ctxt:cpuGerm()].n_rows / float(BLOCK_SIZE)))
-      var grid_x : uint, grid_y : uint, grid_z : uint = get_grid_dimensions(n_blocks, MAX_GRID_DIM)
+      var grid_x : uint, grid_y : uint, grid_z : uint =
+        G.get_grid_dimensions(n_blocks, MAX_GRID_DIM)
       var params = terralib.CUDAParams {
         grid_x, grid_y, grid_z,
         BLOCK_SIZE, 1, 1,
