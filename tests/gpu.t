@@ -27,14 +27,13 @@ terralib.require 'tests.subsets'
 ------------------------
 -- Broken test cases: --
 ------------------------
---terralib.require 'tests.fieldreduce' -- BUS error
---terralib.require 'tests.fieldwrite'  -- BUS error
+terralib.require 'tests.fieldreduce' -- BUS error
+terralib.require 'tests.fieldwrite'  -- BUS error
 --terralib.require 'tests.functions'   -- cuda compile error
 --terralib.require 'tests.global'      -- reduction support for integer arithmetic
 --terralib.require 'tests.luabuiltins' -- cuda compile error
 --terralib.require 'tests.minmax'      -- reduction support for max/double
 --terralib.require 'tests.nest'        -- cuda compile error
---terralib.require 'tests.print'
 --terralib.require 'tests.terrabridge' -- cudacompile error
 --terralib.require 'tests.vecindex'    -- reduction support +/double
 --terralib.require 'tests.vector'      -- reduction support +/double
