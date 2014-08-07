@@ -22,10 +22,13 @@ terralib.require 'tests.fields'
 terralib.require 'tests.global'
 terralib.require 'tests.kerneldecl'
 terralib.require 'tests.length'
+terralib.require 'tests.minmax'
 terralib.require 'tests.meshsum'
 terralib.require 'tests.phase'
 terralib.require 'tests.shadow'
 terralib.require 'tests.subsets'
+terralib.require 'tests.vecindex'
+terralib.require 'tests.vector'
 
 
 -- Prints stuff...
@@ -35,10 +38,7 @@ terralib.require 'tests.subsets'
 ------------------------
 -- Broken test cases: --
 ------------------------
---terralib.require 'tests.minmax'      -- reduction support for max/double
 --terralib.require 'tests.nest'        -- cuda compile error
 --terralib.require 'tests.terrabridge' -- cudacompile error
---terralib.require 'tests.vecindex'    -- reduction support +/double
---terralib.require 'tests.vector'      -- reduction support +/double
 
 
