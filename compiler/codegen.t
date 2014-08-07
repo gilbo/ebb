@@ -227,6 +227,12 @@ local function scalar_reduce_identity (ltype, reduceop)
         .. tostring(ltype) ' not implemented')
 end
 
+function tree_reduce_op (reduceop)
+  if reduceop == '-' then return '+' end
+  if reduceop == '/' then return '*' end
+  return reduceop
+end
+
 local function reduce_identity(ltype, reduceop)
   if not ltype:isVector() then
     return scalar_reduce_identity(ltype, reduceop)
@@ -265,6 +271,7 @@ local function unrolled_block_reduce (op, typ, ptr, tid, block_size)
     local expr = quote end
     local step = block_size
 
+    op = tree_reduce_op(op)
     while (step > 1) do
         step = step/2
         expr = quote
@@ -680,29 +687,25 @@ function ast.Name:codegen(ctxt)
   return `[s]
 end
 
-local function min(lhe, rhe)
+local minexp = function(lhe, rhe)
   return quote
     var a = [lhe]
     var b = [rhe]
-    var min = a
-    if b < a then
-      min = b
-    end
-    in
-    min
+    var result = a
+    if result > b then result = b end
+  in
+    result
   end
 end
 
-local function max(lhe, rhe)
+local maxexp = function(lhe, rhe)
   return quote
     var a = [lhe]
     var b = [rhe]
-    var max = a
-    if b > a then
-      max = b
-    end
-    in
-    max
+    var result = a
+    if result < b then result = b end
+  in
+    result
   end
 end
 
@@ -721,8 +724,8 @@ local function bin_exp (op, lhe, rhe)
   elseif op == '>='  then return `[lhe] >=  [rhe]
   elseif op == '=='  then return `[lhe] ==  [rhe]
   elseif op == '~='  then return `[lhe] ~=  [rhe]
-  elseif op == 'max' then return max(lhe, rhe)
-  elseif op == 'min' then return min(lhe, rhe)
+  elseif op == 'max' then return maxexp(lhe, rhe)
+  elseif op == 'min' then return minexp(lhe, rhe)
   end
 end
 
