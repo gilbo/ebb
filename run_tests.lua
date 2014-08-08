@@ -55,18 +55,18 @@ for line in io.popen(lscmd):lines() do
             table.insert(disabled, file)
         else
             print(file)
+            local should_fail = (file:match("fails/") ~= nil)
             local execstring = "./liszt " .. file
             -- If we expect output from this test, log stdout
             if out_file then
                 execstring = execstring .. " > .test_out"
+            elseif should_fail then
+                execstring = execstring .. " > /dev/null 2>&1"
             end
+
             --things in the fail directory should cause terra compiler errors
             --we dont check for the particular error
-            --but we do check to see that the "Errors reported.." message prints
-            --which suggests that the error was reported gracefully
-            --(if the compiler bites it before it finishes typechecking then it will not print this)
             local success = os.execute(execstring)
-            local should_fail = (file:match("fails/") ~= nil)
             -- if we expect output, modulate the success appropriately
             if out_file and success == 0 then
                 -- compare .test_out to out_file
