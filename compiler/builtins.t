@@ -176,6 +176,9 @@ local function buildPrintSpec(ctxt, output, printSpec, elemQuotes, definitions)
             elseif bt == L.int then
                 printSpec = printSpec .. " %d"
                 table.insert(elemQuotes, `sym.d[i])
+            elseif bt == L.uint64 then
+                printSpec = printSpec .. " %lu"
+                table.inser(elemQuotes, `sym.d[i])
             elseif bt == L.bool then
                 printSpec = printSpec .. " %s"
                 table.insert(elemQuotes, `terralib.select(sym.d[i], "true", "false"))
@@ -191,9 +194,12 @@ local function buildPrintSpec(ctxt, output, printSpec, elemQuotes, definitions)
     elseif lt == L.float or lt == L.double then
         table.insert(elemQuotes, `[double](code))
         printSpec = printSpec .. "%f"
-	elseif lt:isNumeric() or lt:isRow() then
+	elseif lt == L.int then
         table.insert(elemQuotes, `code)
         printSpec = printSpec .. '%d'
+    elseif lt == L.uint64 or lt:isRow() then
+        table.insert(elemQuotes, `code)
+        printSpec = printSpec .. '%lu'        
     else
         assert(false and "printed object should always be number, bool, or vector")
     end
