@@ -7,14 +7,6 @@ local C = terralib.require 'compiler.c'
 local L = terralib.require 'compiler.lisztlib'
 local G = terralib.require 'compiler.gpu_util'
 
-local aadd_fl
-local sync
-
-if terralib.cudacompile then
-  aadd_fl   = terralib.intrinsic("llvm.nvvm.atomic.load.add.f32.p0f32", {&float,float} -> {float})
-
-  sync      = terralib.externfunction("cudaThreadSynchronize", {} -> int)
-end
 
 ----------------------------------------------------------------------------
 
@@ -23,8 +15,8 @@ Context.__index = Context
 
 function Context.new(env, bran)
     local ctxt = setmetatable({
-        env     = env,
-        bran    = bran,
+        env  = env,
+        bran = bran,
     }, Context)
     return ctxt
 end
@@ -279,7 +271,7 @@ local function unrolled_block_reduce (op, typ, ptr, tid, block_size)
             if tid < step then
               [ptr][tid] = [vec_bin_exp(op, typ, `[ptr][tid], `[ptr][tid + step], typ, typ)]
             end
-            cudalib.ptx_bar_sync(0)
+            G.barrier()
         end
 
         -- Pairwise reductions over > 32 threads need to be synchronized b/c
@@ -287,7 +279,7 @@ local function unrolled_block_reduce (op, typ, ptr, tid, block_size)
         -- running in multiple warps.  But the store must be volatile or the
         -- compiler might re-order them!
         --if step > WARP_SIZE then
-        --    expr = quote [expr] cudalib.ptx_bar_sync(0) end
+        --    expr = quote [expr] G.barrier()
         --end
     end
     return expr
@@ -436,14 +428,14 @@ local function gpu_codegen (kernel_ast, ctxt)
 
       -- initialize shared memory for global reductions
       [initialize_global_shared_memory(global_shared_ptrs, ctxt)]
-      cudalib.ptx_bar_sync(0)
+      G.barrier()
       
       if [param] < [ctxt:runtimeGerm()].n_rows then
         [body]
       end
 
       -- reduce L.globals to one value and copy back to GPU global memory
-      cudalib.ptx_bar_sync(0)
+      G.barrier()
       [reduce_global_shared_memory(global_shared_ptrs, ctxt, BLOCK_SIZE)]
     end
 
@@ -453,7 +445,7 @@ local function gpu_codegen (kernel_ast, ctxt)
         
         -- initialize shared memory for global reductions
         [initialize_global_shared_memory(global_shared_ptrs, ctxt)]
-        cudalib.ptx_bar_sync(0)
+        G.barrier()
 
         if [ctxt:runtimeGerm()].use_boolmask then
           var [param] = id
@@ -470,7 +462,7 @@ local function gpu_codegen (kernel_ast, ctxt)
         end
 
         -- reduce L.globals to one value and copy back to GPU global memory
-        cudalib.ptx_bar_sync(0)
+        G.barrier()
         [reduce_global_shared_memory(global_shared_ptrs, kernel_ast, ctxt, BLOCK_SIZE)]
       end
     end
@@ -509,7 +501,7 @@ local function gpu_codegen (kernel_ast, ctxt)
 
       [allocate_reduction_space(n_blocks,global_shared_ptrs, ctxt)]
       M.cuda_kernel(&params)
-      sync() -- flush print streams
+      G.sync() -- flush print streams
 
       var reduce_params = terralib.CUDAParams {
         1,1,1,
@@ -534,7 +526,7 @@ local function gpu_codegen (kernel_ast, ctxt)
       }
       [allocate_reduction_space(n_blocks,global_shared_ptrs, ctxt)]
       M.cuda_kernel(&params)
-      sync() -- flush print streams
+      G.sync() -- flush print streams
 
       var reduce_params = terralib.CUDAParams {
         1,1,1,
@@ -734,8 +726,8 @@ local function atomic_gpu_red_exp (op, typ, lvalptr, update)
   local internal_error = 'unsupported reduction, internal error; '..
                          'this should be guarded against in the typechecker'
   if typ == L.float then
-    if     op == '+' then return `aadd_fl(lvalptr, update)
-    elseif op == '-' then return `aadd_fl(lvalptr, -update)
+    if     op == '+' then return `G.atomic_addf(lvalptr, update)
+    elseif op == '-' then return `G.atomic_addf(lvalptr, -update)
     end
     error(internal_error)
     return nil

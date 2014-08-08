@@ -77,5 +77,10 @@ GPU.printf     = printf
 GPU.block_id   = block_id
 GPU.thread_id  = thread_id
 GPU.num_blocks = num_blocks
+GPU.barrier    = macro(function() return quote cudalib.ptx_bar_sync(0) end end)
+GPU.sync       = terralib.externfunction("cudaThreadSynchronize", {} -> int)
 
 GPU.get_grid_dimensions = get_grid_dimensions
+
+GPU.atomic_addf = terralib.intrinsic("llvm.nvvm.atomic.load.add.f32.p0f32", {&float,float} -> {float})
+
