@@ -1,3 +1,5 @@
+if not terralib.cudacompile then return end
+
 import 'compiler.liszt'
 
 L.default_processor = L.GPU
@@ -29,16 +31,3 @@ terralib.require 'tests.shadow'
 terralib.require 'tests.subsets'
 terralib.require 'tests.vecindex'
 terralib.require 'tests.vector'
-
-
--- Prints stuff...
---terralib.require 'tests.functions'
---terralib.require 'tests.luabuiltins'
-
-------------------------
--- Broken test cases: --
-------------------------
---terralib.require 'tests.nest'        -- cuda compile error
---terralib.require 'tests.terrabridge' -- cudacompile error
-
-
