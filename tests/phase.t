@@ -42,7 +42,8 @@ test.fail_function(function()
       nv.field1 *= 2
     end
   end
-end, 'REDUCE%(%*%) Phase is incompatible with.* REDUCE%(%+%) Phase')
+end, 'Reduce operator "%*%" for type "float" is not currently supported')
+--'Reduce operator (%*%) Phase is incompatible with.* REDUCE%(%+%) Phase')
 
 -- writing and reducing exclusively should be fine
 local kernel = liszt kernel (v : M.vertices)
@@ -81,8 +82,9 @@ test.fail_function(function()
     g1 += v.field1
     g1 *= v.field1
   end
-end, 'REDUCE%(%*%) Phase for Global is incompatible with.*'..
-     'REDUCE%(%+%) Phase for Global')
+end, 'Reduce operator "%*%" for type "float" is not currently supported')
+--'REDUCE%(%*%) Phase for Global is incompatible with.*'..
+--     'REDUCE%(%+%) Phase for Global')
 
 
 

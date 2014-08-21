@@ -3,12 +3,12 @@ require "tests/test"
 
 local LMesh = L.require "domains.lmesh"
 local mesh = LMesh.Load("examples/mesh.lmesh")
-local com = L.NewGlobal(L.vector(L.double, 3), {0, 0, 0})
+local com = L.NewGlobal(L.vector(L.float, 3), {0, 0, 0})
 
 function center_of_mass ()
 	com:set({0,0,0})
 	local sum_pos = liszt kernel (v : mesh.vertices)
-		com += v.position
+		com += L.vec3f(v.position)
 	end
 	sum_pos(mesh.vertices)
 	return com:get() / mesh.vertices:Size()

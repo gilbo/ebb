@@ -511,6 +511,10 @@ end
 -------------------------------------------------------------------------------
 --[[ type aliases                                                          ]]--
 -------------------------------------------------------------------------------
+L.vec2i     = L.vector(L.int, 2)
+L.vec3i     = L.vector(L.int, 3)
+L.vec4i     = L.vector(L.int, 4)
+
 L.vec2f     = L.vector(L.float, 2)
 L.vec3f     = L.vector(L.float, 3)
 L.vec4f     = L.vector(L.float, 4)

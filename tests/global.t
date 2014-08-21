@@ -27,7 +27,7 @@ local f3 = liszt kernel (f : mesh.faces) sb5 and= vb    end
 local f4 = liszt kernel (f : mesh.faces) sf  +=   1     end
 local f5 = liszt kernel (f : mesh.faces) si  -=   two   end
 local f6 = liszt kernel (f : mesh.faces) sb  and= false end
-local f7 = liszt kernel (f : mesh.faces) sd  /=   2.0   end
+--local f7 = liszt kernel (f : mesh.faces) sd  /=   2.0   end
 
 f1(mesh.faces)
 test.fuzzy_aeq(sf3:get().data, {nf, 2*nf, 3*nf})
@@ -47,5 +47,5 @@ test.eq(si:get(), -2*nf)
 f6(mesh.faces)
 test.eq(sb:get(), false)
 
-f7(mesh.faces)
-test.eq(sd:get(), math.pow(2,-nf))
+--f7(mesh.faces)
+--test.eq(sd:get(), math.pow(2,-nf))

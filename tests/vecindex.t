@@ -17,12 +17,12 @@ local vk = liszt kernel (v : mesh.vertices)
 end
 vk(mesh.vertices)
 
-local x_out = L.NewGlobal(L.double, 0.0)
-local y_out = L.NewGlobal(L.double, 0.0)
+local x_out = L.NewGlobal(L.float, 0.0)
+local y_out = L.NewGlobal(L.float, 0.0)
 local y_idx = L.NewGlobal(L.int, 1)
 local read_out = liszt kernel(v : mesh.vertices)
-    x_out += v.position[0]
-    y_out += v.position[y_idx]
+    x_out += L.float(v.position[0])
+    y_out += L.float(v.position[y_idx])
 end
 read_out(mesh.vertices)
 

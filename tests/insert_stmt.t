@@ -6,7 +6,7 @@ require "tests/test"
 local cells = L.NewRelation(10, 'cells')
 local particles = L.NewRelation(0, 'particles')
 
-cells:NewField('temperature', L.double):Load(0.0)
+cells:NewField('temperature', L.float):Load(0.0)
 particles:NewField('cell', cells)
 particles:NewField('pos', L.vec3d)
 
@@ -28,8 +28,8 @@ end, "Cannot insert into relation particles while mapping over it")
 -- block insertion into a relation if we're accessing that relation's fields
 test.fail_function(function()
   liszt kernel( p : particles )
-    insert { temperature = 0.1 } into cells
-    p.cell.temperature += 0.25
+    insert { temperature = L.float(0.1) } into cells
+    p.cell.temperature += L.float(0.25)
   end
 end, "Cannot insert into relation cells because%s*it\'s referred to by a field: particles.cell")
 --"Cannot access field cells%.temperature while inserting.* into relation cells")

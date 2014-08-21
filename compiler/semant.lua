@@ -4,7 +4,7 @@ package.loaded["compiler.semant"] = S
 local ast = require "compiler.ast"
 local B   = terralib.require "compiler.builtins"
 local T   = terralib.require "compiler.types"
-
+local L   = terralib.require 'compiler.lisztlib'
 --[[
     AST:check(ctxt) type checking routines
         These methods define type checking.
@@ -207,15 +207,38 @@ function ast.ExprStatement:check(ctxt)
     return copy
 end
 
+local reductions_by_type = {
+    [L.float] = {
+        ['+'] = true,
+        ['-'] = true,
+    },
+    [L.int] = {
+        ['min'] = true,
+        ['max'] = true,
+        ['+']   = true,
+        ['-']   = true,
+    },
+    [L.bool] = {
+        ['and'] = true,
+        ['or']  = true,
+    },
+}
+
 function check_reduce(node, ctxt)
     local op        = node.reduceop
     local lvalue    = node.lvalue
     local ltype     = lvalue.node_type
 
-    --if ltype:baseType() ~= L.float then
-    --    ctxt:error(node, 'Reduce operator"'..op..'" for type '..
-    --        '"'..tostring(ltype)..'" is not currently supported.')
-    --end
+    -- Centered reductions don't need to be atomic!
+    if node.lvalue:is(ast.FieldAccess) and node.lvalue.row.is_centered then return end
+
+    if op == nil then return end
+
+    local reductions = reductions_by_type[ltype:baseType()]
+    if not reductions or not reductions[op] then
+        ctxt:error(node, 'Reduce operator "'..op..'" for type '..
+        '"'..tostring(ltype)..'" is not currently supported.')
+    end
 end
 
 function ast.Assignment:check(ctxt)

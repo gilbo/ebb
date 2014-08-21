@@ -117,6 +117,8 @@ local k = liszt kernel (v : mesh.vertices)
 end
 k(mesh.vertices)
 
+--[[
+-- Additive reduction over doubles currently unsupported
 local s = L.NewGlobal(L.vector(L.double, 3), {0.0, 0.0, 0.0})
 local sum_position = liszt kernel(v : mesh.vertices)
 	s += v.position
@@ -125,7 +127,7 @@ sum_position(mesh.vertices)
 
 local f = s:get() / mesh.vertices:Size()
 test.fuzzy_aeq(f.data, {5, 6, 6})
-
+]]
 
 ------------------
 -- Should fail: --

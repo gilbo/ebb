@@ -726,14 +726,21 @@ local function atomic_gpu_red_exp (op, typ, lvalptr, update)
   local internal_error = 'unsupported reduction, internal error; '..
                          'this should be guarded against in the typechecker'
   if typ == L.float then
-    if     op == '+' then return `G.atomic_addf(lvalptr, update)
-    elseif op == '-' then return `G.atomic_addf(lvalptr, -update)
+    if     op == '+' then return `G.atomic_add_float(lvalptr,  update)
+    elseif op == '-' then return `G.atomic_add_float(lvalptr, -update)
     end
-    error(internal_error)
-    return nil
+
   elseif typ == L.int then
-    error(internal_error)
-    return nil
+    if     op == '+'   then return `G.reduce_add_int32(lvalptr,  update)
+    elseif op == '-'   then return `G.reduce_add_int32(lvalptr, -update)
+    elseif op == 'max' then return `G.reduce_max_int32(lvalptr, update)
+    elseif op == 'min' then return `G.reduce_min_int32(lvalptr, update)
+    end
+
+  elseif typ == L.bool then
+    if     op == 'and' then return `G.reduce_and_b32(lvalptr, update)
+    elseif op == 'or'  then return `G.reduce_or_b32(lvalptr, update)
+    end
   end
   error(internal_error)
 end
