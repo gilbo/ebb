@@ -3,6 +3,9 @@ package.loaded['compiler.gpu_util'] = GPU
 
 if not terralib.cudacompile then return end
 
+--[[------------------------------------------------------------------------]]--
+--[[ Thread/Grid/Block                                                      ]]--
+--[[------------------------------------------------------------------------]]--
 local tid_x   = cudalib.nvvm_read_ptx_sreg_tid_x
 local tid_y   = cudalib.nvvm_read_ptx_sreg_tid_y
 local tid_z   = cudalib.nvvm_read_ptx_sreg_tid_z
@@ -49,6 +52,10 @@ local terra get_grid_dimensions (num_blocks : uint64, max_grid_dim : uint64) : {
     end
 end
 
+
+--[[------------------------------------------------------------------------]]--
+--[[ Print                                                                  ]]--
+--[[------------------------------------------------------------------------]]--
 local vprintf = terralib.externfunction("cudart:vprintf", {&int8,&int8} -> int)
 local function createbuffer(args)
     local Buf = terralib.types.newstruct()
@@ -75,6 +82,21 @@ local printf = macro(function(fmt,...)
     return `vprintf(fmt,buf) 
 end)
 
+
+--[[------------------------------------------------------------------------]]--
+--[[ Math                                                                   ]]--
+--[[------------------------------------------------------------------------]]--
+-- link the bitcode for libdevice so that we can access device math functions
+-- CUDA libdevice has all the math functions:
+-- http://docs.nvidia.com/cuda/libdevice-users-guide/#axzz3CND85k3B
+terralib.linklibrary("runtime/libdevice.bc")
+
+local cbrt = terralib.externfunction("__nv_cbrt", double -> double)
+
+
+--[[------------------------------------------------------------------------]]--
+--[[ Atomic reductions                                                      ]]--
+--[[------------------------------------------------------------------------]]--
 local reduce_max_int32 = macro(function(result_ptr, val)
     return terralib.asm(terralib.types.unit,"red.global.max.u32 [$0], $1;","l,r",true,result_ptr,val)
 end)
@@ -94,6 +116,9 @@ end)
 local reduce_or_b32 = macro(function(result_ptr, val)
     return terralib.asm(terralib.types.unit,"red.global.or.b32 [$0], $1;","l,r",true,result_ptr,val)
 end)
+
+local atomic_add_float = terralib.intrinsic("llvm.nvvm.atomic.load.add.f32.p0f32", {&float,float} -> {float})
+
 
 --[[------------------------------------------------------------------------]]--
 --[[ Implementation of slow atomics                                         ]]--
@@ -140,10 +165,12 @@ local function generate_slow_atomic_32 (op, typ)
     end
 end
 
+-- Operator quotes
 local mul = macro(function(a, b) return `a*b end)
 local add = macro(function(a, b) return `a+b end)
+local div = macro(function(a, b) return `a/b end)
 local max = macro(function(a, b) return
-    quote 
+    quote
         var max
         if a > b then max = a
         else          max = b
@@ -163,32 +190,10 @@ local min = macro(function(a, b) return
     end
 end)
 
-local atomic_mult_double = terra (address : &double, factor : double)
-    var old : double = @address
-    var assumed : double
-    var mask = false
-    repeat
-        if not mask then
-            assumed = old
-            old     = cas_uint64(address, assumed, assumed*factor)
-            mask = assumed == old
-        end
-    until mask
-end
 
-local atomic_mult_uint64 = terra(address : &uint64, factor : uint64)
-    var old : uint64 = @address
-    var assumed : uint64
-    var mask = false
-    repeat
-        if not mask then
-            assumed = old
-            old     = cas_uint64(address, assumed, assumed*factor)
-            mask = assumed == old
-        end
-    until mask
-end
-
+--[[------------------------------------------------------------------------]]--
+--[[ gpu_util Interface                                                     ]]--
+--[[------------------------------------------------------------------------]]--
 GPU.printf     = printf
 GPU.block_id   = block_id
 GPU.thread_id  = thread_id
@@ -200,23 +205,27 @@ GPU.sync       = terralib.externfunction("cudaThreadSynchronize", {} -> int)
 
 GPU.get_grid_dimensions = get_grid_dimensions
 
--- Intrinsic atomic reductions
-GPU.atomic_add_float = terralib.intrinsic("llvm.nvvm.atomic.load.add.f32.p0f32", {&float,float} -> {float})
-GPU.reduce_max_int32 = reduce_max_int32
+GPU.cbrt = cbrt
+
+-- Intrinsic atomic reductions:
+GPU.atomic_add_float = atomic_add_float
+GPU.atomic_max_int32 = reduce_max_int32
 GPU.reduce_min_int32 = reduce_min_int32
 GPU.reduce_add_int32 = reduce_add_int32
 GPU.reduce_and_b32   = reduce_and_b32
 GPU.reduce_or_b32    = reduce_or_b32
 
--- Slow operations!
-GPU.atomic_mult_float_SLOW  = generate_slow_atomic_32(mul,float)
-GPU.atomic_mult_double_SLOW = generate_slow_atomic_64(mul,double)
-
-GPU.atomic_mult_int32_SLOW  = generate_slow_atomic_32(mul,int32)
-GPU.atomic_mult_uint64_SLOW = generate_slow_atomic_64(mul,uint64)
-
+-- Slow operations:
 GPU.atomic_add_uint64_SLOW = generate_slow_atomic_64(add,uint64)
 GPU.atomic_add_double_SLOW = generate_slow_atomic_64(add,double)
+
+GPU.atomic_mul_float_SLOW  = generate_slow_atomic_32(mul,float)
+GPU.atomic_mul_double_SLOW = generate_slow_atomic_64(mul,double)
+GPU.atomic_mul_int32_SLOW  = generate_slow_atomic_32(mul,int32)
+GPU.atomic_mul_uint64_SLOW = generate_slow_atomic_64(mul,uint64)
+
+GPU.atomic_div_float_SLOW  = generate_slow_atomic_32(div,float)
+GPU.atomic_div_double_SLOW = generate_slow_atomic_64(div,double)
 
 GPU.atomic_min_uint64_SLOW = generate_slow_atomic_64(min,uint64)
 GPU.atomic_min_double_SLOW = generate_slow_atomic_64(min,double)

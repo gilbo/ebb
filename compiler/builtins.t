@@ -422,6 +422,38 @@ function B.length.codegen(ast, ctxt)
     end
 end
 
+local function cbrt (val)
+    return C.cbrt(val)
+end
+
+L.cbrt = Builtin.new(cbrt)
+
+function L.cbrt.check(ast, ctxt)
+    local args = ast.params
+    if #args ~= 1 then
+        ctxt:error(ast, "cbrt expects exactly 1 argument (instead got " .. #args .. ")")
+        return L.error
+    end
+    local lt = args[1].node_type
+    if not lt:isNumeric() then
+        ctxt:error(args[1], "argument to cbrt must be numeric")
+    end
+    if lt:isVector() then
+        ctxt:error(args[1], "argument to cbrt must be a scalar")
+        return L.error
+    end
+    return L.double
+end
+
+function L.cbrt.codegen(ast,ctxt)
+    local lt  = ast.params[1].node_type
+    local exp = ast.params[1]:codegen(ctxt)
+    if ctxt:onGPU() then
+        return `G.cbrt([exp])
+    end
+    return `C.cbrt([exp])
+end
+
 
 local function all(v)
     if not v.type:isVector() then
