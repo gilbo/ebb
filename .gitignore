@@ -1,6 +1,7 @@
 terra
 *.o
 *.so
+*.bc
 *.dylib
 .metadata
 build
