@@ -28,6 +28,7 @@ M.right  = M.outlet
 local C, V, F, E = M.cells, M.vertices, M.faces, M.edges
 
 
+
 --------------------------------------------------------------------------------
 --[[ FEM field allocation                                                   ]]--
 --------------------------------------------------------------------------------
@@ -45,13 +46,17 @@ C:NewField('springConstant',    L.float):LoadConstant(0.3)
 E:NewField('initialEdgeLength', L.float):LoadConstant(0.0)
 E:NewField('currEdgeLength',    L.float):LoadConstant(0.0)
 
+-- Create vertex inlet boundary subsets
+V:NewField('inlet', L.bool):LoadConstant(false)
+V:NewField('outlet', L.bool):LoadConstant(false)
+
 
 --------------------------------------------------------------------------------
 --[[ Create structured topology relations                                   ]]--
 --------------------------------------------------------------------------------
 -- Since domain is a cube mesh, want to access vertices of face as 
 -- f.v0, f.v1, f.v2, f.v3
-local vd = M.verticesofface.vertex.data
+local vd = M.verticesofface.vertex:DataPtr()
 --local function vcall (j)
 --	return terra (mem : &uint64, i : uint) mem[0] = vd[4*i+j] end
 --end
@@ -65,7 +70,7 @@ F:NewField('v2', V):LoadFunction(vcall(2))
 F:NewField('v3', V):LoadFunction(vcall(3))
 
 -- Similarly, want cell.v0, ... cell.v8
-local cd = M.verticesofcell.vertex.data
+local cd = M.verticesofcell.vertex:DataPtr()
 --local function vcall (j)
 --	return terra (mem : &uint64, i : uint) mem[0] = cd[8*i+j] end
 --end
@@ -86,8 +91,8 @@ C:NewField('v7', V):LoadFunction(vcall(7))
 -- Not all edges have the same number of cells, so we will have to build an array
 -- for indexing into the cellsofedge.cell field to determine which cell to assign
 -- to each edge.
-local cd = M.cellsofedge.cell.data
-local ed = M.cellsofedge.edge.data
+local cd = M.cellsofedge.cell:DataPtr()
+local ed = M.cellsofedge.edge:DataPtr()
 
 local Clib   = terralib.includec("stdlib.h")
 local offset = terralib.cast(&uint64, Clib.malloc(terralib.sizeof(uint64) * (M.edges:Size() + 1)))
@@ -107,6 +112,33 @@ local function ccall (j)
 	return (function(i) return cd[offset[i] + j] end)
 end
 E:NewField('c1', C):LoadFunction(ccall(1))
+
+
+--------------------------------------------------------------------------------
+--[[ Build inlet/outlet vertex sets                                         ]]--
+--------------------------------------------------------------------------------
+function buildVertexInletOutletSets ()
+	local mark_inlet_vertices = liszt kernel (f : M.left)
+		f.value.v0.inlet or= true	
+		f.value.v1.inlet or= true
+		f.value.v2.inlet or= true
+		f.value.v3.inlet or= true
+	end
+	local mark_outlet_vertices = liszt kernel (f : M.right)
+		f.value.v0.outlet or= true
+		f.value.v1.outlet or= true
+		f.value.v2.outlet or= true
+		f.value.v3.outlet or= true
+	end
+	mark_inlet_vertices(M.left)
+	mark_outlet_vertices(M.right)
+
+	local is_inlet   = V.inlet:DataPtr()
+	local is_outlet  = V.outlet:DataPtr()
+	V:NewSubsetFromFunction("inlet_vertices",  function(i) return is_inlet[i]  end)
+	V:NewSubsetFromFunction("outlet_vertices", function(i) return is_outlet[i] end)
+end
+buildVertexInletOutletSets()
 
 
 --------------------------------------------------------------------------------
@@ -150,7 +182,7 @@ local calc_internal_force = liszt kernel (e : M.edges)
 	var norm = disp / len
 
 	v1.fint += -e.c1.springConstant * edgeLengthDisplacement * norm
-	v2.fint -= -e.c1.springConstant * edgeLengthDisplacement * norm
+	v2.fint +=  e.c1.springConstant * edgeLengthDisplacement * norm
 end
 
 -- Compute the acceleration at t^{n+1}: a^{n+1} = M^{-1}(fext^{n+1}-fint^{n+1}-C*v^{n+1/2})
@@ -167,24 +199,30 @@ end
 
 
 --------------------------------------------------------------------------------
+--[[ Choose Architecture                                                    ]]--
+--------------------------------------------------------------------------------
+function moveToArch (l_arch)
+	L.default_processor = l_arch
+	M.vertices:MoveTo(l_arch)
+	M.edges:MoveTo(l_arch)
+	M.cells:MoveTo(l_arch)
+end
+moveToArch(L.GPU)
+
+
+--------------------------------------------------------------------------------
 --[[ Main                                                                   ]]--
 --------------------------------------------------------------------------------
 local function main()
 
 	--[[ Initialize external forces: ]]--
-	(liszt kernel (f : M.left)
-		f.value.v0.fext = L.vec3f({.01, 0, 0})
-		f.value.v1.fext = L.vec3f({.01, 0, 0})
-		f.value.v2.fext = L.vec3f({.01, 0, 0})
-		f.value.v3.fext = L.vec3f({.01, 0, 0})
-	end)(M.left)
+	(liszt kernel (v : M.vertices)
+		v.fext = L.vec3f({.01, 0, 0})
+	end)(V.inlet_vertices)
 
-	(liszt kernel (f : M.right)
-		f.value.v0.fext = L.vec3f({-.01, 0, 0})
-		f.value.v1.fext = L.vec3f({-.01, 0, 0})
-		f.value.v2.fext = L.vec3f({-.01, 0, 0})
-		f.value.v3.fext = L.vec3f({-.01, 0, 0})
-	end)(M.right)
+	(liszt kernel (v : M.vertices)
+		v.fext = L.vec3f({-.01, 0, 0})
+	end)(V.outlet_vertices)
 
 	--[[ Initialize acceleration based on initial forces ]]--
 	(liszt kernel (v : M.vertices)
@@ -237,8 +275,6 @@ end
 main()
 
 -- Print results
-(liszt kernel (v : M.vertices)
-	L.print(v.position)
-end)(M.vertices)
+V.position:print()
 
 

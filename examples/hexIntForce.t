@@ -39,6 +39,10 @@ M.vertices:NewField('fint',       L.vector(L.double, 3)):LoadConstant(zero)
 
 M.vertices:NewField('mass', L.double):LoadConstant(2.0)
 
+-- Create vertex inlet boundary subsets
+V:NewField('inlet', L.bool):LoadConstant(false)
+V:NewField('outlet', L.bool):LoadConstant(false)
+
 
 --------------------------------------------------------------------------------
 --[[ Create structured topology relations                                   ]]--
@@ -48,13 +52,13 @@ local Clib = terralib.includec("stdlib.h")
 -- Since domain is a cube mesh, want to access vertices of face as 
 -- f.v0, f.v1, f.v2, f.v3
 function build_structured_face()
-	local vd = M.verticesofface.vertex.data
+	local vd = M.verticesofface.vertex:DataPtr()
 	local function vcall (j)
 		return terra (mem : &uint64, i : uint) mem[0] = vd[4*i+j] end
 	end
 
-	local fd     = M.verticesofface.face.data
-	local vd     = M.verticesofface.vertex.data
+	local fd     = M.verticesofface.face:DataPtr()
+	local vd     = M.verticesofface.vertex:DataPtr()
 	local offset = terralib.cast(&uint64, Clib.malloc(terralib.sizeof(uint64) * (M.faces:Size() + 1)))
 
 	local face_no = -1
@@ -76,8 +80,8 @@ end
 
 -- Similarly, want cell.v0, ... cell.v8
 function build_structured_cell()
-	local cd     = M.verticesofcell.cell.data
-	local vd     = M.verticesofcell.vertex.data
+	local cd     = M.verticesofcell.cell:DataPtr()
+	local vd     = M.verticesofcell.vertex:DataPtr()
 	local offset = terralib.cast(&uint64, Clib.malloc(terralib.sizeof(uint64) * (M.cells:Size() + 1)))
 
 	local cell_no = -1
@@ -106,6 +110,33 @@ build_structured_cell()
 
 
 --------------------------------------------------------------------------------
+--[[ Build inlet/outlet vertex sets                                         ]]--
+--------------------------------------------------------------------------------
+function buildVertexInletOutletSets ()
+	local mark_inlet_vertices = liszt kernel (f : M.left)
+		f.value.v0.inlet or= true	
+		f.value.v1.inlet or= true
+		f.value.v2.inlet or= true
+		f.value.v3.inlet or= true
+	end
+	local mark_outlet_vertices = liszt kernel (f : M.right)
+		f.value.v0.outlet or= true
+		f.value.v1.outlet or= true
+		f.value.v2.outlet or= true
+		f.value.v3.outlet or= true
+	end
+	mark_inlet_vertices(M.left)
+	mark_outlet_vertices(M.right)
+
+	local is_inlet   = V.inlet:DataPtr()
+	local is_outlet  = V.outlet:DataPtr()
+	V:NewSubsetFromFunction("inlet_vertices",  function(i) return is_inlet[i]  end)
+	V:NewSubsetFromFunction("outlet_vertices", function(i) return is_outlet[i] end)
+end
+buildVertexInletOutletSets()
+
+
+--------------------------------------------------------------------------------
 --[[ Constants                                                              ]]--
 --------------------------------------------------------------------------------
 -- Initialize time index (n) and time (t^n)
@@ -122,20 +153,23 @@ local lambda    = (youngsMod * poisson) / ((1 + poisson) * (1 - 2 * poisson))
 --------------------------------------------------------------------------------
 --[[ Interior force calculation: kernel and terra helper functions          ]]--
 --------------------------------------------------------------------------------
-local terra shapeFunction (xi : float, eta : float, zeta : float) : vector(float, 8)
-	var ret = 1./8. *   vector((1-xi) * (1-eta) * (1-zeta),
-	                           (1+xi) * (1-eta) * (1-zeta),
-	                           (1+xi) * (1+eta) * (1-zeta),
-	                           (1-xi) * (1+eta) * (1-zeta),
-	                           (1-xi) * (1-eta) * (1+zeta),
-	                           (1+xi) * (1-eta) * (1+zeta),
-	                           (1+xi) * (1+eta) * (1+zeta),
-	                           (1-xi) * (1+eta) * (1+zeta))
-	return ret
+-- return vec8f; xi, eta, zeta are doubles
+local shapeFunction = liszt function(xi, eta, zeta)
+	return 1.0f/8.0f * {
+		(1-xi) * (1-eta) * (1-zeta),
+	    (1+xi) * (1-eta) * (1-zeta),
+	    (1+xi) * (1+eta) * (1-zeta),
+	    (1-xi) * (1+eta) * (1-zeta),
+	    (1-xi) * (1-eta) * (1+zeta),
+	    (1+xi) * (1-eta) * (1+zeta),
+	    (1+xi) * (1+eta) * (1+zeta),
+	    (1-xi) * (1+eta) * (1+zeta) 
+	}
 end
 
-local terra derivative (eta : double, xi : double, zeta : double) : vector(double, 24)
-	return 1./8. * vector(
+-- returns vec24f; eta, xi, zeta are doubles
+local derivative = liszt function(eta, xi, zeta)
+	return 1.0f/8.0f * {
 		-(eta - 1)*(zeta - 1), -(xi - 1)*(zeta - 1), -(eta - 1)*(xi - 1),
 		 (eta - 1)*(zeta - 1),  (xi + 1)*(zeta - 1),  (eta - 1)*(xi + 1),
 		-(eta + 1)*(zeta - 1), -(xi + 1)*(zeta - 1), -(eta + 1)*(xi + 1),
@@ -143,86 +177,87 @@ local terra derivative (eta : double, xi : double, zeta : double) : vector(doubl
 		 (eta - 1)*(zeta + 1),  (xi - 1)*(zeta + 1),  (eta - 1)*(xi - 1),
 		-(eta - 1)*(zeta + 1), -(xi + 1)*(zeta + 1), -(eta - 1)*(xi + 1),
 		 (eta + 1)*(zeta + 1),  (xi + 1)*(zeta + 1),  (eta + 1)*(xi + 1),
-		-(eta + 1)*(zeta + 1), -(xi - 1)*(zeta + 1), -(eta + 1)*(xi - 1))
+		-(eta + 1)*(zeta + 1), -(xi - 1)*(zeta + 1), -(eta + 1)*(xi - 1) }
 end
 
-terra dot3 (a : &vector(double, 3), b : &vector(double, 3)) : double
-	return (@a)[0]*(@b)[0] + (@a)[1]*(@b)[1] + (@a)[2]*(@b)[2]
+local dot3 = liszt function (a, b)
+	return a[0]*b[0] + a[1]*b[1] + a[2]*b[2]
 end
 
-terra dot6 ( a : &vector(double, 6), b : &vector(double, 6)) : double
-	return  (@a)[0]*(@b)[0] + (@a)[1]*(@b)[1] + (@a)[2]*(@b)[2] 
-	      + (@a)[3]*(@b)[3] + (@a)[4]*(@b)[4] + (@a)[5]*(@b)[5]
+local dot6 = liszt function (a, b)
+	return  a[0]*b[0] + a[1]*b[1] + a[2]*b[2] 
+	      + a[3]*b[3] + a[4]*b[4] + a[5]*b[5]
 end
 
-terra dot8 ( a : &vector(double, 8), b : &vector(double, 8)) : double
-	return  (@a)[0]*(@b)[0] + (@a)[1]*(@b)[1] + (@a)[2]*(@b)[2] + (@a)[3]*(@b)[3]
-	      + (@a)[4]*(@b)[4] + (@a)[5]*(@b)[5] + (@a)[6]*(@b)[6] + (@a)[7]*(@b)[7]
+local dot8 = liszt function (a, b)
+	return  a[0]*b[0] + a[1]*b[1] + a[2]*b[2] + a[3]*b[3]
+	      + a[4]*b[4] + a[5]*b[5] + a[6]*b[6] + a[7]*b[7]
 end
 
 -- M is an 8x3 matrix, and cols 1, 2 and 3 are the columns of a 3x3 matrix
 -- returns another 8x3 matrix
-terra mult_8x3_3x3 (M : vector(double, 24), col1 : vector(double, 3), col2 : vector(double, 3), col3 : vector(double, 3)) : vector(double, 24)
-		var MR1 = vectorof(double, M[0],  M[1],  M[2])
-	    var MR2 = vectorof(double, M[3],  M[4],  M[5])
-	    var MR3 = vectorof(double, M[6],  M[7],  M[8])
-	    var MR4 = vectorof(double, M[9],  M[10], M[11])
-	    var MR5 = vectorof(double, M[12], M[13], M[14])
-	    var MR6 = vectorof(double, M[15], M[16], M[17])
-	    var MR7 = vectorof(double, M[18], M[19], M[20])
-	    var MR8 = vectorof(double, M[21], M[22], M[23])
+local mult_8x3_3x3 = liszt function(M, col1, col2, col3)
+		var MR1 = {M[0],  M[1],  M[2]}
+	    var MR2 = {M[3],  M[4],  M[5]}
+	    var MR3 = {M[6],  M[7],  M[8]}
+	    var MR4 = {M[9],  M[10], M[11]}
+	    var MR5 = {M[12], M[13], M[14]}
+	    var MR6 = {M[15], M[16], M[17]}
+	    var MR7 = {M[18], M[19], M[20]}
+	    var MR8 = {M[21], M[22], M[23]}
 
-	    return vectorof(double,
-	    	dot3(&MR1, &col1), dot3(&MR1, &col2), dot3(&MR1, &col3),
-	    	dot3(&MR2, &col1), dot3(&MR2, &col2), dot3(&MR2, &col3),
-	    	dot3(&MR3, &col1), dot3(&MR3, &col2), dot3(&MR3, &col3),
-	    	dot3(&MR4, &col1), dot3(&MR4, &col2), dot3(&MR4, &col3),
-	    	dot3(&MR5, &col1), dot3(&MR5, &col2), dot3(&MR5, &col3),
-	    	dot3(&MR6, &col1), dot3(&MR6, &col2), dot3(&MR6, &col3),
-	    	dot3(&MR7, &col1), dot3(&MR7, &col2), dot3(&MR7, &col3),
-	    	dot3(&MR8, &col1), dot3(&MR8, &col2), dot3(&MR8, &col3))
+	    return {
+	    	dot3(MR1, col1), dot3(MR1, col2), dot3(MR1, col3),
+	    	dot3(MR2, col1), dot3(MR2, col2), dot3(MR2, col3),
+	    	dot3(MR3, col1), dot3(MR3, col2), dot3(MR3, col3),
+	    	dot3(MR4, col1), dot3(MR4, col2), dot3(MR4, col3),
+	    	dot3(MR5, col1), dot3(MR5, col2), dot3(MR5, col3),
+	    	dot3(MR6, col1), dot3(MR6, col2), dot3(MR6, col3),
+	    	dot3(MR7, col1), dot3(MR7, col2), dot3(MR7, col3),
+	    	dot3(MR8, col1), dot3(MR8, col2), dot3(MR8, col3) }
 end
 
 -- F is a 3x3 matrix, returning a 3x3 matrix
-terra calculate_stress_tensor (F : vector(double, 9)) : vector(double, 9)
-	var FT1 = vector(F[0], F[3], F[6])
-	var FT2 = vector(F[1], F[4], F[7])
-	var FT3 = vector(F[2], F[5], F[8])
+local calculate_stress_tensor = liszt function (F)
+	var FT1 = {F[0], F[3], F[6]}
+	var FT2 = {F[1], F[4], F[7]}
+	var FT3 = {F[2], F[5], F[8]}
 
 	-- S = F_transpose*F - I
-	var S1 = .5 * vector(dot3(&FT1, &FT1)-1.0, dot3(&FT1, &FT2),     dot3(&FT1, &FT3))
-	var S2 = .5 * vector(dot3(&FT2, &FT1),     dot3(&FT2, &FT2)-1.0, dot3(&FT2, &FT3))
-	var S3 = .5 * vector(dot3(&FT3, &FT1),     dot3(&FT3, &FT2),     dot3(&FT3, &FT3)-1.0)
+	var S1 = .5 * {dot3(FT1, FT1)-1.0, dot3(FT1, FT2),     dot3(FT1, FT3)}
+	var S2 = .5 * {dot3(FT2, FT1),     dot3(FT2, FT2)-1.0, dot3(FT2, FT3)}
+	var S3 = .5 * {dot3(FT3, FT1),     dot3(FT3, FT2),     dot3(FT3, FT3)-1.0}
 
-	var B = vector(S1[0], S2[1], S3[2], 2*S2[2], 2*S3[0], 2*S1[1])
+	var B = { S1[0], S2[1], S3[2], 2*S2[2], 2*S3[0], 2*S1[1] }
 
-	var A1 = vectorof(double, 2.0 * mu + lambda, lambda, lambda, 0.0, 0.0, 0.0)
-	var A2 = vectorof(double, lambda, 2.0 * mu + lambda, lambda, 0.0, 0.0, 0.0)
-	var A3 = vectorof(double, lambda, lambda, 2.0 * mu + lambda, 0.0, 0.0, 0.0)
-	var A4 = vectorof(double, 0.0, 0.0, 0.0,  mu, 0.0, 0.0)
-	var A5 = vectorof(double, 0.0 ,0.0, 0.0, 0.0,  mu, 0.0)
-	var A6 = vectorof(double, 0.0, 0.0, 0.0, 0.0, 0.0,  mu)
+	var A1 = { 2.0 * mu + lambda, lambda, lambda, 0.0, 0.0, 0.0 }
+	var A2 = { lambda, 2.0 * mu + lambda, lambda, 0.0, 0.0, 0.0 }
+	var A3 = { lambda, lambda, 2.0 * mu + lambda, 0.0, 0.0, 0.0 }
+	var A4 = { 0.0, 0.0, 0.0,  mu, 0.0, 0.0 }
+	var A5 = { 0.0 ,0.0, 0.0, 0.0,  mu, 0.0 }
+	var A6 = { 0.0, 0.0, 0.0, 0.0, 0.0,  mu }
 
-	var C = vector(dot6(&A1, &B), dot6(&A2, &B), dot6(&A3, &B),
-	               dot6(&A4, &B), dot6(&A5, &B), dot6(&A6, &B))
+	var C  = {dot6(A1, B), dot6(A2, B), dot6(A3, B),
+	          dot6(A4, B), dot6(A5, B), dot6(A6, B)}
 
-	var str_col1 = vector(C[0], C[5], C[4])
-	var str_col2 = vector(C[5], C[1], C[3])
-	var str_col3 = vector(C[4], C[3], C[2])
+	var str_col1 = { C[0], C[5], C[4] }
+	var str_col2 = { C[5], C[1], C[3] }
+	var str_col3 = { C[4], C[3], C[2] }
 
-	var F1 = vector(F[0], F[1], F[2])
-	var F2 = vector(F[3], F[4], F[5])
-	var F3 = vector(F[6], F[7], F[8])
+	var F1 = { F[0], F[1], F[2] }
+	var F2 = { F[3], F[4], F[5] }
+	var F3 = { F[6], F[7], F[8] }
 
-	var stress_tensor = vector(
-		dot3(&F1, &str_col1), dot3(&F1, &str_col2), dot3(&F1, &str_col3),
-		dot3(&F2, &str_col1), dot3(&F2, &str_col2), dot3(&F2, &str_col3),
-		dot3(&F3, &str_col1), dot3(&F3, &str_col2), dot3(&F3, &str_col3)
-	)
+	var stress_tensor = {
+		dot3(F1, str_col1), dot3(F1, str_col2), dot3(F1, str_col3),
+		dot3(F2, str_col1), dot3(F2, str_col2), dot3(F2, str_col3),
+		dot3(F3, str_col1), dot3(F3, str_col2), dot3(F3, str_col3)
+	}
 
 	return stress_tensor
 end
 
+local F = L.double
 local calculate_internal_force = liszt kernel (c : M.cells)
 	-- ignore outside cell
 	if L.id(c) ~= 0	then
@@ -249,15 +284,15 @@ local calculate_internal_force = liszt kernel (c : M.cells)
 		var f_int_8 : L.vector(L.double, 3) = {0,0,0}
 
 		-- IP is an 8x3 matrix
-		var IP : L.vector(L.double, 24) = 1 / sqrt(3) * {
-			-1, -1, -1,
-			-1, -1,  1,
-			-1,  1, -1,
-			 1, -1, -1,
-			-1,  1,  1,
-			 1, -1,  1,
-			 1,  1, -1,
-			 1,  1,  1
+		var IP : L.vector(L.double, 24) = 1.0f / L.double(sqrt(3)) * {
+			-1.0f, -1.0f, -1.0f,
+			-1.0f, -1.0f,  1.0f,
+			-1.0f,  1.0f, -1.0f,
+			 1.0f, -1.0f, -1.0f,
+			-1.0f,  1.0f,  1.0f,
+			 1.0f, -1.0f,  1.0f,
+			 1.0f,  1.0f, -1.0f,
+			 1.0f,  1.0f,  1.0f
 		}
 
 		var i = 0
@@ -310,12 +345,12 @@ local calculate_internal_force = liszt kernel (c : M.cells)
 			var nGrad_col2 = {nGrad[1], nGrad[4], nGrad[7], nGrad[10], nGrad[13], nGrad[16], nGrad[19], nGrad[22]}
 			var nGrad_col3 = {nGrad[2], nGrad[5], nGrad[8], nGrad[11], nGrad[14], nGrad[17], nGrad[20], nGrad[23]}
 
-			var XT_row1 = { c.v0.position[0], c.v1.position[0], c.v2.position[0], c.v3.position[0],
-			                c.v4.position[0], c.v5.position[0], c.v6.position[0], c.v7.position[0]  }
-			var XT_row2 = { c.v0.position[1], c.v1.position[1], c.v2.position[1], c.v3.position[1],
-			                c.v4.position[1], c.v5.position[1], c.v6.position[1], c.v7.position[1]  }
-			var XT_row3 = { c.v0.position[2], c.v1.position[2], c.v2.position[2], c.v3.position[2],
-			                c.v4.position[2], c.v5.position[2], c.v6.position[2], c.v7.position[2]  }
+			var XT_row1 = { F(c.v0.position[0]), F(c.v1.position[0]), F(c.v2.position[0]), F(c.v3.position[0]),
+			                F(c.v4.position[0]), F(c.v5.position[0]), F(c.v6.position[0]), F(c.v7.position[0])  }
+			var XT_row2 = { F(c.v0.position[1]), F(c.v1.position[1]), F(c.v2.position[1]), F(c.v3.position[1]),
+			                F(c.v4.position[1]), F(c.v5.position[1]), F(c.v6.position[1]), F(c.v7.position[1])  }
+			var XT_row3 = { F(c.v0.position[2]), F(c.v1.position[2]), F(c.v2.position[2]), F(c.v3.position[2]),
+			                F(c.v4.position[2]), F(c.v5.position[2]), F(c.v6.position[2]), F(c.v7.position[2])  }
 
 			var F = { L.dot(XT_row1, nGrad_col1), L.dot(XT_row1, nGrad_col2), L.dot(XT_row1, nGrad_col3),
 			          L.dot(XT_row2, nGrad_col1), L.dot(XT_row2, nGrad_col2), L.dot(XT_row2, nGrad_col3),
@@ -336,14 +371,14 @@ local calculate_internal_force = liszt kernel (c : M.cells)
 			var nGrad7 = { nGrad[18], nGrad[19], nGrad[20] }
 			var nGrad8 = { nGrad[21], nGrad[22], nGrad[23] }
 
-			f_int_1 += JT_det * { L.dot(P1, nGrad1), L.dot(P2, nGrad1), L.dot(P3, nGrad1) }
-			f_int_2 += JT_det * { L.dot(P1, nGrad2), L.dot(P2, nGrad2), L.dot(P3, nGrad2) }
-			f_int_3 += JT_det * { L.dot(P1, nGrad3), L.dot(P2, nGrad3), L.dot(P3, nGrad3) }
-			f_int_4 += JT_det * { L.dot(P1, nGrad4), L.dot(P2, nGrad4), L.dot(P3, nGrad4) }
-			f_int_5 += JT_det * { L.dot(P1, nGrad5), L.dot(P2, nGrad5), L.dot(P3, nGrad5) }
-			f_int_6 += JT_det * { L.dot(P1, nGrad6), L.dot(P2, nGrad6), L.dot(P3, nGrad6) }
-			f_int_7 += JT_det * { L.dot(P1, nGrad7), L.dot(P2, nGrad7), L.dot(P3, nGrad7) }
-			f_int_8 += JT_det * { L.dot(P1, nGrad8), L.dot(P2, nGrad8), L.dot(P3, nGrad8) }
+			f_int_1 += JT_det * L.vec3f({ L.dot(P1, nGrad1), L.dot(P2, nGrad1), L.dot(P3, nGrad1) })
+			f_int_2 += JT_det * L.vec3f({ L.dot(P1, nGrad2), L.dot(P2, nGrad2), L.dot(P3, nGrad2) })
+			f_int_3 += JT_det * L.vec3f({ L.dot(P1, nGrad3), L.dot(P2, nGrad3), L.dot(P3, nGrad3) })
+			f_int_4 += JT_det * L.vec3f({ L.dot(P1, nGrad4), L.dot(P2, nGrad4), L.dot(P3, nGrad4) })
+			f_int_5 += JT_det * L.vec3f({ L.dot(P1, nGrad5), L.dot(P2, nGrad5), L.dot(P3, nGrad5) })
+			f_int_6 += JT_det * L.vec3f({ L.dot(P1, nGrad6), L.dot(P2, nGrad6), L.dot(P3, nGrad6) })
+			f_int_7 += JT_det * L.vec3f({ L.dot(P1, nGrad7), L.dot(P2, nGrad7), L.dot(P3, nGrad7) })
+			f_int_8 += JT_det * L.vec3f({ L.dot(P1, nGrad8), L.dot(P2, nGrad8), L.dot(P3, nGrad8) })
 
 			i = i + 1
 		end
@@ -374,7 +409,7 @@ local compute_acceleration = liszt kernel (v : M.vertices)
 end
 
 local update_velocity = liszt kernel (v : M.vertices)
-	v.v_n = v.v_n_h + .5f * dt_n_h * v.a_n
+	v.v_n = v.v_n_h + L.vec3f(.5f * dt_n_h * v.a_n)
 end
 
 
@@ -384,23 +419,18 @@ end
 local function main ()
 	-- Initialize position
 	(liszt kernel (v : M.vertices)
-		v.initialPos = v.position
+		v.initialPos = L.vec3f(v.position)
 	end)(M.vertices)
 
-	-- Initialize external forces
-	(liszt kernel (f : M.left)
-		f.value.v0.fext = {10000000, 0, 0}
-		f.value.v1.fext = {10000000, 0, 0}
-		f.value.v2.fext = {10000000, 0, 0}
-		f.value.v3.fext = {10000000, 0, 0}
-	end)(M.left)
 
-	(liszt kernel (f : M.right)
-		f.value.v0.fext = {-10000000, 0, 0}
-		f.value.v1.fext = {-10000000, 0, 0}
-		f.value.v2.fext = {-10000000, 0, 0}
-		f.value.v3.fext = {-10000000, 0, 0}
-	end)(M.right)
+	--[[ Initialize external forces: ]]--
+	(liszt kernel (v : M.vertices)
+		v.fext = L.vec3f({10000000, 0, 0})
+	end)(V.inlet_vertices)
+
+	(liszt kernel (v : M.vertices)
+		v.fext = L.vec3f({-10000000, 0, 0})
+	end)(V.outlet_vertices)
 
 	-- Initialize acceleration based on initial forces
 	compute_acceleration(M.vertices)
@@ -415,7 +445,7 @@ local function main ()
 		reset_internal_forces(M.vertices)
 		-- Update nodal velocities (requires inline kernel to escape current t values)
 		(liszt kernel (v : M.vertices)
-			v.v_n_h = v.v_n + (t_n_h - t_n) * v.a_n
+			v.v_n_h = v.v_n + L.vec3f((t_n_h - t_n) * v.a_n)
 		end)(M.vertices)
 
 		update_position(M.vertices)

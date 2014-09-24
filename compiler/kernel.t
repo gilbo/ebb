@@ -334,7 +334,7 @@ function Bran:generate()
 
   -- type checking the kernel signature against the invocation
   if typed_ast.relation ~= bran.relation then
-      error('Kernels may only be called on a relation they were typed with')
+      error('Kernels may only be called on a relation they were typed with', 3)
   end
 
   bran.germ_template = GermTemplate.New()
