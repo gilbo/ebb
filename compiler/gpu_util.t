@@ -206,6 +206,7 @@ GPU.sync       = terralib.externfunction("cudaThreadSynchronize", {} -> int)
 GPU.get_grid_dimensions = get_grid_dimensions
 
 GPU.cbrt = cbrt
+GPU.sqrt = cudalib.nvvm_sqrt_rm_d
 
 -- Intrinsic atomic reductions:
 GPU.atomic_add_float = atomic_add_float

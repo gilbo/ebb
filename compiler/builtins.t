@@ -422,13 +422,7 @@ function B.length.codegen(ast, ctxt)
     end
 end
 
-local function cbrt (val)
-    return C.cbrt(val)
-end
-
-L.cbrt = Builtin.new(cbrt)
-
-function L.cbrt.check(ast, ctxt)
+function check_number (ast, ctxt)
     local args = ast.params
     if #args ~= 1 then
         ctxt:error(ast, "cbrt expects exactly 1 argument (instead got " .. #args .. ")")
@@ -443,6 +437,35 @@ function L.cbrt.check(ast, ctxt)
         return L.error
     end
     return L.double
+end
+
+local function sqrt (val)
+    return C.sqrt(val)
+end
+
+L.sqrt = Builtin.new(sqrt)
+
+function L.sqrt.check(ast, ctxt)
+    return check_number(ast, ctxt)
+end
+
+function L.sqrt.codegen(ast,ctxt)
+    local lt  = ast.params[1].node_type
+    local exp = ast.params[1]:codegen(ctxt)
+    if ctxt:onGPU() then
+        return `G.sqrt([exp])
+    end
+    return `C.sqrt([exp])
+end
+
+local function cbrt (val)
+    return C.cbrt(val)
+end
+
+L.cbrt = Builtin.new(cbrt)
+
+function L.cbrt.check(ast, ctxt)
+    return check_number(ast, ctxt)
 end
 
 function L.cbrt.codegen(ast,ctxt)
