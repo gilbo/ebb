@@ -71,26 +71,29 @@ local white = L.NewVector(L.float,{1.0,1.0,1.0})
 -----------------------------------------------------------------------------
 
 local grid_options = {
-    xnum = 16,
-    ynum = 16,
-    znum = 4,
-    origin = {0.0, 0.0, 0.0},
-    --xWidth = twoPi,
-    xWidth = 2*twoPi,
-    yWidth = twoPi,
-    zWidth = twoPi,
-    --xBCLeft  = 'symmetry',
-    --xBCRight = 'symmetry',
-    --yBCLeft  = 'symmetry',
-    --yBCRight = 'symmetry',
-    --zBCLeft  = 'symmetry',
-    --zBCRight = 'symmetry',
-    xBCLeft  = 'periodic',
-    xBCRight = 'periodic',
-    yBCLeft  = 'periodic',
-    yBCRight = 'periodic',
-    zBCLeft  = 'periodic',
-    zBCRight = 'periodic',
+xnum = 64,
+ynum = 64,
+znum = 1,
+origin = {0.0, 0.0, 0.0},
+--xWidth = twoPi,
+--xWidth = 2*twoPi,
+--yWidth = twoPi,
+--zWidth = twoPi,
+xWidth = 1.0,
+yWidth = 1.0,
+zWidth = 0.1,
+xBCLeft  = 'symmetry',
+xBCRight = 'symmetry',
+yBCLeft  = 'symmetry',
+yBCRight = 'symmetry',
+zBCLeft  = 'symmetry',
+zBCRight = 'symmetry',
+--xBCLeft  = 'periodic',
+--xBCRight = 'periodic',
+--yBCLeft  = 'periodic',
+--yBCRight = 'periodic',
+--zBCLeft  = 'periodic',
+--zBCRight = 'periodic',
 }
 
 local spatial_stencil = {
@@ -192,6 +195,7 @@ TimeIntegrator.final_time           = 1000.00001
 TimeIntegrator.timeStep             = L.NewGlobal(L.int,0)
 TimeIntegrator.cfl                  = 1.2
 TimeIntegrator.outputEveryTimeSteps = 100
+TimeIntegrator.headerFrequency      = 20
 TimeIntegrator.deltaTime            = L.NewGlobal(L.double, 0.01)
 
 local fluid_options = {
@@ -258,7 +262,7 @@ local particles_options = {
     collectorType = Particles.CollectorOutOfBox,
     collectorParams = L.NewGlobal(L.vector(L.double,6),{0.5,0.5,0.5,12,6,6}),
 
-    num = 1000,
+    num = 0,
     convective_coefficient = L.NewGlobal(L.double, 0.7), -- W m^-2 K^-1
     heat_capacity = L.NewGlobal(L.double, 0.7), -- J Kg^-1 K^-1
     initialTemperature = 20,
@@ -365,16 +369,6 @@ local grid = Grid.NewGrid3d{
                                 grid_options.zWidth + 2*zBw},
               boundary_depth = {xBnum, yBnum, zBnum},
               periodic_boundary = {xBCPeriodic, yBCPeriodic, zBCPeriodic} }
-
-print("xBoundaryDepth()", grid:xBoundaryDepth())
-print("yBoundaryDepth()", grid:yBoundaryDepth())
-print("zBoundaryDepth()", grid:zBoundaryDepth())
-print("grid xOrigin()", grid:xOrigin())
-print("grid yOrigin()", grid:yOrigin())
-print("grid zOrigin()", grid:zOrigin())
-print("grid xWidth()", grid:xWidth())
-print("grid yWidth()", grid:yWidth())
-print("grid zWidth()", grid:zWidth())
 
 -- Define uniform grid spacing
 -- WARNING: These are used for uniform grids and should be replaced by different
@@ -562,6 +556,36 @@ Flow.minTemperature = L.NewGlobal(L.double, 0)
 Flow.maxTemperature = L.NewGlobal(L.double, 0)
 Particles.averageTemperature= L.NewGlobal(L.double, 0.0)
 
+-----------------------------------------------------------------------------
+--[[                 CONSOLE OUTPUT AFTER PREPROCESSING                  ]]--
+-----------------------------------------------------------------------------
+
+print("-------------------------------------------------------------------------")
+print("|    _____    __      _      ____                                           |")
+print("|   / ____| / __ \\  | |    | ___|    Web: su2.stanford.edu                     |")
+print("|  | (___   | |  | | | |    | |_      Twitter: @su2code                         |")
+print("|   \\___ \\  | |  | | |    |  _|    Forum: www.cfd-online.com/Forums/su2/     |")
+print("|   ____) | | |__| | | |__  | |__                                        |")
+print("|  |_____/   \\____/ |____| |____|   Suite (Computational Fluid Dynamics Code) |")
+print("|                                   Release 3.2.1 \"eagle\"                     |")
+print("-------------------------------------------------------------------------" )
+print("| Copyright (C) 2014 ...                                                |" )
+print("| Soleil is distributed in the hope that it will be useful,             |" )
+print("| but WITHOUT ANY WARRANTY; without even the implied warranty of        |" )
+print("| MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the          |" )
+print("| XXXX XXXX XXXX License (version 2.1) for more details.         |" )
+print("-------------------------------------------------------------------------" )
+
+print("--------------------------- Grid Definition --------------------------")
+print("xBoundaryDepth()", grid:xBoundaryDepth())
+print("yBoundaryDepth()", grid:yBoundaryDepth())
+print("zBoundaryDepth()", grid:zBoundaryDepth())
+print("grid xOrigin()", grid:xOrigin())
+print("grid yOrigin()", grid:yOrigin())
+print("grid zOrigin()", grid:zOrigin())
+print("grid xWidth()", grid:xWidth())
+print("grid yWidth()", grid:yWidth())
+print("grid zWidth()", grid:zWidth())
 
 -----------------------------------------------------------------------------
 --[[                       USER DEFINED FUNCTIONS                        ]]--
@@ -1766,7 +1790,7 @@ Flow.UpdateGhostVelocityGradientStep2 = liszt kernel(c : grid.cells)
 end
 
 -- Calculation of spectral radii for clf-based delta time
-local maxConvectiveSpectralRadius = L.NewGlobal(L.double, 0)
+local maxConvectiveSpectralRadius = L.NewGlobal(L.float, 0)
 local maxViscousSpectralRadius  = L.NewGlobal(L.double, 0)
 local maxHeatConductionSpectralRadius  = L.NewGlobal(L.double, 0)
 Flow.CalculateSpectralRadii = liszt kernel(c : grid.cells)
@@ -2593,17 +2617,33 @@ end
 
 function IO.WriteOutput(timeStep)
 
-    -- Output log message
-    print("Time step ", string.format("%d",timeStep), 
-          ", dt", string.format("%10.8f",TimeIntegrator.deltaTime:get()),
-          ", t", string.format("%10.8f",TimeIntegrator.simTime:get()),
-          "flowP", string.format("%10.8f",Flow.averagePressure:get()),
-          "flowT", string.format("%10.8f",Flow.averageTemperature:get()),
-          "flowMinT", string.format("%10.8f",Flow.minTemperature:get()),
-          "flowMaxT", string.format("%10.8f",Flow.maxTemperature:get()),
-          "kineticEnergy", string.format("%10.8f",Flow.averageKineticEnergy:get()),
-          "particlesT", string.format("%10.8f",Particles.averageTemperature:get())
-          )
+    -- Output log headers
+    if timeStep  % TimeIntegrator.headerFrequency == 0 then
+        print("\n Current time step: ",
+        string.format("%2.6f",TimeIntegrator.deltaTime:get()))
+        print("  Iter  ",
+        --"   dt   ",
+        "  Time  ",
+        "  P_avg ",
+        "  T_avg ",
+        --"flowMinT",
+        --"flowMaxT",
+        "kin_Energy",
+        "particlesT\n")
+        --print("\n")
+    end
+
+    -- Ouput the current stats to the console
+    print(string.format("%10d",timeStep),
+    --string.format("%4.6f",TimeIntegrator.deltaTime:get()),
+    string.format("%4.6f",TimeIntegrator.simTime:get()),
+    string.format("%4.6f",Flow.averagePressure:get()),
+    string.format("%4.6f",Flow.averageTemperature:get()),
+    --string.format("%4.6f",Flow.minTemperature:get()),
+    --string.format("%4.6f",Flow.maxTemperature:get()),
+    string.format("%4.6f",Flow.averageKineticEnergy:get()),
+    string.format("%4.6f",Particles.averageTemperature:get())
+    )
 
     -- Check if it is time to output to file
     if timeStep  % TimeIntegrator.outputEveryTimeSteps == 0 then
