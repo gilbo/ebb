@@ -726,13 +726,27 @@ local function atomic_gpu_red_exp (op, typ, lvalptr, update)
   local internal_error = 'unsupported reduction, internal error; '..
                          'this should be guarded against in the typechecker'
   if typ == L.float then
-    if     op == '+' then return `G.atomic_add_float(lvalptr,  update)
-    elseif op == '-' then return `G.atomic_add_float(lvalptr, -update)
+    if     op == '+'   then return `G.atomic_add_float(lvalptr,  update)
+    elseif op == '-'   then return `G.atomic_add_float(lvalptr, -update)
+    elseif op == '*'   then return `G.atomic_mul_float_SLOW(lvalptr, update)
+    elseif op == '/'   then return `G.atomic_div_float_SLOW(lvalptr, update)
+    elseif op == 'min' then return `G.atomic_min_float_SLOW(lvalptr, update)
+    elseif op == 'max' then return `G.atomic_max_float_SLOW(lvalptr, update)
+    end
+
+  elseif typ == L.double then
+    if     op == '+'   then return `G.atomic_add_double_SLOW(lvalptr,  update)
+    elseif op == '-'   then return `G.atomic_add_double_SLOW(lvalptr, -update)
+    elseif op == '*'   then return `G.atomic_mul_double_SLOW(lvalptr, update)
+    elseif op == '/'   then return `G.atomic_div_double_SLOW(lvalptr, update)
+    elseif op == 'min' then return `G.atomic_min_double_SLOW(lvalptr, update)
+    elseif op == 'max' then return `G.atomic_max_double_SLOW(lvalptr, update)
     end
 
   elseif typ == L.int then
     if     op == '+'   then return `G.reduce_add_int32(lvalptr,  update)
     elseif op == '-'   then return `G.reduce_add_int32(lvalptr, -update)
+    elseif op == '*'   then return `G.atomic_mul_int32_SLOW(lvalptr, update)
     elseif op == 'max' then return `G.reduce_max_int32(lvalptr, update)
     elseif op == 'min' then return `G.reduce_min_int32(lvalptr, update)
     end

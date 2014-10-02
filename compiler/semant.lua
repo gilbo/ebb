@@ -209,14 +209,36 @@ end
 
 local reductions_by_type = {
     [L.float] = {
-        ['+'] = true,
-        ['-'] = true,
+        ['+']   = true,
+        ['-']   = true,
+        ['*']   = true,
+        ['/']   = true,
+        ['min'] = true,
+        ['max'] = true,
+    },
+    [L.double] = {
+        ['+']   = true,
+        ['-']   = true,
+        ['*']   = true,
+        ['/']   = true,
+        ['min'] = true,
+        ['max'] = true,
     },
     [L.int] = {
         ['min'] = true,
         ['max'] = true,
         ['+']   = true,
         ['-']   = true,
+        ['*']   = true,
+        ['/']   = true,
+    },
+    [L.uint64] = {
+        ['min'] = true,
+        ['max'] = true,
+        ['+']   = true,
+        ['-']   = true,
+        ['*']   = true,
+        ['/']   = true,
     },
     [L.bool] = {
         ['and'] = true,
