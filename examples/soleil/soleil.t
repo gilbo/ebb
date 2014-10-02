@@ -1790,7 +1790,7 @@ Flow.UpdateGhostVelocityGradientStep2 = liszt kernel(c : grid.cells)
 end
 
 -- Calculation of spectral radii for clf-based delta time
-local maxConvectiveSpectralRadius = L.NewGlobal(L.float, 0)
+local maxConvectiveSpectralRadius = L.NewGlobal(L.double, 0)
 local maxViscousSpectralRadius  = L.NewGlobal(L.double, 0)
 local maxHeatConductionSpectralRadius  = L.NewGlobal(L.double, 0)
 Flow.CalculateSpectralRadii = liszt kernel(c : grid.cells)
