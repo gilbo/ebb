@@ -7,9 +7,11 @@ import 'compiler.liszt'
 local PN    = L.require 'lib.pathname'
 local Grid  = L.require 'domains.grid'
 
-local cmath = terralib.includecstring [[
+local C = terralib.includecstring [[
 #include <math.h>
 #include <stdlib.h>
+#include <cufft.h>
+#include <cuda_runtime.h>
 #include <time.h>
 
 int nancheck(float val) {
@@ -21,19 +23,54 @@ float randFloat()
       float r = (float)rand() / (float)RAND_MAX;
       return r;
 }
+int CUFFTR2C() { return CUFFT_R2C; }
+int CUFFTC2R() { return CUFFT_C2R; }
 ]]
+terralib.linklibrary("/usr/local/cuda-6.0/lib64/libcufft.so")
 
-local N = 5
+--checkCudaErrors(cufftPlan2d(&planr2c, DIM, DIM, CUFFT_R2C));
+--checkCudaErrors(cufftPlan2d(&planc2r, DIM, DIM, CUFFT_C2R));
+--cufftSetCompatibilityMode(planr2c, CUFFT_COMPATIBILITY_FFTW_PADDING);
+
+local N = 2
 local dt = 0.09
 local visc = 0.0025
 local origin = {0.0, 0.0}
 local XORIGIN       = origin[1]
 local YORIGIN       = origin[2]
 
+--
+-- FFT Plans
+--
+
+struct FFTInfo {
+	c2r : int;
+	r2c : int;
+	vxGPU : &float;
+	vyGPU : &float;
+}
+
+terra InitFFT()
+	var r : FFTInfo
+	C.cufftPlan2d(&r.r2c, N, N, C.CUFFTR2C())
+	C.cufftPlan2d(&r.c2r, N, N, C.CUFFTC2R())
+	C.cudaMalloc([&&opaque](&r.vxGPU), N*N*sizeof(float))
+	C.cudaMalloc([&&opaque](&r.vyGPU), N*N*sizeof(float))
+	return r
+end
+
+local fftplan = InitFFT()
+
 local grid = Grid.NewGrid2d {
     size   = {N, N},
     origin = origin,
     width  = {N, N},
+}
+
+local gridFFT = Grid.NewGrid2d {
+    size   = {N / 2, N},
+    origin = origin,
+    width  = {N / 2, N},
 }
 
 local min_x = grid:xOrigin()
@@ -46,11 +83,19 @@ local cell_h = grid:yCellWidth()
 --
 -- Fields
 --
+
+local originVec2f = L.NewVector(L.float, {0,0})
+
 grid.cells:NewField('coord', L.vec2i):Load(L.NewVector(L.int, {0,0}))
-grid.cells:NewField('dv', L.vec2f):Load(L.NewVector(L.float, {0,0}))
-grid.cells:NewField('vx', L.vec2f):Load(L.NewVector(L.float, {0,0}))
-grid.cells:NewField('vy', L.vec2f):Load(L.NewVector(L.float, {0,0}))
-grid.cells:NewField('advectPos', L.vec2f):Load(L.NewVector(L.float, {0,0}))
+grid.cells:NewField('dv', L.vec2f):Load(originVec2f)
+
+grid.cells:NewField('vx', L.float):Load(0)
+grid.cells:NewField('vy', L.float):Load(0)
+
+gridFFT.cells:NewField('vx', L.vec2f):Load(originVec2f)
+gridFFT.cells:NewField('vy', L.vec2f):Load(originVec2f)
+
+grid.cells:NewField('advectPos', L.vec2f):Load(originVec2f)
 grid.cells:NewField('advectFrom', grid.dual_cells):Load(0)
 
 --
@@ -60,7 +105,7 @@ grid.cells:NewField('advectFrom', grid.dual_cells):Load(0)
 local wrapFunc = liszt function(val, lower, upper)
     var diff    = upper - lower
     var temp    = val - lower
-    temp        = L.float(cmath.fmod(temp, diff))
+    temp        = L.float(C.fmod(temp, diff))
     if temp < 0 then
         temp    = temp + diff
     end
@@ -91,8 +136,8 @@ local advectInterpolateVelocity = liszt kernel(c : grid.cells)
     var dc      = c.advectFrom
 
     -- figure out fractional position in the dual cell in range [0.0, 1.0]
-    var xfrac   = cmath.fmod((c.advectPos[0] - XORIGIN)/cell_w + 0.5, 1.0)
-    var yfrac   = cmath.fmod((c.advectPos[1] - YORIGIN)/cell_h + 0.5, 1.0)
+    var xfrac   = C.fmod((c.advectPos[0] - XORIGIN)/cell_w + 0.5, 1.0)
+    var yfrac   = C.fmod((c.advectPos[1] - YORIGIN)/cell_h + 0.5, 1.0)
 
     -- interpolation constants
     var x1      = L.float(xfrac)
@@ -107,11 +152,8 @@ local advectInterpolateVelocity = liszt kernel(c : grid.cells)
                  + x0 * y1 * lc(0,1).dv
                  + x1 * y1 * lc(1,1).dv
 	
-	c.vx[0] = velocity[0]
-	c.vx[1] = 0.0
-
-	c.vy[0] = velocity[1]
-	c.vy[1] = 0.0
+	c.vx = velocity[0]
+	c.vy = velocity[1]
 end
 
 local function advectVelocity(grid)
@@ -124,9 +166,9 @@ end
 -- Diffusion kernel
 --
 
-local diffuseProject = liszt kernel(c : grid.cells)
-	var xIndex = c.coord[0]
-	var yIndex = c.coord[1]
+local diffuseProjectFFT = liszt kernel(c : gridFFT.cells)
+	var xIndex = L.float(c.xid)
+	var yIndex = L.float(c.yid)
 	var xFFT = c.vx
     var yFFT = c.vy
 
@@ -163,10 +205,43 @@ local diffuseProject = liszt kernel(c : grid.cells)
     c.vy = yFFT
 end
 
-local updateVelocity = liszt kernel(c : grid.cells)
-    var scale = 1.0f / (N * N)
-    c.dv[0] = c.vx[0] * scale
-	c.dv[1] = c.vy[0] * scale
+--local updateVelocity = liszt kernel(c : grid.cells)
+--    var scale = 1.0f / (N * N)
+--    c.dv[0] = c.vx[0] * scale
+--	c.dv[1] = c.vy[0] * scale
+--end
+
+local function diffuseProject(grid, gridFFT)
+	--terralib.tree.printraw(  )
+	
+	local xCPUPtr = grid.cells.vx:getDLD().address
+	local xFFTCPUPtr = gridFFT.cells.vx:getDLD().address
+
+	local yCPUPtr = grid.cells.vy:getDLD().address
+	local yFFTCPUPtr = gridFFT.cells.vy:getDLD().address
+
+	local cudaMemcpyHostToDevice,cudaMemcpyDeviceToHost = 1,2
+	C.cudaMemcpy(fftplan.vxGPU,xCPUPtr,terralib.sizeof(float)*N*N,cudaMemcpyHostToDevice)
+	C.cudaMemcpy(fftplan.vyGPU,yCPUPtr,terralib.sizeof(float)*N*N,cudaMemcpyHostToDevice)
+	-- FFT R2C
+	C.cufftExecR2C(fftplan.r2c, fftplan.vxGPU, terralib.cast(&C.cufftComplex,fftplan.vxGPU))
+	C.cufftExecR2C(fftplan.r2c, fftplan.vyGPU, terralib.cast(&C.cufftComplex,fftplan.vyGPU))
+
+	C.cudaMemcpy(xFFTCPUPtr,fftplan.xGPU,terralib.sizeof(float)*N*N,cudaMemcpyDeviceToHost)
+	C.cudaMemcpy(yFFTCPUPtr,fftplan.yGPU,terralib.sizeof(float)*N*N,cudaMemcpyDeviceToHost)
+
+	diffuseProjectFFT(gridFFT.cells)
+
+	C.cudaMemcpy(fftplan.xGPU,xFFTCPUPtr,terralib.sizeof(float)*N*N,cudaMemcpyHostToDevice)
+	C.cudaMemcpy(fftplan.yGPU,yFFTCPUPtr,terralib.sizeof(float)*N*N,cudaMemcpyHostToDevice)
+
+	-- FFT C2R
+	C.cufftExecC2R(fftplan.c2r, terralib.cast(&C.cufftComplex,fftplan.vxGPU), fftplan.vxGPU)
+	C.cufftExecC2R(fftplan.c2r, terralib.cast(&C.cufftComplex,fftplan.vyGPU), fftplan.vyGPU)
+
+	C.cudaMemcpy(xCPUPtr,fftplan.vxGPU,terralib.sizeof(float)*N*N,cudaMemcpyDeviceToHost)
+	C.cudaMemcpy(yCPUPtr,fftplan.vyGPU,terralib.sizeof(float)*N*N,cudaMemcpyDeviceToHost)
+
 end
 
 --
@@ -198,8 +273,8 @@ local computeParticleVelocity = liszt kernel (p : particles)
     var dc      = p.dual_cell
 
     -- figure out fractional position in the dual cell in range [0.0, 1.0]
-    var xfrac   = cmath.fmod((p.pos[0] - XORIGIN)/cell_w + 0.5, 1.0)
-    var yfrac   = cmath.fmod((p.pos[1] - YORIGIN)/cell_h + 0.5, 1.0)
+    var xfrac   = C.fmod((p.pos[0] - XORIGIN)/cell_w + 0.5, 1.0)
+    var yfrac   = C.fmod((p.pos[1] - YORIGIN)/cell_h + 0.5, 1.0)
 
     -- interpolation constants
     var x1      = L.float(xfrac)
@@ -217,14 +292,14 @@ local computeParticleVelocity = liszt kernel (p : particles)
 end
 
 local updateParticlePos = liszt kernel (p : particles)
-    var r = L.vec2f({ cmath.randFloat() - 0.5, cmath.randFloat() - 0.5 })
+    var r = L.vec2f({ C.randFloat() - 0.5, C.randFloat() - 0.5 })
     var pos = p.nextPos + L.float(dt) * r
 end
 
-for i = 1, 1000 do
+for i = 1, 1 do
 	advectVelocity(grid)
-    --diffuseProject(grid)
-    --updateVelocity(grid)
+    diffuseProject(grid, gridFFT)
+    --updateVelocity(grid.cells)
     
 	computeParticleVelocity(particles)
     updateParticlePos(particles)
