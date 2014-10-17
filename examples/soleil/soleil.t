@@ -281,6 +281,9 @@ local radiation_options = {
 }
 
 -- IO
+-- Choose an output format (0 is the native Python, 1, is for Tecplot)
+--IO.outputFormat = 0 -- Python
+IO.outputFormat = 1 -- Tecplot
 IO.outputFileNamePrefix = "../soleilOutput/output"
 
 -----------------------------------------------------------------------------
@@ -560,23 +563,29 @@ Particles.averageTemperature= L.NewGlobal(L.double, 0.0)
 --[[                 CONSOLE OUTPUT AFTER PREPROCESSING                  ]]--
 -----------------------------------------------------------------------------
 
-print("-------------------------------------------------------------------------")
-print("|    _____    __      _      ____                                           |")
-print("|   / ____| / __ \\  | |    | ___|    Web: su2.stanford.edu                     |")
-print("|  | (___   | |  | | | |    | |_      Twitter: @su2code                         |")
-print("|   \\___ \\  | |  | | |    |  _|    Forum: www.cfd-online.com/Forums/su2/     |")
-print("|   ____) | | |__| | | |__  | |__                                        |")
-print("|  |_____/   \\____/ |____| |____|   Suite (Computational Fluid Dynamics Code) |")
-print("|                                   Release 3.2.1 \"eagle\"                     |")
-print("-------------------------------------------------------------------------" )
-print("| Copyright (C) 2014 ...                                                |" )
-print("| Soleil is distributed in the hope that it will be useful,             |" )
-print("| but WITHOUT ANY WARRANTY; without even the implied warranty of        |" )
-print("| MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the          |" )
-print("| XXXX XXXX XXXX License (version 2.1) for more details.         |" )
-print("-------------------------------------------------------------------------" )
+print("\n")
+print("---------------------------------------------------------------------")
+print("|    _____    ___     _      ____   _____   _                       |")
+print("|   / ____|  / __ \\  | |    | ___| |_   _| | |                      |")
+print("|  | (___   | |  | | | |    | |_     | |   | |  Stanford University |")
+print("|   \\___ \\  | |  | | | |    |  _|    | |   | |        PSAAP 2       |")
+print("|   ____) | | |__| | | |__  | |__   _| |_  | |__                    |")
+print("|  |_____/   \\____/  |____| |____| |_____| |____|                   |")
+print("|                                                                   |")
+print("---------------------------------------------------------------------")
+print("| Copyright (C) 2013-2014 ...                                       |")
+print("| Soleil is a turbulence/particle/radiation solver written in       |")
+print("| the Liszt DSL and executed by the Legion runtime.                 |")
+--print("| Soleil is distributed in the hope that it will be useful,       |")
+--print("| but WITHOUT ANY WARRANTY; without even the implied warranty of  |")
+--print("| MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the    |")
+--print("| XXXX XXXX XXXX License (version 2.1) for more details.          |")
+print("---------------------------------------------------------------------")
 
-print("--------------------------- Grid Definition --------------------------")
+print("-------------------------- Grid Definition --------------------------")
+print("Grid x dimension: ", grid_options.xnum)
+print("Grid y dimension: ", grid_options.ynum)
+print("Grid z dimension: ", grid_options.znum)
 print("xBoundaryDepth()", grid:xBoundaryDepth())
 print("yBoundaryDepth()", grid:yBoundaryDepth())
 print("zBoundaryDepth()", grid:zBoundaryDepth())
@@ -586,6 +595,9 @@ print("grid zOrigin()", grid:zOrigin())
 print("grid xWidth()", grid:xWidth())
 print("grid yWidth()", grid:yWidth())
 print("grid zWidth()", grid:zWidth())
+
+print("\n")
+print("--------------------------- Start Solver ----------------------------")
 
 -----------------------------------------------------------------------------
 --[[                       USER DEFINED FUNCTIONS                        ]]--
@@ -2617,63 +2629,73 @@ end
 
 function IO.WriteOutput(timeStep)
 
-    -- Output log headers
+    -- Output log headers at a specified frequency
+
     if timeStep  % TimeIntegrator.headerFrequency == 0 then
-        print("\n Current time step: ",
-        string.format("%2.6f",TimeIntegrator.deltaTime:get()))
-        print("  Iter  ",
-        --"   dt   ",
-        "  Time  ",
-        "  P_avg ",
-        "  T_avg ",
+        io.stdout:write("\n Current time step: ",
+        string.format("%2.6f",TimeIntegrator.deltaTime:get()), " s \n\n")
+        io.stdout:write(string.format("%8s",'    Iter'),
+        string.format("%12s",'   Time(s)'),
+        string.format("%12s",'Avg Press'),
+        string.format("%12s",'Avg Temp'),
         --"flowMinT",
         --"flowMaxT",
-        "kin_Energy",
-        "particlesT\n")
-        --print("\n")
+        string.format("%12s",'Avg KE'),
+        string.format("%12s",'Particle T'),'\n')
     end
 
     -- Ouput the current stats to the console
-    print(string.format("%10d",timeStep),
-    --string.format("%4.6f",TimeIntegrator.deltaTime:get()),
-    string.format("%4.6f",TimeIntegrator.simTime:get()),
-    string.format("%4.6f",Flow.averagePressure:get()),
-    string.format("%4.6f",Flow.averageTemperature:get()),
-    --string.format("%4.6f",Flow.minTemperature:get()),
-    --string.format("%4.6f",Flow.maxTemperature:get()),
-    string.format("%4.6f",Flow.averageKineticEnergy:get()),
-    string.format("%4.6f",Particles.averageTemperature:get())
-    )
+    io.stdout:write(string.format("%8d",timeStep),
+    --string.format(" %11.6f",TimeIntegrator.deltaTime:get()),
+    string.format(" %11.6f",TimeIntegrator.simTime:get()),
+    string.format(" %11.6f",Flow.averagePressure:get()),
+    string.format(" %11.6f",Flow.averageTemperature:get()),
+    --string.format(" %11.6f",Flow.minTemperature:get()),
+    --string.format(" %11.6f",Flow.maxTemperature:get()),
+    string.format(" %11.6f",Flow.averageKineticEnergy:get()),
+    string.format(" %11.6f",Particles.averageTemperature:get()),'\n')
 
     -- Check if it is time to output to file
     if timeStep  % TimeIntegrator.outputEveryTimeSteps == 0 then
-        --print("Time to output")
-        local outputFileName = IO.outputFileNamePrefix .. "_" ..
-          tostring(timeStep)
-        Flow.WriteField(outputFileName .. "_flow",
-          grid:xSize(), grid:ySize(), grid:zSize(),
-          grid.cells.temperature)
-        --Flow.WriteField(outputFileName .. "_flow",
-        --  grid:xSize(), grid:ySize(), grid:zSize(),
-        --  grid.cells.rho)
-        Flow.WriteField(outputFileName .. "_flow",
-          grid:xSize(), grid:ySize(), grid:zSize(),
-          grid.cells.pressure)
-        Flow.WriteField(outputFileName .. "_flow",
-          grid:xSize(), grid:ySize(), grid:zSize(),
-          grid.cells.kineticEnergy)
-        Particles.WriteField(outputFileName .. "_particles",
-          particles.position)
-        Particles.WriteField(outputFileName .. "_particles",
-          particles.velocity)
-        Particles.WriteField(outputFileName .. "_particles",
-          particles.temperature)
-        Particles.WriteField(outputFileName .. "_particles",
-          particles.state)
-        Particles.WriteField(outputFileName .. "_particles",
-          particles.id)
-        Particles.WriteField(outputFileName .. "_particles",
-          particles.groupID)
+
+        -- Native Python output format
+        if IO.outputFormat == 0 then
+            --print("Time to output")
+            local outputFileName = IO.outputFileNamePrefix .. "_" ..
+              tostring(timeStep)
+            Flow.WriteField(outputFileName .. "_flow",
+              grid:xSize(), grid:ySize(), grid:zSize(),
+              grid.cells.temperature)
+            --Flow.WriteField(outputFileName .. "_flow",
+            --  grid:xSize(), grid:ySize(), grid:zSize(),
+            --  grid.cells.rho)
+            Flow.WriteField(outputFileName .. "_flow",
+              grid:xSize(), grid:ySize(), grid:zSize(),
+              grid.cells.pressure)
+            Flow.WriteField(outputFileName .. "_flow",
+              grid:xSize(), grid:ySize(), grid:zSize(),
+              grid.cells.kineticEnergy)
+            Particles.WriteField(outputFileName .. "_particles",
+              particles.position)
+            Particles.WriteField(outputFileName .. "_particles",
+              particles.velocity)
+            Particles.WriteField(outputFileName .. "_particles",
+              particles.temperature)
+            Particles.WriteField(outputFileName .. "_particles",
+              particles.state)
+            Particles.WriteField(outputFileName .. "_particles",
+              particles.id)
+            Particles.WriteField(outputFileName .. "_particles",
+              particles.groupID)
+        elseif IO.outputFormat == 1 then
+            -- Tecplot ASCII format
+            local outputFileName = IO.outputFileNamePrefix .. "_" ..
+              tostring(timeStep) .. ".dat"
+
+        else
+            print("Output format not defined. No output written to disk.")
+        end
+
     end
 end
 
