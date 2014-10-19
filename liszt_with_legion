@@ -9,11 +9,14 @@ liszt_runtime = os.path.join(script_dir, 'runtime/libsingle_runtime.so')
 
 parser = OptionParser()
 parser.add_option('-v', '--verbose', action='store_true',
-                  dest='verbose', default='false',
-                  help='run terra interpreter with verbose option')
+        dest='verbose', default='false',
+        help='run terra interpreter with verbose option')
 parser.add_option('-f', '--file',
-                  dest='filename',
-                  help='file containing liszt application')
+        dest='filename',
+        help='file containing liszt application')
+parser.add_option('-l', '--legion', action='store_true',
+        dest='legion', default='false',
+        help='run liszt with legion')
 
 (options, args) = parser.parse_args()
 
@@ -25,10 +28,48 @@ if options.filename:
     file_opt = [os.path.join(os.getcwd(), options.filename)]
 
 liszt_env = dict(os.environ.items() + [('LISZT_RUNTIME', liszt_runtime)])
-launch_script = [os.path.join(script_dir, 'compiler/launch_script.t')]
-launch_cmd = '%s/terra/terra %s %s %s' %\
-             (script_dir, terra_opts, launch_script, file_opt)
-launch_cmd = [os.path.join(script_dir, 'terra/terra')] +\
-             terra_opts + launch_script + file_opt
-sys.exit(subprocess.Popen([os.path.join(script_dir, 'terra/terra')] +
-    terra_opts + launch_script + file_opt, env = liszt_env).wait())
+
+if options.legion and options.legion == True:
+    os_name = platform.system()
+    root_dir = '/Users/chinmayee/legion/language'
+    legion_dir = os.path.dirname(root_dir)
+    terra_dir = os.path.join(root_dir, 'terra')
+    luabind_dir = os.path.join(root_dir, 'luabind', 'install_dir')
+    luajit_dir = os.path.join(root_dir, 'luabind', 'fake_luajit_dir')
+    runtime_dir = os.path.join(legion_dir, 'runtime')
+    bindings_dir = os.path.join(legion_dir, 'bindings', 'lua')
+    liszt_runtime_dir = script_dir
+    terra_path = [
+            '?.lua',
+            '?.t',
+            os.path.join(root_dir, 'src', '?.t'),
+            os.path.join(terra_dir, 'tests', 'lib', '?.t'),
+            os.path.join(bindings_dir, '?.lua'),
+            os.path.join(bindings_dir, '?.t'),
+            ]
+    include_path = [
+            bindings_dir,
+            runtime_dir,
+            liszt_runtime_dir
+            ]
+    lib_path = [
+            os.path.join(luabind_dir, 'lib'),
+            os.path.join(luajit_dir, 'lib'),
+            os.path.join(terra_dir, 'build'),
+            bindings_dir,
+            ]
+    LD_LIBRARY_PATH = 'LD_LIBRARY_PATH'
+    if os_name == 'Darwin':
+        LD_LIBRARY_PATH = 'DYLD_LIBRARY_PATH'
+    terra_exe = os.path.join(terra_dir, 'terra')
+    liszt_env = dict(liszt_env.items() + [
+        ('LUA_PATH', ';'.join(terra_path)),
+        (LD_LIBRARY_PATH, ':'.join(lib_path)),
+        ('INCLUDE_PATH', ';'.join(include_path))])
+    launch_script = [os.path.join(script_dir, 'compiler/launch_legion_script.t')]
+else:
+    terra_exe = os.path.join(script_dir, 'terra/terra')
+    launch_script = [os.path.join(script_dir, 'compiler/launch_script.t')]
+
+subprocess.check_call([terra_exe] +
+    terra_opts + launch_script + file_opt, env = liszt_env)
