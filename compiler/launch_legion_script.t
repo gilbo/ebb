@@ -1,4 +1,4 @@
--- launch liszt program as a top level legion task
+-- Launch liszt program as a top level legion task.
 
 require('legionlib')
 
@@ -12,6 +12,10 @@ local function top_level_err_handler ( errobj )
   os.exit(1)
 end
 
+-- Error handler is copied from launch_script.t.
+-- Not sure how legion handles errors.
+-- If legion runtime prints stack trace,
+-- we can remove error handling from here.
 function top_level_task(binding, regions, args)
   local script_filename = args[1]
   success = xpcall( function ()
