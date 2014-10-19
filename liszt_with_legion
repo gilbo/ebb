@@ -1,0 +1,34 @@
+#!/usr/bin/env python
+
+import os, platform, subprocess, sys
+from optparse import OptionParser
+
+script_dir = os.path.dirname(os.path.realpath(__file__))
+terra_opts = ['-p%s/?.t' % script_dir,'-p%s/?.lua' % script_dir]
+liszt_runtime = os.path.join(script_dir, 'runtime/libsingle_runtime.so')
+
+parser = OptionParser()
+parser.add_option('-v', '--verbose', action='store_true',
+                  dest='verbose', default='false',
+                  help='run terra interpreter with verbose option')
+parser.add_option('-f', '--file',
+                  dest='filename',
+                  help='file containing liszt application')
+
+(options, args) = parser.parse_args()
+
+if options.verbose and options.verbose == True:
+    terra_opts = ['-vv'] + terra_opts
+
+file_opt = []
+if options.filename:
+    file_opt = [os.path.join(os.getcwd(), options.filename)]
+
+liszt_env = dict(os.environ.items() + [('LISZT_RUNTIME', liszt_runtime)])
+launch_script = [os.path.join(script_dir, 'compiler/launch_script.t')]
+launch_cmd = '%s/terra/terra %s %s %s' %\
+             (script_dir, terra_opts, launch_script, file_opt)
+launch_cmd = [os.path.join(script_dir, 'terra/terra')] +\
+             terra_opts + launch_script + file_opt
+sys.exit(subprocess.Popen([os.path.join(script_dir, 'terra/terra')] +
+    terra_opts + launch_script + file_opt, env = liszt_env).wait())
