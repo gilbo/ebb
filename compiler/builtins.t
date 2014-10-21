@@ -450,7 +450,6 @@ function L.sqrt.check(ast, ctxt)
 end
 
 function L.sqrt.codegen(ast,ctxt)
-    local lt  = ast.params[1].node_type
     local exp = ast.params[1]:codegen(ctxt)
     if ctxt:onGPU() then
         return `G.sqrt([exp])
@@ -469,7 +468,6 @@ function L.cbrt.check(ast, ctxt)
 end
 
 function L.cbrt.codegen(ast,ctxt)
-    local lt  = ast.params[1].node_type
     local exp = ast.params[1]:codegen(ctxt)
     if ctxt:onGPU() then
         return `G.cbrt([exp])
@@ -477,6 +475,23 @@ function L.cbrt.codegen(ast,ctxt)
     return `C.cbrt([exp])
 end
 
+local function fabs (val)
+    return C.fabs(val)
+end
+
+L.fabs = Builtin.new(fabs)
+
+function L.fabs.check (ast, ctxt)
+    return check_number(ast, ctxt)
+end
+
+function L.fabs.codegen (ast, ctxt)
+    local exp = ast.params[1]:codegen(ctxt)
+    if ctxt:onGPU() then
+        return `G.fabs([exp])
+    end
+    return `C.fabs([exp])
+end
 
 local function all(v)
     if not v.type:isVector() then

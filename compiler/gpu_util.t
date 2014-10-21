@@ -207,6 +207,7 @@ GPU.get_grid_dimensions = get_grid_dimensions
 
 GPU.cbrt = cbrt
 GPU.sqrt = cudalib.nvvm_sqrt_rm_d
+GPU.fabs = cudalib.nvvm_fabs_d
 
 -- Intrinsic atomic reductions:
 GPU.atomic_add_float = atomic_add_float
