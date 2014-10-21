@@ -75,7 +75,7 @@ if options.legion and options.legion == True:
     include_path = [
             bindings_dir,
             legion_runtime_dir,
-            liszt_runtime_dir
+            liszt_runtime_dir,
             ]
     lib_path = [
             os.path.join(luabind_dir, 'lib'),
@@ -83,9 +83,10 @@ if options.legion and options.legion == True:
             os.path.join(terra_dir, 'build'),
             bindings_dir,
             ]
-    LD_LIBRARY_PATH = 'LD_LIBRARY_PATH'
     if os_name == 'Darwin':
         LD_LIBRARY_PATH = 'DYLD_LIBRARY_PATH'
+    else:
+        LD_LIBRARY_PATH = 'LD_LIBRARY_PATH'
     terra_env = dict(terra_env.items() + [
         ('LUA_PATH', ';'.join(terra_path)),
         (LD_LIBRARY_PATH, ':'.join(lib_path)),
@@ -94,5 +95,9 @@ if options.legion and options.legion == True:
 else:
     launch_script = [os.path.join(script_dir, 'compiler/launch_script.t')]
 
-subprocess.check_call([terra_exe] +
-    terra_opts + launch_script + file_opt, env = terra_env)
+try:
+  subprocess.check_call([terra_exe] +
+      terra_opts + launch_script + file_opt, env = terra_env)
+except:
+    e = sys.exc_info()[0]
+    print("Error running liszt with legion :\n%s" % e)
