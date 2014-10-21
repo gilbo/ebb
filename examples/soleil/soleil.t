@@ -71,8 +71,8 @@ local white = L.NewVector(L.float,{1.0,1.0,1.0})
 -----------------------------------------------------------------------------
 
 local grid_options = {
-xnum = 16,
-ynum = 16,
+xnum = 32,
+ynum = 32,
 znum = 1,
 origin = {0.0, 0.0, 0.0},
 --xWidth = twoPi,
@@ -81,13 +81,19 @@ origin = {0.0, 0.0, 0.0},
 --zWidth = twoPi,
 xWidth = 1.0,
 yWidth = 1.0,
-zWidth = 1.0/16.0,
+zWidth = 1.0/32.0,
 xBCLeft  = 'wall',
+xBCLeftVel = {0.0, 0.0, 0.0},
 xBCRight = 'wall',
+xBCRightVel = {0.0, 0.0, 0.0},
 yBCLeft  = 'wall',
+yBCLeftVel = {0.0, 0.0, 0.0},
 yBCRight = 'wall',
+yBCRightVel = {33.179, 0.0, 0.0},
 zBCLeft  = 'symmetry',
+zBCLeftVel = {0.0, 0.0, 0.0},
 zBCRight = 'symmetry',
+zBCRightVel = {0.0, 0.0, 0.0},
 --xBCLeft  = 'periodic',
 --xBCRight = 'periodic',
 --yBCLeft  = 'periodic',
@@ -120,7 +126,18 @@ local spatial_stencil = {
 }
 
 -- Define offsets for boundary conditions in flow solver
+-- The sign variables define the necessary reflections for the
+-- different types of BCs. The wall velocity is specified above,
+-- and then the velocity adjustment is calculated here and applied
+-- to the boundaries below. WARNING: we are assuming uniform meshes
+-- here as well, as the 2.0 results in a simple average to match
+-- the specified wall velocity when the BC is applied.
+
+-- Define offsets, signs, and velocities for the x BCs
+
 local xSignX, xSignY, xSignZ
+local xBCLeftVelX, xBCLeftVelY, xBCLeftVelZ
+local xBCRightVelX, xBCRightVelY, xBCRightVelZ
 -- Offset liszt functions
 local XOffsetPeriodic = liszt function(boundaryPointDepth)
   return 0
@@ -137,23 +154,45 @@ if grid_options.xBCLeft  == "periodic" and
   xSignX = 1
   xSignY = 1
   xSignZ = 1
-elseif grid_options.xBCLeft == "symmetry" and 
+  xBCLeftVelX  = 0.0
+  xBCLeftVelY  = 0.0
+  xBCLeftVelZ  = 0.0
+  xBCRightVelX = 0.0
+  xBCRightVelY = 0.0
+  xBCRightVelZ = 0.0
+elseif grid_options.xBCLeft == "symmetry" and
        grid_options.xBCRight == "symmetry" then
   XOffset = XOffsetSymmetry
   xSignX = -1
   xSignY = 1
   xSignZ = 1
-elseif grid_options.xBCLeft == "wall" and
+  xBCLeftVelX  = 0.0
+  xBCLeftVelY  = 0.0
+  xBCLeftVelZ  = 0.0
+  xBCRightVelX = 0.0
+  xBCRightVelY = 0.0
+  xBCRightVelZ = 0.0
+elseif grid_options.xBCLeft  == "wall" and
        grid_options.xBCRight == "wall" then
   XOffset = XOffsetSymmetry
   xSignX = -1
   xSignY = -1
   xSignZ = -1
+  xBCLeftVelX  = 2.0*grid_options.xBCLeftVel[1]
+  xBCLeftVelY  = 2.0*grid_options.xBCLeftVel[2]
+  xBCLeftVelZ  = 2.0*grid_options.xBCLeftVel[3]
+  xBCRightVelX = 2.0*grid_options.xBCRightVel[1]
+  xBCRightVelY = 2.0*grid_options.xBCRightVel[2]
+  xBCRightVelZ = 2.0*grid_options.xBCRightVel[3]
 else
   error("Boundary conditions in x not implemented")
 end
 
+-- Define offsets, signs, and velocities for the y BCs
+
 local ySignX, ySignY, ySignZ
+local yBCLeftVelX, yBCLeftVelY, yBCLeftVelZ
+local yBCRightVelX, yBCRightVelY, yBCRightVelZ
 local YOffsetDummyPeriodic = liszt function(boundaryPointDepth)
   return 0
 end
@@ -166,25 +205,45 @@ if grid_options.yBCLeft  == "periodic" and
   ySignX = 1
   ySignY = 1
   ySignZ = 1
-elseif grid_options.yBCLeft  == "symmetry" and 
+  yBCLeftVelX = 0.0
+  yBCLeftVelY = 0.0
+  yBCLeftVelZ = 0.0
+  yBCRightVelX = 0.0
+  yBCRightVelY = 0.0
+  yBCRightVelZ = 0.0
+elseif grid_options.yBCLeft  == "symmetry" and
        grid_options.yBCRight == "symmetry" then
   YOffset = YOffsetSymmetry
   ySignX = 1
   ySignY = -1
   ySignZ = 1
-elseif grid_options.yBCLeft == "wall" and
+  yBCLeftVelX = 0.0
+  yBCLeftVelY = 0.0
+  yBCLeftVelZ = 0.0
+  yBCRightVelX = 0.0
+  yBCRightVelY = 0.0
+  yBCRightVelZ = 0.0
+elseif grid_options.yBCLeft  == "wall" and
        grid_options.yBCRight == "wall" then
   YOffset = YOffsetSymmetry
   ySignX = -1
   ySignY = -1
   ySignZ = -1
+  yBCLeftVelX  = 2.0*grid_options.yBCLeftVel[1]
+  yBCLeftVelY  = 2.0*grid_options.yBCLeftVel[2]
+  yBCLeftVelZ  = 2.0*grid_options.yBCLeftVel[3]
+  yBCRightVelX = 2.0*grid_options.yBCRightVel[1]
+  yBCRightVelY = 2.0*grid_options.yBCRightVel[2]
+  yBCRightVelZ = 2.0*grid_options.yBCRightVel[3]
 else
   error("Boundary conditions in y not implemented")
 end
 
+-- Define offsets, signs, and velocities for the z BCs
 
--- Define offsets for boundary conditions in flow solver
 local zSignX, zSignY, zSignZ
+local zBCLeftVelX, zBCLeftVelY, zBCLeftVelZ
+local zBCRightVelX, zBCRightVelY, zBCRightVelZ
 -- Offset liszt functions
 local ZOffsetPeriodic = liszt function(boundaryPointDepth)
   return 0
@@ -201,18 +260,36 @@ if grid_options.zBCLeft  == "periodic" and
   zSignX = 1
   zSignY = 1
   zSignZ = 1
-elseif grid_options.zBCLeft == "symmetry" and 
+  zBCLeftVelX = 0.0
+  zBCLeftVelY = 0.0
+  zBCLeftVelZ = 0.0
+  zBCRightVelX = 0.0
+  zBCRightVelY = 0.0
+  zBCRightVelZ = 0.0
+elseif grid_options.zBCLeft == "symmetry" and
        grid_options.zBCRight == "symmetry" then
   ZOffset = ZOffsetSymmetry
   zSignX = 1
   zSignY = 1
   zSignZ = -1
-elseif grid_options.zBCLeft == "wall" and
+  zBCLeftVelX = 0.0
+  zBCLeftVelY = 0.0
+  zBCLeftVelZ = 0.0
+  zBCRightVelX = 0.0
+  zBCRightVelY = 0.0
+  zBCRightVelZ = 0.0
+elseif grid_options.zBCLeft  == "wall" and
        grid_options.zBCRight == "wall" then
   ZOffset = ZOffsetSymmetry
   zSignX = -1
   zSignY = -1
   zSignZ = -1
+  zBCLeftVelX  = 2.0*grid_options.zBCLeftVel[1]
+  zBCLeftVelY  = 2.0*grid_options.zBCLeftVel[2]
+  zBCLeftVelZ  = 2.0*grid_options.zBCLeftVel[3]
+  zBCRightVelX = 2.0*grid_options.zBCRightVel[1]
+  zBCRightVelY = 2.0*grid_options.zBCRightVel[2]
+  zBCRightVelZ = 2.0*grid_options.zBCRightVel[3]
 else
   error("Boundary conditions in z not implemented")
 end
@@ -222,10 +299,10 @@ TimeIntegrator.coeff_function       = {1/6, 1/3, 1/3, 1/6}
 TimeIntegrator.coeff_time           = {0.5, 0.5, 1, 1}
 TimeIntegrator.simTime              = L.NewGlobal(L.double,0)
 TimeIntegrator.final_time           = 1000.00001
-TimeIntegrator.max_iter             = 5
+TimeIntegrator.max_iter             = 100000
 TimeIntegrator.timeStep             = L.NewGlobal(L.int,0)
-TimeIntegrator.cfl                  = 1.2
-TimeIntegrator.outputEveryTimeSteps = 10
+TimeIntegrator.cfl                  = 2.5
+TimeIntegrator.outputEveryTimeSteps = 1000
 TimeIntegrator.headerFrequency      = 20
 TimeIntegrator.deltaTime            = L.NewGlobal(L.double, 0.01)
 
@@ -237,8 +314,8 @@ local fluid_options = {
     --prandtl = 0.7
     gasConstant = 287.058,
     gamma = 1.4,
-    dynamic_viscosity_ref = 0.001,
-    dynamic_viscosity_temp_ref = 1.0,
+    dynamic_viscosity_ref = 1.7893e-05,
+    dynamic_viscosity_temp_ref = 288.15,
     prandtl = 0.7
 }
 
@@ -1472,78 +1549,78 @@ Flow.UpdateGhostFieldsStep1 = liszt kernel(c : grid.cells)
     if c.xneg_depth > 0 then
         var xoffset = XOffset(c.xneg_depth)
         c.rhoBoundary            =   c(xoffset,0,0).rho
-        c.rhoVelocityBoundary[0] =   c(xoffset,0,0).rhoVelocity[0] * xSignX
-        c.rhoVelocityBoundary[1] =   c(xoffset,0,0).rhoVelocity[1] * xSignY
-        c.rhoVelocityBoundary[2] =   c(xoffset,0,0).rhoVelocity[2] * xSignZ
+        c.rhoVelocityBoundary[0] =   c(xoffset,0,0).rhoVelocity[0] * xSignX + xBCLeftVelX
+        c.rhoVelocityBoundary[1] =   c(xoffset,0,0).rhoVelocity[1] * xSignY + xBCLeftVelY
+        c.rhoVelocityBoundary[2] =   c(xoffset,0,0).rhoVelocity[2] * xSignZ + xBCLeftVelZ
         c.rhoEnergyBoundary      =   c(xoffset,0,0).rhoEnergy
-        c.velocityBoundary[0]    =   c(xoffset,0,0).velocity[0] * xSignX
-        c.velocityBoundary[1]    =   c(xoffset,0,0).velocity[1] * xSignY
-        c.velocityBoundary[2]    =   c(xoffset,0,0).velocity[2] * xSignZ
+        c.velocityBoundary[0]    =   c(xoffset,0,0).velocity[0] * xSignX + xBCLeftVelX
+        c.velocityBoundary[1]    =   c(xoffset,0,0).velocity[1] * xSignY + xBCLeftVelY
+        c.velocityBoundary[2]    =   c(xoffset,0,0).velocity[2] * xSignZ + xBCLeftVelZ
         c.pressureBoundary       =   c(xoffset,0,0).pressure
         c.temperatureBoundary    =   c(xoffset,0,0).temperature
     end
     if c.xpos_depth > 0 then
         var xoffset = XOffset(c.xpos_depth)
         c.rhoBoundary            =   c(-xoffset,0,0).rho
-        c.rhoVelocityBoundary[0] =   c(-xoffset,0,0).rhoVelocity[0] * xSignX
-        c.rhoVelocityBoundary[1] =   c(-xoffset,0,0).rhoVelocity[1] * xSignY
-        c.rhoVelocityBoundary[2] =   c(-xoffset,0,0).rhoVelocity[2] * xSignZ
+        c.rhoVelocityBoundary[0] =   c(-xoffset,0,0).rhoVelocity[0] * xSignX + xBCRightVelX
+        c.rhoVelocityBoundary[1] =   c(-xoffset,0,0).rhoVelocity[1] * xSignY + xBCRightVelY
+        c.rhoVelocityBoundary[2] =   c(-xoffset,0,0).rhoVelocity[2] * xSignZ + xBCRightVelZ
         c.rhoEnergyBoundary      =   c(-xoffset,0,0).rhoEnergy
-        c.velocityBoundary[0]    =   c(-xoffset,0,0).velocity[0] * xSignX
-        c.velocityBoundary[1]    =   c(-xoffset,0,0).velocity[1] * xSignY
-        c.velocityBoundary[2]    =   c(-xoffset,0,0).velocity[2] * xSignZ
+        c.velocityBoundary[0]    =   c(-xoffset,0,0).velocity[0] * xSignX + xBCRightVelX
+        c.velocityBoundary[1]    =   c(-xoffset,0,0).velocity[1] * xSignY + xBCRightVelY
+        c.velocityBoundary[2]    =   c(-xoffset,0,0).velocity[2] * xSignZ + xBCRightVelZ
         c.pressureBoundary       =   c(-xoffset,0,0).pressure
         c.temperatureBoundary    =   c(-xoffset,0,0).temperature
     end
     if c.yneg_depth > 0 then
         var yoffset = YOffset(c.yneg_depth)
         c.rhoBoundary            =   c(0,yoffset,0).rho
-        c.rhoVelocityBoundary[0] =   c(0,yoffset,0).rhoVelocity[0] * ySignX
-        c.rhoVelocityBoundary[1] =   c(0,yoffset,0).rhoVelocity[1] * ySignY
-        c.rhoVelocityBoundary[2] =   c(0,yoffset,0).rhoVelocity[2] * ySignZ
+        c.rhoVelocityBoundary[0] =   c(0,yoffset,0).rhoVelocity[0] * ySignX + yBCLeftVelX
+        c.rhoVelocityBoundary[1] =   c(0,yoffset,0).rhoVelocity[1] * ySignY + yBCLeftVelY
+        c.rhoVelocityBoundary[2] =   c(0,yoffset,0).rhoVelocity[2] * ySignZ + yBCLeftVelZ
         c.rhoEnergyBoundary      =   c(0,yoffset,0).rhoEnergy
-        c.velocityBoundary[0]    =   c(0,yoffset,0).velocity[0] * ySignX
-        c.velocityBoundary[1]    =   c(0,yoffset,0).velocity[1] * ySignY
-        c.velocityBoundary[2]    =   c(0,yoffset,0).velocity[2] * ySignZ
+        c.velocityBoundary[0]    =   c(0,yoffset,0).velocity[0] * ySignX + yBCLeftVelX
+        c.velocityBoundary[1]    =   c(0,yoffset,0).velocity[1] * ySignY + yBCLeftVelY
+        c.velocityBoundary[2]    =   c(0,yoffset,0).velocity[2] * ySignZ + yBCLeftVelZ
         c.pressureBoundary       =   c(0,yoffset,0).pressure
         c.temperatureBoundary    =   c(0,yoffset,0).temperature
     end
     if c.ypos_depth > 0 then
         var yoffset = YOffset(c.ypos_depth)
         c.rhoBoundary            =   c(0,-yoffset,0).rho
-        c.rhoVelocityBoundary[0] =   c(0,-yoffset,0).rhoVelocity[0] * ySignX
-        c.rhoVelocityBoundary[1] =   c(0,-yoffset,0).rhoVelocity[1] * ySignY
-        c.rhoVelocityBoundary[2] =   c(0,-yoffset,0).rhoVelocity[2] * ySignZ
+        c.rhoVelocityBoundary[0] =   c(0,-yoffset,0).rhoVelocity[0] * ySignX + yBCRightVelX
+        c.rhoVelocityBoundary[1] =   c(0,-yoffset,0).rhoVelocity[1] * ySignY + yBCRightVelY
+        c.rhoVelocityBoundary[2] =   c(0,-yoffset,0).rhoVelocity[2] * ySignZ + yBCRightVelZ
         c.rhoEnergyBoundary      =   c(0,-yoffset,0).rhoEnergy
-        c.velocityBoundary[0]    =   c(0,-yoffset,0).velocity[0] * ySignX
-        c.velocityBoundary[1]    =   c(0,-yoffset,0).velocity[1] * ySignY
-        c.velocityBoundary[2]    =   c(0,-yoffset,0).velocity[2] * ySignZ
+        c.velocityBoundary[0]    =   c(0,-yoffset,0).velocity[0] * ySignX + yBCRightVelX
+        c.velocityBoundary[1]    =   c(0,-yoffset,0).velocity[1] * ySignY + yBCRightVelY
+        c.velocityBoundary[2]    =   c(0,-yoffset,0).velocity[2] * ySignZ + yBCRightVelZ
         c.pressureBoundary       =   c(0,-yoffset,0).pressure
         c.temperatureBoundary    =   c(0,-yoffset,0).temperature
     end
     if c.zneg_depth > 0 then
         var zoffset = ZOffset(c.zneg_depth)
         c.rhoBoundary            =   c(0,0,zoffset).rho
-        c.rhoVelocityBoundary[0] =   c(0,0,zoffset).rhoVelocity[0] * zSignX
-        c.rhoVelocityBoundary[1] =   c(0,0,zoffset).rhoVelocity[1] * zSignY
-        c.rhoVelocityBoundary[2] =   c(0,0,zoffset).rhoVelocity[2] * zSignZ
+        c.rhoVelocityBoundary[0] =   c(0,0,zoffset).rhoVelocity[0] * zSignX + zBCLeftVelX
+        c.rhoVelocityBoundary[1] =   c(0,0,zoffset).rhoVelocity[1] * zSignY + zBCLeftVelY
+        c.rhoVelocityBoundary[2] =   c(0,0,zoffset).rhoVelocity[2] * zSignZ + zBCLeftVelZ
         c.rhoEnergyBoundary      =   c(0,0,zoffset).rhoEnergy
-        c.velocityBoundary[0]    =   c(0,0,zoffset).velocity[0] * zSignX
-        c.velocityBoundary[1]    =   c(0,0,zoffset).velocity[1] * zSignY
-        c.velocityBoundary[2]    =   c(0,0,zoffset).velocity[2] * zSignZ
+        c.velocityBoundary[0]    =   c(0,0,zoffset).velocity[0] * zSignX + zBCLeftVelX
+        c.velocityBoundary[1]    =   c(0,0,zoffset).velocity[1] * zSignY + zBCLeftVelY
+        c.velocityBoundary[2]    =   c(0,0,zoffset).velocity[2] * zSignZ + zBCLeftVelZ
         c.pressureBoundary       =   c(0,0,zoffset).pressure
         c.temperatureBoundary    =   c(0,0,zoffset).temperature
     end
     if c.zpos_depth > 0 then
         var zoffset = ZOffset(c.zpos_depth)
         c.rhoBoundary            =   c(0,0,-zoffset).rho
-        c.rhoVelocityBoundary[0] =   c(0,0,-zoffset).rhoVelocity[0] * zSignX
-        c.rhoVelocityBoundary[1] =   c(0,0,-zoffset).rhoVelocity[1] * zSignY
-        c.rhoVelocityBoundary[2] =   c(0,0,-zoffset).rhoVelocity[2] * zSignZ
+        c.rhoVelocityBoundary[0] =   c(0,0,-zoffset).rhoVelocity[0] * zSignX + zBCRightVelX
+        c.rhoVelocityBoundary[1] =   c(0,0,-zoffset).rhoVelocity[1] * zSignY + zBCRightVelY
+        c.rhoVelocityBoundary[2] =   c(0,0,-zoffset).rhoVelocity[2] * zSignZ + zBCRightVelZ
         c.rhoEnergyBoundary      =   c(0,0,-zoffset).rhoEnergy
-        c.velocityBoundary[0]    =   c(0,0,-zoffset).velocity[0] * zSignX
-        c.velocityBoundary[1]    =   c(0,0,-zoffset).velocity[1] * zSignY
-        c.velocityBoundary[2]    =   c(0,0,-zoffset).velocity[2] * zSignZ
+        c.velocityBoundary[0]    =   c(0,0,-zoffset).velocity[0] * zSignX + zBCRightVelX
+        c.velocityBoundary[1]    =   c(0,0,-zoffset).velocity[1] * zSignY + zBCRightVelY
+        c.velocityBoundary[2]    =   c(0,0,-zoffset).velocity[2] * zSignZ + zBCRightVelZ
         c.pressureBoundary       =   c(0,0,-zoffset).pressure
         c.temperatureBoundary    =   c(0,0,-zoffset).temperature
     end
@@ -1607,39 +1684,39 @@ end
 Flow.UpdateGhostVelocityStep1 = liszt kernel(c : grid.cells)
     if c.xneg_depth > 0 then
         var xoffset = XOffset(c.xneg_depth)
-        c.velocityBoundary[0] =   c(xoffset,0,0).velocity[0] * xSignX
-        c.velocityBoundary[1] =   c(xoffset,0,0).velocity[1] * xSignY
-        c.velocityBoundary[2] =   c(xoffset,0,0).velocity[2] * xSignZ
+        c.velocityBoundary[0] =   c(xoffset,0,0).velocity[0] * xSignX + xBCLeftVelX
+        c.velocityBoundary[1] =   c(xoffset,0,0).velocity[1] * xSignY + xBCLeftVelY
+        c.velocityBoundary[2] =   c(xoffset,0,0).velocity[2] * xSignZ + xBCLeftVelZ
     end
     if c.xpos_depth > 0 then
         var xoffset = XOffset(c.xpos_depth)
-        c.velocityBoundary[0] =   c(-xoffset,0,0).velocity[0] * xSignX
-        c.velocityBoundary[1] =   c(-xoffset,0,0).velocity[1] * xSignY
-        c.velocityBoundary[2] =   c(-xoffset,0,0).velocity[2] * xSignZ
+        c.velocityBoundary[0] =   c(-xoffset,0,0).velocity[0] * xSignX + xBCRightVelX
+        c.velocityBoundary[1] =   c(-xoffset,0,0).velocity[1] * xSignY + xBCRightVelY
+        c.velocityBoundary[2] =   c(-xoffset,0,0).velocity[2] * xSignZ + xBCRightVelZ
     end
     if c.yneg_depth > 0 then
         var yoffset = YOffset(c.yneg_depth)
-        c.velocityBoundary[0] =   c(0,yoffset,0).velocity[0] * ySignX
-        c.velocityBoundary[1] =   c(0,yoffset,0).velocity[1] * ySignY
-        c.velocityBoundary[2] =   c(0,yoffset,0).velocity[2] * ySignZ
+        c.velocityBoundary[0] =   c(0,yoffset,0).velocity[0] * ySignX + yBCLeftVelX
+        c.velocityBoundary[1] =   c(0,yoffset,0).velocity[1] * ySignY + yBCLeftVelY
+        c.velocityBoundary[2] =   c(0,yoffset,0).velocity[2] * ySignZ + yBCLeftVelZ
     end
     if c.ypos_depth > 0 then
         var yoffset = YOffset(c.ypos_depth)
-        c.velocityBoundary[0] =   c(0,-yoffset,0).velocity[0] * ySignX
-        c.velocityBoundary[1] =   c(0,-yoffset,0).velocity[1] * ySignY
-        c.velocityBoundary[2] =   c(0,-yoffset,0).velocity[2] * ySignZ
+        c.velocityBoundary[0] =   c(0,-yoffset,0).velocity[0] * ySignX + yBCRightVelX
+        c.velocityBoundary[1] =   c(0,-yoffset,0).velocity[1] * ySignY + yBCRightVelY
+        c.velocityBoundary[2] =   c(0,-yoffset,0).velocity[2] * ySignZ + yBCRightVelZ
     end
     if c.zneg_depth > 0 then
         var zoffset = ZOffset(c.zneg_depth)
-        c.velocityBoundary[0] =   c(0,0,zoffset).velocity[0] * zSignX
-        c.velocityBoundary[1] =   c(0,0,zoffset).velocity[1] * zSignY
-        c.velocityBoundary[2] =   c(0,0,zoffset).velocity[2] * zSignZ
+        c.velocityBoundary[0] =   c(0,0,zoffset).velocity[0] * zSignX + zBCLeftVelX
+        c.velocityBoundary[1] =   c(0,0,zoffset).velocity[1] * zSignY + zBCLeftVelY
+        c.velocityBoundary[2] =   c(0,0,zoffset).velocity[2] * zSignZ + zBCLeftVelZ
     end
     if c.zpos_depth > 0 then
         var zoffset = ZOffset(c.zpos_depth)
-        c.velocityBoundary[0] =   c(0,0,-zoffset).velocity[0] * zSignX
-        c.velocityBoundary[1] =   c(0,0,-zoffset).velocity[1] * zSignY
-        c.velocityBoundary[2] =   c(0,0,-zoffset).velocity[2] * zSignZ
+        c.velocityBoundary[0] =   c(0,0,-zoffset).velocity[0] * zSignX + zBCRightVelX
+        c.velocityBoundary[1] =   c(0,0,-zoffset).velocity[1] * zSignY + zBCRightVelY
+        c.velocityBoundary[2] =   c(0,0,-zoffset).velocity[2] * zSignZ + zBCRightVelZ
     end
 end
 Flow.UpdateGhostVelocityStep2 = liszt kernel(c : grid.cells)
@@ -1654,49 +1731,49 @@ Flow.UpdateGhostConservedStep1 = liszt kernel(c : grid.cells)
     if c.xneg_depth > 0 then
         var xoffset = XOffset(c.xneg_depth)
         c.rhoBoundary            =   c(xoffset,0,0).rho
-        c.rhoVelocityBoundary[0] =   c(xoffset,0,0).rhoVelocity[0] * xSignX
-        c.rhoVelocityBoundary[1] =   c(xoffset,0,0).rhoVelocity[1] * xSignY
-        c.rhoVelocityBoundary[2] =   c(xoffset,0,0).rhoVelocity[2] * xSignZ
+        c.rhoVelocityBoundary[0] =   c(xoffset,0,0).rhoVelocity[0] * xSignX + xBCLeftVelX
+        c.rhoVelocityBoundary[1] =   c(xoffset,0,0).rhoVelocity[1] * xSignY + xBCLeftVelY
+        c.rhoVelocityBoundary[2] =   c(xoffset,0,0).rhoVelocity[2] * xSignZ + xBCLeftVelZ
         c.rhoEnergyBoundary      =   c(xoffset,0,0).rhoEnergy
     end
     if c.xpos_depth > 0 then
         var xoffset = XOffset(c.xpos_depth)
         c.rhoBoundary            =   c(-xoffset,0,0).rho
-        c.rhoVelocityBoundary[0] =   c(-xoffset,0,0).rhoVelocity[0] * xSignX
-        c.rhoVelocityBoundary[1] =   c(-xoffset,0,0).rhoVelocity[1] * xSignY
-        c.rhoVelocityBoundary[2] =   c(-xoffset,0,0).rhoVelocity[2] * xSignZ
+        c.rhoVelocityBoundary[0] =   c(-xoffset,0,0).rhoVelocity[0] * xSignX + xBCRightVelX
+        c.rhoVelocityBoundary[1] =   c(-xoffset,0,0).rhoVelocity[1] * xSignY + xBCRightVelY
+        c.rhoVelocityBoundary[2] =   c(-xoffset,0,0).rhoVelocity[2] * xSignZ + xBCRightVelZ
         c.rhoEnergyBoundary      =   c(-xoffset,0,0).rhoEnergy
     end
     if c.yneg_depth > 0 then
         var yoffset = YOffset(c.yneg_depth)
         c.rhoBoundary            =   c(0,yoffset,0).rho
-        c.rhoVelocityBoundary[0] =   c(0,yoffset,0).rhoVelocity[0] * ySignX
-        c.rhoVelocityBoundary[1] =   c(0,yoffset,0).rhoVelocity[1] * ySignY
-        c.rhoVelocityBoundary[2] =   c(0,yoffset,0).rhoVelocity[2] * ySignZ
+        c.rhoVelocityBoundary[0] =   c(0,yoffset,0).rhoVelocity[0] * ySignX + yBCLeftVelX
+        c.rhoVelocityBoundary[1] =   c(0,yoffset,0).rhoVelocity[1] * ySignY + yBCLeftVelY
+        c.rhoVelocityBoundary[2] =   c(0,yoffset,0).rhoVelocity[2] * ySignZ + yBCLeftVelZ
         c.rhoEnergyBoundary      =   c(0,yoffset,0).rhoEnergy
     end
     if c.ypos_depth > 0 then
         var yoffset = YOffset(c.ypos_depth)
         c.rhoBoundary            =   c(0,-yoffset,0).rho
-        c.rhoVelocityBoundary[0] =   c(0,-yoffset,0).rhoVelocity[0] * ySignX
-        c.rhoVelocityBoundary[1] =   c(0,-yoffset,0).rhoVelocity[1] * ySignY
-        c.rhoVelocityBoundary[2] =   c(0,-yoffset,0).rhoVelocity[2] * ySignZ
+        c.rhoVelocityBoundary[0] =   c(0,-yoffset,0).rhoVelocity[0] * ySignX + yBCRightVelX
+        c.rhoVelocityBoundary[1] =   c(0,-yoffset,0).rhoVelocity[1] * ySignY + yBCRightVelY
+        c.rhoVelocityBoundary[2] =   c(0,-yoffset,0).rhoVelocity[2] * ySignZ + yBCRightVelZ
         c.rhoEnergyBoundary      =   c(0,-yoffset,0).rhoEnergy
     end
     if c.zneg_depth > 0 then
         var zoffset = ZOffset(c.zneg_depth)
         c.rhoBoundary            =   c(0,0,zoffset).rho
-        c.rhoVelocityBoundary[0] =   c(0,0,zoffset).rhoVelocity[0] * zSignX
-        c.rhoVelocityBoundary[1] =   c(0,0,zoffset).rhoVelocity[1] * zSignY
-        c.rhoVelocityBoundary[2] =   c(0,0,zoffset).rhoVelocity[2] * zSignZ
+        c.rhoVelocityBoundary[0] =   c(0,0,zoffset).rhoVelocity[0] * zSignX + zBCLeftVelX
+        c.rhoVelocityBoundary[1] =   c(0,0,zoffset).rhoVelocity[1] * zSignY + zBCLeftVelY
+        c.rhoVelocityBoundary[2] =   c(0,0,zoffset).rhoVelocity[2] * zSignZ + zBCLeftVelZ
         c.rhoEnergyBoundary      =   c(0,0,zoffset).rhoEnergy
     end
     if c.zpos_depth > 0 then
         var zoffset = ZOffset(c.zpos_depth)
         c.rhoBoundary            =   c(0,0,-zoffset).rho
-        c.rhoVelocityBoundary[0] =   c(0,0,-zoffset).rhoVelocity[0] * zSignX
-        c.rhoVelocityBoundary[1] =   c(0,0,-zoffset).rhoVelocity[1] * zSignY
-        c.rhoVelocityBoundary[2] =   c(0,0,-zoffset).rhoVelocity[2] * zSignZ
+        c.rhoVelocityBoundary[0] =   c(0,0,-zoffset).rhoVelocity[0] * zSignX + zBCRightVelX
+        c.rhoVelocityBoundary[1] =   c(0,0,-zoffset).rhoVelocity[1] * zSignY + zBCRightVelY
+        c.rhoVelocityBoundary[2] =   c(0,0,-zoffset).rhoVelocity[2] * zSignZ + zBCRightVelZ
         c.rhoEnergyBoundary      =   c(0,0,-zoffset).rhoEnergy
     end
 end
@@ -2680,11 +2757,11 @@ function IO.WriteOutput(timeStep)
 
     if timeStep % TimeIntegrator.headerFrequency == 0 then
         io.stdout:write("\n Current time step: ",
-        string.format(" %2.6f",TimeIntegrator.deltaTime:get()), " s.\n")
+        string.format(" %2.6e",TimeIntegrator.deltaTime:get()), " s.\n")
         io.stdout:write(" Min Flow Temp: ",
-        string.format("%2.6f",Flow.minTemperature:get()), " K.")
+        string.format("%11.6f",Flow.minTemperature:get()), " K.")
         io.stdout:write(" Max Flow Temp: ",
-        string.format("%2.6f",Flow.maxTemperature:get()), " K.\n\n")
+        string.format("%11.6f",Flow.maxTemperature:get()), " K.\n\n")
         io.stdout:write(string.format("%8s",'    Iter'),
         string.format("%12s",'   Time(s)'),
         string.format("%12s",'Avg Press'),
@@ -2710,7 +2787,7 @@ function IO.WriteOutput(timeStep)
     string.format(" %11.6f",particle_avg_temp),'\n')
 
     -- Check if it is time to output to file
-    if timeStep  % TimeIntegrator.outputEveryTimeSteps == 0 then
+    if timeStep % TimeIntegrator.outputEveryTimeSteps == 0 then
 
         -- Native Python output format
         if IO.outputFormat == 0 then
@@ -2746,9 +2823,6 @@ function IO.WriteOutput(timeStep)
             -- Tecplot ASCII format
             local outputFileName = IO.outputFileNamePrefix .. "_" ..
               tostring(timeStep) .. ".dat"
-
-            -- Specify the string names for the variables to be written
-            --local variableNames =
 
             -- Open file
             local outputFile = io.output(outputFileName)
