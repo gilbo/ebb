@@ -1,41 +1,49 @@
 import 'compiler.liszt'
 
-local Grid = L.require('domains.grid')
+local PN    = L.require 'lib.pathname'
+local LMesh = L.require "domains.lmesh"
+local M     = LMesh.Load(PN.scriptdir():concat("rmesh.lmesh"):tostring())
 
-local N = 5 -- 5x5 cell 2d grid
-local width = 2.0 -- with size 2.0 x 2.0, and bottom-left at 0,0
-local grid = Grid.NewGrid2d{
-    size   = {N,N},
-    origin = {0,0},
-    width  = width,
-    height = width,
-}
-
--- load via a function...
-grid.cells:NewField('temperature', L.double):Load(function(i)
-  if i == 0 then return N*N else return 0 end
-end)
--- load a constant
-grid.cells:NewField('d_temperature', L.double):Load(0)
-
-local K = L.NewGlobal(L.double, 1.0)
-
-local compute_diffuse = liszt kernel ( c : grid.cells )
-  if not c.in_boundary then
-    var sum_diff = c( 1,0).temperature - c.temperature
-                 + c(-1,0).temperature - c.temperature
-                 + c(0, 1).temperature - c.temperature
-                 + c(0,-1).temperature - c.temperature
-
-    c.d_temperature = K * sum_diff
-  end
+local function init_temp (i)
+	if i == 0 then
+		return 1000
+	else
+		return 0
+	end
 end
 
-local apply_diffuse = liszt kernel ( c : grid.cells )
-  c.temperature += c.d_temperature
+M.vertices:NewField('flux',        L.float):Load(0)
+M.vertices:NewField('jacobistep',  L.float):Load(0)
+M.vertices:NewField('temperature', L.float):Load(init_temp)
+
+local compute_step = liszt kernel(e : M.edges)
+	var v1   = e.head
+	var v2   = e.tail
+	var dp   = v1.position - v2.position
+	var dt   = v1.temperature - v2.temperature
+	var step = 1.0 / L.length(dp)
+
+	v1.flux += -dt * step
+	v2.flux +=  dt * step
+
+	v1.jacobistep += step
+	v2.jacobistep += step
+end
+
+local propagate_temp = liszt kernel (p : M.vertices)
+	p.temperature += L.float(.01) * p.flux / p.jacobistep
+end
+
+local clear = liszt kernel (p : M.vertices)
+	p.flux       = 0
+	p.jacobistep = 0
 end
 
 for i = 1, 1000 do
-  compute_diffuse(grid.cells)
-  apply_diffuse(grid.cells)
+	compute_step(M.edges)
+	propagate_temp(M.vertices)
+	clear(M.vertices)
 end
+
+M.vertices.temperature:print()
+
