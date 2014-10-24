@@ -4,7 +4,7 @@ local PN    = L.require 'lib.pathname'
 local Grid  = L.require "domains.grid"
 
 
-local N = 3
+local N = 45
 local sz = 1.125
 local grid = Grid.NewGrid3d({
 	size   = {  N,  N,  N },
@@ -12,6 +12,7 @@ local grid = Grid.NewGrid3d({
 	width  = { sz, sz, sz },
 
 })
+
 
 ------------------------------------------------------------------------------------------
 --[[ Element-centered temporaries                                                     ]]--
@@ -583,17 +584,18 @@ local calcFBHourglassForceForElems = liszt kernel (c : grid.cells)
 	c.v7.forces += row(hgf, 7)
 end
 
--- DEBUG
-local checkForces = liszt kernel (v : grid.vertices)
-	L.print(L.id(v), v.forces)
-end
-
 function calcVolumeForceForElems ()
 	integrateStressForElems(grid.cells)
 
 	if m.hgcoef > 0.0 then
 		calcFBHourglassForceForElems(grid.cells)
 	end
+end
+
+local fabs = liszt function (num)
+	var result = num
+	if num < 0 then result = -num end
+	return result
 end
 
 local calcPositionForNodes = liszt kernel (v : grid.vertices)
@@ -604,10 +606,10 @@ local calcPositionForNodes = liszt kernel (v : grid.vertices)
 	if v.zid == 0 then accel[2] = 0 end
 
 	var vtmp = v.velocity + accel * m.deltatime
-	if vtmp[0] < m.u_cut then vtmp[0] = 0.0 end
-	if vtmp[1] < m.u_cut then vtmp[0] = 0.0 end
-	if vtmp[2] < m.u_cut then vtmp[0] = 0.0 end
 
+	if fabs(vtmp[0]) < m.u_cut then vtmp[0] = 0.0 end
+	if fabs(vtmp[1]) < m.u_cut then vtmp[1] = 0.0 end
+	if fabs(vtmp[2]) < m.u_cut then vtmp[2] = 0.0 end
 	v.velocity  = vtmp
 	v.position += vtmp * m.deltatime
 	v.forces = {0.0,0.0,0.0}
@@ -975,31 +977,29 @@ local calcSoundSpeedForElem = liszt function (vnewc, rho0, enewc, pnewc, pbvc, b
 	return ss
 end
 
--- TODO
+local two_thirds = 2./3.
 local calcPressureForElems = liszt function (e_old, compression, vnewc, pmin, p_cut, eosvmax)
-	var c1s   = 2.0/3.0
-	var bvc   = c1s * (compression + 1.0)
-	var	pbvc  = c1s
-	var p_new = bvc * e_old
+	var c1s   : L.double = two_thirds
+	var bvc   : L.double = c1s * (compression + 1)
+	var pbvc  : L.double = c1s
+	var p_new : L.double = bvc * e_old
 
-	if L.fabs(p_new) < p_cut then p_new = 0.0 end
-	if vnewc >= eosvmax      then p_new = 0.0 end
+	if fabs(p_new) <  p_cut   then p_new = 0.0 end
+	if vnewc       >= eosvmax then p_new = 0.0 end
 	p_new max= pmin
 
 	return { p_new, bvc, pbvc }
 end
 
+local sixth = 1./6.
 local calcEnergyForElems = liszt function (p_old, e_old, q_old, compression, compHalfStep, vnewc, 
                                            work, delvc, qq_old, ql_old, eosvmax, rho0)
-	var sixth = 1.0/6.0
-
 	var emin_tmp = m.emin
 	var e_new : L.double = m.emin
 	e_new max= (e_old - 0.5 * delvc * (p_old + q_old) + 0.5 * work)
 
 	var p_cut_tmp = m.p_cut
 	var pmin_tmp  = m.pmin
-
 	var retVal    = calcPressureForElems(e_new, compHalfStep, vnewc, pmin_tmp, p_cut_tmp, eosvmax)
 	var pHalfStep = retVal[0]
 	var bvc       = retVal[1]
@@ -1051,23 +1051,23 @@ local evalEOSForElem = liszt function (c)
 	var q_old        = c.q
 	var qqtmp        = c.qq
 	var qltmp        = c.ql
-	var work         = 0.0f
-	var compression  = 1.0f / vnewc - 1.0f
-	var vchalf       = vnewc - delvc * 0.5f
-	var compHalfStep = 1.0f / vchalf - 1.0f
+	var work         = 0
+	var compression  = 1 / vnewc - 1
+	var vchalf       = vnewc - delvc * 0.5
+	var compHalfStep = 1 / vchalf - 1
 
 	var eosvmax_tmp = m.eosvmax
 	var eosvmin_tmp = m.eosvmin
 
 	-- Check for v > m.eosvmax or v < m.eosvmin
-	if eosvmin_tmp ~= 0.0f and vnewc < eosvmin_tmp then
+	if eosvmin_tmp ~= 0 and vnewc < eosvmin_tmp then
 		compHalfStep = compression
 	end
 
-	if eosvmax_tmp ~= 0.0 and vnewc > eosvmax_tmp then
-		p_old        = 0.0f
-		compression  = 0.0f
-		compHalfStep = 0.0f
+	if eosvmax_tmp ~= 0 and vnewc > eosvmax_tmp then
+		p_old        = 0
+		compression  = 0
+		compHalfStep = 0
 	end
 
 	var peqbvpb = calcEnergyForElems(p_old, e_old, q_old, compression, compHalfStep, vnewc, work, delvc, qqtmp, qltmp, eosvmax_tmp, rho0)
@@ -1106,7 +1106,7 @@ end
 
 
 local courantConstraintKernel = liszt kernel (c : grid.cells)
-	var qqc_tmp = m.qqc
+	var qqc_tmp : L.double = m.qqc
 	var qqc2    = 64.0 * qqc_tmp * qqc_tmp
 
 	var ssc       = c.ss
@@ -1126,7 +1126,6 @@ end
 function calcCourantConstraintForElems()
 	dtcourant_tmp:set(1e20)
 	courantConstraintKernel(grid.cells)
-
 	local result = dtcourant_tmp:get()
 	if result ~= 1e20 then
 		m.dtcourant = result
@@ -1143,7 +1142,7 @@ end
 
 function calcHydroConstraintForElems()
 	dthydro_tmp:set(1e20)
-
+	hydroConstraintKernel(grid.cells)
 	local result = dthydro_tmp:get()
 	if result ~= 1e20 then
 		m.dthydro = result
@@ -1174,10 +1173,26 @@ end
 ------------------------------------------------------------------------------------------
 local function runSolver ()
 	m.initMeshParameters()
-	--while m.time < m.stoptime do
+	start_time = terralib.currenttimeinseconds()
+	while m.time < m.stoptime do
 		timeIncrement()
 		lagrangeLeapFrog()
-	--end
+		if m.cycle % 10 == 0 then
+			print("Cycle " .. tostring(m.cycle) .. ": " .. tostring(m.time) .. 's')
+		end
+	end
+	end_time = terralib.currenttimeinseconds()
 end
 
+local function printStats()
+	print("Total elapsed time = " .. tostring(end_time - start_time))
+	print("   Problem size        = " .. tostring(N))
+	print("   Iteration count     = " .. tostring(m.cycle))
+	-- Look up energy of origin cell
+	local finalEnergy = grid.cells.e:DataPtr()[0]
+	print("   Final origin energy = " .. tostring(finalEnergy))
+end
+
+
 runSolver()
+printStats()
