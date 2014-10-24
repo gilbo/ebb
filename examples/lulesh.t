@@ -138,6 +138,12 @@ local dthydro_tmp   = L.NewGlobal(L.double, 0.0)
 ------------------------------------------------------------------------------------------
 --[[ Helper functions and kernels                                                     ]]--
 ------------------------------------------------------------------------------------------
+local fabs = liszt function (num)
+	var result = num
+	if num < 0 then result = -num end
+	return result
+end
+
 -- called over individual cells, returns a 24-vector representing an 8x3 matrix in row-major
 -- form
 local getLocalNodeCoordVectors = liszt function(c)
@@ -592,12 +598,6 @@ function calcVolumeForceForElems ()
 	end
 end
 
-local fabs = liszt function (num)
-	var result = num
-	if num < 0 then result = -num end
-	return result
-end
-
 local calcPositionForNodes = liszt kernel (v : grid.vertices)
 	var accel = v.forces / v.mass
 	-- Enforce boundary conditions of symmetry planes
@@ -1015,7 +1015,7 @@ local calcEnergyForElems = liszt function (p_old, e_old, q_old, compression, com
 
 	var e_cut_tmp = m.e_cut
 
-	if L.fabs(e_new) < e_cut_tmp then e_new = 0.0 end
+	if fabs(e_new) < e_cut_tmp then e_new = 0.0 end
 	e_new max= emin_tmp
 
 	retVal = calcPressureForElems(e_new, compression, vnewc, pmin_tmp, p_cut_tmp, eosvmax)
@@ -1026,7 +1026,7 @@ local calcEnergyForElems = liszt function (p_old, e_old, q_old, compression, com
 	var q_tilde : L.double = 0.0
 	if delvc <= 0.0 then q_tilde = ssc*ql_old + qq_old end
 	e_new -= (7.0*(p_old + q_old) - 8.0*(pHalfStep + q_new) + (p_new + q_tilde)) * delvc * sixth
-	if L.fabs(e_new) < e_cut_tmp then e_new = 0.0 end
+	if fabs(e_new) < e_cut_tmp then e_new = 0.0 end
 	e_new max= emin_tmp
 
 	retVal = calcPressureForElems(e_new, compression, vnewc, pmin_tmp, p_cut_tmp, eosvmax)
@@ -1036,7 +1036,7 @@ local calcEnergyForElems = liszt function (p_old, e_old, q_old, compression, com
 	if delvc <= 0.0 then
 		ssc = calcSoundSpeedForElem(vnewc, rho0, e_new, p_new, pbvc, bvc)
 		q_new = ssc*ql_old + qq_old
-		if L.fabs(q_new) < m.q_cut then q_new = 0.0 end
+		if fabs(q_new) < m.q_cut then q_new = 0.0 end
 	end
 	return { p_new, e_new, q_new, bvc, pbvc }
 end
@@ -1093,7 +1093,7 @@ end
 
 local updateVolumeForElements = liszt kernel (c : grid.cells)
 	var tmpV = c.vnew
-	if L.fabs(tmpV - 1.0) < m.v_cut then tmpV = 1.0 end
+	if fabs(tmpV - 1.0) < m.v_cut then tmpV = 1.0 end
 	c.v = tmpV
 end
 
@@ -1135,7 +1135,7 @@ end
 local hydroConstraintKernel = liszt kernel (c : grid.cells)
 	var vdovtmp = c.vdov
 	if vdovtmp ~= 0.0 then
-		var dtdvov = m.dvovmax / (L.fabs(vdovtmp) + 1.e-20)
+		var dtdvov = m.dvovmax / (fabs(vdovtmp) + 1.e-20)
 		dthydro_tmp min= dtdvov
 	end
 end
