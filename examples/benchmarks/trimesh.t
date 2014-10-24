@@ -5,7 +5,7 @@ import "compiler.liszt" -- Every Liszt File should start with this command
 local Trimesh = {}
 
 -- We are going to use this table as a prototype object
--- see http://en.wikipedia.org/prototypesesd;fnasd;flknawpeofina;lsdknf
+-- see http://en.wikipedia.org/prototypes
 Trimesh.__index = Trimesh
 
 -- Finally, we declare that the Trimesh table should be returned
