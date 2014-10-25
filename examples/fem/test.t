@@ -34,3 +34,87 @@ local turtle = VEGFileIO.LoadTetmesh
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+-- let's visualize the mesh if we can?
+
+local sqrt3 = math.sqrt(3)
+
+local tet_volume = liszt function(p0,p1,p2,p3)
+  var d1 = p1-p0
+  var d2 = p2-p0
+  var d3 = p3-p0
+
+  -- triple product
+  return L.dot(L.cross(d1,d2),d3)
+end
+local trinorm = liszt function(p0,p1,p2)
+  var d1 = p1-p0
+  var d2 = p2-p0
+  var n  = L.cross(d1,d2)
+  var len = L.length(n)
+  if len < 1e-10 then len = L.float(1e-10) end
+  return n/len
+end
+local dot_to_color = liszt function(d)
+  var val = d * 0.5 + 0.5
+  var col = L.vec3f({val,val,val})
+  return col
+end
+
+local lightdir = L.NewVector(L.float,{sqrt3,sqrt3,sqrt3})
+
+-- EXTRA: (optional.  It demonstrates the use of VDB, a visual debugger)
+local vdb = L.require('lib.vdb')
+local visualize = liszt kernel ( t : turtle.tetrahedra )
+  var p0 = L.vec3f(t.v0.pos)
+  var p1 = L.vec3f(t.v1.pos)
+  var p2 = L.vec3f(t.v2.pos)
+  var p3 = L.vec3f(t.v3.pos)
+
+  var flipped : L.double = 1.0
+  if tet_volume(p0,p1,p2,p3) < 0 then flipped = -1.0 end
+
+  var d0 = flipped * L.dot(lightdir, trinorm(p1,p2,p3))
+  var d1 = flipped * L.dot(lightdir, trinorm(p0,p3,p2))
+  var d2 = flipped * L.dot(lightdir, trinorm(p0,p1,p3))
+  var d3 = flipped * L.dot(lightdir, trinorm(p1,p0,p2))
+
+  vdb.color(dot_to_color(d0))
+  vdb.triangle(p1, p2, p3)
+  vdb.color(dot_to_color(d1))
+  vdb.triangle(p0, p3, p2)
+  vdb.color(dot_to_color(d2))
+  vdb.triangle(p0, p1, p3)
+  vdb.color(dot_to_color(d3))
+  vdb.triangle(p1, p0, p2)
+end
+
+vdb.vbegin()
+  vdb.frame() -- this call clears the canvas for a new frame
+  visualize(turtle.tetrahedra)
+vdb.vend()
+
+-- pause before exit
+print('pausing before exit... (hit enter to exit)')
+io.read()
+
+
+
+
