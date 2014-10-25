@@ -30,16 +30,50 @@ function initConfigurations()
 end
 
 
--- TODO: How is the result stored?
-function computeMassMatrix()
+------------------------------------------------------------------------------
+-- For corresponding VEGA code, see
+--    libraries/volumetricMesh/generateMassMatrix.cpp (computeMassMatrix)
+--    libraries/volumetricMesh/tetMesh.cpp (computeElementMassMatrix)
 
+-- TODO: How is the result stored?
+-- The main issue is how compressed the storage should be.
+-- The general form represents the vertex-vertex mass relationship as a
+-- 3x3 matrix, but the actual computation used only requires
+-- a scalar for each vertex-vertex relationship...
+-- TODO: Make sure that the reference and our code use the same strategy
+
+-- ELEMENT == TET
+-- probably should become a liszt function...
+function computeElementMassMatrix()
+  -- compute the "4x4" mass matrix for a tetrahedral element
+  -- where each entry is a 3x3 diagonal matrix
+  -- but we don't really need to use the 3x3??????
 end
+function computeMassMatrix()
+  -- Q: Is inflate3Dim flag on?
+  -- A: Yes.  This means we want the full mass matrix,
+  --    not just a uniform scalar per-vertex
+
+  -- LOOP OVER THE TETRAHEDRA (liszt kernel probably)
+    -- BUFFER = COMPUTE TETRAHEDRAL MASS MATRIX
+    -- LOOP OVER VERTICES OF THE TETRAHEDRON
+      -- LOOP OVER VERTICES AGAIN
+        -- dump a diagonal matrix down for each vertex pair
+        -- but these diagonal matrices are uniform... ugh?????
+  -- CLOSE LOOP
+
+  -- any cleanup code we need goes here
+end
+
+------------------------------------------------------------------------------
 
 -- TODO: How is the result stored?
 function precomputeStVKIntegrals(options)
   local use_low_memory = options.use_low_memory
 
 end
+
+------------------------------------------------------------------------------
 
 -- TODO: How is the result stored
 function computeInternalForces()
@@ -61,6 +95,10 @@ function buildImplicitBackwardsEulerIntegrator(opts)
   return {} -- should be an actual integrator object
 end
 
+
+
+
+------------------------------------------------------------------------------
 
 function main()
   local options = initConfigurations()
