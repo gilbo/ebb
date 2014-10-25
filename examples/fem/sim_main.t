@@ -7,6 +7,7 @@ local VEGFileIO = L.require 'examples.fem.vegfileio'
 local turtle = VEGFileIO.LoadTetmesh
   'examples/fem/turtle-volumetric-homogeneous.veg'
 
+local mesh = turtle
 
 
 
@@ -66,11 +67,32 @@ function computeMassMatrix()
 end
 
 ------------------------------------------------------------------------------
+-- For corresponding VEGA code, see
+--    libraries/stvk/StVKTetABCD.cpp (most of the file)
 
--- TODO: How is the result stored?
+-- STORAGE for output from this part of setup
+mesh.tetrahedra:NewField('volume', L.double)
+mesh.tetrahedra:NewField('Phig0', L.vec3d)
+mesh.tetrahedra:NewField('Phig1', L.vec3d)
+mesh.tetrahedra:NewField('Phig2', L.vec3d)
+mesh.tetrahedra:NewField('Phig3', L.vec3d)
+
 function precomputeStVKIntegrals(options)
   local use_low_memory = options.use_low_memory
+  -- THIS DOES use low memory in the reference code...
 
+  -- note elementData == { volume, Phig[4]:vec3d }
+
+  -- (StVKTetABCD::StVKTetABCD)
+  -- LOOP OVER THE TETRAHEDRA (liszt kernel probably)
+    -- GET THE 4 VERTICES
+    -- (StVKTetABCDStVKSingleTetABCD)
+    -- COMPUTE THE TET VOLUME AND STORE
+    -- Loop i 0,1,2,3 (OVER VERTICES)
+      -- Loop j 0,1,2 (OVER XYZ COORDINATES)
+        -- IN HERE WE SET Phig[i][j] which is a per-tetrahedron value
+    -- END LOOP
+  -- END LOOP
 end
 
 ------------------------------------------------------------------------------
