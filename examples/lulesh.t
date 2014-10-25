@@ -1,5 +1,7 @@
 import 'compiler.liszt'
 
+--L.default_processor = L.GPU
+
 local PN    = L.require 'lib.pathname'
 local Grid  = L.require "domains.grid"
 
@@ -1188,7 +1190,9 @@ local function printStats()
 	print("Total elapsed time = " .. tostring(end_time - start_time))
 	print("   Problem size        = " .. tostring(N))
 	print("   Iteration count     = " .. tostring(m.cycle))
+
 	-- Look up energy of origin cell
+	grid.cells:MoveTo(L.CPU)
 	local finalEnergy = grid.cells.e:DataPtr()[0]
 	print("   Final origin energy = " .. tostring(finalEnergy))
 end
