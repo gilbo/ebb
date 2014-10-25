@@ -52,6 +52,10 @@ local turtle = VEGFileIO.LoadTetmesh
 
 
 
+
+
+
+
 -- let's visualize the mesh if we can?
 
 local sqrt3 = math.sqrt(3)
