@@ -171,7 +171,7 @@ local function buildPrintSpec(ctxt, output, printSpec, elemQuotes, definitions)
         end
         for i = 0, lt.N - 1 do
             if bt == L.float or bt == L.double then
-                printSpec = printSpec .. " %f"
+                printSpec = printSpec .. " %.8f"
                 table.insert(elemQuotes, `[double](sym.d[i]))
             elseif bt == L.int then
                 printSpec = printSpec .. " %d"
@@ -193,7 +193,7 @@ local function buildPrintSpec(ctxt, output, printSpec, elemQuotes, definitions)
         printSpec = printSpec .. "%s"
     elseif lt == L.float or lt == L.double then
         table.insert(elemQuotes, `[double](code))
-        printSpec = printSpec .. "%f"
+        printSpec = printSpec .. "%.8f"
 	elseif lt == L.int then
         table.insert(elemQuotes, `code)
         printSpec = printSpec .. '%d'
@@ -450,7 +450,6 @@ function L.sqrt.check(ast, ctxt)
 end
 
 function L.sqrt.codegen(ast,ctxt)
-    local lt  = ast.params[1].node_type
     local exp = ast.params[1]:codegen(ctxt)
     if ctxt:onGPU() then
         return `G.sqrt([exp])
@@ -469,14 +468,12 @@ function L.cbrt.check(ast, ctxt)
 end
 
 function L.cbrt.codegen(ast,ctxt)
-    local lt  = ast.params[1].node_type
     local exp = ast.params[1]:codegen(ctxt)
     if ctxt:onGPU() then
         return `G.cbrt([exp])
     end
     return `C.cbrt([exp])
 end
-
 
 local function all(v)
     if not v.type:isVector() then
