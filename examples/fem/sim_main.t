@@ -12,6 +12,7 @@ local mesh = turtle
 
 
 
+local gravity = 9.81
 
 function initConfigurations()
   local options = {
@@ -139,20 +140,109 @@ local tetCoeffD = liszt function(tet, i, j, k, l)
 end
 
 ------------------------------------------------------------------------------
+-- For corresponding VEGA code, see
+--    libraries/stvk/StVKInternalForces.cpp (most of the file)
+
+mesh.tetrahedra:NewField('lambdaLame', L.double)
+mesh.tetrahedra:NewField('muLame', L.double)
 
 -- TODO: How is the result stored
 function computeInternalForces()
+  -- add Gravity = 0
+  -- gravity is defined above
+  -- I guess we're not using gravity right now though...
 
+  -- LOOP OVER TETRAHEDRA
+    -- mat = Get Element Material
+    -- Populate lambdaLame and muLame
+  -- END LOOP
 end
--- TODO: How is the result stored
+
+-- extra functions supplied by this module
+
+function addIFLinearTermsContribution()
+end
+function addIFQuadraticTermsContribution()
+end
+function addIFCubicTermsContribution()
+end
+function computeEnergyContribution()
+end
+
+function computeEnergy()
+  computeEnergyContribution()
+end
+
+function computeForces()
+  -- RESET FORCES VECTOR HERE
+
+  addIFLinearTermsContribution()
+  addIFQuadraticTermsContribution()
+  addIFCubicTermsContribution()
+end
+
+------------------------------------------------------------------------------
+-- For corresponding VEGA code, see
+--    libraries/stvk/StVKStiffnessMatrix.cpp (most of the file)
+
+-- TODO:
+--    I have no idea how we're storing the stiffness matrix
+--    But it definitely needs to be frequently recomputed
+
+-- May not need this
+function allocateStiffnessMatrixTopology()
+
+  -- LOOP OVER TETRAHEDRA
+    -- LOOP OVER VERTICES x VERTICES (i,j)
+      -- Create a 4x4x3x3 tensor object's 3x3 entry here
+  -- END LOOP
+end
+
+-- May not need this
+function allocateStiffnessMatrix()
+  -- Don't Need to Recompute/Store Per-Tet Lame Constants
+
+  local stiffnessMatrixTopology
+  computeStiffnessMatrixTopology()
+
+  -- Acceleration only (do we need this?  I don't think so)
+  -- row[n_tet][4] : int
+  -- col[n_tet][4*4] : int
+
+  -- build acceleration indices ???
+  -- LOOP OVER TETRAHEDRA
+    -- LOOP OVER VERTICES of TET
+      -- ROW[TET][VERTEX] = VERTEX INDEX
+    -- END LOOP
+
+    -- LOOP OVER VERTICES x VERTICES of TET
+      -- COLUMN[TET][4*i + j] = DENSE LOCATION OF ROW[TET][i],ROW[TET][j]
+    -- END LOOP
+  -- END LOOP
+end
+
+function addStiffLinearTermsContribution()
+end
+function addStiffQuadraticTermsContribution()
+end
+function addStiffCubicTermsContribution()
+end
+
 function computeStiffnessMatrix()
-
+  -- RESET STIFFNESS MATRIX TO ZERO
+  addStiffLinearTermsContribution()
+  addStiffQuadraticTermsContribution()
+  addStiffCubicTermsContribution()
 end
+
+------------------------------------------------------------------------------
 
 -- TODO: How is the result stored
 function computeForceModel()
 
 end
+
+------------------------------------------------------------------------------
 
 -- TODO: Again Data Model and skeleton needs to be filled in more here...
 function buildImplicitBackwardsEulerIntegrator(opts)
