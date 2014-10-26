@@ -7,6 +7,7 @@ local VEGFileIO = L.require 'examples.fem.vegfileio'
 local turtle = VEGFileIO.LoadTetmesh
   'examples/fem/turtle-volumetric-homogeneous.veg'
 
+local mesh = turtle
 
 
 
@@ -66,11 +67,75 @@ function computeMassMatrix()
 end
 
 ------------------------------------------------------------------------------
+-- For corresponding VEGA code, see
+--    libraries/stvk/StVKTetABCD.cpp (most of the file)
 
--- TODO: How is the result stored?
+-- STORAGE for output from this part of setup
+mesh.tetrahedra:NewField('volume', L.double)
+--mesh.tetrahedra:NewField('Phig0', L.vec3d)
+--mesh.tetrahedra:NewField('Phig1', L.vec3d)
+--mesh.tetrahedra:NewField('Phig2', L.vec3d)
+--mesh.tetrahedra:NewField('Phig3', L.vec3d)
+-- access as Phig[3*i + j] i == vertex, j == coord (i.e. x,y,z)
+mesh.tetrahedra:NewField('Phig', L.vector(L.double, 12))
+
 function precomputeStVKIntegrals(options)
   local use_low_memory = options.use_low_memory
+  -- THIS DOES use low memory in the reference code...
 
+  -- note elementData == { volume, Phig[4]:vec3d }
+
+  -- (StVKTetABCD::StVKTetABCD)
+  -- LOOP OVER THE TETRAHEDRA (liszt kernel probably)
+    -- GET THE 4 VERTICES
+    -- (StVKTetABCDStVKSingleTetABCD)
+    -- COMPUTE THE TET VOLUME AND STORE
+    -- Loop i 0,1,2,3 (OVER VERTICES)
+      -- Loop j 0,1,2 (OVER XYZ COORDINATES)
+        -- IN HERE WE SET Phig[i][j] which is a per-tetrahedron value
+    -- END LOOP
+  -- END LOOP
+end
+
+-- need to define dots and
+-- A, B, C, D here
+
+-- The VEGA Code seems to compute the dots matrix once, and then
+-- cache it for the duration of a per-tet computation rather than
+-- allocate disk space
+local tetDots = liszt function(tet)
+  var dots : L.vector(L.double, 16)
+  for i=0,4 do
+    var Phigi : L.vec3d =
+      { tet.Phig[3*i + 0], tet.Phig[3*i + 1], tet.Phig[3*i + 2] }
+    for i=0,4 do
+      var Phigj : L.vec3d =
+        { tet.Phig[3*j + 0], tet.Phig[3*j + 1], tet.Phig[3*j + 2] }
+
+      dots[4*i+j] = L.dot(Phigi, Phigj)
+    end
+  end
+  return dots
+end
+
+local tetCoeffA = liszt function(tet, i, j)
+  -- Volume * tensor product of Phig i and Phig j
+  -- results in a matrix
+end
+
+local tetCoeffB = liszt function(tet, i, j)
+  -- Volume * dots[i][j]
+  -- Scalar
+end
+
+local tetCoeffC = liszt function(tet, i, j, k)
+  -- Volume * dots[j][k] * Phig i
+  -- Vector
+end
+
+local tetCoeffD = liszt function(tet, i, j, k, l)
+  -- Volume * dots[i][j] * dots[k][l]
+  -- Scalar
 end
 
 ------------------------------------------------------------------------------
