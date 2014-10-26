@@ -109,7 +109,7 @@ local tetDots = liszt function(tet)
   for i=0,4 do
     var Phigi : L.vec3d =
       { tet.Phig[3*i + 0], tet.Phig[3*i + 1], tet.Phig[3*i + 2] }
-    for i=0,4 do
+    for j=0,4 do
       var Phigj : L.vec3d =
         { tet.Phig[3*j + 0], tet.Phig[3*j + 1], tet.Phig[3*j + 2] }
 
