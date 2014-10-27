@@ -439,6 +439,42 @@ function check_number (ast, ctxt)
     return L.double
 end
 
+local function cos (val)
+    return C.cos(val)
+end
+
+L.cos = Builtin.new(cos)
+
+function L.cos.check (ast, ctxt)
+    return check_number(ast, ctxt)
+end
+
+function L.cos.codegen (ast, ctxt)
+    local exp = ast.params[1]:codegen(ctxt)
+    if ctxt:onGPU() then
+        return `G.cos([exp])
+    end
+    return `C.cos([exp])
+end
+
+local function sin (val)
+    return C.sin(val)
+end
+
+L.sin = Builtin.new(sin)
+
+function L.sin.check (ast, ctxt)
+    return check_number(ast, ctxt)
+end
+
+function L.sin.codegen (ast, ctxt)
+    local exp = ast.params[1]:codegen(ctxt)
+    if ctxt:onGPU() then
+        return `G.sin([exp])
+    end
+    return `C.sin([exp])
+end
+
 local function sqrt (val)
     return C.sqrt(val)
 end

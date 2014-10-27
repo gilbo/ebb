@@ -691,16 +691,16 @@ Flow.InitializePrimitives = liszt kernel(c : grid.cells)
       c.rho = taylorGreenDensity
       c.velocity = 
           taylorGreenVelocity *
-          L.vec3d({cmath.sin(xy[0]) * 
-                   cmath.cos(xy[1]) *
-                   cmath.cos(coorZ),
-                 - cmath.cos(xy[0]) *
-                   cmath.sin(xy[1]) *
-                   cmath.cos(coorZ),
+          L.vec3d({L.sin(xy[0]) * 
+                   L.cos(xy[1]) *
+                   L.cos(coorZ),
+                 - L.cos(xy[0]) *
+                   L.sin(xy[1]) *
+                   L.cos(coorZ),
                    0})
-      var factorA = cmath.cos(2.0*coorZ) + 2.0
-      var factorB = cmath.cos(2.0*xy[0]) +
-                    cmath.cos(2.0*xy[1])
+      var factorA = L.cos(2.0*coorZ) + 2.0
+      var factorB = L.cos(2.0*xy[0]) +
+                    L.cos(2.0*xy[1])
       c.pressure = 
           taylorGreenPressure + 
           taylorGreenDensity * cmath.pow(taylorGreenVelocity,2) / 16 *
@@ -715,16 +715,16 @@ Flow.InitializePrimitives = liszt kernel(c : grid.cells)
       c.rho = taylorGreenDensity
       c.velocity = 
           taylorGreenVelocity *
-          L.vec3d({cmath.sin(xy[0]) * 
-                   cmath.cos(xy[1]) *
-                   cmath.cos(xy[2]),
-                 - cmath.cos(xy[0]) *
-                   cmath.sin(xy[1]) *
-                   cmath.cos(xy[2]),
+          L.vec3d({L.sin(xy[0]) * 
+                   L.cos(xy[1]) *
+                   L.cos(xy[2]),
+                 - L.cos(xy[0]) *
+                   L.sin(xy[1]) *
+                   L.cos(xy[2]),
                    0})
-      var factorA = cmath.cos(2.0*xy[2]) + 2.0
-      var factorB = cmath.cos(2.0*xy[0]) +
-                    cmath.cos(2.0*xy[1])
+      var factorA = L.cos(2.0*xy[2]) + 2.0
+      var factorB = L.cos(2.0*xy[0]) +
+                    L.cos(2.0*xy[1])
       c.pressure = 
           taylorGreenPressure + 
           taylorGreenDensity * cmath.pow(taylorGreenVelocity,2) / 16 *
