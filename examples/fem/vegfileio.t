@@ -195,7 +195,7 @@ function VEGFileIO.LoadTetmesh(path)
         end
         -- save the index data
         elem_counter = elem_counter+1 -- Lua indexing starts at 1
-        elements[elem_counter] = {ints[2]-1,ints[3]-1,ints[4]-1,ints[5]}
+        elements[elem_counter] = {ints[2]-1,ints[3]-1,ints[4]-1,ints[5]-1}
       end
 
     elseif section_mode == 'MATERIAL' then

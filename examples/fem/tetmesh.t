@@ -81,6 +81,93 @@ local function build_edges(mesh, v1s, v2s, v3s)
 end]]
 
 
+-- Includes all vertices directly connected to a vertex, through an element,
+-- including the indexing vertex itself.
+-- This includes double copies for a pair of different vertices.
+-- => there will be one row for (x, y) and another for (y, x).
+-- The function orders rows by 1st vertex and then the 2nd, and works for
+-- only a tetrahedral mesh.
+local function build_element_vertices(mesh, v0s, v1s, v2s, v3s)
+  local neighbors = {} -- vertex to vertex graph
+  for k = 1,(mesh:nVerts()) do neighbors[k] = {} end
+
+  -- add an entry for each tetahedron
+  for i = 1,(mesh:nTets()) do
+    local vertices = { v0s[i], v1s[i], v2s[i], v3s[i] }
+    for x = 1,4 do
+      for y = 1,4 do
+        neighbors[vertices[x] + 1][vertices[y] + 1] = true
+      end
+    end
+  end
+
+  local n_edges = 0
+  local degrees = {}
+  local e_tail = {}
+  local e_head = {}
+  for i = 1,(mesh:nVerts()) do
+    degrees[i] = 0
+    for j,_ in pairs(neighbors[i]) do
+      table.insert(e_tail, i-1)
+      table.insert(e_head, j-1)
+      degrees[i] = degrees[i] + 1
+    end
+    n_edges = n_edges + degrees[i]
+  end
+
+  -- basic data
+  -- this is not exactly edges, as it includes rows of type (x, x)
+  mesh.edges = L.NewRelation(n_edges, 'edges')
+  mesh.edges:NewField('tail', mesh.vertices):Load(e_tail)
+  mesh.edges:NewField('head', mesh.vertices):Load(e_head)
+
+  mesh.vertices:NewField('degree', L.int):Load(degrees)
+
+  -- index the edges
+  mesh.edges:GroupBy('tail')
+  mesh.vertices:NewFieldMacro('edges', L.NewMacro(function(v)
+    return liszt ` L.Where(mesh.edges.tail, v)
+  end))
+  mesh.vertices:NewFieldMacro('neighbors', L.NewMacro(function(v)
+    return liszt ` L.Where(mesh.edges.tail, v).head
+  end))
+
+  -- set up pointers from tetrahedra to edges
+  for i = 1,4 do
+    for j = 1,4 do
+      mesh.tetrahedra:NewField(('e'..(i-1))..(j-1), mesh.edges):Load(0)
+    end
+  end
+  local compute_tet_edges = liszt kernel (t : mesh.tetrahedra )
+    for e in t.v0.edges do
+      if e.head == t.v0 then t.e00 = e end
+      if e.head == t.v1 then t.e01 = e end
+      if e.head == t.v2 then t.e02 = e end
+      if e.head == t.v3 then t.e03 = e end
+    end
+    for e in t.v1.edges do
+      if e.head == t.v0 then t.e10 = e end
+      if e.head == t.v1 then t.e11 = e end
+      if e.head == t.v2 then t.e12 = e end
+      if e.head == t.v3 then t.e13 = e end
+    end
+    for e in t.v2.edges do
+      if e.head == t.v0 then t.e20 = e end
+      if e.head == t.v1 then t.e21 = e end
+      if e.head == t.v2 then t.e22 = e end
+      if e.head == t.v3 then t.e23 = e end
+    end
+    for e in t.v3.edges do
+      if e.head == t.v0 then t.e30 = e end
+      if e.head == t.v1 then t.e31 = e end
+      if e.head == t.v2 then t.e32 = e end
+      if e.head == t.v3 then t.e33 = e end
+    end
+  end
+  compute_tet_edges(mesh.tetrahedra)
+end
+
+
 -- Let's define a new function as an entry in the Tetmesh table
 -- This function is going to be responsible for constructing the
 -- Relations representing a tetrahedral mesh.
@@ -124,6 +211,9 @@ function Tetmesh.LoadFromLists(vertices, elements)
   mesh.tetrahedra.v1:Load(v1s)
   mesh.tetrahedra.v2:Load(v2s)
   mesh.tetrahedra.v3:Load(v3s)
+
+  -- build vertex-vertex relation for storing mass matrix (and other fields?)
+  build_element_vertices(mesh, v0s, v1s, v2s, v3s)
 
   -- and return the resulting mesh
   return mesh
