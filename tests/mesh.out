@@ -1,5 +1,5 @@
 vertices	size: 8	concrete size: 8
-position: <double_3>
+position: <vector_double_3>
   . == live  x == dead
 	0 .	1 1 1 
 	1 .	1 1 -1 
