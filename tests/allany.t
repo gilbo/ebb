@@ -4,7 +4,7 @@ require "tests/test"
 local LMesh = L.require "domains.lmesh"
 local mesh = LMesh.Load("examples/mesh.lmesh")
 
-local pass = liszt kernel(f : mesh.faces)
+local liszt kernel pass(f : mesh.faces)
     L.assert(L.any({true}))
     L.assert(not L.any({false}))
     L.assert(L.any({true, true, true}))

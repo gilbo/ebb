@@ -10,6 +10,25 @@ local semant = terralib.require "compiler.semant"
 -- include liszt library for programmer
 L = lisztlib
 
+local statement = function(self, lexer)
+    local ast, assign = P.ParseStatement(lexer)
+    local constructor
+    if ast.kind == 'LisztKernel' then
+        constructor = function (env_fn) 
+            local env = env_fn()
+            return lisztlib.NewKernel(ast, env)
+        end
+    elseif ast.kind == 'UserFunction' then
+        constructor = function (env_fn)
+            local env = env_fn()
+            return lisztlib.NewUserFunc(ast, env)
+        end
+    else -- quote
+        error("Expected liszt function or kernel!", 2)
+    end
+    return constructor, assign
+end
+
 local lisztlanguage = {
     name        = "liszt", -- name for debugging
     entrypoints = {"liszt"},
@@ -24,8 +43,9 @@ local lisztlanguage = {
         "insert", "into", "delete",
     },
 
-    expression = function(self, lexer)
-        local ast = P.Parse(lexer)
+    -- Liszt quotes, anonymous kernels and functions
+    expression = function (self, lexer)
+        local ast = P.ParseExpression(lexer)
         if ast.kind == 'LisztKernel' then
             return function (env_fn) 
                 local env = env_fn()
@@ -39,14 +59,16 @@ local lisztlanguage = {
         else -- quote
             return function (env_fn)
                 local env = env_fn()
-
-                local specialized   = specialization.specialize(env, ast)
-                local checked       = semant.check(env, specialized)
-
+                local specialized = specialization.specialize(env, ast)
+                local checked     = semant.check(env, specialized)
                 return checked
             end
         end
-    end
+    end,
+
+    -- named Liszt functions and kernels
+    statement = statement,
+    localstatement = statement,
 }
 
 return lisztlanguage

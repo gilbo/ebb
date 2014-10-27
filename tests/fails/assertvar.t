@@ -3,7 +3,7 @@ local LMesh = L.require "domains.lmesh"
 local mesh = LMesh.Load("examples/mesh.lmesh")
 
 
-local fail_assert = liszt kernel(f : mesh.faces)
+local liszt kernel fail_assert (f : mesh.faces)
     var x = 5
     L.assert(x == 4)
 end
