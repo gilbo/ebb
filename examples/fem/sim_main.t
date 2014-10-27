@@ -192,8 +192,10 @@ end
 
 mesh.tetrahedra:NewField('lambdaLame', L.double)
 mesh.tetrahedra:NewField('muLame', L.double)
+mesh.vertices:NewField('forces', L.vec3d)
 
 -- TODO: How is the result stored
+-- I think this corresponds to initialization.
 function computeInternalForces()
   -- add Gravity = 0
   -- gravity is defined above
@@ -206,6 +208,8 @@ function computeInternalForces()
 end
 
 -- extra functions supplied by this module
+-- Outer loop is generally over all elements (tetrahedra).
+-- Result is stored as a 3D vector field over all the vertices.
 
 function addIFLinearTermsContribution()
 end
@@ -213,12 +217,15 @@ function addIFQuadraticTermsContribution()
 end
 function addIFCubicTermsContribution()
 end
+
+--[[
+-- We probably do not need energy contribution.
 function computeEnergyContribution()
 end
-
 function computeEnergy()
   computeEnergyContribution()
 end
+]]
 
 function computeForces()
   -- RESET FORCES VECTOR HERE
@@ -235,6 +242,37 @@ end
 -- TODO:
 --    I have no idea how we're storing the stiffness matrix
 --    But it definitely needs to be frequently recomputed
+
+-- NOTES:
+-- row_ and col_ are only acceleration structures, used to index into the
+-- sparse stiffness matrix. Stiffness matrix is stored as a sparse 3n x 3n
+-- matrix, where n is the number of vertices. I think the reason why it is
+-- 3n X 3n is because they need 3X3 over nXn points.
+-- GetStiffnessMatrixTopology is similar to the topology matrix constructed for
+-- mass. There is an entry in the nXn (or equivalently 3n X 3n) matrix if the
+-- two vertices belong to the same element. For tetrahedra, this means diagonal
+-- entries and positions corresponding to an undirected edge between two
+-- vertices are set.
+-- row_ stores the indices into the 3nx3n stiffness matrix for each vertex of
+-- a tetrahedral element (what row does each vertex of an element map to).
+-- column_ stores the column position corresponding to the entry for (i, j)
+-- vertices of an element. That is, for the first row of column_, the first
+-- entry tells us which column in the stiffnexx matrix xorresponds to the first
+-- vertex of the element, the second one says which one corresponds to the
+-- second vertex of the element and so on.
+-- BASICALLY, the entries from the ith row of a column_ should be used as column
+-- indices for the row given by ith entry of row_.
+
+-- At a very high level, Add***Terms loop over all the elements, and add a 3X3
+-- block at (i, j) (technically (3*i, 3*j)) position corresponding to each
+-- (x, y) vertex pair for the element. i is the row, and j is the column,
+-- in the nXn (3nX3n) stiffness matrix, corresponding to element (x,y) which
+-- go from (0, 3) to (3,). The rest of the code performs further loops to
+-- calculate the 3X3 matrix, using precomputed integrals and vertex
+-- displacements.
+
+-- We should probably store the stiffness matrix as a field of 3X3 matrices
+-- over vertices??
 
 -- May not need this
 function allocateStiffnessMatrixTopology()
