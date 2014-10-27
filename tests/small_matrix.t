@@ -34,7 +34,6 @@ trace(mesh.vertices)
 
 local k = liszt kernel (v : mesh.vertices)
   var x       = { { 5, 5, 5 }, { 4, 4, 4 }, { 5, 5, 5 } }
-  var x       = { { 5, 5, 5 }, { 4, 4, 4 }, { 5, 5, 5 } }
   v.tensor_pos += x + { { 1, 0, 0 }, { 0, 1, 0 }, { 0, 0, 1 } }
 end
 k(mesh.vertices)
@@ -42,6 +41,15 @@ k(mesh.vertices)
 local zero_corner = liszt kernel(v : mesh.vertices)
   v.tensor_pos[0,2] = 0
 end
+zero_corner(mesh.vertices)
+
+local arith_test = liszt kernel(v : mesh.vertices)
+  var id : L.mat3d = {{1,0,0},{0,1,0},{0,0,1}}
+  var A  : L.mat3d = {{2,2,2},{3,3,3},{4,4,4}}
+  var B  : L.mat3d = {{7,2,2},{3,8,3},{4,4,9}}
+  L.assert((A + 5*id) == B)
+end
+arith_test(mesh.vertices)
 
 ------------------
 -- Should fail: --

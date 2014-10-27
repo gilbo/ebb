@@ -138,6 +138,7 @@ test.fail_function(function()
 		var v3 = L.vec3f({1.1, 2.2, 3.3})
 		var v2 = L.vec2f(v3)
 	end
-end, 'Can only cast vectors to other vectors with matching dimensions')
+end,
+'Cannot cast between primitives, vectors, matrices of different dimensions')
 
 

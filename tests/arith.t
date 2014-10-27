@@ -7,13 +7,13 @@ mesh = LMesh.Load("examples/mesh.lmesh")
 
 test.fail_function(function()
   liszt kernel(v : mesh.vertices)
-    var x = {1, 2, 3} ^ 4
+    var x = {1, 2, 3} + 4
   end
-end, "invalid types")
+end, "incompatible types")
 
 test.fail_function(function()
   liszt kernel(v : mesh.vertices)
-    var x = {1, 2, 3} ^ {4, 5, 6}
+    var x = {1, 2, 3} / {4, 5, 6}
   end
 end, "invalid types")
 

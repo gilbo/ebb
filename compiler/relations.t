@@ -605,6 +605,8 @@ local function convert_vec(vec_val, typ)
 end
 
 function L.LField:LoadFunction(lua_callback)
+  if self.type:isSmallMatrix() then
+    error('function loading of SmallMatrix fields is unimplemented') end
   if self.owner:isFragmented() then
     error('cannot load into fragmented relation', 2)
   end
@@ -626,6 +628,8 @@ function L.LField:LoadFunction(lua_callback)
 end
 
 function L.LField:LoadList(tbl)
+  if self.type:isSmallMatrix() then
+    error('list loading of SmallMatrix fields is unimplemented') end
   if self.owner:isFragmented() then
     error('cannot load into fragmented relation', 2)
   end
@@ -644,6 +648,8 @@ end
 
 -- TODO: Hide this function so it's not public  (maybe not?)
 function L.LField:LoadFromMemory(mem)
+  if self.type:isSmallMatrix() then
+    error('memory loading of SmallMatrix fields is unimplemented') end
   if self.owner:isFragmented() then
     error('cannot load into fragmented relation', 2)
   end
@@ -662,6 +668,8 @@ function L.LField:LoadFromMemory(mem)
 end
 
 function L.LField:LoadConstant(constant)
+  if self.type:isSmallMatrix() then
+    error('constant value loading of SmallMatrix fields is unimplemented') end
   if self.owner:isFragmented() then
     error('cannot load into fragmented relation', 2)
   end
@@ -679,6 +687,8 @@ end
 
 -- generic dispatch function for loads
 function L.LField:Load(arg)
+  if self.type:isSmallMatrix() then
+    error('LOADING of SmallMatrix fields is unimplemented') end
   if self.owner:isFragmented() then
     error('cannot load into fragmented relation', 2)
   end
@@ -724,6 +734,8 @@ local function terraval_to_lua(val, typ)
 end
 
 function L.LField:DumpToList()
+  if self.type:isSmallMatrix() then
+    error('Dumping to list of SmallMatrix fields is unimplemented') end
   if self.owner:isFragmented() then
     error('cannot dump from fragmented relation', 2)
   end
@@ -740,6 +752,8 @@ end
 --      i:      which row we're outputting (starting at 0)
 --      val:    the value of this field for the ith row
 function L.LField:DumpFunction(lua_callback)
+  if self.type:isSmallMatrix() then
+    error('Dumping w/function of SmallMatrix fields is unimplemented') end
   if self.owner:isFragmented() then
     error('cannot dump from fragmented relation', 2)
   end
@@ -752,6 +766,8 @@ function L.LField:DumpFunction(lua_callback)
 end
 
 function L.LField:print()
+  if self.type:isSmallMatrix() then
+    error('Printing of SmallMatrix fields is still unimplemented') end
   print(self.name..": <" .. tostring(self.type:terraType()) .. '>')
   if not self.array then
     print("...not initialized")
@@ -766,7 +782,7 @@ function L.LField:print()
   livemask.array:read_ptr(function(liveptr)
   self.array:read_ptr(function(dataptr)
     local alive
-    if (self.type:isVector()) then
+    if self.type:isVector() then
       for i = 0, N-1 do
         if liveptr[i] then alive = ' .'
         else                alive = ' x' end

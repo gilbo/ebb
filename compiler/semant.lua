@@ -82,40 +82,40 @@ end
 
 -- This is like a type meet.  Except we coerce the arguments
 -- as necessary and then return them
-local function try_bin_coerce(node_a, node_b)
-    if node_a.node_type == node_b.node_type then
-        return node_a, node_b
-    elseif node_a.node_type:isCoercableTo(node_b.node_type) then
-        return try_coerce(node_b.node_type, node_a), node_b
-    elseif node_b.node_type:isCoercableTo(node_a.node_type) then
-        return node_a, try_coerce(node_a.node_type, node_b)
-    else
-        return nil, nil
-    end
-end
+--local function try_bin_coerce(node_a, node_b)
+--    if node_a.node_type == node_b.node_type then
+--        return node_a, node_b
+--    elseif node_a.node_type:isCoercableTo(node_b.node_type) then
+--        return try_coerce(node_b.node_type, node_a), node_b
+--    elseif node_b.node_type:isCoercableTo(node_a.node_type) then
+--        return node_a, try_coerce(node_a.node_type, node_b)
+--    else
+--        return nil, nil
+--    end
+--end
 
 -- like above, but if one of the operands is a vector, then
 -- only coerce the base types into agreement
-local function try_vec_bin_coerce(node_a, node_b)
-    if node_a.node_type:isVector() == node_b.node_type:isVector() then
-        return try_bin_coerce(node_a, node_b)
-    elseif node_b.node_type:isVector() then
-        local b, a = try_vec_bin_coerce(node_b, node_a)
-        return a, b
-    else -- now a is vec, b is primitive
-        local abase = node_a.node_type:baseType()
-        local N     = node_a.node_type.N
-        if abase == node_b.node_type then
-            return node_a, node_b
-        elseif abase:isCoercableTo(node_b.node_type) then
-            return try_coerce(L.vector(node_b.node_type, N), node_a), node_b
-        elseif node_b.node_type:isCoercableTo(abase) then
-            return node_a, try_coerce(abase, node_b)
-        else
-            return nil, nil
-        end
-    end
-end
+--local function try_vec_bin_coerce(node_a, node_b)
+--    if node_a.node_type:isVector() == node_b.node_type:isVector() then
+--        return try_bin_coerce(node_a, node_b)
+--    elseif node_b.node_type:isVector() then
+--        local b, a = try_vec_bin_coerce(node_b, node_a)
+--        return a, b
+--    else -- now a is vec, b is primitive
+--        local abase = node_a.node_type:baseType()
+--        local N     = node_a.node_type.N
+--        if abase == node_b.node_type then
+--            return node_a, node_b
+--        elseif abase:isCoercableTo(node_b.node_type) then
+--            return try_coerce(L.vector(node_b.node_type, N), node_a), node_b
+--        elseif node_b.node_type:isCoercableTo(abase) then
+--            return node_a, try_coerce(abase, node_b)
+--        else
+--            return nil, nil
+--        end
+--    end
+--end
 
 ------------------------------------------------------------------------------
 --[[ AST semantic checking methods:                                       ]]--
@@ -530,37 +530,24 @@ function ast.Expression:check(ctxt)
           "expression type " .. self.kind, 2)
 end
 
---[[ Logic tables for binary expression checking: ]]--
--- terra does not support vector types as operands for this operator
-local isNumOp = {
-    ['^'] = true
-}
 
--- these operators always return logical types!
-local is_eq_compare = {
-    ['=='] = true,
-    ['~='] = true
-}
 
--- only logical operands
-local is_logical_op = {
-    ['and'] = true,
-    ['or']  = true
-}
-
-local is_num_compare_op = {
+local is_ord_op = {
     ['<='] = true,
     ['>='] = true,
     ['>']  = true,
     ['<']  = true
 }
 
-local is_arith_op = {
-    ['+']  = true,
-    ['-']  = true,
-    ['*']  = true,
-    ['/']  = true
-}
+local function matching_type_dims(t1, t2)
+  if t1:isPrimitive() and t2:isPrimitive() then return true end
+  if t1:isVector() and t2:isVector() then
+    return t1.N == t2.N
+  elseif t1:isSmallMatrix() and t2:isSmallMatrix() then
+    return t1.Nrow == t2.Nrow and t1.Ncol == t2.Ncol
+  end
+  return false
+end
 
 local function err (node, ctx, msg)
     node.node_type = L.error
@@ -568,104 +555,196 @@ local function err (node, ctx, msg)
     return node
 end
 
+
+local function coerce_base(btyp, node)
+  local ntyp = node.node_type
+  if btyp == ntyp:baseType() then return node end
+
+  local cast = ast.Cast:DeriveFrom(node)
+  if ntyp:isPrimitive()   then  cast.node_type = btyp end
+  if ntyp:isVector()      then  cast.node_type = L.vector(btyp, ntyp.N) end
+  if ntyp:isSmallMatrix() then
+    cast.node_type = L.smallmatrix(btyp, ntyp.Nrow, ntyp.Ncol)
+  end
+  cast.value = node
+  return cast
+end
+-- Will coerce base type but not the underlying 
+local function try_bin_coerce(binop, errf)
+  local meet = T.type_meet(binop.lhs.node_type:baseType(),
+                           binop.rhs.node_type:baseType())
+  if meet == L.error then return errf() end
+
+  binop.lhs = coerce_base(meet, binop.lhs)
+  binop.rhs = coerce_base(meet, binop.rhs)
+  binop.node_type = T.type_meet(binop.lhs.node_type, binop.rhs.node_type)
+
+  return binop
+end
+local function try_bin_coerce_bool(binop, errf)
+  local node = try_bin_coerce(binop, errf)
+  if node.node_type == L.error then return node end
+  node.node_type = L.bool
+  return node
+end
+local function try_mat_prod_coerce(binop, errf, N, M)
+  local meet = T.type_meet(binop.lhs.node_type:baseType(),
+                           binop.rhs.node_type:baseType())
+  if meet == L.error then return errf() end
+  binop.lhs = coerce_base(meet, binop.lhs)
+  binop.rhs = coerce_base(meet, binop.rhs)
+  if M == nil then binop.node_type = L.vector(meet, N)
+              else binop.node_type = L.smallmatrix(meet, N, M) end
+  return binop
+end
+
 -- binary expressions
 function ast.BinaryOp:check(ctxt)
-    local binop         = self:clone()
-    binop.op            = self.op
-    binop.lhs           = self.lhs:check(ctxt)
-    binop.rhs           = self.rhs:check(ctxt)
-    local ltype, rtype  = binop.lhs.node_type, binop.rhs.node_type
+  local binop         = self:clone()
+  binop.op            = self.op
+  binop.lhs           = self.lhs:check(ctxt)
+  binop.rhs           = self.rhs:check(ctxt)
 
-    -- Silently ignore/propagate errors
-    if ltype == L.error or rtype == L.error then return err(self, ctxt) end
+  local lt, rt  = binop.lhs.node_type, binop.rhs.node_type
+  local op            = binop.op
+  -- Silently ignore/propagate errors
+  if lt == L.error or rt == L.error then return err(self, ctxt) end
 
-    local type_err = 'incompatible types: ' .. ltype:toString() ..
-                     ' and ' .. rtype:toString()
-    local op_err   = 'invalid types for operator \'' .. binop.op .. '\': ' ..
-                     ltype:toString() .. ' and ' .. rtype:toString()
+  -- error messages
+  local function type_err()
+    return err(binop, ctxt, 'incompatible types: ' .. lt:toString() ..
+                            ' and ' .. rt:toString())
+  end
+  local function op_err()
+    return err(binop, ctxt, 'invalid types for operator \'' .. binop.op ..
+                '\': ' .. lt:toString() .. ' and ' .. rt:toString())
+  end
 
-    local coarse_check = ltype:isValueType() and rtype:isValueType()
-    if is_eq_compare[binop.op] then
-        coarse_check = ltype:isFieldType() and rtype:isFieldType()
+  -- special case for row types
+  if lt:isRow() and rt:isRow() and (op == '==' or op == '~=') then
+    if lt ~= rt then return type_err() end
+    binop.node_type = L.bool
+    return binop
+  end
+
+  -- prohibit min/max outside of reductions
+  if op == 'min' or op == 'max' then
+    return err(binop, ctxt, op .. ' is unsupported as a binary operator')
+  end
+
+  -- Now make sure we have value types
+  if not lt:isValueType() or not rt:isValueType() then
+    return op_err()
+  end
+
+  -- Given that we're working with value types, there are three properties
+  -- that we need to consider in deciding whether or not this binary op
+  -- should type check:
+  --    1. OP:       (below)
+  --    2. BASETYPE: bool, int, float, double, uint64
+  --    3. DIM:      scalar, vector(n), smallmatrix(n,m)
+  -- OPS:
+  --    logical(and,or),
+  --    Eq(==,~=),
+  --    Ord(<=,>=,>,<)
+  --    + -
+  --    *
+  --    /
+  --    Mod(%)
+
+
+  -- OP: Logical
+    -- DIM: L = R
+      -- BASETYPE L/R: Logical
+        -- OK, return Copy type
+  if op == 'and' or op == 'or' then
+    if not lt:isLogical() or not rt:isLogical() then return op_err() end
+    if not matching_type_dims(lt,rt) then return type_err() end
+    binop.node_type = lt
+    return binop
+  end
+
+  -- OP: Ord
+    -- DIM L/R: scalar
+      -- BASETYPE L/R: Numeric
+        -- COERCE, return BOOL
+  if is_ord_op[op] then
+    if not (lt:isNumeric() and lt:isPrimitive() and
+            rt:isNumeric() and rt:isPrimitive()) then return op_err() end
+    return try_bin_coerce_bool(binop, type_err)
+  end
+
+  -- OP: Mod
+    -- DIM L/R: scalar
+      -- BASETYPE L/R: Integral
+        -- COERCE, return coercion
+  if op == '%' then
+    if not (lt:isIntegral() and lt:isPrimitive() and
+            rt:isIntegral() and rt:isPrimitive()) then return op_err() end
+    return try_bin_coerce(binop, type_err)
+  end
+
+  -- OP: Eq
+    -- DIM: L = R
+      -- BASETYPE: all
+        -- COERCE, return BOOL
+  if op == '==' or op == '~=' then
+    if not matching_type_dims(lt,rt) then return type_err() end
+    return try_bin_coerce_bool(binop, type_err)
+  end
+
+  -- OP: + -
+    -- DIM: L = R
+      -- BASETYPE: Numeric
+        -- COERCE, return coerced type
+  if op == '+' or op == '-' then
+    if not lt:isNumeric() or not rt:isNumeric() then return op_err() end
+    if not matching_type_dims(lt,rt) then return type_err() end
+    return try_bin_coerce(binop, type_err)
+  end
+
+  -- OP: *
+    -- BASETYPE: Numeric
+      -- DIM: Scalar _
+      -- DIM: _ Scalar
+        -- COERCE, return coerced type
+      -- DIM: Vector(n) Matrix(n,_)
+      -- DIM: Matrix(_,m) Vector(m)
+      -- DIM: Matrix(_,m) Matrix(m,_)
+        -- COERCE, BUT return correctly dimensioned type
+  if op == '*' then
+    if not lt:isNumeric() or not rt:isNumeric() then return op_err() end
+    if lt:isPrimitive() or rt:isPrimitive() then
+      return try_bin_coerce(binop, type_err)
+
+--    elseif lt:isVector() and rt:isSmallMatrix() and lt.N == rt.Nrow then
+--      return try_mat_prod_coerce(binop, type_err, rt.Ncol, nil)
+--
+--    elseif lt:isSmallMatrix() and rt:isVector() and lt.Ncol == rt.N then
+--      return try_mat_prod_coerce(binop, type_err, lt.Nrow, nil)
+--
+--    elseif lt:isSmallMatrix() and rt:isSmallMatrix() and lt.Ncol == rt.Nrow
+--    then
+--      return try_mat_prod_coerce(binop, type_err, lt.Nrow, rt.Ncol)
+
+    else
+      return op_err()
     end
-    if not coarse_check then
-        return err(self, ctxt, op_err)
-    end
+  end
 
-    -- operators on booleans
-    if is_logical_op[binop.op] then
-        if ltype ~= rtype then              return err(binop, ctxt, type_err)
-        elseif not ltype:isLogical() then   return err(binop, ctxt, op_err)
-        else                                binop.node_type = ltype
-                                            return binop end
-    end
+  -- OP: /
+    -- BASETYPE: Numeric
+      -- DIM: _ Scalar
+        -- COERCE, return coerced type
+  if op == '/' then
+    if not lt:isNumeric() or not rt:isNumeric() then return op_err() end
+    if not rt:isPrimitive()                     then return op_err() end
 
-    -- operators for numeric primitives only
-    if is_num_compare_op[binop.op] or binop.op == '^' or binop.op == '%' then
-        if not ltype:isPrimitive() or not ltype:isNumeric() or
-           not rtype:isPrimitive() or not rtype:isNumeric() or
-           (binop.op == '%' and
-            (not ltype:isIntegral() or not rtype:isIntegral()))
-        then
-            return err(binop, ctxt, op_err)
-        end
+    return try_bin_coerce(binop, type_err)
+  end
 
-        -- coerce the arguments then
-        binop.lhs, binop.rhs = try_bin_coerce(binop.lhs, binop.rhs)
-        if not binop.lhs then return err(binop, ctxt, type_err) end
-
-        if is_num_compare_op[binop.op] then 
-            binop.node_type = L.bool
-        else
-            binop.node_type = binop.lhs.node_type
-        end
-        return binop
-    end
-
-    -- equality / inequality (the eternal problem)
-    if is_eq_compare[binop.op] then
-        -- try coercion
-        binop.lhs, binop.rhs = try_bin_coerce(binop.lhs, binop.rhs)
-        if not binop.lhs then return err(binop, ctxt, type_err) end
-
-        binop.node_type = L.bool
-        return binop
-    end
-
-    -- all remaining cases of basic arithmetic ops
-    if is_arith_op[binop.op] then
-        if not ltype:isNumeric() or not rtype:isNumeric() then
-            return err(binop, ctxt, op_err)
-        end
-
-        -- check validity for this kind of operator
-        if binop.op == '+' or binop.op == '-' then
-            if ltype:isVector() ~= rtype:isVector() then
-                return err(binop, ctxt, op_err)
-            end
-        elseif binop.op == '*' then
-            if ltype:isVector() and rtype:isVector() then
-                return err(binop, ctxt, op_err)
-            end
-        elseif binop.op == '/' then
-            if rtype:isVector() then
-                return err(binop, ctxt, op_err)
-            end
-        end
-
-        -- coerce types
-        binop.lhs, binop.rhs = try_vec_bin_coerce(binop.lhs, binop.rhs)
-        if not binop.lhs then return err(binop, ctxt, type_err) end
-
-        -- make sure we get a vector type if appropriate
-        binop.node_type = binop.lhs.node_type
-        if rtype:isVector() then binop.node_type = binop.rhs.node_type end
-        return binop
-    end
-
-    -- We will get here if the user attempts to use the min/max operators inline.
-    -- Currently they are only supported as reductions.
-    return err(binop, ctxt, "Failed to recognize operator '"..binop.op.."'")
+  -- unrecognized op error
+  return err(binop, ctxt, "Failed to recognize operator '"..binop.op.."'")
 end
 
 function ast.UnaryOp:check(ctxt)
@@ -750,6 +829,50 @@ function ast.Bool:check(ctxt)
     return boolnode
 end
 
+function convert_to_matrix_literal(literal, ctxt)
+    local matlit        = ast.MatrixLiteral:DeriveFrom(literal)
+    matlit.elems        = {}
+
+    local tp_error  = "matrix literals can only contain vectors "..
+                      "of boolean or numeric type"
+    local mt_error  = "matrix entries must be of the same type"
+    local dim_error = "matrix literals must contain vectors of the same size"
+
+    local vecs = literal.elems
+    matlit.n   = #vecs
+    matlit.m   = #(vecs[1].elems)
+    local max_type = vecs[1].node_type:baseType()
+
+    -- take max type
+    for i=2,matlit.n do
+        local tp = vecs[i].node_type
+        if not tp:isVector() then return err(literal, ctxt, tp_error) end
+        if tp.N ~= matlit.m  then return err(literal, ctxt, dim_error) end
+
+        if max_type:isCoercableTo(tp:baseType()) then
+            max_type = tp:baseType()
+        elseif not tp:baseType():isCoercableTo(max_type) then
+            return err(literal, ctxt, mt_error)
+        end
+    end
+
+    -- if the type was explicitly provided...
+    if literal.node_type then
+        max_type = literal.node_type:baseType()
+    end
+
+    -- coerce and re-marshall the entries
+    for i = 1, matlit.n do
+        for j = 1, matlit.m do
+            local idx = (i-1)*matlit.m + (j-1) + 1
+            matlit.elems[idx] = try_coerce(max_type, vecs[i].elems[j], ctxt)
+        end
+    end
+
+    matlit.node_type = L.smallmatrix(max_type, matlit.n, matlit.m)
+    return matlit
+end
+
 function ast.VectorLiteral:check(ctxt)
     local veclit      = self:clone()
     veclit.elems      = {}
@@ -758,20 +881,29 @@ function ast.VectorLiteral:check(ctxt)
                      "of boolean or numeric type"
     local mt_error = "vector entries must be of the same type"
 
-    veclit.elems[1]   = self.elems[1]:check(ctxt)
-    local max_type    = veclit.elems[1].node_type
-    if max_type == L.error then return err(self, ctxt) end
-    if not max_type:isPrimitive() then
-        return err(self, ctxt, tp_error) 
-    end
-
-    -- scan the remaining entries to compute a max type
-    for i = 2, #self.elems do
+    -- recursively process children
+    for i=1,#self.elems do
         veclit.elems[i] = self.elems[i]:check(ctxt)
         local tp        = veclit.elems[i].node_type
         if tp == L.error then return err(self, ctxt) end
+    end
+
+    -- check if matrix applies...
+    local max_type  = veclit.elems[1].node_type
+    if max_type:isVector() then
+        if self.node_type then veclit.node_type = self.node_type end
+        -- SPECIAL CASE: a vector of vectors is a matrix and
+        --               needs to be treated specially
+        return convert_to_matrix_literal(veclit, ctxt)
+    elseif not max_type:isPrimitive() then
+        return err(self, ctxt, tp_error)
+    end
+
+    -- compute a max type
+    for i = 2, #self.elems do
+        local tp = veclit.elems[i].node_type
         if not tp:isPrimitive() then
-            return err(self,ctxt, tp_error)
+            return err(self, ctxt, tp_error)
         end
 
         if max_type:isCoercableTo(tp) then
@@ -1051,36 +1183,43 @@ function ast.TableLookup:check(ctxt)
 
 end
 
-function ast.VectorIndex:check(ctxt)
-    local vidx   = self:clone()
-    local vec    = self.vector:check(ctxt)
+function ast.SquareIndex:check(ctxt)
+    local sqidx  = self:clone()
+    local base   = self.base:check(ctxt)
     local idx    = self.index:check(ctxt)
-    vidx.vector, vidx.index = vec, idx
-    local vectype, idxtype  = vec.node_type, idx.node_type
+    sqidx.base, sqidx.index     = base, idx
+    local btyp, ityp            = base.node_type, idx.node_type
 
-    -- RHS is an expression of integral type
-    -- (make sure this check always runs)
-    if idxtype ~= L.error and not idxtype:isIntegral() then
-        ctxt:error(self, "expected an integer expression to index into "..
-                         "the vector (found ".. idxtype:toString() ..')')
+    if btyp == L.error or ityp == L.error then sqidx.node_type = L.error
+                                               return sqidx end
+
+    if not ityp:isIntegral() then return err(idx, ctxt, 'expected an '..
+        'integer index, but found '..ityp:toString()) end
+
+    -- matrix case
+    if self.index2 then
+        local idx2      = self.index2:check(ctxt)
+        sqidx.index2    = idx2
+        local i2typ     = idx2.node_type
+
+        if i2typ == L.error then sqidx.node_type = L.error
+                                 return sqidx end
+
+        if not ityp:isIntegral() then return err(idx2, ctxt, 'expected an '..
+            'integer index, but found '..i2typ:toString()) end
+        if not btyp:isSmallMatrix() then return err(base, ctxt, 'expected '..
+            'small matrix to index into, not '.. btyp:toString()) end
+    -- vector case
+    else
+        if not btyp:isVector() then return err(base, ctxt, 'expected '..
+            'vector to index into, not '..btyp:toString()) end
     end
 
-    -- LHS should be a vector
-    if vectype ~= L.error and not vectype:isVector() then
-        ctxt:error(self, "indexing operator [] not supported for "..
-                         "non-vector type " .. vectype:toString())
-        vectype = L.error
-    end
-    if vectype == L.error then
-        vidx.node_type = L.error
-        return vidx
-    end
+    -- is an lvalue only when the base is
+    if base.is_lvalue then sqidx.is_lvalue = true end
 
-    -- is an lvalue only when the vector is
-    if vec.is_lvalue then vidx.is_lvalue = true end
-
-    vidx.node_type = vectype:baseType()
-    return vidx
+    sqidx.node_type = btyp:baseType()
+    return sqidx
 end
 
 function ast.Call:check(ctxt)
@@ -1106,7 +1245,7 @@ function ast.Call:check(ctxt)
     elseif v and T.isLisztType(v) and v:isValueType() then
         local params = call.params
         if #params ~= 1 then
-            ctxt:error(self, "Cast to " .. v.toString() ..
+            ctxt:error(self, "Cast to " .. v:toString() ..
                     " expects exactly 1 argument (instead got " .. #params ..
                     ")")
         else
@@ -1115,16 +1254,13 @@ function ast.Call:check(ctxt)
             -- no more.
             local pretype = params[1].node_type
             local casttype = v
-            local one_vec = pretype:isVector() or casttype:isVector()
-            local matching_vecs = pretype:isVector() and casttype:isVector()
-                              and pretype.N == casttype.N
-            if one_vec and not matching_vecs then
-                ctxt:error(self, "Can only cast vectors to "..
-                    "other vectors with matching dimensions")
+            if not matching_type_dims(pretype, casttype) then
+                ctxt:error(self, "Cannot cast between primitives, vectors, "..
+                                 "matrices of different dimensions")
             else
                 call = ast.Cast:DeriveFrom(self)
-                call.value     = params[1]
-                call.node_type = v
+                call.value      = params[1]
+                call.node_type  = v
             end
         end
     -- __apply_macro  i.e.  c(1,0)  for offsetting in a grid

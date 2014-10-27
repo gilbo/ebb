@@ -101,6 +101,41 @@ function Context:incrementInsertIndex()
   end
 end
 
+
+
+
+local function vec_mapgen(typ,func)
+  local arr = {}
+  for i=1,typ.N do arr[i] = func(i-1) end
+  return `[typ:terraType()]({ array([arr]) })
+end
+local function mat_mapgen(typ,func)
+  local rows = {}
+  for i=1,typ.Nrow do
+    local r = {}
+    for j=1,typ.Ncol do r[j] = func(i-1,j-1) end
+    rows[i] = `array([r])
+  end
+  return `[typ:terraType()]({ array([rows]) })
+end
+
+local function vec_foldgen(N, init, binf)
+  local acc = init
+  for ii = 1, N do local i = N - ii -- count down to 0
+    acc = binf(i, acc) end
+  return acc
+end
+local function mat_foldgen(N,M, init, binf)
+  local acc = init
+  for ii = 1, N do local i = N - ii -- count down to 0
+    for jj = 1, M do local j = M - jj -- count down to 0
+      acc = binf(i,j, acc) end end
+  return acc
+end
+
+
+
+
 --[[--------------------------------------------------------------------]]--
 --[[                         CPU Codegen                                ]]--
 --[[--------------------------------------------------------------------]]--
@@ -759,6 +794,8 @@ local function atomic_gpu_red_exp (op, typ, lvalptr, update)
   error(internal_error)
 end
 
+
+-- ONLY ONE PLACE...
 function let_vec_binding(typ, N, exp)
   local val = symbol(typ:terraType())
   local let_binding = quote var [val] = [exp] end
@@ -773,49 +810,179 @@ function let_vec_binding(typ, N, exp)
   return let_binding, coords
 end
 
+
+
+function symgen_bind(typ, exp, f)
+  local s = symbol(typ:terraType())
+  return quote var s = exp in [f(s)] end
+end
+function symgen_bind2(typ1, typ2, exp1, exp2, f)
+  local s1 = symbol(typ1:terraType())
+  local s2 = symbol(typ2:terraType())
+  return quote
+    var s1 = exp1
+    var s2 = exp2
+  in [f(s1,s2)] end
+end
+
 function vec_bin_exp(op, result_typ, lhe, rhe, lhtyp, rhtyp)
-  -- ALL non-vector ops are handled here
-  if not lhtyp:isVector() and not rhtyp:isVector() then
+  if lhtyp:isPrimitive() and rhtyp:isPrimitive() then
     return bin_exp(op, lhe, rhe)
   end
 
-  -- the result type is misleading if we're doing a vector comparison...
+  -- handles equality and inequality of rows
+  if lhtyp:isRow() and rhtyp:isRow() then
+    return bin_exp(op, lhe, rhe)
+  end
+
+  -- ALL THE CASES
+
+  -- OP: Ord (scalars only)
+  -- OP: Mod (scalars only)
+  -- BOTH HANDLED ABOVE
+
+  -- OP: Eq (=> DIM: == , BASETYPE: == )
+    -- pairwise comparisons, and/or collapse
+  local eqinitval = { ['=='] = `true, ['~='] = `false }
   if op == '==' or op == '~=' then
-    -- assert(lhtyp:isVector() and rhtyp:isVector())
-    result_typ = lhtyp
-    if lhtyp:isCoercableTo(rhtyp) then
-      result_typ = rhtyp
+    if lhtyp:isVector() then -- rhtyp:isVector()
+      return symgen_bind2(lhtyp, rhtyp, lhe, rhe, function(lvec,rvec)
+        return vec_foldgen(lhtyp.N, eqinitval[op], function(i, acc)
+          if op == '==' then return `acc and lvec.d[i] == rvec.d[i]
+                        else return `acc or  lvec.d[i] ~= rvec.d[i] end
+        end) end)
+
+    elseif lhtyp:isSmallMatrix() then -- rhtyp:isSmallMatrix()
+      return symgen_bind2(lhtyp, rhtyp, lhe, rhe, function(lmat,rmat)
+        return mat_foldgen(lhtyp.Nrow, lhtyp.Ncol, eqinitval[op],
+          function(i,j, acc)
+            if op == '==' then return `acc and lmat.d[i][j] == rmat.d[i][j]
+                          else return `acc or  lmat.d[i][j] ~= rmat.d[i][j] end
+          end) end)
+
     end
   end
 
-  local N = result_typ.N
+  -- OP: Logical (and or)
+    -- map the OP
+  -- OP: + - min max
+    -- map the OP
+  if op == 'and'  or op == 'or' or
+     op == '+'    or op == '-'  or
+     op == 'min'  or op == 'max'
+  then
+    if lhtyp:isVector() then -- rhtyp:isVector()
+      return symgen_bind2(lhtyp, rhtyp, lhe, rhe, function(lvec,rvec)
+        return vec_mapgen(result_typ, function(i)
+          return bin_exp( op, (`lvec.d[i]), `(rvec.d[i]) ) end) end)
 
-  local lhbind, lhcoords = let_vec_binding(lhtyp, N, lhe)
-  local rhbind, rhcoords = let_vec_binding(rhtyp, N, rhe)
+    elseif lhtyp:isSmallMatrix() then
+      return symgen_bind2(lhtyp, rhtyp, lhe, rhe, function(lmat,rmat)
+        return mat_mapgen(result_typ, function(i,j)
+          return bin_exp( op, (`lmat.d[i][j]), `(rmat.d[i][j]) ) end) end)
 
-  -- Assemble the resulting vector by mashing up the coords
-  local coords = {}
-  for i=1, N do
-    coords[i] = bin_exp(op, lhcoords[i], rhcoords[i])
+    end
   end
-  local result = `[result_typ:terraType()]({ array( [coords] ) })
 
-  -- special case handling of vector comparisons
-  if op == '==' then -- AND results
-    result = `true
-    for i = 1, N do result = `result and [ coords[i] ] end
-  elseif op == '~=' then -- OR results
-    result = `false
-    for i = 1, N do result = `result or [ coords[i] ] end
+  -- OP: *
+    -- DIM: Scalar _
+    -- DIM: _ Scalar
+      -- map the OP with expanding one side
+  -- OP: /
+    -- DIM: _ Scalar
+      -- map the OP with expanding one side
+  if op == '/' or
+    (op == '*' and lhtyp:isPrimitive() or rhtyp:isPrimitive())
+  then
+    if lhtyp:isVector() then -- rhtyp:isPrimitive()
+      return symgen_bind2(lhtyp, rhtyp, lhe, rhe, function(lvec,r)
+        return vec_mapgen(result_typ, function(i)
+          return bin_exp( op, (`lvec.d[i]), r ) end) end)
+
+    elseif rhtyp:isVector() then -- lhtyp:isPrimitive()
+      return symgen_bind2(lhtyp, rhtyp, lhe, rhe, function(l,rvec)
+        return vec_mapgen(result_typ, function(i)
+          return bin_exp( op, l, `(rvec.d[i]) ) end) end)
+
+    elseif lhtyp:isSmallMatrix() then -- rhtyp:isPrimitive()
+      return symgen_bind2(lhtyp, rhtyp, lhe, rhe, function(lmat,r)
+        return mat_mapgen(result_typ, function(i,j)
+          return bin_exp( op, (`lmat.d[i][j]), r ) end) end)
+
+    elseif rhtyp:isSmallMatrix() then -- rhtyp:isPrimitive()
+      return symgen_bind2(lhtyp, rhtyp, lhe, rhe, function(l,rmat)
+        return mat_mapgen(result_typ, function(i,j)
+          return bin_exp( op, l, `(rmat.d[i][j]) ) end) end)
+
+    end
   end
 
-  local q = quote
-    [lhbind]
-    [rhbind]
-  in
-    [result]
-  end
-  return q
+  -- OP: *
+    -- DIM: Vector(n) Matrix(n,_)
+    -- DIM: Matrix(_,m) Vector(m)
+    -- DIM: Matrix(_,m) Matrix(m,_)
+      -- vector-matrix, matrix-vector, or matrix-matrix products
+--  if op == '*' then
+--    if lhtyp:isVector() and rhtyp:isSmallMatrix() then
+--      return symgen_bind2(lhtyp, rhtyp, lhe, rhe, function(lvec,rmat)
+--        return vec_mapgen(result_typ, function(j)
+--          return vec_foldgen(rmat.Ncol, `0, function(i, acc)
+--            return `acc + lvec.d[i] * rmat.d[i][j] end) end) end)
+--
+--    elseif lhtyp:isSmallMatrix() and rhtyp:isVector() then
+--      return symgen_bind2(lhtyp, rhtyp, lhe, rhe, function(lmat,rvec)
+--        return vec_mapgen(result_typ, function(i)
+--          return vec_foldgen(lmat.Nrow, `0, function(j, acc)
+--            return `acc + lmat.d[i][j] * rvec.d[j] end) end) end)
+--
+--    elseif lhtyp:isSmallMatrix() and rhtyp:isSmallMatrix() then
+--      return symgen_bind2(lhtyp, rhtyp, lhe, rhe, function(lmat,rmat)
+--        return mat_mapgen(result_typ, function(i,j)
+--          return vec_foldgen(rmat.Ncol, `0, function(k, acc)
+--            return `acc + lmat.d[i][k] * rmat.d[k][j] end) end) end)
+--
+--    end
+--  end
+
+  -- If we fell through to here we've run into an unhandled branch
+  error('Internal Error: Could not find any code to generate for '..
+        'binary operator '..op..' with opeands of type '..lhtyp:toString()..
+        ' and '..rhtyp:toString())
+
+--  -- the result type is bool (not desired) if we're doing a comparison
+--  if op == '==' or op == '~=' then
+--    result_typ = lhtyp
+--    if lhtyp:isCoercableTo(rhtyp) then result_typ = rhtyp end
+--  end
+--
+--  local N = result_typ.N
+--
+--  local lhbind, lhcoords = let_vec_binding(lhtyp, N, lhe)
+--  local rhbind, rhcoords = let_vec_binding(rhtyp, N, rhe)
+--
+--  -- Assemble the resulting vector by mashing up the coords
+--  local coords = {}
+--  for i=1, N do
+--    coords[i] = bin_exp(op, lhcoords[i], rhcoords[i])
+--  end
+--  local result = `[result_typ:terraType()]({ array( [coords] ) })
+--
+--  -- special case handling of vector comparisons
+--  if op == '==' then -- AND results
+--    result = `true
+--    for i = 1, N do result = `result and [ coords[i] ] end
+--  elseif op == '~=' then -- OR results
+--    result = `false
+--    for i = 1, N do result = `result or [ coords[i] ] end
+--  end
+--
+--  local q = quote
+--    [lhbind]
+--    [rhbind]
+--  in
+--    [result]
+--  end
+--  return q
 end
 
 function atomic_gpu_vec_red_exp(op, result_typ, lval, rhe, rhtyp)
@@ -899,22 +1066,24 @@ end
 
 function ast.Cast:codegen(ctxt)
   local typ = self.node_type
+  local bt  = typ:terraBaseType()
   local valuecode = self.value:codegen(ctxt)
 
-  if not typ:isVector() then
+  if typ:isPrimitive() then
     return `[typ:terraType()](valuecode)
-  else
+
+  elseif typ:isVector() then
     local vec = symbol(self.value.node_type:terraType())
-    local bt  = typ:terraBaseType()
+    return quote var [vec] = valuecode in
+      [ vec_mapgen(typ, function(i) return `[bt](vec.d[i]) end) ] end
 
-    local coords = {}
-    for i= 1, typ.N do coords[i] = `[bt](vec.d[i-1]) end
+  elseif typ:isSmallMatrix() then
+    local mat = symbol(self.value.node_type:terraType())
+    return quote var [mat] = valuecode in
+      [ mat_mapgen(typ, function(i,j) return `[bt](mat.d[i][j]) end) ] end
 
-    return quote
-      var [vec] = valuecode
-    in
-      [typ:terraType()]({ arrayof(bt, [coords]) })
-    end
+  else
+    error("Internal Error: Type unrecognized "..typ:toString())
   end
 end
 
@@ -941,17 +1110,20 @@ function ast.DeclStatement:codegen (ctxt)
   end
 end
 
+function ast.MatrixLiteral:codegen (ctxt)
+  local typ = self.node_type
+
+  return mat_mapgen(typ, function(i,j)
+    return self.elems[i*self.m + j + 1]:codegen(ctxt)
+  end)
+end
+
 function ast.VectorLiteral:codegen (ctxt)
   local typ = self.node_type
 
-  -- type everything explicitly
-  local elems = {}
-  for i = 1, #self.elems do
-    elems[i] = self.elems[i]:codegen(ctxt)
-  end
-
-  -- we allocate vectors as a struct with a single array member
-  return `[typ:terraType()]({ array( [elems] ) })
+  return vec_mapgen(typ, function(i)
+    return self.elems[i+1]:codegen(ctxt)
+  end)
 end
 
 function ast.Global:codegen (ctxt)
@@ -959,11 +1131,19 @@ function ast.Global:codegen (ctxt)
   return `@dataptr
 end
 
-function ast.VectorIndex:codegen (ctxt)
-  local vector = self.vector:codegen(ctxt)
-  local index  = self.index:codegen(ctxt)
+function ast.SquareIndex:codegen (ctxt)
+  local base  = self.base:codegen(ctxt)
+  local index = self.index:codegen(ctxt)
 
-  return `vector.d[index]
+  -- Vector case
+  if self.index2 == nil then
+    return `base.d[index]
+  -- Matrix case
+  else
+    local index2 = self.index2:codegen(ctxt)
+
+    return `base.d[index][index2]
+  end
 end
 
 function ast.Number:codegen (ctxt)
@@ -978,29 +1158,37 @@ function ast.Bool:codegen (ctxt)
   end
 end
 
+
 function ast.UnaryOp:codegen (ctxt)
   local expr = self.exp:codegen(ctxt)
   local typ  = self.node_type
 
-  if not typ:isVector() then
-    if (self.op == '-') then return `-[expr]
-    else                     return `not [expr]
-    end
-  else -- Unary op applied to a vector...
-    local binding, coords = let_vec_binding(typ, typ.N, expr)
+  if typ:isPrimitive() then
+    if self.op == '-' then return `-[expr]
+                      else return `not [expr] end
+  elseif typ:isVector() then
+    local vec = symbol(typ:terraType())
 
-    -- apply the operation
-    if (self.op == '-') then
-      for i = 1, typ.N do coords[i] = `-[ coords[i] ] end
+    if self.op == '-' then
+      return quote var [vec] = expr in
+        [ vec_mapgen(typ, function(i) return `-vec.d[i] end) ] end
     else
-      for i = 1, typ.N do coords[i] = `not [ coords[i] ] end
+      return quote var [vec] = expr in
+        [ vec_mapgen(typ, function(i) return `not vec.d[i] end) ] end
+    end
+  elseif typ:isSmallMatrix() then
+    local mat = symbol(typ:terraType())
+
+    if self.op == '-' then
+      return quote var [mat] = expr in
+        [ mat_mapgen(typ, function(i,j) return `-mat.d[i][j] end) ] end
+    else
+      return quote var [mat] = expr in
+        [ mat_mapgen(typ, function(i,j) return `not mat.d[i][j] end) ] end
     end
 
-    return quote
-      [binding]
-    in
-      [typ:terraType()]({ array([coords]) })
-    end
+  else
+    error("Internal Error: Type unrecognized "..typ:toString())
   end
 end
 
