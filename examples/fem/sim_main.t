@@ -42,8 +42,12 @@ local fabs = liszt function(num)
   return result
 end
 
--- Compute volume, given positions for 4 vertices
-local tetVolume = liszt function(a, b, c, d)
+-- Compute volume for a tetrahedral element
+local getElementVolume = liszt function(t)
+  var a = t.v0.pos
+  var b = t.v1.pos
+  var c = t.v2.pos
+  var d = t.v3.pos
   return (fabs(L.dot(a - d, L.cross(b - d, c - d))) / 6)
 end
 
@@ -86,7 +90,7 @@ function computeMassMatrix()
 
   mesh.edges:NewField('mass', L.double):Load(0)
   local buildMassMatrix = liszt kernel(t : mesh.tetrahedra)
-    var tet_vol = tetVolume(t.v0.pos, t.v1.pos, t.v2.pos, t.v3.pos)
+    var tet_vol = getElementVolume(t)
     var factor = tet_vol * getElementDensity(t) / 20
     t.e00.mass += factor * 2
     t.e01.mass += factor
