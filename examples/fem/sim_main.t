@@ -261,13 +261,15 @@ end
 -- vertex of the element, the second one says which one corresponds to the
 -- second vertex of the element and so on.
 -- BASICALLY, the entries from the ith row of a column_ should be used as column
--- indices for the row given by ith entry of row_.
+-- indices for the row given by ith entry of row_, and correspond to the
+-- relation between ith vertex of an element, and the remaining vertices of
+-- that element.
 
 -- At a very high level, Add***Terms loop over all the elements, and add a 3X3
 -- block at (i, j) (technically (3*i, 3*j)) position corresponding to each
 -- (x, y) vertex pair for the element. i is the row, and j is the column,
 -- in the nXn (3nX3n) stiffness matrix, corresponding to element (x,y) which
--- go from (0, 3) to (3,). The rest of the code performs further loops to
+-- go from (0,0) to (3,3). The rest of the code performs further loops to
 -- calculate the 3X3 matrix, using precomputed integrals and vertex
 -- displacements.
 
