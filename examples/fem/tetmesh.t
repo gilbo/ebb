@@ -131,6 +131,40 @@ local function build_element_vertices(mesh, v0s, v1s, v2s, v3s)
   mesh.vertices:NewFieldMacro('neighbors', L.NewMacro(function(v)
     return liszt ` L.Where(mesh.edges.tail, v).head
   end))
+
+  -- set up pointers from tetrahedra to edges
+  for i = 1,4 do
+    for j = 1,4 do
+      mesh.tetrahedra:NewField(('e'..(i-1))..(j-1), mesh.edges):Load(0)
+    end
+  end
+  local compute_tet_edges = liszt kernel (t : mesh.tetrahedra )
+    for e in t.v0.edges do
+      if e.head == t.v0 then t.e00 = e end
+      if e.head == t.v1 then t.e01 = e end
+      if e.head == t.v2 then t.e02 = e end
+      if e.head == t.v3 then t.e03 = e end
+    end
+    for e in t.v1.edges do
+      if e.head == t.v0 then t.e10 = e end
+      if e.head == t.v1 then t.e11 = e end
+      if e.head == t.v2 then t.e12 = e end
+      if e.head == t.v3 then t.e13 = e end
+    end
+    for e in t.v2.edges do
+      if e.head == t.v0 then t.e20 = e end
+      if e.head == t.v1 then t.e21 = e end
+      if e.head == t.v2 then t.e22 = e end
+      if e.head == t.v3 then t.e23 = e end
+    end
+    for e in t.v3.edges do
+      if e.head == t.v0 then t.e30 = e end
+      if e.head == t.v1 then t.e31 = e end
+      if e.head == t.v2 then t.e32 = e end
+      if e.head == t.v3 then t.e33 = e end
+    end
+  end
+  compute_tet_edges(mesh.tetrahedra)
 end
 
 
