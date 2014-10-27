@@ -121,14 +121,14 @@ end
 
 local function vec_foldgen(N, init, binf)
   local acc = init
-  for ii = 1, N do local i = N+1 - ii
+  for ii = 1, N do local i = N - ii -- count down to 0
     acc = binf(i, acc) end
   return acc
 end
 local function mat_foldgen(N,M, init, binf)
   local acc = init
-  for ii = 1, N do local i = N+1 - ii
-    for jj = 1, M do local j = M+1 - jj
+  for ii = 1, N do local i = N - ii -- count down to 0
+    for jj = 1, M do local j = M - jj -- count down to 0
       acc = binf(i,j, acc) end end
   return acc
 end

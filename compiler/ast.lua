@@ -261,6 +261,11 @@ end
 ---------------------------
 local indent_delta = '   '
 
+local function maybe_type(node)
+  if node.node_type then return ' :: '..tostring(node.node_type)
+                    else return '' end
+end
+
 function AST:pretty_print(indent)
   error('PRETTY PRINT not implemented for AST node ' .. self.kind)
 end
@@ -309,27 +314,27 @@ end
 
 function A.BinaryOp:pretty_print (indent)
   indent = indent or ''
-  print(indent .. self.kind .. ": " .. self.op)
+  print(indent .. self.kind .. ": " .. self.op..maybe_type(self))
   self.lhs:pretty_print(indent .. indent_delta)
   self.rhs:pretty_print(indent .. indent_delta)
 end
 
 function A.UnaryOp:pretty_print (indent)
   indent = indent or ''
-  print(indent .. self.kind .. ": " .. self.op)
+  print(indent .. self.kind .. ": " .. self.op ..maybe_type(self))
   self.exp:pretty_print(indent .. indent_delta)
 end
 
 function A.Reduce:pretty_print(indent)
   indent = indent or ''
-  print(indent .. self.kind .. ": " .. self.op)
+  print(indent .. self.kind .. ": " .. self.op ..maybe_type(self))
   self.exp:pretty_print(indent .. indent_delta)
 end
 
 function A.Global:pretty_print(indent)
   indent = indent or ''
   local name = self.name or ""
-  print(indent .. self.kind .. ": " .. tostring(name))
+  print(indent .. self.kind .. ": " .. tostring(name) ..maybe_type(self))
 end
 
 function A.Cast:pretty_print(indent)
@@ -340,7 +345,7 @@ end
 
 function A.Quote:pretty_print(indent)
   indent = indent or ''
-  print(indent .. self.kind .. ":")
+  print(indent .. self.kind .. ":" ..maybe_type(self))
   self.code:pretty_print(indent .. indent_delta)
 end
 
@@ -349,7 +354,7 @@ function A.LetExpr:pretty_print(indent)
   local str = indent .. self.kind .. ": ("
   if self.block then str = str .. "block, " end
   if self.exp then str = str .. "exp" end
-  print(str .. ")")
+  print(str .. ")" ..maybe_type(self))
   indent = indent .. indent_delta
   if self.block then
     self.block:pretty_print(indent)
@@ -361,12 +366,14 @@ end
 
 function A.FieldAccess:pretty_print(indent)
   indent = indent or ''
-  print(indent .. self.kind .. ': ' .. tostring(self.field))
+  print(indent .. self.kind .. ': ' .. tostring(self.field)..maybe_type(self))
+  self.row:pretty_print(indent..indent_delta)
+  print(indent..indent_delta..self.name)
 end
 
 function A.Call:pretty_print (indent)
   indent = indent or ''
-  print(indent .. self.kind .. ": (func, params)")
+  print(indent .. self.kind .. ": (func, params)"..maybe_type(self))
   if not A.is_ast(self.func) then
     print(indent .. indent_delta .. tostring(self.func))
   else
@@ -384,7 +391,7 @@ end
 
 function A.TableLookup:pretty_print (indent)
   indent = indent or ''
-  print(indent .. self.kind .. ": (table, member)")
+  print(indent .. self.kind .. ": (table, member)"..maybe_type(self))
   self.table:pretty_print(indent .. indent_delta)
   if A.is_ast(self.member) then
     self.member:pretty_print(indent .. indent_delta)
@@ -395,19 +402,19 @@ end
 
 function A.SquareIndex:pretty_print (indent)
   indent = indent or ''
-  print(indent .. self.kind .. ": (base, index)")
+  print(indent .. self.kind .. ": (base, index)"..maybe_type(self))
   self.base:pretty_print(indent .. indent_delta)
   self.index:pretty_print(indent .. indent_delta)
 end
 
 function A.Name:pretty_print (indent)
   indent = indent or ''
-  print(indent .. self.kind .. ": " .. tostring(self.name))
+  print(indent .. self.kind .. ": " .. tostring(self.name)..maybe_type(self))
 end
 
 function A.Number:pretty_print (indent)
   indent = indent or ''
-  print(indent .. self.kind .. ": " .. self.value)
+  print(indent .. self.kind .. ": " .. self.value ..maybe_type(self))
 end
 
 function A.Bool:pretty_print (indent)
@@ -467,7 +474,7 @@ end
 
 function A.ExprStatement:pretty_print (indent)
   indent = indent or ''
-  print(indent .. self.kind)
+  print(indent .. self.kind ..maybe_type(self))
   self.exp:pretty_print(indent .. indent_delta)
 end
 
@@ -538,7 +545,7 @@ end
 
 function A.VectorLiteral:pretty_print (indent)
   indent = indent or ''
-  print(indent .. self.kind .. ":")
+  print(indent .. self.kind .. ":" ..maybe_type(self))
   for i = 1, #self.elems do
     self.elems[i]:pretty_print(indent .. indent_delta)
   end
@@ -547,7 +554,7 @@ function A.MatrixLiteral:pretty_print (indent)
   indent = indent or ''
   local N = self.n
   local M = self.m
-  print(indent .. self.kind .. ": (n,m,elems)")
+  print(indent .. self.kind .. ": (n,m,elems)"..maybe_type(self))
   print(indent .. indent_delta .. 'n ' .. tostring(N))
   print(indent .. indent_delta .. 'm ' .. tostring(M))
   for i=1,#self.elems do
@@ -556,7 +563,7 @@ function A.MatrixLiteral:pretty_print (indent)
 end
 function A.RecordLiteral:pretty_print (indent)
   indent = indent or ''
-  print(indent .. self.kind .. ": (names,exprs)")
+  print(indent .. self.kind .. ": (names,exprs)"..maybe_type(self))
   for i,name in ipairs(self.names) do
     print(indent .. indent_delta .. name)
     self.exprs[i]:pretty_print(indent .. indent_delta)
@@ -564,7 +571,7 @@ function A.RecordLiteral:pretty_print (indent)
 end
 function A.Where:pretty_print (indent)
   indent = indent or ''
-  print(indent .. self.kind .. ": (field, key)")
+  print(indent .. self.kind .. ": (field, key)" ..maybe_type(self))
   self.field:pretty_print(indent .. indent_delta)
   self.key:pretty_print(indent .. indent_delta)
 end
