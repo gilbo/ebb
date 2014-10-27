@@ -268,22 +268,16 @@ end
 -- At a very high level, Add***Terms loop over all the elements, and add a 3X3
 -- block at (i, j) (technically (3*i, 3*j)) position corresponding to each
 -- (x, y) vertex pair for the element. i is the row, and j is the column,
--- in the nXn (3nX3n) stiffness matrix, corresponding to element (x,y) which
+-- in the nXn (3nX3n) stiffness matrix, corresponding to vertices (x,y) which
 -- go from (0,0) to (3,3). The rest of the code performs further loops to
 -- calculate the 3X3 matrix, using precomputed integrals and vertex
 -- displacements.
 
 -- We should probably store the stiffness matrix as a field of 3X3 matrices
--- over vertices??
+-- over edges??
 
--- May not need this
-function allocateStiffnessMatrixTopology()
-
-  -- LOOP OVER TETRAHEDRA
-    -- LOOP OVER VERTICES x VERTICES (i,j)
-      -- Create a 4x4x3x3 tensor object's 3x3 entry here
-  -- END LOOP
-end
+mesh.tetrahedra:NewField('stiffness', L.mat3d)
+-- Load 0
 
 -- May not need this
 function allocateStiffnessMatrix()
@@ -306,6 +300,65 @@ function allocateStiffnessMatrix()
       -- COLUMN[TET][4*i + j] = DENSE LOCATION OF ROW[TET][i],ROW[TET][j]
     -- END LOOP
   -- END LOOP
+end
+
+local addStiffLinearTermsKernel = liszt kernel(t : mesh.tetrahedra)
+  -- allocate and prepare precomputed integral element
+  var lambda = t.lambdaLame
+  var mu = t.muLame
+  -- loop over vertex-vertex pairs in the element, that is, all the 16 edge
+  -- fields over a tetrahedron (e00 to e33) e
+  --   var mat = { { 1, 0, 0 }, { 0, 1, 0 }, { 0, 0, 1 } }
+  --   mat *= (mu * precomputedB(t, eji))
+  --   mat += (lambda * precomputedA(t, eij) + mu * precomputedA(t, eji))
+  --   e.stiffness += mat
+end
+
+local addStiffQuadraticTermsKernel = liszt kernel(t : mesh.tetrahedra)
+  -- allocate and prepare precomputed integral element
+  var lambda = t.lambdaLame
+  var mu = t.muLame
+  -- loop over vertex-vertex pairs in the element, that is, all the 16 edge
+  -- fields over a tetrahedron (e00 to e33) e
+  --   var mat = { { 0, 0, 0 }, { 0, 0, 0 }, { 0, 0, 0 } }
+  --   loop over all element vertices v
+  --     var qa = v.displacement??
+  --     var c0v = lambda * precomputedC(t, e.tail, v, e.head) +
+  --               mu * precomputedC(t, e.head, v, e.tail) +
+  --               precomputedC(t, v, e.head, e.tail)
+  --     mat += c0 tensor qa
+  --     var c1v = lambda * precomputedC(t, e.head, v, e.tail) +
+  --               mu * precomputedC(t, e.tail, e.head, v) +
+  --               precomputedC(t, v, e.head, e.tail)
+  --     mat += qa tensor c1
+  --     var c2v = lambda * precomputedC(t, v, e.head, e.tail) +
+  --               mu * precomputedC(t, e.tail, v, e.head) +
+  --               precomputedC(t, e.head, v, e.tail)
+  --     var dotp = dot(qa, c2)
+  --     mat += dotp * { { 1, 0, 0 }, { 0, 1, 0 }, { 0, 0, 1 } }
+  --  e.stiffness += mat
+end
+
+local addStiffCubicTermsKernel = liszt kernel(t : mesh.tetrahedra)
+  -- allocate and prepare precomputed integral element
+  var lambda = t.lambdaLame
+  var mu = t.muLame
+  -- loop over vertex-vertex pairs in the element, that is, all the 16 edge
+  -- fields over a tetrahedron (e00 to e33) e
+  --   var mat = { { 0, 0, 0 }, { 0, 0, 0 }, { 0, 0, 0 } }
+  --   loop over all element vertices a
+  --     var qa = a.displacement
+  --     loop over all element vertices b
+  --       var qb = b.displacement
+  --       var d0 = lambda * precomputedD(t, a, e.tail, b, e.head) +
+  --                mu * precomputedD(t, a, e.head, b, e.tail) +
+  --                precomputedD(t, a, b, e.tail, e.head)
+  --       mat += d0 * (qa tensor qb)
+  --       var d1 = 0.5 * lambda * precomputedD(t, a, b, e.tail, e.head) +
+  --                mu * precomputedD(t, a, e.tail, b, e.head)
+  --       var dotpd = d1 * dot(qa, qb)
+  --       mat += dotpd * { { 1, 0, 0 }, { 0, 1, 0 }, { 0, 0, 1 } }
+  --  e.stiffness += mat
 end
 
 function addStiffLinearTermsContribution()
