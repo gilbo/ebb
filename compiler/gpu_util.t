@@ -92,7 +92,8 @@ end)
 terralib.linklibrary("runtime/libdevice.bc")
 
 local cbrt = terralib.externfunction("__nv_cbrt", double -> double)
-
+local cos  = terralib.externfunction("__nv_cos",  double -> double)
+local sin  = terralib.externfunction("__nv_sin",  double -> double)
 
 --[[------------------------------------------------------------------------]]--
 --[[ Atomic reductions                                                      ]]--
@@ -223,6 +224,8 @@ GPU.get_grid_dimensions = get_grid_dimensions
 
 GPU.cbrt = cbrt
 GPU.sqrt = cudalib.nvvm_sqrt_rm_d
+GPU.cos  = cos
+GPU.sin  = sin
 
 -- Intrinsic atomic reductions:
 GPU.atomic_add_float = atomic_add_float
