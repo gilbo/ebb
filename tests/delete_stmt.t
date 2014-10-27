@@ -18,21 +18,21 @@ particles:NewField('pos', L.vec3d):Load({0, 1, 2})
 -- another relation
 test.fail_function(function()
   -- try to delete each cell
-  liszt kernel( c : cells )
+  liszt kernel test( c : cells )
     delete c
   end
 end, "Cannot delete from relation cells because%s*it\'s referred to by a field: particles.cell")
 
 -- cannot delete indirectly
 test.fail_function(function()
-  liszt kernel( p : particles )
+  liszt kernel test( p : particles )
     delete p.cell
   end
 end, "Only centered rows may be deleted")
 
 -- CANNOT HAVE 2 DELETE STATEMENTS in the same kernel
 test.fail_function(function()
-  liszt kernel( p : particles )
+  liszt kernel test( p : particles )
     if L.id(p) % 2 == 0 then
       delete p
     else
@@ -49,7 +49,7 @@ end, "Temporary: can only have one delete statement per kernel")
 -- delete half the particles
 test.eq(particles:Size(), 10)
 
-local delete_even = liszt kernel( p : particles )
+local liszt kernel delete_even ( p : particles )
   if L.id(p) % 2 == 0 then
     delete p
   else
@@ -57,7 +57,7 @@ local delete_even = liszt kernel( p : particles )
   end
 end
 
-local post_delete_trivial = liszt kernel( p : particles )
+local liszt kernel post_delete_trivial( p : particles )
   L.assert(p.pos[0] == 3)
 end
 

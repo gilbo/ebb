@@ -134,7 +134,7 @@ test.fuzzy_aeq(f.data, {5, 6, 6})
 ------------------
 
 test.fail_function(function()
-	liszt kernel(v : mesh.vertices)
+	liszt kernel t(v : mesh.vertices)
 		var v3 = L.vec3f({1.1, 2.2, 3.3})
 		var v2 = L.vec2f(v3)
 	end

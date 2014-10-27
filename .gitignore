@@ -6,6 +6,10 @@ terra
 .metadata
 build
 
+examples/gpu/cudaatomic.t
+examples/gpu/cudamath.t
+examples/gpu/red_ops.t
+
 local_files
 
 simple_trimesh_diffusion_output
