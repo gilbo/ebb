@@ -8,7 +8,8 @@ local turtle = VEGFileIO.LoadTetmesh
   'examples/fem/turtle-volumetric-homogeneous.veg'
 
 local mesh = turtle
-
+-- TODO: parse density and fill in mesh.density while loading mesh
+mesh.density = 1000
 
 
 
@@ -31,6 +32,25 @@ function initConfigurations()
   return options
 end
 
+------------------------------------------------------------------------------
+-- Helper functions and kernels
+
+-- Compute absolute value for a given variable
+local fabs = liszt function(num)
+  var result = num
+  if num < 0 then result = -num end
+  return result
+end
+
+-- Compute volume, given positions for 4 vertices
+local tetVolume = liszt function(a, b, c, d)
+  return (fabs(L.dot(a - d, L.cross(b - d, c - d))) / 6)
+end
+
+-- Get element density for a mesh element (tetreahedron)
+local getElementDensity = liszt function(a)
+  return mesh.density
+end
 
 ------------------------------------------------------------------------------
 -- For corresponding VEGA code, see
@@ -44,13 +64,13 @@ end
 -- a scalar for each vertex-vertex relationship...
 -- TODO: Make sure that the reference and our code use the same strategy
 
--- ELEMENT == TET
--- probably should become a liszt function...
-function computeElementMassMatrix()
-  -- compute the "4x4" mass matrix for a tetrahedral element
-  -- where each entry is a 3x3 diagonal matrix
-  -- but we don't really need to use the 3x3??????
-end
+-- The following implementation combines computing element matrix and updating
+-- global mass matrix, for convenience.
+-- Also, it corresponds to inflate3Dim=False.
+-- Inflate3Dim adds the same entry for each dimension, in the implementation
+-- at libraries/volumetricMesh/generateMassMatrix.cpp. This is redundant,
+-- unless the mass matrix is modified in a different way for each dimension
+-- sometime later. What should we do??
 function computeMassMatrix()
   -- Q: Is inflate3Dim flag on?
   -- A: Yes.  This means we want the full mass matrix,
@@ -63,6 +83,29 @@ function computeMassMatrix()
         -- dump a diagonal matrix down for each vertex pair
         -- but these diagonal matrices are uniform... ugh?????
   -- CLOSE LOOP
+
+  mesh.edges:NewField('mass', L.double):Load(0)
+  local buildMassMatrix = liszt kernel(t : mesh.tetrahedra)
+    var tet_vol = tetVolume(t.v0.pos, t.v1.pos, t.v2.pos, t.v3.pos)
+    var factor = tet_vol * getElementDensity(t) / 20
+    t.e00.mass += factor * 2
+    t.e01.mass += factor
+    t.e02.mass += factor
+    t.e03.mass += factor
+    t.e10.mass += factor
+    t.e11.mass += factor * 2
+    t.e12.mass += factor
+    t.e13.mass += factor
+    t.e20.mass += factor
+    t.e21.mass += factor
+    t.e22.mass += factor * 2
+    t.e23.mass += factor
+    t.e30.mass += factor
+    t.e31.mass += factor
+    t.e32.mass += factor
+    t.e33.mass += factor * 2
+  end
+  buildMassMatrix(mesh.tetrahedra)
 
   -- any cleanup code we need goes here
 end
@@ -292,19 +335,15 @@ function main()
   local setInitialConditions = function() end -- should be liszt kernel
 
   for i=1,options.numTimesteps do
-    integrator:setExternalForcesToZero()
+    -- integrator:setExternalForcesToZero()
     if i == 1 then
       setInitialConditions()
     end
 
-    integrator:doTimestep()
+    -- integrator:doTimestep()
   end
 
   -- read out the state here somehow?
 end
 
-
-
-
-
-
+main()
