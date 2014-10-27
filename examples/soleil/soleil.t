@@ -1,6 +1,5 @@
 import "compiler.liszt"
 local Grid  = L.require 'domains.grid'
-local ffi = require("ffi")
 local cmath = terralib.includecstring [[
 #include <math.h>
 #include <stdlib.h>
@@ -71,28 +70,28 @@ local white = L.NewVector(L.float,{1.0,1.0,1.0})
 -----------------------------------------------------------------------------
 
 local grid_options = {
-xnum = 32,
-ynum = 32,
-znum = 1,
+xnum = 64,
+ynum = 64,
+znum = 64,
 origin = {0.0, 0.0, 0.0},
---xWidth = twoPi,
+xWidth = twoPi,
 --xWidth = 2*twoPi,
---yWidth = twoPi,
---zWidth = twoPi,
-xWidth = 1.0,
-yWidth = 1.0,
-zWidth = 1.0/32.0,
-xBCLeft  = 'wall',
+yWidth = twoPi,
+zWidth = twoPi,
+--xWidth = 1.0,
+--yWidth = 1.0,
+--zWidth = 1.0/64.0,
+--xBCLeft  = 'wall',
 xBCLeftVel = {0.0, 0.0, 0.0},
-xBCRight = 'wall',
+--xBCRight = 'wall',
 xBCRightVel = {0.0, 0.0, 0.0},
-yBCLeft  = 'wall',
+--yBCLeft  = 'wall',
 yBCLeftVel = {0.0, 0.0, 0.0},
-yBCRight = 'wall',
+--yBCRight = 'wall',
 yBCRightVel = {33.179, 0.0, 0.0},
-zBCLeft  = 'symmetry',
+--zBCLeft  = 'symmetry',
 zBCLeftVel = {0.0, 0.0, 0.0},
-zBCRight = 'symmetry',
+--zBCRight = 'symmetry',
 zBCRightVel = {0.0, 0.0, 0.0},
 --xBCLeft  = 'periodic',
 --xBCRight = 'periodic',
@@ -100,29 +99,35 @@ zBCRightVel = {0.0, 0.0, 0.0},
 --yBCRight = 'periodic',
 --zBCLeft  = 'periodic',
 --zBCRight = 'periodic',
+xBCLeft  = 'symmetry',
+xBCRight = 'symmetry',
+yBCLeft  = 'symmetry',
+yBCRight = 'symmetry',
+zBCLeft  = 'symmetry',
+zBCRight = 'symmetry',
 }
 
 local spatial_stencil = {
 --  Splitting parameter
     split = 0.5,
 --  Order 2
-    order = 2,
-    size = 2,
-    numInterpolateCoeffs = 2,
-    interpolateCoeffs = L.NewVector(L.double, {0, 0.5}),
-    numFirstDerivativeCoeffs = 2,
-    firstDerivativeCoeffs = L.NewVector(L.double, {0, 0.5}),
-    firstDerivativeModifiedWaveNumber = 1.0,
-    secondDerivativeModifiedWaveNumber = 4.0,
-----  Order 6
---    order = 6,
---    size = 6,
---    numInterpolateCoeffs = 4,
---    interpolateCoeffs = L.NewVector(L.double, {0, 37/60, -8/60, 1/60}),
---    numFirstDerivativeCoeffs = 4,
---    firstDerivativeCoeffs = L.NewVector(L.double, {0.0,45.0/60.0,-9.0/60.0, 1.0/60.0}),
---    firstDerivativeModifiedWaveNumber = 1.59,
---    secondDerivativeModifiedWaveNumber = 6.04
+--    order = 2,
+--    size = 2,
+--    numInterpolateCoeffs = 2,
+--    interpolateCoeffs = L.NewVector(L.double, {0, 0.5}),
+--    numFirstDerivativeCoeffs = 2,
+--    firstDerivativeCoeffs = L.NewVector(L.double, {0, 0.5}),
+--    firstDerivativeModifiedWaveNumber = 1.0,
+--    secondDerivativeModifiedWaveNumber = 4.0,
+--  Order 6
+    order = 6,
+    size = 6,
+    numInterpolateCoeffs = 4,
+    interpolateCoeffs = L.NewVector(L.double, {0, 37/60, -8/60, 1/60}),
+    numFirstDerivativeCoeffs = 4,
+    firstDerivativeCoeffs = L.NewVector(L.double, {0.0,45.0/60.0,-9.0/60.0, 1.0/60.0}),
+    firstDerivativeModifiedWaveNumber = 1.59,
+    secondDerivativeModifiedWaveNumber = 6.04
 }
 
 -- Define offsets for boundary conditions in flow solver
@@ -298,37 +303,37 @@ end
 TimeIntegrator.coeff_function       = {1/6, 1/3, 1/3, 1/6}
 TimeIntegrator.coeff_time           = {0.5, 0.5, 1, 1}
 TimeIntegrator.simTime              = L.NewGlobal(L.double,0)
-TimeIntegrator.final_time           = 1000.00001
-TimeIntegrator.max_iter             = 100000
+TimeIntegrator.final_time           = 20.00001
+TimeIntegrator.max_iter             = 500000
 TimeIntegrator.timeStep             = L.NewGlobal(L.int,0)
-TimeIntegrator.cfl                  = 2.5
-TimeIntegrator.outputEveryTimeSteps = 1000
+TimeIntegrator.cfl                  = 2.0
+TimeIntegrator.outputEveryTimeSteps = 100
 TimeIntegrator.headerFrequency      = 20
 TimeIntegrator.deltaTime            = L.NewGlobal(L.double, 0.01)
 
 local fluid_options = {
-    --gasConstant = 200.4128,
-    --gamma = 1.4,
-    --dynamic_viscosity_ref = 0.001,
-    --dynamic_viscosity_temp_ref = 1.0,
-    --prandtl = 0.7
-    gasConstant = 287.058,
+    gasConstant = 200.4128,
     gamma = 1.4,
-    dynamic_viscosity_ref = 1.7893e-05,
-    dynamic_viscosity_temp_ref = 288.15,
+    dynamic_viscosity_ref = 0.001,
+    dynamic_viscosity_temp_ref = 1.0,
     prandtl = 0.7
+    --gasConstant = 287.058,
+    --gamma = 1.4,
+    --dynamic_viscosity_ref = 1.7893e-05,
+    --dynamic_viscosity_temp_ref = 288.15,
+    --prandtl = 0.72
 }
 
 local flow_options = {
     --initCase = Flow.TaylorGreen2DVortex,
     --initParams = L.NewGlobal(L.vector(L.double,3),
     --                           {1,100,2}),
-    --initCase = Flow.TaylorGreen3DVortex,
-    --initParams = L.NewGlobal(L.vector(L.double,3),
-    --                           {1,100,2}),
-    initCase = Flow.Uniform,
-    initParams = L.NewGlobal(L.vector(L.double,5),
-                               {0.000525805,43.4923,0.0,0.0,0.0}),
+    initCase = Flow.TaylorGreen3DVortex,
+    initParams = L.NewGlobal(L.vector(L.double,3),
+                               {1,100,2}),
+    --initCase = Flow.Uniform,
+    --initParams = L.NewGlobal(L.vector(L.double,5),
+    --                           {0.000525805,43.4923,0.0,0.0,0.0}),
     --bodyForce = L.NewGlobal(L.vec3d, {0,0.01,0.0})
     bodyForce = L.NewGlobal(L.vec3d, {0,0.0,0})
 }
@@ -390,7 +395,8 @@ local particles_options = {
 }
 
 local radiation_options = {
-    radiationIntensity = 10.0
+    radiationIntensity = 0.0
+    --10.0
 }
 
 -- IO
@@ -696,9 +702,9 @@ print("| the Liszt DSL and executed by the Legion runtime.                 |")
 --print("| Soleil is distributed in the hope that it will be useful,       |")
 --print("| but WITHOUT ANY WARRANTY; without even the implied warranty of  |")
 --print("| MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the    |")
---print("| XXXX XXXX XXXX License (version 2.1) for more details.          |")
+--print("| XXXX XXXX XXXX License (version X.X) for more details.          |")
 print("---------------------------------------------------------------------")
-
+print("\n")
 print("-------------------------- Grid Definition --------------------------")
 print("Grid x dimension: ", grid_options.xnum)
 print("Grid y dimension: ", grid_options.ynum)
@@ -757,9 +763,12 @@ end)
 
 -- Functions for calling inside liszt kernel
 
-local Rho = L.NewMacro(function(r)
-    return liszt `r.rho
-end)
+--local Rho = L.NewMacro(function(r)
+--    return liszt `r.rho
+--end)
+local Rho = liszt function(r)
+    return r.rho
+end
 
 local Velocity = L.NewMacro(function(r)
     return liszt `r.velocity
@@ -2820,6 +2829,7 @@ function IO.WriteOutput(timeStep)
               particles.groupID)
 
         elseif IO.outputFormat == 1 then
+
             -- Tecplot ASCII format
             local outputFileName = IO.outputFileNamePrefix .. "_" ..
               tostring(timeStep) .. ".dat"
@@ -2832,20 +2842,34 @@ function IO.WriteOutput(timeStep)
             io.write('VARIABLES = "X", "Y", "Z", "Density", "X-Velocity", "Y-Velocity", "Z-Velocity", "Pressure", "Temperature"\n')
             io.write('ZONE STRANDID=', timeStep, ' SOLUTIONTIME=', TimeIntegrator.simTime:get(), ' I=', grid:xSize()+1, ' J=', grid:ySize()+1, ' K=', grid:zSize()+1, ' DATAPACKING=BLOCK VARLOCATION=([4-9]=CELLCENTERED)\n')
 
+            --grid.dual_cells:NewField('boundary_for_output', L.bool)
+            --grid.dual_cells.boundary_for_output:Load(false)
+            --local record_boundary = liszt kernel(dc : grid.dual_cells)
+            --  dc.boundary_for_output =
+            --end
+
+            --for i=1,n do
+            --  for ...
+            --    xyz = F(i,j,k)
+            --end
+
+            local s = ''
+
             -- Write data
             local values = grid.dual_cells.centerCoordinates:DumpToList()
             local N      = grid.dual_cells.centerCoordinates:Size()
-
             local veclen = grid.dual_cells.centerCoordinates:Type().N
 
             -- Need to dump all x coords (fastest), then y, then z
             for j=1,veclen do
-                local s = ''
+                s = ''
                 for i=1,N do
                     local t = tostring(values[i][j]):gsub('ULL',' ')
                     s = s .. ' ' .. t .. ''
                     if i % 5 == 0 then
                         s = s .. '\n'
+                        io.write("", s, "\n")
+                        s = ''
                     end
                 end
                 -- i-1 to return to 0 indexing
@@ -2857,13 +2881,15 @@ function IO.WriteOutput(timeStep)
             values = grid.cells.rho:DumpToList()
             N      = grid.cells.rho:Size()
             --for j=1,veclen do
-            local s = ''
+            s = ''
             for i=1,N do
               local t = tostring(values[i]):gsub('ULL',' ')
               s = s .. ' ' .. t .. ''
               if i % 5 == 0 then
                 s = s .. '\n'
-              end
+io.write("", s, "\n")
+s = ''
+end
             end
             -- i-1 to return to 0 indexing
             io.write("", s, "\n")
@@ -2873,27 +2899,30 @@ function IO.WriteOutput(timeStep)
             N      = grid.cells.velocity:Size()
             veclen = grid.cells.velocity:Type().N
             for j=1,veclen do
-            local s = ''
+             s = ''
             for i=1,N do
             local t = tostring(values[i][j]):gsub('ULL',' ')
             s = s .. ' ' .. t .. ''
-            if i % 5 == 0 then
-            s = s .. '\n'
+              if i % 5 == 0 then
+                s = s .. '\n'
+io.write("", s, "\n")
+s = ''
+              end
             end
-            end
-            --i-1 to return to 0 indexing
             io.write("", s, "\n")
             end
 
             values = grid.cells.pressure:DumpToList()
             N      = grid.cells.pressure:Size()
             --for j=1,veclen do
-            local s = ''
+            s = ''
             for i=1,N do
             local t = tostring(values[i]):gsub('ULL',' ')
             s = s .. ' ' .. t .. ''
             if i % 5 == 0 then
             s = s .. '\n'
+io.write("", s, "\n")
+s = ''
             end
             end
             -- i-1 to return to 0 indexing
@@ -2903,12 +2932,14 @@ function IO.WriteOutput(timeStep)
             values = grid.cells.temperature:DumpToList()
             N      = grid.cells.temperature:Size()
             --for j=1,veclen do
-            local s = ''
+            s = ''
             for i=1,N do
             local t = tostring(values[i]):gsub('ULL',' ')
             s = s .. ' ' .. t .. ''
             if i % 5 == 0 then
             s = s .. '\n'
+io.write("", s, "\n")
+s = ''
             end
             end
             -- i-1 to return to 0 indexing
