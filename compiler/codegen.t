@@ -830,6 +830,11 @@ function vec_bin_exp(op, result_typ, lhe, rhe, lhtyp, rhtyp)
     return bin_exp(op, lhe, rhe)
   end
 
+  -- handles equality and inequality of rows
+  if lhtyp:isRow() and rhtyp:isRow() then
+    return bin_exp(op, lhe, rhe)
+  end
+
   -- ALL THE CASES
 
   -- OP: Ord (scalars only)
