@@ -384,6 +384,7 @@ local computeForcesHelper = function(tetrahedra)
   print("Computing quadratic contributions to forces ...")
   addIFQuadraticTerms(tetrahedra)
   print("Computing cubic contributions to forces ...")
+  addIFCubicTerms(tetrahedra)
 end
 
 function computeForces(mesh)
