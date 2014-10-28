@@ -313,15 +313,17 @@ mesh.edges:NewField('stiffness', L.mat3d)
 -- better if we rewrite the operations as gather operations over edges, as
 -- against scatter from tetrahedra.
 
--- Linear contributions to stiffness matrix.
-local addStiffLinearHelper = liszt function(t, e)
-  var mat = t.muLame * tetCoeffB(t, e.head, e.tail) * getId3()
-  mat += (t.lambdaLame * tetCoeffA(t, e.tail, e.head) +
-         (t.muLame * tetCoeffA(t, e.head, e.tail)))
-  e.stiffness += mat
+-- Linear contributions to stiffness matrix
+local addStiffLinearHelper = liszt function(t, edge)
+  var c = edge.tail
+  var a = edge.head
+  var mat = t.muLame * tetCoeffB(t, a, c) * getId3()
+  mat += (t.lambdaLame * tetCoeffA(t, c, a) +
+         (t.muLame * tetCoeffA(t, a, c)))
+  edge.stiffness += mat
 end
 local addStiffLinearTerms = liszt function(t)
-  -- allocate and prepare precomputed integral element
+  -- TODO: allocate and prepare precomputed integral element
   addStiffLinearHelper(t, t.e00)
   addStiffLinearHelper(t, t.e01)
   addStiffLinearHelper(t, t.e02)
@@ -338,23 +340,25 @@ local addStiffLinearTerms = liszt function(t)
   addStiffLinearHelper(t, t.e31)
   addStiffLinearHelper(t, t.e32)
   addStiffLinearHelper(t, t.e33)
-  --  release precomputed integral element
+  -- TODO:  release precomputed integral element
 end
 
--- Quadratic contributions to stiffness matrix.
-local addStiffQuadraticHelper2 = liszt function(t, e, a, mat)
+-- Quadratic contributions to stiffness matrix
+local addStiffQuadraticHelper2 = liszt function(t, edge, a, mat)
+  var c = edge.tail
+  var e = edge.head
   var qa = a.displacement
-  var c0v = t.lambdaLame * tetCoeffC(t, e.tail, a, e.head) +
-            t.muLame * tetCoeffC(t, e.head, a, e.tail) +
-            tetCoeffC(t, a, e.head, e.tail)
+  var c0v = t.lambdaLame * tetCoeffC(t, c, a, e) +
+            t.muLame * tetCoeffC(t, e, a, c) +
+            tetCoeffC(t, a, e, c)
   mat += tensor3(qa, c0v)
-  var c1v = t.lambdaLame * tetCoeffC(t, e.head, a, e.tail) +
-            t.muLame * tetCoeffC(t, e.tail, e.head, a) +
-            tetCoeffC(t, a, e.head, e.tail)
+  var c1v = t.lambdaLame * tetCoeffC(t, e, a, c) +
+            t.muLame * tetCoeffC(t, c, e, a) +
+            tetCoeffC(t, a, e, c)
   mat += tensor3(qa, c1v)
-  var c2v = t.lambdaLame * tetCoeffC(t, a, e.head, e.tail) +
-            t.muLame * tetCoeffC(t, e.tail, a, e.head) +
-            tetCoeffC(t, e.head, a, e.tail)
+  var c2v = t.lambdaLame * tetCoeffC(t, a, e, c) +
+            t.muLame * tetCoeffC(t, c, a, e) +
+            tetCoeffC(t, e, a, c)
   var dotp = L.dot(qa, c2v)
   mat += dotp * getId3()
 end
@@ -367,7 +371,7 @@ local addStiffQuadraticHelper1 = liszt function(t, e)
   e.stiffness += mat
 end
 local addStiffQuadraticTerms = liszt function(t)
-  -- allocate and prepare precomputed integral element
+  -- TODO: allocate and prepare precomputed integral element
   addStiffQuadraticHelper1(t, t.e00)
   addStiffQuadraticHelper1(t, t.e01)
   addStiffQuadraticHelper1(t, t.e02)
@@ -384,30 +388,66 @@ local addStiffQuadraticTerms = liszt function(t)
   addStiffQuadraticHelper1(t, t.e31)
   addStiffQuadraticHelper1(t, t.e32)
   addStiffQuadraticHelper1(t, t.e33)
+  -- TODO: release precomputed integral element
 end
 
+-- Cubic contributions to stiffness matrix
+local addStiffCubicHelper2 = liszt function(t, e1, e2, mat)
+  var c = e1.tail
+  var e = e1.head
+  var a = e2.tail
+  var b = e2.head
+  var qa = a.displacement
+  var qb = b.displacement
+  var d0 = t.lambdaLame * tetCoeffD(t, a, c, b, e) +
+           t.muLame * tetCoeffD(t, a, e, b, c) +
+           tetCoeffD(t, a, b, c, e)
+  mat += d0 * (tensor3(qa, qb))
+  var d1 = 0.5 * t.lambdaLame * tetCoeffD(t, a, b, c, e) +
+           t.muLame * tetCoeffD(t, a, c, b, e)
+  var dotpd = d1 * L.dot(qa, qb)
+  mat += dotpd * getId3()
+end
+local addStiffCubicHelper1 = liszt function(t, e)
+  var mat : L.mat3d = constantMatrix3(0)
+  addStiffCubicHelper2(t, e, t.e00, mat)
+  addStiffCubicHelper2(t, e, t.e01, mat)
+  addStiffCubicHelper2(t, e, t.e02, mat)
+  addStiffCubicHelper2(t, e, t.e03, mat)
+  addStiffCubicHelper2(t, e, t.e10, mat)
+  addStiffCubicHelper2(t, e, t.e11, mat)
+  addStiffCubicHelper2(t, e, t.e12, mat)
+  addStiffCubicHelper2(t, e, t.e13, mat)
+  addStiffCubicHelper2(t, e, t.e20, mat)
+  addStiffCubicHelper2(t, e, t.e21, mat)
+  addStiffCubicHelper2(t, e, t.e22, mat)
+  addStiffCubicHelper2(t, e, t.e23, mat)
+  addStiffCubicHelper2(t, e, t.e30, mat)
+  addStiffCubicHelper2(t, e, t.e31, mat)
+  addStiffCubicHelper2(t, e, t.e32, mat)
+  addStiffCubicHelper2(t, e, t.e33, mat)
+  e.stiffness += mat
+end
 -- may have to reverse head, tail below
 local addStiffCubicTerms = liszt function(t)
-  -- allocate and prepare precomputed integral element
-  var lambda = t.lambdaLame
-  var mu = t.muLame
-  -- loop over vertex-vertex pairs in the element, that is, all the 16 edge
-  -- fields over a tetrahedron (e00 to e33) e
-  --   var mat = { { 0, 0, 0 }, { 0, 0, 0 }, { 0, 0, 0 } }
-  --   loop over all element vertices a
-  --     var qa = a.displacement
-  --     loop over all element vertices b
-  --       var qb = b.displacement
-  --       var d0 = lambda * precomputedD(t, a, e.tail, b, e.head) +
-  --                mu * precomputedD(t, a, e.head, b, e.tail) +
-  --                precomputedD(t, a, b, e.tail, e.head)
-  --       mat += d0 * (qa tensor qb)
-  --       var d1 = 0.5 * lambda * precomputedD(t, a, b, e.tail, e.head) +
-  --                mu * precomputedD(t, a, e.tail, b, e.head)
-  --       var dotpd = d1 * dot(qa, qb)
-  --       mat += dotpd * { { 1, 0, 0 }, { 0, 1, 0 }, { 0, 0, 1 } }
-  --  e.stiffness += mat
-  --  release precomputed integral element
+  -- TODO: allocate and prepare precomputed integral element
+  addStiffCubicHelper1(t, t.e00)
+  addStiffCubicHelper1(t, t.e01)
+  addStiffCubicHelper1(t, t.e02)
+  addStiffCubicHelper1(t, t.e03)
+  addStiffCubicHelper1(t, t.e10)
+  addStiffCubicHelper1(t, t.e11)
+  addStiffCubicHelper1(t, t.e12)
+  addStiffCubicHelper1(t, t.e13)
+  addStiffCubicHelper1(t, t.e20)
+  addStiffCubicHelper1(t, t.e21)
+  addStiffCubicHelper1(t, t.e22)
+  addStiffCubicHelper1(t, t.e23)
+  addStiffCubicHelper1(t, t.e30)
+  addStiffCubicHelper1(t, t.e31)
+  addStiffCubicHelper1(t, t.e32)
+  addStiffCubicHelper1(t, t.e33)
+  -- TODO: release precomputed integral element
 end
 
 local resetStiffnessMatrixKernel = liszt kernel(e : mesh.edges)
