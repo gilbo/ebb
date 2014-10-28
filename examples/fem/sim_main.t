@@ -270,14 +270,98 @@ local addIFLinearTerms = liszt kernel(t : mesh.tetrahedra)
 end
 
 -- Quadratic contributions to internal forces
+local addIFQuadraticHelper2 = liszt function(t, edge, b)
+  var c = edge.tail
+  var a = edge.head
+  var qa = a.displacement
+  var qb = b.displacement
+  var dotp = L.dot(qa, qb)
+  var forceTerm1 = 0.5 * t.lambdaLame * dotp * tetCoeffC(t, c, a, b) +
+                   t.muLame * dotp * tetCoeffC(t, a, b, c)
+  var C = t.lambdaLame * tetCoeffC(t, a, b, c) +
+          t.muLame * (tetCoeffC(t, c, a, b) + tetCoeffC(t, b, a, c))
+  var dotCqa = L.dot(C, qa)
+  c.forces += forceTerm1 + dotCqa * qb
+end
+local addIFQuadraticHelper1 = liszt function(t, e)
+  addIFQuadraticHelper2(t, e, t.v0)
+  addIFQuadraticHelper2(t, e, t.v1)
+  addIFQuadraticHelper2(t, e, t.v2)
+  addIFQuadraticHelper2(t, e, t.v3)
+end
 local addIFQuadraticTerms = liszt kernel(t : mesh.tetrahedra)
   -- TODO: allocate and prepare precomputed integral element
+  addIFQuadraticHelper1(t, t.e00)
+  addIFQuadraticHelper1(t, t.e01)
+  addIFQuadraticHelper1(t, t.e02)
+  addIFQuadraticHelper1(t, t.e03)
+  addIFQuadraticHelper1(t, t.e10)
+  addIFQuadraticHelper1(t, t.e11)
+  addIFQuadraticHelper1(t, t.e12)
+  addIFQuadraticHelper1(t, t.e13)
+  addIFQuadraticHelper1(t, t.e20)
+  addIFQuadraticHelper1(t, t.e21)
+  addIFQuadraticHelper1(t, t.e22)
+  addIFQuadraticHelper1(t, t.e23)
+  addIFQuadraticHelper1(t, t.e30)
+  addIFQuadraticHelper1(t, t.e31)
+  addIFQuadraticHelper1(t, t.e32)
+  addIFQuadraticHelper1(t, t.e33)
+  L.print(2)
   -- TODO: release precomputed integral element
 end
 
 -- Cubic contributions to internal forces
+local addIFCubicHelper2 = liszt function(t, e1, e2)
+  var c = e1.tail
+  var a = e1.head
+  var b = e1.tail
+  var d = e1.head
+  var qa = a.displacement
+  var qb = b.displacement
+  var qd = d.displacement
+  var dotp = L.dot(qa, qb)
+  var scalar = dotp * (0.5 * t.lambdaLame * tetCoeffD(t, a, b, c, d) +
+                             t.muLame * tetCoeffD(t, a, c, b, d))
+  c.forces += scalar * qd
+end
+local addIFCubicHelper1 = liszt function(t, e)
+  addIFCubicHelper2(t, e, t.e00)
+  addIFCubicHelper2(t, e, t.e01)
+  addIFCubicHelper2(t, e, t.e02)
+  addIFCubicHelper2(t, e, t.e03)
+  addIFCubicHelper2(t, e, t.e10)
+  addIFCubicHelper2(t, e, t.e11)
+  addIFCubicHelper2(t, e, t.e12)
+  addIFCubicHelper2(t, e, t.e13)
+  addIFCubicHelper2(t, e, t.e20)
+  addIFCubicHelper2(t, e, t.e21)
+  addIFCubicHelper2(t, e, t.e22)
+  addIFCubicHelper2(t, e, t.e23)
+  addIFCubicHelper2(t, e, t.e30)
+  addIFCubicHelper2(t, e, t.e31)
+  addIFCubicHelper2(t, e, t.e32)
+  addIFCubicHelper2(t, e, t.e33)
+end
 local addIFCubicTerms = liszt kernel(t : mesh.tetrahedra)
   -- TODO: allocate and prepare precomputed integral element
+  addIFCubicHelper1(t, t.e00)
+  addIFCubicHelper1(t, t.e01)
+  addIFCubicHelper1(t, t.e02)
+  addIFCubicHelper1(t, t.e03)
+  addIFCubicHelper1(t, t.e10)
+  addIFCubicHelper1(t, t.e11)
+  addIFCubicHelper1(t, t.e12)
+  addIFCubicHelper1(t, t.e13)
+  addIFCubicHelper1(t, t.e20)
+  addIFCubicHelper1(t, t.e21)
+  addIFCubicHelper1(t, t.e22)
+  addIFCubicHelper1(t, t.e23)
+  addIFCubicHelper1(t, t.e30)
+  addIFCubicHelper1(t, t.e31)
+  addIFCubicHelper1(t, t.e32)
+  addIFCubicHelper1(t, t.e33)
+  L.print(3)
   -- TODO: release precomputed integral element
 end
 
@@ -298,6 +382,7 @@ local computeForcesHelper = function(tetrahedra)
   print("Computing linear contributions to forces ...")
   addIFLinearTerms(tetrahedra)
   print("Computing quadratic contributions to forces ...")
+  addIFQuadraticTerms(tetrahedra)
   print("Computing cubic contributions to forces ...")
 end
 
@@ -364,16 +449,13 @@ local addStiffQuadraticHelper2 = liszt function(t, edge, a, mat)
   var e = edge.head
   var qa = a.displacement
   var c0v = t.lambdaLame * tetCoeffC(t, c, a, e) +
-            t.muLame * tetCoeffC(t, e, a, c) +
-            tetCoeffC(t, a, e, c)
+            t.muLame * (tetCoeffC(t, e, a, c) + tetCoeffC(t, a, e, c))
   mat += tensor3(qa, c0v)
   var c1v = t.lambdaLame * tetCoeffC(t, e, a, c) +
-            t.muLame * tetCoeffC(t, c, e, a) +
-            tetCoeffC(t, a, e, c)
+            t.muLame * (tetCoeffC(t, c, e, a) + tetCoeffC(t, a, e, c))
   mat += tensor3(qa, c1v)
   var c2v = t.lambdaLame * tetCoeffC(t, a, e, c) +
-            t.muLame * tetCoeffC(t, c, a, e) +
-            tetCoeffC(t, e, a, c)
+            t.muLame * (tetCoeffC(t, c, a, e) + tetCoeffC(t, e, a, c))
   var dotp = L.dot(qa, c2v)
   mat += dotp * getId3()
 end
