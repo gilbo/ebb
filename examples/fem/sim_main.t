@@ -33,7 +33,7 @@ function initConfigurations()
 end
 
 ------------------------------------------------------------------------------
--- Helper functions and kernels
+-- Helper functions, kernels, variables etc
 
 -- Compute absolute value for a given variable
 local fabs = liszt function(num)
@@ -53,8 +53,34 @@ end
 
 -- Get element density for a mesh element (tetreahedron)
 local getElementDensity = liszt function(a)
-  return mesh.density
+  return L.double(mesh.density)
 end
+
+-- Identity matrix
+local getId3 = liszt function()
+  return { { 1, 0, 0 }, { 0, 1, 0 }, { 0, 0, 1 } }
+end
+
+-- Matrix with all entries equal to value v
+local constantMatrix3 = liszt function(v)
+  return { { v, v, v }, { v, v, v }, { v, v, v } }
+end
+
+-- Tensor product of 2 vectors
+local tensor3 = liszt function(a, b)
+  var result = { { a[0] * b[0], a[0] * b[1], a[0] * b[2] },
+                 { a[1] * b[0], a[1] * b[1], a[1] * b[2] },
+                 { a[2] * b[0], a[2] * b[1], a[2] * b[2] } }
+  return result
+end
+
+------------------------------------------------------------------------------
+-- Allocate common fields
+
+mesh.tetrahedra:NewField('lambdaLame', L.double)
+mesh.tetrahedra:NewField('muLame', L.double)
+mesh.vertices:NewField('forces', L.vec3d)
+mesh.vertices:NewField('displacement', L.vec3d)
 
 ------------------------------------------------------------------------------
 -- For corresponding VEGA code, see
@@ -75,7 +101,7 @@ end
 -- at libraries/volumetricMesh/generateMassMatrix.cpp. This is redundant,
 -- unless the mass matrix is modified in a different way for each dimension
 -- sometime later. What should we do??
-function computeMassMatrix()
+function computeMassMatrix(mesh)
   -- Q: Is inflate3Dim flag on?
   -- A: Yes.  This means we want the full mass matrix,
   --    not just a uniform scalar per-vertex
@@ -169,30 +195,34 @@ end
 local tetCoeffA = liszt function(tet, i, j)
   -- Volume * tensor product of Phig i and Phig j
   -- results in a matrix
+  var AStub : L.mat3d = getId3()
+  return AStub
 end
 
 local tetCoeffB = liszt function(tet, i, j)
   -- Volume * dots[i][j]
   -- Scalar
+  var BStub : L.double = 1
+  return BStub
 end
 
 local tetCoeffC = liszt function(tet, i, j, k)
   -- Volume * dots[j][k] * Phig i
   -- Vector
+  var CStub : L.vec3d = {1, 1, 1}
+  return CStub
 end
 
 local tetCoeffD = liszt function(tet, i, j, k, l)
   -- Volume * dots[i][j] * dots[k][l]
   -- Scalar
+  var DStub : L.double = 1
+  return DStub
 end
 
 ------------------------------------------------------------------------------
 -- For corresponding VEGA code, see
 --    libraries/stvk/StVKInternalForces.cpp (most of the file)
-
-mesh.tetrahedra:NewField('lambdaLame', L.double)
-mesh.tetrahedra:NewField('muLame', L.double)
-mesh.vertices:NewField('forces', L.vec3d)
 
 -- TODO: How is the result stored
 -- I think this corresponds to initialization.
@@ -276,70 +306,88 @@ end
 -- We should probably store the stiffness matrix as a field of 3X3 matrices
 -- over edges??
 
-mesh.tetrahedra:NewField('stiffness', L.mat3d)
--- Load 0
+mesh.edges:NewField('stiffness', L.mat3d)
 
--- May not need this
-function allocateStiffnessMatrix()
-  -- Don't Need to Recompute/Store Per-Tet Lame Constants
+-- PERFORMANCE NOTE:
+-- All operations are written as scatter operations. The code may perform
+-- better if we rewrite the operations as gather operations over edges, as
+-- against scatter from tetrahedra.
 
-  local stiffnessMatrixTopology
-  computeStiffnessMatrixTopology()
-
-  -- Acceleration only (do we need this?  I don't think so)
-  -- row[n_tet][4] : int
-  -- col[n_tet][4*4] : int
-
-  -- build acceleration indices ???
-  -- LOOP OVER TETRAHEDRA
-    -- LOOP OVER VERTICES of TET
-      -- ROW[TET][VERTEX] = VERTEX INDEX
-    -- END LOOP
-
-    -- LOOP OVER VERTICES x VERTICES of TET
-      -- COLUMN[TET][4*i + j] = DENSE LOCATION OF ROW[TET][i],ROW[TET][j]
-    -- END LOOP
-  -- END LOOP
+-- Linear contributions to stiffness matrix.
+local addStiffLinearHelper = liszt function(t, e)
+  var mat = t.muLame * tetCoeffB(t, e.head, e.tail) * getId3()
+  mat += (t.lambdaLame * tetCoeffA(t, e.tail, e.head) +
+         (t.muLame * tetCoeffA(t, e.head, e.tail)))
+  e.stiffness += mat
 end
-
-local addStiffLinearTermsKernel = liszt kernel(t : mesh.tetrahedra)
+local addStiffLinearTerms = liszt function(t)
   -- allocate and prepare precomputed integral element
-  var lambda = t.lambdaLame
-  var mu = t.muLame
-  -- loop over vertex-vertex pairs in the element, that is, all the 16 edge
-  -- fields over a tetrahedron (e00 to e33) e
-  --   var mat = { { 1, 0, 0 }, { 0, 1, 0 }, { 0, 0, 1 } }
-  --   mat *= (mu * precomputedB(t, eji))
-  --   mat += (lambda * precomputedA(t, eij) + mu * precomputedA(t, eji))
-  --   e.stiffness += mat
+  addStiffLinearHelper(t, t.e00)
+  addStiffLinearHelper(t, t.e01)
+  addStiffLinearHelper(t, t.e02)
+  addStiffLinearHelper(t, t.e03)
+  addStiffLinearHelper(t, t.e10)
+  addStiffLinearHelper(t, t.e11)
+  addStiffLinearHelper(t, t.e12)
+  addStiffLinearHelper(t, t.e13)
+  addStiffLinearHelper(t, t.e20)
+  addStiffLinearHelper(t, t.e21)
+  addStiffLinearHelper(t, t.e22)
+  addStiffLinearHelper(t, t.e23)
+  addStiffLinearHelper(t, t.e30)
+  addStiffLinearHelper(t, t.e31)
+  addStiffLinearHelper(t, t.e32)
+  addStiffLinearHelper(t, t.e33)
+  --  release precomputed integral element
 end
 
-local addStiffQuadraticTermsKernel = liszt kernel(t : mesh.tetrahedra)
+-- Quadratic contributions to stiffness matrix.
+local addStiffQuadraticHelper2 = liszt function(t, e, a, mat)
+  var qa = a.displacement
+  var c0v = t.lambdaLame * tetCoeffC(t, e.tail, a, e.head) +
+            t.muLame * tetCoeffC(t, e.head, a, e.tail) +
+            tetCoeffC(t, a, e.head, e.tail)
+  mat += tensor3(qa, c0v)
+  var c1v = t.lambdaLame * tetCoeffC(t, e.head, a, e.tail) +
+            t.muLame * tetCoeffC(t, e.tail, e.head, a) +
+            tetCoeffC(t, a, e.head, e.tail)
+  mat += tensor3(qa, c1v)
+  var c2v = t.lambdaLame * tetCoeffC(t, a, e.head, e.tail) +
+            t.muLame * tetCoeffC(t, e.tail, a, e.head) +
+            tetCoeffC(t, e.head, a, e.tail)
+  var dotp = L.dot(qa, c2v)
+  mat += dotp * getId3()
+end
+local addStiffQuadraticHelper1 = liszt function(t, e)
+  var mat : L.mat3d = constantMatrix3(0)
+  addStiffQuadraticHelper2(t, e, t.v0, mat)
+  addStiffQuadraticHelper2(t, e, t.v1, mat)
+  addStiffQuadraticHelper2(t, e, t.v2, mat)
+  addStiffQuadraticHelper2(t, e, t.v3, mat)
+  e.stiffness += mat
+end
+local addStiffQuadraticTerms = liszt function(t)
   -- allocate and prepare precomputed integral element
-  var lambda = t.lambdaLame
-  var mu = t.muLame
-  -- loop over vertex-vertex pairs in the element, that is, all the 16 edge
-  -- fields over a tetrahedron (e00 to e33) e
-  --   var mat = { { 0, 0, 0 }, { 0, 0, 0 }, { 0, 0, 0 } }
-  --   loop over all element vertices v
-  --     var qa = v.displacement??
-  --     var c0v = lambda * precomputedC(t, e.tail, v, e.head) +
-  --               mu * precomputedC(t, e.head, v, e.tail) +
-  --               precomputedC(t, v, e.head, e.tail)
-  --     mat += c0 tensor qa
-  --     var c1v = lambda * precomputedC(t, e.head, v, e.tail) +
-  --               mu * precomputedC(t, e.tail, e.head, v) +
-  --               precomputedC(t, v, e.head, e.tail)
-  --     mat += qa tensor c1
-  --     var c2v = lambda * precomputedC(t, v, e.head, e.tail) +
-  --               mu * precomputedC(t, e.tail, v, e.head) +
-  --               precomputedC(t, e.head, v, e.tail)
-  --     var dotp = dot(qa, c2)
-  --     mat += dotp * { { 1, 0, 0 }, { 0, 1, 0 }, { 0, 0, 1 } }
-  --  e.stiffness += mat
+  addStiffQuadraticHelper1(t, t.e00)
+  addStiffQuadraticHelper1(t, t.e01)
+  addStiffQuadraticHelper1(t, t.e02)
+  addStiffQuadraticHelper1(t, t.e03)
+  addStiffQuadraticHelper1(t, t.e10)
+  addStiffQuadraticHelper1(t, t.e11)
+  addStiffQuadraticHelper1(t, t.e12)
+  addStiffQuadraticHelper1(t, t.e13)
+  addStiffQuadraticHelper1(t, t.e20)
+  addStiffQuadraticHelper1(t, t.e21)
+  addStiffQuadraticHelper1(t, t.e22)
+  addStiffQuadraticHelper1(t, t.e23)
+  addStiffQuadraticHelper1(t, t.e30)
+  addStiffQuadraticHelper1(t, t.e31)
+  addStiffQuadraticHelper1(t, t.e32)
+  addStiffQuadraticHelper1(t, t.e33)
 end
 
-local addStiffCubicTermsKernel = liszt kernel(t : mesh.tetrahedra)
+-- may have to reverse head, tail below
+local addStiffCubicTerms = liszt function(t)
   -- allocate and prepare precomputed integral element
   var lambda = t.lambdaLame
   var mu = t.muLame
@@ -359,20 +407,21 @@ local addStiffCubicTermsKernel = liszt kernel(t : mesh.tetrahedra)
   --       var dotpd = d1 * dot(qa, qb)
   --       mat += dotpd * { { 1, 0, 0 }, { 0, 1, 0 }, { 0, 0, 1 } }
   --  e.stiffness += mat
+  --  release precomputed integral element
 end
 
-function addStiffLinearTermsContribution()
-end
-function addStiffQuadraticTermsContribution()
-end
-function addStiffCubicTermsContribution()
+local resetStiffnessMatrixKernel = liszt kernel(e : mesh.edges)
+  e.stiffness = constantMatrix3(0)
 end
 
-function computeStiffnessMatrix()
-  -- RESET STIFFNESS MATRIX TO ZERO
-  addStiffLinearTermsContribution()
-  addStiffQuadraticTermsContribution()
-  addStiffCubicTermsContribution()
+local computeStiffnessMatrixKernel = liszt kernel(t : mesh.tetrahedra)
+  addStiffLinearTerms(t)
+  addStiffQuadraticTerms(t)
+  addStiffCubicTerms(t)
+end
+
+function computeStiffnessMatrix(mesh)
+  computeStiffnessMatrixKernel(mesh.tetrahedra)
 end
 
 ------------------------------------------------------------------------------
@@ -419,14 +468,14 @@ function main()
   local numFixedDOFs     = 3*numFixedVertices
   local fixedDOFs        = nil
 
-  computeMassMatrix()
+  computeMassMatrix(volumetric_mesh)
 
   precomputeStVKIntegrals{
     use_low_memory = true,
   } -- called StVKElementABCDLoader:load() in ref
 
   computeInternalForces()
-  computeStiffnessMatrix()
+  computeStiffnessMatrix(volumetric_mesh)
 
   computeForceModel()
 

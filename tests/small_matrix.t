@@ -56,7 +56,7 @@ arith_test(mesh.vertices)
 ------------------
 
 test.fail_function(function()
-  liszt kernel(v : mesh.vertices)
+  liszt kernel t(v : mesh.vertices)
     var m34 = L.mat3x4f({{1.1,0,2.3},{0.1,0,0},{0,5.2,0}})
     var m33 = L.mat3f(m34)
   end
@@ -64,26 +64,26 @@ end,
 'Cannot cast between primitives, vectors, matrices of different dimensions')
 
 test.fail_function(function()
-  liszt kernel(v : mesh.vertices)
+  liszt kernel t(v : mesh.vertices)
     var x = {{1, 2, 3},{true,false,true},{1,2,5}}
   end
 end, "must be of the same type")
 
 test.fail_function(function()
-  liszt kernel(v : mesh.vertices)
+  liszt kernel t(v : mesh.vertices)
     var x = {{1,2}, {2,3}, {2,3,4}}
   end
 end, "matrix literals must contain vectors of the same size")
 
 idx = 3.5
 test.fail_function(function()
-  liszt kernel(v : mesh.vertices)
+  liszt kernel t(v : mesh.vertices)
       v.tensor_pos[idx,2] = 5
   end
 end, "expected an integer")
 
 test.fail_function(function()
-  liszt kernel(v : mesh.vertices)
+  liszt kernel t(v : mesh.vertices)
       v.tensor_pos[0] = 5
   end
 end, "expected vector to index into, not SmallMatrix")

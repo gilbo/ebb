@@ -212,7 +212,7 @@ lang.user_function = function (P)
   return function_node
 end
 
-lang.liszt = function (P)
+lang.lisztExpression = function (P)
     local code_type
     if P:nextif("liszt") then
       if P:nextif("kernel") then
@@ -258,6 +258,37 @@ lang.liszt = function (P)
       return q
 
     end
+end
+
+lang.funcname = function (P)
+	local name = { P:expect(P.name).value }
+	while P:nextif('.') do
+		name[#name+1] = P:expect(P.name).value
+	end
+	return { name }
+end
+
+lang.lisztStatement = function (P)
+	local code_type
+	if P:nextif("liszt") then
+		if     P:nextif("kernel")   then code_type = 'kernel'
+		elseif P:nextif('function') then code_type = 'function'
+		else   P:errorexpected("'kernel' or 'function'")
+		end
+	--elseif P:nextif("liszt_kernel") then
+	--	code_type = 'kernel'
+	else
+		P:errorexpected("'liszt'")
+	end
+
+	local name = P:funcname()
+	if code_type == 'kernel' then
+		return P:liszt_kernel(), name
+
+	-- code_type == 'function'
+	else
+		return P:user_function(), name
+	end
 end
 
 --[[ Statement Parsing ]]--
@@ -463,7 +494,10 @@ lang.block = function (P)
   return node_block
 end
 
+function P.ParseExpression(lexer)
+	return pratt.Parse(lang, lexer, "lisztExpression")
+end
 
-function P.Parse(lexer)
-  return pratt.Parse(lang, lexer, "liszt")
+function P.ParseStatement(lexer)
+	return pratt.Parse(lang, lexer, "lisztStatement")
 end

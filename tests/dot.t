@@ -30,14 +30,14 @@ test_dot(mesh.faces)
 
 
 test.fail_function(function()
-  liszt kernel(f : mesh.faces)
+  liszt kernel t(f : mesh.faces)
     assert(dot(v1, v3) == 7)
   end
 end, "must have equal dimensions")
 
 local vb = L.NewVector(L.bool, {true, true, false})
 test.fail_function(function()
-  liszt kernel(f : mesh.faces)
+  liszt kernel t(f : mesh.faces)
     assert(dot(v1, vb) == 52)
   end
 end, "must be numeric vectors")
