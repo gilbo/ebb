@@ -74,12 +74,19 @@ local tensor3 = liszt function(a, b)
   return result
 end
 
+-- Matrix vector product
+local multiplyMatVec3 = liszt function(M, x)
+  var y = { M[0, 0]*x[0] + M[0, 1]*x[1] + M[0, 2]*x[2],
+            M[1, 0]*x[0] + M[1, 1]*x[1] + M[1, 2]*x[2],
+            M[2, 0]*x[0] + M[2, 1]*x[1] + M[2, 2]*x[2] }
+  return y
+end
+
 ------------------------------------------------------------------------------
 -- Allocate common fields
 
 mesh.tetrahedra:NewField('lambdaLame', L.double)
 mesh.tetrahedra:NewField('muLame', L.double)
-mesh.vertices:NewField('forces', L.vec3d)
 mesh.vertices:NewField('displacement', L.vec3d)
 
 ------------------------------------------------------------------------------
@@ -224,28 +231,58 @@ end
 -- For corresponding VEGA code, see
 --    libraries/stvk/StVKInternalForces.cpp (most of the file)
 
--- TODO: How is the result stored
--- I think this corresponds to initialization.
-function computeInternalForces()
-  -- add Gravity = 0
-  -- gravity is defined above
-  -- I guess we're not using gravity right now though...
-
-  -- LOOP OVER TETRAHEDRA
-    -- mat = Get Element Material
-    -- Populate lambdaLame and muLame
-  -- END LOOP
-end
+mesh.vertices:NewField('forces', L.vec3d):Load({0, 0, 0})
 
 -- extra functions supplied by this module
 -- Outer loop is generally over all elements (tetrahedra).
 -- Result is stored as a 3D vector field over all the vertices.
 
-function addIFLinearTermsContribution()
+-- Linear contributions to internal forces
+local addIFLinearHelper = liszt function(t, edge)
+  var c = edge.tail
+  var a = edge.head
+  var qa = a.displacement
+  var force = t.lambdaLame * multiplyMatVec3(tetCoeffA(t, c, a), qa) +
+              t.muLame * tetCoeffB(t, a, c) * qa +
+              t.muLame * multiplyMatVec3(tetCoeffA(t, a, c), qa)
+  c.forces += force
 end
-function addIFQuadraticTermsContribution()
+local addIFLinearTerms = liszt kernel(t : mesh.tetrahedra)
+  -- TODO: allocate and prepare precomputed integral element
+  addIFLinearHelper(t, t.e00)
+  addIFLinearHelper(t, t.e01)
+  addIFLinearHelper(t, t.e02)
+  addIFLinearHelper(t, t.e03)
+  addIFLinearHelper(t, t.e10)
+  addIFLinearHelper(t, t.e11)
+  addIFLinearHelper(t, t.e12)
+  addIFLinearHelper(t, t.e13)
+  addIFLinearHelper(t, t.e20)
+  addIFLinearHelper(t, t.e21)
+  addIFLinearHelper(t, t.e22)
+  addIFLinearHelper(t, t.e23)
+  addIFLinearHelper(t, t.e30)
+  addIFLinearHelper(t, t.e31)
+  addIFLinearHelper(t, t.e32)
+  addIFLinearHelper(t, t.e33)
+  L.print(1)
+  -- TODO: release precomputed integral element
 end
-function addIFCubicTermsContribution()
+
+-- Quadratic contributions to internal forces
+local addIFQuadraticTerms = liszt kernel(t : mesh.tetrahedra)
+  -- TODO: allocate and prepare precomputed integral element
+  -- TODO: release precomputed integral element
+end
+
+-- Cubic contributions to internal forces
+local addIFCubicTerms = liszt kernel(t : mesh.tetrahedra)
+  -- TODO: allocate and prepare precomputed integral element
+  -- TODO: release precomputed integral element
+end
+
+local resetForces = liszt kernel(v : mesh.vertices)
+  v.forces = {0, 0, 0}
 end
 
 --[[
@@ -257,54 +294,31 @@ function computeEnergy()
 end
 ]]
 
-function computeForces()
-  -- RESET FORCES VECTOR HERE
+local computeForcesHelper = function(tetrahedra)
+  print("Computing linear contributions to forces ...")
+  addIFLinearTerms(tetrahedra)
+  print("Computing quadratic contributions to forces ...")
+  print("Computing cubic contributions to forces ...")
+end
 
-  addIFLinearTermsContribution()
-  addIFQuadraticTermsContribution()
-  addIFCubicTermsContribution()
+function computeForces(mesh)
+  print("Computing forces ...")
+  resetForces(mesh.vertices)
+  computeForcesHelper(mesh.tetrahedra)
+  print("Completed computing forces.")
 end
 
 ------------------------------------------------------------------------------
 -- For corresponding VEGA code, see
 --    libraries/stvk/StVKStiffnessMatrix.cpp (most of the file)
 
--- TODO:
---    I have no idea how we're storing the stiffness matrix
---    But it definitely needs to be frequently recomputed
-
--- NOTES:
--- row_ and col_ are only acceleration structures, used to index into the
--- sparse stiffness matrix. Stiffness matrix is stored as a sparse 3n x 3n
--- matrix, where n is the number of vertices. I think the reason why it is
--- 3n X 3n is because they need 3X3 over nXn points.
--- GetStiffnessMatrixTopology is similar to the topology matrix constructed for
--- mass. There is an entry in the nXn (or equivalently 3n X 3n) matrix if the
--- two vertices belong to the same element. For tetrahedra, this means diagonal
--- entries and positions corresponding to an undirected edge between two
--- vertices are set.
--- row_ stores the indices into the 3nx3n stiffness matrix for each vertex of
--- a tetrahedral element (what row does each vertex of an element map to).
--- column_ stores the column position corresponding to the entry for (i, j)
--- vertices of an element. That is, for the first row of column_, the first
--- entry tells us which column in the stiffnexx matrix xorresponds to the first
--- vertex of the element, the second one says which one corresponds to the
--- second vertex of the element and so on.
--- BASICALLY, the entries from the ith row of a column_ should be used as column
--- indices for the row given by ith entry of row_, and correspond to the
--- relation between ith vertex of an element, and the remaining vertices of
--- that element.
-
--- At a very high level, Add***Terms loop over all the elements, and add a 3X3
+-- At a very high level, Add___Terms loop over all the elements, and add a 3X3
 -- block at (i, j) (technically (3*i, 3*j)) position corresponding to each
 -- (x, y) vertex pair for the element. i is the row, and j is the column,
 -- in the nXn (3nX3n) stiffness matrix, corresponding to vertices (x,y) which
 -- go from (0,0) to (3,3). The rest of the code performs further loops to
 -- calculate the 3X3 matrix, using precomputed integrals and vertex
 -- displacements.
-
--- We should probably store the stiffness matrix as a field of 3X3 matrices
--- over edges??
 
 mesh.edges:NewField('stiffness', L.mat3d)
 
@@ -322,7 +336,7 @@ local addStiffLinearHelper = liszt function(t, edge)
          (t.muLame * tetCoeffA(t, a, c)))
   edge.stiffness += mat
 end
-local addStiffLinearTerms = liszt function(t)
+local addStiffLinearTerms = liszt kernel(t : mesh.tetrahedra)
   -- TODO: allocate and prepare precomputed integral element
   addStiffLinearHelper(t, t.e00)
   addStiffLinearHelper(t, t.e01)
@@ -340,6 +354,7 @@ local addStiffLinearTerms = liszt function(t)
   addStiffLinearHelper(t, t.e31)
   addStiffLinearHelper(t, t.e32)
   addStiffLinearHelper(t, t.e33)
+  L.print(1)
   -- TODO:  release precomputed integral element
 end
 
@@ -370,7 +385,7 @@ local addStiffQuadraticHelper1 = liszt function(t, e)
   addStiffQuadraticHelper2(t, e, t.v3, mat)
   e.stiffness += mat
 end
-local addStiffQuadraticTerms = liszt function(t)
+local addStiffQuadraticTerms = liszt kernel(t : mesh.tetrahedra)
   -- TODO: allocate and prepare precomputed integral element
   addStiffQuadraticHelper1(t, t.e00)
   addStiffQuadraticHelper1(t, t.e01)
@@ -388,6 +403,7 @@ local addStiffQuadraticTerms = liszt function(t)
   addStiffQuadraticHelper1(t, t.e31)
   addStiffQuadraticHelper1(t, t.e32)
   addStiffQuadraticHelper1(t, t.e33)
+  L.print(2)
   -- TODO: release precomputed integral element
 end
 
@@ -429,7 +445,7 @@ local addStiffCubicHelper1 = liszt function(t, e)
   e.stiffness += mat
 end
 -- may have to reverse head, tail below
-local addStiffCubicTerms = liszt function(t)
+local addStiffCubicTerms = liszt kernel(t : mesh.tetrahedra)
   -- TODO: allocate and prepare precomputed integral element
   addStiffCubicHelper1(t, t.e00)
   addStiffCubicHelper1(t, t.e01)
@@ -447,21 +463,28 @@ local addStiffCubicTerms = liszt function(t)
   addStiffCubicHelper1(t, t.e31)
   addStiffCubicHelper1(t, t.e32)
   addStiffCubicHelper1(t, t.e33)
+  L.print(3)
   -- TODO: release precomputed integral element
 end
 
-local resetStiffnessMatrixKernel = liszt kernel(e : mesh.edges)
+local resetStiffnessMatrix = liszt kernel(e : mesh.edges)
   e.stiffness = constantMatrix3(0)
 end
 
-local computeStiffnessMatrixKernel = liszt kernel(t : mesh.tetrahedra)
-  addStiffLinearTerms(t)
-  addStiffQuadraticTerms(t)
-  addStiffCubicTerms(t)
+local computeStiffnessMatrixHelper = function(tetrahedra)
+  print("Computing linear contributions to stiffness matrix ...")
+  addStiffLinearTerms(tetrahedra)
+  print("Computing quadratic contributions to stiffness matrix ...")
+  addStiffQuadraticTerms(tetrahedra)
+  print("Computing cubic contributions to stiffness matrix ...")
+  addStiffCubicTerms(tetrahedra)
 end
 
 function computeStiffnessMatrix(mesh)
-  computeStiffnessMatrixKernel(mesh.tetrahedra)
+  print("Computing stiffness matrix ...")
+  resetStiffnessMatrix(mesh.edges)
+  computeStiffnessMatrixHelper(mesh.tetrahedra)
+  print("Completed computing stiffness matrix.")
 end
 
 ------------------------------------------------------------------------------
@@ -501,7 +524,9 @@ function main()
     use_low_memory = true,
   } -- called StVKElementABCDLoader:load() in ref
 
-  computeInternalForces()
+  -- TODO: Move these to do time step finally. There is no need for any
+  -- initialization. Just testing these calls right now. 
+  computeForces(volumetric_mesh)
   computeStiffnessMatrix(volumetric_mesh)
 
   computeForceModel()
