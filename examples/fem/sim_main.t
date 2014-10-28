@@ -377,21 +377,34 @@ end
 
 ------------------------------------------------------------------------------
 
--- TODO: How is the result stored
-function computeForceModel()
-
-end
-
-------------------------------------------------------------------------------
-
 -- TODO: Again Data Model and skeleton needs to be filled in more here...
+
+local ImplicitBackwardEulerIntegrator = {}
+ImplicitBackwardEulerIntegrator.__index = ImplicitBackwardEulerIntegrator
+
 function buildImplicitBackwardsEulerIntegrator(opts)
+
+
 
   return {} -- should be an actual integrator object
 end
 
 
+------------------------------------------------------------------------------
 
+function setInitialConditions()
+  -- FROM THE REFERENCE FOR NOW
+--  implicitBackwardEulerSparse->SetExternalForcesToZero();
+--  // set some force at the first timestep
+--  if (i == 0) {
+--    for(int j=0; j<r; j++)
+--        f[j] = 0; // clear to 0
+--    f[0] = -500;
+--    f[1] = -500;
+--    f[2] = -500;
+--    implicitBackwardEulerSparse->SetExternalForces(f);
+--  }
+end
 
 ------------------------------------------------------------------------------
 
@@ -428,8 +441,6 @@ function main()
     epsilon               = options.epsilon,
     numSolverThreads      = options.numSolverThreads,
   }
-
-  local setInitialConditions = function() end -- should be liszt kernel
 
   for i=1,options.numTimesteps do
     -- integrator:setExternalForcesToZero()
