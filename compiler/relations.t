@@ -817,20 +817,22 @@ function L.LField:getDLD()
   if self.owner:isFragmented() then
     error('cannot get DLD from fragmented relation', 2)
   end
-  if not self.type:isPrimitive() and not self.type:isVector() then
-    error('Can only return DLDs for primitives and vectors, '..
-        'not Row types or other types given to fields')
+  if not self.type:baseType():isPrimitive() then
+    error('Can only return DLDs for fields with primitive base type')
   end
 
-  local terra_type = self.type:terraType()
-  local n = nil
+  local terra_type = self.type:terraBaseType()
+  local dims = {}
   if self.type:isVector() then
-    terra_type = self.type:terraBaseType()
-    n = self.type.N
+    dims = {self.type.N}
+  elseif self.type:isSmallMatrix() then
+    dims = {self.type.Nrow, self.type.Ncol}
   end
+
   local dld = DLD.new({
+    location        = tostring(self.array:location()),
     type            = terra_type,
-    type_n          = n,
+    type_dims       = n,
     logical_size    = self.owner:ConcreteSize(),
     data            = self:DataPtr(),
     compact         = true,

@@ -10,8 +10,9 @@ dld.__index = dld
 --[[
 
   {
+    location: (string, which memory/processor the data is on)
     type: {
-      vector_size: (number, 1 usually could be a tuple of 2,3,4 elements)
+      dimensions: {} (list of numbers, empty list means scalar)
       base_type_str: (string expression of type)
       base_bytes: (number, # of bytes used for base type)
     }
@@ -37,7 +38,14 @@ function dld:matchType(rhs)
   local lhtyp = self.type
   local rhtyp = rhs.type
 
-  return lhtyp.vector_size   == rhtyp.vector_size and
+  local match_dim = #lhtyp.dimensions == #rhtyp.dimensions
+  if match_dim then
+    for i=1,#lhtyp.dimensions do
+      match_dim = match_dim and lhtyp.dimensions[i] == rhtyp.dimensions[i]
+    end
+  end
+
+  return match_dim and
          lhtyp.base_type_str == rhtyp.base_type_str and
          lhtyp.base_bytes    == rhtyp.base_bytes
 end
@@ -53,9 +61,13 @@ end
 function dld:init(params)
   params = params or {}
 
+  if params.location then
+    self:setLocation(params.location)
+  end
+
   if params.type then
     if terralib.types.istype(params.type) then
-      self:setTerraType(params.type, params.type_n)
+      self:setTerraType(params.type, params.type_dims)
     end
   end
 
@@ -80,7 +92,7 @@ function dld:init(params)
   end
 end
 
-function dld:setTerraType(typ, n)
+function dld:setTerraType(typ, dims)
   if not terralib.types.istype(typ) then
     error('setTerraType() only accepts Terra types as arguments', 2)
   end
@@ -88,13 +100,17 @@ function dld:setTerraType(typ, n)
     error('Can only use setTerraType on primitives', 2)
   end
 
-  n = n or 1
+  dims = dims or {}
 
   self.type = {
-    vector_size   = n,
+    dimensions    = dims,
     base_type_str = tostring(typ),
     base_bytes    = terralib.sizeof(typ)
   }
+end
+
+function dld:setLocation(locstr)
+  self.location = locstr
 end
 
 function dld:setLogicalSize(n)

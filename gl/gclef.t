@@ -113,6 +113,7 @@ function L.LRelation:CreateGClef(args)
     tri_index_build(n_tri, clef.tri_index.data,
         trif[1]:DataPtr(), trif[2]:DataPtr(), trif[3]:DataPtr())
     clef.tri_index.dld = DLD.new({
+        location        = "CPU"
         type            = uint,
         logical_size    = n_tri * 3,
         data            = clef.tri_index.data,
