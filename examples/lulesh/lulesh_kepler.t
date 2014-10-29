@@ -59,6 +59,30 @@ grid.cells:NewField("arealg", L.double):Load(0.0) -- Characteristic length of an
 grid.cells:NewField("ss",     L.double):Load(0.0) -- sound speed
 grid.cells:NewField("mass",   L.double):Load(0.0) -- element mass
 
+-- make lots of temporaries and macros to remove reduction on doubles in calcFBHourglassForces
+grid.cells:NewField('hgforces', L.vector(L.double, 24)):Load({0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0})
+grid.vertices:NewFieldMacro('c0', L.NewMacro(function(v) return liszt `v.cell(-1,-1,-1) end))
+grid.vertices:NewFieldMacro('c1', L.NewMacro(function(v) return liszt `v.cell( 0,-1,-1) end))
+grid.vertices:NewFieldMacro('c2', L.NewMacro(function(v) return liszt `v.cell( 0, 0,-1) end))
+grid.vertices:NewFieldMacro('c3', L.NewMacro(function(v) return liszt `v.cell(-1, 0,-1) end))
+grid.vertices:NewFieldMacro('c4', L.NewMacro(function(v) return liszt `v.cell(-1,-1, 0) end))
+grid.vertices:NewFieldMacro('c5', L.NewMacro(function(v) return liszt `v.cell( 0,-1, 0) end))
+grid.vertices:NewFieldMacro('c6', L.NewMacro(function(v) return liszt `v.cell( 0, 0, 0) end))
+grid.vertices:NewFieldMacro('c7', L.NewMacro(function(v) return liszt `v.cell(-1, 0, 0) end))
+
+local row = liszt function(mat3x, i)
+	return {mat3x[3*i], mat3x[3*i+1], mat3x[3*i+2]}
+end
+
+grid.vertices:NewFieldMacro('c0hg', L.NewMacro(function(v) return liszt `row(v.c0.hgforces,1) end))
+grid.vertices:NewFieldMacro('c1hg', L.NewMacro(function(v) return liszt `row(v.c1.hgforces,0) end))
+grid.vertices:NewFieldMacro('c2hg', L.NewMacro(function(v) return liszt `row(v.c2.hgforces,3) end))
+grid.vertices:NewFieldMacro('c3hg', L.NewMacro(function(v) return liszt `row(v.c3.hgforces,2) end))
+grid.vertices:NewFieldMacro('c4hg', L.NewMacro(function(v) return liszt `row(v.c4.hgforces,5) end))
+grid.vertices:NewFieldMacro('c5hg', L.NewMacro(function(v) return liszt `row(v.c5.hgforces,4) end))
+grid.vertices:NewFieldMacro('c6hg', L.NewMacro(function(v) return liszt `row(v.c6.hgforces,7) end))
+grid.vertices:NewFieldMacro('c7hg', L.NewMacro(function(v) return liszt `row(v.c7.hgforces,6) end))
+
 -- For convenience in matching orientation w/previous lulesh version
 grid.cells:NewFieldMacro('v0',  L.NewMacro(function(c) return liszt `c.vertex(0,1,1) end))
 grid.cells:NewFieldMacro('v1',  L.NewMacro(function(c) return liszt `c.vertex(1,1,1) end))
@@ -75,7 +99,6 @@ grid.cells.e:Load(function(index)
 	else return 0
 	end
 end)
-
 
 ------------------------------------------------------------------------------------------
 --[[ Global mesh parameters                                                           ]]--
@@ -172,9 +195,6 @@ local getLocalNodeVelocityVectors = liszt function(c)
 	  c.v6.velocity[0], c.v6.velocity[1], c.v6.velocity[2],
 	  c.v7.velocity[0], c.v7.velocity[1], c.v7.velocity[2]
     }
-end
-local row = liszt function(localCoords, i)
-	return {localCoords[3*i], localCoords[3*i+1], localCoords[3*i+2]}
 end
 
 local calcElemVolume = liszt function (localCoords)
@@ -405,7 +425,7 @@ local calcElemVolumeDerivative = liszt function (localCoords)
 end
 
 
-local initialVolumeCalc = liszt kernel (c : grid.cells)
+local liszt kernel initialVolumeCalc(c : grid.cells)
 
 	var localCoords = getLocalNodeCoordVectors(c)
 	var volume = calcElemVolume(localCoords)
@@ -426,7 +446,7 @@ end
 
 -- Grid initializes position over cell centers, so we need to
 -- initialize vertex positions manually.
-local initVectorPosition = liszt kernel (v : grid.vertices)
+local liszt kernel initVectorPosition(v : grid.vertices)
 	v.position = { L.double(v.xid) * sz / N, 
 	               L.double(v.yid) * sz / N,
 	               L.double(v.zid) * sz / N }
@@ -479,7 +499,7 @@ function timeIncrement( )
 	m.cycle = m.cycle + 1
 end
 
-local integrateStressForElems = liszt kernel (c : grid.cells)
+local liszt kernel  integrateStressForElems(c : grid.cells)
 	var localCoords = getLocalNodeCoordVectors(c)
 	-- scratchpade01 used here to store the determinant.
 	-- Volume calculation involves extra work for numerical consistency.
@@ -558,7 +578,7 @@ local transpose_4x8 = L.NewMacro(function(m)
 	}
 end)
 
-local calcFBHourglassForceForElems = liszt kernel (c : grid.cells)
+local liszt kernel calcFBHourglassForceForElems(c : grid.cells)
 	var determ = c.volo * c.v
 	var volinv = 1.0 / determ
 	var volume13 = L.cbrt(determ)
@@ -581,15 +601,27 @@ local calcFBHourglassForceForElems = liszt kernel (c : grid.cells)
 	-- 8x3 matrix
 	var localVelocities = getLocalNodeVelocityVectors(c)
 	var hgf = coefficient * mmult_8x4x3(hourgamXpose, mmult_4x8x3(hourgam, localVelocities))
+	c.hgforces = hgf
 
-	c.v0.forces += row(hgf, 0)
-	c.v1.forces += row(hgf, 1)
-	c.v2.forces += row(hgf, 2)
-	c.v3.forces += row(hgf, 3)
-	c.v4.forces += row(hgf, 4)
-	c.v5.forces += row(hgf, 5)
-	c.v6.forces += row(hgf, 6)
-	c.v7.forces += row(hgf, 7)
+--	c.v0.forces += row(hgf, 0)
+--	c.v1.forces += row(hgf, 1)
+--	c.v2.forces += row(hgf, 2)
+--	c.v3.forces += row(hgf, 3)
+--	c.v4.forces += row(hgf, 4)
+--	c.v5.forces += row(hgf, 5)
+--	c.v6.forces += row(hgf, 6)
+--	c.v7.forces += row(hgf, 7)
+end
+
+local liszt kernel addFBHGForcesToNodes (v : grid.vertices)
+	if v.xid > 0 and v.yid > 0 and v.zid > 0 then v.forces += v.c0hg end
+	if v.xid < N and v.yid > 0 and v.zid > 0 then v.forces += v.c1hg end
+	if v.xid > 0 and v.yid < N and v.zid > 0 then v.forces += v.c3hg end
+	if v.xid < N and v.yid < N and v.zid > 0 then v.forces += v.c2hg end
+	if v.xid > 0 and v.yid > 0 and v.zid < N then v.forces += v.c4hg end
+	if v.xid < N and v.yid > 0 and v.zid < N then v.forces += v.c5hg end
+	if v.xid > 0 and v.yid < N and v.zid < N then v.forces += v.c7hg end
+	if v.xid < N and v.yid < N and v.zid < N then v.forces += v.c6hg end
 end
 
 function calcVolumeForceForElems ()
@@ -597,10 +629,11 @@ function calcVolumeForceForElems ()
 
 	if m.hgcoef > 0.0 then
 		calcFBHourglassForceForElems(grid.cells)
+		addFBHGForcesToNodes(grid.vertices)
 	end
 end
 
-local calcPositionForNodes = liszt kernel (v : grid.vertices)
+local liszt kernel calcPositionForNodes(v : grid.vertices)
 	var accel = v.forces / v.mass
 	-- Enforce boundary conditions of symmetry planes
 	if v.xid == 0 then accel[0] = 0 end
@@ -622,7 +655,7 @@ function lagrangeNodal ()
 	calcPositionForNodes(grid.vertices)
 end
 
-local calcElemCharacteristicLength = liszt function (localCoords, volume)
+local liszt function calcElemCharacteristicLength(localCoords, volume)
 	var r0 = row(localCoords, 0)
 	var r1 = row(localCoords, 1)
 	var r2 = row(localCoords, 2)
@@ -679,7 +712,7 @@ local calcElemCharacteristicLength = liszt function (localCoords, volume)
 	return charlength
 end
 
-local calcElemVelocityGradient = liszt function(localVelocities, pf, detJ)
+local liszt function calcElemVelocityGradient(localVelocities, pf, detJ)
 	var inv_detJ = 1.0 / detJ
 	var r06 = row(localVelocities,0) - row(localVelocities,6)
 	var r17 = row(localVelocities,1) - row(localVelocities,7)
@@ -734,7 +767,7 @@ end
 
 -- This function uses the scratchpade01-03 fields to temporarily store 2nd derivatives
 -- of position (?) in x, y, z
-local calcKinematicsForElem = liszt function(c, localCoords, localVelocities)
+local liszt function calcKinematicsForElem(c, localCoords, localVelocities)
 	var volume = calcElemVolume(localCoords)
 	var relativeVolume = volume / c.volo
 	c.vnew = relativeVolume
@@ -762,7 +795,7 @@ local calcKinematicsForElem = liszt function(c, localCoords, localVelocities)
 end
 
 -- TODO
-local calcMonotonicQGradientsForElem = liszt function(c, localCoords, localVelocities)
+local liszt function calcMonotonicQGradientsForElem(c, localCoords, localVelocities)
 	var ptiny = 1.e-36
 
 	var rc0 = row(localCoords,7)
@@ -822,7 +855,7 @@ local calcMonotonicQGradientsForElem = liszt function(c, localCoords, localVeloc
 end
 
 -- fused Kinematics and Monotonic Q Gradient calculations
-local calcKinemAndMQGradientsForElems = liszt kernel (c : grid.cells)
+local liszt kernel calcKinemAndMQGradientsForElems(c : grid.cells)
 	var localCoords     = getLocalNodeCoordVectors(c)
 	var localVelocities = getLocalNodeVelocityVectors(c)
 	calcKinematicsForElem(c, localCoords, localVelocities)
@@ -830,7 +863,7 @@ local calcKinemAndMQGradientsForElems = liszt kernel (c : grid.cells)
 end
 
 -- TODO
-local calcMonotonicQRegionForElem = liszt function (c)
+local liszt function calcMonotonicQRegionForElem(c)
  		--[[
  		  velocity gradient:
 		    delv_xi    => scratchpade01
@@ -969,7 +1002,7 @@ local calcMonotonicQRegionForElem = liszt function (c)
 end
 
 -- TODO
-local calcSoundSpeedForElem = liszt function (vnewc, rho0, enewc, pnewc, pbvc, bvc)
+local liszt function calcSoundSpeedForElem(vnewc, rho0, enewc, pnewc, pbvc, bvc)
 	var ss = (pbvc * enewc + vnewc * vnewc * bvc * pnewc) / rho0
 	if ss <= 0.111111e-36 then
 		ss = 0.3333333e-18
@@ -980,7 +1013,7 @@ local calcSoundSpeedForElem = liszt function (vnewc, rho0, enewc, pnewc, pbvc, b
 end
 
 local two_thirds = 2./3.
-local calcPressureForElems = liszt function (e_old, compression, vnewc, pmin, p_cut, eosvmax)
+local liszt function calcPressureForElems(e_old, compression, vnewc, pmin, p_cut, eosvmax)
 	var c1s   : L.double = two_thirds
 	var bvc   : L.double = c1s * (compression + 1)
 	var pbvc  : L.double = c1s
@@ -994,8 +1027,8 @@ local calcPressureForElems = liszt function (e_old, compression, vnewc, pmin, p_
 end
 
 local sixth = 1./6.
-local calcEnergyForElems = liszt function (p_old, e_old, q_old, compression, compHalfStep, vnewc, 
-                                           work, delvc, qq_old, ql_old, eosvmax, rho0)
+local liszt function calcEnergyForElems (p_old, e_old, q_old, compression, compHalfStep, vnewc, 
+                                         work, delvc, qq_old, ql_old, eosvmax, rho0)
 	var emin_tmp = m.emin
 	var e_new : L.double = m.emin
 	e_new max= (e_old - 0.5 * delvc * (p_old + q_old) + 0.5 * work)
@@ -1044,7 +1077,7 @@ local calcEnergyForElems = liszt function (p_old, e_old, q_old, compression, com
 end
 
 
-local evalEOSForElem = liszt function (c)
+local liszt function evalEOSForElem (c)
 	var rho0         = m.refdens
 	var vnewc        = c.vnew
 	var delvc        = c.delv
@@ -1088,12 +1121,12 @@ local evalEOSForElem = liszt function (c)
 	c.ss = ssc
 end
 
-local calcMQRegionAndEvalEOS = liszt kernel (c : grid.cells)
+local liszt kernel calcMQRegionAndEvalEOS(c : grid.cells)
 	calcMonotonicQRegionForElem(c)
 	evalEOSForElem(c)
 end
 
-local updateVolumeForElements = liszt kernel (c : grid.cells)
+local liszt kernel updateVolumeForElements(c : grid.cells)
 	var tmpV = c.vnew
 	if fabs(tmpV - 1.0) < m.v_cut then tmpV = 1.0 end
 	c.v = tmpV
@@ -1107,7 +1140,7 @@ function lagrangeElements ()
 end
 
 
-local courantConstraintKernel = liszt kernel (c : grid.cells)
+local liszt kernel courantConstraintKernel(c : grid.cells)
 	var qqc_tmp : L.double = m.qqc
 	var qqc2    = 64.0 * qqc_tmp * qqc_tmp
 
@@ -1134,7 +1167,7 @@ function calcCourantConstraintForElems()
 	end
 end
 
-local hydroConstraintKernel = liszt kernel (c : grid.cells)
+local liszt kernel hydroConstraintKernel(c : grid.cells)
 	var vdovtmp = c.vdov
 	if vdovtmp ~= 0.0 then
 		var dtdvov = m.dvovmax / (fabs(vdovtmp) + 1.e-20)

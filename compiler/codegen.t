@@ -182,10 +182,9 @@ local function cpu_codegen (kernel_ast, ctxt)
     end
   ctxt:leaveblock()
 
-  local r = terra ()
-    [kernel_body]
-  end
-  return r
+  local k = terra () [kernel_body] end
+  k:setname(kernel_ast.id)
+  return k
 end
 
 
@@ -358,7 +357,7 @@ local function reduce_global_shared_memory (global_shared_ptrs, ctxt, block_size
   return reduce_code
 end
 
-local function generate_final_reduce (global_shared_ptrs, ctxt, block_size)
+local function generate_final_reduce (kernel_ast, global_shared_ptrs, ctxt, block_size)
   local array_len  = symbol(uint64)
 
   -- read in all global reduction values corresponding to this (global) thread
@@ -388,8 +387,9 @@ local function generate_final_reduce (global_shared_ptrs, ctxt, block_size)
   final_reduce = terra ([array_len])
     [final_reduce] 
   end
-
-  return terralib.cudacompile({final_reduce=final_reduce}).final_reduce
+  local id = kernel_ast.id .. '_reduce'
+  -- using id here to set debug name of kernel for tuning/debugging
+  return terralib.cudacompile({[id]=final_reduce})[id]
 end
 
 local function allocate_reduction_space (n_blocks, global_shared_ptrs, ctxt)
@@ -506,8 +506,9 @@ local function gpu_codegen (kernel_ast, ctxt)
   local cuda_kernel = terra ()
     [kernel_body]
   end
-  local M = terralib.cudacompile { cuda_kernel = cuda_kernel }
-  local reduce_global_scratch_values = generate_final_reduce(global_shared_ptrs,ctxt,BLOCK_SIZE)
+  -- using kernel_ast.id here to set debug name of kernel for tuning/debugging
+  cuda_kernel = terralib.cudacompile { [kernel_ast.id] = cuda_kernel }[kernel_ast.id]
+  local reduce_global_scratch_values = generate_final_reduce(kernel_ast, global_shared_ptrs,ctxt,BLOCK_SIZE)
   -- germ type will have a use_boolmask field only if it
   -- was generated for a subset kernel
   if ctxt.bran.subset then
@@ -535,7 +536,7 @@ local function gpu_codegen (kernel_ast, ctxt)
       end
 
       [allocate_reduction_space(n_blocks,global_shared_ptrs, ctxt)]
-      M.cuda_kernel(&params)
+      cuda_kernel(&params)
       G.sync() -- flush print streams
 
       var reduce_params = terralib.CUDAParams {
@@ -560,7 +561,7 @@ local function gpu_codegen (kernel_ast, ctxt)
         shared_mem_size, nil
       }
       [allocate_reduction_space(n_blocks,global_shared_ptrs, ctxt)]
-      M.cuda_kernel(&params)
+      cuda_kernel(&params)
       G.sync() -- flush print streams
 
       var reduce_params = terralib.CUDAParams {
