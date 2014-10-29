@@ -566,21 +566,162 @@ end
 
 ------------------------------------------------------------------------------
 
--- TODO: How is the result stored
-function computeForceModel()
+-- TODO: Again Data Model and skeleton needs to be filled in more here...
 
+local ImplicitBackwardEulerIntegrator = {}
+ImplicitBackwardEulerIntegrator.__index = ImplicitBackwardEulerIntegrator
+
+function ImplicitBackwardEulerIntegrator.New(opts)
+  local stepper = setmetatable({
+    internalForceScalingFactor = ???, -- Where does this get set?
+
+    epsilon                     = opts.epsilon,
+    timestep                    = opts.timestep,
+    dampingMassCoef             = opts.dampingMassCoef,
+    dampingStiffnessCoef        = opts.dampingStiffnessCoef,
+  }, ImplicitBackwardEulerIntegrator)
+
+  return stepper
 end
 
-------------------------------------------------------------------------------
+function ImplicitBackwardEulerIntegrator:DoTimestep()
+  local err0 = 0 -- L.Global?
+  local errQuotient
 
--- TODO: Again Data Model and skeleton needs to be filled in more here...
+  -- store current amplitudes and set initial gues for qaccel, qvel
+  -- AHHHHH, THE BELOW CAN BE IMPLEMENTED USING COPIES
+  -- LOOP OVER THE STATE VECTOR (vertices for now)
+    -- SET qaccel_1 = qaccel = 0
+    -- SET q_1 = q
+    -- SET qvel_1 = qvel
+  -- end
+
+  -- Limit our total number of iterations allowed per timestep
+  for numIter = 1, self.maxIterations do
+    -- ASSEMBLY
+    -- TIMING START
+    INTERNAL_FORCES = computeForces() -- PASS ANYTHING?
+    STIFFNESS = computeStiffnessMatrix() -- PASS ANYTHING?
+    -- TIMING END
+    -- RECORD ASSEMBLY TIME
+
+    -- NOTE: NOTE: We can implement these scalings as separate kernels to be
+    -- "FAIR" to VEGA or we can fold it into other kernels.
+    -- Kinda unclear which to do
+    INTERNAL_FORCES = self.internalForceScalingFactor * INTERNAL_FORCES
+    STIFFNESS = self.internalForceScalingFactor * STIFFNESS
+
+    -- ZERO out the residual field
+    mesh.vertices.qresidual:Load(0)
+
+    -- NOTE: useStaticSolver == FALSE
+    --    We just assume this everywhere
+    RAYLEIGH_DAMP_MATRIX  = self.dampingStiffnessCoef * STIFFNESS
+    RAYLEIGH_DAMP_MATRIX += self.dampingMassCoef * MASS_MATRIX
+
+    -- Build effective stiffness:
+    --    Keff = M + h D + h^2 * K
+    -- compute force residual, store it into aux variable qresidual
+    -- Semi-Implicit Euler
+    --    qresidual = h * (-D qdot - fint + fext - h * K * qdot)
+    -- Fully-Implicit Euler
+    --    qresidual = M (qvel_1-qvel) +
+    --                h * (-D qdot - fint + fext - K * (q_1 - q + h * qdot))
+
+    -- superfluous on iteration 1, but safe to run
+    if numIter ~= 1 then
+      qresidual += STIFFNESS * (q_1-q)
+    end
+
+    -- some magic incantations corresponding to the above
+    STIFFNESS *= self.timestep
+    STIFFNESS += RAYLEIGH_DAMP_MATRIX
+    STIFFNESS += dampingMatrix -- DON'T KNOW WHERE THIS IS FROM (constant?)
+    qresidual += STIFFNESS * qvel
+    STIFFNESS *= self.timestep
+    STIFFNESS += MASS_MATRIX
+
+    -- ADD EXTERNAL/INTERNAL FORCES
+    qresidual += INTERNAL_FORCES - EXTERNAL_FORCES
+    qresidual = self.timestep * qresidual
+
+    -- superfluous on iteration 1, but safe to run
+    if numIter ~= 1 then
+      qresidual += MASS_MATRIX * (qvel_1-qvel)
+    end
+
+    qdelta = qresidual
+
+    -- TODO: This code doesn't have any way of handling fixed vertices
+    -- at the moment.  Should enforce that here somehow
+
+    local err = L.global(L.double, 0) -- HUH? L.Global?
+    err = REDUCE(qdelta*qdelta) -- only over unconstrained vertices
+
+    -- compute initial error on the 1st iteration
+    if numIter ~= 1 then
+      err0 = err
+      errQuotient = 1
+    else
+      errQuotient = err / err0
+    end
+
+    if errQuotient < self.epsilon*self.epsilon then
+      break
+    end
+
+    SYSTEM_MATRIX = STIFFNESS -- HERE b/c of REMOVE ROWS...
+    RHS = qdelta
+
+    -- SYSTEM SOLVE: SYSTEM_MATRIX * BUFFER = BUFFER_CONSTRAINED
+    -- START PERFORMANCE TIMING
+    -- ASSUMING PCG FOR NOW
+    local solverEpsilon = 1e-6
+    local solverMaxIter = 10000
+    local err_code = DO_JACOBI_PRECONDITIONED_CG_SOLVE(RESULT, RHS,
+                                      solverEpsilon, solverMaxIter)
+    if err_code ~= 0 then
+      error("ERROR: PCG sparse solver "..
+            "returned non-zero exit status "..err_code)
+    end
+    -- STOP PERFORMANCE TIMING
+    -- RECORD SYSTEM SOLVE TIME
+
+    -- Reinsert the rows?
+
+    qvel += qdelta
+    q += q_1-q + self.timestep * qvel
+
+    -- for the subset of constrained vertices
+      q=0
+      qvel=0
+      qaccel=0
+  end
+end
+
 function buildImplicitBackwardsEulerIntegrator(opts)
+
+
 
   return {} -- should be an actual integrator object
 end
 
 
+------------------------------------------------------------------------------
 
+function setInitialConditions()
+  -- FROM THE REFERENCE FOR NOW
+--  implicitBackwardEulerSparse->SetExternalForcesToZero();
+--  // set some force at the first timestep
+--  if (i == 0) {
+--    for(int j=0; j<r; j++)
+--        f[j] = 0; // clear to 0
+--    f[0] = -500;
+--    f[1] = -500;
+--    f[2] = -500;
+--    implicitBackwardEulerSparse->SetExternalForces(f);
+--  }
+end
 
 ------------------------------------------------------------------------------
 
@@ -608,7 +749,7 @@ function main()
 
   computeForceModel()
 
-  local integrator = buildImplicitBackwardsEulerIntegrator{
+  local integrator = ImplicitBackwardEulerIntegrator.New{
     n_vars                = 3*nvertices,
     timestep              = options.timestep,
     positiveDefinite      = 0,
@@ -620,15 +761,13 @@ function main()
     numSolverThreads      = options.numSolverThreads,
   }
 
-  local setInitialConditions = function() end -- should be liszt kernel
-
   for i=1,options.numTimesteps do
     -- integrator:setExternalForcesToZero()
     if i == 1 then
       setInitialConditions()
     end
 
-    -- integrator:doTimestep()
+    integrator:DoTimestep()
   end
 
   -- read out the state here somehow?
