@@ -405,7 +405,7 @@ local calcElemVolumeDerivative = liszt function (localCoords)
 end
 
 
-local initialVolumeCalc = liszt kernel (c : grid.cells)
+local liszt kernel initialVolumeCalc(c : grid.cells)
 
 	var localCoords = getLocalNodeCoordVectors(c)
 	var volume = calcElemVolume(localCoords)
@@ -426,7 +426,7 @@ end
 
 -- Grid initializes position over cell centers, so we need to
 -- initialize vertex positions manually.
-local initVectorPosition = liszt kernel (v : grid.vertices)
+local liszt kernel initVectorPosition(v : grid.vertices)
 	v.position = { L.double(v.xid) * sz / N, 
 	               L.double(v.yid) * sz / N,
 	               L.double(v.zid) * sz / N }
@@ -479,7 +479,7 @@ function timeIncrement( )
 	m.cycle = m.cycle + 1
 end
 
-local integrateStressForElems = liszt kernel (c : grid.cells)
+local liszt kernel  integrateStressForElems(c : grid.cells)
 	var localCoords = getLocalNodeCoordVectors(c)
 	-- scratchpade01 used here to store the determinant.
 	-- Volume calculation involves extra work for numerical consistency.
@@ -558,7 +558,7 @@ local transpose_4x8 = L.NewMacro(function(m)
 	}
 end)
 
-local calcFBHourglassForceForElems = liszt kernel (c : grid.cells)
+local liszt kernel calcFBHourglassForceForElems(c : grid.cells)
 	var determ = c.volo * c.v
 	var volinv = 1.0 / determ
 	var volume13 = L.cbrt(determ)
@@ -600,7 +600,7 @@ function calcVolumeForceForElems ()
 	end
 end
 
-local calcPositionForNodes = liszt kernel (v : grid.vertices)
+local liszt kernel calcPositionForNodes(v : grid.vertices)
 	var accel = v.forces / v.mass
 	-- Enforce boundary conditions of symmetry planes
 	if v.xid == 0 then accel[0] = 0 end
@@ -622,7 +622,7 @@ function lagrangeNodal ()
 	calcPositionForNodes(grid.vertices)
 end
 
-local calcElemCharacteristicLength = liszt function (localCoords, volume)
+local liszt function calcElemCharacteristicLength(localCoords, volume)
 	var r0 = row(localCoords, 0)
 	var r1 = row(localCoords, 1)
 	var r2 = row(localCoords, 2)
@@ -679,7 +679,7 @@ local calcElemCharacteristicLength = liszt function (localCoords, volume)
 	return charlength
 end
 
-local calcElemVelocityGradient = liszt function(localVelocities, pf, detJ)
+local liszt function calcElemVelocityGradient(localVelocities, pf, detJ)
 	var inv_detJ = 1.0 / detJ
 	var r06 = row(localVelocities,0) - row(localVelocities,6)
 	var r17 = row(localVelocities,1) - row(localVelocities,7)
@@ -734,7 +734,7 @@ end
 
 -- This function uses the scratchpade01-03 fields to temporarily store 2nd derivatives
 -- of position (?) in x, y, z
-local calcKinematicsForElem = liszt function(c, localCoords, localVelocities)
+local liszt function calcKinematicsForElem(c, localCoords, localVelocities)
 	var volume = calcElemVolume(localCoords)
 	var relativeVolume = volume / c.volo
 	c.vnew = relativeVolume
@@ -762,7 +762,7 @@ local calcKinematicsForElem = liszt function(c, localCoords, localVelocities)
 end
 
 -- TODO
-local calcMonotonicQGradientsForElem = liszt function(c, localCoords, localVelocities)
+local liszt function calcMonotonicQGradientsForElem(c, localCoords, localVelocities)
 	var ptiny = 1.e-36
 
 	var rc0 = row(localCoords,7)
@@ -830,7 +830,7 @@ local calcKinemAndMQGradientsForElems = liszt kernel (c : grid.cells)
 end
 
 -- TODO
-local calcMonotonicQRegionForElem = liszt function (c)
+local liszt function calcMonotonicQRegionForElem(c)
  		--[[
  		  velocity gradient:
 		    delv_xi    => scratchpade01
@@ -969,7 +969,7 @@ local calcMonotonicQRegionForElem = liszt function (c)
 end
 
 -- TODO
-local calcSoundSpeedForElem = liszt function (vnewc, rho0, enewc, pnewc, pbvc, bvc)
+local liszt function calcSoundSpeedForElem(vnewc, rho0, enewc, pnewc, pbvc, bvc)
 	var ss = (pbvc * enewc + vnewc * vnewc * bvc * pnewc) / rho0
 	if ss <= 0.111111e-36 then
 		ss = 0.3333333e-18
@@ -980,7 +980,7 @@ local calcSoundSpeedForElem = liszt function (vnewc, rho0, enewc, pnewc, pbvc, b
 end
 
 local two_thirds = 2./3.
-local calcPressureForElems = liszt function (e_old, compression, vnewc, pmin, p_cut, eosvmax)
+local liszt function calcPressureForElems(e_old, compression, vnewc, pmin, p_cut, eosvmax)
 	var c1s   : L.double = two_thirds
 	var bvc   : L.double = c1s * (compression + 1)
 	var pbvc  : L.double = c1s
@@ -994,8 +994,8 @@ local calcPressureForElems = liszt function (e_old, compression, vnewc, pmin, p_
 end
 
 local sixth = 1./6.
-local calcEnergyForElems = liszt function (p_old, e_old, q_old, compression, compHalfStep, vnewc, 
-                                           work, delvc, qq_old, ql_old, eosvmax, rho0)
+local liszt function calcEnergyForElems (p_old, e_old, q_old, compression, compHalfStep, vnewc, 
+                                         work, delvc, qq_old, ql_old, eosvmax, rho0)
 	var emin_tmp = m.emin
 	var e_new : L.double = m.emin
 	e_new max= (e_old - 0.5 * delvc * (p_old + q_old) + 0.5 * work)
@@ -1044,7 +1044,7 @@ local calcEnergyForElems = liszt function (p_old, e_old, q_old, compression, com
 end
 
 
-local evalEOSForElem = liszt function (c)
+local liszt function evalEOSForElem (c)
 	var rho0         = m.refdens
 	var vnewc        = c.vnew
 	var delvc        = c.delv
@@ -1088,12 +1088,12 @@ local evalEOSForElem = liszt function (c)
 	c.ss = ssc
 end
 
-local calcMQRegionAndEvalEOS = liszt kernel (c : grid.cells)
+local liszt kernel calcMQRegionAndEvalEOS(c : grid.cells)
 	calcMonotonicQRegionForElem(c)
 	evalEOSForElem(c)
 end
 
-local updateVolumeForElements = liszt kernel (c : grid.cells)
+local liszt kernel updateVolumeForElements(c : grid.cells)
 	var tmpV = c.vnew
 	if fabs(tmpV - 1.0) < m.v_cut then tmpV = 1.0 end
 	c.v = tmpV
@@ -1107,7 +1107,7 @@ function lagrangeElements ()
 end
 
 
-local courantConstraintKernel = liszt kernel (c : grid.cells)
+local liszt kernel courantConstraintKernel(c : grid.cells)
 	var qqc_tmp : L.double = m.qqc
 	var qqc2    = 64.0 * qqc_tmp * qqc_tmp
 
@@ -1134,7 +1134,7 @@ function calcCourantConstraintForElems()
 	end
 end
 
-local hydroConstraintKernel = liszt kernel (c : grid.cells)
+local liszt kernel hydroConstraintKernel(c : grid.cells)
 	var vdovtmp = c.vdov
 	if vdovtmp ~= 0.0 then
 		var dtdvov = m.dvovmax / (fabs(vdovtmp) + 1.e-20)
