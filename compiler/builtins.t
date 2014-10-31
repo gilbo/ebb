@@ -616,6 +616,7 @@ local function map(fn, list)
 end
 
 local function GetTypedSymbol(arg)
+    
     return symbol(arg.node_type:terraType())
 end
 

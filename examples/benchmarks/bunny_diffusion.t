@@ -71,7 +71,7 @@ local hot  = L.NewVector(L.float,{1.0,0.0,0.0})
 local debug_tri_draw = liszt kernel ( t : bunny.triangles )
   -- color a triangle with the average temperature of its vertices
   var avg_temp =
-    (t.v1.temperature + t.v2.temperature + t.v3.temperature) / 3.0
+    (t.v[0].temperature + t.v[1].temperature + t.v[2].temperature) / 3.0
 
   -- compute a display value in the range 0.0 to 1.0 from the temperature
   var scale = L.float(cmath.log(1.0 + avg_temp))
@@ -79,7 +79,7 @@ local debug_tri_draw = liszt kernel ( t : bunny.triangles )
 
   -- interpolate the hot and cold colors
   vdb.color((1.0-scale)*cold + scale*hot)
-  vdb.triangle(t.v1.pos, t.v2.pos, t.v3.pos)
+  vdb.triangle(t.v[0].pos, t.v[1].pos, t.v[2].pos)
 end
 -- END EXTRA VDB CODE
 

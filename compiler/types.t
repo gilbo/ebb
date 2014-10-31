@@ -42,14 +42,17 @@ end
 function Type:isPrimitive()
   return self.kind == "primitive"
 end
+function Type:isScalarRow()
+  return self.kind == "row"
+end
+function Type:isScalar()
+  return self:isPrimitive() or self:isScalarRow()
+end
 function Type:isVector()
   return self.kind == "vector"
 end
 function Type:isSmallMatrix()
   return self.kind == "smallmatrix"
-end
-function Type:isRow()
-  return self.kind == "row"
 end
 function Type:isInternal()
   return self.kind == "internal"
@@ -66,12 +69,16 @@ end
 
 -- These types represent Liszt values (not row references though)
 function Type:isValueType()
-  return self:isPrimitive() or self:isVector() or self:isSmallMatrix()
+  if self:isVector() or self:isSmallMatrix() then
+    return self.type:isPrimitive()
+  else
+    return self:isPrimitive()
+  end
 end
 
 -- These are types that are valid to use for a field
 function Type:isFieldType()
-  return self:isValueType() or self:isRow()
+  return self:isScalar() or self:isVector() or self:isSmallMatrix()
 end
 
 
@@ -79,7 +86,7 @@ end
 --[[ Primitive/Vector Type Methods                                         ]]--
 -------------------------------------------------------------------------------
 
--- of type integer or vectors of integers
+-- of type integer or multiple integers
 function Type:isIntegral ()
   return self:isValueType() and self:terraBaseType():isintegral()
 end
@@ -89,7 +96,11 @@ function Type:isNumeric ()
 end
 
 function Type:isLogical ()
-  return self:isPrimitive() and self:terraBaseType() == bool
+  return self:isValueType() and self:terraBaseType() == bool
+end
+
+function Type:isRow()
+  return self:isFieldType() and self:baseType():isScalarRow()
 end
 
 -------------------------------------------------------------------------------
@@ -100,7 +111,7 @@ end
 function Type:baseType()
   if self:isVector()      then return self.type end
   if self:isSmallMatrix() then return self.type end
-  if self:isPrimitive() or self:isRow() then return self end
+  if self:isScalar()      then return self end
   error("baseType not implemented for " .. self:toString(),2)
 end
 
@@ -113,9 +124,10 @@ function Type:terraType()
   if     self:isPrimitive()   then return self.terratype
   elseif self:isVector()      then return self.terratype
   elseif self:isSmallMatrix() then return self.terratype
-  elseif self:isRow()         then return L.addr:terraType()
+  elseif self:isRow()         then return self.terratype
   elseif self:isQuery()       then return QueryType
   elseif self:isInternal()    then return emptyStruct
+  elseif self:isError()       then return emptyStruct
   end
   error("terraType method not implemented for type " .. self:toString(), 2)
 end
@@ -130,12 +142,14 @@ end
 
 local vector_types = {}
 local function vectorType (typ, len)
-  if not T.isLisztType(typ) or not typ:isPrimitive() then
+  -- Liszt may not be fully loaded yet, so...
+  if L.is_relation and L.is_relation(typ) then typ = L.row(typ) end
+  if not T.isLisztType(typ) or not typ:isScalar() then
     error("invalid type argument to vector type constructor "..
           "(is this a terra type?)", 2)
   end
-  local tpn = 'vector(' .. typ:toString() .. ',' .. tostring(len) .. ')'
-  if not vector_types[tpn] then
+  if not vector_types[typ] then vector_types[typ] = {} end
+  if not vector_types[typ][len] then
     local vt = Type:new("vector")
     vt.N = len
     vt.type = typ
@@ -145,20 +159,22 @@ local function vectorType (typ, len)
     vt.terratype.metamethods.__typename = function(self)
       return struct_name
     end
-    vector_types[tpn] = vt
+    vector_types[typ][len] = vt
   end
-  return vector_types[tpn]
+  return vector_types[typ][len]
 end
 
-local small_matrix_types = {}
+local smatrix_types = {}
 local function smallMatrixType (typ, nrow, ncol)
-  if not T.isLisztType(typ) or not typ:isPrimitive() then
+  -- Liszt may not be fully loaded yet, so...
+  if L.is_relation and L.is_relation(typ) then typ = L.row(typ) end
+  if not T.isLisztType(typ) or not typ:isScalar() then
     error("invalid type argument to small matrix type constructor "..
           "(is this a terra type?)", 2)
   end
-  local tpnm = 'smallmatrix(' .. typ:toString() .. ',' ..
-               tostring(nrow) .. ',' .. tostring(ncol) .. ')'
-  if not small_matrix_types[tpnm] then
+  if not smatrix_types[typ]       then smatrix_types[typ] = {} end
+  if not smatrix_types[typ][nrow] then smatrix_types[typ][nrow] = {} end
+  if not smatrix_types[typ][nrow][ncol] then
     local smt = Type:new("smallmatrix")
     smt.Nrow = nrow
     smt.Ncol = ncol
@@ -170,9 +186,9 @@ local function smallMatrixType (typ, nrow, ncol)
     smt.terratype.metamethods.__typename = function(self)
       return struct_name
     end
-    small_matrix_types[tpnm] = smt
+    smatrix_types[typ][nrow][ncol] = smt
   end
-  return small_matrix_types[tpnm]
+  return smatrix_types[typ][nrow][ncol]
 end
 
 local record_types = {}
@@ -229,6 +245,7 @@ local rowType = cached(function(relation)
     checkrelation(relation)
     local rt = Type:new("row")
     rt.relation = relation
+    rt.terratype = L.addr:terraType()
     return rt
 end)
 local internalType = cached(function(obj)
@@ -328,7 +345,7 @@ function Type.fromString(str)
     base = Type.fromString(base)
     return L.vector(base, n)
   elseif str:sub(1,11) == 'SmallMatrix' then
-    local base, n, m = str:match('^SmallMatrix%((^,]*,([^,]*),([^%)]*)%)$')
+    local base, n, m = str:match('^SmallMatrix%(([^,]*),([^,]*),([^%)]*)%)$')
     n = tonumber(n)
     m = tonumber(m)
     if n == nil or m == nil then
@@ -502,53 +519,61 @@ function Type:isCoercableTo(target)
   return false
 end
 
+-- helpers
+local function vec_meet(ltype, rtype, N)
+    local btype = prim_meet[ltype:baseType()][rtype:baseType()]
+    if btype == L.error then return L.error
+                        else return L.vector(btype, N) end
+end
+
+local function mat_meet(ltype, rtype, N, M)
+  local btype = prim_meet[ltype:baseType()][rtype:baseType()]
+  if btype == L.error then return L.error
+                      else return L.smallmatrix(btype,N,M) end
+end
 
 local function type_meet(ltype, rtype)
-    -- helper
-    local function vec_meet(ltype, rtype, N)
-        local btype = prim_meet[ltype:baseType()][rtype:baseType()]
-        if btype == L.error then return L.error
-                            else return L.vector(btype, N) end
-    end
+  -- matching case
+  if ltype == rtype then return ltype end
 
-    local function mat_meet(ltype, rtype, N, M)
-      local btype = prim_meet[ltype:baseType()][rtype:baseType()]
-      if btype == L.error then return L.error
-                          else return L.smallmatrix(btype,N,M) end
-    end
+  -- outside the matching case, both values must be numeric
+  if ltype:isNumeric() and rtype:isNumeric() then
 
-    -- smallmatrix meets
-    if ltype:isSmallMatrix() and rtype:isSmallMatrix() then
-      if ltype.Nrow ~= rtype.Nrow or ltype.Ncol ~= rtype.Ncol then
-        return L.error
-      else
-        return mat_meet(ltype, rtype, ltype.Nrow, ltype.Ncol)
-      end
+    -- base-type-meet
+    local base_meet = prim_meet[ltype:baseType()][rtype:baseType()]
+    if base_meet == L.error then return L.error end
 
-    elseif ltype:isSmallMatrix() and rtype:isPrimitive() then
-      return mat_meet(ltype, rtype, ltype.Nrow, ltype.Ncol)
-
-    elseif ltype:isPrimitive() and rtype:isSmallMatrix() then
-      return mat_meet(ltype, rtype, rtype.Nrow, rtype.Ncol)
+    -- primitive meets
+    if ltype:isPrimitive() and rtype:isPrimitive() then
+      return base_meet
 
     -- vector meets
     elseif ltype:isVector() and rtype:isVector() then
-        if ltype.N ~= rtype.N then return L.error
-                              else return vec_meet(ltype, rtype, ltype.N) end
+      if ltype.N == rtype.N then
+        return L.vector(base_meet, ltype.N) end
 
     elseif ltype:isVector() and rtype:isPrimitive() then
-        return vec_meet(ltype, rtype, ltype.N)
+      return L.vector(base_meet, ltype.N)
 
     elseif ltype:isPrimitive() and rtype:isVector() then
-        return vec_meet(ltype, rtype, rtype.N)
+      return L.vector(base_meet, rtype.N)
 
-    -- primitive meets
-    elseif ltype:isPrimitive() and rtype:isPrimitive() then
-        return prim_meet[ltype][rtype]
+    -- smallmatrix meets
+    elseif ltype:isSmallMatrix() and rtype:isSmallMatrix() then
+      if ltype.Nrow == rtype.Nrow or ltype.Ncol == rtype.Ncol then
+        return L.smallmatrix(base_meet, ltype.Nrow, ltype.Ncol) end
+
+    elseif ltype:isSmallMatrix() and rtype:isPrimitive() then
+      return L.smallmatrix(base_meet, ltype.Nrow, ltype.Ncol)
+
+    elseif ltype:isPrimitive() and rtype:isSmallMatrix() then
+      return L.smallmatrix(base_meet, rtype.Nrow, rtype.Ncol)
+
     end
-
-    -- default is to error
-    return L.error
+  end
+  
+  -- default is to error
+  return L.error
 end
 
 

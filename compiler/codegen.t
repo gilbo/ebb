@@ -949,41 +949,6 @@ function vec_bin_exp(op, result_typ, lhe, rhe, lhtyp, rhtyp)
   error('Internal Error: Could not find any code to generate for '..
         'binary operator '..op..' with opeands of type '..lhtyp:toString()..
         ' and '..rhtyp:toString())
-
---  -- the result type is bool (not desired) if we're doing a comparison
---  if op == '==' or op == '~=' then
---    result_typ = lhtyp
---    if lhtyp:isCoercableTo(rhtyp) then result_typ = rhtyp end
---  end
---
---  local N = result_typ.N
---
---  local lhbind, lhcoords = let_vec_binding(lhtyp, N, lhe)
---  local rhbind, rhcoords = let_vec_binding(rhtyp, N, rhe)
---
---  -- Assemble the resulting vector by mashing up the coords
---  local coords = {}
---  for i=1, N do
---    coords[i] = bin_exp(op, lhcoords[i], rhcoords[i])
---  end
---  local result = `[result_typ:terraType()]({ array( [coords] ) })
---
---  -- special case handling of vector comparisons
---  if op == '==' then -- AND results
---    result = `true
---    for i = 1, N do result = `result and [ coords[i] ] end
---  elseif op == '~=' then -- OR results
---    result = `false
---    for i = 1, N do result = `result or [ coords[i] ] end
---  end
---
---  local q = quote
---    [lhbind]
---    [rhbind]
---  in
---    [result]
---  end
---  return q
 end
 
 function atomic_gpu_vec_red_exp(op, result_typ, lval, rhe, rhtyp)

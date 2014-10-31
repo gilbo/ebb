@@ -13,4 +13,4 @@ test.fail_function(function()
   liszt kernel t(v : mesh.vertices)
   	var x = {1, 2, {2, 3}}
   end
-end, "can only contain values of boolean or numeric type")
+end, "can only contain scalar values")

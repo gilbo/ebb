@@ -80,43 +80,6 @@ local function try_coerce(target_typ, node, ctxt)
     end
 end
 
--- This is like a type meet.  Except we coerce the arguments
--- as necessary and then return them
---local function try_bin_coerce(node_a, node_b)
---    if node_a.node_type == node_b.node_type then
---        return node_a, node_b
---    elseif node_a.node_type:isCoercableTo(node_b.node_type) then
---        return try_coerce(node_b.node_type, node_a), node_b
---    elseif node_b.node_type:isCoercableTo(node_a.node_type) then
---        return node_a, try_coerce(node_a.node_type, node_b)
---    else
---        return nil, nil
---    end
---end
-
--- like above, but if one of the operands is a vector, then
--- only coerce the base types into agreement
---local function try_vec_bin_coerce(node_a, node_b)
---    if node_a.node_type:isVector() == node_b.node_type:isVector() then
---        return try_bin_coerce(node_a, node_b)
---    elseif node_b.node_type:isVector() then
---        local b, a = try_vec_bin_coerce(node_b, node_a)
---        return a, b
---    else -- now a is vec, b is primitive
---        local abase = node_a.node_type:baseType()
---        local N     = node_a.node_type.N
---        if abase == node_b.node_type then
---            return node_a, node_b
---        elseif abase:isCoercableTo(node_b.node_type) then
---            return try_coerce(L.vector(node_b.node_type, N), node_a), node_b
---        elseif node_b.node_type:isCoercableTo(abase) then
---            return node_a, try_coerce(abase, node_b)
---        else
---            return nil, nil
---        end
---    end
---end
-
 ------------------------------------------------------------------------------
 --[[ AST semantic checking methods:                                       ]]--
 ------------------------------------------------------------------------------
@@ -348,7 +311,7 @@ function ast.DeclStatement:check(ctxt)
         -- if the rhs is a centered row, try to propagate that information
         -- NOTE: this pseudo-constant propagation is strong b/c
         -- we don't allow re-assignment of row-type variables
-        if exptyp:isRow() and decl.initializer.is_centered then
+        if exptyp:isScalarRow() and decl.initializer.is_centered then
             ctxt:recordcenter(decl.name)
         end
     end
@@ -497,7 +460,7 @@ function ast.DeleteStatement:check(ctxt)
     delete.row   = self.row:check(ctxt)
     local rowtyp = delete.row.node_type
 
-    if not rowtyp:isRow() or not delete.row.is_centered then
+    if not rowtyp:isScalarRow() or not delete.row.is_centered then
         ctxt:error(self,"Only centered rows may be deleted")
         return delete
     end
@@ -540,7 +503,7 @@ local is_ord_op = {
 }
 
 local function matching_type_dims(t1, t2)
-  if t1:isPrimitive() and t2:isPrimitive() then return true end
+  if t1:isScalar() and t2:isScalar() then return true end
   if t1:isVector() and t2:isVector() then
     return t1.N == t2.N
   elseif t1:isSmallMatrix() and t2:isSmallMatrix() then
@@ -556,12 +519,14 @@ local function err (node, ctx, msg)
 end
 
 
+-- NOTE THIS IS UNSAFE.  Caller must check
+-- whether or not the coercion is type-safe
 local function coerce_base(btyp, node)
   local ntyp = node.node_type
   if btyp == ntyp:baseType() then return node end
 
   local cast = ast.Cast:DeriveFrom(node)
-  if ntyp:isPrimitive()   then  cast.node_type = btyp end
+  if ntyp:isScalar()   then  cast.node_type = btyp end
   if ntyp:isVector()      then  cast.node_type = L.vector(btyp, ntyp.N) end
   if ntyp:isSmallMatrix() then
     cast.node_type = L.smallmatrix(btyp, ntyp.Nrow, ntyp.Ncol)
@@ -833,8 +798,7 @@ function convert_to_matrix_literal(literal, ctxt)
     local matlit        = ast.MatrixLiteral:DeriveFrom(literal)
     matlit.elems        = {}
 
-    local tp_error  = "matrix literals can only contain vectors "..
-                      "of boolean or numeric type"
+    local tp_error  = "matrix literals can only contain vectors"
     local mt_error  = "matrix entries must be of the same type"
     local dim_error = "matrix literals must contain vectors of the same size"
 
@@ -877,8 +841,7 @@ function ast.VectorLiteral:check(ctxt)
     local veclit      = self:clone()
     veclit.elems      = {}
 
-    local tp_error = "vector literals can only contain values "..
-                     "of boolean or numeric type"
+    local tp_error = "vector literals can only contain scalar values"
     local mt_error = "vector entries must be of the same type"
 
     -- recursively process children
@@ -895,14 +858,14 @@ function ast.VectorLiteral:check(ctxt)
         -- SPECIAL CASE: a vector of vectors is a matrix and
         --               needs to be treated specially
         return convert_to_matrix_literal(veclit, ctxt)
-    elseif not max_type:isPrimitive() then
+    elseif not max_type:isScalar() then
         return err(self, ctxt, tp_error)
     end
 
     -- compute a max type
     for i = 2, #self.elems do
         local tp = veclit.elems[i].node_type
-        if not tp:isPrimitive() then
+        if not tp:isScalar() then
             return err(self, ctxt, tp_error)
         end
 
@@ -1129,7 +1092,7 @@ function ast.TableLookup:check(ctxt)
         return err(self, ctxt)
     end
 
-    if ttype:isRow() then
+    if ttype:isScalarRow() then
         local luaval = ttype.relation[member]
 
         -- create a field access normally
@@ -1153,7 +1116,7 @@ function ast.TableLookup:check(ctxt)
         elseif L.is_user_func(luaval) then
             return InlineUserFunc(ctxt,self,luaval,{tab})
         else
-            return err(self, ctxt, "Row "..ttype.relation:Name()..
+            return err(self, ctxt, "Row from "..ttype.relation:Name()..
                                    " does not have field or macro-field "..
                                    "'"..member.."'")
         end
@@ -1264,7 +1227,7 @@ function ast.Call:check(ctxt)
             end
         end
     -- __apply_macro  i.e.  c(1,0)  for offsetting in a grid
-    elseif func.node_type:isRow() then
+    elseif func.node_type:isScalarRow() then
         local apply_macro = func.node_type.relation.__apply_macro
         local params = {func}
         for _,v in ipairs(call.params) do table.insert(params, v) end

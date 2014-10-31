@@ -178,8 +178,8 @@ function L.LRelation:GroupBy(name)
     error("GroupBy(): Relation is already grouped", 2)
   elseif not L.is_field(key_field) then
     error("GroupBy(): Could not find a field named '"..name.."'", 2)
-  elseif not key_field.type:isRow() then
-    error("GroupBy(): Grouping by non-row-type fields is "..
+  elseif not key_field.type:isScalarRow() then
+    error("GroupBy(): Grouping by non-scalar-row-type fields is "..
           "currently prohibited.", 2)
   end
 
@@ -510,7 +510,7 @@ function L.LRelation:NewField (name, typ)
 
   -- record reverse pointers for row-type field references
   if typ:isRow() then
-    typ.relation._incoming_refs[field] = 'row_field'
+    typ:baseType().relation._incoming_refs[field] = 'row_field'
   end
 
   return field
@@ -600,13 +600,29 @@ local function convert_vec(vec_val, typ)
   elseif type(vec_val) == 'table' and #vec_val == typ.N then
     return terralib.new(typ:terraType(), {vec_val})
   else
-    return nil
+    error('Loaded Value was not recognizable as compatible Vector', 3)
+    --return nil
+  end
+end
+
+-- convert lua tables to Terra structs used to represent matrices
+local function convert_mat(mat_val, typ)
+  if type(mat_val) == 'table' and #mat_val == typ.Nrow then
+    local terraval = terralib.new(typ:terraType())
+    for r=1,#mat_val do
+      local row = mat_val[r]
+      if type(row) ~= 'table' or #row ~= typ.Ncol then
+        error('Loaded Value was not recognizable as compatible Matrix', 3)
+      end
+      for c=1,#row do terraval.d[r][c] = row[c] end
+    end
+    return terraval
+  else
+    error('Loaded Value was not recognizable as compatible Matrix', 3)
   end
 end
 
 function L.LField:LoadFunction(lua_callback)
-  if self.type:isSmallMatrix() then
-    error('function loading of SmallMatrix fields is unimplemented') end
   if self.owner:isFragmented() then
     error('cannot load into fragmented relation', 2)
   end
@@ -614,7 +630,12 @@ function L.LField:LoadFunction(lua_callback)
 
   -- NEEDS REVISION FOR CASE OF FRAGMENTATION
   self.array:write_ptr(function(dataptr)
-    if self.type:isVector() then
+    if self.type:isSmallMatrix() then
+      for i = 0, self:Size() - 1 do
+        local val = lua_callback(i)
+        dataptr[i] = convert_mat(val, self.type)
+      end
+    elseif self.type:isVector() then
       for i = 0, self:Size() - 1 do
         local val = lua_callback(i)
         dataptr[i] = convert_vec(val, self.type)
@@ -628,8 +649,6 @@ function L.LField:LoadFunction(lua_callback)
 end
 
 function L.LField:LoadList(tbl)
-  if self.type:isSmallMatrix() then
-    error('list loading of SmallMatrix fields is unimplemented') end
   if self.owner:isFragmented() then
     error('cannot load into fragmented relation', 2)
   end
@@ -648,8 +667,6 @@ end
 
 -- TODO: Hide this function so it's not public  (maybe not?)
 function L.LField:LoadFromMemory(mem)
-  if self.type:isSmallMatrix() then
-    error('memory loading of SmallMatrix fields is unimplemented') end
   if self.owner:isFragmented() then
     error('cannot load into fragmented relation', 2)
   end
@@ -668,13 +685,13 @@ function L.LField:LoadFromMemory(mem)
 end
 
 function L.LField:LoadConstant(constant)
-  if self.type:isSmallMatrix() then
-    error('constant value loading of SmallMatrix fields is unimplemented') end
   if self.owner:isFragmented() then
     error('cannot load into fragmented relation', 2)
   end
   self:Allocate()
-  if self.type:isVector() then
+  if self.type:isSmallMatrix() then
+    constant = convert_mat(constant, self.type)
+  elseif self.type:isVector() then
     constant = convert_vec(constant, self.type)
   end
 
@@ -687,8 +704,6 @@ end
 
 -- generic dispatch function for loads
 function L.LField:Load(arg)
-  if self.type:isSmallMatrix() then
-    error('LOADING of SmallMatrix fields is unimplemented') end
   if self.owner:isFragmented() then
     error('cannot load into fragmented relation', 2)
   end
@@ -718,7 +733,16 @@ end
 -- convert lua tables or LVectors to
 -- Terra structs used to represent vectors
 local function terraval_to_lua(val, typ)
-  if typ:isVector() then
+  if typ:isSmallMatrix() then
+    local mat = {}
+    local btyp = typ:baseType()
+    for i=1,typ.Nrow do
+      mat[i] = {}
+      for j=1,typ.Ncol do
+        mat[i][j] = terraval_to_lua(val.d[i-1][j-1], btyp) end
+    end
+    return mat
+  elseif typ:isVector() then
     local vec = {}
     for i = 1, typ.N do
       vec[i] = terraval_to_lua(val.d[i-1], typ:baseType())
@@ -728,14 +752,14 @@ local function terraval_to_lua(val, typ)
     return tonumber(val)
   elseif typ:isLogical() then
     if tonumber(val) == 0 then return false else return true end
+  elseif typ:isScalarRow() then
+    return tonumber(val)
   else
     error('unhandled terra_to_lua conversion')
   end
 end
 
 function L.LField:DumpToList()
-  if self.type:isSmallMatrix() then
-    error('Dumping to list of SmallMatrix fields is unimplemented') end
   if self.owner:isFragmented() then
     error('cannot dump from fragmented relation', 2)
   end
@@ -752,8 +776,6 @@ end
 --      i:      which row we're outputting (starting at 0)
 --      val:    the value of this field for the ith row
 function L.LField:DumpFunction(lua_callback)
-  if self.type:isSmallMatrix() then
-    error('Dumping w/function of SmallMatrix fields is unimplemented') end
   if self.owner:isFragmented() then
     error('cannot dump from fragmented relation', 2)
   end
@@ -766,8 +788,6 @@ function L.LField:DumpFunction(lua_callback)
 end
 
 function L.LField:print()
-  if self.type:isSmallMatrix() then
-    error('Printing of SmallMatrix fields is still unimplemented') end
   print(self.name..": <" .. tostring(self.type:terraType()) .. '>')
   if not self.array then
     print("...not initialized")
@@ -782,7 +802,25 @@ function L.LField:print()
   livemask.array:read_ptr(function(liveptr)
   self.array:read_ptr(function(dataptr)
     local alive
-    if self.type:isVector() then
+    if self.type:isSmallMatrix() then
+      for i = 0, N-1 do
+        if liveptr[i] then alive = ' .'
+        else                alive = ' x' end
+        local s = ''
+        for c = 0, self.type.Ncol-1 do
+          local t = tostring(dataptr[i].d[0][c]):gsub('ULL','')
+          s = s .. t .. ' '
+        end
+        print("", tostring(i) .. alive, s)
+        for r = 1, self.type.Nrow-1 do
+          local s = ''
+          for c = 0, self.type.Ncol-1 do
+            s = s .. tostring(dataptr[i].d[r][c]):gsub('ULL','') .. ' '
+          end
+          print("", "", s)
+        end
+      end
+    elseif self.type:isVector() then
       for i = 0, N-1 do
         if liveptr[i] then alive = ' .'
         else                alive = ' x' end
