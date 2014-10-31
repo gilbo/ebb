@@ -6,7 +6,9 @@ local mesh = LMesh.Load("examples/mesh.lmesh")
 local v = L.NewVector(L.float, {1, 2, 3}) 
 
 local print_stuff = liszt kernel(f : mesh.faces)
+    var m = { { 1.2, 0 }, { 0.4, 1 } }
     L.print(true)
+    L.print(m)
     L.print(4)
     L.print(2.2)
     L.print()
