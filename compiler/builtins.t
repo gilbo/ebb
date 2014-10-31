@@ -39,7 +39,7 @@ function B.id.check(ast, ctxt)
         return L.error
     end
 
-    if not ast.params[1].node_type:isRow() then
+    if not ast.params[1].node_type:isScalarRow() then
         ctxt:error(ast, "expected a relational row as the argument for id()")
         return L.error
     end
@@ -151,8 +151,26 @@ function B.print.check(ast, ctxt)
         if outtype ~= L.error and
            not outtype:isValueType() and not outtype:isRow()
         then
-            ctxt:error(ast, "only numbers, bools, vectors and rows can be printed")
+            ctxt:error(ast, "only numbers, bools, vectors, matrices and rows can be printed")
         end
+    end
+end
+
+local function printSingle (bt, exp, elemQuotes)
+    if bt == L.float or bt == L.double then
+        table.insert(elemQuotes, `[double]([exp]))
+        return "%f"
+    elseif bt == L.int then
+        table.insert(elemQuotes, exp)
+        return "%d"
+    elseif bt == L.uint64 or bt:isScalarRow() then
+        table.insert(elemQuotes, exp)
+        return "%lu"
+    elseif bt == L.bool then
+        table.insert(elemQuotes, `terralib.select([exp], "true", "false"))
+        return "%s"
+    else
+        error('Unrecognized type in print: ' .. bt:toString() .. ' ' .. tostring(bt:terraType()))
     end
 end
 
@@ -170,36 +188,29 @@ local function buildPrintSpec(ctxt, output, printSpec, elemQuotes, definitions)
             var [sym] : tt = [code]
         end
         for i = 0, lt.N - 1 do
-            if bt == L.float or bt == L.double then
-                printSpec = printSpec .. " %.8f"
-                table.insert(elemQuotes, `[double](sym.d[i]))
-            elseif bt == L.int then
-                printSpec = printSpec .. " %d"
-                table.insert(elemQuotes, `sym.d[i])
-            elseif bt == L.uint64 then
-                printSpec = printSpec .. " %lu"
-                table.inser(elemQuotes, `sym.d[i])
-            elseif bt == L.bool then
-                printSpec = printSpec .. " %s"
-                table.insert(elemQuotes, `terralib.select(sym.d[i], "true", "false"))
-            else
-                error('Unrecognized type in print: ' .. tostring(bt:terraType()))
-            end
+            printSpec = printSpec .. ' ' .. printSingle(bt, `sym.d[i], elemQuotes)
         end
         printSpec = printSpec .. " }"
 
-    elseif lt == L.bool  then
-        table.insert(elemQuotes, `terralib.select(code, "true", "false"))
-        printSpec = printSpec .. "%s"
-    elseif lt == L.float or lt == L.double then
-        table.insert(elemQuotes, `[double](code))
-        printSpec = printSpec .. "%.8f"
-	elseif lt == L.int then
-        table.insert(elemQuotes, `code)
-        printSpec = printSpec .. '%d'
-    elseif lt == L.uint64 or lt:isRow() then
-        table.insert(elemQuotes, `code)
-        printSpec = printSpec .. '%lu'        
+    elseif lt:isSmallMatrix() then
+        printSpec = printSpec .. '{'
+        local sym = symbol()
+        local bt = lt:baseType()
+        definitions = quote
+            [definitions]
+            var [sym] : tt = [code]
+        end
+        for i = 0, lt.Nrow - 1 do
+            printSpec = printSpec .. ' {'
+            for j = 0, lt.Ncol - 1 do
+                printSpec = printSpec .. ' ' .. printSingle(bt, `sym.d[i][j], elemQuotes)
+            end
+            printSpec = printSpec .. ' }'
+        end
+        printSpec = printSpec .. ' }'
+
+    elseif lt:isValueType() or lt:isRow() then
+        printSpec = printSpec .. printSingle(lt, code, elemQuotes)
     else
         assert(false and "printed object should always be number, bool, or vector")
     end
@@ -395,8 +406,8 @@ function B.length.check(ast, ctxt)
         ctxt:error(args[1], "argument to length must be a vector")
         return L.error
     end
-    if lt:baseType() == L.bool then
-        ctxt:error(args[1], "boolean vector passed as argument to length")
+    if not lt:baseType():isNumeric() then
+        ctxt:error(args[1], "length expects vectors of numeric type")
     end
     return L.float
 end
