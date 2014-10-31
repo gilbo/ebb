@@ -69,7 +69,7 @@ A.Expression:NewKind('Reduce',           {'exp'})
 A.Expression:NewKind('UnaryOp',          {'exp'})
 
 A.Expression:NewKind('TableLookup',      {'table','member'})
-A.Expression:NewKind('SquareIndex',      {'base','index'})
+A.Expression:NewKind('SquareIndex',      {'base','index', 'index2'})
 A.Expression:NewKind('Call', {'func'},   {'params'})
 
 A.Expression:NewKind('Name')
