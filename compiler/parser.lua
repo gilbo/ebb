@@ -109,6 +109,8 @@ end)
   if not P:matches(']') then -- kinda a kludge, but easier for now
     P:expect(',')
     exp2 = P:exp()
+  else
+    exp2 = nil
   end
   P:expectmatch(']', '[', begin)
   node.base, node.index = lhs, exp
