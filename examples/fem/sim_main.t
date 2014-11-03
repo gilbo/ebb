@@ -42,13 +42,18 @@ local fabs = liszt function(num)
   return result
 end
 
--- Compute volume for a tetrahedral element
-local getElementVolume = liszt function(t)
+-- Compute determinant for matrix formed by vertex positions
+local getElementDet = liszt function(t)
   var a = t.v[0].pos
   var b = t.v[1].pos
   var c = t.v[2].pos
   var d = t.v[3].pos
-  return (fabs(L.dot(a - d, L.cross(b - d, c - d))) / 6)
+  return (L.dot(a - d, L.cross(b - d, c - d)))
+end
+
+-- Compute volume for a tetrahedral element
+local getElementVolume = liszt function(t)
+  return (fabs(getElementDet(t)/6))
 end
 
 -- Get element density for a mesh element (tetreahedron)
@@ -167,26 +172,21 @@ function precomputeStVKIntegrals(options)
 end
 
 local precomputeStVKIntegrals = liszt kernel(t : mesh.tetrahedra)
-  -- for each vertex
-  --[[
-  var det = 1
-  var i = 0
+  var det = getElementDet(t)
+  for i = 0,3 do
     for j = 0,2 do
       var column0 : L.vec3d
       var column1 : L.vec3d
       var countI = 0
-      -- for each vertex
-      var ii = 1
+      for ii = 0,3 do
         if ii ~= i then
           var countJ = 0
-          for jj = 0,3 do
+          for jj = 0,2 do
             if jj ~= j then
               if countJ == 0 then
-                -- column0[countI] = t.vii.pos[jj]
-                column0[countI] = t.v1.pos[jj]
+                column0[countI] = t.v[ii].pos[jj]
               else
-                -- column1[countI] = t.vii.pos[jj]
-                column1[countI] = t.v1.pos[jj]
+                column1[countI] = t.v[ii].pos[jj]
               end
               countJ += 1
             end
@@ -200,12 +200,10 @@ local precomputeStVKIntegrals = liszt kernel(t : mesh.tetrahedra)
         sign = -1
       end
       t.Phig[i, j] = sign * L.dot( L.vec3d( { 1, 1, 1 } ),
-                                   L.cross(column0, column1) ) /
-                     ( 6 * getElementVolume(t) ) 
-      -- end
+                                   L.cross(column0, column1) ) / det
+      end
     end
-  -- end
-  ]]
+  end
 end
 
 -- need to define dots and
@@ -260,143 +258,71 @@ mesh.vertices:NewField('forces', L.vec3d):Load({0, 0, 0})
 -- Result is stored as a 3D vector field over all the vertices.
 
 -- Linear contributions to internal forces
-local addIFLinearHelper = liszt function(t, dots, volume, edge, ci, ai)
-  var c = edge.tail
-  var a = edge.head
-  var qa = a.displacement
-  var force = t.lambdaLame *
-              multiplyMatVec3(tetCoeffA(t, dots, volume, ci, ai), qa) +
-              (t.muLame * tetCoeffB(t, dots, volume, ai, ci)) * qa +
-              t.muLame *
-              multiplyMatVec3(tetCoeffA(t, dots, volume, ai, ci), qa)
-  c.forces += force
-end
 local addIFLinearTerms = liszt kernel(t : mesh.tetrahedra)
-  --[[
-  var dots = tetDots(t)
   var dots = tetDots(t)
   var volume = getElementVolume(t)
-  addIFLinearHelper(t, dots, volume, t.e00, 0, 0)
-  addIFLinearHelper(t, dots, volume, t.e01, 0, 1)
-  addIFLinearHelper(t, dots, volume, t.e02, 0, 2)
-  addIFLinearHelper(t, dots, volume, t.e03, 0, 3)
-  addIFLinearHelper(t, dots, volume, t.e10, 1, 0)
-  addIFLinearHelper(t, dots, volume, t.e11, 1, 1)
-  addIFLinearHelper(t, dots, volume, t.e12, 1, 2)
-  addIFLinearHelper(t, dots, volume, t.e13, 1, 3)
-  addIFLinearHelper(t, dots, volume, t.e20, 2, 0)
-  addIFLinearHelper(t, dots, volume, t.e21, 2, 1)
-  addIFLinearHelper(t, dots, volume, t.e22, 2, 2)
-  addIFLinearHelper(t, dots, volume, t.e23, 2, 3)
-  addIFLinearHelper(t, dots, volume, t.e30, 3, 0)
-  addIFLinearHelper(t, dots, volume, t.e31, 3, 1)
-  addIFLinearHelper(t, dots, volume, t.e32, 3, 2)
-  addIFLinearHelper(t, dots, volume, t.e33, 3, 3)
-  addIFQuadraticHelper1(t, dots, volume, t.e33, 3, 3)
-  ]]
+  for ci = 0,3 do
+    var c = t.v[ci]
+    for ai = 0,3 do
+      var qa = t.v[ai].displacement
+      var force = t.lambdaLame *
+                  multiplyMatVec3(tetCoeffA(t, dots, volume, ci, ai), qa) +
+                  (t.muLame * tetCoeffB(t, dots, volume, ai, ci)) * qa +
+                  t.muLame *
+                  multiplyMatVec3(tetCoeffA(t, dots, volume, ai, ci), qa)
+      c.forces += force
+    end
+  end
 end
 
 -- Quadratic contributions to internal forces
-local addIFQuadraticHelper2 = liszt function(t, dots, volume, edge, b, ci, ai, bi)
-  var c = edge.tail
-  var a = edge.head
-  var qa = a.displacement
-  var qb = b.displacement
-  var dotp = L.dot(qa, qb)
-  var forceTerm1 = 0.5 * t.lambdaLame * dotp *
-                   tetCoeffC(t, dots, volume, ci, ai, bi) +
-                   t.muLame * dotp * tetCoeffC(t, dots, volume, ai, bi, ci)
-  var C = t.lambdaLame * tetCoeffC(t, dots, volume, ai, bi, ci) +
-          t.muLame * ( tetCoeffC(t, dots, volume, ci, ai, bi) +
-          tetCoeffC(t, dots, volume, bi, ai, ci) )
-  var dotCqa = L.dot(C, qa)
-  c.forces += forceTerm1 + dotCqa * qb
-end
-local addIFQuadraticHelper1 = liszt function(t, dots, volume, edge, ci, ai)
-  addIFQuadraticHelper2(t, dots, volume, edge, t.v0, ci, ai, 0)
-  addIFQuadraticHelper2(t, dots, volume, edge, t.v1, ci, ai, 1)
-  addIFQuadraticHelper2(t, dots, volume, edge, t.v2, ci, ai, 2)
-  addIFQuadraticHelper2(t, dots, volume, edge, t.v3, ci, ai, 3)
-end
 local addIFQuadraticTerms = liszt kernel(t : mesh.tetrahedra)
-  --[[
   var dots = tetDots(t)
   var volume = getElementVolume(t)
-  addIFQuadraticHelper1(t, dots, volume, t.e00, 0, 0)
-  addIFQuadraticHelper1(t, dots, volume, t.e01, 0, 1)
-  addIFQuadraticHelper1(t, dots, volume, t.e02, 0, 2)
-  addIFQuadraticHelper1(t, dots, volume, t.e03, 0, 3)
-  addIFQuadraticHelper1(t, dots, volume, t.e10, 1, 0)
-  addIFQuadraticHelper1(t, dots, volume, t.e11, 1, 1)
-  addIFQuadraticHelper1(t, dots, volume, t.e12, 1, 2)
-  addIFQuadraticHelper1(t, dots, volume, t.e13, 1, 3)
-  addIFQuadraticHelper1(t, dots, volume, t.e20, 2, 0)
-  addIFQuadraticHelper1(t, dots, volume, t.e21, 2, 1)
-  addIFQuadraticHelper1(t, dots, volume, t.e22, 2, 2)
-  addIFQuadraticHelper1(t, dots, volume, t.e23, 2, 3)
-  addIFQuadraticHelper1(t, dots, volume, t.e30, 3, 0)
-  addIFQuadraticHelper1(t, dots, volume, t.e31, 3, 1)
-  addIFQuadraticHelper1(t, dots, volume, t.e32, 3, 2)
-  addIFQuadraticHelper1(t, dots, volume, t.e33, 3, 3)
-  ]]
+  for ci = 0,3 do
+    var c = t.v[ci]
+    for ai = 0,3 do
+      var qa = t.v[ai].displacement
+      for bi = 0,3 do
+        var qb = t.v[bi].displacement
+        var dotp = L.dot(qa, qb)
+        var forceTerm1 = 0.5 * t.lambdaLame * dotp *
+                         tetCoeffC(t, dots, volume, ci, ai, bi) +
+                         t.muLame * dotp *
+                         tetCoeffC(t, dots, volume, ai, bi, ci)
+        var C = t.lambdaLame * tetCoeffC(t, dots, volume, ai, bi, ci) +
+                t.muLame * ( tetCoeffC(t, dots, volume, ci, ai, bi) +
+                tetCoeffC(t, dots, volume, bi, ai, ci) )
+        var dotCqa = L.dot(C, qa)
+        c.forces += forceTerm1 + dotCqa * qb
+      end
+    end
+  end
 end
 
 -- Cubic contributions to internal forces
-local addIFCubicHelper2 = liszt function(t, dots, volume, e1, e2, ci, ai, bi, di)
-  var c = e1.tail
-  var a = e1.head
-  var b = e1.tail
-  var d = e1.head
-  var qa = a.displacement
-  var qb = b.displacement
-  var qd = d.displacement
-  var dotp = L.dot(qa, qb)
-  var scalar = dotp * ( 0.5 * t.lambdaLame *
-                        tetCoeffD(t, dots, volume, ai, bi, ci, di) +
-                        t.muLame * tetCoeffD(t, dots, volume, ai, ci, bi, di) )
-  c.forces += scalar * qd
-end
-local addIFCubicHelper1 = liszt function(t, dots, volume, edge, ci, ai)
-  addIFCubicHelper2(t, dots, volume, edge, t.e00, ci, ai, 0, 0)
-  addIFCubicHelper2(t, dots, volume, edge, t.e01, ci, ai, 0, 1)
-  addIFCubicHelper2(t, dots, volume, edge, t.e02, ci, ai, 0, 2)
-  addIFCubicHelper2(t, dots, volume, edge, t.e03, ci, ai, 0, 3)
-  addIFCubicHelper2(t, dots, volume, edge, t.e10, ci, ai, 1, 0)
-  addIFCubicHelper2(t, dots, volume, edge, t.e11, ci, ai, 1, 1)
-  addIFCubicHelper2(t, dots, volume, edge, t.e12, ci, ai, 1, 2)
-  addIFCubicHelper2(t, dots, volume, edge, t.e13, ci, ai, 1, 3)
-  addIFCubicHelper2(t, dots, volume, edge, t.e20, ci, ai, 2, 0)
-  addIFCubicHelper2(t, dots, volume, edge, t.e21, ci, ai, 2, 1)
-  addIFCubicHelper2(t, dots, volume, edge, t.e22, ci, ai, 2, 2)
-  addIFCubicHelper2(t, dots, volume, edge, t.e23, ci, ai, 2, 3)
-  addIFCubicHelper2(t, dots, volume, edge, t.e30, ci, ai, 3, 0)
-  addIFCubicHelper2(t, dots, volume, edge, t.e31, ci, ai, 3, 1)
-  addIFCubicHelper2(t, dots, volume, edge, t.e32, ci, ai, 3, 2)
-  addIFCubicHelper2(t, dots, volume, edge, t.e33, ci, ai, 3, 3)
-end
 local addIFCubicTerms = liszt kernel(t : mesh.tetrahedra)
-  --[[
-  var dots = tetDots(t)
   var dots = tetDots(t)
   var volume = getElementVolume(t)
-  addIFCubicHelper1(t, dots, volume, t.e00, 0, 0)
-  addIFCubicHelper1(t, dots, volume, t.e01, 0, 1)
-  addIFCubicHelper1(t, dots, volume, t.e02, 0, 2)
-  addIFCubicHelper1(t, dots, volume, t.e03, 0, 3)
-  addIFCubicHelper1(t, dots, volume, t.e10, 1, 0)
-  addIFCubicHelper1(t, dots, volume, t.e11, 1, 1)
-  addIFCubicHelper1(t, dots, volume, t.e12, 1, 2)
-  addIFCubicHelper1(t, dots, volume, t.e13, 1, 3)
-  addIFCubicHelper1(t, dots, volume, t.e20, 2, 0)
-  addIFCubicHelper1(t, dots, volume, t.e21, 2, 1)
-  addIFCubicHelper1(t, dots, volume, t.e22, 2, 2)
-  addIFCubicHelper1(t, dots, volume, t.e23, 2, 3)
-  addIFCubicHelper1(t, dots, volume, t.e30, 3, 0)
-  addIFCubicHelper1(t, dots, volume, t.e31, 3, 1)
-  addIFCubicHelper1(t, dots, volume, t.e32, 3, 2)
-  addIFCubicHelper1(t, dots, volume, t.e33, 3, 3)
-  addIFQuadraticHelper1(t, dots, volume, t.e33, 3, 3)
-  ]]
+  for ci = 0,3 do
+    var c = t.v[ci]
+    for ai = 0,3 do
+      var qa = t.v[ai].displacement
+      for bi = 0,3 do
+        var qb = t.v[bi].displacement
+        for di = 0,3 do
+          var d = t.v[di]
+          var qd = d.displacement
+          var dotp = L.dot(qa, qb)
+          var scalar = dotp * ( 0.5 * t.lambdaLame *
+                                tetCoeffD(t, dots, volume, ai, bi, ci, di) +
+                                t.muLame *
+                                tetCoeffD(t, dots, volume, ai, ci, bi, di) )
+          c.forces += scalar * qd
+        end
+      end
+    end
+  end
 end
 
 local resetForces = liszt kernel(v : mesh.vertices)
@@ -448,152 +374,72 @@ mesh.edges:NewField('stiffness', L.mat3d)
 -- against scatter from tetrahedra.
 
 -- Linear contributions to stiffness matrix
-local addStiffLinearHelper = liszt function(t, dots, volume, edge, ci, ai)
-  var c = edge.tail
-  var a = edge.head
-  var mat = t.muLame * tetCoeffB(t, dots, volume, ai, ci) * getId3()
-  mat += (t.lambdaLame * tetCoeffA(t, dots, volume, ci, ai) +
-         (t.muLame * tetCoeffA(t, dots, volume, ai, ci)))
-  edge.stiffness += mat
-end
 local addStiffLinearTerms = liszt kernel(t : mesh.tetrahedra)
-  --[[
-  var dots = tetDots(t)
   var dots = tetDots(t)
   var volume = getElementVolume(t)
-  addStiffLinearHelper(t, dots, volume, t.e00, 0, 0)
-  addStiffLinearHelper(t, dots, volume, t.e01, 0, 1)
-  addStiffLinearHelper(t, dots, volume, t.e02, 0, 2)
-  addStiffLinearHelper(t, dots, volume, t.e03, 0, 3)
-  addStiffLinearHelper(t, dots, volume, t.e10, 1, 0)
-  addStiffLinearHelper(t, dots, volume, t.e11, 1, 1)
-  addStiffLinearHelper(t, dots, volume, t.e12, 1, 2)
-  addStiffLinearHelper(t, dots, volume, t.e13, 1, 3)
-  addStiffLinearHelper(t, dots, volume, t.e20, 2, 0)
-  addStiffLinearHelper(t, dots, volume, t.e21, 2, 1)
-  addStiffLinearHelper(t, dots, volume, t.e22, 2, 2)
-  addStiffLinearHelper(t, dots, volume, t.e23, 2, 3)
-  addStiffLinearHelper(t, dots, volume, t.e30, 3, 0)
-  addStiffLinearHelper(t, dots, volume, t.e31, 3, 1)
-  addStiffLinearHelper(t, dots, volume, t.e32, 3, 2)
-  addStiffLinearHelper(t, dots, volume, t.e33, 3, 3)
-  addIFQuadraticHelper1(t, dots, volume, t.e33, 3, 3)
-  ]]
+  for ci = 0,3 do
+    for ai = 0,3 do
+      var mat = t.muLame * tetCoeffB(t, dots, volume, ai, ci) * getId3()
+      mat += (t.lambdaLame * tetCoeffA(t, dots, volume, ci, ai) +
+             (t.muLame * tetCoeffA(t, dots, volume, ai, ci)))
+      t.e[ci, ai].stiffness += mat
+    end
+  end
 end
 
 -- Quadratic contributions to stiffness matrix
-local addStiffQuadraticHelper2 = liszt function(t, dots, volume, edge, a, ci, ei, ai, mat)
-  var c = edge.tail
-  var e = edge.head
-  var qa = a.displacement
-  var c0v = t.lambdaLame * tetCoeffC(t, dots, volume, ci, ai, ei) +
-            t.muLame * ( tetCoeffC(t, dots, volume, ei, ai, ci) +
-                         tetCoeffC(t, dots, volume, ai, ei, ci) )
-  mat += tensor3(qa, c0v)
-  var c1v = t.lambdaLame * tetCoeffC(t, dots, volume, ei, ai, ci) +
-            t.muLame * ( tetCoeffC(t, dots, volume, ci, ei, ai) +
-                         tetCoeffC(t, dots, volume, ai, ei, ci) )
-  mat += tensor3(qa, c1v)
-  var c2v = t.lambdaLame * tetCoeffC(t, dots, volume, ai, ei, ci) +
-            t.muLame * ( tetCoeffC(t, dots, volume, ci, ai, ei) +
-                         tetCoeffC(t, dots, volume, ei, ai, ci) )
-  var dotp = L.dot(qa, c2v)
-  mat += dotp * getId3()
-end
-local addStiffQuadraticHelper1 = liszt function(t, dots, volume, edge, ci, ei)
-  var mat : L.mat3d = constantMatrix3(0)
-  addStiffQuadraticHelper2(t, dots, volume, edge, t.v0, ci, ei, 0, mat)
-  addStiffQuadraticHelper2(t, dots, volume, edge, t.v1, ci, ei, 1, mat)
-  addStiffQuadraticHelper2(t, dots, volume, edge, t.v2, ci, ei, 2, mat)
-  addStiffQuadraticHelper2(t, dots, volume, edge, t.v3, ci, ei, 3, mat)
-  edge.stiffness += mat
-end
 local addStiffQuadraticTerms = liszt kernel(t : mesh.tetrahedra)
-  --[[
-  var dots = tetDots(t)
   var dots = tetDots(t)
   var volume = getElementVolume(t)
-  addStiffQuadraticHelper1(t, dots, volume, t.e00, 0, 0)
-  addStiffQuadraticHelper1(t, dots, volume, t.e01, 0, 1)
-  addStiffQuadraticHelper1(t, dots, volume, t.e02, 0, 2)
-  addStiffQuadraticHelper1(t, dots, volume, t.e03, 0, 3)
-  addStiffQuadraticHelper1(t, dots, volume, t.e10, 1, 0)
-  addStiffQuadraticHelper1(t, dots, volume, t.e11, 1, 1)
-  addStiffQuadraticHelper1(t, dots, volume, t.e12, 1, 2)
-  addStiffQuadraticHelper1(t, dots, volume, t.e13, 1, 3)
-  addStiffQuadraticHelper1(t, dots, volume, t.e20, 2, 0)
-  addStiffQuadraticHelper1(t, dots, volume, t.e21, 2, 1)
-  addStiffQuadraticHelper1(t, dots, volume, t.e22, 2, 2)
-  addStiffQuadraticHelper1(t, dots, volume, t.e23, 2, 3)
-  addStiffQuadraticHelper1(t, dots, volume, t.e30, 3, 0)
-  addStiffQuadraticHelper1(t, dots, volume, t.e31, 3, 1)
-  addStiffQuadraticHelper1(t, dots, volume, t.e32, 3, 2)
-  addStiffQuadraticHelper1(t, dots, volume, t.e33, 3, 3)
-  addIFQuadraticHelper1(t, dots, volume, t.e33, 3, 3)
-  ]]
+  for ci = 0,3 do
+    for ai = 0,3 do
+      var qa = t.v[ai].displacement
+      var mat : L.mat3d = constantMatrix3(0)
+      for ei = 0,3 do
+        var c0v = t.lambdaLame * tetCoeffC(t, dots, volume, ci, ai, ei) +
+                  t.muLame * ( tetCoeffC(t, dots, volume, ei, ai, ci) +
+                               tetCoeffC(t, dots, volume, ai, ei, ci) )
+        mat += tensor3(qa, c0v)
+        var c1v = t.lambdaLame * tetCoeffC(t, dots, volume, ei, ai, ci) +
+                  t.muLame * ( tetCoeffC(t, dots, volume, ci, ei, ai) +
+                               tetCoeffC(t, dots, volume, ai, ei, ci) )
+        mat += tensor3(qa, c1v)
+        var c2v = t.lambdaLame * tetCoeffC(t, dots, volume, ai, ei, ci) +
+                  t.muLame * ( tetCoeffC(t, dots, volume, ci, ai, ei) +
+                               tetCoeffC(t, dots, volume, ei, ai, ci) )
+        var dotp = L.dot(qa, c2v)
+        mat += dotp * getId3()
+      end
+      t.e[ci, ai].stiffness += mat
+    end
+  end
 end
 
 -- Cubic contributions to stiffness matrix
-local addStiffCubicHelper2 = liszt function(t, dots, volume, e1, e2, ci, ei, ai, bi, mat)
-  var c = e1.tail
-  var e = e1.head
-  var a = e2.tail
-  var b = e2.head
-  var qa = a.displacement
-  var qb = b.displacement
-  var d0 = t.lambdaLame * tetCoeffD(t, dots, volume, ai, ci, bi, ei) +
-           t.muLame * ( tetCoeffD(t, dots, volume, ai, ei, bi, ci) +
-                        tetCoeffD(t, dots, volume, ai, bi, ci, ei) )
-  mat += d0 * (tensor3(qa, qb))
-  var d1 = 0.5 * t.lambdaLame * tetCoeffD(t, dots, volume, ai, bi, ci, ei) +
-           t.muLame * tetCoeffD(t, dots, volume, ai, ci, bi, ei)
-  var dotpd = d1 * L.dot(qa, qb)
-  mat += dotpd * getId3()
-end
-local addStiffCubicHelper1 = liszt function(t, dots, volume, edge, ci, ei)
-  var mat : L.mat3d = constantMatrix3(0)
-  addStiffCubicHelper2(t, dots, volume, edge, t.e00, ci, ei, 0, 0, mat)
-  addStiffCubicHelper2(t, dots, volume, edge, t.e01, ci, ei, 0, 1, mat)
-  addStiffCubicHelper2(t, dots, volume, edge, t.e02, ci, ei, 0, 2, mat)
-  addStiffCubicHelper2(t, dots, volume, edge, t.e03, ci, ei, 0, 3, mat)
-  addStiffCubicHelper2(t, dots, volume, edge, t.e10, ci, ei, 1, 0, mat)
-  addStiffCubicHelper2(t, dots, volume, edge, t.e11, ci, ei, 1, 1, mat)
-  addStiffCubicHelper2(t, dots, volume, edge, t.e12, ci, ei, 1, 2, mat)
-  addStiffCubicHelper2(t, dots, volume, edge, t.e13, ci, ei, 1, 3, mat)
-  addStiffCubicHelper2(t, dots, volume, edge, t.e20, ci, ei, 2, 0, mat)
-  addStiffCubicHelper2(t, dots, volume, edge, t.e21, ci, ei, 2, 1, mat)
-  addStiffCubicHelper2(t, dots, volume, edge, t.e22, ci, ei, 2, 2, mat)
-  addStiffCubicHelper2(t, dots, volume, edge, t.e23, ci, ei, 2, 3, mat)
-  addStiffCubicHelper2(t, dots, volume, edge, t.e30, ci, ei, 3, 0, mat)
-  addStiffCubicHelper2(t, dots, volume, edge, t.e31, ci, ei, 3, 1, mat)
-  addStiffCubicHelper2(t, dots, volume, edge, t.e32, ci, ei, 3, 2, mat)
-  addStiffCubicHelper2(t, dots, volume, edge, t.e33, ci, ei, 3, 3, mat)
-  edge.stiffness += mat
-end
--- may have to reverse head, tail below
 local addStiffCubicTerms = liszt kernel(t : mesh.tetrahedra)
-  --[[
-  var dots = tetDots(t)
   var dots = tetDots(t)
   var volume = getElementVolume(t)
-  addStiffCubicHelper1(t, dots, volume, t.e00, 0, 0)
-  addStiffCubicHelper1(t, dots, volume, t.e01, 0, 1)
-  addStiffCubicHelper1(t, dots, volume, t.e02, 0, 2)
-  addStiffCubicHelper1(t, dots, volume, t.e03, 0, 3)
-  addStiffCubicHelper1(t, dots, volume, t.e10, 1, 0)
-  addStiffCubicHelper1(t, dots, volume, t.e11, 1, 1)
-  addStiffCubicHelper1(t, dots, volume, t.e12, 1, 2)
-  addStiffCubicHelper1(t, dots, volume, t.e13, 1, 3)
-  addStiffCubicHelper1(t, dots, volume, t.e20, 2, 0)
-  addStiffCubicHelper1(t, dots, volume, t.e21, 2, 1)
-  addStiffCubicHelper1(t, dots, volume, t.e22, 2, 2)
-  addStiffCubicHelper1(t, dots, volume, t.e23, 2, 3)
-  addStiffCubicHelper1(t, dots, volume, t.e30, 3, 0)
-  addStiffCubicHelper1(t, dots, volume, t.e31, 3, 1)
-  addStiffCubicHelper1(t, dots, volume, t.e32, 3, 2)
-  addStiffCubicHelper1(t, dots, volume, t.e33, 3, 3)
-  addIFQuadraticHelper1(t, dots, volume, t.e33, 3, 3)
-  ]]
+  for ci = 0,3 do
+    for ei = 0,3 do
+      var mat : L.mat3d = constantMatrix3(0)
+      for ai = 0,3 do
+        var qa = t.v[ai].displacement
+        for bi = 0,3 do
+          var qb = t.v[bi].displacement
+          var d0 = t.lambdaLame * tetCoeffD(t, dots, volume, ai, ci, bi, ei) +
+                   t.muLame * ( tetCoeffD(t, dots, volume, ai, ei, bi, ci) +
+                                tetCoeffD(t, dots, volume, ai, bi, ci, ei) )
+          mat += d0 * (tensor3(qa, qb))
+          var d1 = 0.5 * t.lambdaLame *
+                   tetCoeffD(t, dots, volume, ai, bi, ci, ei) +
+                   t.muLame * tetCoeffD(t, dots, volume, ai, ci, bi, ei)
+          var dotpd = d1 * L.dot(qa, qb)
+          mat += dotpd * getId3()
+        end
+      end
+      t.e[ci, ei].stiffness += mat
+    end
+  end
 end
 
 local resetStiffnessMatrix = liszt kernel(e : mesh.edges)
