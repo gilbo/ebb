@@ -430,26 +430,35 @@ local function free_reduction_space (global_shared_ptrs, ctxt)
   return free_code
 end
 
-local function gpu_codegen (kernel_ast, ctxt)
-  local BLOCK_SIZE   = 256
-  local MAX_GRID_DIM = 65536
-
+local function compute_global_reduction_data (ctxt, block_size)
   local shared_mem_size = 0
   local global_shared_ptrs = { }
   local kernel = ctxt.bran.kernel
-  local gb
+  local codegen_reduce = false
   for g, phase in pairs(kernel.global_use) do
     if phase.reduceop then
-      gb = g
-      global_shared_ptrs[g] = cudalib.sharedmemory(g.type:terraType(), BLOCK_SIZE)
-      shared_mem_size = shared_mem_size + sizeof(g.type:terraType()) * BLOCK_SIZE
+      codegen_reduce = true
+      global_shared_ptrs[g] = cudalib.sharedmemory(g.type:terraType(), block_size)
+      shared_mem_size = shared_mem_size + sizeof(g.type:terraType()) * block_size
     end
   end
+  return codegen_reduce, global_shared_ptrs, shared_mem_size
+end
+
+local function gpu_codegen (kernel_ast, ctxt)
+  local BLOCK_SIZE   = 64
+  local MAX_GRID_DIM = 65536
+
+  -----------------------------
+  --[[ Codegen CUDA kernel ]]--
+  -----------------------------
+  local codegen_reduce, global_shared_ptrs, shared_mem_size = compute_global_reduction_data(ctxt, BLOCK_SIZE)
   ctxt:SetGlobalSharedPtrs(global_shared_ptrs)
   ctxt:enterblock()
     -- declare the symbol for iteration
     local param = symbol(L.row(ctxt.bran.relation):terraType())
     ctxt:localenv()[kernel_ast.name] = param
+    local id = symbol(uint64)
 
     local body = quote
       if [ctxt:isLiveCheck(param)] then
@@ -457,31 +466,8 @@ local function gpu_codegen (kernel_ast, ctxt)
       end
     end
 
-    local kernel_body = quote
-      var id : uint64 = G.block_id() * BLOCK_SIZE + G.thread_id()
-      var [param] = id
-
-      -- initialize shared memory for global reductions
-      [initialize_global_shared_memory(global_shared_ptrs, ctxt)]
-      G.barrier()
-      
-      if [param] < [ctxt:runtimeGerm()].n_rows then
-        [body]
-      end
-
-      -- reduce L.globals to one value and copy back to GPU global memory
-      G.barrier()
-      [reduce_global_shared_memory(global_shared_ptrs, ctxt, BLOCK_SIZE)]
-    end
-
     if ctxt.bran.subset then
-      kernel_body = quote
-        var id : uint64 = G.block_id() * BLOCK_SIZE + G.thread_id()
-        
-        -- initialize shared memory for global reductions
-        [initialize_global_shared_memory(global_shared_ptrs, ctxt)]
-        G.barrier()
-
+      body = quote
         if [ctxt:runtimeGerm()].use_boolmask then
           var [param] = id
           if [param] < [ctxt:runtimeGerm()].n_rows and
@@ -495,12 +481,35 @@ local function gpu_codegen (kernel_ast, ctxt)
             [body]
           end
         end
-
-        -- reduce L.globals to one value and copy back to GPU global memory
-        G.barrier()
-        [reduce_global_shared_memory(global_shared_ptrs, kernel_ast, ctxt, BLOCK_SIZE)]
+      end
+    else
+      body = quote
+        var [param] = id
+        if [param] < [ctxt:runtimeGerm()].n_rows then
+          [body]
+        end
       end
     end
+
+    local kernel_body = quote
+      var [id] : uint64 = G.block_id() * BLOCK_SIZE + G.thread_id()
+
+      -- Initialize shared memory for global reductions for kernels that require it
+      escape if codegen_reduce then emit quote
+        [initialize_global_shared_memory(global_shared_ptrs, ctxt)]
+        G.barrier()
+      end end end
+      
+      [body]
+
+      -- reduce block reduction temporaries to one value and copy back to GPU
+      -- global memory for kernels that require it
+      escape if codegen_reduce then emit quote
+        G.barrier()
+        [reduce_global_shared_memory(global_shared_ptrs, ctxt, BLOCK_SIZE)]
+      end end end
+    end
+
   ctxt:leaveblock()
 
   local cuda_kernel = terra ()
@@ -508,72 +517,51 @@ local function gpu_codegen (kernel_ast, ctxt)
   end
   -- using kernel_ast.id here to set debug name of kernel for tuning/debugging
   cuda_kernel = terralib.cudacompile { [kernel_ast.id] = cuda_kernel }[kernel_ast.id]
+
+  --------------------------
+  --[[ Codegen launcher ]]--
+  --------------------------
   local reduce_global_scratch_values = generate_final_reduce(kernel_ast, global_shared_ptrs,ctxt,BLOCK_SIZE)
   -- germ type will have a use_boolmask field only if it
   -- was generated for a subset kernel
+  local n_blocks = symbol(uint)
+  local compute_nblocks
   if ctxt.bran.subset then
-    local launcher = terra ()
-      var n_blocks = uint(C.ceil(
-        [ctxt:cpuGerm()].n_rows / float(BLOCK_SIZE)))
-      var grid_x : uint, grid_y : uint, grid_z : uint = 
-        G.get_grid_dimensions(n_blocks, MAX_GRID_DIM)
-      var params = terralib.CUDAParams {
-        grid_x, grid_y, grid_z,
-        BLOCK_SIZE, 1, 1,
-        shared_mem_size, nil
-      }
-
-      if not [ctxt:cpuGerm()].use_boolmask then
-        var n_blocks = uint(C.ceil(
-          [ctxt:cpuGerm()].index_size / float(BLOCK_SIZE)))
-        var grid_x : uint, grid_y : uint, grid_z : uint = 
-          G.get_grid_dimensions(n_blocks, MAX_GRID_DIM)
-        params = terralib.CUDAParams {
-          grid_x, grid_y, grid_z,
-          BLOCK_SIZE, 1, 1,
-          shared_mem_size, nil
-        }
+    compute_nblocks = quote
+      var [n_blocks]
+      if [ctxt:cpuGerm()].use_boolmask then
+        [n_blocks] = [uint](C.ceil([ctxt:cpuGerm()].n_rows     / float(BLOCK_SIZE)))
+      else
+        [n_blocks] = [uint](C.ceil([ctxt:cpuGerm()].index_size / float(BLOCK_SIZE)))
       end
-
-      [allocate_reduction_space(n_blocks,global_shared_ptrs, ctxt)]
-      cuda_kernel(&params)
-      G.sync() -- flush print streams
-
-      var reduce_params = terralib.CUDAParams {
-        1,1,1,
-        BLOCK_SIZE,1,1,
-        shared_mem_size, nil
-      }
-      reduce_global_scratch_values(&reduce_params,n_blocks)
-      [free_reduction_space(global_shared_ptrs, ctxt)]
     end
-    return launcher
-
   else
-    local launcher = terra ()
-      var n_blocks = uint(C.ceil(
-        [ctxt:cpuGerm()].n_rows / float(BLOCK_SIZE)))
-      var grid_x : uint, grid_y : uint, grid_z : uint =
-        G.get_grid_dimensions(n_blocks, MAX_GRID_DIM)
-      var params = terralib.CUDAParams {
-        grid_x, grid_y, grid_z,
-        BLOCK_SIZE, 1, 1,
-        shared_mem_size, nil
-      }
-      [allocate_reduction_space(n_blocks,global_shared_ptrs, ctxt)]
-      cuda_kernel(&params)
-      G.sync() -- flush print streams
+    compute_nblocks = quote
+      var [n_blocks] = [uint](C.ceil([ctxt:cpuGerm()].n_rows / float(BLOCK_SIZE)))
+    end
+  end
 
-      var reduce_params = terralib.CUDAParams {
-        1,1,1,
-        BLOCK_SIZE,1,1,
-        shared_mem_size, nil
-      }
+  local launcher = terra ()
+    [compute_nblocks]
+    var grid_x : uint, grid_y : uint, grid_z : uint = G.get_grid_dimensions(n_blocks, MAX_GRID_DIM)
+    var params = terralib.CUDAParams { grid_x, grid_y, grid_z, BLOCK_SIZE, 1, 1, shared_mem_size, nil }
+
+    escape if codegen_reduce then emit quote
+      -- Allocate temporary space on the GPU for global reductions
+      [allocate_reduction_space(n_blocks,global_shared_ptrs, ctxt)]
+    end end end
+
+    cuda_kernel(&params)
+    G.sync() -- flush print streams
+
+    escape if codegen_reduce then emit quote
+      -- Launch 2nd reduction kernel and free temporary space
+      var reduce_params = terralib.CUDAParams { 1,1,1, BLOCK_SIZE,1,1, shared_mem_size, nil }
       reduce_global_scratch_values(&reduce_params,n_blocks)
       [free_reduction_space(global_shared_ptrs, ctxt)]
-    end
-    return launcher
+    end end end
   end
+  return launcher
 end
 
 function Codegen.codegen (kernel_ast, bran)
