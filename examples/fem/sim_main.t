@@ -44,10 +44,10 @@ end
 
 -- Compute volume for a tetrahedral element
 local getElementVolume = liszt function(t)
-  var a = t.v0.pos
-  var b = t.v1.pos
-  var c = t.v2.pos
-  var d = t.v3.pos
+  var a = t.v[0].pos
+  var b = t.v[1].pos
+  var c = t.v[2].pos
+  var d = t.v[3].pos
   return (fabs(L.dot(a - d, L.cross(b - d, c - d))) / 6)
 end
 
@@ -125,22 +125,15 @@ function computeMassMatrix(mesh)
   local buildMassMatrix = liszt kernel(t : mesh.tetrahedra)
     var tet_vol = getElementVolume(t)
     var factor = tet_vol * getElementDensity(t) / 20
-    t.e00.mass += factor * 2
-    t.e01.mass += factor
-    t.e02.mass += factor
-    t.e03.mass += factor
-    t.e10.mass += factor
-    t.e11.mass += factor * 2
-    t.e12.mass += factor
-    t.e13.mass += factor
-    t.e20.mass += factor
-    t.e21.mass += factor
-    t.e22.mass += factor * 2
-    t.e23.mass += factor
-    t.e30.mass += factor
-    t.e31.mass += factor
-    t.e32.mass += factor
-    t.e33.mass += factor * 2
+    for i = 0,3 do
+      for j = 0,3 do
+        var mult_const = 1
+        if i == j then
+          var mult_const = 2
+        end
+        t.e[i, j].mass += factor * mult_const
+      end
+    end
   end
   buildMassMatrix(mesh.tetrahedra)
 
@@ -155,7 +148,6 @@ end
 mesh.tetrahedra:NewField('volume', L.double)
 mesh.tetrahedra:NewField('Phig', L.mat3x4d)
 
---[[
 function precomputeStVKIntegrals(options)
   local use_low_memory = options.use_low_memory
   -- THIS DOES use low memory in the reference code...
@@ -173,10 +165,10 @@ function precomputeStVKIntegrals(options)
     -- END LOOP
   -- END LOOP
 end
-]]
 
 local precomputeStVKIntegrals = liszt kernel(t : mesh.tetrahedra)
   -- for each vertex
+  --[[
   var det = 1
   var i = 0
     for j = 0,2 do
@@ -213,6 +205,7 @@ local precomputeStVKIntegrals = liszt kernel(t : mesh.tetrahedra)
       -- end
     end
   -- end
+  ]]
 end
 
 -- need to define dots and
@@ -279,7 +272,8 @@ local addIFLinearHelper = liszt function(t, dots, volume, edge, ci, ai)
   c.forces += force
 end
 local addIFLinearTerms = liszt kernel(t : mesh.tetrahedra)
-  -- TODO: allocate and prepare precomputed integral element
+  --[[
+  var dots = tetDots(t)
   var dots = tetDots(t)
   var volume = getElementVolume(t)
   addIFLinearHelper(t, dots, volume, t.e00, 0, 0)
@@ -298,7 +292,8 @@ local addIFLinearTerms = liszt kernel(t : mesh.tetrahedra)
   addIFLinearHelper(t, dots, volume, t.e31, 3, 1)
   addIFLinearHelper(t, dots, volume, t.e32, 3, 2)
   addIFLinearHelper(t, dots, volume, t.e33, 3, 3)
-  -- TODO: release precomputed integral element
+  addIFQuadraticHelper1(t, dots, volume, t.e33, 3, 3)
+  ]]
 end
 
 -- Quadratic contributions to internal forces
@@ -324,7 +319,7 @@ local addIFQuadraticHelper1 = liszt function(t, dots, volume, edge, ci, ai)
   addIFQuadraticHelper2(t, dots, volume, edge, t.v3, ci, ai, 3)
 end
 local addIFQuadraticTerms = liszt kernel(t : mesh.tetrahedra)
-  -- TODO: allocate and prepare precomputed integral element
+  --[[
   var dots = tetDots(t)
   var volume = getElementVolume(t)
   addIFQuadraticHelper1(t, dots, volume, t.e00, 0, 0)
@@ -343,7 +338,7 @@ local addIFQuadraticTerms = liszt kernel(t : mesh.tetrahedra)
   addIFQuadraticHelper1(t, dots, volume, t.e31, 3, 1)
   addIFQuadraticHelper1(t, dots, volume, t.e32, 3, 2)
   addIFQuadraticHelper1(t, dots, volume, t.e33, 3, 3)
-  -- TODO: release precomputed integral element
+  ]]
 end
 
 -- Cubic contributions to internal forces
@@ -380,7 +375,8 @@ local addIFCubicHelper1 = liszt function(t, dots, volume, edge, ci, ai)
   addIFCubicHelper2(t, dots, volume, edge, t.e33, ci, ai, 3, 3)
 end
 local addIFCubicTerms = liszt kernel(t : mesh.tetrahedra)
-  -- TODO: allocate and prepare precomputed integral element
+  --[[
+  var dots = tetDots(t)
   var dots = tetDots(t)
   var volume = getElementVolume(t)
   addIFCubicHelper1(t, dots, volume, t.e00, 0, 0)
@@ -399,7 +395,8 @@ local addIFCubicTerms = liszt kernel(t : mesh.tetrahedra)
   addIFCubicHelper1(t, dots, volume, t.e31, 3, 1)
   addIFCubicHelper1(t, dots, volume, t.e32, 3, 2)
   addIFCubicHelper1(t, dots, volume, t.e33, 3, 3)
-  -- TODO: release precomputed integral element
+  addIFQuadraticHelper1(t, dots, volume, t.e33, 3, 3)
+  ]]
 end
 
 local resetForces = liszt kernel(v : mesh.vertices)
@@ -460,7 +457,8 @@ local addStiffLinearHelper = liszt function(t, dots, volume, edge, ci, ai)
   edge.stiffness += mat
 end
 local addStiffLinearTerms = liszt kernel(t : mesh.tetrahedra)
-  -- TODO: allocate and prepare precomputed integral element
+  --[[
+  var dots = tetDots(t)
   var dots = tetDots(t)
   var volume = getElementVolume(t)
   addStiffLinearHelper(t, dots, volume, t.e00, 0, 0)
@@ -479,7 +477,8 @@ local addStiffLinearTerms = liszt kernel(t : mesh.tetrahedra)
   addStiffLinearHelper(t, dots, volume, t.e31, 3, 1)
   addStiffLinearHelper(t, dots, volume, t.e32, 3, 2)
   addStiffLinearHelper(t, dots, volume, t.e33, 3, 3)
-  -- TODO:  release precomputed integral element
+  addIFQuadraticHelper1(t, dots, volume, t.e33, 3, 3)
+  ]]
 end
 
 -- Quadratic contributions to stiffness matrix
@@ -510,7 +509,8 @@ local addStiffQuadraticHelper1 = liszt function(t, dots, volume, edge, ci, ei)
   edge.stiffness += mat
 end
 local addStiffQuadraticTerms = liszt kernel(t : mesh.tetrahedra)
-  -- TODO: allocate and prepare precomputed integral element
+  --[[
+  var dots = tetDots(t)
   var dots = tetDots(t)
   var volume = getElementVolume(t)
   addStiffQuadraticHelper1(t, dots, volume, t.e00, 0, 0)
@@ -529,7 +529,8 @@ local addStiffQuadraticTerms = liszt kernel(t : mesh.tetrahedra)
   addStiffQuadraticHelper1(t, dots, volume, t.e31, 3, 1)
   addStiffQuadraticHelper1(t, dots, volume, t.e32, 3, 2)
   addStiffQuadraticHelper1(t, dots, volume, t.e33, 3, 3)
-  -- TODO: release precomputed integral element
+  addIFQuadraticHelper1(t, dots, volume, t.e33, 3, 3)
+  ]]
 end
 
 -- Cubic contributions to stiffness matrix
@@ -571,7 +572,8 @@ local addStiffCubicHelper1 = liszt function(t, dots, volume, edge, ci, ei)
 end
 -- may have to reverse head, tail below
 local addStiffCubicTerms = liszt kernel(t : mesh.tetrahedra)
-  -- TODO: allocate and prepare precomputed integral element
+  --[[
+  var dots = tetDots(t)
   var dots = tetDots(t)
   var volume = getElementVolume(t)
   addStiffCubicHelper1(t, dots, volume, t.e00, 0, 0)
@@ -590,7 +592,8 @@ local addStiffCubicTerms = liszt kernel(t : mesh.tetrahedra)
   addStiffCubicHelper1(t, dots, volume, t.e31, 3, 1)
   addStiffCubicHelper1(t, dots, volume, t.e32, 3, 2)
   addStiffCubicHelper1(t, dots, volume, t.e33, 3, 3)
-  -- TODO: release precomputed integral element
+  addIFQuadraticHelper1(t, dots, volume, t.e33, 3, 3)
+  ]]
 end
 
 local resetStiffnessMatrix = liszt kernel(e : mesh.edges)
@@ -755,6 +758,7 @@ function buildImplicitBackwardsEulerIntegrator(opts)
 
   return {} -- should be an actual integrator object
 end
+
 ]]
 
 ------------------------------------------------------------------------------
@@ -786,8 +790,10 @@ function main()
   local numFixedDOFs     = 3*numFixedVertices
   local fixedDOFs        = nil
 
+  print("Computing mass matrix ...")
   computeMassMatrix(volumetric_mesh)
 
+  print("Computing integrals ...")
   precomputeStVKIntegrals(mesh.tetrahedra) -- called StVKElementABCDLoader:load() in ref
 
   -- TODO: Move these to do time step finally. There is no need for any

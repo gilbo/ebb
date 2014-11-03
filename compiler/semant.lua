@@ -250,12 +250,13 @@ function ast.Assignment:check(ctxt)
         ctxt:error(self.lvalue, "Illegal assignment: left hand side cannot "..
                                 "be assigned")
         return node
-    elseif node.lvalue.node_type:isRow() and
-           not node.lvalue:is(ast.FieldAccess)
-    then
-        ctxt:error(self.lvalue, "Illegal assignment: variables of row type "..
-                                "cannot be re-assigned")
-        return node
+    -- How should we restrict assignments to rows?
+    -- elseif node.lvalue.node_type:isRow() and
+    --        not node.lvalue:is(ast.FieldAccess)
+    -- then
+    --     ctxt:error(self.lvalue, "Illegal assignment: variables of row type "..
+    --                             "cannot be re-assigned")
+    --     return node
     end
 
     -- handle any coercions
