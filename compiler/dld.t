@@ -130,7 +130,11 @@ function dld:setOffset(offset)
 end
 
 function dld:setCompactStrideOffset()
-  self.stride = self.type.vector_size * self.type.base_bytes
+  local dim = self.type.dimensions
+  local n_elem = 1
+  if dim[1] then n_elem = n_elem * dim[1] end
+  if dim[2] then n_elem = n_elem * dim[2] end
+  self.stride = n_elem * self.type.base_bytes
   self.offset = 0
 end
 

@@ -870,7 +870,7 @@ function L.LField:getDLD()
   local dld = DLD.new({
     location        = tostring(self.array:location()),
     type            = terra_type,
-    type_dims       = n,
+    type_dims       = dims,
     logical_size    = self.owner:ConcreteSize(),
     data            = self:DataPtr(),
     compact         = true,

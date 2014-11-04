@@ -1,5 +1,7 @@
 import 'compiler.liszt'
 
+L.default_processor = L.GPU
+
 --
 -- Constants
 --
@@ -26,7 +28,7 @@ float randFloat()
 int CUFFTR2C() { return CUFFT_R2C; }
 int CUFFTC2R() { return CUFFT_C2R; }
 ]]
-terralib.linklibrary("/usr/local/cuda-6.0/lib64/libcufft.so")
+terralib.linklibrary("/usr/local/cuda-6.5/lib64/libcufft.so")
 
 --checkCudaErrors(cufftPlan2d(&planr2c, DIM, DIM, CUFFT_R2C));
 --checkCudaErrors(cufftPlan2d(&planc2r, DIM, DIM, CUFFT_C2R));
@@ -211,9 +213,25 @@ end
 --	c.dv[1] = c.vy[0] * scale
 --end
 
-local function diffuseProject(grid, gridFFT)
-	--terralib.tree.printraw(  )
-	
+local function diffuseProjectGPU(grid, gridFFT)
+	local xGPUPtr = grid.cells.vx:getDLD().address
+	local xFFTGPUPtr = gridFFT.cells.vx:getDLD().address
+
+	local yGPUPtr = grid.cells.vy:getDLD().address
+	local yFFTGPUPtr = gridFFT.cells.vy:getDLD().address
+
+	-- FFT R2C
+	C.cufftExecR2C(fftplan.r2c, xGPUPtr, terralib.cast(&C.cufftComplex,xFFTGPUPtr))
+	C.cufftExecR2C(fftplan.r2c, yGPUPtr, terralib.cast(&C.cufftComplex,yFFTGPUPtr))
+
+	diffuseProjectFFT(gridFFT.cells)
+
+	-- FFT C2R
+	C.cufftExecC2R(fftplan.c2r, terralib.cast(&C.cufftComplex,xFFTGPUPtr), xGPUPtr)
+	C.cufftExecC2R(fftplan.c2r, terralib.cast(&C.cufftComplex,yFFTGPUPtr), yGPUPtr)
+end
+
+local function diffuseProjectCPU(grid, gridFFT)
 	local xCPUPtr = grid.cells.vx:getDLD().address
 	local xFFTCPUPtr = gridFFT.cells.vx:getDLD().address
 
@@ -242,6 +260,18 @@ local function diffuseProject(grid, gridFFT)
 	C.cudaMemcpy(xCPUPtr,fftplan.vxGPU,terralib.sizeof(float)*N*N,cudaMemcpyDeviceToHost)
 	C.cudaMemcpy(yCPUPtr,fftplan.vyGPU,terralib.sizeof(float)*N*N,cudaMemcpyDeviceToHost)
 
+end
+
+local function diffuseProject(grid, gridFFT)
+	local location = grid.cells.vx:getDLD().location
+	print(location)
+	if location == "CPU" then
+		diffuseProjectCPU(grid, gridFFT)
+	elseif location == "GPU" then
+		diffuseProjectGPU(grid, gridFFT)
+	else
+		error("unknown location: " .. location)
+	end
 end
 
 --
