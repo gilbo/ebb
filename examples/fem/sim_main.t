@@ -82,6 +82,8 @@ local multiplyMatVec3 = liszt function(M, x)
   return y
 end
 
+-- Add constant to matrix
+
 ------------------------------------------------------------------------------
 -- Allocate common fields
 
@@ -99,7 +101,6 @@ mesh.vertices:NewField('displacement', L.vec3d)
 -- The general form represents the vertex-vertex mass relationship as a
 -- 3x3 matrix, but the actual computation used only requires
 -- a scalar for each vertex-vertex relationship...
--- TODO: Make sure that the reference and our code use the same strategy
 
 -- The following implementation combines computing element matrix and updating
 -- global mass matrix, for convenience.
@@ -112,14 +113,6 @@ function computeMassMatrix(mesh)
   -- Q: Is inflate3Dim flag on?
   -- A: Yes.  This means we want the full mass matrix,
   --    not just a uniform scalar per-vertex
-
-  -- LOOP OVER THE TETRAHEDRA (liszt kernel probably)
-    -- BUFFER = COMPUTE TETRAHEDRAL MASS MATRIX
-    -- LOOP OVER VERTICES OF THE TETRAHEDRON
-      -- LOOP OVER VERTICES AGAIN
-        -- dump a diagonal matrix down for each vertex pair
-        -- but these diagonal matrices are uniform... ugh?????
-  -- CLOSE LOOP
 
   mesh.edges:NewField('mass', L.double):Load(0)
   local buildMassMatrix = liszt kernel(t : mesh.tetrahedra)
@@ -466,60 +459,135 @@ end
 
 -- TODO: Again Data Model and skeleton needs to be filled in more here...
 
---[[
 local ImplicitBackwardEulerIntegrator = {}
 ImplicitBackwardEulerIntegrator.__index = ImplicitBackwardEulerIntegrator
 
 function ImplicitBackwardEulerIntegrator.New(opts)
   local stepper = setmetatable({
-    internalForceScalingFactor = ???, -- Where does this get set?
-
+    internalForceScalingFactor  = 1,
     epsilon                     = opts.epsilon,
     timestep                    = opts.timestep,
     dampingMassCoef             = opts.dampingMassCoef,
     dampingStiffnessCoef        = opts.dampingStiffnessCoef,
+    maxIterations               = opts.maxIterations
   }, ImplicitBackwardEulerIntegrator)
 
   return stepper
 end
 
-function ImplicitBackwardEulerIntegrator:DoTimestep(mesh)
-  computeForces(mesh)
-  computeStiffnessMatrix(mesh)
+local function genMultiplySparseMatrixVector(gmesh, matrix, x, res)
+  return liszt kernel(v : gmesh.vertices)
+    for e in v.edges do
+      v.[res] += e.[matrix] * v.[x]
+    end
+  end
+end
 
+function ImplicitBackwardEulerIntegrator:setupFieldsKernels(mesh)
+
+  mesh.vertices:NewField('q', L.vec3d):Load({ 0, 0, 0 })
+  mesh.vertices:NewField('q_1', L.vec3d):Load({ 0, 0, 0 })
+  mesh.vertices:NewField('qvel', L.vec3d):Load({ 0, 0, 0 })
+  mesh.vertices:NewField('qvel_1', L.vec3d):Load({ 0, 0, 0 })
+  mesh.vertices:NewField('qaccel', L.vec3d):Load({ 0, 0, 0 })
+  mesh.vertices:NewField('qaccel_1', L.vec3d):Load({ 0, 0, 0 })
+  mesh.vertices:NewField('qresidual', L.vec3d):Load({ 0, 0, 0 })
+  mesh.vertices:NewField('qdelta', L.vec3d):Load({ 0, 0, 0 })
+
+  mesh.edges:NewField('raydamp', L.mat3d)
+
+  self.initializeQFields = liszt kernel(v : mesh.vertices)
+    v.q_1 = v.q
+    v.qvel_1 = v.qvel
+    v.qaccel = { 0, 0, 0 }
+    v.qaccel_1 = { 0, 0, 0 }
+  end
+
+  self.scaleInternalForces = liszt kernel(v : mesh.vertices)
+    v.forces = self.internalForceScalingFactor * v.forces
+  end
+
+  self.scaleStiffnessMatrix = liszt kernel(e : mesh.edges)
+    e.stiffness = self.internalForceScalingFactor * e.stiffness
+  end
+
+  self.createRayleighDampMatrix = liszt kernel(e : mesh.edges)
+    e.raydamp = self.dampingStiffnessCoef * e.stiffness +
+                self.dampingMassCoef * e.mass * getId3()
+  end
+
+  self.updateqresidual1 = liszt kernel(v : mesh.vertices)
+    for e in v.edges do
+      v.qresidual = v.qresidual + multiplyMatVec3(e.stiffness, (v.q_1 - v.q))
+    end
+  end
+
+  self.updateqresidual2 = liszt kernel(v : mesh.vertices)
+    for e in v.edges do
+      v.qresidual = v.qresidual + multiplyMatVec3(e.stiffness, v.qvel)
+    end
+  end
+
+  self.updateqresidual3 = liszt kernel(v : mesh.vertices)
+    -- TODO: where and how are external forces set?
+    -- v.qresidual = v.qresidual + (v.forces - v.extforces)
+    v.qresidual = self.timestep * v.qresidual
+  end
+
+  self.updateqresidual4 = liszt kernel(v : mesh.vertices)
+    for e in v.edges do
+      v.qresidual = v.qresidual + e.mass * (v.qvel_1 - v.qvel)
+    end
+  end
+
+  self.updateStiffness1 = liszt kernel(e : mesh.edges)
+    e.stiffness = self.timestep * e.stiffness
+    e.stiffness = e.stiffness + e.raydamp
+    -- TODO: where and how is damping matrix set?
+    -- e.stiffness = e.stiffness + e.dampingmatrix
+  end
+
+  self.updateStiffness2 = liszt kernel(e : mesh.edges)
+    e.stiffness = self.timestep * e.stiffness
+    e.stiffness = e.stiffness + e.mass * getId3()
+  end
+
+  self.initializeqdelta = liszt kernel(v : mesh.vertices)
+    v.qdelta = v.qresidual
+  end
+
+end
+
+function ImplicitBackwardEulerIntegrator:DoTimestep(mesh)
   local err0 = 0 -- L.Global?
   local errQuotient
 
   -- store current amplitudes and set initial gues for qaccel, qvel
   -- AHHHHH, THE BELOW CAN BE IMPLEMENTED USING COPIES
   -- LOOP OVER THE STATE VECTOR (vertices for now)
-    -- SET qaccel_1 = qaccel = 0
-    -- SET q_1 = q
-    -- SET qvel_1 = qvel
-  -- end
+  self.initializeQFields(mesh.vertices)
 
   -- Limit our total number of iterations allowed per timestep
   for numIter = 1, self.maxIterations do
     -- ASSEMBLY
     -- TIMING START
-    INTERNAL_FORCES = computeForces() -- PASS ANYTHING?
-    STIFFNESS = computeStiffnessMatrix() -- PASS ANYTHING?
+    computeForces(mesh)
+    computeStiffnessMatrix(mesh)
     -- TIMING END
     -- RECORD ASSEMBLY TIME
 
     -- NOTE: NOTE: We can implement these scalings as separate kernels to be
     -- "FAIR" to VEGA or we can fold it into other kernels.
     -- Kinda unclear which to do
-    INTERNAL_FORCES = self.internalForceScalingFactor * INTERNAL_FORCES
-    STIFFNESS = self.internalForceScalingFactor * STIFFNESS
+    self.scaleInternalForces(mesh.vertices)
+    self.scaleStiffnessMatrix(mesh.edges)
 
     -- ZERO out the residual field
-    mesh.vertices.qresidual:Load(0)
+    mesh.vertices.qresidual:Load({ 0, 0, 0 })
 
     -- NOTE: useStaticSolver == FALSE
     --    We just assume this everywhere
-    RAYLEIGH_DAMP_MATRIX  = self.dampingStiffnessCoef * STIFFNESS
-    RAYLEIGH_DAMP_MATRIX += self.dampingMassCoef * MASS_MATRIX
+    self.createRayleighDampMatrix(mesh.edges)
 
     -- Build effective stiffness:
     --    Keff = M + h D + h^2 * K
@@ -532,35 +600,35 @@ function ImplicitBackwardEulerIntegrator:DoTimestep(mesh)
 
     -- superfluous on iteration 1, but safe to run
     if numIter ~= 1 then
-      qresidual += STIFFNESS * (q_1-q)
+      self.updateqresidual1(mesh.vertices)
     end
 
     -- some magic incantations corresponding to the above
-    STIFFNESS *= self.timestep
-    STIFFNESS += RAYLEIGH_DAMP_MATRIX
-    STIFFNESS += dampingMatrix -- DON'T KNOW WHERE THIS IS FROM (constant?)
-    qresidual += STIFFNESS * qvel
-    STIFFNESS *= self.timestep
-    STIFFNESS += MASS_MATRIX
+    self.updateStiffness1(mesh.edges)
+    self.updateqresidual2(mesh.vertices)
+    self.updateStiffness2(mesh.edges)
 
     -- ADD EXTERNAL/INTERNAL FORCES
-    qresidual += INTERNAL_FORCES - EXTERNAL_FORCES
-    qresidual = self.timestep * qresidual
+    self.updateqresidual3(mesh.vertices)
 
     -- superfluous on iteration 1, but safe to run
     if numIter ~= 1 then
-      qresidual += MASS_MATRIX * (qvel_1-qvel)
+      self.updateqresidual4(mesh.vertices)
     end
 
-    qdelta = qresidual
+    -- TODO: this should be a copy and not a separate kernel in the end
+    self.initializeqdelta(mesh.vertices)
 
     -- TODO: This code doesn't have any way of handling fixed vertices
     -- at the moment.  Should enforce that here somehow
 
+    --[[
     local err = L.global(L.double, 0) -- HUH? L.Global?
     err = REDUCE(qdelta*qdelta) -- only over unconstrained vertices
+    ]]
 
     -- compute initial error on the 1st iteration
+    --[[
     if numIter ~= 1 then
       err0 = err
       errQuotient = 1
@@ -574,10 +642,12 @@ function ImplicitBackwardEulerIntegrator:DoTimestep(mesh)
 
     SYSTEM_MATRIX = STIFFNESS -- HERE b/c of REMOVE ROWS...
     RHS = qdelta
+    ]]
 
     -- SYSTEM SOLVE: SYSTEM_MATRIX * BUFFER = BUFFER_CONSTRAINED
     -- START PERFORMANCE TIMING
     -- ASSUMING PCG FOR NOW
+    --[[
     local solverEpsilon = 1e-6
     local solverMaxIter = 10000
     local err_code = DO_JACOBI_PRECONDITIONED_CG_SOLVE(RESULT, RHS,
@@ -586,18 +656,23 @@ function ImplicitBackwardEulerIntegrator:DoTimestep(mesh)
       error("ERROR: PCG sparse solver "..
             "returned non-zero exit status "..err_code)
     end
+    ]]
     -- STOP PERFORMANCE TIMING
     -- RECORD SYSTEM SOLVE TIME
 
     -- Reinsert the rows?
 
+    --[[
     qvel += qdelta
     q += q_1-q + self.timestep * qvel
+    ]]
 
     -- for the subset of constrained vertices
+    --[[
       q=0
       qvel=0
       qaccel=0
+      ]]
   end
 end
 
@@ -607,8 +682,6 @@ function buildImplicitBackwardsEulerIntegrator(opts)
 
   return {} -- should be an actual integrator object
 end
-
-]]
 
 ------------------------------------------------------------------------------
 
@@ -664,6 +737,7 @@ function main()
     epsilon               = options.epsilon,
     numSolverThreads      = options.numSolverThreads,
   }
+  integrator:setupFieldsKernels(mesh)
 
   print("Performing time steps ...")
   for i=1,options.numTimesteps do
