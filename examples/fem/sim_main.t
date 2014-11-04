@@ -1,18 +1,13 @@
 import 'compiler.liszt'
 
-
 local Tetmesh = L.require 'examples.fem.tetmesh'
 local VEGFileIO = L.require 'examples.fem.vegfileio'
 
+print("Loading mesh ...")
 local turtle = VEGFileIO.LoadTetmesh
   'examples/fem/turtle-volumetric-homogeneous.veg'
 
 local mesh = turtle
--- TODO: parse density and fill in mesh.density while loading mesh
-mesh.density = 1000
-
-
-
 local gravity = 9.81
 
 function initConfigurations()
@@ -146,6 +141,30 @@ function computeMassMatrix(mesh)
 end
 
 ------------------------------------------------------------------------------
+-- Initialize Lame constants. This includes lambda and mu. See
+--     libraries/volumetricMesh/volumetricMeshENuMaterial.h
+--     (getLambda and getMu)
+-- This code is used to initialize Lame constants when stiffnexx matrix/ forces
+-- are initialized.
+
+local getLambda = liszt function(t)
+  var E : L.double = mesh.E
+  var Nu : L.double = mesh.Nu
+  return ( (Nu * E) / ( ( 1 + Nu ) * ( 1 - 2 * Nu ) ) )
+end
+
+local getMu = liszt function(t)
+  var E : L.double = mesh.E
+  var Nu : L.double = mesh.Nu
+  return ( ( E / ( 2 * ( 1 + Nu) ) ) )
+end
+
+local initializeLameConstants = liszt kernel(t : mesh.tetrahedra)
+  t.lambdaLame = getLambda(t)
+  t.muLame = getMu(t)
+end
+
+------------------------------------------------------------------------------
 -- For corresponding VEGA code, see
 --    libraries/stvk/StVKTetABCD.cpp (most of the file)
 
@@ -153,24 +172,8 @@ end
 mesh.tetrahedra:NewField('volume', L.double)
 mesh.tetrahedra:NewField('Phig', L.mat3x4d)
 
-function precomputeStVKIntegrals(options)
-  local use_low_memory = options.use_low_memory
-  -- THIS DOES use low memory in the reference code...
-
-  -- note elementData == { volume, Phig[4]:vec3d }
-
-  -- (StVKTetABCD::StVKTetABCD)
-  -- LOOP OVER THE TETRAHEDRA (liszt kernel probably)
-    -- GET THE 4 VERTICES
-    -- (StVKTetABCDStVKSingleTetABCD)
-    -- COMPUTE THE TET VOLUME AND STORE
-    -- Loop i 0,1,2,3 (OVER VERTICES)
-      -- Loop j 0,1,2 (OVER XYZ COORDINATES)
-        -- IN HERE WE SET Phig[i][j] which is a per-tetrahedron value
-    -- END LOOP
-  -- END LOOP
-end
-
+-- Here, we precompute PhiG which is used to compute and cache dots, and
+-- compute A, b, C, and D as required, on a per element basis.
 local precomputeStVKIntegrals = liszt kernel(t : mesh.tetrahedra)
   var det = getElementDet(t)
   for i = 0,3 do
@@ -205,9 +208,6 @@ local precomputeStVKIntegrals = liszt kernel(t : mesh.tetrahedra)
     end
   end
 end
-
--- need to define dots and
--- A, B, C, D here
 
 -- The VEGA Code seems to compute the dots matrix once, and then
 -- cache it for the duration of a per-tet computation rather than
@@ -483,7 +483,10 @@ function ImplicitBackwardEulerIntegrator.New(opts)
   return stepper
 end
 
-function ImplicitBackwardEulerIntegrator:DoTimestep()
+function ImplicitBackwardEulerIntegrator:DoTimestep(mesh)
+  computeForces(mesh)
+  computeStiffnessMatrix(mesh)
+
   local err0 = 0 -- L.Global?
   local errQuotient
 
@@ -642,12 +645,13 @@ function main()
   print("Computing integrals ...")
   precomputeStVKIntegrals(mesh.tetrahedra) -- called StVKElementABCDLoader:load() in ref
 
+  print("Initializing Lame constants ...")
+  initializeLameConstants(mesh.tetrahedra)
+
   -- TODO: Move these to do time step finally. There is no need for any
   -- initialization. Just testing these calls right now. 
   computeForces(volumetric_mesh)
   computeStiffnessMatrix(volumetric_mesh)
-
-  computeForceModel()
 
   local integrator = ImplicitBackwardEulerIntegrator.New{
     n_vars                = 3*nvertices,
@@ -661,13 +665,13 @@ function main()
     numSolverThreads      = options.numSolverThreads,
   }
 
+  print("Performing time steps ...")
   for i=1,options.numTimesteps do
     -- integrator:setExternalForcesToZero()
     if i == 1 then
       setInitialConditions()
     end
-
-    integrator:DoTimestep()
+    integrator:DoTimestep(volumetric_mesh)
   end
 
   -- read out the state here somehow?
