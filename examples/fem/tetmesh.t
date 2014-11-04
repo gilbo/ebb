@@ -87,13 +87,13 @@ end]]
 -- => there will be one row for (x, y) and another for (y, x).
 -- The function orders rows by 1st vertex and then the 2nd, and works for
 -- only a tetrahedral mesh.
-local function build_element_vertices(mesh, v0s, v1s, v2s, v3s)
+local function build_element_vertices(mesh, elements)
   local neighbors = {} -- vertex to vertex graph
   for k = 1,(mesh:nVerts()) do neighbors[k] = {} end
 
   -- add an entry for each tetahedron
   for i = 1,(mesh:nTets()) do
-    local vertices = { v0s[i], v1s[i], v2s[i], v3s[i] }
+    local vertices = elements[i]
     for x = 1,4 do
       for y = 1,4 do
         neighbors[vertices[x] + 1][vertices[y] + 1] = true
@@ -133,37 +133,17 @@ local function build_element_vertices(mesh, v0s, v1s, v2s, v3s)
   end))
 
   -- set up pointers from tetrahedra to edges
-  for i = 1,4 do
-    for j = 1,4 do
-      mesh.tetrahedra:NewField(('e'..(i-1))..(j-1), mesh.edges):Load(0)
+  mesh.tetrahedra:NewField('e', L.smallmatrix(mesh.edges, 4, 4))
+  local compute_tet_edges = liszt kernel (t : mesh.tetrahedra)
+    for i = 0,3 do
+      for e in t.v[i].edges do
+        for j = 0,3 do
+          if e.head == t.v[j] then t.e[i, j] = e end
+        end
+      end
     end
   end
-  local compute_tet_edges = liszt kernel (t : mesh.tetrahedra )
-    for e in t.v0.edges do
-      if e.head == t.v0 then t.e00 = e end
-      if e.head == t.v1 then t.e01 = e end
-      if e.head == t.v2 then t.e02 = e end
-      if e.head == t.v3 then t.e03 = e end
-    end
-    for e in t.v1.edges do
-      if e.head == t.v0 then t.e10 = e end
-      if e.head == t.v1 then t.e11 = e end
-      if e.head == t.v2 then t.e12 = e end
-      if e.head == t.v3 then t.e13 = e end
-    end
-    for e in t.v2.edges do
-      if e.head == t.v0 then t.e20 = e end
-      if e.head == t.v1 then t.e21 = e end
-      if e.head == t.v2 then t.e22 = e end
-      if e.head == t.v3 then t.e23 = e end
-    end
-    for e in t.v3.edges do
-      if e.head == t.v0 then t.e30 = e end
-      if e.head == t.v1 then t.e31 = e end
-      if e.head == t.v2 then t.e32 = e end
-      if e.head == t.v3 then t.e33 = e end
-    end
-  end
+
   compute_tet_edges(mesh.tetrahedra)
 end
 
@@ -188,32 +168,14 @@ function Tetmesh.LoadFromLists(vertices, elements)
 
   -- Define the fields
   mesh.vertices:NewField('pos', L.vec3d)
-  mesh.tetrahedra:NewField('v0', mesh.vertices)
-  mesh.tetrahedra:NewField('v1', mesh.vertices)
-  mesh.tetrahedra:NewField('v2', mesh.vertices)
-  mesh.tetrahedra:NewField('v3', mesh.vertices)
-
-  -- AoS to SoA
-  local v0s = {}
-  local v1s = {}
-  local v2s = {}
-  local v3s = {}
-  for i=1,#elements do
-    v0s[i] = elements[i][1]
-    v1s[i] = elements[i][2]
-    v2s[i] = elements[i][3]
-    v3s[i] = elements[i][4]
-  end
+  mesh.tetrahedra:NewField('v', L.vector(mesh.vertices, 4))
 
   -- Load the supplied data
   mesh.vertices.pos:Load(vertices)
-  mesh.tetrahedra.v0:Load(v0s)
-  mesh.tetrahedra.v1:Load(v1s)
-  mesh.tetrahedra.v2:Load(v2s)
-  mesh.tetrahedra.v3:Load(v3s)
+  mesh.tetrahedra.v:Load(elements)
 
   -- build vertex-vertex relation for storing mass matrix (and other fields?)
-  build_element_vertices(mesh, v0s, v1s, v2s, v3s)
+  build_element_vertices(mesh, elements)
 
   -- and return the resulting mesh
   return mesh

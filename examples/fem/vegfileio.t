@@ -89,6 +89,11 @@ function VEGFileIO.LoadTetmesh(path)
   local n_elements = nil -- metadata
   local elem_counter = 0 -- observed count
   local elements = {}
+  -- MATERIAL (ENU)
+  local material = nil -- will have to be ENU
+  local density = nil
+  local E = nil
+  local Nu = nil
 
   -- Read Loop
   local line_no = 0
@@ -199,7 +204,17 @@ function VEGFileIO.LoadTetmesh(path)
       end
 
     elseif section_mode == 'MATERIAL' then
-      -- Do Nothing for now...
+      local tokens = split_on_spaces(line)
+      if has_nil(tokens) or #tokens ~= 4 then
+        report_error('Was expecting 4 tokens for material specification')
+      end
+      material = tokens[1]:sub(1, tokens[1]:len()-1)
+      if material ~= 'ENU' then
+        report_error('Only supporting ENU material')
+      end
+      density = tonumber(tokens[2]:sub(1, tokens[2]:len()-1))
+      E = tonumber(tokens[3]:sub(1, tokens[3]:len()-1))
+      Nu = tonumber(tokens[4])
 
     elseif section_mode == 'REGION' then
       -- Do Nothing for now...
@@ -225,7 +240,11 @@ function VEGFileIO.LoadTetmesh(path)
                  'but we found '..#elements..' elements')
   end
 
-  return Tetmesh.LoadFromLists(vertices, elements)
+  local mesh = Tetmesh.LoadFromLists(vertices, elements)
+  mesh.density = density
+  mesh.E = E
+  mesh.Nu = Nu
+  return mesh
 end
 
 

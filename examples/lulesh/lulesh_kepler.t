@@ -60,7 +60,7 @@ grid.cells:NewField("ss",     L.double):Load(0.0) -- sound speed
 grid.cells:NewField("mass",   L.double):Load(0.0) -- element mass
 
 -- make lots of temporaries and macros to remove reduction on doubles in calcFBHourglassForces
-grid.cells:NewField('hgforces', L.vector(L.double, 24)):Load({0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0})
+grid.cells:NewField('tmpforces', L.vector(L.double, 24)):Load({0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0})
 grid.vertices:NewFieldMacro('c0', L.NewMacro(function(v) return liszt `v.cell(-1,-1,-1) end))
 grid.vertices:NewFieldMacro('c1', L.NewMacro(function(v) return liszt `v.cell( 0,-1,-1) end))
 grid.vertices:NewFieldMacro('c2', L.NewMacro(function(v) return liszt `v.cell( 0, 0,-1) end))
@@ -74,14 +74,14 @@ local row = liszt function(mat3x, i)
 	return {mat3x[3*i], mat3x[3*i+1], mat3x[3*i+2]}
 end
 
-grid.vertices:NewFieldMacro('c0hg', L.NewMacro(function(v) return liszt `row(v.c0.hgforces,1) end))
-grid.vertices:NewFieldMacro('c1hg', L.NewMacro(function(v) return liszt `row(v.c1.hgforces,0) end))
-grid.vertices:NewFieldMacro('c2hg', L.NewMacro(function(v) return liszt `row(v.c2.hgforces,3) end))
-grid.vertices:NewFieldMacro('c3hg', L.NewMacro(function(v) return liszt `row(v.c3.hgforces,2) end))
-grid.vertices:NewFieldMacro('c4hg', L.NewMacro(function(v) return liszt `row(v.c4.hgforces,5) end))
-grid.vertices:NewFieldMacro('c5hg', L.NewMacro(function(v) return liszt `row(v.c5.hgforces,4) end))
-grid.vertices:NewFieldMacro('c6hg', L.NewMacro(function(v) return liszt `row(v.c6.hgforces,7) end))
-grid.vertices:NewFieldMacro('c7hg', L.NewMacro(function(v) return liszt `row(v.c7.hgforces,6) end))
+grid.vertices:NewFieldMacro('c0hg', L.NewMacro(function(v) return liszt `row(v.c0.tmpforces,1) end))
+grid.vertices:NewFieldMacro('c1hg', L.NewMacro(function(v) return liszt `row(v.c1.tmpforces,0) end))
+grid.vertices:NewFieldMacro('c2hg', L.NewMacro(function(v) return liszt `row(v.c2.tmpforces,3) end))
+grid.vertices:NewFieldMacro('c3hg', L.NewMacro(function(v) return liszt `row(v.c3.tmpforces,2) end))
+grid.vertices:NewFieldMacro('c4hg', L.NewMacro(function(v) return liszt `row(v.c4.tmpforces,5) end))
+grid.vertices:NewFieldMacro('c5hg', L.NewMacro(function(v) return liszt `row(v.c5.tmpforces,4) end))
+grid.vertices:NewFieldMacro('c6hg', L.NewMacro(function(v) return liszt `row(v.c6.tmpforces,7) end))
+grid.vertices:NewFieldMacro('c7hg', L.NewMacro(function(v) return liszt `row(v.c7.tmpforces,6) end))
 
 -- For convenience in matching orientation w/previous lulesh version
 grid.cells:NewFieldMacro('v0',  L.NewMacro(function(c) return liszt `c.vertex(0,1,1) end))
@@ -601,7 +601,7 @@ local liszt kernel calcFBHourglassForceForElems(c : grid.cells)
 	-- 8x3 matrix
 	var localVelocities = getLocalNodeVelocityVectors(c)
 	var hgf = coefficient * mmult_8x4x3(hourgamXpose, mmult_4x8x3(hourgam, localVelocities))
-	c.hgforces = hgf
+	c.tmpforces = hgf
 
 --	c.v0.forces += row(hgf, 0)
 --	c.v1.forces += row(hgf, 1)
