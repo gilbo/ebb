@@ -1,7 +1,9 @@
 -- Launch liszt program as a top level legion task.
 
-require('legionlib')
+terralib.require 'legionlib-terra'
 
+-- Error handler used in top level task for meaningful traceback on errors.
+-- This function is copied from launch_script.t.
 local function top_level_err_handler ( errobj )
   local err = tostring(errobj)
   if string.match(err, 'stack traceback:') then
@@ -12,11 +14,26 @@ local function top_level_err_handler ( errobj )
   os.exit(1)
 end
 
--- Error handler is copied from launch_script.t.
--- Not sure how legion handles errors.
--- If legion runtime prints stack trace,
--- we can remove error handling from here.
+-- Setup tables for Legion runtime in Liszt.
+local function setup_for_legion(binding)
+  local L = terralib.require 'compiler.lisztlib'
+  L._runtime = L._Legion
+  L._runtime.binding = binding
+  local type_map = {
+                     [L.float] = 'float',
+                     [L.double] = 'double',
+                     [L.int] = 'int',
+                     [L.bool] = 'int'
+                   }
+  L._LegionTypes = {}
+  for k, v in ipairs(type_map) do
+    L._LegionTypes[k] = PrimType[v]
+  end
+end
+
 function top_level_task(binding, regions, args)
+  setup_for_legion(binding)
+  -- launch application
   local script_filename = args[1]
   local success = xpcall( function ()
     assert(terralib.loadfile(script_filename))()

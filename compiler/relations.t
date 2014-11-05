@@ -33,6 +33,28 @@ function L.is_valid_lua_identifier(name)
   return true
 end
 
+-------------------------------------------------------------------------------
+--[[ LLogicalRegion methods                                                ]]--
+-------------------------------------------------------------------------------
+
+local LogicalRegion = {}
+LogicalRegion.__index = LogicalRegion
+
+function LogicalRegion:NewField(type)
+  local binding = L._runtime.binding
+  return binding:allocate_field(self.field_space, { L._LegionTypes[type] })
+end
+
+local function NewLogicalRegion(size)
+  local binding = L._runtime.binding
+  local l = {
+              index_space = binding:create_index_space(size),
+              field_space = binding:create_field_space()
+            }
+  l.handle = binding:create_logical_region(l.index_space, l.field_space)
+  setmetatable(l, LogicalRegion)
+  return l
+end
 
 -------------------------------------------------------------------------------
 --[[ LRelation methods                                                     ]]--
@@ -67,9 +89,21 @@ function L.NewRelation(size, name)
   },
   L.LRelation)
 
-  -- create a mask to track which rows are live.
-  rawset(rel, '_is_live_mask', L.LField.New(rel, '_is_live_mask', L.bool))
-  rel._is_live_mask:Load(true)
+  if L._runtime == L._Direct then
+    -- create a mask to track which rows are live.
+    rawset(rel, '_is_live_mask', L.LField.New(rel, '_is_live_mask', L.bool))
+    rel._is_live_mask:Load(true)
+  elseif L._runtime == L._Legion then
+    -- create a logical region.
+    rawset(rel, '_logical_region', NewLogicalRegion(size))
+    -- create a mask to track which rows are live.
+    -- TODO: we probably do not need this with Legion, as Legion handles row
+    -- inserts and deletes.
+    -- TODO: for now, initialize this field to true.
+    rawset(rel, '_is_live_mask', L.LField.New(rel, '_is_live_mask', L.bool))
+  else
+    error('NewRelation not implemented for '..tostring(L._runtime), 2)
+  end
 
   return rel
 end
@@ -448,12 +482,17 @@ end
 -- For internal use only.  Does not install on relation...
 function L.LField.New(rel, name, typ)
   local field   = setmetatable({}, L.LField)
-  field.array   = nil
   field.type    = typ
   field.name    = name
   field.owner   = rel
-  field:Allocate()
-
+  if L._runtime == L._Direct then
+    field.array   = nil
+    field:Allocate()
+  elseif L._runtime == L._Legion then
+    field.handle = rel._logical_region:NewField(typ)
+  else
+    error('Unimplemented new field for '..tostring(L._runtime), 2)
+  end
   return field
 end
 

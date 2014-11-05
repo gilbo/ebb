@@ -43,6 +43,13 @@ L.CPU = setmetatable({ str = 'CPU' }, ProcConstant)
 L.GPU = setmetatable({ str = 'GPU' }, ProcConstant)
 L.default_processor = L.CPU
 
+local Runtime = {}
+Runtime.__index = Runtime
+Runtime.__tostring = function(runtime) return runtime.str end
+L._Direct = setmetatable({ str = 'direct' }, Runtime)
+L._Legion = setmetatable({ str = 'legion', binding = nil }, Runtime)
+L._runtime = L._Direct
+
 -------------------------------------------------------------------------------
 --[[ Liszt object prototypes:                                              ]]--
 -------------------------------------------------------------------------------
