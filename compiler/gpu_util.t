@@ -92,7 +92,8 @@ end)
 terralib.linklibrary("runtime/libdevice.bc")
 
 local cbrt = terralib.externfunction("__nv_cbrt", double -> double)
-
+local cos  = terralib.externfunction("__nv_cos",  double -> double)
+local sin  = terralib.externfunction("__nv_sin",  double -> double)
 
 --[[------------------------------------------------------------------------]]--
 --[[ Atomic reductions                                                      ]]--
@@ -131,7 +132,7 @@ end
 
 local cas_uint32 = terra(address : &uint32, compare : uint32, value : uint32)
     var old : uint32 = @address
-    terralib.asm(terralib.types.uint64, "atom.global.cas.b64 $0, [$1], $2, $3;","r,l,r,r",true,old,address,compare,value)
+    terralib.asm(terralib.types.uint32, "atom.global.cas.32 $0, [$1], $2, $3;","r,l,r,r",true,old,address,compare,value)
     return old
 end
 
@@ -139,11 +140,19 @@ local function generate_slow_atomic_64 (op, typ)
     return terra (address : &typ, operand : typ)
         var old : typ = @address
         var assumed : typ
+        var new     : typ
+
+        var new_b     : &uint64 = [&uint64](&new)
+        var assumed_b : &uint64 = [&uint64](&assumed)
+        var res       :  uint64
+
         var mask = false
         repeat
             if not mask then
                 assumed = old
-                old     = cas_uint64(address, assumed, op(assumed,operand))
+                new     = op(assumed,operand)
+                res     = cas_uint64([&uint64](address), @assumed_b, @new_b)
+                old     = @[&typ](&res)
                 mask    = assumed == old
             end
         until mask
@@ -153,12 +162,20 @@ end
 local function generate_slow_atomic_32 (op, typ)
     return terra (address : &typ, operand : typ)
         var old : typ = @address
-        var assumed : typ
+        var assumed   : typ
+	var new       : typ
+
+	var new_b     : &uint32 = [&uint32](&new)
+	var assumed_b : &uint32 = [&uint32](&assumed)
+	var res       :  uint32
+
         var mask = false
         repeat
             if not mask then
                 assumed = old
-                old     = cas_uint32(address, assumed, op(assumed,operand))
+                new     = op(assumed,operand)
+                res     = cas_uint32([&uint32](address), @assumed_b, @new_b)
+                old     = @[&typ](&res)
                 mask    = assumed == old
             end
         until mask
@@ -207,6 +224,8 @@ GPU.get_grid_dimensions = get_grid_dimensions
 
 GPU.cbrt = cbrt
 GPU.sqrt = cudalib.nvvm_sqrt_rm_d
+GPU.cos  = cos
+GPU.sin  = sin
 
 -- Intrinsic atomic reductions:
 GPU.atomic_add_float = atomic_add_float

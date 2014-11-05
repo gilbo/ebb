@@ -27,11 +27,11 @@ local bunny = Trimesh.LoadFromOFF(tri_mesh_filename)
 
 bunny.triangles:NewField('area_normal', L.vec3d):Load({0,0,0})
 local compute_area_normals = liszt kernel( t : bunny.triangles )
-  var p1 = t.v1.pos
-  var p2 = t.v2.pos
-  var p3 = t.v3.pos
+  var p0 = t.v[0].pos
+  var p1 = t.v[1].pos
+  var p2 = t.v[2].pos
 
-  var n = L.cross(p2-p1, p3-p1)
+  var n = L.cross(p1-p0, p2-p0)
   t.area_normal = n / 2
 end
 
@@ -46,20 +46,20 @@ local build_laplacian = liszt kernel(t : bunny.triangles)
   if area < 0.00001 then area = 0.00001 end
 
   -- this should be the cotan laplacian
-  var c1 = L.dot(t.v2.pos - t.v1.pos, t.v3.pos - t.v1.pos) / area
-  var c2 = L.dot(t.v1.pos - t.v2.pos, t.v3.pos - t.v2.pos) / area
-  var c3 = L.dot(t.v1.pos - t.v3.pos, t.v2.pos - t.v3.pos) / area
+  var c0 = L.dot(t.v[1].pos - t.v[0].pos, t.v[2].pos - t.v[0].pos) / area
+  var c1 = L.dot(t.v[2].pos - t.v[1].pos, t.v[0].pos - t.v[1].pos) / area
+  var c2 = L.dot(t.v[0].pos - t.v[2].pos, t.v[1].pos - t.v[2].pos) / area
 
-  t.v1.laplacian_diag += c2+c3
-  t.v2.laplacian_diag += c1+c3
-  t.v3.laplacian_diag += c1+c2
+  t.v[0].laplacian_diag += c1+c2
+  t.v[1].laplacian_diag += c0+c2
+  t.v[2].laplacian_diag += c0+c1
 
-  t.e12.laplacian += c3
-  t.e21.laplacian += c3
-  t.e13.laplacian += c2
-  t.e31.laplacian += c2
-  t.e23.laplacian += c1
-  t.e32.laplacian += c1
+  t.e12.laplacian += c2
+  t.e21.laplacian += c2
+  t.e13.laplacian += c1
+  t.e31.laplacian += c1
+  t.e23.laplacian += c0
+  t.e32.laplacian += c0
 end
 
 local function compute_laplacian(mesh)
@@ -85,6 +85,7 @@ local compute_diffusion = liszt kernel ( v : bunny.vertices )
   for e in v.edges do
     acc += e.laplacian * (e.head.pos - v.pos)
   end
+
   v.d_pos = timestep * acc / v.laplacian_diag
 end
 
@@ -111,7 +112,7 @@ local debug_tri_draw = liszt kernel ( t : bunny.triangles )
   var val = d * 0.5 + 0.5
   var col : L.vec3d = {val,val,val}
   vdb.color(col)
-  vdb.triangle(t.v1.pos, t.v2.pos, t.v3.pos)
+  vdb.triangle(t.v[0].pos, t.v[1].pos, t.v[2].pos)
 end
 -- END EXTRA VDB CODE
 
@@ -135,6 +136,7 @@ for i = 1,400 do
   vdb.vend()
   -- END EXTRA
 end
+
 
 
 ------------------------------------------------------------------------------

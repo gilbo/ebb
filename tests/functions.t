@@ -99,12 +99,12 @@ end
 t6(cells)
 -- Two failure cases to exercise case of no return value
 test.fail_function(function()
-  liszt kernel (c : cells)
+  liszt kernel t(c : cells)
     var x = empty_f()
   end
 end, 'can only assign numbers, bools, or rows')
 test.fail_function(function()
-  liszt kernel (c : cells)
+  liszt kernel t(c : cells)
     var x = 2 + empty_f()
   end
 end, "invalid types for operator '%+'")

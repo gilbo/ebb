@@ -1,4 +1,4 @@
-#!/usr/bin/env luajit
+#!./terra/terra
 local ffi = require "ffi"
 
 local lscmd
@@ -18,12 +18,21 @@ local exclude = {
 }
 
 local disable_str = '--DISABLE-TEST'
-
 local function is_disabled (filename)
     local h = io.open(filename, "r")
     local line = h:read()
     io.close(h)
     return line and string.sub(line,1,#disable_str) == disable_str
+end
+
+local GPU_disabled = not terralib.cudacompile
+
+local GPU_test_str = '--GPU-TEST'
+local function is_gpu_test (filename)
+    local h = io.open(filename, "r")
+    local line = h:read()
+    io.close(h)
+    return line and string.sub(line,1,#GPU_test_str) == GPU_test_str
 end
 
 local function output_name (filename)
@@ -52,6 +61,8 @@ for line in io.popen(lscmd):lines() do
     local out_file = file and output_name(file)
     if file and not exclude[file] then
         if is_disabled(file) then
+            table.insert(disabled, file)
+        elseif GPU_disabled and is_gpu_test(file) then
             table.insert(disabled, file)
         else
             print(file)

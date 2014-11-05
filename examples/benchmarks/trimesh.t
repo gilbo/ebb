@@ -5,7 +5,7 @@ import "compiler.liszt" -- Every Liszt File should start with this command
 local Trimesh = {}
 
 -- We are going to use this table as a prototype object
--- see http://en.wikipedia.org/prototypesesd;fnasd;flknawpeofina;lsdknf
+-- see http://en.wikipedia.org/prototypes
 Trimesh.__index = Trimesh
 
 -- Finally, we declare that the Trimesh table should be returned
@@ -16,20 +16,22 @@ package.loaded["examples.benchmarks.trimesh"] = Trimesh
 ------------------------------------------------------------------------------
 
 -- edges are duplicated, one way for each direction
-local function build_edges(mesh, v1s, v2s, v3s)
+local function build_edges(mesh, vs) --v1s, v2s, v3s)
   local neighbors = {} -- vertex to vertex graph
   for k = 1,(mesh:nVerts()) do neighbors[k] = {} end
 
-  -- construct an edge for each triangle
+  -- record the set of edges that each triangle forces to exist
+  -- redundancy is eliminated since multiple triangles just set the
+  -- same entry to true multiple times
   for i = 1,(mesh:nTris()) do
-    neighbors[v1s[i]+1][v2s[i]+1] = true
-    neighbors[v1s[i]+1][v3s[i]+1] = true
+    neighbors[vs[i][1]+1][vs[i][2]+1] = true
+    neighbors[vs[i][1]+1][vs[i][3]+1] = true
 
-    neighbors[v2s[i]+1][v1s[i]+1] = true
-    neighbors[v2s[i]+1][v3s[i]+1] = true
+    neighbors[vs[i][2]+1][vs[i][1]+1] = true
+    neighbors[vs[i][2]+1][vs[i][3]+1] = true
 
-    neighbors[v3s[i]+1][v1s[i]+1] = true
-    neighbors[v3s[i]+1][v2s[i]+1] = true
+    neighbors[vs[i][3]+1][vs[i][1]+1] = true
+    neighbors[vs[i][3]+1][vs[i][2]+1] = true
   end
 
   local n_edges = 0
@@ -70,17 +72,17 @@ local function build_edges(mesh, v1s, v2s, v3s)
   mesh.triangles:NewField('e23', mesh.edges):Load(0)
   mesh.triangles:NewField('e32', mesh.edges):Load(0)
   local compute_tri_pointers = liszt kernel ( t : mesh.triangles )
-    for e in t.v1.edges do
-      if e.head == t.v2 then t.e12 = e end
-      if e.head == t.v3 then t.e13 = e end
+    for e in t.v[0].edges do
+      if e.head == t.v[1] then t.e12 = e end
+      if e.head == t.v[2] then t.e13 = e end
     end
-    for e in t.v2.edges do
-      if e.head == t.v1 then t.e21 = e end
-      if e.head == t.v3 then t.e23 = e end
+    for e in t.v[1].edges do
+      if e.head == t.v[0] then t.e21 = e end
+      if e.head == t.v[2] then t.e23 = e end
     end
-    for e in t.v3.edges do
-      if e.head == t.v1 then t.e31 = e end
-      if e.head == t.v2 then t.e32 = e end
+    for e in t.v[2].edges do
+      if e.head == t.v[0] then t.e31 = e end
+      if e.head == t.v[1] then t.e32 = e end
     end
   end
   compute_tri_pointers(mesh.triangles)
@@ -89,7 +91,7 @@ end
 -- Let's define a new function as an entry in the Trimesh table
 -- This function is going to be responsible for constructing the
 -- Relations representing a triangle mesh.
-function Trimesh.LoadFromLists(positions, v1s, v2s, v3s)
+function Trimesh.LoadFromLists(positions, tri_verts) --v1s, v2s, v3s)
   -- We're going to pack everything into a new table encapsulating
   -- the triangle mesh.
   local mesh = {}
@@ -97,7 +99,7 @@ function Trimesh.LoadFromLists(positions, v1s, v2s, v3s)
   -- First, we set Trimesh as the prototype of the new table
   setmetatable(mesh, Trimesh)
 
-  local n_tris = #v1s
+  local n_tris = #tri_verts--#v1s
   local n_verts = #positions
 
   -- Define two new relations and store them in the mesh
@@ -106,17 +108,19 @@ function Trimesh.LoadFromLists(positions, v1s, v2s, v3s)
 
   -- Define the fields
   mesh.vertices:NewField('pos', L.vec3d)
-  mesh.triangles:NewField('v1', mesh.vertices)
-  mesh.triangles:NewField('v2', mesh.vertices)
-  mesh.triangles:NewField('v3', mesh.vertices)
+  mesh.triangles:NewField('v', L.vector(mesh.vertices, 3))
+  --mesh.triangles:NewField('v1', mesh.vertices)
+  --mesh.triangles:NewField('v2', mesh.vertices)
+  --mesh.triangles:NewField('v3', mesh.vertices)
 
   -- Load the supplied data
   mesh.vertices.pos:Load(positions)
-  mesh.triangles.v1:Load(v1s)
-  mesh.triangles.v2:Load(v2s)
-  mesh.triangles.v3:Load(v3s)
+  mesh.triangles.v:Load(tri_verts)
+  --mesh.triangles.v1:Load(v1s)
+  --mesh.triangles.v2:Load(v2s)
+  --mesh.triangles.v3:Load(v3s)
 
-  build_edges(mesh, v1s, v2s, v3s)
+  build_edges(mesh, tri_verts) --v1s, v2s, v3s)
 
   -- and return the resulting mesh
   return mesh
@@ -173,17 +177,23 @@ function Trimesh.LoadFromOFF(path)
   end
 
   -- Then read in all the vertex index arrays
-  local v1_data_array = {}
-  local v2_data_array = {}
-  local v3_data_array = {}
+  local tri_data_array = {}
+  --local v1_data_array = {}
+  --local v2_data_array = {}
+  --local v3_data_array = {}
   for i = 1, n_tris do
     local three   = off_in:read('*number')
     if three ~= 3 then
       error('tried to read a triangle with '..three..' vertices')
     end
-    v1_data_array[i] = off_in:read('*number')
-    v2_data_array[i] = off_in:read('*number')
-    v3_data_array[i] = off_in:read('*number')
+    tri_data_array[i] = {
+      off_in:read('*number'),
+      off_in:read('*number'),
+      off_in:read('*number')
+    }
+    --v1_data_array[i] = off_in:read('*number')
+    --v2_data_array[i] = off_in:read('*number')
+    --v3_data_array[i] = off_in:read('*number')
   end
 
   -- don't forget to close the file when done
@@ -191,9 +201,10 @@ function Trimesh.LoadFromOFF(path)
 
   return Trimesh.LoadFromLists(
     position_data_array,
-    v1_data_array,
-    v2_data_array,
-    v3_data_array
+    tri_data_array
+    --v1_data_array,
+    --v2_data_array,
+    --v3_data_array
   )
 end
 

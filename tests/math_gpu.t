@@ -1,3 +1,4 @@
+--GPU-TEST
 if not terralib.cudacompile then return end
 
 import 'compiler.liszt'

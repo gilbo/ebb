@@ -101,6 +101,41 @@ function Context:incrementInsertIndex()
   end
 end
 
+
+
+
+local function vec_mapgen(typ,func)
+  local arr = {}
+  for i=1,typ.N do arr[i] = func(i-1) end
+  return `[typ:terraType()]({ array([arr]) })
+end
+local function mat_mapgen(typ,func)
+  local rows = {}
+  for i=1,typ.Nrow do
+    local r = {}
+    for j=1,typ.Ncol do r[j] = func(i-1,j-1) end
+    rows[i] = `array([r])
+  end
+  return `[typ:terraType()]({ array([rows]) })
+end
+
+local function vec_foldgen(N, init, binf)
+  local acc = init
+  for ii = 1, N do local i = N - ii -- count down to 0
+    acc = binf(i, acc) end
+  return acc
+end
+local function mat_foldgen(N,M, init, binf)
+  local acc = init
+  for ii = 1, N do local i = N - ii -- count down to 0
+    for jj = 1, M do local j = M - jj -- count down to 0
+      acc = binf(i,j, acc) end end
+  return acc
+end
+
+
+
+
 --[[--------------------------------------------------------------------]]--
 --[[                         CPU Codegen                                ]]--
 --[[--------------------------------------------------------------------]]--
@@ -147,10 +182,9 @@ local function cpu_codegen (kernel_ast, ctxt)
     end
   ctxt:leaveblock()
 
-  local r = terra ()
-    [kernel_body]
-  end
-  return r
+  local k = terra () [kernel_body] end
+  k:setname(kernel_ast.id)
+  return k
 end
 
 
@@ -323,7 +357,7 @@ local function reduce_global_shared_memory (global_shared_ptrs, ctxt, block_size
   return reduce_code
 end
 
-local function generate_final_reduce (global_shared_ptrs, ctxt, block_size)
+local function generate_final_reduce (kernel_ast, global_shared_ptrs, ctxt, block_size)
   local array_len  = symbol(uint64)
 
   -- read in all global reduction values corresponding to this (global) thread
@@ -353,8 +387,9 @@ local function generate_final_reduce (global_shared_ptrs, ctxt, block_size)
   final_reduce = terra ([array_len])
     [final_reduce] 
   end
-
-  return terralib.cudacompile({final_reduce=final_reduce}).final_reduce
+  local id = kernel_ast.id .. '_reduce'
+  -- using id here to set debug name of kernel for tuning/debugging
+  return terralib.cudacompile({[id]=final_reduce})[id]
 end
 
 local function allocate_reduction_space (n_blocks, global_shared_ptrs, ctxt)
@@ -395,26 +430,35 @@ local function free_reduction_space (global_shared_ptrs, ctxt)
   return free_code
 end
 
-local function gpu_codegen (kernel_ast, ctxt)
-  local BLOCK_SIZE   = 256
-  local MAX_GRID_DIM = 65536
-
+local function compute_global_reduction_data (ctxt, block_size)
   local shared_mem_size = 0
   local global_shared_ptrs = { }
   local kernel = ctxt.bran.kernel
-  local gb
+  local codegen_reduce = false
   for g, phase in pairs(kernel.global_use) do
     if phase.reduceop then
-      gb = g
-      global_shared_ptrs[g] = cudalib.sharedmemory(g.type:terraType(), BLOCK_SIZE)
-      shared_mem_size = shared_mem_size + sizeof(g.type:terraType()) * BLOCK_SIZE
+      codegen_reduce = true
+      global_shared_ptrs[g] = cudalib.sharedmemory(g.type:terraType(), block_size)
+      shared_mem_size = shared_mem_size + sizeof(g.type:terraType()) * block_size
     end
   end
+  return codegen_reduce, global_shared_ptrs, shared_mem_size
+end
+
+local function gpu_codegen (kernel_ast, ctxt)
+  local BLOCK_SIZE   = 64
+  local MAX_GRID_DIM = 65536
+
+  -----------------------------
+  --[[ Codegen CUDA kernel ]]--
+  -----------------------------
+  local codegen_reduce, global_shared_ptrs, shared_mem_size = compute_global_reduction_data(ctxt, BLOCK_SIZE)
   ctxt:SetGlobalSharedPtrs(global_shared_ptrs)
   ctxt:enterblock()
     -- declare the symbol for iteration
     local param = symbol(L.row(ctxt.bran.relation):terraType())
     ctxt:localenv()[kernel_ast.name] = param
+    local id = symbol(uint64)
 
     local body = quote
       if [ctxt:isLiveCheck(param)] then
@@ -422,31 +466,8 @@ local function gpu_codegen (kernel_ast, ctxt)
       end
     end
 
-    local kernel_body = quote
-      var id : uint64 = G.block_id() * BLOCK_SIZE + G.thread_id()
-      var [param] = id
-
-      -- initialize shared memory for global reductions
-      [initialize_global_shared_memory(global_shared_ptrs, ctxt)]
-      G.barrier()
-      
-      if [param] < [ctxt:runtimeGerm()].n_rows then
-        [body]
-      end
-
-      -- reduce L.globals to one value and copy back to GPU global memory
-      G.barrier()
-      [reduce_global_shared_memory(global_shared_ptrs, ctxt, BLOCK_SIZE)]
-    end
-
     if ctxt.bran.subset then
-      kernel_body = quote
-        var id : uint64 = G.block_id() * BLOCK_SIZE + G.thread_id()
-        
-        -- initialize shared memory for global reductions
-        [initialize_global_shared_memory(global_shared_ptrs, ctxt)]
-        G.barrier()
-
+      body = quote
         if [ctxt:runtimeGerm()].use_boolmask then
           var [param] = id
           if [param] < [ctxt:runtimeGerm()].n_rows and
@@ -460,84 +481,87 @@ local function gpu_codegen (kernel_ast, ctxt)
             [body]
           end
         end
-
-        -- reduce L.globals to one value and copy back to GPU global memory
-        G.barrier()
-        [reduce_global_shared_memory(global_shared_ptrs, kernel_ast, ctxt, BLOCK_SIZE)]
+      end
+    else
+      body = quote
+        var [param] = id
+        if [param] < [ctxt:runtimeGerm()].n_rows then
+          [body]
+        end
       end
     end
+
+    local kernel_body = quote
+      var [id] : uint64 = G.block_id() * BLOCK_SIZE + G.thread_id()
+
+      -- Initialize shared memory for global reductions for kernels that require it
+      escape if codegen_reduce then emit quote
+        [initialize_global_shared_memory(global_shared_ptrs, ctxt)]
+        G.barrier()
+      end end end
+      
+      [body]
+
+      -- reduce block reduction temporaries to one value and copy back to GPU
+      -- global memory for kernels that require it
+      escape if codegen_reduce then emit quote
+        G.barrier()
+        [reduce_global_shared_memory(global_shared_ptrs, ctxt, BLOCK_SIZE)]
+      end end end
+    end
+
   ctxt:leaveblock()
 
   local cuda_kernel = terra ()
     [kernel_body]
   end
-  local M = terralib.cudacompile { cuda_kernel = cuda_kernel }
-  local reduce_global_scratch_values = generate_final_reduce(global_shared_ptrs,ctxt,BLOCK_SIZE)
+  -- using kernel_ast.id here to set debug name of kernel for tuning/debugging
+  cuda_kernel = terralib.cudacompile { [kernel_ast.id] = cuda_kernel }[kernel_ast.id]
+
+  --------------------------
+  --[[ Codegen launcher ]]--
+  --------------------------
+  local reduce_global_scratch_values = generate_final_reduce(kernel_ast, global_shared_ptrs,ctxt,BLOCK_SIZE)
   -- germ type will have a use_boolmask field only if it
   -- was generated for a subset kernel
+  local n_blocks = symbol(uint)
+  local compute_nblocks
   if ctxt.bran.subset then
-    local launcher = terra ()
-      var n_blocks = uint(C.ceil(
-        [ctxt:cpuGerm()].n_rows / float(BLOCK_SIZE)))
-      var grid_x : uint, grid_y : uint, grid_z : uint = 
-        G.get_grid_dimensions(n_blocks, MAX_GRID_DIM)
-      var params = terralib.CUDAParams {
-        grid_x, grid_y, grid_z,
-        BLOCK_SIZE, 1, 1,
-        shared_mem_size, nil
-      }
-
-      if not [ctxt:cpuGerm()].use_boolmask then
-        var n_blocks = uint(C.ceil(
-          [ctxt:cpuGerm()].index_size / float(BLOCK_SIZE)))
-        var grid_x : uint, grid_y : uint, grid_z : uint = 
-          G.get_grid_dimensions(n_blocks, MAX_GRID_DIM)
-        params = terralib.CUDAParams {
-          grid_x, grid_y, grid_z,
-          BLOCK_SIZE, 1, 1,
-          shared_mem_size, nil
-        }
+    compute_nblocks = quote
+      var [n_blocks]
+      if [ctxt:cpuGerm()].use_boolmask then
+        [n_blocks] = [uint](C.ceil([ctxt:cpuGerm()].n_rows     / float(BLOCK_SIZE)))
+      else
+        [n_blocks] = [uint](C.ceil([ctxt:cpuGerm()].index_size / float(BLOCK_SIZE)))
       end
-
-      [allocate_reduction_space(n_blocks,global_shared_ptrs, ctxt)]
-      M.cuda_kernel(&params)
-      G.sync() -- flush print streams
-
-      var reduce_params = terralib.CUDAParams {
-        1,1,1,
-        BLOCK_SIZE,1,1,
-        shared_mem_size, nil
-      }
-      reduce_global_scratch_values(&reduce_params,n_blocks)
-      [free_reduction_space(global_shared_ptrs, ctxt)]
     end
-    return launcher
-
   else
-    local launcher = terra ()
-      var n_blocks = uint(C.ceil(
-        [ctxt:cpuGerm()].n_rows / float(BLOCK_SIZE)))
-      var grid_x : uint, grid_y : uint, grid_z : uint =
-        G.get_grid_dimensions(n_blocks, MAX_GRID_DIM)
-      var params = terralib.CUDAParams {
-        grid_x, grid_y, grid_z,
-        BLOCK_SIZE, 1, 1,
-        shared_mem_size, nil
-      }
-      [allocate_reduction_space(n_blocks,global_shared_ptrs, ctxt)]
-      M.cuda_kernel(&params)
-      G.sync() -- flush print streams
+    compute_nblocks = quote
+      var [n_blocks] = [uint](C.ceil([ctxt:cpuGerm()].n_rows / float(BLOCK_SIZE)))
+    end
+  end
 
-      var reduce_params = terralib.CUDAParams {
-        1,1,1,
-        BLOCK_SIZE,1,1,
-        shared_mem_size, nil
-      }
+  local launcher = terra ()
+    [compute_nblocks]
+    var grid_x : uint, grid_y : uint, grid_z : uint = G.get_grid_dimensions(n_blocks, MAX_GRID_DIM)
+    var params = terralib.CUDAParams { grid_x, grid_y, grid_z, BLOCK_SIZE, 1, 1, shared_mem_size, nil }
+
+    escape if codegen_reduce then emit quote
+      -- Allocate temporary space on the GPU for global reductions
+      [allocate_reduction_space(n_blocks,global_shared_ptrs, ctxt)]
+    end end end
+
+    cuda_kernel(&params)
+    G.sync() -- flush print streams
+
+    escape if codegen_reduce then emit quote
+      -- Launch 2nd reduction kernel and free temporary space
+      var reduce_params = terralib.CUDAParams { 1,1,1, BLOCK_SIZE,1,1, shared_mem_size, nil }
       reduce_global_scratch_values(&reduce_params,n_blocks)
       [free_reduction_space(global_shared_ptrs, ctxt)]
-    end
-    return launcher
+    end end end
   end
+  return launcher
 end
 
 function Codegen.codegen (kernel_ast, bran)
@@ -759,6 +783,8 @@ local function atomic_gpu_red_exp (op, typ, lvalptr, update)
   error(internal_error)
 end
 
+
+-- ONLY ONE PLACE...
 function let_vec_binding(typ, N, exp)
   local val = symbol(typ:terraType())
   local let_binding = quote var [val] = [exp] end
@@ -773,49 +799,144 @@ function let_vec_binding(typ, N, exp)
   return let_binding, coords
 end
 
+
+
+function symgen_bind(typ, exp, f)
+  local s = symbol(typ:terraType())
+  return quote var s = exp in [f(s)] end
+end
+function symgen_bind2(typ1, typ2, exp1, exp2, f)
+  local s1 = symbol(typ1:terraType())
+  local s2 = symbol(typ2:terraType())
+  return quote
+    var s1 = exp1
+    var s2 = exp2
+  in [f(s1,s2)] end
+end
+
 function vec_bin_exp(op, result_typ, lhe, rhe, lhtyp, rhtyp)
-  -- ALL non-vector ops are handled here
-  if not lhtyp:isVector() and not rhtyp:isVector() then
+  if lhtyp:isPrimitive() and rhtyp:isPrimitive() then
     return bin_exp(op, lhe, rhe)
   end
 
-  -- the result type is misleading if we're doing a vector comparison...
+  -- handles equality and inequality of rows
+  if lhtyp:isRow() and rhtyp:isRow() then
+    return bin_exp(op, lhe, rhe)
+  end
+
+  -- ALL THE CASES
+
+  -- OP: Ord (scalars only)
+  -- OP: Mod (scalars only)
+  -- BOTH HANDLED ABOVE
+
+  -- OP: Eq (=> DIM: == , BASETYPE: == )
+    -- pairwise comparisons, and/or collapse
+  local eqinitval = { ['=='] = `true, ['~='] = `false }
   if op == '==' or op == '~=' then
-    -- assert(lhtyp:isVector() and rhtyp:isVector())
-    result_typ = lhtyp
-    if lhtyp:isCoercableTo(rhtyp) then
-      result_typ = rhtyp
+    if lhtyp:isVector() then -- rhtyp:isVector()
+      return symgen_bind2(lhtyp, rhtyp, lhe, rhe, function(lvec,rvec)
+        return vec_foldgen(lhtyp.N, eqinitval[op], function(i, acc)
+          if op == '==' then return `acc and lvec.d[i] == rvec.d[i]
+                        else return `acc or  lvec.d[i] ~= rvec.d[i] end
+        end) end)
+
+    elseif lhtyp:isSmallMatrix() then -- rhtyp:isSmallMatrix()
+      return symgen_bind2(lhtyp, rhtyp, lhe, rhe, function(lmat,rmat)
+        return mat_foldgen(lhtyp.Nrow, lhtyp.Ncol, eqinitval[op],
+          function(i,j, acc)
+            if op == '==' then return `acc and lmat.d[i][j] == rmat.d[i][j]
+                          else return `acc or  lmat.d[i][j] ~= rmat.d[i][j] end
+          end) end)
+
     end
   end
 
-  local N = result_typ.N
+  -- OP: Logical (and or)
+    -- map the OP
+  -- OP: + - min max
+    -- map the OP
+  if op == 'and'  or op == 'or' or
+     op == '+'    or op == '-'  or
+     op == 'min'  or op == 'max'
+  then
+    if lhtyp:isVector() then -- rhtyp:isVector()
+      return symgen_bind2(lhtyp, rhtyp, lhe, rhe, function(lvec,rvec)
+        return vec_mapgen(result_typ, function(i)
+          return bin_exp( op, (`lvec.d[i]), `(rvec.d[i]) ) end) end)
 
-  local lhbind, lhcoords = let_vec_binding(lhtyp, N, lhe)
-  local rhbind, rhcoords = let_vec_binding(rhtyp, N, rhe)
+    elseif lhtyp:isSmallMatrix() then
+      return symgen_bind2(lhtyp, rhtyp, lhe, rhe, function(lmat,rmat)
+        return mat_mapgen(result_typ, function(i,j)
+          return bin_exp( op, (`lmat.d[i][j]), `(rmat.d[i][j]) ) end) end)
 
-  -- Assemble the resulting vector by mashing up the coords
-  local coords = {}
-  for i=1, N do
-    coords[i] = bin_exp(op, lhcoords[i], rhcoords[i])
+    end
   end
-  local result = `[result_typ:terraType()]({ array( [coords] ) })
 
-  -- special case handling of vector comparisons
-  if op == '==' then -- AND results
-    result = `true
-    for i = 1, N do result = `result and [ coords[i] ] end
-  elseif op == '~=' then -- OR results
-    result = `false
-    for i = 1, N do result = `result or [ coords[i] ] end
+  -- OP: *
+    -- DIM: Scalar _
+    -- DIM: _ Scalar
+      -- map the OP with expanding one side
+  -- OP: /
+    -- DIM: _ Scalar
+      -- map the OP with expanding one side
+  if op == '/' or
+    (op == '*' and lhtyp:isPrimitive() or rhtyp:isPrimitive())
+  then
+    if lhtyp:isVector() then -- rhtyp:isPrimitive()
+      return symgen_bind2(lhtyp, rhtyp, lhe, rhe, function(lvec,r)
+        return vec_mapgen(result_typ, function(i)
+          return bin_exp( op, (`lvec.d[i]), r ) end) end)
+
+    elseif rhtyp:isVector() then -- lhtyp:isPrimitive()
+      return symgen_bind2(lhtyp, rhtyp, lhe, rhe, function(l,rvec)
+        return vec_mapgen(result_typ, function(i)
+          return bin_exp( op, l, `(rvec.d[i]) ) end) end)
+
+    elseif lhtyp:isSmallMatrix() then -- rhtyp:isPrimitive()
+      return symgen_bind2(lhtyp, rhtyp, lhe, rhe, function(lmat,r)
+        return mat_mapgen(result_typ, function(i,j)
+          return bin_exp( op, (`lmat.d[i][j]), r ) end) end)
+
+    elseif rhtyp:isSmallMatrix() then -- rhtyp:isPrimitive()
+      return symgen_bind2(lhtyp, rhtyp, lhe, rhe, function(l,rmat)
+        return mat_mapgen(result_typ, function(i,j)
+          return bin_exp( op, l, `(rmat.d[i][j]) ) end) end)
+
+    end
   end
 
-  local q = quote
-    [lhbind]
-    [rhbind]
-  in
-    [result]
-  end
-  return q
+  -- OP: *
+    -- DIM: Vector(n) Matrix(n,_)
+    -- DIM: Matrix(_,m) Vector(m)
+    -- DIM: Matrix(_,m) Matrix(m,_)
+      -- vector-matrix, matrix-vector, or matrix-matrix products
+--  if op == '*' then
+--    if lhtyp:isVector() and rhtyp:isSmallMatrix() then
+--      return symgen_bind2(lhtyp, rhtyp, lhe, rhe, function(lvec,rmat)
+--        return vec_mapgen(result_typ, function(j)
+--          return vec_foldgen(rmat.Ncol, `0, function(i, acc)
+--            return `acc + lvec.d[i] * rmat.d[i][j] end) end) end)
+--
+--    elseif lhtyp:isSmallMatrix() and rhtyp:isVector() then
+--      return symgen_bind2(lhtyp, rhtyp, lhe, rhe, function(lmat,rvec)
+--        return vec_mapgen(result_typ, function(i)
+--          return vec_foldgen(lmat.Nrow, `0, function(j, acc)
+--            return `acc + lmat.d[i][j] * rvec.d[j] end) end) end)
+--
+--    elseif lhtyp:isSmallMatrix() and rhtyp:isSmallMatrix() then
+--      return symgen_bind2(lhtyp, rhtyp, lhe, rhe, function(lmat,rmat)
+--        return mat_mapgen(result_typ, function(i,j)
+--          return vec_foldgen(rmat.Ncol, `0, function(k, acc)
+--            return `acc + lmat.d[i][k] * rmat.d[k][j] end) end) end)
+--
+--    end
+--  end
+
+  -- If we fell through to here we've run into an unhandled branch
+  error('Internal Error: Could not find any code to generate for '..
+        'binary operator '..op..' with opeands of type '..lhtyp:toString()..
+        ' and '..rhtyp:toString())
 end
 
 function atomic_gpu_vec_red_exp(op, result_typ, lval, rhe, rhtyp)
@@ -899,22 +1020,24 @@ end
 
 function ast.Cast:codegen(ctxt)
   local typ = self.node_type
+  local bt  = typ:terraBaseType()
   local valuecode = self.value:codegen(ctxt)
 
-  if not typ:isVector() then
+  if typ:isPrimitive() then
     return `[typ:terraType()](valuecode)
-  else
+
+  elseif typ:isVector() then
     local vec = symbol(self.value.node_type:terraType())
-    local bt  = typ:terraBaseType()
+    return quote var [vec] = valuecode in
+      [ vec_mapgen(typ, function(i) return `[bt](vec.d[i]) end) ] end
 
-    local coords = {}
-    for i= 1, typ.N do coords[i] = `[bt](vec.d[i-1]) end
+  elseif typ:isSmallMatrix() then
+    local mat = symbol(self.value.node_type:terraType())
+    return quote var [mat] = valuecode in
+      [ mat_mapgen(typ, function(i,j) return `[bt](mat.d[i][j]) end) ] end
 
-    return quote
-      var [vec] = valuecode
-    in
-      [typ:terraType()]({ arrayof(bt, [coords]) })
-    end
+  else
+    error("Internal Error: Type unrecognized "..typ:toString())
   end
 end
 
@@ -941,17 +1064,20 @@ function ast.DeclStatement:codegen (ctxt)
   end
 end
 
+function ast.MatrixLiteral:codegen (ctxt)
+  local typ = self.node_type
+
+  return mat_mapgen(typ, function(i,j)
+    return self.elems[i*self.m + j + 1]:codegen(ctxt)
+  end)
+end
+
 function ast.VectorLiteral:codegen (ctxt)
   local typ = self.node_type
 
-  -- type everything explicitly
-  local elems = {}
-  for i = 1, #self.elems do
-    elems[i] = self.elems[i]:codegen(ctxt)
-  end
-
-  -- we allocate vectors as a struct with a single array member
-  return `[typ:terraType()]({ array( [elems] ) })
+  return vec_mapgen(typ, function(i)
+    return self.elems[i+1]:codegen(ctxt)
+  end)
 end
 
 function ast.Global:codegen (ctxt)
@@ -959,11 +1085,19 @@ function ast.Global:codegen (ctxt)
   return `@dataptr
 end
 
-function ast.VectorIndex:codegen (ctxt)
-  local vector = self.vector:codegen(ctxt)
-  local index  = self.index:codegen(ctxt)
+function ast.SquareIndex:codegen (ctxt)
+  local base  = self.base:codegen(ctxt)
+  local index = self.index:codegen(ctxt)
 
-  return `vector.d[index]
+  -- Vector case
+  if self.index2 == nil then
+    return `base.d[index]
+  -- Matrix case
+  else
+    local index2 = self.index2:codegen(ctxt)
+
+    return `base.d[index][index2]
+  end
 end
 
 function ast.Number:codegen (ctxt)
@@ -978,29 +1112,37 @@ function ast.Bool:codegen (ctxt)
   end
 end
 
+
 function ast.UnaryOp:codegen (ctxt)
   local expr = self.exp:codegen(ctxt)
   local typ  = self.node_type
 
-  if not typ:isVector() then
-    if (self.op == '-') then return `-[expr]
-    else                     return `not [expr]
-    end
-  else -- Unary op applied to a vector...
-    local binding, coords = let_vec_binding(typ, typ.N, expr)
+  if typ:isPrimitive() then
+    if self.op == '-' then return `-[expr]
+                      else return `not [expr] end
+  elseif typ:isVector() then
+    local vec = symbol(typ:terraType())
 
-    -- apply the operation
-    if (self.op == '-') then
-      for i = 1, typ.N do coords[i] = `-[ coords[i] ] end
+    if self.op == '-' then
+      return quote var [vec] = expr in
+        [ vec_mapgen(typ, function(i) return `-vec.d[i] end) ] end
     else
-      for i = 1, typ.N do coords[i] = `not [ coords[i] ] end
+      return quote var [vec] = expr in
+        [ vec_mapgen(typ, function(i) return `not vec.d[i] end) ] end
+    end
+  elseif typ:isSmallMatrix() then
+    local mat = symbol(typ:terraType())
+
+    if self.op == '-' then
+      return quote var [mat] = expr in
+        [ mat_mapgen(typ, function(i,j) return `-mat.d[i][j] end) ] end
+    else
+      return quote var [mat] = expr in
+        [ mat_mapgen(typ, function(i,j) return `not mat.d[i][j] end) ] end
     end
 
-    return quote
-      [binding]
-    in
-      [typ:terraType()]({ array([coords]) })
-    end
+  else
+    error("Internal Error: Type unrecognized "..typ:toString())
   end
 end
 

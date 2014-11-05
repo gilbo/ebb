@@ -36,7 +36,7 @@ test.fuzzy_eq(avgy, 4)
 ------------------
 idx = 3.5
 test.fail_function(function()
-  liszt kernel(v : mesh.vertices)
+  liszt kernel t(v : mesh.vertices)
       v.position[idx] = 5
   end
 end, "expected an integer")

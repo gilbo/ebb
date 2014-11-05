@@ -37,7 +37,7 @@ a.b.c.d = 4
 -------------------------------
 -- Should fail b/c checkthis1 is not a global
 test.fail_function(function()
- 	liszt kernel (cell : mesh.cells)
+ 	local liszt kernel t(cell : mesh.cells)
 		checkthis1 = cell.f1
 	end
 end, "Illegal assignment: left hand side cannot be assigned")
@@ -45,16 +45,16 @@ end, "Illegal assignment: left hand side cannot be assigned")
 -- Should fail when we re-assign a new value to x, since it originally
 -- refers to a topological element
 test.fail_function(function()
-  liszt kernel (cell : mesh.cells)
+	local liszt kernel t(cell : mesh.cells)
 		var x = cell
-  	  x = cell
+  	  	x = cell
 	end
 end, "Illegal assignment: variables of row type cannot be re%-assigned")
 
 -- Should fail because we do not allow assignments to fields
 -- (only to indexed fields, globals, and local vars)
 test.fail_function(function()
-	fail3 = liszt kernel (cell : mesh.cells)
+	fail3 = liszt kernel(cell : mesh.cells)
 		mesh.cells.f1 = 5
 	end
 end, "Illegal assignment: left hand side cannot be assigned")
@@ -62,13 +62,13 @@ end, "Illegal assignment: left hand side cannot be assigned")
 -- Should fail because we do not allow the user to alias fields,
 -- or any other entity that would confuse stencil generation, in the kernel
 test.fail_function(function()
-  liszt kernel (cell : mesh.cells)
+	local liszt kernel t(cell : mesh.cells)
 		var z = mesh.cells.f1
 	end
 end, "can only assign")
 
 test.fail_function(function()
- 	liszt kernel(cell : mesh.cells)
+ 	local liszt kernel t(cell : mesh.cells)
 		undefined = 3
 	end
 end, "variable 'undefined' is not defined")
@@ -76,7 +76,7 @@ end, "variable 'undefined' is not defined")
 -- Can't assign a value of a different type to a variable that has already
 -- been initialized
 test.fail_function(function()
-	liszt kernel (cell : mesh.cells)
+	local liszt kernel t(cell : mesh.cells)
 		var floatvar = 2 + 3.3
 		floatvar = true
 	end
@@ -84,7 +84,7 @@ end, "Could not coerce expression of type 'bool' into type 'double'")
 
 -- local8 is not in scope in the while loop
 test.fail_function(function()
-	liszt kernel (cell : mesh.cells)
+	local liszt kernel t(cell : mesh.cells)
 		var local7 = 2.0
 		do
 			var local8 = 2
@@ -99,7 +99,7 @@ test.fail_function(function()
 end, "variable 'local8' is not defined")
 
 test.fail_function(function()
-	liszt kernel (cell : mesh.cells)
+	local liszt kernel t(cell : mesh.cells)
 		if 4 < 2 then
 			var local8 = true
 		-- Should fail here, since local8 is not defined in this scope
@@ -114,7 +114,7 @@ test.fail_function(function()
 end, "variable 'local8' is not defined")
 
 test.fail_function(function()
-	liszt kernel (cell : mesh.cells)
+	local liszt kernel t(cell : mesh.cells)
 		var local1 = 3.4
 		do
 			var local1 = true
@@ -124,26 +124,26 @@ test.fail_function(function()
 end, "Could not coerce expression of type 'int' into type 'bool'")
 
 test.fail_function(function()
-	liszt kernel (cell : mesh.cells)
+	local liszt kernel t(cell : mesh.cells)
 		lassert(4 == true) -- binary op will fail here, type mismatch
 	end
 end, "incompatible types: int and bool")
 
 local v = L.NewVector(L.float, {1, 1, 1})
 test.fail_function(function()
-	liszt kernel (cell : mesh.cells)
+	local liszt kernel t(cell : mesh.cells)
 		lassert(v) -- assert fail, comparison returns a vector of bools
 	end
 end, "expected a boolean")
 
 test.fail_function(function()
-	liszt kernel (cell : mesh.cells)
+	local liszt kernel t(cell : mesh.cells)
 		a.b = 12
 	end
 end, "Illegal assignment: left hand side cannot be assigned")
 
 test.fail_function(function()
-	liszt kernel (cell : mesh.cells)
+	local liszt kernel t(cell : mesh.cells)
 		var v : L.bool
 		if false then
 			v = true
@@ -154,39 +154,39 @@ end, "Could not coerce expression of type 'int' into type 'bool'")
 
 local tbl = {}
 test.fail_function(function()
-	liszt kernel (cell : mesh.cells)
+	local liszt kernel t(cell : mesh.cells)
 		var x = 3 + tbl
 	end
 end, "invalid types")
 
 test.fail_function(function()
-	liszt kernel (cell : mesh.cells)
+	local liszt kernel t(cell : mesh.cells)
 		var x = tbl
 	end
 end, "can only assign")
 
 test.fail_function(function()
-	liszt kernel (cell : mesh.cells)
+	local liszt kernel t(cell : mesh.cells)
 		tbl.x = 4
 	end
 end, "lua table does not have member 'x'")
 
 local tbl = {x={}}
 test.fail_function(function()
-	liszt kernel (cell : mesh.cells)
+	local liszt kernel t(cell : mesh.cells)
 		tbl.x.y = 4
 	end
 end, "lua table does not have member 'y'")
 
 tbl.x.z = 4
 test.fail_function(function()
-	liszt kernel (cell : mesh.cells)
+	local liszt kernel t(cell : mesh.cells)
 		var x = tbl.x
 	end
 end, "can only assign")
 
 test.fail_function(function()
-	liszt kernel (cell : mesh.cells)
+	local liszt kernel t(cell : mesh.cells)
 		for i = 1, 4, 1 do
 			var x = 3
 		end

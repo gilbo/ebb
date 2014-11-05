@@ -178,8 +178,8 @@ function L.LRelation:GroupBy(name)
     error("GroupBy(): Relation is already grouped", 2)
   elseif not L.is_field(key_field) then
     error("GroupBy(): Could not find a field named '"..name.."'", 2)
-  elseif not key_field.type:isRow() then
-    error("GroupBy(): Grouping by non-row-type fields is "..
+  elseif not key_field.type:isScalarRow() then
+    error("GroupBy(): Grouping by non-scalar-row-type fields is "..
           "currently prohibited.", 2)
   end
 
@@ -510,7 +510,7 @@ function L.LRelation:NewField (name, typ)
 
   -- record reverse pointers for row-type field references
   if typ:isRow() then
-    typ.relation._incoming_refs[field] = 'row_field'
+    typ:baseType().relation._incoming_refs[field] = 'row_field'
   end
 
   return field
@@ -600,7 +600,25 @@ local function convert_vec(vec_val, typ)
   elseif type(vec_val) == 'table' and #vec_val == typ.N then
     return terralib.new(typ:terraType(), {vec_val})
   else
-    return nil
+    error('Loaded Value was not recognizable as compatible Vector', 3)
+    --return nil
+  end
+end
+
+-- convert lua tables to Terra structs used to represent matrices
+local function convert_mat(mat_val, typ)
+  if type(mat_val) == 'table' and #mat_val == typ.Nrow then
+    local terraval = terralib.new(typ:terraType())
+    for r=1,#mat_val do
+      local row = mat_val[r]
+      if type(row) ~= 'table' or #row ~= typ.Ncol then
+        error('Loaded Value was not recognizable as compatible Matrix', 3)
+      end
+      for c=1,#row do terraval.d[r][c] = row[c] end
+    end
+    return terraval
+  else
+    error('Loaded Value was not recognizable as compatible Matrix', 3)
   end
 end
 
@@ -612,7 +630,12 @@ function L.LField:LoadFunction(lua_callback)
 
   -- NEEDS REVISION FOR CASE OF FRAGMENTATION
   self.array:write_ptr(function(dataptr)
-    if self.type:isVector() then
+    if self.type:isSmallMatrix() then
+      for i = 0, self:Size() - 1 do
+        local val = lua_callback(i)
+        dataptr[i] = convert_mat(val, self.type)
+      end
+    elseif self.type:isVector() then
       for i = 0, self:Size() - 1 do
         local val = lua_callback(i)
         dataptr[i] = convert_vec(val, self.type)
@@ -666,7 +689,9 @@ function L.LField:LoadConstant(constant)
     error('cannot load into fragmented relation', 2)
   end
   self:Allocate()
-  if self.type:isVector() then
+  if self.type:isSmallMatrix() then
+    constant = convert_mat(constant, self.type)
+  elseif self.type:isVector() then
     constant = convert_vec(constant, self.type)
   end
 
@@ -708,7 +733,16 @@ end
 -- convert lua tables or LVectors to
 -- Terra structs used to represent vectors
 local function terraval_to_lua(val, typ)
-  if typ:isVector() then
+  if typ:isSmallMatrix() then
+    local mat = {}
+    local btyp = typ:baseType()
+    for i=1,typ.Nrow do
+      mat[i] = {}
+      for j=1,typ.Ncol do
+        mat[i][j] = terraval_to_lua(val.d[i-1][j-1], btyp) end
+    end
+    return mat
+  elseif typ:isVector() then
     local vec = {}
     for i = 1, typ.N do
       vec[i] = terraval_to_lua(val.d[i-1], typ:baseType())
@@ -718,6 +752,8 @@ local function terraval_to_lua(val, typ)
     return tonumber(val)
   elseif typ:isLogical() then
     if tonumber(val) == 0 then return false else return true end
+  elseif typ:isScalarRow() then
+    return tonumber(val)
   else
     error('unhandled terra_to_lua conversion')
   end
@@ -766,7 +802,25 @@ function L.LField:print()
   livemask.array:read_ptr(function(liveptr)
   self.array:read_ptr(function(dataptr)
     local alive
-    if (self.type:isVector()) then
+    if self.type:isSmallMatrix() then
+      for i = 0, N-1 do
+        if liveptr[i] then alive = ' .'
+        else                alive = ' x' end
+        local s = ''
+        for c = 0, self.type.Ncol-1 do
+          local t = tostring(dataptr[i].d[0][c]):gsub('ULL','')
+          s = s .. t .. ' '
+        end
+        print("", tostring(i) .. alive, s)
+        for r = 1, self.type.Nrow-1 do
+          local s = ''
+          for c = 0, self.type.Ncol-1 do
+            s = s .. tostring(dataptr[i].d[r][c]):gsub('ULL','') .. ' '
+          end
+          print("", "", s)
+        end
+      end
+    elseif self.type:isVector() then
       for i = 0, N-1 do
         if liveptr[i] then alive = ' .'
         else                alive = ' x' end
@@ -801,20 +855,22 @@ function L.LField:getDLD()
   if self.owner:isFragmented() then
     error('cannot get DLD from fragmented relation', 2)
   end
-  if not self.type:isPrimitive() and not self.type:isVector() then
-    error('Can only return DLDs for primitives and vectors, '..
-        'not Row types or other types given to fields')
+  if not self.type:baseType():isPrimitive() then
+    error('Can only return DLDs for fields with primitive base type')
   end
 
-  local terra_type = self.type:terraType()
-  local n = nil
+  local terra_type = self.type:terraBaseType()
+  local dims = {}
   if self.type:isVector() then
-    terra_type = self.type:terraBaseType()
-    n = self.type.N
+    dims = {self.type.N}
+  elseif self.type:isSmallMatrix() then
+    dims = {self.type.Nrow, self.type.Ncol}
   end
+
   local dld = DLD.new({
+    location        = tostring(self.array:location()),
     type            = terra_type,
-    type_n          = n,
+    type_dims       = dims,
     logical_size    = self.owner:ConcreteSize(),
     data            = self:DataPtr(),
     compact         = true,
