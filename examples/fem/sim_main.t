@@ -87,9 +87,9 @@ end
 ------------------------------------------------------------------------------
 -- Allocate common fields
 
-mesh.tetrahedra:NewField('lambdaLame', L.double)
-mesh.tetrahedra:NewField('muLame', L.double)
-mesh.vertices:NewField('displacement', L.vec3d)
+mesh.tetrahedra:NewField('lambdaLame', L.double):Load(0)
+mesh.tetrahedra:NewField('muLame', L.double):Load(0)
+mesh.vertices:NewField('displacement', L.vec3d):Load({ 0, 0, 0})
 
 ------------------------------------------------------------------------------
 -- For corresponding VEGA code, see
@@ -118,8 +118,8 @@ function computeMassMatrix(mesh)
   local buildMassMatrix = liszt kernel(t : mesh.tetrahedra)
     var tet_vol = getElementVolume(t)
     var factor = tet_vol * getElementDensity(t) / 20
-    for i = 0,3 do
-      for j = 0,3 do
+    for i = 0,4 do
+      for j = 0,4 do
         var mult_const = 1
         if i == j then
           var mult_const = 2
@@ -169,15 +169,15 @@ mesh.tetrahedra:NewField('Phig', L.mat3x4d)
 -- compute A, b, C, and D as required, on a per element basis.
 local precomputeStVKIntegrals = liszt kernel(t : mesh.tetrahedra)
   var det = getElementDet(t)
-  for i = 0,3 do
-    for j = 0,2 do
+  for i = 0,4 do
+    for j = 0,3 do
       var column0 : L.vec3d
       var column1 : L.vec3d
       var countI = 0
-      for ii = 0,3 do
+      for ii = 0,4 do
         if ii ~= i then
           var countJ = 0
-          for jj = 0,2 do
+          for jj = 0,3 do
             if jj ~= j then
               if countJ == 0 then
                 column0[countI] = t.v[ii].pos[jj]
@@ -186,6 +186,7 @@ local precomputeStVKIntegrals = liszt kernel(t : mesh.tetrahedra)
               end
               countJ += 1
             end
+          end
           countI += 1
         end
       end
@@ -197,7 +198,6 @@ local precomputeStVKIntegrals = liszt kernel(t : mesh.tetrahedra)
       end
       t.Phig[i, j] = sign * L.dot( L.vec3d( { 1, 1, 1 } ),
                                    L.cross(column0, column1) ) / det
-      end
     end
   end
 end
@@ -207,10 +207,10 @@ end
 -- allocate disk space
 local tetDots = liszt function(tet)
   var dots : L.mat3d
-  for i=0,4 do
+  for i=0,5 do
     var Phigi : L.vec3d =
       { tet.Phig[i, 0], tet.Phig[i, 1], tet.Phig[i, 2] }
-    for j=0,4 do
+    for j=0,5 do
       var Phigj : L.vec3d =
         { tet.Phig[j, 0], tet.Phig[j, 1], tet.Phig[j, 2] }
       dots[i, j] = L.dot(Phigi, Phigj)
@@ -254,9 +254,9 @@ mesh.vertices:NewField('forces', L.vec3d):Load({0, 0, 0})
 local addIFLinearTerms = liszt kernel(t : mesh.tetrahedra)
   var dots = tetDots(t)
   var volume = getElementVolume(t)
-  for ci = 0,3 do
+  for ci = 0,4 do
     var c = t.v[ci]
-    for ai = 0,3 do
+    for ai = 0,4 do
       var qa = t.v[ai].displacement
       var force = t.lambdaLame *
                   multiplyMatVec3(tetCoeffA(t, dots, volume, ci, ai), qa) +
@@ -272,11 +272,11 @@ end
 local addIFQuadraticTerms = liszt kernel(t : mesh.tetrahedra)
   var dots = tetDots(t)
   var volume = getElementVolume(t)
-  for ci = 0,3 do
+  for ci = 0,4 do
     var c = t.v[ci]
-    for ai = 0,3 do
+    for ai = 0,4 do
       var qa = t.v[ai].displacement
-      for bi = 0,3 do
+      for bi = 0,4 do
         var qb = t.v[bi].displacement
         var dotp = L.dot(qa, qb)
         var forceTerm1 = 0.5 * t.lambdaLame * dotp *
@@ -297,13 +297,13 @@ end
 local addIFCubicTerms = liszt kernel(t : mesh.tetrahedra)
   var dots = tetDots(t)
   var volume = getElementVolume(t)
-  for ci = 0,3 do
+  for ci = 0,4 do
     var c = t.v[ci]
-    for ai = 0,3 do
+    for ai = 0,4 do
       var qa = t.v[ai].displacement
-      for bi = 0,3 do
+      for bi = 0,4 do
         var qb = t.v[bi].displacement
-        for di = 0,3 do
+        for di = 0,4 do
           var d = t.v[di]
           var qd = d.displacement
           var dotp = L.dot(qa, qb)
@@ -370,8 +370,8 @@ mesh.edges:NewField('stiffness', L.mat3d)
 local addStiffLinearTerms = liszt kernel(t : mesh.tetrahedra)
   var dots = tetDots(t)
   var volume = getElementVolume(t)
-  for ci = 0,3 do
-    for ai = 0,3 do
+  for ci = 0,4 do
+    for ai = 0,4 do
       var mat = t.muLame * tetCoeffB(t, dots, volume, ai, ci) * getId3()
       mat += (t.lambdaLame * tetCoeffA(t, dots, volume, ci, ai) +
              (t.muLame * tetCoeffA(t, dots, volume, ai, ci)))
@@ -384,11 +384,11 @@ end
 local addStiffQuadraticTerms = liszt kernel(t : mesh.tetrahedra)
   var dots = tetDots(t)
   var volume = getElementVolume(t)
-  for ci = 0,3 do
-    for ai = 0,3 do
+  for ci = 0,4 do
+    for ai = 0,4 do
       var qa = t.v[ai].displacement
       var mat : L.mat3d = constantMatrix3(0)
-      for ei = 0,3 do
+      for ei = 0,4 do
         var c0v = t.lambdaLame * tetCoeffC(t, dots, volume, ci, ai, ei) +
                   t.muLame * ( tetCoeffC(t, dots, volume, ei, ai, ci) +
                                tetCoeffC(t, dots, volume, ai, ei, ci) )
@@ -412,12 +412,12 @@ end
 local addStiffCubicTerms = liszt kernel(t : mesh.tetrahedra)
   var dots = tetDots(t)
   var volume = getElementVolume(t)
-  for ci = 0,3 do
-    for ei = 0,3 do
+  for ci = 0,4 do
+    for ei = 0,4 do
       var mat : L.mat3d = constantMatrix3(0)
-      for ai = 0,3 do
+      for ai = 0,4 do
         var qa = t.v[ai].displacement
-        for bi = 0,3 do
+        for bi = 0,4 do
           var qb = t.v[bi].displacement
           var d0 = t.lambdaLame * tetCoeffD(t, dots, volume, ai, ci, bi, ei) +
                    t.muLame * ( tetCoeffD(t, dots, volume, ai, ei, bi, ci) +
@@ -647,7 +647,8 @@ function ImplicitBackwardEulerIntegrator:DoTimestep(mesh)
       errQuotient = self.err:get() / err0
     end
 
-    if errQuotient < self.epsilon*self.epsilon or err0 == nil then
+    if errQuotient < self.epsilon*self.epsilon or
+      err0 < self.epsilon*self.epsilon then
       break
     end
 
@@ -713,6 +714,7 @@ function main()
 
   print("Computing integrals ...")
   precomputeStVKIntegrals(mesh.tetrahedra) -- called StVKElementABCDLoader:load() in ref
+  print("Precomputed integrals")
 
   print("Initializing Lame constants ...")
   initializeLameConstants(mesh.tetrahedra)
