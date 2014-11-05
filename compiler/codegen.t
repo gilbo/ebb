@@ -60,11 +60,19 @@ function Context:SetGlobalSharedPtrs(shared_ptrs)
   self.global_shared_ptrs = shared_ptrs
 end
 function Context:GlobalSharedPtr(global, tid)
-  return quote
-    var tid = G.thread_id()
-  in
-    [self.global_shared_ptrs[global]][tid]
-  end
+    return `[self.global_shared_ptrs[global]][self.tid]
+end
+function Context:setTid(tid)
+  self.tid = tid
+end
+function Context:getTid()
+  return self.tid
+end
+function Context:setBid(bid)
+  self.bid = bid
+end
+function Context:getBid()
+  return self.bid
 end
 function Context:runtimeGerm()
   return self.bran.runtime_germ:ptr()
@@ -276,10 +284,8 @@ local function reduce_identity(ltype, reduceop)
 end
 
 local function initialize_global_shared_memory (global_shared_ptrs, ctxt)
-  local tid = symbol(uint32)
-  local init_code = quote
-    var [tid] = G.thread_id()
-  end
+  local init_code = quote end
+  local tid = ctxt:getTid()
 
   for g, shared in pairs(global_shared_ptrs) do
     local gtype = g.type
@@ -320,12 +326,7 @@ local function unrolled_block_reduce (op, typ, ptr, tid, block_size)
 end
 
 local function reduce_global_shared_memory (global_shared_ptrs, ctxt, block_size, commit_final_value)
-  local tid = symbol(uint64) -- thread id
-  local bid = symbol(uint64) -- block id
-  local reduce_code = quote
-    var [tid] = G.thread_id()
-    var [bid] = G.block_id()
-  end
+  local reduce_code = quote end
 
   for g, shared in pairs(global_shared_ptrs) do
 
@@ -333,11 +334,14 @@ local function reduce_global_shared_memory (global_shared_ptrs, ctxt, block_size
     local reduceop = ctxt:globalPhase(g).reduceop
     local scratch_ptr = ctxt:GlobalScratchPtr(g)
 
-   reduce_code = quote
+    local tid = ctxt:getTid()
+    local bid = ctxt:getBid()
+
+    reduce_code = quote
       [reduce_code]
 
-      [unrolled_block_reduce(reduceop, gtype, shared, tid, block_size)]
-      if tid == 0 then
+      [unrolled_block_reduce(reduceop, gtype, shared, ctxt:getTid(), block_size)]
+      if [tid] == 0 then
         escape
           if commit_final_value then
             local finalptr = ctxt:GlobalPtr(g)
@@ -359,11 +363,14 @@ end
 
 local function generate_final_reduce (kernel_ast, global_shared_ptrs, ctxt, block_size)
   local array_len  = symbol(uint64)
-
+  local t = symbol(uint32)
+  local b = symbol(uint32)
+  ctxt:setTid(t)
+  ctxt:setBid(b)
   -- read in all global reduction values corresponding to this (global) thread
   local final_reduce = quote
-    var t  = G.thread_id()
-    var b  = G.block_id()
+    var [t]  = G.thread_id()
+    var [b]  = G.block_id()
     var gt = t + [block_size] * b
     var num_blocks : uint64 = G.num_blocks()
 
@@ -459,6 +466,11 @@ local function gpu_codegen (kernel_ast, ctxt)
     local param = symbol(L.row(ctxt.bran.relation):terraType())
     ctxt:localenv()[kernel_ast.name] = param
     local id = symbol(uint64)
+    local tid = symbol(uint32)
+    local bid = symbol(uint32)
+
+    ctxt:setTid(tid)
+    ctxt:setBid(bid)
 
     local body = quote
       if [ctxt:isLiveCheck(param)] then
@@ -492,7 +504,9 @@ local function gpu_codegen (kernel_ast, ctxt)
     end
 
     local kernel_body = quote
-      var [id] : uint64 = G.block_id() * BLOCK_SIZE + G.thread_id()
+      var [tid] = G.thread_id()
+      var [bid] = G.block_id()
+      var [id] : uint64 = bid * BLOCK_SIZE + tid
 
       -- Initialize shared memory for global reductions for kernels that require it
       escape if codegen_reduce then emit quote
@@ -521,7 +535,6 @@ local function gpu_codegen (kernel_ast, ctxt)
   --------------------------
   --[[ Codegen launcher ]]--
   --------------------------
-  local reduce_global_scratch_values = generate_final_reduce(kernel_ast, global_shared_ptrs,ctxt,BLOCK_SIZE)
   -- germ type will have a use_boolmask field only if it
   -- was generated for a subset kernel
   local n_blocks = symbol(uint)
@@ -554,13 +567,19 @@ local function gpu_codegen (kernel_ast, ctxt)
     cuda_kernel(&params)
     G.sync() -- flush print streams
 
-    escape if codegen_reduce then emit quote
-      -- Launch 2nd reduction kernel and free temporary space
-      var reduce_params = terralib.CUDAParams { 1,1,1, BLOCK_SIZE,1,1, shared_mem_size, nil }
-      reduce_global_scratch_values(&reduce_params,n_blocks)
-      [free_reduction_space(global_shared_ptrs, ctxt)]
-    end end end
+    escape
+      if codegen_reduce then
+        local reduce_global_scratch_values = generate_final_reduce(kernel_ast, global_shared_ptrs,ctxt,BLOCK_SIZE)
+        emit quote
+          -- Launch 2nd reduction kernel and free temporary space
+          var reduce_params = terralib.CUDAParams { 1,1,1, BLOCK_SIZE,1,1, shared_mem_size, nil }
+          reduce_global_scratch_values(&reduce_params,n_blocks)
+          [free_reduction_space(global_shared_ptrs, ctxt)]
+        end
+      end
+    end
   end
+
   return launcher
 end
 
