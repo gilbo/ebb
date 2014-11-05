@@ -19,7 +19,7 @@ function initConfigurations()
     deformableObjectCompliance  = 30.0,
     frequencyScaling            = 1.0,
 
-    maxIterations               = 1,
+    maxIterations               = 2,
     epsilon                     = 1e-6,
     numInternalForceThreads     = 4,
     numTimesteps                = 10,
@@ -494,13 +494,28 @@ function ImplicitBackwardEulerIntegrator:setupFieldsKernels(mesh)
   mesh.vertices:NewField('qresidual', L.vec3d):Load({ 0, 0, 0 })
   mesh.vertices:NewField('qdelta', L.vec3d):Load({ 0, 0, 0 })
 
+  mesh.vertices:NewField('extforces', L.vec3d):Load({ 0, 0, 0 })
+
   mesh.edges:NewField('raydamp', L.mat3d)
+
+  self.err = L.NewGlobal(L.double, 0)
 
   self.initializeQFields = liszt kernel(v : mesh.vertices)
     v.q_1 = v.q
     v.qvel_1 = v.qvel
     v.qaccel = { 0, 0, 0 }
     v.qaccel_1 = { 0, 0, 0 }
+  end
+
+  self.updateQFields = liszt kernel(v : mesh.vertices)
+    v.qvel = v.qvel + v.qdelta
+    -- TODO: subtracting q from q?
+    -- q += q_1-q + self.timestep * qvel
+    v.q = v.q_1 + self.timestep * v.qvel
+  end
+
+  self.initializeqdelta = liszt kernel(v : mesh.vertices)
+    v.qdelta = v.qresidual
   end
 
   self.scaleInternalForces = liszt kernel(v : mesh.vertices)
@@ -518,42 +533,41 @@ function ImplicitBackwardEulerIntegrator:setupFieldsKernels(mesh)
 
   self.updateqresidual1 = liszt kernel(v : mesh.vertices)
     for e in v.edges do
-      v.qresidual = v.qresidual + multiplyMatVec3(e.stiffness, (v.q_1 - v.q))
+      v.qresidual += multiplyMatVec3(e.stiffness, (v.q_1 - v.q))
     end
   end
 
   self.updateqresidual2 = liszt kernel(v : mesh.vertices)
     for e in v.edges do
-      v.qresidual = v.qresidual + multiplyMatVec3(e.stiffness, v.qvel)
+      v.qresidual += multiplyMatVec3(e.stiffness, v.qvel)
     end
   end
 
   self.updateqresidual3 = liszt kernel(v : mesh.vertices)
-    -- TODO: where and how are external forces set?
-    -- v.qresidual = v.qresidual + (v.forces - v.extforces)
+    v.qresidual += (v.forces - v.extforces)
     v.qresidual = self.timestep * v.qresidual
   end
 
   self.updateqresidual4 = liszt kernel(v : mesh.vertices)
     for e in v.edges do
-      v.qresidual = v.qresidual + e.mass * (v.qvel_1 - v.qvel)
+      v.qresidual += e.mass * (v.qvel_1 - v.qvel)
     end
   end
 
   self.updateStiffness1 = liszt kernel(e : mesh.edges)
     e.stiffness = self.timestep * e.stiffness
-    e.stiffness = e.stiffness + e.raydamp
-    -- TODO: where and how is damping matrix set?
+    e.stiffness += e.raydamp
+    -- TODO: This damping matrix seems to be zero unless set otherwise.
     -- e.stiffness = e.stiffness + e.dampingmatrix
   end
 
   self.updateStiffness2 = liszt kernel(e : mesh.edges)
     e.stiffness = self.timestep * e.stiffness
-    e.stiffness = e.stiffness + e.mass * getId3()
+    e.stiffness += e.mass * getId3()
   end
 
-  self.initializeqdelta = liszt kernel(v : mesh.vertices)
-    v.qdelta = v.qresidual
+  self.getError = liszt kernel(v : mesh.vertices)
+    self.err += L.dot(v.qdelta, v.qdelta)
   end
 
 end
@@ -569,6 +583,7 @@ function ImplicitBackwardEulerIntegrator:DoTimestep(mesh)
 
   -- Limit our total number of iterations allowed per timestep
   for numIter = 1, self.maxIterations do
+    print("#iteration = "..numIter.." ...")
     -- ASSEMBLY
     -- TIMING START
     computeForces(mesh)
@@ -621,25 +636,22 @@ function ImplicitBackwardEulerIntegrator:DoTimestep(mesh)
 
     -- TODO: This code doesn't have any way of handling fixed vertices
     -- at the moment.  Should enforce that here somehow
-
-    --[[
-    local err = L.global(L.double, 0) -- HUH? L.Global?
-    err = REDUCE(qdelta*qdelta) -- only over unconstrained vertices
-    ]]
+    self.err:set(0)
+    self.getError(mesh.vertices)
 
     -- compute initial error on the 1st iteration
-    --[[
-    if numIter ~= 1 then
-      err0 = err
+    if numIter == 1 then
+      err0 = self.err:get()
       errQuotient = 1
     else
-      errQuotient = err / err0
+      errQuotient = self.err:get() / err0
     end
 
-    if errQuotient < self.epsilon*self.epsilon then
+    if errQuotient < self.epsilon*self.epsilon or err0 == nil then
       break
     end
 
+    --[[
     SYSTEM_MATRIX = STIFFNESS -- HERE b/c of REMOVE ROWS...
     RHS = qdelta
     ]]
@@ -662,41 +674,25 @@ function ImplicitBackwardEulerIntegrator:DoTimestep(mesh)
 
     -- Reinsert the rows?
 
-    --[[
-    qvel += qdelta
-    q += q_1-q + self.timestep * qvel
-    ]]
+    self.updateQFields(mesh.vertices)
 
-    -- for the subset of constrained vertices
-    --[[
-      q=0
-      qvel=0
-      qaccel=0
-      ]]
+    -- Constrain (zero) fields for the subset of constrained vertices
   end
-end
-
-function buildImplicitBackwardsEulerIntegrator(opts)
-
-
-
-  return {} -- should be an actual integrator object
 end
 
 ------------------------------------------------------------------------------
 
-function setInitialConditions()
-  -- FROM THE REFERENCE FOR NOW
---  implicitBackwardEulerSparse->SetExternalForcesToZero();
---  // set some force at the first timestep
---  if (i == 0) {
---    for(int j=0; j<r; j++)
---        f[j] = 0; // clear to 0
---    f[0] = -500;
---    f[1] = -500;
---    f[2] = -500;
---    implicitBackwardEulerSparse->SetExternalForces(f);
---  }
+function setInitialConditions(mesh)
+  local extforces = {}
+  for i = 1,mesh:nVerts() do
+    extforces[i] = { 0, 0, 0 }
+  end
+  extforces[1] = { -500, -500, -500 }
+  mesh.vertices.extforces:Load(extforces)
+end
+
+function clearForces(mesh)
+  mesh.vertices.extforces:Load({ 0, 0, 0 })
 end
 
 ------------------------------------------------------------------------------
@@ -743,7 +739,9 @@ function main()
   for i=1,options.numTimesteps do
     -- integrator:setExternalForcesToZero()
     if i == 1 then
-      setInitialConditions()
+      setInitialConditions(volumetric_mesh)
+    else
+      clearForces(volumetric_mesh)
     end
     integrator:DoTimestep(volumetric_mesh)
   end
