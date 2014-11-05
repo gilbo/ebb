@@ -18,7 +18,7 @@ end
 -- we can remove error handling from here.
 function top_level_task(binding, regions, args)
   local script_filename = args[1]
-  success = xpcall( function ()
+  local success = xpcall( function ()
     assert(terralib.loadfile(script_filename))()
   end, top_level_err_handler)
   if success then

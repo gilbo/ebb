@@ -13,7 +13,7 @@ liszt_runtime = os.path.join(script_dir, 'runtime/libsingle_runtime.so')
 
 parser = OptionParser()
 parser.add_option('-v', '--verbose', action='store_true',
-        dest='verbose', default='false',
+        dest='verbose', default=False,
         help='run terra interpreter with verbose option')
 parser.add_option('-f', '--file',
         dest='filename',
@@ -21,9 +21,9 @@ parser.add_option('-f', '--file',
 parser.add_option('-c', '--config',
         dest='config',
         help='file containing installation directory names')
-parser.add_option('-l', '--legion', action='store_true',
-        dest='legion', default='false',
-        help='run liszt with legion')
+parser.add_option('-n', '--nolegion', action='store_true',
+        dest='nolegion', default=False,
+        help='do not run liszt with legion')
 
 (options, args) = parser.parse_args()
 
@@ -38,6 +38,8 @@ terra_env = dict(os.environ.items() + [('LISZT_RUNTIME', liszt_runtime)])
 
 home_dir = os.path.dirname(script_dir)
 terra_dir = os.path.join(script_dir, 'terra')
+
+options.legion = (not options.nolegion)
 
 if options.legion:
     legion_root_dir = os.path.join(home_dir, 'legion')
