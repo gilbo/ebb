@@ -70,28 +70,28 @@ local white = L.NewVector(L.float,{1.0,1.0,1.0})
 -----------------------------------------------------------------------------
 
 local grid_options = {
-xnum = 64,
-ynum = 64,
-znum = 64,
+xnum = 32,
+ynum = 32,
+znum = 1,
 origin = {0.0, 0.0, 0.0},
-xWidth = twoPi,
+--xWidth = twoPi,
 --xWidth = 2*twoPi,
-yWidth = twoPi,
-zWidth = twoPi,
---xWidth = 1.0,
---yWidth = 1.0,
---zWidth = 1.0/64.0,
---xBCLeft  = 'wall',
+--yWidth = twoPi,
+--zWidth = twoPi,
+xWidth = 1.0,
+yWidth = 1.0,
+zWidth = 1.0/32.0,
+xBCLeft  = 'wall',
 xBCLeftVel = {0.0, 0.0, 0.0},
---xBCRight = 'wall',
+xBCRight = 'wall',
 xBCRightVel = {0.0, 0.0, 0.0},
---yBCLeft  = 'wall',
+yBCLeft  = 'wall',
 yBCLeftVel = {0.0, 0.0, 0.0},
---yBCRight = 'wall',
+yBCRight = 'wall',
 yBCRightVel = {33.179, 0.0, 0.0},
---zBCLeft  = 'symmetry',
+zBCLeft  = 'symmetry',
 zBCLeftVel = {0.0, 0.0, 0.0},
---zBCRight = 'symmetry',
+zBCRight = 'symmetry',
 zBCRightVel = {0.0, 0.0, 0.0},
 --xBCLeft  = 'periodic',
 --xBCRight = 'periodic',
@@ -99,35 +99,35 @@ zBCRightVel = {0.0, 0.0, 0.0},
 --yBCRight = 'periodic',
 --zBCLeft  = 'periodic',
 --zBCRight = 'periodic',
-xBCLeft  = 'symmetry',
-xBCRight = 'symmetry',
-yBCLeft  = 'symmetry',
-yBCRight = 'symmetry',
-zBCLeft  = 'symmetry',
-zBCRight = 'symmetry',
+--xBCLeft  = 'symmetry',
+--xBCRight = 'symmetry',
+--yBCLeft  = 'symmetry',
+--yBCRight = 'symmetry',
+--zBCLeft  = 'symmetry',
+--zBCRight = 'symmetry',
 }
 
 local spatial_stencil = {
 --  Splitting parameter
     split = 0.5,
 --  Order 2
---    order = 2,
---    size = 2,
---    numInterpolateCoeffs = 2,
---    interpolateCoeffs = L.NewVector(L.double, {0, 0.5}),
---    numFirstDerivativeCoeffs = 2,
---    firstDerivativeCoeffs = L.NewVector(L.double, {0, 0.5}),
---    firstDerivativeModifiedWaveNumber = 1.0,
---    secondDerivativeModifiedWaveNumber = 4.0,
+    order = 2,
+    size = 2,
+    numInterpolateCoeffs = 2,
+    interpolateCoeffs = L.NewVector(L.double, {0, 0.5}),
+    numFirstDerivativeCoeffs = 2,
+    firstDerivativeCoeffs = L.NewVector(L.double, {0, 0.5}),
+    firstDerivativeModifiedWaveNumber = 1.0,
+    secondDerivativeModifiedWaveNumber = 4.0,
 --  Order 6
-    order = 6,
-    size = 6,
-    numInterpolateCoeffs = 4,
-    interpolateCoeffs = L.NewVector(L.double, {0, 37/60, -8/60, 1/60}),
-    numFirstDerivativeCoeffs = 4,
-    firstDerivativeCoeffs = L.NewVector(L.double, {0.0,45.0/60.0,-9.0/60.0, 1.0/60.0}),
-    firstDerivativeModifiedWaveNumber = 1.59,
-    secondDerivativeModifiedWaveNumber = 6.04
+--    order = 6,
+--    size = 6,
+--    numInterpolateCoeffs = 4,
+--    interpolateCoeffs = L.NewVector(L.double, {0, 37/60, -8/60, 1/60}),
+--    numFirstDerivativeCoeffs = 4,
+--    firstDerivativeCoeffs = L.NewVector(L.double, {0.0,45.0/60.0,-9.0/60.0, 1.0/60.0}),
+--    firstDerivativeModifiedWaveNumber = 1.59,
+--    secondDerivativeModifiedWaveNumber = 6.04
 }
 
 -- Define offsets for boundary conditions in flow solver
@@ -304,7 +304,7 @@ TimeIntegrator.coeff_function       = {1/6, 1/3, 1/3, 1/6}
 TimeIntegrator.coeff_time           = {0.5, 0.5, 1, 1}
 TimeIntegrator.simTime              = L.NewGlobal(L.double,0)
 TimeIntegrator.final_time           = 20.00001
-TimeIntegrator.max_iter             = 500000
+TimeIntegrator.max_iter             = 10000
 TimeIntegrator.timeStep             = L.NewGlobal(L.int,0)
 TimeIntegrator.cfl                  = 2.0
 TimeIntegrator.outputEveryTimeSteps = 100
@@ -312,28 +312,28 @@ TimeIntegrator.headerFrequency      = 20
 TimeIntegrator.deltaTime            = L.NewGlobal(L.double, 0.01)
 
 local fluid_options = {
-    gasConstant = 200.4128,
-    gamma = 1.4,
-    dynamic_viscosity_ref = 0.001,
-    dynamic_viscosity_temp_ref = 1.0,
-    prandtl = 0.7
-    --gasConstant = 287.058,
+    --gasConstant = 200.4128,
     --gamma = 1.4,
-    --dynamic_viscosity_ref = 1.7893e-05,
-    --dynamic_viscosity_temp_ref = 288.15,
-    --prandtl = 0.72
+    --dynamic_viscosity_ref = 0.001,
+    --dynamic_viscosity_temp_ref = 1.0,
+    --prandtl = 0.7
+    gasConstant = 287.058,
+    gamma = 1.4,
+    dynamic_viscosity_ref = 1.7893e-05,
+    dynamic_viscosity_temp_ref = 288.15,
+    prandtl = 0.72
 }
 
 local flow_options = {
     --initCase = Flow.TaylorGreen2DVortex,
     --initParams = L.NewGlobal(L.vector(L.double,3),
     --                           {1,100,2}),
-    initCase = Flow.TaylorGreen3DVortex,
-    initParams = L.NewGlobal(L.vector(L.double,3),
-                               {1,100,2}),
-    --initCase = Flow.Uniform,
-    --initParams = L.NewGlobal(L.vector(L.double,5),
-    --                           {0.000525805,43.4923,0.0,0.0,0.0}),
+    --initCase = Flow.TaylorGreen3DVortex,
+    --initParams = L.NewGlobal(L.vector(L.double,3),
+    --                           {1,100,2}),
+    initCase = Flow.Uniform,
+    initParams = L.NewGlobal(L.vector(L.double,5),
+                               {0.000525805,43.4923,0.0,0.0,0.0}),
     --bodyForce = L.NewGlobal(L.vec3d, {0,0.01,0.0})
     bodyForce = L.NewGlobal(L.vec3d, {0,0.0,0})
 }
@@ -346,10 +346,12 @@ local particles_options = {
     --
     -- Feed all particles at start randomly
     -- distributed on a box defined by its center and sides
-    --feederType = Particles.FeederAtStartTimeInRandomBox,
+    feederType = Particles.FeederAtStartTimeInRandomBox,
     --feederParams = L.NewGlobal(L.vector(L.double,6),
-    --                           {pi,pi,pi,2*pi,2*pi,2*pi}), 
-    
+    --                           {pi,pi,pi,2*pi,2*pi,2*pi}), -- TGV problem
+    feederParams = L.NewGlobal(L.vector(L.double,6),
+                               {0.0,0.0,0.0,1.0,1.0,1.0/32.0}), -- Cavity problem
+
     -- Feeding a given number of particles every timestep randomly
     -- distributed on a box defined by its center and sides
     --feederType = Particles.FeederOverTimeInRandomBox,
@@ -361,10 +363,10 @@ local particles_options = {
     --                           }), 
     --
     ---- UQCase
-    feederType = Particles.FeederUQCase,
-    feederParams = L.NewGlobal(L.vector(L.double,20),
-                       {pi/4,  pi/2,pi,0.1*pi,0.1*pi,pi/2,4, 4,0,0.3,
-                        pi/4,3*pi/2,pi,0.1*pi,0.1*pi,pi/2,4,-4,0,0.8}),
+    --feederType = Particles.FeederUQCase,
+    --feederParams = L.NewGlobal(L.vector(L.double,20),
+    --                   {pi/4,  pi/2,pi,0.1*pi,0.1*pi,pi/2,4, 4,0,0.3,
+    --                    pi/4,3*pi/2,pi,0.1*pi,0.1*pi,pi/2,4,-4,0,0.8}),
     
     -- Collector is defined by a type and a set of parameters
     -- collectorParams is a vector of double values whose meaning
@@ -372,18 +374,18 @@ local particles_options = {
     -- Particles.Collect kernel where it is specialized
     --
     -- Do not collect particles (freely move within the domain)
-    --collectorType = Particles.CollectorNone,
-    --collectorParams = L.NewGlobal(L.vector(L.double,1),{0}),
+    collectorType = Particles.CollectorNone,
+    collectorParams = L.NewGlobal(L.vector(L.double,1),{0}),
     
     -- Collect all particles that exit a box defined by its Cartesian 
     -- min/max coordinates
-    collectorType = Particles.CollectorOutOfBox,
-    collectorParams = L.NewGlobal(L.vector(L.double,6),{0.5,0.5,0.5,12,6,6}),
+    --collectorType = Particles.CollectorOutOfBox,
+    --collectorParams = L.NewGlobal(L.vector(L.double,6),{0.5,0.5,0.5,12,6,6}),
 
-    num = 0,
+    num = 100,
     convective_coefficient = L.NewGlobal(L.double, 0.7), -- W m^-2 K^-1
     heat_capacity = L.NewGlobal(L.double, 0.7), -- J Kg^-1 K^-1
-    initialTemperature = 20,
+    initialTemperature = 288.15,
     density = 1000,
     diameter_mean = 0.03,
     diameter_maxDeviation = 0.02,
@@ -395,8 +397,7 @@ local particles_options = {
 }
 
 local radiation_options = {
-    radiationIntensity = 0.0
-    --10.0
+    radiationIntensity = 10.0
 }
 
 -- IO
@@ -503,8 +504,15 @@ local grid_dy = L.NewGlobal(L.double, grid:yCellWidth())
 local grid_dz = L.NewGlobal(L.double, grid:zCellWidth())
 
 -- Create a field for the center coords of the dual cells (i.e., vertices)
-grid.dual_cells:NewField('centerCoordinates', L.vec3d):
+grid.vertices:NewField('centerCoordinates', L.vec3d):
 LoadConstant(L.NewVector(L.double, {0, 0, 0}))
+
+-- Create a field to mark the rind layer so it is not written in the output
+-- We need this for both the dual cells (coords) and cells (cell-center data)
+grid.vertices:NewField('vertexRindLayer', L.int):
+LoadConstant(1)
+grid.cells:NewField('cellRindLayer', L.int):
+LoadConstant(1)
 
 -- Conserved variables
 grid.cells:NewField('rho', L.double):
@@ -842,10 +850,22 @@ Flow.InitializeCenterCoordinates = liszt kernel(c : grid.cells)
     c.centerCoordinates = L.vec3d({xy[0], xy[1], xy[2]})
 end
 
-Flow.InitializeVertexCoordinates = liszt kernel(c : grid.dual_cells)
-    var xy = c.center
-    c.centerCoordinates = L.vec3d({xy[0], xy[1], xy[2]})
+Flow.InitializeCellRindLayer = liszt kernel(c : grid.cells)
+    c.cellRindLayer = 0
 end
+
+-- Hard coding the vertices until we have access in grid.t
+Flow.InitializeVertexCoordinates = liszt kernel(v : grid.vertices)
+    var x = grid_originX + grid_dx * (L.double(v.xid))
+    var y = grid_originY + grid_dy * (L.double(v.yid))
+    var z = grid_originZ + grid_dz * (L.double(v.zid))
+    v.centerCoordinates = L.vec3d({x, y, z})
+end
+
+Flow.InitializeVertexRindLayer = liszt kernel(v : grid.vertices)
+    v.vertexRindLayer = 0
+end
+
 
 Flow.InitializePrimitives = liszt kernel(c : grid.cells)
     if flow_options.initCase == Flow.TaylorGreen2DVortex then
@@ -2650,7 +2670,9 @@ end
 
 function TimeIntegrator.InitializeVariables()
     Flow.InitializeCenterCoordinates(grid.cells)
-    Flow.InitializeVertexCoordinates(grid.dual_cells)
+    Flow.InitializeCellRindLayer(grid.cells.interior)
+    Flow.InitializeVertexCoordinates(grid.vertices)
+    Flow.InitializeVertexRindLayer(grid.vertices.interior)
     Flow.InitializePrimitives(grid.cells.interior)
     Flow.UpdateConservedFromPrimitive(grid.cells.interior)
     Flow.UpdateGhost()
@@ -2762,200 +2784,206 @@ end
 
 function IO.WriteOutput(timeStep)
 
-    -- Output log headers at a specified frequency
+-- Output log headers at a specified frequency
 
-    if timeStep % TimeIntegrator.headerFrequency == 0 then
-        io.stdout:write("\n Current time step: ",
-        string.format(" %2.6e",TimeIntegrator.deltaTime:get()), " s.\n")
-        io.stdout:write(" Min Flow Temp: ",
-        string.format("%11.6f",Flow.minTemperature:get()), " K.")
-        io.stdout:write(" Max Flow Temp: ",
-        string.format("%11.6f",Flow.maxTemperature:get()), " K.\n\n")
-        io.stdout:write(string.format("%8s",'    Iter'),
-        string.format("%12s",'   Time(s)'),
-        string.format("%12s",'Avg Press'),
-        string.format("%12s",'Avg Temp'),
-        string.format("%12s",'Avg KE'),
-        string.format("%12s",'Particle T'),'\n')
-    end
+if timeStep % TimeIntegrator.headerFrequency == 0 then
+io.stdout:write("\n Current time step: ",
+string.format(" %2.6e",TimeIntegrator.deltaTime:get()), " s.\n")
+io.stdout:write(" Min Flow Temp: ",
+string.format("%11.6f",Flow.minTemperature:get()), " K.")
+io.stdout:write(" Max Flow Temp: ",
+string.format("%11.6f",Flow.maxTemperature:get()), " K.\n\n")
+io.stdout:write(string.format("%8s",'    Iter'),
+string.format("%12s",'   Time(s)'),
+string.format("%12s",'Avg Press'),
+string.format("%12s",'Avg Temp'),
+string.format("%12s",'Avg KE'),
+string.format("%12s",'Particle T'),'\n')
+end
 
-    -- Check if we have particles (avoid nan printed to screen)
+-- Check if we have particles (avoid nan printed to screen)
 
-    local particle_avg_temp = 0.0
-    if particles_options.num > 0 then
-      particle_avg_temp = Particles.averageTemperature:get()
-    end
+local particle_avg_temp = 0.0
+if particles_options.num > 0 then
+particle_avg_temp = Particles.averageTemperature:get()
+end
 
-    -- Ouput the current stats to the console for this iteration
+-- Ouput the current stats to the console for this iteration
 
-    io.stdout:write(string.format("%8d",timeStep),
-    string.format(" %11.6f",TimeIntegrator.simTime:get()),
-    string.format(" %11.6f",Flow.averagePressure:get()),
-    string.format(" %11.6f",Flow.averageTemperature:get()),
-    string.format(" %11.6f",Flow.averageKineticEnergy:get()),
-    string.format(" %11.6f",particle_avg_temp),'\n')
+io.stdout:write(string.format("%8d",timeStep),
+string.format(" %11.6f",TimeIntegrator.simTime:get()),
+string.format(" %11.6f",Flow.averagePressure:get()),
+string.format(" %11.6f",Flow.averageTemperature:get()),
+string.format(" %11.6f",Flow.averageKineticEnergy:get()),
+string.format(" %11.6f",particle_avg_temp),'\n')
 
-    -- Check if it is time to output to file
-    if timeStep % TimeIntegrator.outputEveryTimeSteps == 0 then
+-- Check if it is time to output to file
+if timeStep % TimeIntegrator.outputEveryTimeSteps == 0 then
 
-        -- Native Python output format
-        if IO.outputFormat == 0 then
-            --print("Time to output")
-            local outputFileName = IO.outputFileNamePrefix .. "_" ..
-              tostring(timeStep)
-            Flow.WriteField(outputFileName .. "_flow",
-              grid:xSize(), grid:ySize(), grid:zSize(),
-              grid.cells.temperature)
-            --Flow.WriteField(outputFileName .. "_flow",
-            --  grid:xSize(), grid:ySize(), grid:zSize(),
-            --  grid.cells.rho)
-            Flow.WriteField(outputFileName .. "_flow",
-              grid:xSize(), grid:ySize(), grid:zSize(),
-              grid.cells.pressure)
-            Flow.WriteField(outputFileName .. "_flow",
-              grid:xSize(), grid:ySize(), grid:zSize(),
-              grid.cells.kineticEnergy)
-            Particles.WriteField(outputFileName .. "_particles",
-              particles.position)
-            Particles.WriteField(outputFileName .. "_particles",
-              particles.velocity)
-            Particles.WriteField(outputFileName .. "_particles",
-              particles.temperature)
-            Particles.WriteField(outputFileName .. "_particles",
-              particles.state)
-            Particles.WriteField(outputFileName .. "_particles",
-              particles.id)
-            Particles.WriteField(outputFileName .. "_particles",
-              particles.groupID)
+-- Native Python output format
+if IO.outputFormat == 0 then
+--print("Time to output")
+local outputFileName = IO.outputFileNamePrefix .. "_" ..
+tostring(timeStep)
+Flow.WriteField(outputFileName .. "_flow",
+grid:xSize(), grid:ySize(), grid:zSize(),
+grid.cells.temperature)
+--Flow.WriteField(outputFileName .. "_flow",
+--  grid:xSize(), grid:ySize(), grid:zSize(),
+--  grid.cells.rho)
+Flow.WriteField(outputFileName .. "_flow",
+grid:xSize(), grid:ySize(), grid:zSize(),
+grid.cells.pressure)
+Flow.WriteField(outputFileName .. "_flow",
+grid:xSize(), grid:ySize(), grid:zSize(),
+grid.cells.kineticEnergy)
+Particles.WriteField(outputFileName .. "_particles",
+particles.position)
+Particles.WriteField(outputFileName .. "_particles",
+particles.velocity)
+Particles.WriteField(outputFileName .. "_particles",
+particles.temperature)
+Particles.WriteField(outputFileName .. "_particles",
+particles.state)
+Particles.WriteField(outputFileName .. "_particles",
+particles.id)
+Particles.WriteField(outputFileName .. "_particles",
+particles.groupID)
 
-        elseif IO.outputFormat == 1 then
+elseif IO.outputFormat == 1 then
 
-            -- Tecplot ASCII format
-            local outputFileName = IO.outputFileNamePrefix .. "_" ..
-              tostring(timeStep) .. ".dat"
+-- Tecplot ASCII format
+local outputFileName = IO.outputFileNamePrefix .. "_" ..
+tostring(timeStep) .. ".dat"
 
-            -- Open file
-            local outputFile = io.output(outputFileName)
+-- Open file
+local outputFile = io.output(outputFileName)
 
-            -- Write header
-            io.write('TITLE = "Data"\n')
-            io.write('VARIABLES = "X", "Y", "Z", "Density", "X-Velocity", "Y-Velocity", "Z-Velocity", "Pressure", "Temperature"\n')
-            io.write('ZONE STRANDID=', timeStep, ' SOLUTIONTIME=', TimeIntegrator.simTime:get(), ' I=', grid:xSize()+1, ' J=', grid:ySize()+1, ' K=', grid:zSize()+1, ' DATAPACKING=BLOCK VARLOCATION=([4-9]=CELLCENTERED)\n')
+-- Get the bool fields for the rind layer so we can avoid writing
+local cell_rind = grid.cells.cellRindLayer:DumpToList()
+local vert_rind = grid.vertices.vertexRindLayer:DumpToList()
 
-            --grid.dual_cells:NewField('boundary_for_output', L.bool)
-            --grid.dual_cells.boundary_for_output:Load(false)
-            --local record_boundary = liszt kernel(dc : grid.dual_cells)
-            --  dc.boundary_for_output =
-            --end
+-- Compute the number of vertices to be written
 
-            --for i=1,n do
-            --  for ...
-            --    xyz = F(i,j,k)
-            --end
+-- Write header
+io.write('TITLE = "Data"\n')
+io.write('VARIABLES = "X", "Y", "Z", "Density", "X-Velocity", "Y-Velocity", "Z-Velocity", "Pressure", "Temperature"\n')
+io.write('ZONE STRANDID=', timeStep+1, ' SOLUTIONTIME=', TimeIntegrator.simTime:get(), ' I=', grid_options.xnum+1, ' J=', grid_options.ynum+1, ' K=', grid_options.znum+1, ' DATAPACKING=BLOCK VARLOCATION=([4-9]=CELLCENTERED)\n')
 
-            local s = ''
+local s = ''
 
-            -- Write data
-            local values = grid.dual_cells.centerCoordinates:DumpToList()
-            local N      = grid.dual_cells.centerCoordinates:Size()
-            local veclen = grid.dual_cells.centerCoordinates:Type().N
+-- Write data
+local values = grid.vertices.centerCoordinates:DumpToList()
+local N      = grid.vertices.centerCoordinates:Size()
+local veclen = grid.vertices.centerCoordinates:Type().N
 
-            -- Need to dump all x coords (fastest), then y, then z
-            for j=1,veclen do
-                s = ''
-                for i=1,N do
-                    local t = tostring(values[i][j]):gsub('ULL',' ')
-                    s = s .. ' ' .. t .. ''
-                    if i % 5 == 0 then
-                        s = s .. '\n'
-                        io.write("", s, "\n")
-                        s = ''
-                    end
-                end
-                -- i-1 to return to 0 indexing
-                io.write("", s, "\n")
-            end
-
-            -- Now write density, velocity, pressure, temperature
-
-            values = grid.cells.rho:DumpToList()
-            N      = grid.cells.rho:Size()
-            --for j=1,veclen do
-            s = ''
-            for i=1,N do
-              local t = tostring(values[i]):gsub('ULL',' ')
-              s = s .. ' ' .. t .. ''
-              if i % 5 == 0 then
-                s = s .. '\n'
-io.write("", s, "\n")
+-- Need to dump all x coords (fastest), then y, then z
+for j=1,veclen do
+s = ''
+for i=1,N do
+local t = tostring(values[i][j]):gsub('ULL',' ')
+-- only write this value if it's interior
+if vert_rind[i] == 0 then
+s = s .. ' ' .. t .. ''
+end
+if i % 5 == 0 then
+s = s .. '\n'
+io.write("", s)
 s = ''
 end
-            end
-            -- i-1 to return to 0 indexing
-            io.write("", s, "\n")
-            --end
+end
+-- i-1 to return to 0 indexing
+io.write("", s)
+end
 
-            values = grid.cells.velocity:DumpToList()
-            N      = grid.cells.velocity:Size()
-            veclen = grid.cells.velocity:Type().N
-            for j=1,veclen do
-             s = ''
-            for i=1,N do
-            local t = tostring(values[i][j]):gsub('ULL',' ')
-            s = s .. ' ' .. t .. ''
-              if i % 5 == 0 then
-                s = s .. '\n'
-io.write("", s, "\n")
+-- Now write density, velocity, pressure, temperature
+
+values = grid.cells.rho:DumpToList()
+N      = grid.cells.rho:Size()
+--for j=1,veclen do
 s = ''
-              end
-            end
-            io.write("", s, "\n")
-            end
-
-            values = grid.cells.pressure:DumpToList()
-            N      = grid.cells.pressure:Size()
-            --for j=1,veclen do
-            s = ''
-            for i=1,N do
-            local t = tostring(values[i]):gsub('ULL',' ')
-            s = s .. ' ' .. t .. ''
-            if i % 5 == 0 then
-            s = s .. '\n'
-io.write("", s, "\n")
+for i=1,N do
+local t = tostring(values[i]):gsub('ULL',' ')
+if cell_rind[i] == 0 then
+s = s .. ' ' .. t .. ''
+end
+if i % 5 == 0 then
+s = s .. '\n'
+io.write("", s)
 s = ''
-            end
-            end
-            -- i-1 to return to 0 indexing
-            io.write("", s, "\n")
-            --end
+end
+end
+-- i-1 to return to 0 indexing
+io.write("", s)
+--end
 
-            values = grid.cells.temperature:DumpToList()
-            N      = grid.cells.temperature:Size()
-            --for j=1,veclen do
-            s = ''
-            for i=1,N do
-            local t = tostring(values[i]):gsub('ULL',' ')
-            s = s .. ' ' .. t .. ''
-            if i % 5 == 0 then
-            s = s .. '\n'
-io.write("", s, "\n")
+values = grid.cells.velocity:DumpToList()
+N      = grid.cells.velocity:Size()
+veclen = grid.cells.velocity:Type().N
+for j=1,veclen do
 s = ''
-            end
-            end
-            -- i-1 to return to 0 indexing
-            io.write("", s, "\n")
-            --end
+for i=1,N do
+local t = tostring(values[i][j]):gsub('ULL',' ')
+if cell_rind[i]== 0 then
+s = s .. ' ' .. t .. ''
+end
+if i % 5 == 0 then
+s = s .. '\n'
+io.write("", s)
+s = ''
+end
+end
+io.write("", s)
+end
 
-            io.close()
+values = grid.cells.pressure:DumpToList()
+N      = grid.cells.pressure:Size()
+--for j=1,veclen do
+s = ''
+for i=1,N do
+local t = tostring(values[i]):gsub('ULL',' ')
+if cell_rind[i]== 0 then
+s = s .. ' ' .. t .. ''
+end
+if i % 5 == 0 then
+s = s .. '\n'
+io.write("", s)
+s = ''
+end
+end
+-- i-1 to return to 0 indexing
+io.write("", s)
+--end
 
-            -- Write the Tecplot header
-            --Flow.WriteTecplotHeader(outputFileName)
+values = grid.cells.temperature:DumpToList()
+N      = grid.cells.temperature:Size()
+--for j=1,veclen do
+s = ''
+for i=1,N do
+local t = tostring(values[i]):gsub('ULL',' ')
+if cell_rind[i]== 0 then
+s = s .. ' ' .. t .. ''
+end
+if i % 5 == 0 then
+s = s .. '\n'
+io.write("", s)
+s = ''
+end
+end
+-- i-1 to return to 0 indexing
+io.write("", s)
+--end
 
-        else
-            print("Output format not defined. No output written to disk.")
-        end
+io.close()
 
-    end
+-- Write the Tecplot header
+--Flow.WriteTecplotHeader(outputFileName)
+
+else
+print("Output format not defined. No output written to disk.")
+end
+
+end
 end
 
 ----------------
@@ -2963,11 +2991,11 @@ end
 ----------------
 
 function Visualization.Draw()
-    --vdb.vbegin()
-    --vdb.frame()
-    --Flow.DrawKernel(grid.cells)
-    --Particles.DrawKernel(particles)
-    --vdb.vend()
+    vdb.vbegin()
+    vdb.frame()
+    Flow.DrawKernel(grid.cells)
+    Particles.DrawKernel(particles)
+    vdb.vend()
 end
 
 -----------------------------------------------------------------------------
