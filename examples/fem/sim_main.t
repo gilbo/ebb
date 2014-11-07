@@ -2,6 +2,7 @@ import 'compiler.liszt'
 
 local Tetmesh = L.require 'examples.fem.tetmesh'
 local VEGFileIO = L.require 'examples.fem.vegfileio'
+  local PN = L.require 'lib.pathname'
 
 print("Loading mesh ...")
 local turtle = VEGFileIO.LoadTetmesh
@@ -122,7 +123,7 @@ function computeMassMatrix(mesh)
       for j = 0,4 do
         var mult_const = 1
         if i == j then
-          var mult_const = 2
+          mult_const = 2
         end
         t.e[i, j].mass += factor * mult_const
       end
@@ -697,6 +698,22 @@ function clearForces(mesh)
 end
 
 ------------------------------------------------------------------------------
+-- Print out fields over edges (things like stiffnexx matrix or mass), to
+-- compare side by side with vega output (using sparse_matrix.Save(filename))'
+
+function DumpEdgeFieldToFile(edges, field, file_name)
+  local field_list = edges[field]:DumpToList()
+  local tail_list = edges.tail:DumpToList()
+  local head_list = edges.head:DumpToList()
+  local field_liszt = PN.scriptdir() .. file_name
+  local out = io.open(tostring(field_liszt), 'w')
+  for i = 1, #field_list do
+    out:write(string.format('%-8d%-8d%-16f\n', tail_list[i], head_list[i], field_list[i]))
+  end
+  out:close()
+end
+
+------------------------------------------------------------------------------
 
 function main()
   local options = initConfigurations()
@@ -711,6 +728,8 @@ function main()
 
   print("Computing mass matrix ...")
   computeMassMatrix(volumetric_mesh)
+
+  -- DumpEdgeFieldToFile(volumetric_mesh.edges, 'mass', 'mass_liszt')
 
   print("Computing integrals ...")
   precomputeStVKIntegrals(mesh.tetrahedra) -- called StVKElementABCDLoader:load() in ref
