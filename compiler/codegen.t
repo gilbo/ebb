@@ -8,7 +8,9 @@ local L = terralib.require 'compiler.lisztlib'
 local G = terralib.require 'compiler.gpu_util'
 
 
-----------------------------------------------------------------------------
+--[[--------------------------------------------------------------------]]--
+--[[                 Context Object for Compiler Pass                   ]]--
+--[[--------------------------------------------------------------------]]--
 
 local Context = {}
 Context.__index = Context
@@ -112,12 +114,17 @@ end
 
 
 
-local function vec_mapgen(typ,func)
+--[[--------------------------------------------------------------------]]--
+--[[                         Utility Functions                          ]]--
+--[[--------------------------------------------------------------------]]--
+
+
+function vec_mapgen(typ,func)
   local arr = {}
   for i=1,typ.N do arr[i] = func(i-1) end
   return `[typ:terraType()]({ array([arr]) })
 end
-local function mat_mapgen(typ,func)
+function mat_mapgen(typ,func)
   local rows = {}
   for i=1,typ.Nrow do
     local r = {}
@@ -127,13 +134,13 @@ local function mat_mapgen(typ,func)
   return `[typ:terraType()]({ array([rows]) })
 end
 
-local function vec_foldgen(N, init, binf)
+function vec_foldgen(N, init, binf)
   local acc = init
   for ii = 1, N do local i = N - ii -- count down to 0
     acc = binf(i, acc) end
   return acc
 end
-local function mat_foldgen(N,M, init, binf)
+function mat_foldgen(N,M, init, binf)
   local acc = init
   for ii = 1, N do local i = N - ii -- count down to 0
     for jj = 1, M do local j = M - jj -- count down to 0
@@ -143,12 +150,30 @@ end
 
 
 
+--[[--------------------------------------------------------------------]]--
+--[[                        Codegen Entrypoint                          ]]--
+--[[--------------------------------------------------------------------]]--
+
+
+
+function Codegen.codegen (kernel_ast, bran)
+  local env  = terralib.newenvironment(nil)
+  local ctxt = Context.new(env, bran)
+
+  if ctxt:onGPU() then
+    return gpu_codegen(kernel_ast, ctxt)
+  else
+    return cpu_codegen(kernel_ast, ctxt)
+  end
+
+end
+
 
 --[[--------------------------------------------------------------------]]--
 --[[                         CPU Codegen                                ]]--
 --[[--------------------------------------------------------------------]]--
 
-local function cpu_codegen (kernel_ast, ctxt)
+function cpu_codegen (kernel_ast, ctxt)
   ctxt:enterblock()
     -- declare the symbol for iteration
     local param = symbol(L.row(ctxt.bran.relation):terraType())
@@ -208,7 +233,7 @@ local checkCudaError = macro(function(code)
     end
 end)
 
-local function scalar_reduce_identity (ltype, reduceop)
+function scalar_reduce_identity (ltype, reduceop)
   if ltype == L.int then
     if reduceop == '+' or reduceop == '-' then
       return `0
@@ -267,7 +292,7 @@ function tree_reduce_op (reduceop)
   return reduceop
 end
 
-local function reduce_identity(ltype, reduceop)
+function reduce_identity(ltype, reduceop)
   if not ltype:isVector() then
     return scalar_reduce_identity(ltype, reduceop)
   end
@@ -283,7 +308,7 @@ local function reduce_identity(ltype, reduceop)
   end
 end
 
-local function initialize_global_shared_memory (global_shared_ptrs, ctxt)
+function initialize_global_shared_memory (global_shared_ptrs, ctxt)
   local init_code = quote end
   local tid = ctxt:getTid()
 
@@ -299,7 +324,7 @@ local function initialize_global_shared_memory (global_shared_ptrs, ctxt)
   return init_code
 end
 
-local function unrolled_block_reduce (op, typ, ptr, tid, block_size)
+function unrolled_block_reduce (op, typ, ptr, tid, block_size)
     local expr = quote end
     local step = block_size
 
@@ -325,7 +350,7 @@ local function unrolled_block_reduce (op, typ, ptr, tid, block_size)
     return expr
 end
 
-local function reduce_global_shared_memory (global_shared_ptrs, ctxt, block_size, commit_final_value)
+function reduce_global_shared_memory (global_shared_ptrs, ctxt, block_size, commit_final_value)
   local reduce_code = quote end
 
   for g, shared in pairs(global_shared_ptrs) do
@@ -361,7 +386,7 @@ local function reduce_global_shared_memory (global_shared_ptrs, ctxt, block_size
   return reduce_code
 end
 
-local function generate_final_reduce (kernel_ast, global_shared_ptrs, ctxt, block_size)
+function generate_final_reduce (kernel_ast, global_shared_ptrs, ctxt, block_size)
   local array_len  = symbol(uint64)
   local t = symbol(uint32)
   local b = symbol(uint32)
@@ -399,7 +424,7 @@ local function generate_final_reduce (kernel_ast, global_shared_ptrs, ctxt, bloc
   return terralib.cudacompile({[id]=final_reduce})[id]
 end
 
-local function allocate_reduction_space (n_blocks, global_shared_ptrs, ctxt)
+function allocate_reduction_space (n_blocks, global_shared_ptrs, ctxt)
   local alloc_code = quote end
 
   for g, _ in pairs(global_shared_ptrs) do
@@ -424,7 +449,7 @@ local function allocate_reduction_space (n_blocks, global_shared_ptrs, ctxt)
   return alloc_code
 end
 
-local function free_reduction_space (global_shared_ptrs, ctxt)
+function free_reduction_space (global_shared_ptrs, ctxt)
   local free_code = quote end
 
   for g, _ in pairs(global_shared_ptrs) do
@@ -437,7 +462,7 @@ local function free_reduction_space (global_shared_ptrs, ctxt)
   return free_code
 end
 
-local function compute_global_reduction_data (ctxt, block_size)
+function compute_global_reduction_data (ctxt, block_size)
   local shared_mem_size = 0
   local global_shared_ptrs = { }
   local kernel = ctxt.bran.kernel
@@ -452,7 +477,7 @@ local function compute_global_reduction_data (ctxt, block_size)
   return codegen_reduce, global_shared_ptrs, shared_mem_size
 end
 
-local function gpu_codegen (kernel_ast, ctxt)
+function gpu_codegen (kernel_ast, ctxt)
   local BLOCK_SIZE   = 64
   local MAX_GRID_DIM = 65536
 
@@ -583,23 +608,13 @@ local function gpu_codegen (kernel_ast, ctxt)
   return launcher
 end
 
-function Codegen.codegen (kernel_ast, bran)
-  local env  = terralib.newenvironment(nil)
-  local ctxt = Context.new(env, bran)
-
-  if ctxt:onGPU() then
-    return gpu_codegen(kernel_ast, ctxt)
-  else
-    return cpu_codegen(kernel_ast, ctxt)
-  end
-
-end
 
 
 --[[--------------------------------------------------------------------]]--
---[[                      Shared Codegen                                ]]--
 --[[--------------------------------------------------------------------]]--
-
+--[[                       Codegen Pass Cases                           ]]--
+--[[--------------------------------------------------------------------]]--
+--[[--------------------------------------------------------------------]]--
 function ast.AST:codegen (ctxt)
   error("Codegen not implemented for AST node " .. self.kind)
 end
@@ -722,6 +737,307 @@ function ast.Name:codegen(ctxt)
   return `[s]
 end
 
+function ast.Cast:codegen(ctxt)
+  local typ = self.node_type
+  local bt  = typ:terraBaseType()
+  local valuecode = self.value:codegen(ctxt)
+
+  if typ:isPrimitive() then
+    return `[typ:terraType()](valuecode)
+
+  elseif typ:isVector() then
+    local vec = symbol(self.value.node_type:terraType())
+    return quote var [vec] = valuecode in
+      [ vec_mapgen(typ, function(i) return `[bt](vec.d[i]) end) ] end
+
+  elseif typ:isSmallMatrix() then
+    local mat = symbol(self.value.node_type:terraType())
+    return quote var [mat] = valuecode in
+      [ mat_mapgen(typ, function(i,j) return `[bt](mat.d[i][j]) end) ] end
+
+  else
+    error("Internal Error: Type unrecognized "..typ:toString())
+  end
+end
+
+-- By the time we make it to codegen, Call nodes are only used to represent builtin function calls.
+function ast.Call:codegen (ctxt)
+    return self.func.codegen(self, ctxt)
+end
+
+
+function ast.DeclStatement:codegen (ctxt)
+  local varname = self.name
+  local tp      = self.node_type:terraType()
+  local varsym  = symbol(tp)
+
+  if self.initializer then
+    local exp = self.initializer:codegen(ctxt)
+    ctxt:localenv()[varname] = varsym -- MUST happen after init codegen
+    return quote 
+      var [varsym] = [exp]
+    end
+  else
+    ctxt:localenv()[varname] = varsym -- MUST happen after init codegen
+    return quote var [varsym] end
+  end
+end
+
+function ast.MatrixLiteral:codegen (ctxt)
+  local typ = self.node_type
+
+  return mat_mapgen(typ, function(i,j)
+    return self.elems[i*self.m + j + 1]:codegen(ctxt)
+  end)
+end
+
+function ast.VectorLiteral:codegen (ctxt)
+  local typ = self.node_type
+
+  return vec_mapgen(typ, function(i)
+    return self.elems[i+1]:codegen(ctxt)
+  end)
+end
+
+function ast.Global:codegen (ctxt)
+  local dataptr = ctxt:GlobalPtr(self.global)
+  return `@dataptr
+end
+
+function ast.SquareIndex:codegen (ctxt)
+  local base  = self.base:codegen(ctxt)
+  local index = self.index:codegen(ctxt)
+
+  -- Vector case
+  if self.index2 == nil then
+    return `base.d[index]
+  -- Matrix case
+  else
+    local index2 = self.index2:codegen(ctxt)
+
+    return `base.d[index][index2]
+  end
+end
+
+function ast.Number:codegen (ctxt)
+  return `[self.value]
+end
+
+function ast.Bool:codegen (ctxt)
+  if self.value == true then
+    return `true
+  else 
+    return `false
+  end
+end
+
+
+function ast.UnaryOp:codegen (ctxt)
+  local expr = self.exp:codegen(ctxt)
+  local typ  = self.node_type
+
+  if typ:isPrimitive() then
+    if self.op == '-' then return `-[expr]
+                      else return `not [expr] end
+  elseif typ:isVector() then
+    local vec = symbol(typ:terraType())
+
+    if self.op == '-' then
+      return quote var [vec] = expr in
+        [ vec_mapgen(typ, function(i) return `-vec.d[i] end) ] end
+    else
+      return quote var [vec] = expr in
+        [ vec_mapgen(typ, function(i) return `not vec.d[i] end) ] end
+    end
+  elseif typ:isSmallMatrix() then
+    local mat = symbol(typ:terraType())
+
+    if self.op == '-' then
+      return quote var [mat] = expr in
+        [ mat_mapgen(typ, function(i,j) return `-mat.d[i][j] end) ] end
+    else
+      return quote var [mat] = expr in
+        [ mat_mapgen(typ, function(i,j) return `not mat.d[i][j] end) ] end
+    end
+
+  else
+    error("Internal Error: Type unrecognized "..typ:toString())
+  end
+end
+
+function ast.BinaryOp:codegen (ctxt)
+  local lhe = self.lhs:codegen(ctxt)
+  local rhe = self.rhs:codegen(ctxt)
+
+  -- handle case of two primitives
+  return vec_bin_exp(self.op, self.node_type,
+      lhe, rhe, self.lhs.node_type, self.rhs.node_type)
+end
+
+function ast.LuaObject:codegen (ctxt)
+    return `{}
+end
+function ast.Where:codegen(ctxt)
+    local key   = self.key:codegen(ctxt)
+    local sType = self.node_type:terraType()
+    local indexdata = self.relation._grouping.index:DataPtr()
+    local v = quote
+        var k   = [key]
+        var idx = [indexdata]
+    in 
+        sType { idx[k], idx[k+1] }
+    end
+    return v
+end
+
+function doProjection(obj,field,ctxt)
+    assert(L.is_field(field))
+    local dataptr = ctxt:FieldPtr(field)
+    return `dataptr[obj]
+end
+
+function ast.GenericFor:codegen (ctxt)
+    local set       = self.set:codegen(ctxt)
+    local iter      = symbol("iter")
+    local rel       = self.set.node_type.relation
+    local projected = iter
+
+    for i,p in ipairs(self.set.node_type.projections) do
+        local field = rel[p]
+        projected   = doProjection(projected,field,ctxt)
+        rel         = field.type.relation
+        assert(rel)
+    end
+    local sym = symbol(L.row(rel):terraType())
+    ctxt:enterblock()
+        ctxt:localenv()[self.name] = sym
+        local body = self.body:codegen(ctxt)
+    ctxt:leaveblock()
+    local code = quote
+        var s = [set]
+        for [iter] = s.start,s.finish do
+            var [sym] = [projected]
+            [body]
+        end
+    end
+    return code
+end
+
+
+----------------------------------------------------------------------------
+
+function ast.DeleteStatement:codegen (ctxt)
+  local relation  = self.row.node_type.relation
+
+  local row       = self.row:codegen(ctxt)
+  local live_mask = ctxt:FieldPtr(relation._is_live_mask)
+  local set_mask_stmt = quote live_mask[row] = false end
+
+  local updated_size     = ctxt:deleteSizeVar()
+  local size_update_stmt = quote [updated_size] = [updated_size]-1 end
+
+  return quote set_mask_stmt size_update_stmt end
+end
+
+function ast.InsertStatement:codegen (ctxt)
+  local relation = self.relation.node_type.value -- to insert into
+
+  -- index to write to
+  local index = ctxt:getInsertIndex()
+
+  -- start with writing the live mask
+  local live_mask  = ctxt:FieldPtr(relation._is_live_mask)
+  local write_code = quote live_mask[index] = true end
+
+  -- the rest of the fields should be assigned values based on the
+  -- record literal specified as an argument to the insert statement
+  for field,i in pairs(self.fieldindex) do
+    local exp_code = self.record.exprs[i]:codegen(ctxt)
+    local fieldptr = ctxt:FieldPtr(field)
+
+    write_code = quote
+      write_code
+      fieldptr[index] = exp_code
+    end
+  end
+
+  local inc_stmt = ctxt:incrementInsertIndex()
+
+  return quote
+    write_code
+    inc_stmt
+  end
+end
+
+
+
+
+
+----------------------------------------------------------------------------
+--[[--------------------------------------------------------------------]]--
+--[[                         READ/WRITE Cases                           ]]--
+--[[--------------------------------------------------------------------]]--
+----------------------------------------------------------------------------
+
+
+function ast.Assignment:codegen (ctxt)
+  local lhs   = self.lvalue:codegen(ctxt)
+  local rhs   = self.exp:codegen(ctxt)
+
+  local ltype, rtype = self.lvalue.node_type, self.exp.node_type
+
+  if self.reduceop then
+    rhs = vec_bin_exp(self.reduceop, ltype, lhs, rhs, ltype, rtype)
+  end
+  return quote [lhs] = rhs end
+end
+
+function ast.GlobalReduce:codegen(ctxt)
+  -- GPU impl:
+  if ctxt:onGPU() then
+    local lval = ctxt:GlobalSharedPtr(self.global.global)
+    local rexp = self.exp:codegen(ctxt)
+    local rhs = vec_bin_exp(self.reduceop, self.global.node_type, lval, rexp, self.global.node_type, self.exp.node_type)
+    return quote [lval] = [rhs] end
+  end
+
+  -- CPU impl forwards to assignment codegen
+  local assign = ast.Assignment:DeriveFrom(self)
+  assign.lvalue = self.global
+  assign.exp    = self.exp
+  assign.reduceop = self.reduceop
+
+  return assign:codegen(ctxt)
+end
+
+
+function ast.FieldWrite:codegen (ctxt)
+  local phase = ctxt:fieldPhase(self.fieldaccess.field)
+  if ctxt:onGPU() and self.reduceop and not phase:isCentered() then
+    local lval = self.fieldaccess:codegen(ctxt)
+    local rexp = self.exp:codegen(ctxt)
+    return atomic_gpu_vec_red_exp(self.reduceop, self.fieldaccess.node_type, lval, rexp, self.exp.node_type)
+  else
+    -- just re-direct to an assignment statement otherwise
+    local assign = ast.Assignment:DeriveFrom(self)
+    assign.lvalue = self.fieldaccess
+    assign.exp    = self.exp
+    if self.reduceop then assign.reduceop = self.reduceop end
+
+    return assign:codegen(ctxt)
+  end
+end
+
+function ast.FieldAccess:codegen (ctxt)
+  local index = self.row:codegen(ctxt)
+  local dataptr = ctxt:FieldPtr(self.field)
+  return `@(dataptr + [index])
+end
+
+
+
+
+
 local minexp = function(lhe, rhe)
   return quote
     var a = [lhe]
@@ -744,7 +1060,7 @@ local maxexp = function(lhe, rhe)
   end
 end
 
-local function bin_exp (op, lhe, rhe)
+function bin_exp (op, lhe, rhe)
   if     op == '+'   then return `[lhe] +   [rhe]
   elseif op == '-'   then return `[lhe] -   [rhe]
   elseif op == '/'   then return `[lhe] /   [rhe]
@@ -765,7 +1081,7 @@ local function bin_exp (op, lhe, rhe)
 end
 
 
-local function atomic_gpu_red_exp (op, typ, lvalptr, update)
+function atomic_gpu_red_exp (op, typ, lvalptr, update)
   local internal_error = 'unsupported reduction, internal error; '..
                          'this should be guarded against in the typechecker'
   if typ == L.float then
@@ -983,290 +1299,6 @@ function atomic_gpu_vec_red_exp(op, result_typ, lval, rhe, rhtyp)
     end
 end
 
-function ast.Assignment:codegen (ctxt)
-  local lhs   = self.lvalue:codegen(ctxt)
-  local rhs   = self.exp:codegen(ctxt)
 
-  local ltype, rtype = self.lvalue.node_type, self.exp.node_type
-
-  if self.reduceop then
-    rhs = vec_bin_exp(self.reduceop, ltype, lhs, rhs, ltype, rtype)
-  end
-  return quote [lhs] = rhs end
-end
-
-function ast.GlobalReduce:codegen(ctxt)
-  -- GPU impl:
-  if ctxt:onGPU() then
-    local lval = ctxt:GlobalSharedPtr(self.global.global)
-    local rexp = self.exp:codegen(ctxt)
-    local rhs = vec_bin_exp(self.reduceop, self.global.node_type, lval, rexp, self.global.node_type, self.exp.node_type)
-    return quote [lval] = [rhs] end
-  end
-
-  -- CPU impl forwards to assignment codegen
-  local assign = ast.Assignment:DeriveFrom(self)
-  assign.lvalue = self.global
-  assign.exp    = self.exp
-  assign.reduceop = self.reduceop
-
-  return assign:codegen(ctxt)
-end
-
-
-function ast.FieldWrite:codegen (ctxt)
-  local phase = ctxt:fieldPhase(self.fieldaccess.field)
-  if ctxt:onGPU() and self.reduceop and not phase:isCentered() then
-    local lval = self.fieldaccess:codegen(ctxt)
-    local rexp = self.exp:codegen(ctxt)
-    return atomic_gpu_vec_red_exp(self.reduceop, self.fieldaccess.node_type, lval, rexp, self.exp.node_type)
-  else
-    -- just re-direct to an assignment statement otherwise
-    local assign = ast.Assignment:DeriveFrom(self)
-    assign.lvalue = self.fieldaccess
-    assign.exp    = self.exp
-    if self.reduceop then assign.reduceop = self.reduceop end
-
-    return assign:codegen(ctxt)
-  end
-end
-
-function ast.FieldAccess:codegen (ctxt)
-  local index = self.row:codegen(ctxt)
-  local dataptr = ctxt:FieldPtr(self.field)
-  return `@(dataptr + [index])
-end
-
-function ast.Cast:codegen(ctxt)
-  local typ = self.node_type
-  local bt  = typ:terraBaseType()
-  local valuecode = self.value:codegen(ctxt)
-
-  if typ:isPrimitive() then
-    return `[typ:terraType()](valuecode)
-
-  elseif typ:isVector() then
-    local vec = symbol(self.value.node_type:terraType())
-    return quote var [vec] = valuecode in
-      [ vec_mapgen(typ, function(i) return `[bt](vec.d[i]) end) ] end
-
-  elseif typ:isSmallMatrix() then
-    local mat = symbol(self.value.node_type:terraType())
-    return quote var [mat] = valuecode in
-      [ mat_mapgen(typ, function(i,j) return `[bt](mat.d[i][j]) end) ] end
-
-  else
-    error("Internal Error: Type unrecognized "..typ:toString())
-  end
-end
-
--- By the time we make it to codegen, Call nodes are only used to represent builtin function calls.
-function ast.Call:codegen (ctxt)
-    return self.func.codegen(self, ctxt)
-end
-
-
-function ast.DeclStatement:codegen (ctxt)
-  local varname = self.name
-  local tp      = self.node_type:terraType()
-  local varsym  = symbol(tp)
-
-  if self.initializer then
-    local exp = self.initializer:codegen(ctxt)
-    ctxt:localenv()[varname] = varsym -- MUST happen after init codegen
-    return quote 
-      var [varsym] = [exp]
-    end
-  else
-    ctxt:localenv()[varname] = varsym -- MUST happen after init codegen
-    return quote var [varsym] end
-  end
-end
-
-function ast.MatrixLiteral:codegen (ctxt)
-  local typ = self.node_type
-
-  return mat_mapgen(typ, function(i,j)
-    return self.elems[i*self.m + j + 1]:codegen(ctxt)
-  end)
-end
-
-function ast.VectorLiteral:codegen (ctxt)
-  local typ = self.node_type
-
-  return vec_mapgen(typ, function(i)
-    return self.elems[i+1]:codegen(ctxt)
-  end)
-end
-
-function ast.Global:codegen (ctxt)
-  local dataptr = ctxt:GlobalPtr(self.global)
-  return `@dataptr
-end
-
-function ast.SquareIndex:codegen (ctxt)
-  local base  = self.base:codegen(ctxt)
-  local index = self.index:codegen(ctxt)
-
-  -- Vector case
-  if self.index2 == nil then
-    return `base.d[index]
-  -- Matrix case
-  else
-    local index2 = self.index2:codegen(ctxt)
-
-    return `base.d[index][index2]
-  end
-end
-
-function ast.Number:codegen (ctxt)
-  return `[self.value]
-end
-
-function ast.Bool:codegen (ctxt)
-  if self.value == true then
-    return `true
-  else 
-    return `false
-  end
-end
-
-
-function ast.UnaryOp:codegen (ctxt)
-  local expr = self.exp:codegen(ctxt)
-  local typ  = self.node_type
-
-  if typ:isPrimitive() then
-    if self.op == '-' then return `-[expr]
-                      else return `not [expr] end
-  elseif typ:isVector() then
-    local vec = symbol(typ:terraType())
-
-    if self.op == '-' then
-      return quote var [vec] = expr in
-        [ vec_mapgen(typ, function(i) return `-vec.d[i] end) ] end
-    else
-      return quote var [vec] = expr in
-        [ vec_mapgen(typ, function(i) return `not vec.d[i] end) ] end
-    end
-  elseif typ:isSmallMatrix() then
-    local mat = symbol(typ:terraType())
-
-    if self.op == '-' then
-      return quote var [mat] = expr in
-        [ mat_mapgen(typ, function(i,j) return `-mat.d[i][j] end) ] end
-    else
-      return quote var [mat] = expr in
-        [ mat_mapgen(typ, function(i,j) return `not mat.d[i][j] end) ] end
-    end
-
-  else
-    error("Internal Error: Type unrecognized "..typ:toString())
-  end
-end
-
-function ast.BinaryOp:codegen (ctxt)
-  local lhe = self.lhs:codegen(ctxt)
-  local rhe = self.rhs:codegen(ctxt)
-
-  -- handle case of two primitives
-  return vec_bin_exp(self.op, self.node_type,
-      lhe, rhe, self.lhs.node_type, self.rhs.node_type)
-end
-
-function ast.LuaObject:codegen (ctxt)
-    return `{}
-end
-function ast.Where:codegen(ctxt)
-    local key   = self.key:codegen(ctxt)
-    local sType = self.node_type:terraType()
-    local indexdata = self.relation._grouping.index:DataPtr()
-    local v = quote
-        var k   = [key]
-        var idx = [indexdata]
-    in 
-        sType { idx[k], idx[k+1] }
-    end
-    return v
-end
-
-local function doProjection(obj,field,ctxt)
-    assert(L.is_field(field))
-    local dataptr = ctxt:FieldPtr(field)
-    return `dataptr[obj]
-end
-
-function ast.GenericFor:codegen (ctxt)
-    local set       = self.set:codegen(ctxt)
-    local iter      = symbol("iter")
-    local rel       = self.set.node_type.relation
-    local projected = iter
-
-    for i,p in ipairs(self.set.node_type.projections) do
-        local field = rel[p]
-        projected   = doProjection(projected,field,ctxt)
-        rel         = field.type.relation
-        assert(rel)
-    end
-    local sym = symbol(L.row(rel):terraType())
-    ctxt:enterblock()
-        ctxt:localenv()[self.name] = sym
-        local body = self.body:codegen(ctxt)
-    ctxt:leaveblock()
-    local code = quote
-        var s = [set]
-        for [iter] = s.start,s.finish do
-            var [sym] = [projected]
-            [body]
-        end
-    end
-    return code
-end
-
-
-----------------------------------------------------------------------------
-
-function ast.DeleteStatement:codegen (ctxt)
-  local relation  = self.row.node_type.relation
-
-  local row       = self.row:codegen(ctxt)
-  local live_mask = ctxt:FieldPtr(relation._is_live_mask)
-  local set_mask_stmt = quote live_mask[row] = false end
-
-  local updated_size     = ctxt:deleteSizeVar()
-  local size_update_stmt = quote [updated_size] = [updated_size]-1 end
-
-  return quote set_mask_stmt size_update_stmt end
-end
-
-function ast.InsertStatement:codegen (ctxt)
-  local relation = self.relation.node_type.value -- to insert into
-
-  -- index to write to
-  local index = ctxt:getInsertIndex()
-
-  -- start with writing the live mask
-  local live_mask  = ctxt:FieldPtr(relation._is_live_mask)
-  local write_code = quote live_mask[index] = true end
-
-  -- the rest of the fields should be assigned values based on the
-  -- record literal specified as an argument to the insert statement
-  for field,i in pairs(self.fieldindex) do
-    local exp_code = self.record.exprs[i]:codegen(ctxt)
-    local fieldptr = ctxt:FieldPtr(field)
-
-    write_code = quote
-      write_code
-      fieldptr[index] = exp_code
-    end
-  end
-
-  local inc_stmt = ctxt:incrementInsertIndex()
-
-  return quote
-    write_code
-    inc_stmt
-  end
-end
 
 
