@@ -632,14 +632,12 @@ local function GetTypedSymbol(arg)
 end
 
 local function TerraCheck(func)
-    func:compile()
     return function (ast, ctxt)
         local args = ast.params
         local argsyms = map(GetTypedSymbol, args)
         local rettype = nil
         local try = function()
             local terrafunc = terra([argsyms]) return func([argsyms]) end
-            terrafunc:compile()
             rettype = terrafunc:getdefinitions()[1]:gettype().returntype
         end
         local success, retval = pcall(try)

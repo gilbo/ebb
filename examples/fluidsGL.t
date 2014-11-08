@@ -1,6 +1,11 @@
 import 'compiler.liszt'
 
-L.default_processor = L.GPU
+local useGPU = true
+if useGPU then
+	L.default_processor = L.GPU
+else
+	L.default_processor = L.CPU
+end
 
 --
 -- Constants
@@ -28,6 +33,14 @@ float randFloat()
 int CUFFTR2C() { return CUFFT_R2C; }
 int CUFFTC2R() { return CUFFT_C2R; }
 ]]
+
+if useGPU then
+	fmod = terralib.externfunction("__nv_fmod", {double,double} -> double)
+else
+	fmod = C.fmod
+end
+
+
 terralib.linklibrary("/usr/local/cuda-6.5/lib64/libcufft.so")
 
 --checkCudaErrors(cufftPlan2d(&planr2c, DIM, DIM, CUFFT_R2C));
@@ -107,7 +120,8 @@ grid.cells:NewField('advectFrom', grid.dual_cells):Load(0)
 local wrapFunc = liszt function(val, lower, upper)
     var diff    = upper - lower
     var temp    = val - lower
-    temp        = L.float(C.fmod(temp, diff))
+    --temp        = L.float(C.fmod(temp, diff))
+	temp        = L.float(fmod(temp, diff))
     if temp < 0 then
         temp    = temp + diff
     end
@@ -138,8 +152,8 @@ local advectInterpolateVelocity = liszt kernel(c : grid.cells)
     var dc      = c.advectFrom
 
     -- figure out fractional position in the dual cell in range [0.0, 1.0]
-    var xfrac   = C.fmod((c.advectPos[0] - XORIGIN)/cell_w + 0.5, 1.0)
-    var yfrac   = C.fmod((c.advectPos[1] - YORIGIN)/cell_h + 0.5, 1.0)
+    var xfrac   = fmod((c.advectPos[0] - XORIGIN)/cell_w + 0.5, 1.0)
+    var yfrac   = fmod((c.advectPos[1] - YORIGIN)/cell_h + 0.5, 1.0)
 
     -- interpolation constants
     var x1      = L.float(xfrac)
@@ -303,8 +317,8 @@ local computeParticleVelocity = liszt kernel (p : particles)
     var dc      = p.dual_cell
 
     -- figure out fractional position in the dual cell in range [0.0, 1.0]
-    var xfrac   = C.fmod((p.pos[0] - XORIGIN)/cell_w + 0.5, 1.0)
-    var yfrac   = C.fmod((p.pos[1] - YORIGIN)/cell_h + 0.5, 1.0)
+    var xfrac   = fmod((p.pos[0] - XORIGIN)/cell_w + 0.5, 1.0)
+    var yfrac   = fmod((p.pos[1] - YORIGIN)/cell_h + 0.5, 1.0)
 
     -- interpolation constants
     var x1      = L.float(xfrac)
@@ -322,7 +336,8 @@ local computeParticleVelocity = liszt kernel (p : particles)
 end
 
 local updateParticlePos = liszt kernel (p : particles)
-    var r = L.vec2f({ C.randFloat() - 0.5, C.randFloat() - 0.5 })
+    --var r = L.vec2f({ C.randFloat() - 0.5, C.randFloat() - 0.5 })
+	var r = L.vec2f({ 0.0, 0.0 })
     var pos = p.nextPos + L.float(dt) * r
 end
 
