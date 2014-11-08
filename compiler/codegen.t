@@ -7,7 +7,7 @@ local C = terralib.require 'compiler.c'
 local L = terralib.require 'compiler.lisztlib'
 local G = terralib.require 'compiler.gpu_util'
 
-local OUTPUT_PTX=true
+local OUTPUT_PTX=false
 --[[--------------------------------------------------------------------]]--
 --[[                 Context Object for Compiler Pass                   ]]--
 --[[--------------------------------------------------------------------]]--
