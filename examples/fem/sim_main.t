@@ -24,6 +24,9 @@ function initConfigurations()
     epsilon                     = 1e-6,
     numInternalForceThreads     = 4,
     numTimesteps                = 10,
+
+    cgEpsilon                   = 1e-6,
+    cgMaxIterations             = 10000
   }
   return options
 end
@@ -81,6 +84,9 @@ local multiplyMatVec3 = liszt function(M, x)
             M[1, 0]*x[0] + M[1, 1]*x[1] + M[1, 2]*x[2],
             M[2, 0]*x[0] + M[2, 1]*x[1] + M[2, 2]*x[2] }
   return y
+end
+local multiplyVectors = liszt function(x, y)
+  return { x[0]*y[0], x[1]*y[1], x[2]*y[2]  }
 end
 
 -- Add constant to matrix
@@ -470,7 +476,9 @@ function ImplicitBackwardEulerIntegrator.New(opts)
     timestep                    = opts.timestep,
     dampingMassCoef             = opts.dampingMassCoef,
     dampingStiffnessCoef        = opts.dampingStiffnessCoef,
-    maxIterations               = opts.maxIterations
+    maxIterations               = opts.maxIterations,
+    cgEpsilon                   = opts.cgEpsilon,
+    cgMaxIterations             = opts.cgMaxIterations
   }, ImplicitBackwardEulerIntegrator)
 
   return stepper
@@ -497,22 +505,26 @@ function ImplicitBackwardEulerIntegrator:setupFieldsKernels(mesh)
 
   mesh.vertices:NewField('extforces', L.vec3d):Load({ 0, 0, 0 })
 
+  mesh.vertices:NewField('precond', L.vec3d):Load({ 0, 0, 0 })
+  mesh.vertices:NewField('x', L.vec3d):Load({ 0, 0, 0 })
+  mesh.vertices:NewField('r', L.vec3d):Load({ 0, 0, 0 })
+  mesh.vertices:NewField('z', L.vec3d):Load({ 0, 0, 0 })
+  mesh.vertices:NewField('p', L.vec3d):Load({ 0, 0, 0 })
+  mesh.vertices:NewField('Ap', L.vec3d):Load({ 0, 0, 0 })
+
   mesh.edges:NewField('raydamp', L.mat3d)
 
   self.err = L.NewGlobal(L.double, 0)
+  self.normRes = L.NewGlobal(L.double, 0)
+  self.alphaDenom = L.NewGlobal(L.double, 0)
+  self.alpha = L.NewGlobal(L.double, 0)
+  self.beta = L.NewGlobal(L.double, 0)
 
   self.initializeQFields = liszt kernel(v : mesh.vertices)
     v.q_1 = v.q
     v.qvel_1 = v.qvel
     v.qaccel = { 0, 0, 0 }
     v.qaccel_1 = { 0, 0, 0 }
-  end
-
-  self.updateQFields = liszt kernel(v : mesh.vertices)
-    v.qvel = v.qvel + v.qdelta
-    -- TODO: subtracting q from q?
-    -- q += q_1-q + self.timestep * qvel
-    v.q = v.q_1 + self.timestep * v.qvel
   end
 
   self.initializeqdelta = liszt kernel(v : mesh.vertices)
@@ -534,13 +546,13 @@ function ImplicitBackwardEulerIntegrator:setupFieldsKernels(mesh)
 
   self.updateqresidual1 = liszt kernel(v : mesh.vertices)
     for e in v.edges do
-      v.qresidual += multiplyMatVec3(e.stiffness, (v.q_1 - v.q))
+      v.qresidual += multiplyMatVec3(e.stiffness, (e.head.q_1 - e.head.q))
     end
   end
 
   self.updateqresidual2 = liszt kernel(v : mesh.vertices)
     for e in v.edges do
-      v.qresidual += multiplyMatVec3(e.stiffness, v.qvel)
+      v.qresidual += multiplyMatVec3(e.stiffness, e.head.qvel)
     end
   end
 
@@ -551,7 +563,7 @@ function ImplicitBackwardEulerIntegrator:setupFieldsKernels(mesh)
 
   self.updateqresidual4 = liszt kernel(v : mesh.vertices)
     for e in v.edges do
-      v.qresidual += e.mass * (v.qvel_1 - v.qvel)
+      v.qresidual += e.mass * (e.head.qvel_1 - e.head.qvel)
     end
   end
 
@@ -571,9 +583,91 @@ function ImplicitBackwardEulerIntegrator:setupFieldsKernels(mesh)
     self.err += L.dot(v.qdelta, v.qdelta)
   end
 
+  self.pcgCalculatePreconditioner = liszt kernel(v : mesh.vertices)
+    var stiff = v.diag.stiffness
+    var diag = { stiff[0,0], stiff[1,1], stiff[2,2] }
+    v.precond = { 1 / diag[0], diag[1], diag[2] }
+  end
+
+  self.pcgCalculateExactResidual = liszt kernel(v : mesh.vertices)
+    for e in v.edges do
+      v.r += multiplyMatVec3(e.stiffness, e.head.qdelta)
+    end
+    v.r = v.qdelta - v.r
+  end
+
+  self.pcgCalculateNormResidual = liszt kernel(v : mesh.vertices)
+    self.normRes += L.dot(multiplyVectors(v.r, v.precond), v.r)
+  end
+
+  self.pcgInitialize = liszt kernel(v : mesh.vertices)
+    v.p = multiplyVectors(v.r, v.precond)
+  end
+
+  self.pcgComputeAlphaDenom = liszt kernel(v : mesh.vertices)
+    v.Ap = { 0, 0, 0 }
+    for e in v.edges do
+      v.Ap += multiplyMatVec3(e.stiffness, e.head.p)
+    end
+    self.alphaDenom += L.dot(v.p, v.Ap)
+  end
+
+  self.pcgUpdateX = liszt kernel(v : mesh.vertices)
+    v.x += self.alpha * v.p
+  end
+
+  self.pcgUpdateResidual = liszt kernel(v : mesh.vertices)
+    v.r -= self.alpha * v.Ap
+  end
+
+  self.pcgUpdateP = liszt kernel(v : mesh.vertices)
+    v.p = self.beta * v.p + multiplyVectors(v.precond, v.r)
+  end
+
+  self.updateAfterSolve = liszt kernel(v : mesh.vertices)
+    v.qdelta = v.x
+    v.qvel += v.qdelta
+    -- TODO: subtracting q from q?
+    -- q += q_1-q + self.timestep * qvel
+    v.q = v.q_1 + self.timestep * v.qvel
+  end
+
 end
 
-function ImplicitBackwardEulerIntegrator:DoTimestep(mesh)
+-- The following pcg solver uses Jacobi preconditioner, as implemented in Vega.
+-- It uses the same algorithm as Vega (exact residual on 30th iteration). But
+-- the symbol names are kept to match the pseudo code on Wikipedia for clarity.
+function ImplicitBackwardEulerIntegrator:solvePCG(mesh)
+  mesh.vertices.x:Load({ 0, 0, 0 })
+  self.normRes:set(0)
+  self.pcgCalculatePreconditioner(mesh.vertices)
+  self.pcgCalculateExactResidual(mesh.vertices)
+  self.pcgCalculateNormResidual(mesh.vertices)
+  self.pcgInitialize(mesh.vertices)
+  local iter = 1
+  local normRes = self.normRes:get()
+  while normRes > self.cgEpsilon * self.cgEpsilon and
+        iter < self.cgMaxIterations do
+    -- print("PCG iteration "..iter)
+    self.alphaDenom:set(0)
+    self.pcgComputeAlphaDenom(mesh.vertices)
+    self.alpha:set( normRes / self.alphaDenom:get() )
+    self.pcgUpdateX(mesh.vertices)
+    if iter % 30 == 0 then
+      self.pcgCalculateExactResidual(mesh.vertices)
+    else
+      self.pcgUpdateResidual(mesh.vertices)
+    end
+    local normResOld = normRes
+    self.pcgCalculateNormResidual(mesh.vertices)
+    normRes = self.normRes:get()
+    self.beta:set( normRes / normResOld )
+    self.pcgUpdateP(mesh.vertices)
+    iter = iter + 1
+  end
+end
+
+function ImplicitBackwardEulerIntegrator:doTimestep(mesh)
   local err0 = 0 -- L.Global?
   local errQuotient
 
@@ -653,30 +747,24 @@ function ImplicitBackwardEulerIntegrator:DoTimestep(mesh)
       break
     end
 
-    --[[
-    SYSTEM_MATRIX = STIFFNESS -- HERE b/c of REMOVE ROWS...
-    RHS = qdelta
-    ]]
-
     -- SYSTEM SOLVE: SYSTEM_MATRIX * BUFFER = BUFFER_CONSTRAINED
     -- START PERFORMANCE TIMING
     -- ASSUMING PCG FOR NOW
     --[[
-    local solverEpsilon = 1e-6
-    local solverMaxIter = 10000
-    local err_code = DO_JACOBI_PRECONDITIONED_CG_SOLVE(RESULT, RHS,
-                                      solverEpsilon, solverMaxIter)
     if err_code ~= 0 then
       error("ERROR: PCG sparse solver "..
             "returned non-zero exit status "..err_code)
     end
     ]]
+
+    self:solvePCG(mesh)
+
     -- STOP PERFORMANCE TIMING
     -- RECORD SYSTEM SOLVE TIME
 
     -- Reinsert the rows?
 
-    self.updateQFields(mesh.vertices)
+    self.updateAfterSolve(mesh.vertices)
 
     -- Constrain (zero) fields for the subset of constrained vertices
   end
@@ -708,7 +796,9 @@ function DumpEdgeFieldToFile(edges, field, file_name)
   local field_liszt = PN.scriptdir() .. file_name
   local out = io.open(tostring(field_liszt), 'w')
   for i = 1, #field_list do
-    out:write(string.format('%-8d%-8d%-16f\n', tail_list[i], head_list[i], field_list[i]))
+    out:write( tostring(tail_list[i]) .. "  " ..
+               tostring(head_list[i]) .. "  " ..
+               tostring(field_list[i]) .. "\n" )
   end
   out:close()
 end
@@ -729,7 +819,7 @@ function main()
   print("Computing mass matrix ...")
   computeMassMatrix(volumetric_mesh)
 
-  -- DumpEdgeFieldToFile(volumetric_mesh.edges, 'mass', 'mass_liszt')
+  DumpEdgeFieldToFile(volumetric_mesh.edges, 'mass', 'mass_liszt')
 
   print("Computing integrals ...")
   precomputeStVKIntegrals(mesh.tetrahedra) -- called StVKElementABCDLoader:load() in ref
@@ -753,6 +843,8 @@ function main()
     maxIterations         = options.maxIterations,
     epsilon               = options.epsilon,
     numSolverThreads      = options.numSolverThreads,
+    cgEpsilon             = options.cgEpsilon,
+    cgMaxIterations       = options.cgMaxIterations
   }
   integrator:setupFieldsKernels(mesh)
 
@@ -764,7 +856,7 @@ function main()
     else
       clearForces(volumetric_mesh)
     end
-    integrator:DoTimestep(volumetric_mesh)
+    integrator:doTimestep(volumetric_mesh)
   end
 
   -- read out the state here somehow?
