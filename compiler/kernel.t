@@ -275,12 +275,12 @@ L.LKernel.__call  = function (kobj, relset)
       bran:setCPUGlobal(globl)
     end
     -- Load the germ data into the runtime location
-    if bran.runtime_germ:location() == L.GPU then
+    if bran.location == L.GPU then
       bran.runtime_germ:copy(bran.cpu_germ)
     end
 
     -- launch the kernel
-    bran.executable()
+    bran.executable(bran.runtime_germ:ptr())
 
     -- adjust sizes based on extracted information
     if bran.insert_data then
@@ -375,7 +375,7 @@ function Bran:generate()
     bran.runtime_germ = DataArray.New{
       size = 1,
       type = bran.germ_template:TerraStruct(),
-      processor = L.GPU,  -- DON'T MOVE
+      processor = L.CPU,
     }
   end
 
@@ -438,9 +438,12 @@ function Bran:setCPUGlobal(global)
   local dataptr = global:DataPtr()
   self.cpu_germ:ptr()[id] = dataptr
 end
-function Bran:getRuntimeFieldPtr(field)
+function Bran:germTerraType ()
+  return self.germ_template:TerraStruct()
+end
+function Bran:getRuntimeFieldPtr(germ_ptr, field)
   local id = self:getFieldId(field)
-  return `[self.runtime_germ:ptr()].[id]
+  return `[germ_ptr].[id]
 end
 function Bran:getCPUScratchTablePtr(global)
   local id = self:getGlobalId(global)
@@ -450,9 +453,9 @@ function Bran:getGPUScratchTablePtr(global)
   local id = self:getGlobalId(global)
   return `[self.gpu_scratch_table:ptr()].[id]
 end
-function Bran:getRuntimeGlobalPtr(global)
+function Bran:getRuntimeGlobalPtr(germ_ptr, global)
   local id = self:getGlobalId(global)
-  return `[self.runtime_germ:ptr()].[id]
+  return `[germ_ptr].[id]
 end
 
 function Bran:dynamicChecks()

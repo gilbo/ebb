@@ -7,7 +7,7 @@ local C = terralib.require 'compiler.c'
 local L = terralib.require 'compiler.lisztlib'
 local G = terralib.require 'compiler.gpu_util'
 
-
+local OUTPUT_PTX=true
 --[[--------------------------------------------------------------------]]--
 --[[                 Context Object for Compiler Pass                   ]]--
 --[[--------------------------------------------------------------------]]--
@@ -36,8 +36,14 @@ function Context:onGPU()
   return self.bran.location == L.GPU
 end
 
+function Context:setRuntimeGerm(germ)
+  self.germ_ptr = germ
+end
+function Context:germTerraType()
+  return self.bran:germTerraType()
+end
 function Context:FieldPtr(field)
-  return self.bran:getRuntimeFieldPtr(field)
+  return self.bran:getRuntimeFieldPtr(self:runtimeGerm(), field)
 end
 function Context:GlobalScratchPtr(global, on_cpu)
   if on_cpu then
@@ -56,7 +62,7 @@ function Context:gpuScratchTable()
   return self.bran.gpu_scratch_table:ptr()
 end
 function Context:GlobalPtr(global)
-  return self.bran:getRuntimeGlobalPtr(global)
+  return self.bran:getRuntimeGlobalPtr(self:runtimeGerm(), global)
 end
 function Context:SetGlobalSharedPtrs(shared_ptrs)
   self.global_shared_ptrs = shared_ptrs
@@ -77,7 +83,7 @@ function Context:getBid()
   return self.bid
 end
 function Context:runtimeGerm()
-  return self.bran.runtime_germ:ptr()
+  return self.germ_ptr
 end
 function Context:cpuGerm()
   return self.bran.cpu_germ:ptr()
@@ -176,6 +182,8 @@ end
 function cpu_codegen (kernel_ast, ctxt)
   ctxt:enterblock()
     -- declare the symbol for iteration
+    local germ  = symbol(ctxt:germTerraType())
+    ctxt:setRuntimeGerm(germ)
     local param = symbol(L.row(ctxt.bran.relation):terraType())
     ctxt:localenv()[kernel_ast.name] = param
 
@@ -215,7 +223,7 @@ function cpu_codegen (kernel_ast, ctxt)
     end
   ctxt:leaveblock()
 
-  local k = terra () [kernel_body] end
+  local k = terra ([germ] : &ctxt:germTerraType()) [kernel_body] end
   k:setname(kernel_ast.id)
   return k
 end
@@ -397,7 +405,7 @@ function generate_final_reduce (kernel_ast, global_shared_ptrs, ctxt, block_size
     var [t]  = G.thread_id()
     var [b]  = G.block_id()
     var gt = t + [block_size] * b
-    var num_blocks : uint64 = G.num_blocks()
+    var num_blocks : uint32 = G.num_blocks()
 
     [initialize_global_shared_memory(global_shared_ptrs, ctxt)]
 
@@ -416,12 +424,14 @@ function generate_final_reduce (kernel_ast, global_shared_ptrs, ctxt, block_size
     [reduce_global_shared_memory(global_shared_ptrs, ctxt, block_size, true)]
   end
 
-  final_reduce = terra ([array_len])
+
+  local germ, germT = ctxt:runtimeGerm(), ctxt:germTerraType()
+  final_reduce = terra ([germ] : germT, [array_len])
     [final_reduce] 
   end
-  local id = kernel_ast.id .. '_reduce'
+  final_reduce:setname(kernel_ast.id .. '_reduce')
   -- using id here to set debug name of kernel for tuning/debugging
-  return terralib.cudacompile({[id]=final_reduce})[id]
+  return G.kernelwrap(final_reduce, OUTPUT_PTX)
 end
 
 function allocate_reduction_space (n_blocks, global_shared_ptrs, ctxt)
@@ -484,13 +494,16 @@ function gpu_codegen (kernel_ast, ctxt)
   -----------------------------
   --[[ Codegen CUDA kernel ]]--
   -----------------------------
+  local germ  = symbol(ctxt:germTerraType())
+  ctxt:setRuntimeGerm(germ)
+
   local codegen_reduce, global_shared_ptrs, shared_mem_size = compute_global_reduction_data(ctxt, BLOCK_SIZE)
   ctxt:SetGlobalSharedPtrs(global_shared_ptrs)
   ctxt:enterblock()
     -- declare the symbol for iteration
     local param = symbol(L.row(ctxt.bran.relation):terraType())
     ctxt:localenv()[kernel_ast.name] = param
-    local id = symbol(uint64)
+    local id  = symbol(uint32)
     local tid = symbol(uint32)
     local bid = symbol(uint32)
 
@@ -531,7 +544,7 @@ function gpu_codegen (kernel_ast, ctxt)
     local kernel_body = quote
       var [tid] = G.thread_id()
       var [bid] = G.block_id()
-      var [id] : uint64 = bid * BLOCK_SIZE + tid
+      var [id] : uint = bid * BLOCK_SIZE + tid
 
       -- Initialize shared memory for global reductions for kernels that require it
       escape if codegen_reduce then emit quote
@@ -551,11 +564,12 @@ function gpu_codegen (kernel_ast, ctxt)
 
   ctxt:leaveblock()
 
-  local cuda_kernel = terra ()
+  local cuda_kernel = terra ([germ] : ctxt:germTerraType())
     [kernel_body]
   end
+  cuda_kernel:setname(kernel_ast.id)
   -- using kernel_ast.id here to set debug name of kernel for tuning/debugging
-  cuda_kernel = terralib.cudacompile { [kernel_ast.id] = cuda_kernel }[kernel_ast.id]
+  cuda_kernel = G.kernelwrap(cuda_kernel, OUTPUT_PTX)
 
   --------------------------
   --[[ Codegen launcher ]]--
@@ -579,7 +593,7 @@ function gpu_codegen (kernel_ast, ctxt)
     end
   end
 
-  local launcher = terra ()
+  local launcher = terra (germ_ptr : &ctxt:germTerraType())
     [compute_nblocks]
     var grid_x : uint, grid_y : uint, grid_z : uint = G.get_grid_dimensions(n_blocks, MAX_GRID_DIM)
     var params = terralib.CUDAParams { grid_x, grid_y, grid_z, BLOCK_SIZE, 1, 1, shared_mem_size, nil }
@@ -589,7 +603,8 @@ function gpu_codegen (kernel_ast, ctxt)
       [allocate_reduction_space(n_blocks,global_shared_ptrs, ctxt)]
     end end end
 
-    cuda_kernel(&params)
+    var germ = @germ_ptr
+    cuda_kernel(&params, germ)
     G.sync() -- flush print streams
 
     escape
@@ -598,7 +613,7 @@ function gpu_codegen (kernel_ast, ctxt)
         emit quote
           -- Launch 2nd reduction kernel and free temporary space
           var reduce_params = terralib.CUDAParams { 1,1,1, BLOCK_SIZE,1,1, shared_mem_size, nil }
-          reduce_global_scratch_values(&reduce_params,n_blocks)
+          reduce_global_scratch_values(&reduce_params,germ, n_blocks)
           [free_reduction_space(global_shared_ptrs, ctxt)]
         end
       end

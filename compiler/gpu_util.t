@@ -211,6 +211,8 @@ end)
 --[[------------------------------------------------------------------------]]--
 --[[ gpu_util Interface                                                     ]]--
 --[[------------------------------------------------------------------------]]--
+GPU.kernelwrap = terralib.require 'compiler.cukernelwrap'
+
 GPU.printf     = printf
 GPU.block_id   = block_id
 GPU.thread_id  = thread_id
