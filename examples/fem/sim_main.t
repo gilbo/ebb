@@ -1,4 +1,5 @@
 import 'compiler.liszt'
+local vdb = L.require 'lib.vdb'
 
 local Tetmesh = L.require 'examples.fem.tetmesh'
 local VEGFileIO = L.require 'examples.fem.vegfileio'
@@ -20,10 +21,10 @@ function initConfigurations()
     deformableObjectCompliance  = 30.0,
     frequencyScaling            = 1.0,
 
-    maxIterations               = 2,
+    maxIterations               = 1,
     epsilon                     = 1e-6,
     numInternalForceThreads     = 4,
-    numTimesteps                = 10,
+    numTimesteps                = 5,
 
     cgEpsilon                   = 1e-6,
     cgMaxIterations             = 10000
@@ -96,7 +97,9 @@ end
 
 mesh.tetrahedra:NewField('lambdaLame', L.double):Load(0)
 mesh.tetrahedra:NewField('muLame', L.double):Load(0)
-mesh.vertices:NewField('displacement', L.vec3d):Load({ 0, 0, 0})
+mesh.vertices:NewField('q', L.vec3d):Load({ 0, 0, 0})
+mesh.vertices:NewField('qvel', L.vec3d):Load({ 0, 0, 0 })
+mesh.vertices:NewField('qaccel', L.vec3d):Load({ 0, 0, 0 })
 
 ------------------------------------------------------------------------------
 -- For corresponding VEGA code, see
@@ -264,7 +267,7 @@ local addIFLinearTerms = liszt kernel(t : mesh.tetrahedra)
   for ci = 0,4 do
     var c = t.v[ci]
     for ai = 0,4 do
-      var qa = t.v[ai].displacement
+      var qa = t.v[ai].q
       var force = t.lambdaLame *
                   multiplyMatVec3(tetCoeffA(t, dots, volume, ci, ai), qa) +
                   (t.muLame * tetCoeffB(t, dots, volume, ai, ci)) * qa +
@@ -282,9 +285,9 @@ local addIFQuadraticTerms = liszt kernel(t : mesh.tetrahedra)
   for ci = 0,4 do
     var c = t.v[ci]
     for ai = 0,4 do
-      var qa = t.v[ai].displacement
+      var qa = t.v[ai].q
       for bi = 0,4 do
-        var qb = t.v[bi].displacement
+        var qb = t.v[bi].q
         var dotp = L.dot(qa, qb)
         var forceTerm1 = 0.5 * t.lambdaLame * dotp *
                          tetCoeffC(t, dots, volume, ci, ai, bi) +
@@ -307,12 +310,12 @@ local addIFCubicTerms = liszt kernel(t : mesh.tetrahedra)
   for ci = 0,4 do
     var c = t.v[ci]
     for ai = 0,4 do
-      var qa = t.v[ai].displacement
+      var qa = t.v[ai].q
       for bi = 0,4 do
-        var qb = t.v[bi].displacement
+        var qb = t.v[bi].q
         for di = 0,4 do
           var d = t.v[di]
-          var qd = d.displacement
+          var qd = d.q
           var dotp = L.dot(qa, qb)
           var scalar = dotp * ( 0.5 * t.lambdaLame *
                                 tetCoeffD(t, dots, volume, ai, bi, ci, di) +
@@ -393,7 +396,7 @@ local addStiffQuadraticTerms = liszt kernel(t : mesh.tetrahedra)
   var volume = getElementVolume(t)
   for ci = 0,4 do
     for ai = 0,4 do
-      var qa = t.v[ai].displacement
+      var qa = t.v[ai].q
       var mat : L.mat3d = constantMatrix3(0)
       for ei = 0,4 do
         var c0v = t.lambdaLame * tetCoeffC(t, dots, volume, ci, ai, ei) +
@@ -423,9 +426,9 @@ local addStiffCubicTerms = liszt kernel(t : mesh.tetrahedra)
     for ei = 0,4 do
       var mat : L.mat3d = constantMatrix3(0)
       for ai = 0,4 do
-        var qa = t.v[ai].displacement
+        var qa = t.v[ai].q
         for bi = 0,4 do
-          var qb = t.v[bi].displacement
+          var qb = t.v[bi].q
           var d0 = t.lambdaLame * tetCoeffD(t, dots, volume, ai, ci, bi, ei) +
                    t.muLame * ( tetCoeffD(t, dots, volume, ai, ei, bi, ci) +
                                 tetCoeffD(t, dots, volume, ai, bi, ci, ei) )
@@ -494,11 +497,8 @@ end
 
 function ImplicitBackwardEulerIntegrator:setupFieldsKernels(mesh)
 
-  mesh.vertices:NewField('q', L.vec3d):Load({ 0, 0, 0 })
   mesh.vertices:NewField('q_1', L.vec3d):Load({ 0, 0, 0 })
-  mesh.vertices:NewField('qvel', L.vec3d):Load({ 0, 0, 0 })
   mesh.vertices:NewField('qvel_1', L.vec3d):Load({ 0, 0, 0 })
-  mesh.vertices:NewField('qaccel', L.vec3d):Load({ 0, 0, 0 })
   mesh.vertices:NewField('qaccel_1', L.vec3d):Load({ 0, 0, 0 })
   mesh.vertices:NewField('qresidual', L.vec3d):Load({ 0, 0, 0 })
   mesh.vertices:NewField('qdelta', L.vec3d):Load({ 0, 0, 0 })
@@ -678,7 +678,7 @@ function ImplicitBackwardEulerIntegrator:doTimestep(mesh)
 
   -- Limit our total number of iterations allowed per timestep
   for numIter = 1, self.maxIterations do
-    print("#iteration = "..numIter.." ...")
+    print("#dotimestep iteration = "..numIter.." ...")
     -- ASSEMBLY
     -- TIMING START
     computeForces(mesh)
@@ -689,6 +689,8 @@ function ImplicitBackwardEulerIntegrator:doTimestep(mesh)
     -- NOTE: NOTE: We can implement these scalings as separate kernels to be
     -- "FAIR" to VEGA or we can fold it into other kernels.
     -- Kinda unclear which to do
+    -- NOTE TODO: scaleinternalforces over-writes forces. we may want to change
+    -- this.
     self.scaleInternalForces(mesh.vertices)
     self.scaleStiffnessMatrix(mesh.edges)
 
@@ -764,7 +766,11 @@ function ImplicitBackwardEulerIntegrator:doTimestep(mesh)
 
     -- Reinsert the rows?
 
+    -- print("Before update from solve")
+    -- mesh.vertices:print()
     self.updateAfterSolve(mesh.vertices)
+    -- print("After update from solve")
+    -- mesh.vertices:print()
 
     -- Constrain (zero) fields for the subset of constrained vertices
   end
@@ -777,7 +783,7 @@ function setInitialConditions(mesh)
   for i = 1,mesh:nVerts() do
     extforces[i] = { 0, 0, 0 }
   end
-  extforces[1] = { -500, -500, -500 }
+  extforces[1] = { -1, -1, -1 }
   mesh.vertices.extforces:Load(extforces)
 end
 
@@ -804,6 +810,59 @@ function DumpEdgeFieldToFile(edges, field, file_name)
 end
 
 ------------------------------------------------------------------------------
+-- Visualize vertex displacements.
+
+local sqrt3 = math.sqrt(3)
+
+local trinorm = liszt function(p0,p1,p2)
+  var d1 = p1-p0
+  var d2 = p2-p0
+  var n  = L.cross(d1,d2)
+  var len = L.length(n)
+  if len < 1e-10 then len = L.float(1e-10) end
+  return n/len
+end
+local dot_to_color = liszt function(d)
+  var val = d * 0.5 + 0.5
+  var col = L.vec3f({val,val,val})
+  return col
+end
+
+local lightdir = L.NewVector(L.float,{sqrt3,sqrt3,sqrt3})
+
+local visualizeDeformation = liszt kernel ( t : mesh.tetrahedra )
+  var p0 = t.v[0].pos + t.v[0].q
+  var p1 = t.v[1].pos + t.v[1].q
+  var p2 = t.v[2].pos + t.v[2].q
+  var p3 = t.v[3].pos + t.v[3].q
+
+  var flipped : L.double = 1.0
+  if getElementVolume(t) < 0 then flipped = -1.0 end
+
+  var d0 = flipped * L.dot(lightdir, trinorm(p1,p2,p3))
+  var d1 = flipped * L.dot(lightdir, trinorm(p0,p3,p2))
+  var d2 = flipped * L.dot(lightdir, trinorm(p0,p1,p3))
+  var d3 = flipped * L.dot(lightdir, trinorm(p1,p0,p2))
+
+  vdb.color(dot_to_color(d0))
+  vdb.triangle(p1, p2, p3)
+  vdb.color(dot_to_color(d1))
+  vdb.triangle(p0, p3, p2)
+  vdb.color(dot_to_color(d2))
+  vdb.triangle(p0, p1, p3)
+  vdb.color(dot_to_color(d3))
+  vdb.triangle(p1, p0, p2)
+end
+
+local function visualize(mesh)
+  vdb.vbegin()
+  vdb.frame()
+  visualizeDeformation(mesh.tetrahedra)
+  vdb.vend()
+  -- os.execute("sleep 2")
+end
+
+------------------------------------------------------------------------------
 
 function main()
   local options = initConfigurations()
@@ -819,7 +878,7 @@ function main()
   print("Computing mass matrix ...")
   computeMassMatrix(volumetric_mesh)
 
-  DumpEdgeFieldToFile(volumetric_mesh.edges, 'mass', 'mass_liszt')
+  DumpEdgeFieldToFile(volumetric_mesh.edges, 'mass', 'out/mass_liszt')
 
   print("Computing integrals ...")
   precomputeStVKIntegrals(mesh.tetrahedra) -- called StVKElementABCDLoader:load() in ref
@@ -849,14 +908,16 @@ function main()
   integrator:setupFieldsKernels(mesh)
 
   print("Performing time steps ...")
+  visualize(volumetric_mesh)
   for i=1,options.numTimesteps do
-    -- integrator:setExternalForcesToZero()
+    print("#timestep = "..i)
     if i == 1 then
       setInitialConditions(volumetric_mesh)
     else
       clearForces(volumetric_mesh)
     end
     integrator:doTimestep(volumetric_mesh)
+    visualize(volumetric_mesh)
   end
 
   -- read out the state here somehow?
