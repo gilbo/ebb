@@ -3,7 +3,10 @@ local vdb = L.require 'lib.vdb'
 
 local Tetmesh = L.require 'examples.fem.tetmesh'
 local VEGFileIO = L.require 'examples.fem.vegfileio'
-  local PN = L.require 'lib.pathname'
+local PN = L.require 'lib.pathname'
+
+-- Input can be liszt or vega
+local input = 'vega'
 
 print("Loading mesh ...")
 local turtle = VEGFileIO.LoadTetmesh
@@ -32,9 +35,9 @@ end
 local sqrt3 = math.sqrt(3)
 
 local tet_volume = liszt function(p0,p1,p2,p3)
-  var d1 = p1-p0
-  var d2 = p2-p0
-  var d3 = p3-p0
+  var d1 = p0-p3
+  var d2 = p1-p3
+  var d3 = p2-p3
 
   -- triple product
   return L.dot(L.cross(d1,d2),d3)
@@ -79,7 +82,7 @@ local visualizeDeformation = liszt kernel ( t : mesh.tetrahedra )
   vdb.triangle(p1, p0, p2)
 end
 
-local function visualize(mesh)
+function visualize(mesh)
   vdb.vbegin()
   vdb.frame() -- this call clears the canvas for a new frame
   visualizeDeformation(mesh.tetrahedra)
@@ -88,7 +91,7 @@ local function visualize(mesh)
   io.read()
 end
 
-local function loadPositions(filename, mesh)
+function loadPositions(filename, mesh)
   local positions = {}
   local infile = io.open(tostring(filename), "r")
   local line = infile:read()
@@ -108,7 +111,7 @@ end
 
 visualize(mesh)
 for i = 0,10 do
-  loadPositions("examples/fem/out/mesh_"..tostring(i), mesh)
+  loadPositions("examples/fem/out/mesh_" .. input .. "_" ..tostring(i), mesh)
   visualize(mesh)
 end
 
