@@ -129,6 +129,29 @@ function DumpEdgeFieldToFile(edges, field, file_name)
   out:close()
 end
 
+function DumpVertFieldToFile(verts, field, file_name)
+  local field_list = verts[field]:DumpToList()
+  local field_liszt = PN.scriptdir() .. file_name
+  local out = io.open(tostring(field_liszt), 'w')
+  for i = 1, #field_list do
+    out:write(fieldToString(field_list[i]) .. "\n" )
+  end
+  out:close()
+end
+
+function DumpDeformationToFile(verts, file_name)
+  local pos = verts.pos:DumpToList()
+  local d = verts.q:DumpToList()
+  local field_liszt = PN.scriptdir() .. file_name
+  local out = io.open(tostring(field_liszt), 'w')
+  for i = 1, #pos do
+    out:write(tostring(pos[i][1] + d[i][1]) .. ", " ..
+              tostring(pos[i][2] + d[i][2]) .. ", " ..
+              tostring(pos[i][3] + d[i][3]) .. "\n" )
+  end
+  out:close()
+end
+
 ------------------------------------------------------------------------------
 -- Visualize vertex displacements.
 
@@ -919,6 +942,7 @@ function main()
 
   print("Performing time steps ...")
   visualize(volumetric_mesh)
+  -- DumpDeformationToFile(volumetric_mesh.vertices, "out/mesh_liszt_"..tostring(0))
   for i=1,options.numTimesteps do
     print("#timestep = "..i)
     -- if i == 1 then
@@ -928,6 +952,7 @@ function main()
     -- end
     integrator:doTimestep(volumetric_mesh)
     visualize(volumetric_mesh)
+    -- DumpDeformationToFile(volumetric_mesh.vertices, "out/mesh_liszt_"..tostring(i))
   end
 
   -- read out the state here somehow?
