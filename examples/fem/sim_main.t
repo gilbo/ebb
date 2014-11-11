@@ -291,6 +291,7 @@ local precomputeStVKIntegrals = liszt kernel(t : mesh.tetrahedra)
       end
       t.Phig[i, j] = sign * L.dot( L.vec3d( { 1, 1, 1 } ),
                                    L.cross(column0, column1) ) / det
+      t.volume = fabs(det) / 6
     end
   end
 end
@@ -312,24 +313,28 @@ local tetDots = liszt function(tet)
   return dots
 end
 
-local tetCoeffA = liszt function(tet, dots, volume, i, j)
+local tetCoeffA = liszt function(tet, dots, i, j)
   var phi = tet.Phig
+  var volume = tet.volume
   return ( volume * tensor3( { phi[i, 0], phi[i, 1], phi[i, 2] },
                              { phi[j, 0], phi[j, 1], phi[j, 2] } ) )
 end
 
-local tetCoeffB = liszt function(tet, dots, volume, i, j)
+local tetCoeffB = liszt function(tet, dots, i, j)
+  var volume = tet.volume
   return volume * dots[i, j]
 end
 
-local tetCoeffC = liszt function(tet, dots, volume, i, j, k)
+local tetCoeffC = liszt function(tet, dots, i, j, k)
   var phi = tet.Phig
-  var res : L.vec3d = volume * dots[j, k] * {1, 1, 1}
+  var volume = tet.volume
+  var res : L.vec3d = volume * dots[j, k] * 
                       { phi[i, 0], phi[i, 1], phi[i, 2] }
   return res
 end
 
-local tetCoeffD = liszt function(tet, dots, volume, i, j, k, l)
+local tetCoeffD = liszt function(tet, dots, i, j, k, l)
+  var volume = tet.volume
   return ( volume * dots[i, j] * dots[k, l] )
 end
 
@@ -346,16 +351,15 @@ mesh.vertices:NewField('internal_forces', L.vec3d):Load({0, 0, 0})
 -- Linear contributions to internal internal_forces
 local addIFLinearTerms = liszt kernel(t : mesh.tetrahedra)
   var dots = tetDots(t)
-  var volume = getElementVolume(t)
   for ci = 0,4 do
     var c = t.v[ci]
     for ai = 0,4 do
       var qa = t.v[ai].q
       var force = t.lambdaLame *
-                  multiplyMatVec3(tetCoeffA(t, dots, volume, ci, ai), qa) +
-                  (t.muLame * tetCoeffB(t, dots, volume, ai, ci)) * qa +
+                  multiplyMatVec3(tetCoeffA(t, dots, ci, ai), qa) +
+                  (t.muLame * tetCoeffB(t, dots, ai, ci)) * qa +
                   t.muLame *
-                  multiplyMatVec3(tetCoeffA(t, dots, volume, ai, ci), qa)
+                  multiplyMatVec3(tetCoeffA(t, dots, ai, ci), qa)
       c.internal_forces += force
     end
   end
@@ -364,7 +368,6 @@ end
 -- Quadratic contributions to internal internal_forces
 local addIFQuadraticTerms = liszt kernel(t : mesh.tetrahedra)
   var dots = tetDots(t)
-  var volume = getElementVolume(t)
   for ci = 0,4 do
     var c = t.v[ci]
     for ai = 0,4 do
@@ -373,12 +376,12 @@ local addIFQuadraticTerms = liszt kernel(t : mesh.tetrahedra)
         var qb = t.v[bi].q
         var dotp = L.dot(qa, qb)
         var forceTerm1 = 0.5 * t.lambdaLame * dotp *
-                         tetCoeffC(t, dots, volume, ci, ai, bi) +
+                         tetCoeffC(t, dots, ci, ai, bi) +
                          t.muLame * dotp *
-                         tetCoeffC(t, dots, volume, ai, bi, ci)
-        var C = t.lambdaLame * tetCoeffC(t, dots, volume, ai, bi, ci) +
-                t.muLame * ( tetCoeffC(t, dots, volume, ci, ai, bi) +
-                tetCoeffC(t, dots, volume, bi, ai, ci) )
+                         tetCoeffC(t, dots, ai, bi, ci)
+        var C = t.lambdaLame * tetCoeffC(t, dots, ai, bi, ci) +
+                t.muLame * ( tetCoeffC(t, dots, ci, ai, bi) +
+                tetCoeffC(t, dots, bi, ai, ci) )
         var dotCqa = L.dot(C, qa)
         c.internal_forces += forceTerm1 + dotCqa * qb
       end
@@ -389,7 +392,6 @@ end
 -- Cubic contributions to internal internal_forces
 local addIFCubicTerms = liszt kernel(t : mesh.tetrahedra)
   var dots = tetDots(t)
-  var volume = getElementVolume(t)
   for ci = 0,4 do
     var c = t.v[ci]
     for ai = 0,4 do
@@ -401,9 +403,9 @@ local addIFCubicTerms = liszt kernel(t : mesh.tetrahedra)
           var qd = d.q
           var dotp = L.dot(qa, qb)
           var scalar = dotp * ( 0.5 * t.lambdaLame *
-                                tetCoeffD(t, dots, volume, ai, bi, ci, di) +
+                                tetCoeffD(t, dots, ai, bi, ci, di) +
                                 t.muLame *
-                                tetCoeffD(t, dots, volume, ai, ci, bi, di) )
+                                tetCoeffD(t, dots, ai, ci, bi, di) )
           c.internal_forces += scalar * qd
         end
       end
@@ -462,12 +464,11 @@ mesh.edges:NewField('stiffness', L.mat3d)
 -- Linear contributions to stiffness matrix
 local addStiffLinearTerms = liszt kernel(t : mesh.tetrahedra)
   var dots = tetDots(t)
-  var volume = getElementVolume(t)
   for ci = 0,4 do
     for ai = 0,4 do
-      var mat = t.muLame * tetCoeffB(t, dots, volume, ai, ci) * getId3()
-      mat += (t.lambdaLame * tetCoeffA(t, dots, volume, ci, ai) +
-             (t.muLame * tetCoeffA(t, dots, volume, ai, ci)))
+      var mat = t.muLame * tetCoeffB(t, dots, ai, ci) * getId3()
+      mat += (t.lambdaLame * tetCoeffA(t, dots, ci, ai) +
+             (t.muLame * tetCoeffA(t, dots, ai, ci)))
       t.e[ci, ai].stiffness += mat
     end
   end
@@ -476,23 +477,22 @@ end
 -- Quadratic contributions to stiffness matrix
 local addStiffQuadraticTerms = liszt kernel(t : mesh.tetrahedra)
   var dots = tetDots(t)
-  var volume = getElementVolume(t)
   for ci = 0,4 do
     for ai = 0,4 do
       var qa = t.v[ai].q
       var mat : L.mat3d = constantMatrix3(0)
       for ei = 0,4 do
-        var c0v = t.lambdaLame * tetCoeffC(t, dots, volume, ci, ai, ei) +
-                  t.muLame * ( tetCoeffC(t, dots, volume, ei, ai, ci) +
-                               tetCoeffC(t, dots, volume, ai, ei, ci) )
+        var c0v = t.lambdaLame * tetCoeffC(t, dots, ci, ai, ei) +
+                  t.muLame * ( tetCoeffC(t, dots, ei, ai, ci) +
+                               tetCoeffC(t, dots, ai, ei, ci) )
         mat += tensor3(qa, c0v)
-        var c1v = t.lambdaLame * tetCoeffC(t, dots, volume, ei, ai, ci) +
-                  t.muLame * ( tetCoeffC(t, dots, volume, ci, ei, ai) +
-                               tetCoeffC(t, dots, volume, ai, ei, ci) )
+        var c1v = t.lambdaLame * tetCoeffC(t, dots, ei, ai, ci) +
+                  t.muLame * ( tetCoeffC(t, dots, ci, ei, ai) +
+                               tetCoeffC(t, dots, ai, ei, ci) )
         mat += tensor3(qa, c1v)
-        var c2v = t.lambdaLame * tetCoeffC(t, dots, volume, ai, ei, ci) +
-                  t.muLame * ( tetCoeffC(t, dots, volume, ci, ai, ei) +
-                               tetCoeffC(t, dots, volume, ei, ai, ci) )
+        var c2v = t.lambdaLame * tetCoeffC(t, dots, ai, ei, ci) +
+                  t.muLame * ( tetCoeffC(t, dots, ci, ai, ei) +
+                               tetCoeffC(t, dots, ei, ai, ci) )
         var dotp = L.dot(qa, c2v)
         mat += dotp * getId3()
       end
@@ -504,7 +504,6 @@ end
 -- Cubic contributions to stiffness matrix
 local addStiffCubicTerms = liszt kernel(t : mesh.tetrahedra)
   var dots = tetDots(t)
-  var volume = getElementVolume(t)
   for ci = 0,4 do
     for ei = 0,4 do
       var mat : L.mat3d = constantMatrix3(0)
@@ -512,13 +511,13 @@ local addStiffCubicTerms = liszt kernel(t : mesh.tetrahedra)
         var qa = t.v[ai].q
         for bi = 0,4 do
           var qb = t.v[bi].q
-          var d0 = t.lambdaLame * tetCoeffD(t, dots, volume, ai, ci, bi, ei) +
-                   t.muLame * ( tetCoeffD(t, dots, volume, ai, ei, bi, ci) +
-                                tetCoeffD(t, dots, volume, ai, bi, ci, ei) )
+          var d0 = t.lambdaLame * tetCoeffD(t, dots, ai, ci, bi, ei) +
+                   t.muLame * ( tetCoeffD(t, dots, ai, ei, bi, ci) +
+                                tetCoeffD(t, dots, ai, bi, ci, ei) )
           mat += d0 * (tensor3(qa, qb))
           var d1 = 0.5 * t.lambdaLame *
-                   tetCoeffD(t, dots, volume, ai, bi, ci, ei) +
-                   t.muLame * tetCoeffD(t, dots, volume, ai, ci, bi, ei)
+                   tetCoeffD(t, dots, ai, bi, ci, ei) +
+                   t.muLame * tetCoeffD(t, dots, ai, ci, bi, ei)
           var dotpd = d1 * L.dot(qa, qb)
           mat += dotpd * getId3()
         end
@@ -912,7 +911,6 @@ function main()
     dampingStiffnessCoef  = options.dampingStiffnessCoef,
     maxIterations         = options.maxIterations,
     epsilon               = options.epsilon,
-    numSolverThreads      = options.numSolverThreads,
     cgEpsilon             = options.cgEpsilon,
     cgMaxIterations       = options.cgMaxIterations,
     internalForcesScalingFactor  = options.deformableObjectCompliance
@@ -928,9 +926,6 @@ function main()
     -- else
     --   clearExternalForces(volumetric_mesh)
     -- end
-    computeStiffnessMatrix(volumetric_mesh)
-    DumpEdgeFieldToFile(volumetric_mesh.edges, 'stiffness',
-                        "out/stiffness_vega_"..(i-1))
     integrator:doTimestep(volumetric_mesh)
     visualize(volumetric_mesh)
   end
