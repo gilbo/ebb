@@ -229,18 +229,18 @@ L.LKernel.__call  = function (kobj, relset)
 
 
     -- set execution parameters in the germ
-    local cpu_germ    = bran.cpu_germ:ptr()
-    cpu_germ.n_rows   = bran.relation:ConcreteSize()
+    local germ    = bran.germ:ptr()
+    germ.n_rows   = bran.relation:ConcreteSize()
     -- bind the subset data
     if bran.subset then
-      cpu_germ.use_boolmask     = false
+      germ.use_boolmask     = false
       if bran.subset then
         if bran.subset._boolmask then
-          cpu_germ.use_boolmask = true
-          cpu_germ.boolmask     = bran.subset._boolmask:DataPtr()
+          germ.use_boolmask = true
+          germ.boolmask     = bran.subset._boolmask:DataPtr()
         elseif bran.subset._index then
-          cpu_germ.index        = bran.subset._index:DataPtr()
-          cpu_germ.index_size   = bran.subset._index:Size()
+          germ.index        = bran.subset._index:DataPtr()
+          germ.index_size   = bran.subset._index:Size()
         else
           assert(false)
         end
@@ -256,7 +256,7 @@ L.LKernel.__call  = function (kobj, relset)
       -- cache the old size
       bran.insert_data.last_concrete_size = insert_size_concrete
       -- set the write head to point to the end of array
-      cpu_germ.insert_write = insert_size_concrete
+      germ.insert_write = insert_size_concrete
       -- resize to create more space at the end of the array
       insert_rel:ResizeConcrete(insert_size_concrete +
                                 center_size_logical)
@@ -269,18 +269,14 @@ L.LKernel.__call  = function (kobj, relset)
     end
     -- bind the field data (MUST COME LAST)
     for field, _ in pairs(bran.field_ids) do
-      bran:setCPUField(field)
+      bran:setField(field)
     end
     for globl, _ in pairs(bran.global_ids) do
-      bran:setCPUGlobal(globl)
-    end
-    -- Load the germ data into the runtime location
-    if bran.location == L.GPU then
-      bran.runtime_germ:copy(bran.cpu_germ)
+      bran:setGlobal(globl)
     end
 
     -- launch the kernel
-    bran.executable(bran.runtime_germ:ptr())
+    bran.executable(bran.germ:ptr())
 
     -- adjust sizes based on extracted information
     if bran.insert_data then
@@ -365,36 +361,29 @@ function Bran:generate()
   end
 
   -- allocate memory for 1-2 copies of the germ
-  bran.cpu_germ = DataArray.New{
+  bran.germ = DataArray.New{
     size = 1,
     type = bran.germ_template:TerraStruct(),
     processor = L.CPU -- DON'T MOVE
   }
-  bran.runtime_germ = bran.cpu_germ
-  if bran.location == L.GPU then
-    bran.runtime_germ = DataArray.New{
-      size = 1,
-      type = bran.germ_template:TerraStruct(),
-      processor = L.CPU,
-    }
-  end
+  bran.cpu_scratch_table = bran:generateScratchTable(L.CPU)
+  bran.gpu_scratch_table = bran:generateScratchTable(L.GPU)
 
-  -- allocate space to keep track of pointers to memory allocated
-  -- for GPU tree-reductions on an invocation-by-invocation basis
-  if bran.location == L.GPU then
-    bran.cpu_scratch_table = DataArray.New{
-      size=1,
-      type=bran.scratch_table_template:TerraStruct(),
-      processor=L.CPU
-    }
-    bran.gpu_scratch_table = DataArray.New{
-      size=1,
-      type=bran.scratch_table_template:TerraStruct(),
-      processor=L.GPU
-    }
-  end
+
   -- compile an executable
   bran.executable = codegen.codegen(typed_ast, bran)
+end
+
+function Bran:generateScratchTable(proc)
+  return DataArray.New{
+    size=1,
+    type=self.scratch_table_template:TerraStruct(),
+    processor=proc
+  }
+end
+
+function Bran:germTerraType()
+  return self.germ_template:TerraStruct()
 end
 
 function Bran:getFieldId(field)
@@ -428,32 +417,28 @@ function Bran:getGlobalId(global)
   return id
 end
 
-function Bran:setCPUField(field)
+function Bran:setField(field)
   local id = self:getFieldId(field)
   local dataptr = field:DataPtr()
-  self.cpu_germ:ptr()[id] = dataptr
+  self.germ:ptr()[id] = dataptr
 end
-function Bran:setCPUGlobal(global)
+function Bran:setGlobal(global)
   local id = self:getGlobalId(global)
   local dataptr = global:DataPtr()
-  self.cpu_germ:ptr()[id] = dataptr
+  self.germ:ptr()[id] = dataptr
 end
-function Bran:germTerraType ()
+function Bran:signatureType ()
   return self.germ_template:TerraStruct()
 end
-function Bran:getRuntimeFieldPtr(germ_ptr, field)
+function Bran:getFieldPtr(germ_ptr, field)
   local id = self:getFieldId(field)
   return `[germ_ptr].[id]
 end
-function Bran:getCPUScratchTablePtr(global)
+function Bran:getScratchTablePtr(table_ptr, global)
   local id = self:getGlobalId(global)
-  return `[self.cpu_scratch_table:ptr()].[id]
+  return `[table_ptr].[id]
 end
-function Bran:getGPUScratchTablePtr(global)
-  local id = self:getGlobalId(global)
-  return `[self.gpu_scratch_table:ptr()].[id]
-end
-function Bran:getRuntimeGlobalPtr(germ_ptr, global)
+function Bran:getGlobalPtr(germ_ptr, global)
   local id = self:getGlobalId(global)
   return `[germ_ptr].[id]
 end

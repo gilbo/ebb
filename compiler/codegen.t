@@ -12,6 +12,68 @@ local OUTPUT_PTX=false
 --[[                 Context Object for Compiler Pass                   ]]--
 --[[--------------------------------------------------------------------]]--
 
+local ReductionCtx = {}
+ReductionCtx.__index = ReductionCtx
+function ReductionCtx.New (ctxt, block_size)
+  local rc = setmetatable({
+      ctxt=ctxt,
+      cpu_scratch_table=ctxt.bran.cpu_scratch_table,
+      gpu_scratch_table=ctxt.bran.gpu_scratch_table,
+    },
+    ReductionCtx)
+    rc:computeGlobalReductionData(block_size)
+    return rc
+end
+
+function ReductionCtx:computeGlobalReductionData (block_size)
+  local shared_mem_size = 0
+  local global_shared_ptrs = { }
+  local kernel = self.ctxt.bran.kernel
+  local codegen_reduce = false
+  for g, phase in pairs(kernel.global_use) do
+    if phase.reduceop then
+      codegen_reduce = true
+      global_shared_ptrs[g] = cudalib.sharedmemory(g.type:terraType(), block_size)
+      shared_mem_size = shared_mem_size + sizeof(g.type:terraType()) * block_size
+    end
+  end
+  self.reduce_required = codegen_reduce
+  self.global_shared_ptrs = global_shared_ptrs
+  self.shared_mem_size = shared_mem_size
+end
+
+function ReductionCtx:reduceRequired()
+  return self.reduce_required
+end
+function ReductionCtx:sharedMemPtr(globl)
+  return `[self.global_shared_ptrs[globl]][self.ctxt.tid]
+end
+
+function ReductionCtx:globalSharedIter()
+  return pairs(self.global_shared_ptrs)
+end
+
+function ReductionCtx:sharedMemSize()
+  return self.shared_mem_size
+end
+
+function ReductionCtx:ScratchTableSize()
+  return self.cpu_scratch_table:byteSize()
+end
+function ReductionCtx:cpuScratchTable()
+  return self.cpu_scratch_table:ptr()
+end
+function ReductionCtx:gpuScratchTable()
+  return self.gpu_scratch_table:ptr()
+end
+
+function ReductionCtx:cpuScratchPtr(global)
+  return self.ctxt.bran:getScratchTablePtr(self.cpu_scratch_table:ptr(), global)
+end
+function ReductionCtx:gpuScratchPtr(global)
+  return self.ctxt.bran:getScratchTablePtr(self.gpu_scratch_table:ptr(), global)
+end
+
 local Context = {}
 Context.__index = Context
 
@@ -32,44 +94,36 @@ function Context:leaveblock()
   self.env:leaveblock()
 end
 
+function Context:setBlockSize(block_size)
+  self.block_size = block_size
+end
+
+function Context:blockSize()
+  return self.block_size
+end
+
+function Context:computeGlobalReductionData()
+  if not self.block_size then
+    error("Must set block size before computing global reduction data!", 2)
+  end
+  self.reduce = ReductionCtx.New(self, self.block_size)
+end
+
 function Context:onGPU()
   return self.bran.location == L.GPU
 end
 
-function Context:setRuntimeGerm(germ)
-  self.germ_ptr = germ
-end
 function Context:germTerraType()
   return self.bran:germTerraType()
 end
 function Context:FieldPtr(field)
-  return self.bran:getRuntimeFieldPtr(self:runtimeGerm(), field)
+  return self.bran:getFieldPtr(self:runtimeGerm(), field)
 end
-function Context:GlobalScratchPtr(global, on_cpu)
-  if on_cpu then
-    return self.bran:getCPUScratchTablePtr(global)
-  else
-    return self.bran:getGPUScratchTablePtr(global)
-  end
-end
-function Context:ScratchTableSize()
-  return self.bran.cpu_scratch_table:byteSize()
-end
-function Context:cpuScratchTable()
-  return self.bran.cpu_scratch_table:ptr()
-end
-function Context:gpuScratchTable()
-  return self.bran.gpu_scratch_table:ptr()
-end
+
 function Context:GlobalPtr(global)
-  return self.bran:getRuntimeGlobalPtr(self:runtimeGerm(), global)
+  return self.bran:getGlobalPtr(self:runtimeGerm(), global)
 end
-function Context:SetGlobalSharedPtrs(shared_ptrs)
-  self.global_shared_ptrs = shared_ptrs
-end
-function Context:GlobalSharedPtr(global, tid)
-    return `[self.global_shared_ptrs[global]][self.tid]
-end
+
 function Context:setTid(tid)
   self.tid = tid
 end
@@ -83,10 +137,13 @@ function Context:getBid()
   return self.bid
 end
 function Context:runtimeGerm()
+  if not self.germ_ptr then
+    self.germ_ptr = symbol(self.bran:germTerraType())
+  end
   return self.germ_ptr
 end
 function Context:cpuGerm()
-  return self.bran.cpu_germ:ptr()
+  return self.bran.germ:ptr()
 end
 function Context:fieldPhase(field)
   return self.bran.kernel.field_use[field]
@@ -182,8 +239,6 @@ end
 function cpu_codegen (kernel_ast, ctxt)
   ctxt:enterblock()
     -- declare the symbol for iteration
-    local germ  = symbol(ctxt:germTerraType())
-    ctxt:setRuntimeGerm(germ)
     local param = symbol(L.row(ctxt.bran.relation):terraType())
     ctxt:localenv()[kernel_ast.name] = param
 
@@ -223,7 +278,10 @@ function cpu_codegen (kernel_ast, ctxt)
     end
   ctxt:leaveblock()
 
-  local k = terra ([germ] : &ctxt:germTerraType()) [kernel_body] end
+  local k = terra (germ_ptr : &ctxt:germTerraType())
+    var [ctxt:runtimeGerm()] = @germ_ptr
+    [kernel_body]
+  end
   k:setname(kernel_ast.id)
   return k
 end
@@ -316,11 +374,11 @@ function reduce_identity(ltype, reduceop)
   end
 end
 
-function initialize_global_shared_memory (global_shared_ptrs, ctxt)
+function initialize_global_shared_memory (ctxt)
   local init_code = quote end
   local tid = ctxt:getTid()
 
-  for g, shared in pairs(global_shared_ptrs) do
+  for g, shared in ctxt.reduce:globalSharedIter() do
     local gtype = g.type
     local reduceop = ctxt:globalPhase(g).reduceop
 
@@ -358,14 +416,13 @@ function unrolled_block_reduce (op, typ, ptr, tid, block_size)
     return expr
 end
 
-function reduce_global_shared_memory (global_shared_ptrs, ctxt, block_size, commit_final_value)
+function reduce_global_shared_memory (ctxt, commit_final_value)
   local reduce_code = quote end
 
-  for g, shared in pairs(global_shared_ptrs) do
-
+  for g, shared in ctxt.reduce:globalSharedIter() do
     local gtype = g.type
     local reduceop = ctxt:globalPhase(g).reduceop
-    local scratch_ptr = ctxt:GlobalScratchPtr(g)
+    local scratch_ptr = ctxt.reduce:gpuScratchPtr(g)
 
     local tid = ctxt:getTid()
     local bid = ctxt:getBid()
@@ -373,7 +430,7 @@ function reduce_global_shared_memory (global_shared_ptrs, ctxt, block_size, comm
     reduce_code = quote
       [reduce_code]
 
-      [unrolled_block_reduce(reduceop, gtype, shared, ctxt:getTid(), block_size)]
+      [unrolled_block_reduce(reduceop, gtype, shared, ctxt:getTid(), ctxt:blockSize())]
       if [tid] == 0 then
         escape
           if commit_final_value then
@@ -394,39 +451,39 @@ function reduce_global_shared_memory (global_shared_ptrs, ctxt, block_size, comm
   return reduce_code
 end
 
-function generate_final_reduce (kernel_ast, global_shared_ptrs, ctxt, block_size)
+function generate_final_reduce (kernel_ast, ctxt)
   local array_len  = symbol(uint64)
   local t = symbol(uint32)
   local b = symbol(uint32)
   ctxt:setTid(t)
   ctxt:setBid(b)
   -- read in all global reduction values corresponding to this (global) thread
+
   local final_reduce = quote
     var [t]  = G.thread_id()
     var [b]  = G.block_id()
-    var gt = t + [block_size] * b
+    var gt = t + [ctxt:blockSize()] * b
     var num_blocks : uint32 = G.num_blocks()
 
-    [initialize_global_shared_memory(global_shared_ptrs, ctxt)]
+    [initialize_global_shared_memory(ctxt)]
 
-    for global_index = gt, [array_len], num_blocks*[block_size] do
+    for global_index = gt, [array_len], num_blocks*[ctxt:blockSize()] do
       escape
-        for g, shared in pairs(global_shared_ptrs) do
+        for g, shared in ctxt.reduce:globalSharedIter() do
           local op = ctxt:globalPhase(g).reduceop
           local typ = g.type
-          local gptr = ctxt:GlobalScratchPtr(g)
+          local gptr = ctxt.reduce:gpuScratchPtr(g)
           emit quote
             [shared][t] = [vec_bin_exp(op, typ, `[shared][t], `[gptr][global_index], typ, typ)]
           end
         end
       end
     end
-    [reduce_global_shared_memory(global_shared_ptrs, ctxt, block_size, true)]
+    [reduce_global_shared_memory(ctxt, true)]
   end
 
 
-  local germ, germT = ctxt:runtimeGerm(), ctxt:germTerraType()
-  final_reduce = terra ([germ] : germT, [array_len])
+  final_reduce = terra ([ctxt:runtimeGerm()], [array_len])
     [final_reduce] 
   end
   final_reduce:setname(kernel_ast.id .. '_reduce')
@@ -434,11 +491,11 @@ function generate_final_reduce (kernel_ast, global_shared_ptrs, ctxt, block_size
   return G.kernelwrap(final_reduce, OUTPUT_PTX)
 end
 
-function allocate_reduction_space (n_blocks, global_shared_ptrs, ctxt)
+function allocate_reduction_space (n_blocks, ctxt)
   local alloc_code = quote end
 
-  for g, _ in pairs(global_shared_ptrs) do
-    local ptr = `[ctxt:GlobalScratchPtr(g,true)]
+  for g, _ in ctxt.reduce:globalSharedIter() do
+    local ptr = `[ctxt.reduce:cpuScratchPtr(g)]
     alloc_code = quote
       [alloc_code]
       var sz = [sizeof(g.type:terraType())]*n_blocks
@@ -450,42 +507,28 @@ function allocate_reduction_space (n_blocks, global_shared_ptrs, ctxt)
   -- copy pointers to GPU to be accessed during kernel invocation
   alloc_code = quote
     [alloc_code]
-    C.cudaMemcpy([ctxt:gpuScratchTable()],
-                 [ctxt:cpuScratchTable()],
-                 [ctxt:ScratchTableSize()],
+    C.cudaMemcpy([ctxt.reduce:gpuScratchTable()],
+                 [ctxt.reduce:cpuScratchTable()],
+                 [ctxt.reduce:ScratchTableSize()],
                  C.cudaMemcpyHostToDevice)
   end
 
   return alloc_code
 end
 
-function free_reduction_space (global_shared_ptrs, ctxt)
+function free_reduction_space (ctxt)
   local free_code = quote end
 
-  for g, _ in pairs(global_shared_ptrs) do
+  for g, _ in ctxt.reduce:globalSharedIter() do
     free_code = quote
       [free_code]
-      C.cudaFree([ctxt:GlobalScratchPtr(g,true)])
+      C.cudaFree([ctxt.reduce:cpuScratchPtr(g)])
     end
   end
 
   return free_code
 end
 
-function compute_global_reduction_data (ctxt, block_size)
-  local shared_mem_size = 0
-  local global_shared_ptrs = { }
-  local kernel = ctxt.bran.kernel
-  local codegen_reduce = false
-  for g, phase in pairs(kernel.global_use) do
-    if phase.reduceop then
-      codegen_reduce = true
-      global_shared_ptrs[g] = cudalib.sharedmemory(g.type:terraType(), block_size)
-      shared_mem_size = shared_mem_size + sizeof(g.type:terraType()) * block_size
-    end
-  end
-  return codegen_reduce, global_shared_ptrs, shared_mem_size
-end
 
 function gpu_codegen (kernel_ast, ctxt)
   local BLOCK_SIZE   = 64
@@ -494,11 +537,8 @@ function gpu_codegen (kernel_ast, ctxt)
   -----------------------------
   --[[ Codegen CUDA kernel ]]--
   -----------------------------
-  local germ  = symbol(ctxt:germTerraType())
-  ctxt:setRuntimeGerm(germ)
-
-  local codegen_reduce, global_shared_ptrs, shared_mem_size = compute_global_reduction_data(ctxt, BLOCK_SIZE)
-  ctxt:SetGlobalSharedPtrs(global_shared_ptrs)
+  ctxt:setBlockSize(BLOCK_SIZE)
+  ctxt:computeGlobalReductionData()
   ctxt:enterblock()
     -- declare the symbol for iteration
     local param = symbol(L.row(ctxt.bran.relation):terraType())
@@ -547,8 +587,8 @@ function gpu_codegen (kernel_ast, ctxt)
       var [id] : uint = bid * BLOCK_SIZE + tid
 
       -- Initialize shared memory for global reductions for kernels that require it
-      escape if codegen_reduce then emit quote
-        [initialize_global_shared_memory(global_shared_ptrs, ctxt)]
+      escape if ctxt.reduce:reduceRequired() then emit quote
+        [initialize_global_shared_memory(ctxt)]
         G.barrier()
       end end end
       
@@ -556,15 +596,15 @@ function gpu_codegen (kernel_ast, ctxt)
 
       -- reduce block reduction temporaries to one value and copy back to GPU
       -- global memory for kernels that require it
-      escape if codegen_reduce then emit quote
+      escape if ctxt.reduce:reduceRequired() then emit quote
         G.barrier()
-        [reduce_global_shared_memory(global_shared_ptrs, ctxt, BLOCK_SIZE)]
+        [reduce_global_shared_memory(ctxt)]
       end end end
     end
 
   ctxt:leaveblock()
 
-  local cuda_kernel = terra ([germ] : ctxt:germTerraType())
+  local cuda_kernel = terra ([ctxt:runtimeGerm()])
     [kernel_body]
   end
   cuda_kernel:setname(kernel_ast.id)
@@ -596,11 +636,11 @@ function gpu_codegen (kernel_ast, ctxt)
   local launcher = terra (germ_ptr : &ctxt:germTerraType())
     [compute_nblocks]
     var grid_x : uint, grid_y : uint, grid_z : uint = G.get_grid_dimensions(n_blocks, MAX_GRID_DIM)
-    var params = terralib.CUDAParams { grid_x, grid_y, grid_z, BLOCK_SIZE, 1, 1, shared_mem_size, nil }
+    var params = terralib.CUDAParams { grid_x, grid_y, grid_z, BLOCK_SIZE, 1, 1, [ctxt.reduce:sharedMemSize()], nil }
 
-    escape if codegen_reduce then emit quote
+    escape if ctxt.reduce:reduceRequired() then emit quote
       -- Allocate temporary space on the GPU for global reductions
-      [allocate_reduction_space(n_blocks,global_shared_ptrs, ctxt)]
+      [allocate_reduction_space(n_blocks,ctxt)]
     end end end
 
     var germ = @germ_ptr
@@ -608,13 +648,13 @@ function gpu_codegen (kernel_ast, ctxt)
     G.sync() -- flush print streams
 
     escape
-      if codegen_reduce then
-        local reduce_global_scratch_values = generate_final_reduce(kernel_ast, global_shared_ptrs,ctxt,BLOCK_SIZE)
+      if ctxt.reduce:reduceRequired() then
+        local reduce_global_scratch_values = generate_final_reduce(kernel_ast, ctxt)
         emit quote
           -- Launch 2nd reduction kernel and free temporary space
-          var reduce_params = terralib.CUDAParams { 1,1,1, BLOCK_SIZE,1,1, shared_mem_size, nil }
-          reduce_global_scratch_values(&reduce_params,germ, n_blocks)
-          [free_reduction_space(global_shared_ptrs, ctxt)]
+          var reduce_params = terralib.CUDAParams { 1,1,1, BLOCK_SIZE,1,1, [ctxt.reduce:sharedMemSize()], nil }
+          reduce_global_scratch_values(&reduce_params, germ, n_blocks)
+          [free_reduction_space(ctxt)]
         end
       end
     end
@@ -1010,7 +1050,7 @@ end
 function ast.GlobalReduce:codegen(ctxt)
   -- GPU impl:
   if ctxt:onGPU() then
-    local lval = ctxt:GlobalSharedPtr(self.global.global)
+    local lval = ctxt.reduce:sharedMemPtr(self.global.global)
     local rexp = self.exp:codegen(ctxt)
     local rhs = vec_bin_exp(self.reduceop, self.global.node_type, lval, rexp, self.global.node_type, self.exp.node_type)
     return quote [lval] = [rhs] end
