@@ -943,17 +943,21 @@ function main()
   }
   integrator:setupFieldsKernels(mesh)
 
+  local t1, t2
   -- print("Performing time steps ...")
   -- visualize(volumetric_mesh)
   -- DumpDeformationToFile(volumetric_mesh, "out/mesh_liszt_"..tostring(0))
   for i=1,options.numTimesteps do
     -- print("#timestep = "..i)
+    t1 = terralib.currenttimeinseconds()
     setExternalConditions(volumetric_mesh, i)
     computeInternalForces(volumetric_mesh)
     computeStiffnessMatrix(volumetric_mesh)
     integrator:doTimestep(volumetric_mesh)
     -- visualize(volumetric_mesh)
     -- DumpDeformationToFile(volumetric_mesh, "out/mesh_liszt_"..tostring(i))
+    t2 = terralib.currenttimeinseconds()
+    print("Time for step "..i.." is "..((t2-t1)*1E6).." us")
   end
 
   -- read out the state here somehow?
