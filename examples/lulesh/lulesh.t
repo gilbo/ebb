@@ -60,23 +60,8 @@ grid.cells:NewField("ss",     L.double):Load(0.0) -- sound speed
 grid.cells:NewField("mass",   L.double):Load(0.0) -- element mass
 
 ---- For convenience in matching orientation w/previous lulesh version
---grid.cells:NewFieldMacro('v0',  L.NewMacro(function(c)
---  return liszt `c.vertex(0,1,1) end))
---grid.cells:NewFieldMacro('v1',  L.NewMacro(function(c)
---  return liszt `c.vertex(1,1,1) end))
---grid.cells:NewFieldMacro('v2',  L.NewMacro(function(c)
---  return liszt `c.vertex(1,0,1) end))
---grid.cells:NewFieldMacro('v3',  L.NewMacro(function(c)
---  return liszt `c.vertex(0,0,1) end))
---grid.cells:NewFieldMacro('v4',  L.NewMacro(function(c)
---  return liszt `c.vertex(0,1,0) end))
---grid.cells:NewFieldMacro('v5',  L.NewMacro(function(c)
---  return liszt `c.vertex(1,1,0) end))
---grid.cells:NewFieldMacro('v6',  L.NewMacro(function(c)
---  return liszt `c.vertex(1,0,0) end))
---grid.cells:NewFieldMacro('v7',  L.NewMacro(function(c)
---  return liszt `c.vertex(0,0,0) end))
-
+-- This is also needed to maintain the code style which allows
+-- extensibility to less structured Hex-Mesh topologies
 grid.cells:NewField('v', L.vector(grid.vertices, 8))
 (liszt kernel( c : grid.cells )
   c.v[0] = c.vertex(0,1,1)
@@ -379,7 +364,10 @@ local calcElemNodeNormals = liszt function(localCoords, stress)
     }
 end
 
-local voluDer = liszt function(x0,x1,x2,x3,x4,x5,y0,y1,y2,y3,y4,y5,z0,z1,z2,z3,z4,z5)
+--[[
+local voluDer = liszt function(x0,x1,x2,x3,x4,x5,
+                               y0,y1,y2,y3,y4,y5,
+                               z0,z1,z2,z3,z4,z5)
   var dvdx =   (y1 + y2) * (z0 + z1) - (y0 + y1) * (z1 + z2) +
                (y0 + y4) * (z3 + z4) - (y3 + y4) * (z0 + z4) -
                (y2 + y5) * (z3 + z5) + (y3 + y5) * (z2 + z5)
@@ -395,60 +383,112 @@ local voluDer = liszt function(x0,x1,x2,x3,x4,x5,y0,y1,y2,y3,y4,y5,z0,z1,z2,z3,z
   return { dvdx/12.0, dvdy/12.0, dvdz/12.0 }
 end
 
-local calcElemVolumeDerivative = liszt function (localCoords)
+local calcElemVolumeDerivative = liszt function (c, localCoords)
   var v0 = voluDer(localCoords[1*3+0], localCoords[2*3+0], localCoords[3*3+0],
-               localCoords[4*3+0], localCoords[5*3+0], localCoords[7*3+0],
-               localCoords[1*3+1], localCoords[2*3+1], localCoords[3*3+1],
-               localCoords[4*3+1], localCoords[5*3+1], localCoords[7*3+1],
-               localCoords[1*3+2], localCoords[2*3+2], localCoords[3*3+2],
-               localCoords[4*3+2], localCoords[5*3+2], localCoords[7*3+2])
+                   localCoords[4*3+0], localCoords[5*3+0], localCoords[7*3+0],
+                   localCoords[1*3+1], localCoords[2*3+1], localCoords[3*3+1],
+                   localCoords[4*3+1], localCoords[5*3+1], localCoords[7*3+1],
+                   localCoords[1*3+2], localCoords[2*3+2], localCoords[3*3+2],
+                   localCoords[4*3+2], localCoords[5*3+2], localCoords[7*3+2])
   var v3 = voluDer(localCoords[0*3+0], localCoords[1*3+0], localCoords[2*3+0],
-               localCoords[7*3+0], localCoords[4*3+0], localCoords[6*3+0],
-                 localCoords[0*3+1], localCoords[1*3+1], localCoords[2*3+1],
-                 localCoords[7*3+1], localCoords[4*3+1], localCoords[6*3+1],
-                 localCoords[0*3+2], localCoords[1*3+2], localCoords[2*3+2],
-                 localCoords[7*3+2], localCoords[4*3+2], localCoords[6*3+2])
+                   localCoords[7*3+0], localCoords[4*3+0], localCoords[6*3+0],
+                   localCoords[0*3+1], localCoords[1*3+1], localCoords[2*3+1],
+                   localCoords[7*3+1], localCoords[4*3+1], localCoords[6*3+1],
+                   localCoords[0*3+2], localCoords[1*3+2], localCoords[2*3+2],
+                   localCoords[7*3+2], localCoords[4*3+2], localCoords[6*3+2])
   var v2 = voluDer(localCoords[3*3+0], localCoords[0*3+0], localCoords[1*3+0],
-                 localCoords[6*3+0], localCoords[7*3+0], localCoords[5*3+0],
-                 localCoords[3*3+1], localCoords[0*3+1], localCoords[1*3+1],
-                 localCoords[6*3+1], localCoords[7*3+1], localCoords[5*3+1],
-                 localCoords[3*3+2], localCoords[0*3+2], localCoords[1*3+2],
-                 localCoords[6*3+2], localCoords[7*3+2], localCoords[5*3+2])
+                   localCoords[6*3+0], localCoords[7*3+0], localCoords[5*3+0],
+                   localCoords[3*3+1], localCoords[0*3+1], localCoords[1*3+1],
+                   localCoords[6*3+1], localCoords[7*3+1], localCoords[5*3+1],
+                   localCoords[3*3+2], localCoords[0*3+2], localCoords[1*3+2],
+                   localCoords[6*3+2], localCoords[7*3+2], localCoords[5*3+2])
   var v1 = voluDer(localCoords[2*3+0], localCoords[3*3+0], localCoords[0*3+0],
-                 localCoords[5*3+0], localCoords[6*3+0], localCoords[4*3+0],
-                 localCoords[2*3+1], localCoords[3*3+1], localCoords[0*3+1],
-                 localCoords[5*3+1], localCoords[6*3+1], localCoords[4*3+1],
-                 localCoords[2*3+2], localCoords[3*3+2], localCoords[0*3+2],
-                 localCoords[5*3+2], localCoords[6*3+2], localCoords[4*3+2])
+                   localCoords[5*3+0], localCoords[6*3+0], localCoords[4*3+0],
+                   localCoords[2*3+1], localCoords[3*3+1], localCoords[0*3+1],
+                   localCoords[5*3+1], localCoords[6*3+1], localCoords[4*3+1],
+                   localCoords[2*3+2], localCoords[3*3+2], localCoords[0*3+2],
+                   localCoords[5*3+2], localCoords[6*3+2], localCoords[4*3+2])
   var v4 = voluDer(localCoords[7*3+0], localCoords[6*3+0], localCoords[5*3+0],
-                 localCoords[0*3+0], localCoords[3*3+0], localCoords[1*3+0],
-                 localCoords[7*3+1], localCoords[6*3+1], localCoords[5*3+1],
-                 localCoords[0*3+1], localCoords[3*3+1], localCoords[1*3+1],
-                 localCoords[7*3+2], localCoords[6*3+2], localCoords[5*3+2],
-                 localCoords[0*3+2], localCoords[3*3+2], localCoords[1*3+2])
+                   localCoords[0*3+0], localCoords[3*3+0], localCoords[1*3+0],
+                   localCoords[7*3+1], localCoords[6*3+1], localCoords[5*3+1],
+                   localCoords[0*3+1], localCoords[3*3+1], localCoords[1*3+1],
+                   localCoords[7*3+2], localCoords[6*3+2], localCoords[5*3+2],
+                   localCoords[0*3+2], localCoords[3*3+2], localCoords[1*3+2])
   var v5 = voluDer(localCoords[4*3+0], localCoords[7*3+0], localCoords[6*3+0],
-                 localCoords[1*3+0], localCoords[0*3+0], localCoords[2*3+0],
-                 localCoords[4*3+1], localCoords[7*3+1], localCoords[6*3+1],
-                 localCoords[1*3+1], localCoords[0*3+1], localCoords[2*3+1],
-                 localCoords[4*3+2], localCoords[7*3+2], localCoords[6*3+2],
-                 localCoords[1*3+2], localCoords[0*3+2], localCoords[2*3+2])
+                   localCoords[1*3+0], localCoords[0*3+0], localCoords[2*3+0],
+                   localCoords[4*3+1], localCoords[7*3+1], localCoords[6*3+1],
+                   localCoords[1*3+1], localCoords[0*3+1], localCoords[2*3+1],
+                   localCoords[4*3+2], localCoords[7*3+2], localCoords[6*3+2],
+                   localCoords[1*3+2], localCoords[0*3+2], localCoords[2*3+2])
   var v6 = voluDer(localCoords[5*3+0], localCoords[4*3+0], localCoords[7*3+0],
-                 localCoords[2*3+0], localCoords[1*3+0], localCoords[3*3+0],
-                 localCoords[5*3+1], localCoords[4*3+1], localCoords[7*3+1],
-                 localCoords[2*3+1], localCoords[1*3+1], localCoords[3*3+1],
-                 localCoords[5*3+2], localCoords[4*3+2], localCoords[7*3+2],
-                 localCoords[2*3+2], localCoords[1*3+2], localCoords[3*3+2])
+                   localCoords[2*3+0], localCoords[1*3+0], localCoords[3*3+0],
+                   localCoords[5*3+1], localCoords[4*3+1], localCoords[7*3+1],
+                   localCoords[2*3+1], localCoords[1*3+1], localCoords[3*3+1],
+                   localCoords[5*3+2], localCoords[4*3+2], localCoords[7*3+2],
+                   localCoords[2*3+2], localCoords[1*3+2], localCoords[3*3+2])
   var v7 = voluDer(localCoords[6*3+0], localCoords[5*3+0], localCoords[4*3+0],
-                 localCoords[3*3+0], localCoords[2*3+0], localCoords[0*3+0],
-                 localCoords[6*3+1], localCoords[5*3+1], localCoords[4*3+1],
-                 localCoords[3*3+1], localCoords[2*3+1], localCoords[0*3+1],
-                 localCoords[6*3+2], localCoords[5*3+2], localCoords[4*3+2],
-                 localCoords[3*3+2], localCoords[2*3+2], localCoords[0*3+2])
+                   localCoords[3*3+0], localCoords[2*3+0], localCoords[0*3+0],
+                   localCoords[6*3+1], localCoords[5*3+1], localCoords[4*3+1],
+                   localCoords[3*3+1], localCoords[2*3+1], localCoords[0*3+1],
+                   localCoords[6*3+2], localCoords[5*3+2], localCoords[4*3+2],
+                   localCoords[3*3+2], localCoords[2*3+2], localCoords[0*3+2])
 
   return { v0[0], v1[0], v2[0], v3[0], v4[0], v5[0], v6[0], v7[0],
            v0[1], v1[1], v2[1], v3[1], v4[1], v5[1], v6[1], v7[1],
            v0[2], v1[2], v2[2], v3[2], v4[2], v5[2], v6[2], v7[2] }
 end
+]]--
+
+
+local voluDer = liszt function(p0,p1,p2,p3,p4,p5)
+  var m01 = p0.position + p1.position
+  var m12 = p1.position + p2.position
+  var m04 = p0.position + p4.position
+  var m34 = p3.position + p4.position 
+  var m25 = p2.position + p5.position
+  var m35 = p3.position + p5.position
+
+  var dvdx =   m12[1] * m01[2] - m01[1] * m12[2] +
+               m04[1] * m34[2] - m34[1] * m04[2] -
+               m25[1] * m35[2] + m35[1] * m25[2]
+
+  var dvdy = - m12[0] * m01[2] + m01[0] * m12[2] -
+               m04[0] * m34[2] + m34[0] * m04[2] +
+               m25[0] * m35[2] - m35[0] * m25[2]
+
+  var dvdz = - m12[1] * m01[0] + m01[1] * m12[0] -
+               m04[1] * m34[0] + m34[1] * m04[0] +
+               m25[1] * m35[0] - m35[1] * m25[0]
+
+  return { dvdx/12.0, dvdy/12.0, dvdz/12.0 }
+end
+
+local calcElemVolumeDerivative = liszt function (c, localCoords)
+  var p0 = c.v[0]
+  var p1 = c.v[1]
+  var p2 = c.v[2]
+  var p3 = c.v[3]
+  var p4 = c.v[4]
+  var p5 = c.v[5]
+  var p6 = c.v[6]
+  var p7 = c.v[7]
+
+  var v0 = voluDer(p1, p2, p3, p4, p5, p7)
+  var v3 = voluDer(p0, p1, p2, p7, p4, p6)
+  var v2 = voluDer(p3, p0, p1, p6, p7, p5)
+  var v1 = voluDer(p2, p3, p0, p5, p6, p4)
+  var v4 = voluDer(p7, p6, p5, p0, p3, p1)
+  var v5 = voluDer(p4, p7, p6, p1, p0, p2)
+  var v6 = voluDer(p5, p4, p7, p2, p1, p3)
+  var v7 = voluDer(p6, p5, p4, p3, p2, p0)
+
+  return { v0[0], v1[0], v2[0], v3[0], v4[0], v5[0], v6[0], v7[0],
+           v0[1], v1[1], v2[1], v3[1], v4[1], v5[1], v6[1], v7[1],
+           v0[2], v1[2], v2[2], v3[2], v4[2], v5[2], v6[2], v7[2] }
+end
+
+
+
 
 
 local liszt kernel initialVolumeCalc(c : grid.cells)
@@ -610,7 +650,7 @@ local liszt kernel calcFBHourglassForceForElems(c : grid.cells)
   var volume13 = L.cbrt(determ)
   var coefficient = -m.hgcoef * 0.01 * c.ss * c.mass / volume13
   var localCoords = getLocalNodeCoordVectors(c)
-  var pf = calcElemVolumeDerivative(localCoords)
+  var pf = calcElemVolumeDerivative(c, localCoords)
 
   -- 4x8 matrix
   var gamma : L.vector(L.double, 32) = {
@@ -1233,9 +1273,9 @@ local function runSolver ()
 end
 
 local function printStats()
-  local average_iteration_time = (end_time - start_time) / m.cycle
+  local average_iteration_time = (end_time - start_time) / m.cycle * 1e3
   print("Total elapsed time = " .. tostring(end_time - start_time))
-  print("Time per iteration = " .. tostring(average_iteration_time))
+  print("  ms per iteration = " .. tostring(average_iteration_time))
   print("   Problem size        = " .. tostring(N))
   print("   Iteration count     = " .. tostring(m.cycle))
 
