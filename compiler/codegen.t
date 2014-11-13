@@ -57,23 +57,6 @@ function ReductionCtx:sharedMemSize()
   return self.shared_mem_size
 end
 
-function ReductionCtx:ScratchTableSize()
-  return self.cpu_scratch_table:byteSize()
-end
-function ReductionCtx:cpuScratchTable()
-  return self.cpu_scratch_table:ptr()
-end
-function ReductionCtx:gpuScratchTable()
-  return self.gpu_scratch_table:ptr()
-end
-
-function ReductionCtx:cpuScratchPtr(global)
-  return self.ctxt.bran:getScratchTablePtr(self.cpu_scratch_table:ptr(), global)
-end
-function ReductionCtx:gpuScratchPtr(global)
-  return self.ctxt.bran:getScratchTablePtr(self.gpu_scratch_table:ptr(), global)
-end
-
 local Context = {}
 Context.__index = Context
 
@@ -113,15 +96,19 @@ function Context:onGPU()
   return self.bran.location == L.GPU
 end
 
-function Context:germTerraType()
-  return self.bran:germTerraType()
+function Context:signatureType()
+  return self.bran:signatureType()
 end
 function Context:FieldPtr(field)
-  return self.bran:getFieldPtr(self:runtimeGerm(), field)
+  return self.bran:getFieldPtr(self:runtimeSignature(), field)
 end
 
 function Context:GlobalPtr(global)
-  return self.bran:getGlobalPtr(self:runtimeGerm(), global)
+  return self.bran:getGlobalPtr(self:runtimeSignature(), global)
+end
+
+function Context:GlobalScratchPtr(global)
+  return self.bran:getGlobalScratchPtr(self:runtimeSignature(), global)
 end
 
 function Context:setTid(tid)
@@ -136,14 +123,14 @@ end
 function Context:getBid()
   return self.bid
 end
-function Context:runtimeGerm()
-  if not self.germ_ptr then
-    self.germ_ptr = symbol(self.bran:germTerraType())
+function Context:runtimeSignature()
+  if not self.signature_ptr then
+    self.signature_ptr = symbol(self:signatureType())
   end
-  return self.germ_ptr
+  return self.signature_ptr
 end
-function Context:cpuGerm()
-  return self.bran.germ:ptr()
+function Context:cpuSignature()
+  return self.bran.signature:ptr()
 end
 function Context:fieldPhase(field)
   return self.bran.kernel.field_use[field]
@@ -162,7 +149,7 @@ function Context:deleteSizeVar()
   end
 end
 function Context:getInsertIndex()
-  return `[self:runtimeGerm()].insert_write
+  return `[self:runtimeSignature()].insert_write
 end
 function Context:incrementInsertIndex()
   local insert_index = self:getInsertIndex()
@@ -251,7 +238,7 @@ function cpu_codegen (kernel_ast, ctxt)
 
     -- by default on CPU just iterate over all the possible rows
     local kernel_body = quote
-      for [param] = 0, [ctxt:runtimeGerm()].n_rows do
+      for [param] = 0, [ctxt:runtimeSignature()].n_rows do
         [body]
       end
     end
@@ -259,16 +246,16 @@ function cpu_codegen (kernel_ast, ctxt)
     -- special iteration logic for subset-mapped kernels
     if ctxt.bran.subset then
       kernel_body = quote
-        if [ctxt:runtimeGerm()].use_boolmask then
-          var boolmask = [ctxt:runtimeGerm()].boolmask
-          for [param] = 0, [ctxt:runtimeGerm()].n_rows do
+        if [ctxt:runtimeSignature()].use_boolmask then
+          var boolmask = [ctxt:runtimeSignature()].boolmask
+          for [param] = 0, [ctxt:runtimeSignature()].n_rows do
             if boolmask[param] then -- subset guard
               [body]
             end
           end
         else
-          var index = [ctxt:runtimeGerm()].index
-          var size = [ctxt:runtimeGerm()].index_size
+          var index = [ctxt:runtimeSignature()].index
+          var size = [ctxt:runtimeSignature()].index_size
           for itr = 0,size do
             var [param] = index[itr]
             [body]
@@ -278,8 +265,8 @@ function cpu_codegen (kernel_ast, ctxt)
     end
   ctxt:leaveblock()
 
-  local k = terra (germ_ptr : &ctxt:germTerraType())
-    var [ctxt:runtimeGerm()] = @germ_ptr
+  local k = terra (signature_ptr : &ctxt:signatureType())
+    var [ctxt:runtimeSignature()] = @signature_ptr
     [kernel_body]
   end
   k:setname(kernel_ast.id)
@@ -422,7 +409,7 @@ function reduce_global_shared_memory (ctxt, commit_final_value)
   for g, shared in ctxt.reduce:globalSharedIter() do
     local gtype = g.type
     local reduceop = ctxt:globalPhase(g).reduceop
-    local scratch_ptr = ctxt.reduce:gpuScratchPtr(g)
+    local scratch_ptr = ctxt:GlobalScratchPtr(g)
 
     local tid = ctxt:getTid()
     local bid = ctxt:getBid()
@@ -472,7 +459,7 @@ function generate_final_reduce (kernel_ast, ctxt)
         for g, shared in ctxt.reduce:globalSharedIter() do
           local op = ctxt:globalPhase(g).reduceop
           local typ = g.type
-          local gptr = ctxt.reduce:gpuScratchPtr(g)
+          local gptr = ctxt:GlobalScratchPtr(g)
           emit quote
             [shared][t] = [vec_bin_exp(op, typ, `[shared][t], `[gptr][global_index], typ, typ)]
           end
@@ -483,7 +470,7 @@ function generate_final_reduce (kernel_ast, ctxt)
   end
 
 
-  final_reduce = terra ([ctxt:runtimeGerm()], [array_len])
+  final_reduce = terra ([ctxt:runtimeSignature()], [array_len])
     [final_reduce] 
   end
   final_reduce:setname(kernel_ast.id .. '_reduce')
@@ -495,7 +482,7 @@ function allocate_reduction_space (n_blocks, ctxt)
   local alloc_code = quote end
 
   for g, _ in ctxt.reduce:globalSharedIter() do
-    local ptr = `[ctxt.reduce:cpuScratchPtr(g)]
+    local ptr = `[ctxt:GlobalScratchPtr(g)]
     alloc_code = quote
       [alloc_code]
       var sz = [sizeof(g.type:terraType())]*n_blocks
@@ -505,14 +492,6 @@ function allocate_reduction_space (n_blocks, ctxt)
 
   -- after initializing global scratch pointers in CPU memory,
   -- copy pointers to GPU to be accessed during kernel invocation
-  alloc_code = quote
-    [alloc_code]
-    C.cudaMemcpy([ctxt.reduce:gpuScratchTable()],
-                 [ctxt.reduce:cpuScratchTable()],
-                 [ctxt.reduce:ScratchTableSize()],
-                 C.cudaMemcpyHostToDevice)
-  end
-
   return alloc_code
 end
 
@@ -522,7 +501,7 @@ function free_reduction_space (ctxt)
   for g, _ in ctxt.reduce:globalSharedIter() do
     free_code = quote
       [free_code]
-      C.cudaFree([ctxt.reduce:cpuScratchPtr(g)])
+      C.cudaFree([ctxt:GlobalScratchPtr(g)])
     end
   end
 
@@ -558,16 +537,16 @@ function gpu_codegen (kernel_ast, ctxt)
 
     if ctxt.bran.subset then
       body = quote
-        if [ctxt:runtimeGerm()].use_boolmask then
+        if [ctxt:runtimeSignature()].use_boolmask then
           var [param] = id
-          if [param] < [ctxt:runtimeGerm()].n_rows and
-             [ctxt:runtimeGerm()].boolmask[param]
+          if [param] < [ctxt:runtimeSignature()].n_rows and
+             [ctxt:runtimeSignature()].boolmask[param]
           then
             [body]
           end
         else
-          if id < [ctxt:runtimeGerm()].index_size then
-            var [param] = [ctxt:runtimeGerm()].index[id]
+          if id < [ctxt:runtimeSignature()].index_size then
+            var [param] = [ctxt:runtimeSignature()].index[id]
             [body]
           end
         end
@@ -575,7 +554,7 @@ function gpu_codegen (kernel_ast, ctxt)
     else
       body = quote
         var [param] = id
-        if [param] < [ctxt:runtimeGerm()].n_rows then
+        if [param] < [ctxt:runtimeSignature()].n_rows then
           [body]
         end
       end
@@ -604,7 +583,7 @@ function gpu_codegen (kernel_ast, ctxt)
 
   ctxt:leaveblock()
 
-  local cuda_kernel = terra ([ctxt:runtimeGerm()])
+  local cuda_kernel = terra ([ctxt:runtimeSignature()])
     [kernel_body]
   end
   cuda_kernel:setname(kernel_ast.id)
@@ -614,27 +593,28 @@ function gpu_codegen (kernel_ast, ctxt)
   --------------------------
   --[[ Codegen launcher ]]--
   --------------------------
-  -- germ type will have a use_boolmask field only if it
+  -- signature type will have a use_boolmask field only if it
   -- was generated for a subset kernel
   local n_blocks = symbol(uint)
   local compute_nblocks
   if ctxt.bran.subset then
     compute_nblocks = quote
       var [n_blocks]
-      if [ctxt:cpuGerm()].use_boolmask then
-        [n_blocks] = [uint](C.ceil([ctxt:cpuGerm()].n_rows     / float(BLOCK_SIZE)))
+      if [ctxt:cpuSignature()].use_boolmask then
+        [n_blocks] = [uint](C.ceil([ctxt:cpuSignature()].n_rows     / float(BLOCK_SIZE)))
       else
-        [n_blocks] = [uint](C.ceil([ctxt:cpuGerm()].index_size / float(BLOCK_SIZE)))
+        [n_blocks] = [uint](C.ceil([ctxt:cpuSignature()].index_size / float(BLOCK_SIZE)))
       end
     end
   else
     compute_nblocks = quote
-      var [n_blocks] = [uint](C.ceil([ctxt:cpuGerm()].n_rows / float(BLOCK_SIZE)))
+      var [n_blocks] = [uint](C.ceil([ctxt:cpuSignature()].n_rows / float(BLOCK_SIZE)))
     end
   end
 
-  local launcher = terra (germ_ptr : &ctxt:germTerraType())
+  local launcher = terra (signature_ptr : &ctxt:signatureType())
     [compute_nblocks]
+    var [ctxt:runtimeSignature()] = @signature_ptr
     var grid_x : uint, grid_y : uint, grid_z : uint = G.get_grid_dimensions(n_blocks, MAX_GRID_DIM)
     var params = terralib.CUDAParams { grid_x, grid_y, grid_z, BLOCK_SIZE, 1, 1, [ctxt.reduce:sharedMemSize()], nil }
 
@@ -643,8 +623,7 @@ function gpu_codegen (kernel_ast, ctxt)
       [allocate_reduction_space(n_blocks,ctxt)]
     end end end
 
-    var germ = @germ_ptr
-    cuda_kernel(&params, germ)
+    cuda_kernel(&params, [ctxt:runtimeSignature()])
     G.sync() -- flush print streams
 
     escape
@@ -653,7 +632,7 @@ function gpu_codegen (kernel_ast, ctxt)
         emit quote
           -- Launch 2nd reduction kernel and free temporary space
           var reduce_params = terralib.CUDAParams { 1,1,1, BLOCK_SIZE,1,1, [ctxt.reduce:sharedMemSize()], nil }
-          reduce_global_scratch_values(&reduce_params, germ, n_blocks)
+          reduce_global_scratch_values(&reduce_params, [ctxt:runtimeSignature()], n_blocks)
           [free_reduction_space(ctxt)]
         end
       end
