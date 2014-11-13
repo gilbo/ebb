@@ -606,7 +606,6 @@ local function luaValConformsToType (luaval, tp)
       return true
     end
   end
-  -- No small matrix literals currently, so...
   return false
 end
 
