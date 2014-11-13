@@ -51,7 +51,7 @@ grid.cells:NewField("p",      L.double):Load(0.0) -- Pressure
 grid.cells:NewField("q",      L.double):Load(0.0) -- q
 grid.cells:NewField("ql",     L.double):Load(0.0) -- Linear term for q
 grid.cells:NewField("qq",     L.double):Load(0.0) -- Quadratic term for q
-grid.cells:NewField("v",      L.double):Load(1.0) -- Relative volume
+grid.cells:NewField("vol",    L.double):Load(1.0) -- Relative volume
 grid.cells:NewField("volo",   L.double):Load(0.0) -- Reference volume
 grid.cells:NewField("delv",   L.double):Load(0.0) -- vnew - v
 grid.cells:NewField("vdov",   L.double):Load(0.0) -- Volume derivative over volume
@@ -59,15 +59,35 @@ grid.cells:NewField("arealg", L.double):Load(0.0) -- Characteristic length of an
 grid.cells:NewField("ss",     L.double):Load(0.0) -- sound speed
 grid.cells:NewField("mass",   L.double):Load(0.0) -- element mass
 
--- For convenience in matching orientation w/previous lulesh version
-grid.cells:NewFieldMacro('v0',  L.NewMacro(function(c) return liszt `c.vertex(0,1,1) end))
-grid.cells:NewFieldMacro('v1',  L.NewMacro(function(c) return liszt `c.vertex(1,1,1) end))
-grid.cells:NewFieldMacro('v2',  L.NewMacro(function(c) return liszt `c.vertex(1,0,1) end))
-grid.cells:NewFieldMacro('v3',  L.NewMacro(function(c) return liszt `c.vertex(0,0,1) end))
-grid.cells:NewFieldMacro('v4',  L.NewMacro(function(c) return liszt `c.vertex(0,1,0) end))
-grid.cells:NewFieldMacro('v5',  L.NewMacro(function(c) return liszt `c.vertex(1,1,0) end))
-grid.cells:NewFieldMacro('v6',  L.NewMacro(function(c) return liszt `c.vertex(1,0,0) end))
-grid.cells:NewFieldMacro('v7',  L.NewMacro(function(c) return liszt `c.vertex(0,0,0) end))
+---- For convenience in matching orientation w/previous lulesh version
+--grid.cells:NewFieldMacro('v0',  L.NewMacro(function(c)
+--	return liszt `c.vertex(0,1,1) end))
+--grid.cells:NewFieldMacro('v1',  L.NewMacro(function(c)
+--	return liszt `c.vertex(1,1,1) end))
+--grid.cells:NewFieldMacro('v2',  L.NewMacro(function(c)
+--	return liszt `c.vertex(1,0,1) end))
+--grid.cells:NewFieldMacro('v3',  L.NewMacro(function(c)
+--	return liszt `c.vertex(0,0,1) end))
+--grid.cells:NewFieldMacro('v4',  L.NewMacro(function(c)
+--	return liszt `c.vertex(0,1,0) end))
+--grid.cells:NewFieldMacro('v5',  L.NewMacro(function(c)
+--	return liszt `c.vertex(1,1,0) end))
+--grid.cells:NewFieldMacro('v6',  L.NewMacro(function(c)
+--	return liszt `c.vertex(1,0,0) end))
+--grid.cells:NewFieldMacro('v7',  L.NewMacro(function(c)
+--	return liszt `c.vertex(0,0,0) end))
+
+grid.cells:NewField('v', L.vector(grid.vertices, 8))
+(liszt kernel( c : grid.cells )
+	c.v[0] = c.vertex(0,1,1)
+	c.v[1] = c.vertex(1,1,1)
+	c.v[2] = c.vertex(1,0,1)
+	c.v[3] = c.vertex(0,0,1)
+	c.v[4] = c.vertex(0,1,0)
+	c.v[5] = c.vertex(1,1,0)
+	c.v[6] = c.vertex(1,0,0)
+	c.v[7] = c.vertex(0,0,0)
+end)(grid.cells)
 
 -- Energy is concentrated in the origin node at the beginning of the simulation
 grid.cells.e:Load(function(index)
@@ -150,27 +170,27 @@ end
 -- form
 local getLocalNodeCoordVectors = liszt function(c)
 	return {
-	  c.v0.position[0], c.v0.position[1], c.v0.position[2],
-	  c.v1.position[0], c.v1.position[1], c.v1.position[2],
-	  c.v2.position[0], c.v2.position[1], c.v2.position[2],
-	  c.v3.position[0], c.v3.position[1], c.v3.position[2],
-	  c.v4.position[0], c.v4.position[1], c.v4.position[2],
-	  c.v5.position[0], c.v5.position[1], c.v5.position[2],
-	  c.v6.position[0], c.v6.position[1], c.v6.position[2],
-	  c.v7.position[0], c.v7.position[1], c.v7.position[2]
+	  c.v[0].position[0], c.v[0].position[1], c.v[0].position[2],
+	  c.v[1].position[0], c.v[1].position[1], c.v[1].position[2],
+	  c.v[2].position[0], c.v[2].position[1], c.v[2].position[2],
+	  c.v[3].position[0], c.v[3].position[1], c.v[3].position[2],
+	  c.v[4].position[0], c.v[4].position[1], c.v[4].position[2],
+	  c.v[5].position[0], c.v[5].position[1], c.v[5].position[2],
+	  c.v[6].position[0], c.v[6].position[1], c.v[6].position[2],
+	  c.v[7].position[0], c.v[7].position[1], c.v[7].position[2]
     }
 end
 
 local getLocalNodeVelocityVectors = liszt function(c)
 	return {
-	  c.v0.velocity[0], c.v0.velocity[1], c.v0.velocity[2],
-	  c.v1.velocity[0], c.v1.velocity[1], c.v1.velocity[2],
-	  c.v2.velocity[0], c.v2.velocity[1], c.v2.velocity[2],
-	  c.v3.velocity[0], c.v3.velocity[1], c.v3.velocity[2],
-	  c.v4.velocity[0], c.v4.velocity[1], c.v4.velocity[2],
-	  c.v5.velocity[0], c.v5.velocity[1], c.v5.velocity[2],
-	  c.v6.velocity[0], c.v6.velocity[1], c.v6.velocity[2],
-	  c.v7.velocity[0], c.v7.velocity[1], c.v7.velocity[2]
+	  c.v[0].velocity[0], c.v[0].velocity[1], c.v[0].velocity[2],
+	  c.v[1].velocity[0], c.v[1].velocity[1], c.v[1].velocity[2],
+	  c.v[2].velocity[0], c.v[2].velocity[1], c.v[2].velocity[2],
+	  c.v[3].velocity[0], c.v[3].velocity[1], c.v[3].velocity[2],
+	  c.v[4].velocity[0], c.v[4].velocity[1], c.v[4].velocity[2],
+	  c.v[5].velocity[0], c.v[5].velocity[1], c.v[5].velocity[2],
+	  c.v[6].velocity[0], c.v[6].velocity[1], c.v[6].velocity[2],
+	  c.v[7].velocity[0], c.v[7].velocity[1], c.v[7].velocity[2]
     }
 end
 local row = liszt function(localCoords, i)
@@ -414,14 +434,14 @@ local liszt kernel initialVolumeCalc(c : grid.cells)
 	c.mass = volume
 
 	var dvol = L.float(volume / 8.0)
-	c.v0.mass += dvol
-	c.v1.mass += dvol
-	c.v2.mass += dvol
-	c.v3.mass += dvol
-	c.v4.mass += dvol
-	c.v5.mass += dvol
-	c.v6.mass += dvol
-	c.v7.mass += dvol
+	c.v[0].mass += dvol
+	c.v[1].mass += dvol
+	c.v[2].mass += dvol
+	c.v[3].mass += dvol
+	c.v[4].mass += dvol
+	c.v[5].mass += dvol
+	c.v[6].mass += dvol
+	c.v[7].mass += dvol
 end
 
 -- Grid initializes position over cell centers, so we need to
@@ -487,14 +507,14 @@ local liszt kernel  integrateStressForElems(c : grid.cells)
 	var stress = -c.p - c.q
 	var f = calcElemNodeNormals(localCoords, {stress, stress, stress})
 
-	c.v0.forces += row(f,0)
-	c.v1.forces += row(f,1)
-	c.v2.forces += row(f,2)
-	c.v3.forces += row(f,3)
-	c.v4.forces += row(f,4)
-	c.v5.forces += row(f,5)
-	c.v6.forces += row(f,6)
-	c.v7.forces += row(f,7)
+	c.v[0].forces += row(f,0)
+	c.v[1].forces += row(f,1)
+	c.v[2].forces += row(f,2)
+	c.v[3].forces += row(f,3)
+	c.v[4].forces += row(f,4)
+	c.v[5].forces += row(f,5)
+	c.v[6].forces += row(f,6)
+	c.v[7].forces += row(f,7)
 end
 --[[
 local mmult_double = L.NewMacro(function(m, n, p)
@@ -559,7 +579,7 @@ local transpose_4x8 = L.NewMacro(function(m)
 end)
 
 local liszt kernel calcFBHourglassForceForElems(c : grid.cells)
-	var determ = c.volo * c.v
+	var determ = c.volo * c.vol
 	var volinv = 1.0 / determ
 	var volume13 = L.cbrt(determ)
 	var coefficient = -m.hgcoef * 0.01 * c.ss * c.mass / volume13
@@ -582,14 +602,14 @@ local liszt kernel calcFBHourglassForceForElems(c : grid.cells)
 	var localVelocities = getLocalNodeVelocityVectors(c)
 	var hgf = coefficient * mmult_8x4x3(hourgamXpose, mmult_4x8x3(hourgam, localVelocities))
 
-	c.v0.forces += row(hgf, 0)
-	c.v1.forces += row(hgf, 1)
-	c.v2.forces += row(hgf, 2)
-	c.v3.forces += row(hgf, 3)
-	c.v4.forces += row(hgf, 4)
-	c.v5.forces += row(hgf, 5)
-	c.v6.forces += row(hgf, 6)
-	c.v7.forces += row(hgf, 7)
+	c.v[0].forces += row(hgf, 0)
+	c.v[1].forces += row(hgf, 1)
+	c.v[2].forces += row(hgf, 2)
+	c.v[3].forces += row(hgf, 3)
+	c.v[4].forces += row(hgf, 4)
+	c.v[5].forces += row(hgf, 5)
+	c.v[6].forces += row(hgf, 6)
+	c.v[7].forces += row(hgf, 7)
 end
 
 function calcVolumeForceForElems ()
@@ -740,7 +760,7 @@ local liszt function calcKinematicsForElem(c, localCoords, localVelocities)
 	c.vnew = relativeVolume
 	-- Volume error detection
 	L.assert(c.vnew > 0.0)
-	c.delv = relativeVolume - c.v
+	c.delv = relativeVolume - c.vol
 
 	c.arealg = calcElemCharacteristicLength(localCoords, volume)
 
@@ -1096,7 +1116,7 @@ end
 local liszt kernel updateVolumeForElements(c : grid.cells)
 	var tmpV = c.vnew
 	if fabs(tmpV - 1.0) < m.v_cut then tmpV = 1.0 end
-	c.v = tmpV
+	c.vol = tmpV
 end
 
 function lagrangeElements ()
@@ -1177,6 +1197,7 @@ local function runSolver ()
 	m.initMeshParameters()
 	start_time = terralib.currenttimeinseconds()
 	while m.time < m.stoptime do
+	--for iter=1,100 do
 		timeIncrement()
 		lagrangeLeapFrog()
 		if m.cycle % 10 == 0 then
