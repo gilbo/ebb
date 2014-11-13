@@ -33,14 +33,8 @@ grid.cells:NewField("scratchpade06", L.double):Load(0.0)
 ------------------------------------------------------------------------------------------
 --[[ Node-centered properties                                                         ]]--
 ------------------------------------------------------------------------------------------
---grid.vertices:NewField("position",  L.vec3d):Load({0.0,0.0,0.0})
---grid.vertices:NewField("velocity",  L.vec3d):Load({0.0,0.0,0.0})
-grid.vertices:NewField("x", L.double)
-grid.vertices:NewField("y", L.double)
-grid.vertices:NewField("z", L.double)
-grid.vertices:NewField("velx", L.double)
-grid.vertices:NewField("vely", L.double)
-grid.vertices:NewField("velz", L.double)
+grid.vertices:NewField("position",  L.vec3d):Load({0.0,0.0,0.0})
+grid.vertices:NewField("velocity",  L.vec3d):Load({0.0,0.0,0.0})
 grid.vertices:NewField("forces",    L.vec3d):Load({0.0,0.0,0.0})
 grid.vertices:NewField("mass",      L.float):Load(0) -- nodal mass
 
@@ -178,47 +172,29 @@ end
 -- called over individual cells, returns a 24-vector representing an 8x3 matrix in row-major
 -- form
 local getLocalNodeCoordVectors = liszt function(c)
-	var v0 = c.v0
-	var v1 = c.v1
-	var v2 = c.v2
-	var v3 = c.v3
-	var v4 = c.v4
-	var v5 = c.v5
-	var v6 = c.v6
-	var v7 = c.v7
-
 	return {
-	  v0.x, v0.y, v0.z,
-	  v1.x, v1.y, v1.z,
-	  v2.x, v2.y, v2.z,
-	  v3.x, v3.y, v3.z,
-	  v4.x, v4.y, v4.z,
-	  v5.x, v5.y, v5.z,
-	  v6.x, v6.y, v6.z,
-	  v7.x, v7.y, v7.z
+	  c.v0.position[0], c.v0.position[1], c.v0.position[2],
+	  c.v1.position[0], c.v1.position[1], c.v1.position[2],
+	  c.v2.position[0], c.v2.position[1], c.v2.position[2],
+	  c.v3.position[0], c.v3.position[1], c.v3.position[2],
+	  c.v4.position[0], c.v4.position[1], c.v4.position[2],
+	  c.v5.position[0], c.v5.position[1], c.v5.position[2],
+	  c.v6.position[0], c.v6.position[1], c.v6.position[2],
+	  c.v7.position[0], c.v7.position[1], c.v7.position[2]
     }
 end
 
 local getLocalNodeVelocityVectors = liszt function(c)
-	var v0 = c.v0
-	var v1 = c.v1
-	var v2 = c.v2
-	var v3 = c.v3
-	var v4 = c.v4
-	var v5 = c.v5
-	var v6 = c.v6
-	var v7 = c.v7
-
 	return {
-	  v0.velx, v0.vely, v0.velz,
-	  v1.velx, v1.vely, v1.velz,
-	  v2.velx, v2.vely, v2.velz,
-	  v3.velx, v3.vely, v3.velz,
-	  v4.velx, v4.vely, v4.velz,
-	  v5.velx, v5.vely, v5.velz,
-	  v6.velx, v6.vely, v6.velz,
-	  v7.velx, v7.vely, v7.velz
-	}
+	  c.v0.velocity[0], c.v0.velocity[1], c.v0.velocity[2],
+	  c.v1.velocity[0], c.v1.velocity[1], c.v1.velocity[2],
+	  c.v2.velocity[0], c.v2.velocity[1], c.v2.velocity[2],
+	  c.v3.velocity[0], c.v3.velocity[1], c.v3.velocity[2],
+	  c.v4.velocity[0], c.v4.velocity[1], c.v4.velocity[2],
+	  c.v5.velocity[0], c.v5.velocity[1], c.v5.velocity[2],
+	  c.v6.velocity[0], c.v6.velocity[1], c.v6.velocity[2],
+	  c.v7.velocity[0], c.v7.velocity[1], c.v7.velocity[2]
+    }
 end
 
 local calcElemVolume = liszt function (localCoords)
@@ -471,9 +447,9 @@ end
 -- Grid initializes position over cell centers, so we need to
 -- initialize vertex positions manually.
 local liszt kernel initVectorPosition(v : grid.vertices)
-	v.x = L.double(v.xid) * sz / N
-	v.y = L.double(v.yid) * sz / N
-	v.z = L.double(v.zid) * sz / N
+	v.position = { L.double(v.xid) * sz / N, 
+	               L.double(v.yid) * sz / N,
+	               L.double(v.zid) * sz / N }
 end
 
 function m.initMeshParameters ()
@@ -523,6 +499,23 @@ function timeIncrement( )
 	m.cycle = m.cycle + 1
 end
 
+local liszt kernel  integrateStressForElems(c : grid.cells)
+	var localCoords = getLocalNodeCoordVectors(c)
+	-- scratchpade01 used here to store the determinant.
+	-- Volume calculation involves extra work for numerical consistency.
+	c.scratchpade01 = calcElemShapeFunctionDerivatives1(localCoords)
+	var stress = -c.p - c.q
+	var f = calcElemNodeNormals(localCoords, {stress, stress, stress})
+
+	c.v0.forces += row(f,0)
+	c.v1.forces += row(f,1)
+	c.v2.forces += row(f,2)
+	c.v3.forces += row(f,3)
+	c.v4.forces += row(f,4)
+	c.v5.forces += row(f,5)
+	c.v6.forces += row(f,6)
+	c.v7.forces += row(f,7)
+end
 --[[
 local mmult_double = L.NewMacro(function(m, n, p)
 	local mmult_sz = L.NewMacro(function(ma, mb)
@@ -584,23 +577,6 @@ local transpose_4x8 = L.NewMacro(function(m)
 		m[7], m[15], m[23], m[31]
 	}
 end)
-local liszt kernel  integrateStressForElems(c : grid.cells)
-	var localCoords = getLocalNodeCoordVectors(c)
-	-- scratchpade01 used here to store the determinant.
-	-- Volume calculation involves extra work for numerical consistency.
-	c.scratchpade01 = calcElemShapeFunctionDerivatives1(localCoords)
-	var stress = -c.p - c.q
-	var f = calcElemNodeNormals(localCoords, {stress, stress, stress})
-
-	c.v0.forces += row(f,0)
-	c.v1.forces += row(f,1)
-	c.v2.forces += row(f,2)
-	c.v3.forces += row(f,3)
-	c.v4.forces += row(f,4)
-	c.v5.forces += row(f,5)
-	c.v6.forces += row(f,6)
-	c.v7.forces += row(f,7)
-end
 
 local liszt kernel calcFBHourglassForceForElems(c : grid.cells)
 	var determ = c.volo * c.v
@@ -625,13 +601,7 @@ local liszt kernel calcFBHourglassForceForElems(c : grid.cells)
 	-- 8x3 matrix
 	var localVelocities = getLocalNodeVelocityVectors(c)
 	var hgf = coefficient * mmult_8x4x3(hourgamXpose, mmult_4x8x3(hourgam, localVelocities))
-
-	c.scratchpade01 = calcElemShapeFunctionDerivatives1(localCoords)
-	var stress = -c.p - c.q
-	var f = calcElemNodeNormals(localCoords, {stress, stress, stress})
-
-
-	c.tmpforces = hgf + f
+	c.tmpforces = hgf
 
 --	c.v0.forces += row(hgf, 0)
 --	c.v1.forces += row(hgf, 1)
@@ -670,19 +640,13 @@ local liszt kernel calcPositionForNodes(v : grid.vertices)
 	if v.yid == 0 then accel[1] = 0 end
 	if v.zid == 0 then accel[2] = 0 end
 
-	var vtmpx = v.velx + accel[0] * m.deltatime
-	var vtmpy = v.vely + accel[1] * m.deltatime
-	var vtmpz = v.velz + accel[2] * m.deltatime
+	var vtmp = v.velocity + accel * m.deltatime
 
-	if fabs(vtmpx) < m.u_cut then vtmpx = 0.0 end
-	if fabs(vtmpy) < m.u_cut then vtmpy = 0.0 end
-	if fabs(vtmpz) < m.u_cut then vtmpz = 0.0 end
-	v.velx = vtmpx
-	v.vely = vtmpy
-	v.velz = vtmpz
-	v.x += vtmpx * m.deltatime
-	v.y += vtmpy * m.deltatime
-	v.z += vtmpz * m.deltatime
+	if fabs(vtmp[0]) < m.u_cut then vtmp[0] = 0.0 end
+	if fabs(vtmp[1]) < m.u_cut then vtmp[1] = 0.0 end
+	if fabs(vtmp[2]) < m.u_cut then vtmp[2] = 0.0 end
+	v.velocity  = vtmp
+	v.position += vtmp * m.deltatime
 	v.forces = {0.0,0.0,0.0}
 end
 
