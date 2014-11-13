@@ -390,7 +390,7 @@ function unrolled_block_reduce (op, typ, ptr, tid, block_size)
         expr = quote
             [expr]
             if tid < step then
-              [ptr][tid] = [vec_bin_exp(op, typ, `[ptr][tid], `[ptr][tid + step], typ, typ)]
+              [ptr][tid] = [mat_bin_exp(op, typ, `[ptr][tid], `[ptr][tid + step], typ, typ)]
             end
             G.barrier()
         end
@@ -426,7 +426,7 @@ function reduce_global_shared_memory (ctxt, commit_final_value)
           if commit_final_value then
             local finalptr = ctxt:GlobalPtr(g)
             emit quote
-              @[finalptr] = [vec_bin_exp(reduceop, gtype,`@[finalptr],`[shared][0],gtype,gtype)]
+              @[finalptr] = [mat_bin_exp(reduceop, gtype,`@[finalptr],`[shared][0],gtype,gtype)]
             end
           else
             emit quote
@@ -464,7 +464,7 @@ function generate_final_reduce (ctxt, fn_name)
           local typ = g.type
           local gptr = ctxt.reduce:GlobalScratchPtr(g)
           emit quote
-            [shared][tid] = [vec_bin_exp(op, typ, `[shared][tid], `[gptr][global_index], typ, typ)]
+            [shared][tid] = [mat_bin_exp(op, typ, `[shared][tid], `[gptr][global_index], typ, typ)]
           end
         end
       end
@@ -905,7 +905,7 @@ function ast.BinaryOp:codegen (ctxt)
   local rhe = self.rhs:codegen(ctxt)
 
   -- handle case of two primitives
-  return vec_bin_exp(self.op, self.node_type,
+  return mat_bin_exp(self.op, self.node_type,
       lhe, rhe, self.lhs.node_type, self.rhs.node_type)
 end
 
@@ -1022,7 +1022,7 @@ function ast.Assignment:codegen (ctxt)
   local ltype, rtype = self.lvalue.node_type, self.exp.node_type
 
   if self.reduceop then
-    rhs = vec_bin_exp(self.reduceop, ltype, lhs, rhs, ltype, rtype)
+    rhs = mat_bin_exp(self.reduceop, ltype, lhs, rhs, ltype, rtype)
   end
   return quote [lhs] = rhs end
 end
@@ -1032,7 +1032,7 @@ function ast.GlobalReduce:codegen(ctxt)
   if ctxt:onGPU() then
     local lval = ctxt.reduce:sharedMemPtr(self.global.global)
     local rexp = self.exp:codegen(ctxt)
-    local rhs = vec_bin_exp(self.reduceop, self.global.node_type, lval, rexp, self.global.node_type, self.exp.node_type)
+    local rhs = mat_bin_exp(self.reduceop, self.global.node_type, lval, rexp, self.global.node_type, self.exp.node_type)
     return quote [lval] = [rhs] end
   end
 
@@ -1051,7 +1051,7 @@ function ast.FieldWrite:codegen (ctxt)
   if ctxt:onGPU() and self.reduceop and not phase:isCentered() then
     local lval = self.fieldaccess:codegen(ctxt)
     local rexp = self.exp:codegen(ctxt)
-    return atomic_gpu_vec_red_exp(self.reduceop, self.fieldaccess.node_type, lval, rexp, self.exp.node_type)
+    return atomic_gpu_mat_red_exp(self.reduceop, self.fieldaccess.node_type, lval, rexp, self.exp.node_type)
   else
     -- just re-direct to an assignment statement otherwise
     local assign = ast.Assignment:DeriveFrom(self)
@@ -1169,7 +1169,23 @@ function let_vec_binding(typ, N, exp)
   return let_binding, coords
 end
 
+function let_mat_binding(typ, N, M, exp)
+  local val = symbol(typ:terraType())
+  local let_binding = quote var [val] = [exp] end
 
+  local coords = {}
+  for i = 1, N do
+    coords[i] = {}
+    for j = 1, M do
+      if typ:isSmallMatrix() then
+        coords[i][j] = `val.d[i-1][j-1]
+      else
+        coords[i][j] = `val
+      end
+    end
+  end
+  return let_binding, coords
+end
 
 function symgen_bind(typ, exp, f)
   local s = symbol(typ:terraType())
@@ -1184,7 +1200,7 @@ function symgen_bind2(typ1, typ2, exp1, exp2, f)
   in [f(s1,s2)] end
 end
 
-function vec_bin_exp(op, result_typ, lhe, rhe, lhtyp, rhtyp)
+function mat_bin_exp(op, result_typ, lhe, rhe, lhtyp, rhtyp)
   if lhtyp:isPrimitive() and rhtyp:isPrimitive() then
     return bin_exp(op, lhe, rhe)
   end
@@ -1309,29 +1325,53 @@ function vec_bin_exp(op, result_typ, lhe, rhe, lhtyp, rhtyp)
         ' and '..rhtyp:toString())
 end
 
-function atomic_gpu_vec_red_exp(op, result_typ, lval, rhe, rhtyp)
-  if not result_typ:isVector() then
+function atomic_gpu_mat_red_exp(op, result_typ, lval, rhe, rhtyp)
+  if result_typ:isScalar() then
     return atomic_gpu_red_exp(op, result_typ, `&lval, rhe)
-  end
+  elseif result_typ:isVector() then
 
-  local N = result_typ.N
-  local rhbind, rhcoords = let_vec_binding(rhtyp, N, rhe)
+    local N = result_typ.N
+    local rhbind, rhcoords = let_vec_binding(rhtyp, N, rhe)
 
-  local v = symbol() -- pointer to vector location of reduction result
+    local v = symbol() -- pointer to vector location of reduction result
 
-  local result = quote end
-  for i = 0, N-1 do
-    result = quote
-      [result]
-      [atomic_gpu_red_exp(op, result_typ:baseType(), `v+i, rhcoords[i+1])]
+    local result = quote end
+    for i = 0, N-1 do
+      result = quote
+        [result]
+        [atomic_gpu_red_exp(op, result_typ:baseType(), `v+i, rhcoords[i+1])]
+      end
     end
-  end
-  return quote
+    return quote
       var [v] : &result_typ:terraBaseType() = [&result_typ:terraBaseType()](&[lval])
       [rhbind]
     in
       [result]
     end
+  else -- small matrix
+
+    local N = result_typ.Nrow
+    local M = result_typ.Ncol
+    local rhbind, rhcoords = let_mat_binding(rhtyp, N, M, rhe)
+
+    local m = symbol()
+
+    local result = quote end
+    for i = 0, N-1 do
+      for j = 0, M-1 do
+        result = quote
+          [result]
+          [atomic_gpu_red_exp(op, result_typ:baseType(), `&([m].d[i][j]), rhcoords[i+1][j+1])]
+        end
+      end
+    end
+    return quote
+      var [m] : &result_typ:terraType() = [&result_typ:terraType()](&[lval])
+      [rhbind]
+      in
+      [result]
+    end
+  end
 end
 
 

@@ -336,7 +336,8 @@ function Bran:generate()
     bran:generateDeletes()
   end
 
-  -- allocate memory for 1-2 copies of the signature
+  -- allocate memory for the signature on the CPU.  It will be used
+  -- to hold the parameter values that will be passed to the liszt kernel.
   bran.signature = DataArray.New{
     size = 1,
     type = bran.signature_template:TerraStruct(),
