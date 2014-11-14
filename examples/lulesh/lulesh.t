@@ -696,6 +696,8 @@ local liszt kernel calcFBHourglassForceForElems(c : grid.cells)
   c.v[7].forces += row(hgf, 7)
   --c.force_temp = hgf
 end
+print('calcFBHourglassForceForElems AST Size: ',
+      calcFBHourglassForceForElems.typed_ast:astSize())
 
 function calcVolumeForceForElems ()
   integrateStressForElems(grid.cells)
