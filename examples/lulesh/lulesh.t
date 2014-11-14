@@ -584,55 +584,89 @@ local liszt kernel  integrateStressForElems(c : grid.cells)
   c.v[6].forces += row(f,6)
   c.v[7].forces += row(f,7)
 end
---[[
-local mmult_double = L.NewMacro(function(m, n, p)
-  local mmult_sz = L.NewMacro(function(ma, mb)
-    return liszt quote
-    let
-      var result : L.vector(L.double, m*p)
-      for i = 0, m do
-        for j = 0, p do
-          var sum = 0
-          for k = 0, p do
-            var maoff = i*n+k
-            var mboff = k*p+j
-            sum = sum + ma[maoff]*mb[mboff]
-          end
-        result[i*p+j] = sum
-        end
-      end
-    in
-      result
-    end
-  end)
-  return liszt `mmult_sz
-end)
-]]
 
-
--- multiply a mxn matrix with a nxp matrix to yield an mxp matrix
-local generate_mmult = function(m, n, p)
-  return L.NewMacro(function(ma, mb)
-    return liszt quote
-      var result : L.vector(L.double, m*p)
-      for i = 0, m do
-        for j = 0, p do
-          var sum : L.double = 0.0
-          for k = 0, n do
-            sum = sum + ma[n*i+k]*mb[k*p+j]
-          end
-          result[i*p+j] = sum
-        end
-      end
-    in
-      result
-    end
-  end)
+local liszt function mmult_4x8x3(ma, mb)
+  var result : L.vector(L.double, 12)
+  result[0]  = ma[0]*mb[0]  + ma[1]*mb[3]  + ma[2]*mb[6]  + ma[3]*mb[9]   + ma[4]*mb[12]  + ma[5]*mb[15]  + ma[6]*mb[18]  + ma[7]*mb[21]
+  result[1]  = ma[0]*mb[1]  + ma[1]*mb[4]  + ma[2]*mb[7]  + ma[3]*mb[10]  + ma[4]*mb[13]  + ma[5]*mb[16]  + ma[6]*mb[19]  + ma[7]*mb[22]
+  result[2]  = ma[0]*mb[2]  + ma[1]*mb[5]  + ma[2]*mb[8]  + ma[3]*mb[11]  + ma[4]*mb[14]  + ma[5]*mb[17]  + ma[6]*mb[20]  + ma[7]*mb[23]
+  result[3]  = ma[8]*mb[0]  + ma[9]*mb[3]  + ma[10]*mb[6] + ma[11]*mb[9]  + ma[12]*mb[12] + ma[13]*mb[15] + ma[14]*mb[18] + ma[15]*mb[21]
+  result[4]  = ma[8]*mb[1]  + ma[9]*mb[4]  + ma[10]*mb[7] + ma[11]*mb[10] + ma[12]*mb[13] + ma[13]*mb[16] + ma[14]*mb[19] + ma[15]*mb[22]
+  result[5]  = ma[8]*mb[2]  + ma[9]*mb[5]  + ma[10]*mb[8] + ma[11]*mb[11] + ma[12]*mb[14] + ma[13]*mb[17] + ma[14]*mb[20] + ma[15]*mb[23]
+  result[6]  = ma[16]*mb[0] + ma[17]*mb[3] + ma[18]*mb[6] + ma[19]*mb[9]  + ma[20]*mb[12] + ma[21]*mb[15] + ma[22]*mb[18] + ma[23]*mb[21]
+  result[7]  = ma[16]*mb[1] + ma[17]*mb[4] + ma[18]*mb[7] + ma[19]*mb[10] + ma[20]*mb[13] + ma[21]*mb[16] + ma[22]*mb[19] + ma[23]*mb[22]
+  result[8]  = ma[16]*mb[2] + ma[17]*mb[5] + ma[18]*mb[8] + ma[19]*mb[11] + ma[20]*mb[14] + ma[21]*mb[17] + ma[22]*mb[20] + ma[23]*mb[23]
+  result[9]  = ma[24]*mb[0] + ma[25]*mb[3] + ma[26]*mb[6] + ma[27]*mb[9]  + ma[28]*mb[12] + ma[29]*mb[15] + ma[30]*mb[18] + ma[31]*mb[21]
+  result[10] = ma[24]*mb[1] + ma[25]*mb[4] + ma[26]*mb[7] + ma[27]*mb[10] + ma[28]*mb[13] + ma[29]*mb[16] + ma[30]*mb[19] + ma[31]*mb[22]
+  result[11] = ma[24]*mb[2] + ma[25]*mb[5] + ma[26]*mb[8] + ma[27]*mb[11] + ma[28]*mb[14] + ma[29]*mb[17] + ma[30]*mb[20] + ma[31]*mb[23]
+  return result
 end
 
-local mmult_4x8x3 = generate_mmult(4,8,3)
-local mmult_4x3x8 = generate_mmult(4,3,8)
-local mmult_8x4x3 = generate_mmult(8,4,3)
+local liszt function mmult_4x3x8 (ma, mb)
+  var result : L.vector(L.double, 32)
+  result[0]  = ma[0]*mb[0] + ma[1]*mb[8]   + ma[2]*mb[16]
+  result[1]  = ma[0]*mb[1] + ma[1]*mb[9]   + ma[2]*mb[17]
+  result[2]  = ma[0]*mb[2] + ma[1]*mb[10]  + ma[2]*mb[18]
+  result[3]  = ma[0]*mb[3] + ma[1]*mb[11]  + ma[2]*mb[19]
+  result[4]  = ma[0]*mb[4] + ma[1]*mb[12]  + ma[2]*mb[20]
+  result[5]  = ma[0]*mb[5] + ma[1]*mb[13]  + ma[2]*mb[21]
+  result[6]  = ma[0]*mb[6] + ma[1]*mb[14]  + ma[2]*mb[22]
+  result[7]  = ma[0]*mb[7] + ma[1]*mb[15]  + ma[2]*mb[23]
+  result[8]  = ma[3]*mb[0] + ma[4]*mb[8]   + ma[5]*mb[16]
+  result[9]  = ma[3]*mb[1] + ma[4]*mb[9]   + ma[5]*mb[17]
+  result[10] = ma[3]*mb[2] + ma[4]*mb[10]  + ma[5]*mb[18]
+  result[11] = ma[3]*mb[3] + ma[4]*mb[11]  + ma[5]*mb[19]
+  result[12] = ma[3]*mb[4] + ma[4]*mb[12]  + ma[5]*mb[20]
+  result[13] = ma[3]*mb[5] + ma[4]*mb[13]  + ma[5]*mb[21]
+  result[14] = ma[3]*mb[6] + ma[4]*mb[14]  + ma[5]*mb[22]
+  result[15] = ma[3]*mb[7] + ma[4]*mb[15]  + ma[5]*mb[23]
+  result[16] = ma[6]*mb[0] + ma[7]*mb[8]   + ma[8]*mb[16]
+  result[17] = ma[6]*mb[1] + ma[7]*mb[9]   + ma[8]*mb[17]
+  result[18] = ma[6]*mb[2] + ma[7]*mb[10]  + ma[8]*mb[18]
+  result[19] = ma[6]*mb[3] + ma[7]*mb[11]  + ma[8]*mb[19]
+  result[20] = ma[6]*mb[4] + ma[7]*mb[12]  + ma[8]*mb[20]
+  result[21] = ma[6]*mb[5] + ma[7]*mb[13]  + ma[8]*mb[21]
+  result[22] = ma[6]*mb[6] + ma[7]*mb[14]  + ma[8]*mb[22]
+  result[23] = ma[6]*mb[7] + ma[7]*mb[15]  + ma[8]*mb[23]
+  result[24] = ma[9]*mb[0] + ma[10]*mb[8]  + ma[11]*mb[16]
+  result[25] = ma[9]*mb[1] + ma[10]*mb[9]  + ma[11]*mb[17]
+  result[26] = ma[9]*mb[2] + ma[10]*mb[10] + ma[11]*mb[18]
+  result[27] = ma[9]*mb[3] + ma[10]*mb[11] + ma[11]*mb[19]
+  result[28] = ma[9]*mb[4] + ma[10]*mb[12] + ma[11]*mb[20]
+  result[29] = ma[9]*mb[5] + ma[10]*mb[13] + ma[11]*mb[21]
+  result[30] = ma[9]*mb[6] + ma[10]*mb[14] + ma[11]*mb[22]
+  result[31] = ma[9]*mb[7] + ma[10]*mb[15] + ma[11]*mb[23]
+  return result
+end
+
+local liszt function mmult_8x4x3 (ma, mb)
+  var result : L.vector(L.double, 24)
+  result[0]  = ma[0]*mb[0]  + ma[1]*mb[3]  + ma[2]*mb[6]  + ma[3]*mb[9]
+  result[1]  = ma[0]*mb[1]  + ma[1]*mb[4]  + ma[2]*mb[7]  + ma[3]*mb[10]
+  result[2]  = ma[0]*mb[2]  + ma[1]*mb[5]  + ma[2]*mb[8]  + ma[3]*mb[11]
+  result[3]  = ma[4]*mb[0]  + ma[5]*mb[3]  + ma[6]*mb[6]  + ma[7]*mb[9]
+  result[4]  = ma[4]*mb[1]  + ma[5]*mb[4]  + ma[6]*mb[7]  + ma[7]*mb[10]
+  result[5]  = ma[4]*mb[2]  + ma[5]*mb[5]  + ma[6]*mb[8]  + ma[7]*mb[11]
+  result[6]  = ma[8]*mb[0]  + ma[9]*mb[3]  + ma[10]*mb[6] + ma[11]*mb[9]
+  result[7]  = ma[8]*mb[1]  + ma[9]*mb[4]  + ma[10]*mb[7] + ma[11]*mb[10]
+  result[8]  = ma[8]*mb[2]  + ma[9]*mb[5]  + ma[10]*mb[8] + ma[11]*mb[11]
+  result[9]  = ma[12]*mb[0] + ma[13]*mb[3] + ma[14]*mb[6] + ma[15]*mb[9]
+  result[10] = ma[12]*mb[1] + ma[13]*mb[4] + ma[14]*mb[7] + ma[15]*mb[10]
+  result[11] = ma[12]*mb[2] + ma[13]*mb[5] + ma[14]*mb[8] + ma[15]*mb[11]
+  result[12] = ma[16]*mb[0] + ma[17]*mb[3] + ma[18]*mb[6] + ma[19]*mb[9]
+  result[13] = ma[16]*mb[1] + ma[17]*mb[4] + ma[18]*mb[7] + ma[19]*mb[10]
+  result[14] = ma[16]*mb[2] + ma[17]*mb[5] + ma[18]*mb[8] + ma[19]*mb[11]
+  result[15] = ma[20]*mb[0] + ma[21]*mb[3] + ma[22]*mb[6] + ma[23]*mb[9]
+  result[16] = ma[20]*mb[1] + ma[21]*mb[4] + ma[22]*mb[7] + ma[23]*mb[10]
+  result[17] = ma[20]*mb[2] + ma[21]*mb[5] + ma[22]*mb[8] + ma[23]*mb[11]
+  result[18] = ma[24]*mb[0] + ma[25]*mb[3] + ma[26]*mb[6] + ma[27]*mb[9]
+  result[19] = ma[24]*mb[1] + ma[25]*mb[4] + ma[26]*mb[7] + ma[27]*mb[10]
+  result[20] = ma[24]*mb[2] + ma[25]*mb[5] + ma[26]*mb[8] + ma[27]*mb[11]
+  result[21] = ma[28]*mb[0] + ma[29]*mb[3] + ma[30]*mb[6] + ma[31]*mb[9]
+  result[22] = ma[28]*mb[1] + ma[29]*mb[4] + ma[30]*mb[7] + ma[31]*mb[10]
+  result[23] = ma[28]*mb[2] + ma[29]*mb[5] + ma[30]*mb[8] + ma[31]*mb[11]
+  return result
+end
 
 local transpose_4x8 = L.NewMacro(function(m)
   return liszt `{
@@ -1283,6 +1317,7 @@ end
 local function runSolver ()
   m.initMeshParameters()
   start_time = terralib.currenttimeinseconds()
+  --while m.cycle < 100 do
   while m.time < m.stoptime do
     timeIncrement()
     lagrangeLeapFrog()
