@@ -59,6 +59,8 @@ grid.cells:NewField("arealg", L.double):Load(0.0) -- Characteristic length of an
 grid.cells:NewField("ss",     L.double):Load(0.0) -- sound speed
 grid.cells:NewField("mass",   L.double):Load(0.0) -- element mass
 
+grid.cells:NewField("force_temp", L.vector(L.double, 3*8))
+
 ---- For convenience in matching orientation w/previous lulesh version
 -- This is also needed to maintain the code style which allows
 -- extensibility to less structured Hex-Mesh topologies
@@ -608,6 +610,7 @@ end)
 ]]
 
 
+-- multiply a mxn matrix with a nxp matrix to yield an mxp matrix
 local generate_mmult = function(m, n, p)
   return L.NewMacro(function(ma, mb)
     return liszt quote
@@ -661,12 +664,27 @@ local liszt kernel calcFBHourglassForceForElems(c : grid.cells)
   }
 
   -- 4x8 matrix
-  var hourgam = gamma - volinv * mmult_4x3x8(mmult_4x8x3(gamma, localCoords), pf)
+  var gamma_x_local = mmult_4x8x3(gamma, localCoords)
+  var gamma_x_local_x_pf = mmult_4x3x8(gamma_x_local, pf)
+  var hourgam = gamma - volinv * gamma_x_local_x_pf
   -- 8x4 matrix
   var hourgamXpose = transpose_4x8(hourgam)
   -- 8x3 matrix
   var localVelocities = getLocalNodeVelocityVectors(c)
-  var hgf = coefficient * mmult_8x4x3(hourgamXpose, mmult_4x8x3(hourgam, localVelocities))
+  var hourgam_x_vel = mmult_4x8x3(hourgam, localVelocities)
+  var hour_x_hour_x_vel = mmult_8x4x3(hourgamXpose, hourgam_x_vel)
+  var hgf = coefficient * hour_x_hour_x_vel
+
+-- TODO: The problem here was duplicating code when inlining macros I believe
+
+--  var hourgam = gamma - volinv *
+--                        mmult_4x3x8(mmult_4x8x3(gamma, localCoords), pf)
+--  -- 8x4 matrix
+--  var hourgamXpose = transpose_4x8(hourgam)
+--  -- 8x3 matrix
+--  var localVelocities = getLocalNodeVelocityVectors(c)
+--  var hgf = coefficient *
+--            mmult_8x4x3(hourgamXpose, mmult_4x8x3(hourgam, localVelocities))
 
   c.v[0].forces += row(hgf, 0)
   c.v[1].forces += row(hgf, 1)
@@ -676,6 +694,7 @@ local liszt kernel calcFBHourglassForceForElems(c : grid.cells)
   c.v[5].forces += row(hgf, 5)
   c.v[6].forces += row(hgf, 6)
   c.v[7].forces += row(hgf, 7)
+  --c.force_temp = hgf
 end
 
 function calcVolumeForceForElems ()
