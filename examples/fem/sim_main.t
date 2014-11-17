@@ -3,7 +3,7 @@ local vdb = L.require 'lib.vdb'
 
 local Tetmesh = L.require 'examples.fem.tetmesh'
 local VEGFileIO = L.require 'examples.fem.vegfileio'
-  local PN = L.require 'lib.pathname'
+local PN = L.require 'lib.pathname'
 
 -- print("Loading mesh ...")
 local turtle = VEGFileIO.LoadTetmesh
@@ -747,6 +747,7 @@ end
 -- the symbol names are kept to match the pseudo code on Wikipedia for clarity.
 function ImplicitBackwardEulerIntegrator:solvePCG(mesh)
   mesh.vertices.x:Load({ 0, 0, 0 })
+  local tss = terralib.currenttimeinseconds()
   self.pcgCalculatePreconditioner(mesh.vertices)
   self.pcgCalculateExactResidual(mesh.vertices)
   self.normRes:set(0)
@@ -774,9 +775,12 @@ function ImplicitBackwardEulerIntegrator:solvePCG(mesh)
     self.pcgUpdateP(mesh.vertices)
     iter = iter + 1
   end
+  local tse = terralib.currenttimeinseconds()
+  print("Time for solver is "..((tse-tss)*1E6).." us")
 end
 
 function ImplicitBackwardEulerIntegrator:doTimestep(mesh)
+  local tds = terralib.currenttimeinseconds()
   local err0 = 0 -- L.Global?
   local errQuotient
 
@@ -790,8 +794,11 @@ function ImplicitBackwardEulerIntegrator:doTimestep(mesh)
     -- print("#dotimestep iteration = "..numIter.." ...")
     -- ASSEMBLY
     -- TIMING START
+    local tfs = terralib.currenttimeinseconds()
     computeInternalForces(mesh)
     computeStiffnessMatrix(mesh)
+    local tfe = terralib.currenttimeinseconds()
+    print("Time to assemble force and stiffness is "..((tfe-tfs)*1E6).." us")
     -- TIMING END
     -- RECORD ASSEMBLY TIME
 
@@ -880,6 +887,8 @@ function ImplicitBackwardEulerIntegrator:doTimestep(mesh)
 
     -- Constrain (zero) fields for the subset of constrained vertices
   end
+  local tde = terralib.currenttimeinseconds()
+  print("DoTimeStep time is "..((tde-tds)*1E6).." us")
 end
 
 ------------------------------------------------------------------------------
@@ -945,15 +954,17 @@ function main()
 
   -- print("Performing time steps ...")
   -- visualize(volumetric_mesh)
-  -- DumpDeformationToFile(volumetric_mesh, "out/mesh_liszt_"..tostring(0))
+  DumpDeformationToFile(volumetric_mesh, "out/mesh_liszt_"..tostring(0))
   for i=1,options.numTimesteps do
     -- print("#timestep = "..i)
+    local tts = terralib.currenttimeinseconds()
     setExternalConditions(volumetric_mesh, i)
-    computeInternalForces(volumetric_mesh)
-    computeStiffnessMatrix(volumetric_mesh)
     integrator:doTimestep(volumetric_mesh)
+    local tte = terralib.currenttimeinseconds()
+    print("Time for step "..i.." is "..((tte-tts)*1E6).." us")
+    print("")
     -- visualize(volumetric_mesh)
-    -- DumpDeformationToFile(volumetric_mesh, "out/mesh_liszt_"..tostring(i))
+    DumpDeformationToFile(volumetric_mesh, "out/mesh_liszt_"..tostring(i))
   end
 
   -- read out the state here somehow?
