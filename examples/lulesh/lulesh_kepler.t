@@ -1,6 +1,6 @@
 import 'compiler.liszt'
 
---L.default_processor = L.GPU
+L.default_processor = L.GPU
 
 local PN    = L.require 'lib.pathname'
 local Grid  = L.require "domains.grid"

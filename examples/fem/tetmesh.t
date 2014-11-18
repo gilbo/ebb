@@ -87,7 +87,7 @@ end]]
 -- => there will be one row for (x, y) and another for (y, x).
 -- The function orders rows by 1st vertex and then the 2nd, and works for
 -- only a tetrahedral mesh.
-local function build_element_vertices(mesh, elements)
+local function build_element_edges(mesh, elements)
   local neighbors = {} -- vertex to vertex graph
   for k = 1,(mesh:nVerts()) do neighbors[k] = {} end
 
@@ -143,8 +143,19 @@ local function build_element_vertices(mesh, elements)
       end
     end
   end
-
   compute_tet_edges(mesh.tetrahedra)
+
+  -- set up pointers from vertices to self edges
+  mesh.vertices:NewField('diag', mesh.edges)
+  local compute_self_edges = liszt kernel (v : mesh.vertices)
+    for e in v.edges do
+      if e.head == v then
+        v.diag = e
+      end
+    end
+  end
+  compute_self_edges(mesh.vertices)
+
 end
 
 
@@ -175,7 +186,7 @@ function Tetmesh.LoadFromLists(vertices, elements)
   mesh.tetrahedra.v:Load(elements)
 
   -- build vertex-vertex relation for storing mass matrix (and other fields?)
-  build_element_vertices(mesh, elements)
+  build_element_edges(mesh, elements)
 
   -- and return the resulting mesh
   return mesh

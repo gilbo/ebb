@@ -30,21 +30,22 @@ local DataArray = terralib.require('compiler.rawdata').DataArray
 
 
 -------------------------------------------------------------------------------
---[[ Kernels, Brans, Germs                                                 ]]--
+--[[ Kernels, Brans, Signatures                                            ]]--
 -------------------------------------------------------------------------------
 --[[
 
 We use a Kernel as the primary unit of computation.
-  For internal use, we define the related concepts of Germ and Bran
+  For internal use, we define the related concepts of Signature and Bran
 
 ((
 etymology:
-  a Germ is the plant embryo within a kernel,
-  a Bran is the outer part of a kernel, encasing the germ and endosperm
+  a Bran is the outer part of a kernel, encasing the signature and endosperm
+
 ))
 
-A Germ -- a Terra struct.
-          It provides a dynamic context at execution time.
+A Signature -- a Terra struct.
+          It provides a type wrapper for easily passing parameters to a generated
+          cuda kernel to provide dynamic context at execution time.
           Example entries:
             - number of rows in the relation
             - subset masks
@@ -55,12 +56,12 @@ A Bran -- a Lua table
           e.g. one bran for each (kernel, runtime, subset) tuple
           Examples entries:
             - signature params: (relation, subset)
-            - a germ
+            - a Signature
             - executable function
             - field/phase signature
 
 Each Kernel may have many Brans, each a compile-time specialization
-Each Bran may have a different assignment of Germ values for each execution
+Each Bran may have a different assignment of Signature values for each execution
 
 ]]--
 
@@ -90,38 +91,41 @@ end
 
 
 -------------------------------------------------------------------------------
---[[ Germs                                                                 ]]--
+--[[ Signatures                                                            ]]--
 -------------------------------------------------------------------------------
 
--- Create a Germ Lua Object that generates the needed Terra structure
-local GermTemplate = {}
-GermTemplate.__index = GermTemplate
+-- Create a Lua Object that generates the needed Terra structure to pass
+-- fields, globals and temporary allocated memory to the kernel as arguments
+local SignatureTemplate = {}
+SignatureTemplate.__index = SignatureTemplate
 
-function GermTemplate.New()
+function SignatureTemplate.New()
   return setmetatable({
     fields    = terralib.newlist(),
     globals   = terralib.newlist(),
-  }, GermTemplate)
+    reduce    = terralib.newlist()
+  }, SignatureTemplate)
 end
 
-function GermTemplate:addField(name, typ)
+function SignatureTemplate:addField(name, typ)
   table.insert(self.fields, { field=name, type=&typ })
 end
 
-function GermTemplate:addGlobal(name, typ)
+function SignatureTemplate:addGlobal(name, typ)
   table.insert(self.globals, { field=name, type=&typ })
+  table.insert(self.globals, { field='reduce_'..name,type=&typ})
 end
 
-function GermTemplate:turnSubsetOn()
+function SignatureTemplate:turnSubsetOn()
   self.subset_on = true
 end
 
-function GermTemplate:addInsertion()
+function SignatureTemplate:addInsertion()
   self.insert_on = true
 end
 
 local taddr = uint64 --L.addr:terraType() -- weird dependency error
-function GermTemplate:TerraStruct()
+function SignatureTemplate:TerraStruct()
   if self.terrastruct then return self.terrastruct end
   local terrastruct = terralib.types.newstruct(self.name)
 
@@ -141,42 +145,15 @@ function GermTemplate:TerraStruct()
   for _,v in ipairs(self.fields) do table.insert(terrastruct.entries, v) end
   -- add globals
   for _,v in ipairs(self.globals) do table.insert(terrastruct.entries, v) end
+  -- add global reduction space
+  for _,v in ipairs(self.reduce) do table.insert(terrastruct.entries, v) end
 
   self.terrastruct = terrastruct
   return terrastruct
 end
 
-function GermTemplate:isGenerated()
+function SignatureTemplate:isGenerated()
   return self.terrastruct ~= nil
-end
-
-
--------------------------------------------------------------------------------
---[[ GPU Global scratchpad                                                 ]]--
--------------------------------------------------------------------------------
--- Create a struct to hold pointers to memory allocated on a per-kernel basis
--- This is kept separate from the Germ so that we do not have to copy the germ back
--- and forth from the CPU every time a kernel is run.
-local ScratchTableTemplate = {}
-ScratchTableTemplate.__index = ScratchTableTemplate
-function ScratchTableTemplate.New()
-  return setmetatable({
-      globals = terralib.newlist()
-    },
-    ScratchTableTemplate)
-end
-
-function ScratchTableTemplate:addGlobal(name, typ)
-  table.insert(self.globals, {field=name, type=&typ})
-end
-
-function ScratchTableTemplate:TerraStruct()
-  if self.terrastruct then return self.terrastruct end
-
-  local terrastruct = terralib.types.newstruct(self.name)
-  for _, v in ipairs(self.globals) do table.insert(terrastruct.entries, v) end
-  self.terrastruct = terrastruct
-  return terrastruct
 end
 
 
@@ -228,19 +205,19 @@ L.LKernel.__call  = function (kobj, relset)
     bran:dynamicChecks()
 
 
-    -- set execution parameters in the germ
-    local cpu_germ    = bran.cpu_germ:ptr()
-    cpu_germ.n_rows   = bran.relation:ConcreteSize()
+    -- set execution parameters in the signature
+    local signature    = bran.signature:ptr()
+    signature.n_rows   = bran.relation:ConcreteSize()
     -- bind the subset data
     if bran.subset then
-      cpu_germ.use_boolmask     = false
+      signature.use_boolmask     = false
       if bran.subset then
         if bran.subset._boolmask then
-          cpu_germ.use_boolmask = true
-          cpu_germ.boolmask     = bran.subset._boolmask:DataPtr()
+          signature.use_boolmask = true
+          signature.boolmask     = bran.subset._boolmask:DataPtr()
         elseif bran.subset._index then
-          cpu_germ.index        = bran.subset._index:DataPtr()
-          cpu_germ.index_size   = bran.subset._index:Size()
+          signature.index        = bran.subset._index:DataPtr()
+          signature.index_size   = bran.subset._index:Size()
         else
           assert(false)
         end
@@ -256,7 +233,7 @@ L.LKernel.__call  = function (kobj, relset)
       -- cache the old size
       bran.insert_data.last_concrete_size = insert_size_concrete
       -- set the write head to point to the end of array
-      cpu_germ.insert_write = insert_size_concrete
+      signature.insert_write = insert_size_concrete
       -- resize to create more space at the end of the array
       insert_rel:ResizeConcrete(insert_size_concrete +
                                 center_size_logical)
@@ -269,18 +246,14 @@ L.LKernel.__call  = function (kobj, relset)
     end
     -- bind the field data (MUST COME LAST)
     for field, _ in pairs(bran.field_ids) do
-      bran:setCPUField(field)
+      bran:setField(field)
     end
     for globl, _ in pairs(bran.global_ids) do
-      bran:setCPUGlobal(globl)
-    end
-    -- Load the germ data into the runtime location
-    if bran.runtime_germ:location() == L.GPU then
-      bran.runtime_germ:copy(bran.cpu_germ)
+      bran:setGlobal(globl)
     end
 
     -- launch the kernel
-    bran.executable()
+    bran.executable(bran.signature:ptr())
 
     -- adjust sizes based on extracted information
     if bran.insert_data then
@@ -337,8 +310,7 @@ function Bran:generate()
       error('Kernels may only be called on a relation they were typed with', 3)
   end
 
-  bran.germ_template = GermTemplate.New()
-  bran.scratch_table_template = ScratchTableTemplate.New()
+  bran.signature_template = SignatureTemplate.New()
 
   -- fix the mapping for the fields before compiling the executable
   bran.field_ids    = {}
@@ -354,7 +326,7 @@ function Bran:generate()
     bran:getGlobalId(globl)
   end
   -- setup subsets?
-  if bran.subset then bran.germ_template:turnSubsetOn() end
+  if bran.subset then bran.signature_template:turnSubsetOn() end
 
   -- setup insert and delete
   if kernel.inserts then
@@ -364,50 +336,33 @@ function Bran:generate()
     bran:generateDeletes()
   end
 
-  -- allocate memory for 1-2 copies of the germ
-  bran.cpu_germ = DataArray.New{
+  -- allocate memory for the signature on the CPU.  It will be used
+  -- to hold the parameter values that will be passed to the liszt kernel.
+  bran.signature = DataArray.New{
     size = 1,
-    type = bran.germ_template:TerraStruct(),
+    type = bran.signature_template:TerraStruct(),
     processor = L.CPU -- DON'T MOVE
   }
-  bran.runtime_germ = bran.cpu_germ
-  if bran.location == L.GPU then
-    bran.runtime_germ = DataArray.New{
-      size = 1,
-      type = bran.germ_template:TerraStruct(),
-      processor = L.GPU,  -- DON'T MOVE
-    }
-  end
 
-  -- allocate space to keep track of pointers to memory allocated
-  -- for GPU tree-reductions on an invocation-by-invocation basis
-  if bran.location == L.GPU then
-    bran.cpu_scratch_table = DataArray.New{
-      size=1,
-      type=bran.scratch_table_template:TerraStruct(),
-      processor=L.CPU
-    }
-    bran.gpu_scratch_table = DataArray.New{
-      size=1,
-      type=bran.scratch_table_template:TerraStruct(),
-      processor=L.GPU
-    }
-  end
   -- compile an executable
   bran.executable = codegen.codegen(typed_ast, bran)
+end
+
+function Bran:signatureType()
+  return self.signature_template:TerraStruct()
 end
 
 function Bran:getFieldId(field)
   local id = self.field_ids[field]
   if not id then
-    if self.germ_template:isGenerated() then
+    if self.signature_template:isGenerated() then
       error('INTERNAL ERROR: cannot add new fields after struct gen')
     end
     id = 'field_'..tostring(self.n_field_ids)..'_'..field:Name()
     self.n_field_ids = self.n_field_ids+1
 
     self.field_ids[field] = id
-    self.germ_template:addField(id, field:Type():terraType())
+    self.signature_template:addField(id, field:Type():terraType())
   end
   return id
 end
@@ -415,44 +370,43 @@ end
 function Bran:getGlobalId(global)
   local id = self.global_ids[global]
   if not id then
-    if self.germ_template:isGenerated() then
+    if self.signature_template:isGenerated() then
       error('INTERNAL ERROR: cannot add new globals after struct gen')
     end
     id = 'global_'..tostring(self.n_global_ids) -- no global names
     self.n_global_ids = self.n_global_ids+1
 
     self.global_ids[global] = id
-    self.germ_template:addGlobal(id, global.type:terraType())
-    self.scratch_table_template:addGlobal(id, global.type:terraType())
+    self.signature_template:addGlobal(id, global.type:terraType())
   end
   return id
 end
 
-function Bran:setCPUField(field)
+function Bran:setField(field)
   local id = self:getFieldId(field)
   local dataptr = field:DataPtr()
-  self.cpu_germ:ptr()[id] = dataptr
+  self.signature:ptr()[id] = dataptr
 end
-function Bran:setCPUGlobal(global)
+function Bran:setGlobal(global)
   local id = self:getGlobalId(global)
   local dataptr = global:DataPtr()
-  self.cpu_germ:ptr()[id] = dataptr
+  self.signature:ptr()[id] = dataptr
 end
-function Bran:getRuntimeFieldPtr(field)
+function Bran:signatureType ()
+  return self.signature_template:TerraStruct()
+end
+function Bran:getFieldPtr(signature_ptr, field)
   local id = self:getFieldId(field)
-  return `[self.runtime_germ:ptr()].[id]
+  return `[signature_ptr].[id]
 end
-function Bran:getCPUScratchTablePtr(global)
+function Bran:getGlobalPtr(signature_ptr, global)
   local id = self:getGlobalId(global)
-  return `[self.cpu_scratch_table:ptr()].[id]
+  return `[signature_ptr].[id]
 end
-function Bran:getGPUScratchTablePtr(global)
-  local id = self:getGlobalId(global)
-  return `[self.gpu_scratch_table:ptr()].[id]
-end
-function Bran:getRuntimeGlobalPtr(global)
-  local id = self:getGlobalId(global)
-  return `[self.runtime_germ:ptr()].[id]
+function Bran:getGlobalScratchPtr(signature_ptr, global)
+    local id = self:getGlobalId(global)
+    id = "reduce_" .. id
+    return `[signature_ptr].[id]
 end
 
 function Bran:dynamicChecks()
@@ -506,7 +460,7 @@ function Bran:generateInserts()
     bran:getFieldId(field)
   end
   bran:getFieldId(rel._is_live_mask)
-  bran.germ_template:addInsertion()
+  bran.signature_template:addInsertion()
 end
 
 function Bran:generateDeletes()

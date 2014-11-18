@@ -93,7 +93,7 @@ if options.legion and options.legion == True:
         ('LUA_PATH', ';'.join(terra_path)),
         (LD_LIBRARY_PATH, ':'.join(lib_path)),
         ('INCLUDE_PATH', ';'.join(include_path))])
-    launch_script = [os.path.join(script_dir, 'compiler/launch_legion_script.t')]
+    launch_script = [os.path.join(script_dir, 'compiler/launch_legion.t')]
 else:
     launch_script = [os.path.join(script_dir, 'compiler/launch_script.t')]
 
