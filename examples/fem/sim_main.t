@@ -212,12 +212,6 @@ end
 --    libraries/volumetricMesh/generateMassMatrix.cpp (computeMassMatrix)
 --    libraries/volumetricMesh/tetMesh.cpp (computeElementMassMatrix)
 
--- TODO: How is the result stored?
--- The main issue is how compressed the storage should be.
--- The general form represents the vertex-vertex mass relationship as a
--- 3x3 matrix, but the actual computation used only requires
--- a scalar for each vertex-vertex relationship...
-
 -- The following implementation combines computing element matrix and updating
 -- global mass matrix, for convenience.
 -- Also, it corresponds to inflate3Dim=False.
@@ -229,7 +223,6 @@ function computeMassMatrix(mesh)
   -- Q: Is inflate3Dim flag on?
   -- A: Yes.  This means we want the full mass matrix,
   --    not just a uniform scalar per-vertex
-
   mesh.edges:NewField('mass', L.double):Load(0)
   local buildMassMatrix = liszt kernel(t : mesh.tetrahedra)
     var tet_vol = fabs(getElementDet(t))/6
@@ -245,8 +238,6 @@ function computeMassMatrix(mesh)
     end
   end
   buildMassMatrix(mesh.tetrahedra)
-
-  -- any cleanup code we need goes here
 end
 
 ------------------------------------------------------------------------------
@@ -447,15 +438,6 @@ end
 local resetInternalForces = liszt kernel(v : mesh.vertices)
   v.internal_forces = {0, 0, 0}
 end
-
---[[
--- We probably do not need energy contribution.
-function computeEnergyContribution()
-end
-function computeEnergy()
-  computeEnergyContribution()
-end
-]]
 
 local computeInternalForcesHelper = function(tetrahedra)
   local ts, te
@@ -734,7 +716,7 @@ function ImplicitBackwardEulerIntegrator:setupFieldsKernels(mesh)
   self.pcgCalculatePreconditioner = liszt kernel(v : mesh.vertices)
     var stiff = v.diag.stiffness
     var diag = { stiff[0,0], stiff[1,1], stiff[2,2] }
-    v.precond = { 1/diag[0], 1/diag[1], 1/diag[2] }
+    v.precond = { 1.0/diag[0], 1.0/diag[1], 1.0/diag[2] }
   end
 
   self.pcgCalculateExactResidual = liszt kernel(v : mesh.vertices)
@@ -790,13 +772,14 @@ function ImplicitBackwardEulerIntegrator:solvePCG(mesh)
   mesh.vertices.x:Load({ 0, 0, 0 })
   local tss = terralib.currenttimeinseconds()
   self.pcgCalculatePreconditioner(mesh.vertices)
+  local iter = 1
   self.pcgCalculateExactResidual(mesh.vertices)
   self.normRes:set(0)
-  self.pcgCalculateNormResidual(mesh.vertices)
   self.pcgInitialize(mesh.vertices)
-  local iter = 1
+  self.pcgCalculateNormResidual(mesh.vertices)
   local normRes = self.normRes:get()
-  while normRes > self.cgEpsilon * self.cgEpsilon and
+  local thresh = self.cgEpsilon * self.cgEpsilon * normRes
+  while normRes > thresh and
         iter <= self.cgMaxIterations do
     -- print("PCG iteration "..iter)
     self.alphaDenom:set(0)
@@ -832,9 +815,9 @@ function ImplicitBackwardEulerIntegrator:doTimestep(mesh)
 
   -- Limit our total number of iterations allowed per timestep
   for numIter = 1, self.maxIterations do
+
     -- print("#dotimestep iteration = "..numIter.." ...")
-    -- ASSEMBLY
-    -- TIMING START
+
     local tfss = terralib.currenttimeinseconds()
     local tfs = terralib.currenttimeinseconds()
     computeInternalForces(mesh)
@@ -846,14 +829,7 @@ function ImplicitBackwardEulerIntegrator:doTimestep(mesh)
     print("Time to assemble stiffness matrix is "..((tse-tss)*1E6).." us")
     local tfse = terralib.currenttimeinseconds()
     print("Time to assemble force and stiffness is "..((tfse-tfss)*1E6).." us")
-    -- TIMING END
-    -- RECORD ASSEMBLY TIME
 
-    -- NOTE: NOTE: We can implement these scalings as separate kernels to be
-    -- "FAIR" to VEGA or we can fold it into other kernels.
-    -- Kinda unclear which to do
-    -- NOTE TODO: scaleinternalinternal_forces over-writes internal_forces. we may want to change
-    -- this.
     self.scaleInternalForces(mesh.vertices)
     self.scaleStiffnessMatrix(mesh.edges)
 
@@ -884,7 +860,7 @@ function ImplicitBackwardEulerIntegrator:doTimestep(mesh)
     self.updateqresidual2(mesh.vertices)
     self.updateStiffness2(mesh.edges)
 
-    -- ADD EXTERNAL/INTERNAL internal_forces
+    -- Add external/ internal internal_forces
     self.updateqresidual3(mesh.vertices)
 
     -- superfluous on iteration 1, but safe to run
@@ -913,20 +889,7 @@ function ImplicitBackwardEulerIntegrator:doTimestep(mesh)
       break
     end
 
-    -- SYSTEM SOLVE: SYSTEM_MATRIX * BUFFER = BUFFER_CONSTRAINED
-    -- START PERFORMANCE TIMING
-    -- ASSUMING PCG FOR NOW
-    --[[
-    if err_code ~= 0 then
-      error("ERROR: PCG sparse solver "..
-            "returned non-zero exit status "..err_code)
-    end
-    ]]
-
     self:solvePCG(mesh)
-
-    -- STOP PERFORMANCE TIMING
-    -- RECORD SYSTEM SOLVE TIME
 
     -- Reinsert the rows?
 
@@ -936,6 +899,7 @@ function ImplicitBackwardEulerIntegrator:doTimestep(mesh)
   end
   local tde = terralib.currenttimeinseconds()
   print("DoTimeStep time is "..((tde-tds)*1E6).." us")
+
 end
 
 ------------------------------------------------------------------------------
