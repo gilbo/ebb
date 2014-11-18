@@ -51,6 +51,12 @@ local arith_test = liszt kernel(v : mesh.vertices)
 end
 arith_test(mesh.vertices)
 
+local unsym_mat = liszt kernel(v : mesh.vertices)
+  var A : L.mat3x4i = { { 1, 2, 3, 4 }, { 5, 6, 7, 8 }, { 9, 10, 11, 12 } }
+  A
+end
+unsym_mat(mesh.vertices)
+
 ------------------
 -- Should fail: --
 ------------------
