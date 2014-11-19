@@ -14,7 +14,8 @@ local JSON = require('compiler.JSON')
 
 local DynamicArray = terralib.require('compiler.rawdata').DynamicArray
 
-
+local use_legion = rawget(_G, '_legion')
+local Lg = use_legion and terralib.require "compiler.legionlib"
 
 local valid_name_err_msg =
   "must be valid Lua Identifiers: a letter or underscore,"..
@@ -31,29 +32,6 @@ function L.is_valid_lua_identifier(name)
   if not name:match('^[_%a][_%w]*$') then return false end
 
   return true
-end
-
--------------------------------------------------------------------------------
---[[ LLogicalRegion methods                                                ]]--
--------------------------------------------------------------------------------
-
-local LogicalRegion = {}
-LogicalRegion.__index = LogicalRegion
-
-function LogicalRegion:NewField(type)
-  local binding = L._runtime.binding
-  return binding:allocate_field(self.field_space, { L._LegionTypes[type] })
-end
-
-local function NewLogicalRegion(size)
-  local binding = L._runtime.binding
-  local l = {
-              index_space = binding:create_index_space(size),
-              field_space = binding:create_field_space()
-            }
-  l.handle = binding:create_logical_region(l.index_space, l.field_space)
-  setmetatable(l, LogicalRegion)
-  return l
 end
 
 -------------------------------------------------------------------------------
@@ -89,20 +67,18 @@ function L.NewRelation(size, name)
   },
   L.LRelation)
 
-  if L._runtime == L._Direct then
+  if not use_legion then
     -- create a mask to track which rows are live.
     rawset(rel, '_is_live_mask', L.LField.New(rel, '_is_live_mask', L.bool))
     rel._is_live_mask:Load(true)
-  elseif L._runtime == L._Legion then
+  else
     -- create a logical region.
-    rawset(rel, '_logical_region', NewLogicalRegion(size))
+    rawset(rel, '_logical_region', Lg.NewLogicalRegion(size))
     -- create a mask to track which rows are live.
     -- TODO: we probably do not need this with Legion, as Legion handles row
     -- inserts and deletes.
     -- TODO: for now, initialize this field to true.
-    rawset(rel, '_is_live_mask', L.LField.New(rel, '_is_live_mask', L.bool))
-  else
-    error('NewRelation not implemented for '..tostring(L._runtime), 2)
+    -- rawset(rel, '_is_live_mask', L.LField.New(rel, '_is_live_mask', L.bool))
   end
 
   return rel
@@ -489,9 +465,10 @@ function L.LField.New(rel, name, typ)
     field.array   = nil
     field:Allocate()
   elseif L._runtime == L._Legion then
-    field.handle = rel._logical_region:NewField(typ)
+    print("Unimplemented legion new field")
+    -- field.handle = rel._logical_region:NewField(typ)
   else
-    error('Unimplemented new field for '..tostring(L._runtime), 2)
+    error("Unimplemented new field for "..tostring(L._runtime), 2)
   end
   return field
 end
