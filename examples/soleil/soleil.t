@@ -18,7 +18,18 @@ double rand_unity() {
 ]]
 
 cmath.srand(cmath.time(nil));
-local vdb   = L.require 'lib.vdb'
+local vdb = L.require 'lib.vdb'
+
+-----------------------------------------------------------------------------
+--[[                       LOAD THE CONFIG FILE                          ]]--
+-----------------------------------------------------------------------------
+
+-- This location is hard-coded at the moment. The idea is that you will
+-- have multiple config files available in other locations, and copy them
+-- to this location with the name config.lua before running.
+
+local filename = './examples/soleil/params.lua'
+local config = loadfile(filename)()
 
 -----------------------------------------------------------------------------
 --[[                            CONSTANT VARIABLES                       ]]--
@@ -32,6 +43,7 @@ local twoPi = 2.0*pi
 -----------------------------------------------------------------------------
 
 local Flow = {};
+local Viscosity = {};
 local Particles = {};
 local TimeIntegrator = {};
 local Statistics = {};
@@ -39,7 +51,7 @@ local IO = {};
 local Visualization = {};
 
 -----------------------------------------------------------------------------
---[[         Global variables used for specialization within kernels     ]]--
+--[[       Global variables used for specialization within kernels       ]]--
 -----------------------------------------------------------------------------
 
 -- Flow type
@@ -47,6 +59,11 @@ Flow.Uniform             = L.NewGlobal(L.int, 0)
 Flow.TaylorGreen2DVortex = L.NewGlobal(L.int, 1)
 Flow.TaylorGreen3DVortex = L.NewGlobal(L.int, 2)
 Flow.Restart             = L.NewGlobal(L.int, 3)
+
+-- Viscosity Model
+Viscosity.Constant   = L.NewGlobal(L.int, 0)
+Viscosity.PowerLaw   = L.NewGlobal(L.int, 1)
+Viscosity.Sutherland = L.NewGlobal(L.int, 2)
 
 -- Particles feeder
 Particles.FeederAtStartTimeInRandomBox = L.NewGlobal(L.int, 0)
@@ -57,9 +74,14 @@ Particles.FeederUQCase                 = L.NewGlobal(L.int, 2)
 Particles.CollectorNone     = L.NewGlobal(L.int, 0)
 Particles.CollectorOutOfBox = L.NewGlobal(L.int, 1)
 
+-- Output formats
+IO.Python  = L.NewGlobal(L.int, 0)
+IO.Tecplot = L.NewGlobal(L.int, 1)
+
 -----------------------------------------------------------------------------
 --[[                       COLORS FOR VISUALIZATION                      ]]--
 -----------------------------------------------------------------------------
+
 local unity = L.NewVector(L.float,{1.0,1.0,1.0})
 local red   = L.NewVector(L.float,{1.0,0.0,0.0})
 local green = L.NewVector(L.float,{0.0,1.0,0.0})
@@ -67,68 +89,29 @@ local blue  = L.NewVector(L.float,{0.0,0.0,1.0})
 local white = L.NewVector(L.float,{1.0,1.0,1.0})
 
 -----------------------------------------------------------------------------
---[[                             OPTIONS                                 ]]--
+--[[                   INITIALIZE OPTIONS FROM CONFIG                    ]]--
 -----------------------------------------------------------------------------
 
 local grid_options = {
-xnum = 32,
-ynum = 32,
-znum = 1,
-origin = {0.0, 0.0, 0.0},
---xWidth = twoPi,
---xWidth = 2*twoPi,
---yWidth = twoPi,
---zWidth = twoPi,
-xWidth = 1.0,
-yWidth = 1.0,
-zWidth = 1.0/32.0,
-xBCLeft  = 'wall',
-xBCLeftVel = {0.0, 0.0, 0.0},
-xBCRight = 'wall',
-xBCRightVel = {0.0, 0.0, 0.0},
-yBCLeft  = 'wall',
-yBCLeftVel = {0.0, 0.0, 0.0},
-yBCRight = 'wall',
-yBCRightVel = {34.03, 0.0, 0.0},
-zBCLeft  = 'symmetry',
-zBCLeftVel = {0.0, 0.0, 0.0},
-zBCRight = 'symmetry',
-zBCRightVel = {0.0, 0.0, 0.0},
---xBCLeft  = 'periodic',
---xBCRight = 'periodic',
---yBCLeft  = 'periodic',
---yBCRight = 'periodic',
---zBCLeft  = 'periodic',
---zBCRight = 'periodic',
---xBCLeft  = 'symmetry',
---xBCRight = 'symmetry',
---yBCLeft  = 'symmetry',
---yBCRight = 'symmetry',
---zBCLeft  = 'symmetry',
---zBCRight = 'symmetry',
-}
-
-local spatial_stencil = {
---  Splitting parameter
-    split = 0.5,
---  Order 2
-    order = 2,
-    size = 2,
-    numInterpolateCoeffs = 2,
-    interpolateCoeffs = L.NewVector(L.double, {0, 0.5}),
-    numFirstDerivativeCoeffs = 2,
-    firstDerivativeCoeffs = L.NewVector(L.double, {0, 0.5}),
-    firstDerivativeModifiedWaveNumber = 1.0,
-    secondDerivativeModifiedWaveNumber = 4.0,
---  Order 6
---    order = 6,
---    size = 6,
---    numInterpolateCoeffs = 4,
---    interpolateCoeffs = L.NewVector(L.double, {0, 37/60, -8/60, 1/60}),
---    numFirstDerivativeCoeffs = 4,
---    firstDerivativeCoeffs = L.NewVector(L.double, {0.0,45.0/60.0,-9.0/60.0, 1.0/60.0}),
---    firstDerivativeModifiedWaveNumber = 1.59,
---    secondDerivativeModifiedWaveNumber = 6.04
+xnum = config.xnum,
+ynum = config.ynum,
+znum = config.znum,
+origin = config.origin,
+xWidth = config.xWidth,
+yWidth = config.yWidth,
+zWidth = config.zWidth,
+xBCLeft     = config.xBCLeft,
+xBCLeftVel  = config.xBCLeftVel,
+xBCRight    = config.xBCRight,
+xBCRightVel = config.xBCRightVel,
+yBCLeft     = config.yBCLeft,
+yBCLeftVel  = config.yBCLeftVel,
+yBCRight    = config.yBCRight,
+yBCRightVel = config.yBCRightVel,
+zBCLeft     = config.zBCLeft,
+zBCLeftVel  = config.zBCLeftVel,
+zBCRight    = config.zBCRight,
+zBCRightVel = config.zBCRightVel,
 }
 
 -- Define offsets for boundary conditions in flow solver
@@ -300,50 +283,86 @@ else
   error("Boundary conditions in z not implemented")
 end
 
--- Time integrator
+-- Spatial integration options
+local spatial_stencil = {}
+if config.spatialOrder == 2 then
+  spatial_stencil = {
+    --  Splitting parameter
+    split = 0.5,
+    --  Order 2
+    order = 2,
+    size = 2,
+    numInterpolateCoeffs = 2,
+    interpolateCoeffs = L.NewVector(L.double, {0, 0.5}),
+    numFirstDerivativeCoeffs = 2,
+    firstDerivativeCoeffs = L.NewVector(L.double, {0, 0.5}),
+    firstDerivativeModifiedWaveNumber = 1.0,
+    secondDerivativeModifiedWaveNumber = 4.0,
+  }
+  elseif config.spatialOrder == 6 then
+  spatial_stencil = {
+    --  Splitting parameter
+    split = 0.5,
+    --  Order 6
+    order = 6,
+    size = 6,
+    numInterpolateCoeffs = 4,
+    interpolateCoeffs = L.NewVector(L.double, {0, 37/60, -8/60, 1/60}),
+    numFirstDerivativeCoeffs = 4,
+    firstDerivativeCoeffs = L.NewVector(L.double,
+                                        {0.0,45.0/60.0,-9.0/60.0, 1.0/60.0}),
+                                        firstDerivativeModifiedWaveNumber = 1.59,
+                                        secondDerivativeModifiedWaveNumber = 6.04
+  }
+  else
+    error("Spatial stencil order not implemented")
+end
+
+-- Time integrator options
 TimeIntegrator.coeff_function        = {1/6, 1/3, 1/3, 1/6}
 TimeIntegrator.coeff_time            = {0.5, 0.5, 1, 1}
 TimeIntegrator.simTime               = L.NewGlobal(L.double,0)
-TimeIntegrator.final_time            = 20.00001
-TimeIntegrator.max_iter              = 50000
+TimeIntegrator.final_time            = config.final_time
+TimeIntegrator.max_iter              = config.max_iter
 TimeIntegrator.timeStep              = L.NewGlobal(L.int,0)
-TimeIntegrator.cfl                   = 2.4
-TimeIntegrator.outputEveryTimeSteps  = 1000
-TimeIntegrator.restartEveryTimeSteps = 1000
-TimeIntegrator.headerFrequency       = 20
+TimeIntegrator.cfl                   = config.cfl
+TimeIntegrator.outputEveryTimeSteps  = config.outputEveryTimeSteps
+TimeIntegrator.restartEveryTimeSteps = config.restartEveryTimeSteps
+TimeIntegrator.headerFrequency       = config.headerFrequency
 TimeIntegrator.deltaTime             = L.NewGlobal(L.double, 0.01)
 
-local fluid_options = {
-    --gasConstant = 200.4128,
-    --gamma = 1.4,
-    --dynamic_viscosity_ref = 0.001,
-    --dynamic_viscosity_temp_ref = 1.0,
-    --prandtl = 0.7
-    gasConstant = 287.058,
-    gamma = 1.4,
-    dynamic_viscosity_ref = 1.716E-5, --Sutherland's
-    dynamic_viscosity_temp_ref = 273.15, --Sutherland's
-    prandtl = 0.72
-}
+local fluid_options = {}
+if config.viscosity_model == 'Constant' then
+  fluid_options.viscosity_model = Viscosity.Constant
+elseif config.viscosity_model  == 'PowerLaw' then
+  fluid_options.viscosity_model = Viscosity.PowerLaw
+elseif config.viscosity_model  == 'Sutherland' then
+  fluid_options.viscosity_model = Viscosity.Sutherland
+else
+  error("Viscosity model not defined")
+end
+fluid_options.gasConstant = config.gasConstant
+fluid_options.gamma = config.gamma
+fluid_options.dynamic_viscosity_ref = config.dynamic_viscosity_ref
+fluid_options.dynamic_viscosity_temp_ref = config.dynamic_viscosity_temp_ref
+fluid_options.prandtl = config.prandtl
 
-local flow_options = {
-    --initCase = Flow.TaylorGreen2DVortex,
-    --initParams = L.NewGlobal(L.vector(L.double,3),
-    --                           {1,100,2}),
-    --initCase = Flow.TaylorGreen3DVortex,
-    --initParams = L.NewGlobal(L.vector(L.double,3),
-    --                           {1,100,2}),
-    --initCase = Flow.Uniform,
-    --initParams = L.NewGlobal(L.vector(L.double,5),
-    --                           {0.000525805,43.4923,0.0,0.0,0.0}),
-    initCase = Flow.Restart,
-    initParams = L.NewGlobal(L.vector(L.double,5),
-                             {0.000525805,43.4923,0.0,0.0,0.0}),
-    -- put something for time step, physical time here for restart?
-    
-    --bodyForce = L.NewGlobal(L.vec3d, {0,0.01,0.0})
-    bodyForce = L.NewGlobal(L.vec3d, {0,0.0,0})
-}
+
+local flow_options = {}
+if config.initCase == 'Uniform' then
+  flow_options.initCase = Flow.Uniform
+elseif config.initCase == 'Restart' then
+  flow_options.initCase = Flow.Restart
+elseif config.initCase == 'TaylorGreen2DVortex' then
+  flow_options.initCase = Flow.TaylorGreen2DVortex
+elseif config.initCase == 'TaylorGreen3DVortex' then
+  flow_options.initCase = Flow.TaylorGreen3DVortex
+else
+  error("Flow initialization type not defined")
+end
+flow_options.initParams = L.NewGlobal(L.vector(L.double,5), config.initParams)
+flow_options.bodyForce = L.NewGlobal(L.vec3d, config.bodyForce)
+
 
 local particles_options = {
     -- Feeder is defined by a type and a set of parameters
@@ -389,7 +408,7 @@ local particles_options = {
     --collectorType = Particles.CollectorOutOfBox,
     --collectorParams = L.NewGlobal(L.vector(L.double,6),{0.5,0.5,0.5,12,6,6}),
 
-    num = 10.0,
+    num = 0.0,
     convective_coefficient = L.NewGlobal(L.double, 0.7), -- W m^-2 K^-1
     heat_capacity = L.NewGlobal(L.double, 0.7), -- J Kg^-1 K^-1
     initialTemperature = 250,
@@ -404,14 +423,20 @@ local particles_options = {
 }
 
 local radiation_options = {
-    radiationIntensity = 10.0
+    radiationIntensity = config.radiationIntensity
 }
 
--- IO
--- Choose an output format (0 is the native Python, 1, is for Tecplot)
---IO.outputFormat = 0 -- Python
-IO.outputFormat = 1 -- Tecplot
-IO.outputFileNamePrefix = "../soleilOutput/output"
+-- IO options
+-- Choose an output format (Python native or Tecplot)
+if config.outputFormat == 'Python' then
+  IO.outputFormat = IO.Python
+elseif config.outputFormat == 'Tecplot' then
+  IO.outputFormat = IO.Tecplot
+else
+  error("Output format not implemented")
+end
+-- Store the directory for all output files from the config
+IO.outputFileNamePrefix = config.outputDirectory
 
 -----------------------------------------------------------------------------
 --[[                       Load Data for a Restart                       ]]--
@@ -430,7 +455,7 @@ if flow_options.initCase == Flow.Restart then
   -- Notice that the path is relative to this script's location on
   -- disk rather than the present working directory, which varies
   -- depending on where we invoke this script from.
-  local restart_filename = IO.outputFileNamePrefix .. 'restart_1000.dat'
+  local restart_filename = IO.outputFileNamePrefix .. 'outputrestart_101000.dat'
 
   -- Restart files have the following format
   --
@@ -446,7 +471,7 @@ if flow_options.initCase == Flow.Restart then
   -- In Lua, we can open files just like in C
   local soleil_in = io.open(tostring(restart_filename), "r")
   if not soleil_in then
-    error('failed to open '..tostring(restart_filename))
+    error('Error: failed to open '..tostring(restart_filename))
   end
 
   -- we can read a line like so
@@ -691,7 +716,6 @@ grid.cells:NewField('rhoVelocityFlux', L.vec3d):
 LoadConstant(L.NewVector(L.double, {0, 0, 0}))
 grid.cells:NewField('rhoEnergyFlux', L.double):
 LoadConstant(0)
-
 
 -- Declare and initialize particle relation and fields over the particle
 
@@ -3021,7 +3045,7 @@ end
 if timeStep % TimeIntegrator.outputEveryTimeSteps == 0 then
 
 -- Native Python output format
-if IO.outputFormat == 0 then
+if IO.outputFormat == IO.Python then
 
   -- On the first iteration only, output the cell coords and particle diameters
   if timeStep == 0 then
@@ -3060,7 +3084,7 @@ Particles.WriteField(outputFileName .. "_particles",
 Particles.WriteField(outputFileName .. "_particles",
   particles.groupID)
 
-elseif IO.outputFormat == 1 then
+elseif IO.outputFormat == IO.Tecplot then
 
 -- Tecplot ASCII format
 local outputFileName = IO.outputFileNamePrefix .. "flow_" ..
