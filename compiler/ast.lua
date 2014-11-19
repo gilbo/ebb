@@ -155,7 +155,24 @@ function AST:clone ()
   return copy
 end
 
--- STRUCTURAL RECURSION
+function AST:astSize()
+  local size = 1
+
+  for _,n in ipairs(self.__child_asts) do
+    local child = self[n]
+    if A.is_ast(child) then size = size + child:astSize() end
+  end
+  for _,n in ipairs(self.__child_ast_lists) do
+    local child_list = self[n]
+    for _,child in ipairs(child_list) do
+      if A.is_ast(child) then size = size + child:astSize() end
+    end
+  end
+
+  return size
+end
+
+-- GENREAL STRUCTURAL RECURSION
 function A.NewCopyPass(passname)
   -- install default behaviors on each AST
   local metastr = ""

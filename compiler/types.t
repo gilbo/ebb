@@ -182,7 +182,7 @@ local function smallMatrixType (typ, nrow, ncol)
     local ttype = typ:terraType()
     local struct_name = "smallmatrix_" .. tostring(ttype) .. "_" ..
                         tostring(smt.Nrow) .. '_' .. tostring(smt.Ncol)
-    smt.terratype = struct { d : ttype[smt.Nrow][smt.Ncol] }
+    smt.terratype = struct { d : ttype[smt.Ncol][smt.Nrow] }
     smt.terratype.metamethods.__typename = function(self)
       return struct_name
     end
@@ -606,7 +606,6 @@ local function luaValConformsToType (luaval, tp)
       return true
     end
   end
-  -- No small matrix literals currently, so...
   return false
 end
 

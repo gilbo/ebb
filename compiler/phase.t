@@ -31,6 +31,10 @@ function PhaseType:requiresExclusive()
   return false
 end
 
+function PhaseType:isReadOnly()
+  return self.read and not self.write and not self.reduceop
+end
+
 function PhaseType:isCentered()
   return self.centered
 end
