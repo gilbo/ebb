@@ -46,6 +46,7 @@ local Visualization = {};
 Flow.Uniform             = L.NewGlobal(L.int, 0)
 Flow.TaylorGreen2DVortex = L.NewGlobal(L.int, 1)
 Flow.TaylorGreen3DVortex = L.NewGlobal(L.int, 2)
+Flow.Restart             = L.NewGlobal(L.int, 3)
 
 -- Particles feeder
 Particles.FeederAtStartTimeInRandomBox = L.NewGlobal(L.int, 0)
@@ -332,9 +333,14 @@ local flow_options = {
     --initCase = Flow.TaylorGreen3DVortex,
     --initParams = L.NewGlobal(L.vector(L.double,3),
     --                           {1,100,2}),
-    initCase = Flow.Uniform,
+    --initCase = Flow.Uniform,
+    --initParams = L.NewGlobal(L.vector(L.double,5),
+    --                           {0.000525805,43.4923,0.0,0.0,0.0}),
+    initCase = Flow.Restart,
     initParams = L.NewGlobal(L.vector(L.double,5),
-                               {0.000525805,43.4923,0.0,0.0,0.0}),
+                             {0.000525805,43.4923,0.0,0.0,0.0}),
+    -- put something for time step, physical time here for restart?
+    
     --bodyForce = L.NewGlobal(L.vec3d, {0,0.01,0.0})
     bodyForce = L.NewGlobal(L.vec3d, {0,0.0,0})
 }
@@ -406,6 +412,80 @@ local radiation_options = {
 --IO.outputFormat = 0 -- Python
 IO.outputFormat = 1 -- Tecplot
 IO.outputFileNamePrefix = "../soleilOutput/output"
+
+-----------------------------------------------------------------------------
+--[[                       Load Data for a Restart                       ]]--
+-----------------------------------------------------------------------------
+
+-- Create empty arrays for storing the restart, in case we will be
+-- reading them from a file and initializing using them below.
+local restartnCells, restartIter, restartTime
+local rho_data_array = {}
+local pressure_data_array = {}
+local velocity_data_array = {}
+
+if flow_options.initCase == Flow.Restart then
+
+  -- here's the path object for our soleil restart file we want to read in.
+  -- Notice that the path is relative to this script's location on
+  -- disk rather than the present working directory, which varies
+  -- depending on where we invoke this script from.
+  local restart_filename = IO.outputFileNamePrefix .. 'restart_1000.dat'
+
+  -- Restart files have the following format
+  --
+  --[[
+   Soleil Flow Restart
+   #cells currentTimeStep currentPhysicalTime
+   rho0 pressure0 u0 v0 w0
+   ...
+   ...   #cells rows of primitives for each cell
+   ...
+  ]]--
+
+  -- In Lua, we can open files just like in C
+  local soleil_in = io.open(tostring(restart_filename), "r")
+  if not soleil_in then
+    error('failed to open '..tostring(restart_filename))
+  end
+
+  -- we can read a line like so
+  local SOLEIL_SIG = soleil_in:read('*line')
+
+  if SOLEIL_SIG ~= 'Soleil Flow Restart' then
+    error('Restart file must begin with the first line "Soleil Flow Restart"')
+  end
+
+  -- read the counts of cells, iterations, and the time
+  restartnCells = soleil_in:read('*number')
+  restartIter   = soleil_in:read('*number')
+  restartTime   = soleil_in:read('*number')
+
+  -- now read in all the density, pressure, and velocity data
+
+  for i = 1, restartnCells do
+    rho_data_array[i]      = soleil_in:read('*number')
+    pressure_data_array[i] = soleil_in:read('*number')
+    local vec = {
+      soleil_in:read('*number'),
+      soleil_in:read('*number'),
+      soleil_in:read('*number')
+    }
+    velocity_data_array[i] = vec
+  end
+  
+  -- don't forget to close the file when done
+  soleil_in:close()
+
+  -- Before exiting, increment the time step and physical time so
+  -- the simulation doesn't repeat from 0. Also, increased the max number
+  -- of iterations so the solver doesn't immediately exit.
+
+  TimeIntegrator.timeStep:set(restartIter)
+  TimeIntegrator.simTime:set(restartTime)
+  TimeIntegrator.max_iter = TimeIntegrator.max_iter + restartIter
+  
+end
 
 -----------------------------------------------------------------------------
 --[[                       GRID/PARTICLES RELATIONS                      ]]--
@@ -515,18 +595,22 @@ LoadConstant(1)
 grid.cells:NewField('cellRindLayer', L.int):
 LoadConstant(1)
 
--- Conserved variables
-grid.cells:NewField('rho', L.double):
-LoadConstant(0)
-grid.cells:NewField('rhoVelocity', L.vec3d):
-LoadConstant(L.NewVector(L.double, {0, 0, 0}))
-grid.cells:NewField('rhoEnergy', L.double):
-LoadConstant(0)
+-- Primitive variables (may be initialized from a restart)
+grid.cells:NewField('rho', L.double)
+grid.cells:NewField('pressure', L.double)
+grid.cells:NewField('velocity', L.vec3d)
+if flow_options.initCase == Flow.Restart then
+  grid.cells.rho:Load(rho_data_array)
+  grid.cells.pressure:Load(pressure_data_array)
+  grid.cells.velocity:Load(velocity_data_array)
+else
+  grid.cells.rho:LoadConstant(0)
+  grid.cells.pressure:LoadConstant(0)
+  grid.cells.velocity:LoadConstant(L.NewVector(L.double, {0, 0, 0}))
+end
 
--- Primitive variables
+-- Remaining primitive variables
 grid.cells:NewField('centerCoordinates', L.vec3d):
-LoadConstant(L.NewVector(L.double, {0, 0, 0}))
-grid.cells:NewField('velocity', L.vec3d):
 LoadConstant(L.NewVector(L.double, {0, 0, 0}))
 grid.cells:NewField('velocityGradientX', L.vec3d):
 LoadConstant(L.NewVector(L.double, {0, 0, 0}))
@@ -535,8 +619,6 @@ LoadConstant(L.NewVector(L.double, {0, 0, 0}))
 grid.cells:NewField('velocityGradientZ', L.vec3d):
 LoadConstant(L.NewVector(L.double, {0, 0, 0}))
 grid.cells:NewField('temperature', L.double):
-LoadConstant(0)
-grid.cells:NewField('pressure', L.double):
 LoadConstant(0)
 grid.cells:NewField('rhoEnthalpy', L.double):
 LoadConstant(0)
@@ -553,6 +635,12 @@ LoadConstant(0)
 grid.cells:NewField('viscousSpectralRadius', L.double):
 LoadConstant(0)
 grid.cells:NewField('heatConductionSpectralRadius', L.double):
+LoadConstant(0)
+
+-- Conserved variables
+grid.cells:NewField('rhoVelocity', L.vec3d):
+LoadConstant(L.NewVector(L.double, {0, 0, 0}))
+grid.cells:NewField('rhoEnergy', L.double):
 LoadConstant(0)
 
 -- Fields for boundary treatment
@@ -682,14 +770,14 @@ LoadConstant(0)
 -- Note: - numberOfInteriorCells and areaInterior could be defined as variables
 -- from grid instead of Flow. Here Flow is used to avoid adding things to grid
 -- externally
-Flow.numberOfInteriorCells = L.NewGlobal(L.int, 0)
-Flow.areaInterior = L.NewGlobal(L.double, 0)
-Flow.averagePressure = L.NewGlobal(L.double, 0.0)
-Flow.averageTemperature = L.NewGlobal(L.double, 0.0)
-Flow.averageKineticEnergy = L.NewGlobal(L.double, 0.0)
-Flow.minTemperature = L.NewGlobal(L.double, 0)
-Flow.maxTemperature = L.NewGlobal(L.double, 0)
-Particles.averageTemperature= L.NewGlobal(L.double, 0.0)
+Flow.numberOfInteriorCells   = L.NewGlobal(L.int, 0)
+Flow.areaInterior            = L.NewGlobal(L.double, 0)
+Flow.averagePressure         = L.NewGlobal(L.double, 0.0)
+Flow.averageTemperature      = L.NewGlobal(L.double, 0.0)
+Flow.averageKineticEnergy    = L.NewGlobal(L.double, 0.0)
+Flow.minTemperature          = L.NewGlobal(L.double, 0)
+Flow.maxTemperature          = L.NewGlobal(L.double, 0)
+Particles.averageTemperature = L.NewGlobal(L.double, 0.0)
 
 -----------------------------------------------------------------------------
 --[[                 CONSOLE OUTPUT AFTER PREPROCESSING                  ]]--
@@ -930,6 +1018,10 @@ Flow.InitializePrimitives = liszt kernel(c : grid.cells)
       c.velocity[0] = flow_options.initParams[2]
       c.velocity[1] = flow_options.initParams[3]
       c.velocity[2] = flow_options.initParams[4]
+    elseif flow_options.initCase == Flow.Restart then
+    
+     -- Do nothing here, since we have initialized above.
+    
     end
 end
 Flow.UpdateConservedFromPrimitive = liszt kernel(c : grid.cells)
@@ -2564,36 +2656,36 @@ end
 
 -- Write particles field to output file
 Particles.WriteField = function (outputFileNamePrefix,field)
-    -- Make up complete file name based on name of field
-    local outputFileName = outputFileNamePrefix .. "_" ..
-                           field:Name() .. ".txt"
-    -- Open file
-    local outputFile = io.output(outputFileName)
-    -- Write data
-    local values = field:DumpToList()
-    local N      = field:Size()
+  -- Make up complete file name based on name of field
+  local outputFileName = outputFileNamePrefix .. "_" ..
+  field:Name() .. ".txt"
+  -- Open file
+  local outputFile = io.output(outputFileName)
+  -- Write data
+  local values = field:DumpToList()
+  local N      = field:Size()
 
-    if field:Type():isVector() then
-        local veclen = field:Type().N
-        io.write("# ", N, " ", veclen, "\n")
-        for i=1,N do
-            local s = ''
-            for j=1,veclen do
-                local t = tostring(values[i][j]):gsub('ULL',' ')
-                s = s .. ' ' .. t .. ''
-            end
-            -- i-1 to return to 0 indexing
-            io.write("", i-1, s, "\n")
-        end
-    else
-        io.write("# ", N, " ", 1, "\n")
-        for i=1,N do
-            local t = tostring(values[i]):gsub('ULL', ' ')
-            -- i-1 to return to 0 indexing
-            io.write("", i-1, ' ', t,"\n")
-        end
+  if field:Type():isVector() then
+    local veclen = field:Type().N
+    io.write("# ", N, " ", veclen, "\n")
+    for i=1,N do
+      local s = ''
+      for j=1,veclen do
+        local t = tostring(values[i][j]):gsub('ULL',' ')
+        s = s .. ' ' .. t .. ''
+      end
+      -- i-1 to return to 0 indexing
+      io.write("", i-1, s, "\n")
     end
-    io.close()
+    else
+    io.write("# ", N, " ", 1, "\n")
+    for i=1,N do
+      local t = tostring(values[i]):gsub('ULL', ' ')
+      -- i-1 to return to 0 indexing
+      io.write("", i-1, ' ', t,"\n")
+    end
+  end
+  io.close()
 end
 
 ----------------
@@ -2860,59 +2952,70 @@ end
 
 -- Check if we have particles (avoid nan printed to screen)
 
-local particle_avg_temp = 0.0
-if particles_options.num > 0 then
-  particle_avg_temp = Particles.averageTemperature:get()
-end
+  local particle_avg_temp = 0.0
+  if particles_options.num > 0 then
+    particle_avg_temp = Particles.averageTemperature:get()
+  end
 
 -- Ouput the current stats to the console for this iteration
 
-io.stdout:write(string.format("%8d",timeStep),
+  io.stdout:write(string.format("%8d",timeStep),
   string.format(" %11.6f",TimeIntegrator.simTime:get()),
   string.format(" %11.6f",Flow.averagePressure:get()),
   string.format(" %11.6f",Flow.averageTemperature:get()),
   string.format(" %11.6f",Flow.averageKineticEnergy:get()),
   string.format(" %11.6f",particle_avg_temp),'\n')
 
--- Check if it is time to output a restart file
-if timeStep % TimeIntegrator.restartEveryTimeSteps == 0 then
-
--- Tecplot ASCII format
-local outputFileName = IO.outputFileNamePrefix .. "restart_" ..
-tostring(timeStep) .. ".dat"
-
--- Open file
-local outputFile = io.output(outputFileName)
-
--- Write data
-local rho  = grid.cells.rho:DumpToList()
-local rhoVelocity = grid.cells.rhoVelocity:DumpToList()
-local rhoEnergy = grid.cells.rhoEnergy:DumpToList()
-
-local nCells = grid.cells.rhoVelocity:Size()
-local nDim   = grid.cells.rhoVelocity:Type().N
-
--- Write header which is the number of cells 
-local s = '' .. tostring(nCells) .. '\n'
-io.write(s)
-
--- Need to dump all x coords (fastest), then y, then z
-
-  for i=1,nCells do
-    s = ''
-    local rho = tostring(rho[i]):gsub('ULL',' ')
-    s = s .. rho .. ' '
-    for j=1,nDim do
-      local rhoU = tostring(rhoVelocity[i][j]):gsub('ULL',' ')
-      s = s .. rhoU .. ' '
-    end
-    local rhoE = tostring(rhoEnergy[i]):gsub('ULL',' ')
-    s = s .. rhoE .. '\n'
+  -- Check if it is time to output a restart file
+  if timeStep % TimeIntegrator.restartEveryTimeSteps == 0 then
+    
+    -- Prepare the restart file name for the current iteration
+    
+    local outputFileName = IO.outputFileNamePrefix .. "restart_" ..
+    tostring(timeStep) .. ".dat"
+    
+    -- Open file
+    
+    local outputFile = io.output(outputFileName)
+    
+    -- Dump the fields to lists for writing
+    
+    local rho      = grid.cells.rho:DumpToList()
+    local pressure = grid.cells.pressure:DumpToList()
+    local velocity = grid.cells.velocity:DumpToList()
+    
+    local nCells = grid.cells.velocity:Size()
+    local nDim   = grid.cells.velocity:Type().N
+    
+    -- Write header: number of cells, iteration, physical time
+    
+    io.write('Soleil Flow Restart\n')
+    local s = '' .. tostring(nCells)
+    s = s .. ' ' .. tostring(timeStep)
+    s = s .. ' ' .. tostring(TimeIntegrator.simTime:get()) .. '\n'
     io.write(s)
+    
+    -- Write the primitve variables: density, pressure, u, v, w. 
+    -- One row per cell, in the order it was dumped to the list.
+    
+    for i=1,nCells do
+      s = ''
+      local dens = tostring(rho[i]):gsub('ULL',' ')
+      s = s .. dens .. ' '
+      local pres = tostring(pressure[i]):gsub('ULL',' ')
+      s = s .. pres .. ' '
+      for j=1,nDim do
+        local vel = tostring(velocity[i][j]):gsub('ULL',' ')
+        s = s .. vel .. ' '
+      end
+      s = s .. '\n'
+      io.write(s)
+    end
+    
+    -- Close the restart file
+    io.close()
+    
   end
-
-io.close()
-end
 
 -- Check if it is time to output to file
 if timeStep % TimeIntegrator.outputEveryTimeSteps == 0 then
@@ -3139,12 +3242,11 @@ end
 --[[                            MAIN EXECUTION                           ]]--
 -----------------------------------------------------------------------------
 
+-- Initialize all variables
+
 TimeIntegrator.InitializeVariables()
-
+Statistics.ComputeSpatialAverages()
 IO.WriteOutput(TimeIntegrator.timeStep:get())
-
--- Start an external iteration counter
---local iter = 0
 
 -- Main iteration loop
 
@@ -3156,8 +3258,5 @@ while ((TimeIntegrator.simTime:get() < TimeIntegrator.final_time) and
     Statistics.ComputeSpatialAverages()
     IO.WriteOutput(TimeIntegrator.timeStep:get())
     Visualization.Draw()
-
-    -- Increment iteration counter
-    --iter = iter + 1
 
 end
