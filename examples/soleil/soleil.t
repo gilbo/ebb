@@ -88,7 +88,7 @@ xBCRightVel = {0.0, 0.0, 0.0},
 yBCLeft  = 'wall',
 yBCLeftVel = {0.0, 0.0, 0.0},
 yBCRight = 'wall',
-yBCRightVel = {33.179, 0.0, 0.0},
+yBCRightVel = {34.03, 0.0, 0.0},
 zBCLeft  = 'symmetry',
 zBCLeftVel = {0.0, 0.0, 0.0},
 zBCRight = 'symmetry',
@@ -300,16 +300,17 @@ else
 end
 
 -- Time integrator
-TimeIntegrator.coeff_function       = {1/6, 1/3, 1/3, 1/6}
-TimeIntegrator.coeff_time           = {0.5, 0.5, 1, 1}
-TimeIntegrator.simTime              = L.NewGlobal(L.double,0)
-TimeIntegrator.final_time           = 20.00001
-TimeIntegrator.max_iter             = 50000
-TimeIntegrator.timeStep             = L.NewGlobal(L.int,0)
-TimeIntegrator.cfl                  = 2.4
-TimeIntegrator.outputEveryTimeSteps = 1000
-TimeIntegrator.headerFrequency      = 20
-TimeIntegrator.deltaTime            = L.NewGlobal(L.double, 0.01)
+TimeIntegrator.coeff_function        = {1/6, 1/3, 1/3, 1/6}
+TimeIntegrator.coeff_time            = {0.5, 0.5, 1, 1}
+TimeIntegrator.simTime               = L.NewGlobal(L.double,0)
+TimeIntegrator.final_time            = 20.00001
+TimeIntegrator.max_iter              = 50000
+TimeIntegrator.timeStep              = L.NewGlobal(L.int,0)
+TimeIntegrator.cfl                   = 2.4
+TimeIntegrator.outputEveryTimeSteps  = 1000
+TimeIntegrator.restartEveryTimeSteps = 1000
+TimeIntegrator.headerFrequency       = 20
+TimeIntegrator.deltaTime             = L.NewGlobal(L.double, 0.01)
 
 local fluid_options = {
     --gasConstant = 200.4128,
@@ -319,8 +320,8 @@ local fluid_options = {
     --prandtl = 0.7
     gasConstant = 287.058,
     gamma = 1.4,
-    dynamic_viscosity_ref = 1.7893e-05,
-    dynamic_viscosity_temp_ref = 288.15,
+    dynamic_viscosity_ref = 1.716E-5, --Sutherland's
+    dynamic_viscosity_temp_ref = 273.15, --Sutherland's
     prandtl = 0.72
 }
 
@@ -2872,6 +2873,46 @@ io.stdout:write(string.format("%8d",timeStep),
   string.format(" %11.6f",Flow.averageTemperature:get()),
   string.format(" %11.6f",Flow.averageKineticEnergy:get()),
   string.format(" %11.6f",particle_avg_temp),'\n')
+
+-- Check if it is time to output a restart file
+if timeStep % TimeIntegrator.restartEveryTimeSteps == 0 then
+
+-- Tecplot ASCII format
+local outputFileName = IO.outputFileNamePrefix .. "restart_" ..
+tostring(timeStep) .. ".dat"
+
+-- Open file
+local outputFile = io.output(outputFileName)
+
+-- Write data
+local rho  = grid.cells.rho:DumpToList()
+local rhoVelocity = grid.cells.rhoVelocity:DumpToList()
+local rhoEnergy = grid.cells.rhoEnergy:DumpToList()
+
+local nCells = grid.cells.rhoVelocity:Size()
+local nDim   = grid.cells.rhoVelocity:Type().N
+
+-- Write header which is the number of cells 
+local s = '' .. tostring(nCells) .. '\n'
+io.write(s)
+
+-- Need to dump all x coords (fastest), then y, then z
+
+  for i=1,nCells do
+    s = ''
+    local rho = tostring(rho[i]):gsub('ULL',' ')
+    s = s .. rho .. ' '
+    for j=1,nDim do
+      local rhoU = tostring(rhoVelocity[i][j]):gsub('ULL',' ')
+      s = s .. rhoU .. ' '
+    end
+    local rhoE = tostring(rhoEnergy[i]):gsub('ULL',' ')
+    s = s .. rhoE .. '\n'
+    io.write(s)
+  end
+
+io.close()
+end
 
 -- Check if it is time to output to file
 if timeStep % TimeIntegrator.outputEveryTimeSteps == 0 then
