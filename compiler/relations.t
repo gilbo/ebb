@@ -73,7 +73,9 @@ function L.NewRelation(size, name)
     rel._is_live_mask:Load(true)
   else
     -- create a logical region.
-    rawset(rel, '_logical_region', Lg.NewLogicalRegion(size))
+    local logical_region = Lg.NewLogicalRegion(size)
+    rawset(rel, '_logical_region', logical_region)
+    logical_region:AllocateRows(size)
     -- create a mask to track which rows are live.
     -- TODO: we probably do not need this with Legion, as Legion handles row
     -- inserts and deletes.
@@ -461,14 +463,11 @@ function L.LField.New(rel, name, typ)
   field.type    = typ
   field.name    = name
   field.owner   = rel
-  if L._runtime == L._Direct then
+  if not use_legion then
     field.array   = nil
     field:Allocate()
-  elseif L._runtime == L._Legion then
-    print("Unimplemented legion new field")
-    -- field.handle = rel._logical_region:NewField(typ)
   else
-    error("Unimplemented new field for "..tostring(L._runtime), 2)
+    print("Unimplemented legion new field")
   end
   return field
 end
