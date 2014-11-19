@@ -47,3 +47,61 @@ shift(0,0,0)
 shift(5,5,5)
 shift(-1,6,3)
 
+---------------------------------
+--  Centered Matrix reduction: --
+---------------------------------
+local F = M.faces
+
+F:NewField("mat", L.mat3d)
+
+local liszt kernel m_set(f : F)
+	var d = L.double(L.id(f))
+	f.mat = {{d, 0.0, 0.0},
+             {0.0, d, 0.0},
+             {0.0, 0.0, d}}
+end
+
+local liszt kernel m_reduce_centered (f : F)
+	f.mat += {
+		{.11, .11, .11},
+		{.22, .22, .22},
+		{.33, .33, .33}
+	}
+end
+
+m_set(F)
+m_reduce_centered(F)
+
+F.mat:print()
+
+-----------------------------------
+--  Uncentered Matrix reduction: --
+-----------------------------------
+-- This will require the invocation of a second reduction kernel on the GPU runtime
+local E = M.edges
+
+V:NewField("mat", L.mat3d)
+
+local liszt kernel m_set_v(v : V)
+	var d = L.double(L.id(v))
+	v.mat = {{d, 0.0, 0.0},
+             {0.0, d, 0.0},
+             {0.0, 0.0, d}}
+end
+local liszt kernel m_reduce_uncentered (e : E)
+	e.head.mat += .5*{
+		{.11, .11, .11},
+		{.22, .22, .22},
+		{.33, .33, .33}
+	}
+	e.tail.mat += .5*{
+		{.11, .11, .11},
+		{.22, .22, .22},
+		{.33, .33, .33}
+	}
+end
+
+m_set_v(V)
+m_reduce_uncentered(E)
+
+V.mat:print()
