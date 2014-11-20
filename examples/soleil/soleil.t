@@ -1,8 +1,10 @@
 import "compiler.liszt"
-local Grid  = L.require 'domains.grid'
-local cmath = terralib.includecstring [[
-#include <math.h>
-#include <stdlib.h>
+--L.default_processor = L.GPU
+
+local Grid  = L.require 'domains.grid' 
+local cmath = terralib.includecstring [[ 
+#include <math.h> 
+#include <stdlib.h> 
 #include <time.h>
 
 double rand_double() {
@@ -18,7 +20,18 @@ double rand_unity() {
 ]]
 
 cmath.srand(cmath.time(nil));
-local vdb   = L.require 'lib.vdb'
+local vdb = L.require 'lib.vdb'
+
+-----------------------------------------------------------------------------
+--[[                       LOAD THE CONFIG FILE                          ]]--
+-----------------------------------------------------------------------------
+
+-- This location is hard-coded at the moment. The idea is that you will
+-- have multiple config files available in other locations, and copy them
+-- to this location with the name config.lua before running.
+
+local filename = './examples/soleil/params.lua'
+local config = loadfile(filename)()
 
 -----------------------------------------------------------------------------
 --[[                            CONSTANT VARIABLES                       ]]--
@@ -32,6 +45,7 @@ local twoPi = 2.0*pi
 -----------------------------------------------------------------------------
 
 local Flow = {};
+local Viscosity = {};
 local Particles = {};
 local TimeIntegrator = {};
 local Statistics = {};
@@ -39,13 +53,19 @@ local IO = {};
 local Visualization = {};
 
 -----------------------------------------------------------------------------
---[[         Global variables used for specialization within kernels     ]]--
+--[[       Global variables used for specialization within kernels       ]]--
 -----------------------------------------------------------------------------
 
 -- Flow type
 Flow.Uniform             = L.NewGlobal(L.int, 0)
 Flow.TaylorGreen2DVortex = L.NewGlobal(L.int, 1)
 Flow.TaylorGreen3DVortex = L.NewGlobal(L.int, 2)
+Flow.Restart             = L.NewGlobal(L.int, 3)
+
+-- Viscosity Model
+Viscosity.Constant   = L.NewGlobal(L.int, 0)
+Viscosity.PowerLaw   = L.NewGlobal(L.int, 1)
+Viscosity.Sutherland = L.NewGlobal(L.int, 2)
 
 -- Particles feeder
 Particles.FeederAtStartTimeInRandomBox = L.NewGlobal(L.int, 0)
@@ -56,9 +76,14 @@ Particles.FeederUQCase                 = L.NewGlobal(L.int, 2)
 Particles.CollectorNone     = L.NewGlobal(L.int, 0)
 Particles.CollectorOutOfBox = L.NewGlobal(L.int, 1)
 
+-- Output formats
+IO.Python  = L.NewGlobal(L.int, 0)
+IO.Tecplot = L.NewGlobal(L.int, 1)
+
 -----------------------------------------------------------------------------
 --[[                       COLORS FOR VISUALIZATION                      ]]--
 -----------------------------------------------------------------------------
+
 local unity = L.NewVector(L.float,{1.0,1.0,1.0})
 local red   = L.NewVector(L.float,{1.0,0.0,0.0})
 local green = L.NewVector(L.float,{0.0,1.0,0.0})
@@ -66,68 +91,29 @@ local blue  = L.NewVector(L.float,{0.0,0.0,1.0})
 local white = L.NewVector(L.float,{1.0,1.0,1.0})
 
 -----------------------------------------------------------------------------
---[[                             OPTIONS                                 ]]--
+--[[                   INITIALIZE OPTIONS FROM CONFIG                    ]]--
 -----------------------------------------------------------------------------
 
 local grid_options = {
-xnum = 64,
-ynum = 64,
-znum = 64,
-origin = {0.0, 0.0, 0.0},
-xWidth = twoPi,
---xWidth = 2*twoPi,
-yWidth = twoPi,
-zWidth = twoPi,
---xWidth = 1.0,
---yWidth = 1.0,
---zWidth = 1.0/64.0,
---xBCLeft  = 'wall',
-xBCLeftVel = {0.0, 0.0, 0.0},
---xBCRight = 'wall',
-xBCRightVel = {0.0, 0.0, 0.0},
---yBCLeft  = 'wall',
-yBCLeftVel = {0.0, 0.0, 0.0},
---yBCRight = 'wall',
-yBCRightVel = {33.179, 0.0, 0.0},
---zBCLeft  = 'symmetry',
-zBCLeftVel = {0.0, 0.0, 0.0},
---zBCRight = 'symmetry',
-zBCRightVel = {0.0, 0.0, 0.0},
---xBCLeft  = 'periodic',
---xBCRight = 'periodic',
---yBCLeft  = 'periodic',
---yBCRight = 'periodic',
---zBCLeft  = 'periodic',
---zBCRight = 'periodic',
-xBCLeft  = 'symmetry',
-xBCRight = 'symmetry',
-yBCLeft  = 'symmetry',
-yBCRight = 'symmetry',
-zBCLeft  = 'symmetry',
-zBCRight = 'symmetry',
-}
-
-local spatial_stencil = {
---  Splitting parameter
-    split = 0.5,
---  Order 2
---    order = 2,
---    size = 2,
---    numInterpolateCoeffs = 2,
---    interpolateCoeffs = L.NewVector(L.double, {0, 0.5}),
---    numFirstDerivativeCoeffs = 2,
---    firstDerivativeCoeffs = L.NewVector(L.double, {0, 0.5}),
---    firstDerivativeModifiedWaveNumber = 1.0,
---    secondDerivativeModifiedWaveNumber = 4.0,
---  Order 6
-    order = 6,
-    size = 6,
-    numInterpolateCoeffs = 4,
-    interpolateCoeffs = L.NewVector(L.double, {0, 37/60, -8/60, 1/60}),
-    numFirstDerivativeCoeffs = 4,
-    firstDerivativeCoeffs = L.NewVector(L.double, {0.0,45.0/60.0,-9.0/60.0, 1.0/60.0}),
-    firstDerivativeModifiedWaveNumber = 1.59,
-    secondDerivativeModifiedWaveNumber = 6.04
+xnum = config.xnum,
+ynum = config.ynum,
+znum = config.znum,
+origin = config.origin,
+xWidth = config.xWidth,
+yWidth = config.yWidth,
+zWidth = config.zWidth,
+xBCLeft     = config.xBCLeft,
+xBCLeftVel  = config.xBCLeftVel,
+xBCRight    = config.xBCRight,
+xBCRightVel = config.xBCRightVel,
+yBCLeft     = config.yBCLeft,
+yBCLeftVel  = config.yBCLeftVel,
+yBCRight    = config.yBCRight,
+yBCRightVel = config.yBCRightVel,
+zBCLeft     = config.zBCLeft,
+zBCLeftVel  = config.zBCLeftVel,
+zBCRight    = config.zBCRight,
+zBCRightVel = config.zBCRightVel,
 }
 
 -- Define offsets for boundary conditions in flow solver
@@ -299,44 +285,86 @@ else
   error("Boundary conditions in z not implemented")
 end
 
--- Time integrator
-TimeIntegrator.coeff_function       = {1/6, 1/3, 1/3, 1/6}
-TimeIntegrator.coeff_time           = {0.5, 0.5, 1, 1}
-TimeIntegrator.simTime              = L.NewGlobal(L.double,0)
-TimeIntegrator.final_time           = 20.00001
-TimeIntegrator.max_iter             = 500000
-TimeIntegrator.timeStep             = L.NewGlobal(L.int,0)
-TimeIntegrator.cfl                  = 2.0
-TimeIntegrator.outputEveryTimeSteps = 100
-TimeIntegrator.headerFrequency      = 20
-TimeIntegrator.deltaTime            = L.NewGlobal(L.double, 0.01)
+-- Spatial integration options
+local spatial_stencil = {}
+if config.spatialOrder == 2 then
+  spatial_stencil = {
+    --  Splitting parameter
+    split = 0.5,
+    --  Order 2
+    order = 2,
+    size = 2,
+    numInterpolateCoeffs = 2,
+    interpolateCoeffs = L.NewVector(L.double, {0, 0.5}),
+    numFirstDerivativeCoeffs = 2,
+    firstDerivativeCoeffs = L.NewVector(L.double, {0, 0.5}),
+    firstDerivativeModifiedWaveNumber = 1.0,
+    secondDerivativeModifiedWaveNumber = 4.0,
+  }
+  elseif config.spatialOrder == 6 then
+  spatial_stencil = {
+    --  Splitting parameter
+    split = 0.5,
+    --  Order 6
+    order = 6,
+    size = 6,
+    numInterpolateCoeffs = 4,
+    interpolateCoeffs = L.NewVector(L.double, {0, 37/60, -8/60, 1/60}),
+    numFirstDerivativeCoeffs = 4,
+    firstDerivativeCoeffs = L.NewVector(L.double,
+                                        {0.0,45.0/60.0,-9.0/60.0, 1.0/60.0}),
+                                        firstDerivativeModifiedWaveNumber = 1.59,
+                                        secondDerivativeModifiedWaveNumber = 6.04
+  }
+  else
+    error("Spatial stencil order not implemented")
+end
 
-local fluid_options = {
-    gasConstant = 200.4128,
-    gamma = 1.4,
-    dynamic_viscosity_ref = 0.001,
-    dynamic_viscosity_temp_ref = 1.0,
-    prandtl = 0.7
-    --gasConstant = 287.058,
-    --gamma = 1.4,
-    --dynamic_viscosity_ref = 1.7893e-05,
-    --dynamic_viscosity_temp_ref = 288.15,
-    --prandtl = 0.72
-}
+-- Time integrator options
+TimeIntegrator.coeff_function        = {1/6, 1/3, 1/3, 1/6}
+TimeIntegrator.coeff_time            = {0.5, 0.5, 1, 1}
+TimeIntegrator.simTime               = L.NewGlobal(L.double,0)
+TimeIntegrator.final_time            = config.final_time
+TimeIntegrator.max_iter              = config.max_iter
+TimeIntegrator.timeStep              = L.NewGlobal(L.int,0)
+TimeIntegrator.cfl                   = config.cfl
+TimeIntegrator.outputEveryTimeSteps  = config.outputEveryTimeSteps
+TimeIntegrator.restartEveryTimeSteps = config.restartEveryTimeSteps
+TimeIntegrator.headerFrequency       = config.headerFrequency
+TimeIntegrator.deltaTime             = L.NewGlobal(L.double, 0.01)
 
-local flow_options = {
-    --initCase = Flow.TaylorGreen2DVortex,
-    --initParams = L.NewGlobal(L.vector(L.double,3),
-    --                           {1,100,2}),
-    initCase = Flow.TaylorGreen3DVortex,
-    initParams = L.NewGlobal(L.vector(L.double,3),
-                               {1,100,2}),
-    --initCase = Flow.Uniform,
-    --initParams = L.NewGlobal(L.vector(L.double,5),
-    --                           {0.000525805,43.4923,0.0,0.0,0.0}),
-    --bodyForce = L.NewGlobal(L.vec3d, {0,0.01,0.0})
-    bodyForce = L.NewGlobal(L.vec3d, {0,0.0,0})
-}
+local fluid_options = {}
+if config.viscosity_model == 'Constant' then
+  fluid_options.viscosity_model = Viscosity.Constant
+elseif config.viscosity_model  == 'PowerLaw' then
+  fluid_options.viscosity_model = Viscosity.PowerLaw
+elseif config.viscosity_model  == 'Sutherland' then
+  fluid_options.viscosity_model = Viscosity.Sutherland
+else
+  error("Viscosity model not defined")
+end
+fluid_options.gasConstant = config.gasConstant
+fluid_options.gamma = config.gamma
+fluid_options.dynamic_viscosity_ref = config.dynamic_viscosity_ref
+fluid_options.dynamic_viscosity_temp_ref = config.dynamic_viscosity_temp_ref
+fluid_options.prandtl = config.prandtl
+
+
+local flow_options = {}
+if config.initCase == 'Uniform' then
+  flow_options.initCase = Flow.Uniform
+elseif config.initCase == 'Restart' then
+  flow_options.initCase = Flow.Restart
+elseif config.initCase == 'TaylorGreen2DVortex' then
+  flow_options.initCase = Flow.TaylorGreen2DVortex
+elseif config.initCase == 'TaylorGreen3DVortex' then
+  flow_options.initCase = Flow.TaylorGreen3DVortex
+else
+  error("Flow initialization type not defined")
+end
+flow_options.initParams = L.NewGlobal(L.vector(L.double,5), config.initParams)
+flow_options.bodyForce = L.NewGlobal(L.vec3d, config.bodyForce)
+
 
 local particles_options = {
     -- Feeder is defined by a type and a set of parameters
@@ -346,10 +374,12 @@ local particles_options = {
     --
     -- Feed all particles at start randomly
     -- distributed on a box defined by its center and sides
-    --feederType = Particles.FeederAtStartTimeInRandomBox,
+    feederType = Particles.FeederAtStartTimeInRandomBox,
     --feederParams = L.NewGlobal(L.vector(L.double,6),
-    --                           {pi,pi,pi,2*pi,2*pi,2*pi}), 
-    
+    --                           {pi,pi,pi,2*pi,2*pi,2*pi}), -- TGV problem
+    feederParams = L.NewGlobal(L.vector(L.double,6),
+                               {0.5,0.5,0.5/32.0,1.0,1.0,1.0/32.0}), -- Cavity problem
+
     -- Feeding a given number of particles every timestep randomly
     -- distributed on a box defined by its center and sides
     --feederType = Particles.FeederOverTimeInRandomBox,
@@ -361,10 +391,10 @@ local particles_options = {
     --                           }), 
     --
     ---- UQCase
-    feederType = Particles.FeederUQCase,
-    feederParams = L.NewGlobal(L.vector(L.double,20),
-                       {pi/4,  pi/2,pi,0.1*pi,0.1*pi,pi/2,4, 4,0,0.3,
-                        pi/4,3*pi/2,pi,0.1*pi,0.1*pi,pi/2,4,-4,0,0.8}),
+    --feederType = Particles.FeederUQCase,
+    --feederParams = L.NewGlobal(L.vector(L.double,20),
+    --                   {pi/4,  pi/2,pi,0.1*pi,0.1*pi,pi/2,4, 4,0,0.3,
+    --                    pi/4,3*pi/2,pi,0.1*pi,0.1*pi,pi/2,4,-4,0,0.8}),
     
     -- Collector is defined by a type and a set of parameters
     -- collectorParams is a vector of double values whose meaning
@@ -372,38 +402,117 @@ local particles_options = {
     -- Particles.Collect kernel where it is specialized
     --
     -- Do not collect particles (freely move within the domain)
-    --collectorType = Particles.CollectorNone,
-    --collectorParams = L.NewGlobal(L.vector(L.double,1),{0}),
+    collectorType = Particles.CollectorNone,
+    collectorParams = L.NewGlobal(L.vector(L.double,1),{0}),
     
     -- Collect all particles that exit a box defined by its Cartesian 
     -- min/max coordinates
-    collectorType = Particles.CollectorOutOfBox,
-    collectorParams = L.NewGlobal(L.vector(L.double,6),{0.5,0.5,0.5,12,6,6}),
+    --collectorType = Particles.CollectorOutOfBox,
+    --collectorParams = L.NewGlobal(L.vector(L.double,6),{0.5,0.5,0.5,12,6,6}),
 
-    num = 0,
+    num = 0.0,
     convective_coefficient = L.NewGlobal(L.double, 0.7), -- W m^-2 K^-1
     heat_capacity = L.NewGlobal(L.double, 0.7), -- J Kg^-1 K^-1
-    initialTemperature = 20,
-    density = 1000,
-    diameter_mean = 0.03,
-    diameter_maxDeviation = 0.02,
+    initialTemperature = 250,
+    density = 8900, --1000, --8900,
+    diameter_mean = 1e-5, -- 1.2e-5, --0.03,
+    diameter_maxDeviation = 0.0, --0.02,
     bodyForce = L.NewGlobal(L.vec3d, {0,-0.0,0}),
     --bodyForce = L.NewGlobal(L.vec3d, {0,-1.1,0}),
-    emissivity = 0.5,
+    emissivity = 0.5, --0.4
     absorptivity = 0.5 -- Equal to emissivity in thermal equilibrium
                        -- (Kirchhoff law of thermal radiation)
 }
 
 local radiation_options = {
-    radiationIntensity = 0.0
-    --10.0
+    radiationIntensity = config.radiationIntensity
 }
 
--- IO
--- Choose an output format (0 is the native Python, 1, is for Tecplot)
---IO.outputFormat = 0 -- Python
-IO.outputFormat = 1 -- Tecplot
-IO.outputFileNamePrefix = "../soleilOutput/output"
+-- IO options
+-- Choose an output format (Python native or Tecplot)
+if config.outputFormat == 'Python' then
+  IO.outputFormat = IO.Python
+elseif config.outputFormat == 'Tecplot' then
+  IO.outputFormat = IO.Tecplot
+else
+  error("Output format not implemented")
+end
+-- Store the directory for all output files from the config
+IO.outputFileNamePrefix = config.outputDirectory
+
+-----------------------------------------------------------------------------
+--[[                       Load Data for a Restart                       ]]--
+-----------------------------------------------------------------------------
+
+-- Create empty arrays for storing the restart, in case we will be
+-- reading them from a file and initializing using them below.
+local restartnCells, restartIter, restartTime
+local rho_data_array = {}
+local pressure_data_array = {}
+local velocity_data_array = {}
+
+if flow_options.initCase == Flow.Restart then
+
+  -- here's the path object for our soleil restart file we want to read in.
+  -- Notice that the path is relative to this script's location on
+  -- disk rather than the present working directory, which varies
+  -- depending on where we invoke this script from.
+  local restart_filename = IO.outputFileNamePrefix .. 'outputrestart_101000.dat'
+
+  -- Restart files have the following format
+  --
+  --[[
+   Soleil Flow Restart
+   #cells currentTimeStep currentPhysicalTime
+   rho0 pressure0 u0 v0 w0
+   ...
+   ...   #cells rows of primitives for each cell
+   ...
+  ]]--
+
+  -- In Lua, we can open files just like in C
+  local soleil_in = io.open(tostring(restart_filename), "r")
+  if not soleil_in then
+    error('Error: failed to open '..tostring(restart_filename))
+  end
+
+  -- we can read a line like so
+  local SOLEIL_SIG = soleil_in:read('*line')
+
+  if SOLEIL_SIG ~= 'Soleil Flow Restart' then
+    error('Restart file must begin with the first line "Soleil Flow Restart"')
+  end
+
+  -- read the counts of cells, iterations, and the time
+  restartnCells = soleil_in:read('*number')
+  restartIter   = soleil_in:read('*number')
+  restartTime   = soleil_in:read('*number')
+
+  -- now read in all the density, pressure, and velocity data
+
+  for i = 1, restartnCells do
+    rho_data_array[i]      = soleil_in:read('*number')
+    pressure_data_array[i] = soleil_in:read('*number')
+    local vec = {
+      soleil_in:read('*number'),
+      soleil_in:read('*number'),
+      soleil_in:read('*number')
+    }
+    velocity_data_array[i] = vec
+  end
+  
+  -- don't forget to close the file when done
+  soleil_in:close()
+
+  -- Before exiting, increment the time step and physical time so
+  -- the simulation doesn't repeat from 0. Also, increased the max number
+  -- of iterations so the solver doesn't immediately exit.
+
+  TimeIntegrator.timeStep:set(restartIter)
+  TimeIntegrator.simTime:set(restartTime)
+  TimeIntegrator.max_iter = TimeIntegrator.max_iter + restartIter
+  
+end
 
 -----------------------------------------------------------------------------
 --[[                       GRID/PARTICLES RELATIONS                      ]]--
@@ -503,21 +612,32 @@ local grid_dy = L.NewGlobal(L.double, grid:yCellWidth())
 local grid_dz = L.NewGlobal(L.double, grid:zCellWidth())
 
 -- Create a field for the center coords of the dual cells (i.e., vertices)
-grid.dual_cells:NewField('centerCoordinates', L.vec3d):
+grid.vertices:NewField('centerCoordinates', L.vec3d):
 LoadConstant(L.NewVector(L.double, {0, 0, 0}))
 
--- Conserved variables
-grid.cells:NewField('rho', L.double):
-LoadConstant(0)
-grid.cells:NewField('rhoVelocity', L.vec3d):
-LoadConstant(L.NewVector(L.double, {0, 0, 0}))
-grid.cells:NewField('rhoEnergy', L.double):
-LoadConstant(0)
+-- Create a field to mark the rind layer so it is not written in the output
+-- We need this for both the dual cells (coords) and cells (cell-center data)
+grid.vertices:NewField('vertexRindLayer', L.int):
+LoadConstant(1)
+grid.cells:NewField('cellRindLayer', L.int):
+LoadConstant(1)
 
--- Primitive variables
+-- Primitive variables (may be initialized from a restart)
+grid.cells:NewField('rho', L.double)
+grid.cells:NewField('pressure', L.double)
+grid.cells:NewField('velocity', L.vec3d)
+if flow_options.initCase == Flow.Restart then
+  grid.cells.rho:Load(rho_data_array)
+  grid.cells.pressure:Load(pressure_data_array)
+  grid.cells.velocity:Load(velocity_data_array)
+else
+  grid.cells.rho:LoadConstant(0)
+  grid.cells.pressure:LoadConstant(0)
+  grid.cells.velocity:LoadConstant(L.NewVector(L.double, {0, 0, 0}))
+end
+
+-- Remaining primitive variables
 grid.cells:NewField('centerCoordinates', L.vec3d):
-LoadConstant(L.NewVector(L.double, {0, 0, 0}))
-grid.cells:NewField('velocity', L.vec3d):
 LoadConstant(L.NewVector(L.double, {0, 0, 0}))
 grid.cells:NewField('velocityGradientX', L.vec3d):
 LoadConstant(L.NewVector(L.double, {0, 0, 0}))
@@ -526,8 +646,6 @@ LoadConstant(L.NewVector(L.double, {0, 0, 0}))
 grid.cells:NewField('velocityGradientZ', L.vec3d):
 LoadConstant(L.NewVector(L.double, {0, 0, 0}))
 grid.cells:NewField('temperature', L.double):
-LoadConstant(0)
-grid.cells:NewField('pressure', L.double):
 LoadConstant(0)
 grid.cells:NewField('rhoEnthalpy', L.double):
 LoadConstant(0)
@@ -544,6 +662,12 @@ LoadConstant(0)
 grid.cells:NewField('viscousSpectralRadius', L.double):
 LoadConstant(0)
 grid.cells:NewField('heatConductionSpectralRadius', L.double):
+LoadConstant(0)
+
+-- Conserved variables
+grid.cells:NewField('rhoVelocity', L.vec3d):
+LoadConstant(L.NewVector(L.double, {0, 0, 0}))
+grid.cells:NewField('rhoEnergy', L.double):
 LoadConstant(0)
 
 -- Fields for boundary treatment
@@ -595,7 +719,6 @@ LoadConstant(L.NewVector(L.double, {0, 0, 0}))
 grid.cells:NewField('rhoEnergyFlux', L.double):
 LoadConstant(0)
 
-
 -- Declare and initialize particle relation and fields over the particle
 
 local particles = L.NewRelation(particles_options.num, 'particles')
@@ -630,7 +753,7 @@ LoadConstant(0)
 -- state of a particle:
 --   - a particle not yet fed has a state = 0
 --   - a particle fed into the domain and active has a state = 1
---   - a particle already collected has a state =2
+--   - a particle already collected has a state = 2
 particles:NewField('state', L.int):
 LoadConstant(0)
 -- ID field
@@ -640,7 +763,7 @@ particles:NewField('id', L.int):
 Load(function(i)
     return i
 end)
--- grouID: differentiates particles within a given distribution
+-- groupID: differentiates particles within a given distribution
 -- For example, when multiple injectors are used
 particles:NewField('groupID', L.int):
 LoadConstant(0)
@@ -673,14 +796,14 @@ LoadConstant(0)
 -- Note: - numberOfInteriorCells and areaInterior could be defined as variables
 -- from grid instead of Flow. Here Flow is used to avoid adding things to grid
 -- externally
-Flow.numberOfInteriorCells = L.NewGlobal(L.int, 0)
-Flow.areaInterior = L.NewGlobal(L.double, 0)
-Flow.averagePressure = L.NewGlobal(L.double, 0.0)
-Flow.averageTemperature = L.NewGlobal(L.double, 0.0)
-Flow.averageKineticEnergy = L.NewGlobal(L.double, 0.0)
-Flow.minTemperature = L.NewGlobal(L.double, 0)
-Flow.maxTemperature = L.NewGlobal(L.double, 0)
-Particles.averageTemperature= L.NewGlobal(L.double, 0.0)
+Flow.numberOfInteriorCells   = L.NewGlobal(L.int, 0)
+Flow.areaInterior            = L.NewGlobal(L.double, 0)
+Flow.averagePressure         = L.NewGlobal(L.double, 0.0)
+Flow.averageTemperature      = L.NewGlobal(L.double, 0.0)
+Flow.averageKineticEnergy    = L.NewGlobal(L.double, 0.0)
+Flow.minTemperature          = L.NewGlobal(L.double, 0)
+Flow.maxTemperature          = L.NewGlobal(L.double, 0)
+Particles.averageTemperature = L.NewGlobal(L.double, 0.0)
 
 -----------------------------------------------------------------------------
 --[[                 CONSOLE OUTPUT AFTER PREPROCESSING                  ]]--
@@ -733,8 +856,14 @@ end
 
 -- Compute fluid dynamic viscosity from fluid temperature
 local GetDynamicViscosity = liszt function(temperature)
-    return fluid_options.dynamic_viscosity_ref *
-        cmath.pow(temperature/fluid_options.dynamic_viscosity_temp_ref, 0.75)
+    -- Power Law
+    --return fluid_options.dynamic_viscosity_ref *
+    --    cmath.pow(temperature/fluid_options.dynamic_viscosity_temp_ref, 0.75)
+    -- Sutherland's Law
+    return fluid_options.dynamic_viscosity_ref * 
+         cmath.pow((temperature/fluid_options.dynamic_viscosity_temp_ref),(3.0/2.0))*
+         ((fluid_options.dynamic_viscosity_temp_ref + 110.4)/
+          (temperature + 110.4))
 end
 
 -- Compute fluid flow sound speed based on temperature
@@ -842,10 +971,22 @@ Flow.InitializeCenterCoordinates = liszt kernel(c : grid.cells)
     c.centerCoordinates = L.vec3d({xy[0], xy[1], xy[2]})
 end
 
-Flow.InitializeVertexCoordinates = liszt kernel(c : grid.dual_cells)
-    var xy = c.center
-    c.centerCoordinates = L.vec3d({xy[0], xy[1], xy[2]})
+Flow.InitializeCellRindLayer = liszt kernel(c : grid.cells)
+    c.cellRindLayer = 0
 end
+
+-- Hard coding the vertices until we have access in grid.t
+Flow.InitializeVertexCoordinates = liszt kernel(v : grid.vertices)
+    var x = grid_originX + grid_dx * (L.double(v.xid))
+    var y = grid_originY + grid_dy * (L.double(v.yid))
+    var z = grid_originZ + grid_dz * (L.double(v.zid))
+    v.centerCoordinates = L.vec3d({x, y, z})
+end
+
+Flow.InitializeVertexRindLayer = liszt kernel(v : grid.vertices)
+    v.vertexRindLayer = 0
+end
+
 
 Flow.InitializePrimitives = liszt kernel(c : grid.cells)
     if flow_options.initCase == Flow.TaylorGreen2DVortex then
@@ -903,6 +1044,10 @@ Flow.InitializePrimitives = liszt kernel(c : grid.cells)
       c.velocity[0] = flow_options.initParams[2]
       c.velocity[1] = flow_options.initParams[3]
       c.velocity[2] = flow_options.initParams[4]
+    elseif flow_options.initCase == Flow.Restart then
+    
+     -- Do nothing here, since we have initialized above.
+    
     end
 end
 Flow.UpdateConservedFromPrimitive = liszt kernel(c : grid.cells)
@@ -1504,8 +1649,7 @@ end
 
 Flow.AddBodyForces = liszt kernel(c : grid.cells)
     -- Add body forces to momentum equation
-    c.rhoVelocity_t += c.rho *
-                       flow_options.bodyForce
+    c.rhoVelocity_t += c.rho * flow_options.bodyForce
 end
 
 -----------------
@@ -1555,13 +1699,20 @@ Flow.UpdateAuxiliaryVelocity = liszt kernel(c : grid.cells)
 end
 
 Flow.UpdateGhostFieldsStep1 = liszt kernel(c : grid.cells)
+
+    -- Compute the Cv for updating the Energy equation
+    var cv = fluid_options.gasConstant / (fluid_options.gamma - 1.0)
+
     if c.xneg_depth > 0 then
         var xoffset = XOffset(c.xneg_depth)
         c.rhoBoundary            =   c(xoffset,0,0).rho
-        c.rhoVelocityBoundary[0] =   c(xoffset,0,0).rhoVelocity[0] * xSignX + xBCLeftVelX
-        c.rhoVelocityBoundary[1] =   c(xoffset,0,0).rhoVelocity[1] * xSignY + xBCLeftVelY
-        c.rhoVelocityBoundary[2] =   c(xoffset,0,0).rhoVelocity[2] * xSignZ + xBCLeftVelZ
-        c.rhoEnergyBoundary      =   c(xoffset,0,0).rhoEnergy
+        c.rhoVelocityBoundary[0] =   c(xoffset,0,0).rhoVelocity[0] * xSignX + c(xoffset,0,0).rho*xBCLeftVelX
+        c.rhoVelocityBoundary[1] =   c(xoffset,0,0).rhoVelocity[1] * xSignY + c(xoffset,0,0).rho*xBCLeftVelY
+        c.rhoVelocityBoundary[2] =   c(xoffset,0,0).rhoVelocity[2] * xSignZ + c(xoffset,0,0).rho*xBCLeftVelZ
+        c.rhoEnergyBoundary      =   c(xoffset,0,0).rho * ( cv * c(xoffset,0,0).temperature + 0.5*
+                                                     ((c(xoffset,0,0).velocity[0] * xSignX + xBCLeftVelX) * (c(xoffset,0,0).velocity[0] * xSignX + xBCLeftVelX) +
+                                                      (c(xoffset,0,0).velocity[1] * xSignY + xBCLeftVelY) * (c(xoffset,0,0).velocity[1] * xSignY + xBCLeftVelY) +
+                                                      (c(xoffset,0,0).velocity[2] * xSignZ + xBCLeftVelZ) * (c(xoffset,0,0).velocity[2] * xSignZ + xBCLeftVelZ))) --c(xoffset,0,0).rhoEnergy
         c.velocityBoundary[0]    =   c(xoffset,0,0).velocity[0] * xSignX + xBCLeftVelX
         c.velocityBoundary[1]    =   c(xoffset,0,0).velocity[1] * xSignY + xBCLeftVelY
         c.velocityBoundary[2]    =   c(xoffset,0,0).velocity[2] * xSignZ + xBCLeftVelZ
@@ -1571,10 +1722,13 @@ Flow.UpdateGhostFieldsStep1 = liszt kernel(c : grid.cells)
     if c.xpos_depth > 0 then
         var xoffset = XOffset(c.xpos_depth)
         c.rhoBoundary            =   c(-xoffset,0,0).rho
-        c.rhoVelocityBoundary[0] =   c(-xoffset,0,0).rhoVelocity[0] * xSignX + xBCRightVelX
-        c.rhoVelocityBoundary[1] =   c(-xoffset,0,0).rhoVelocity[1] * xSignY + xBCRightVelY
-        c.rhoVelocityBoundary[2] =   c(-xoffset,0,0).rhoVelocity[2] * xSignZ + xBCRightVelZ
-        c.rhoEnergyBoundary      =   c(-xoffset,0,0).rhoEnergy
+        c.rhoVelocityBoundary[0] =   c(-xoffset,0,0).rhoVelocity[0] * xSignX + c(-xoffset,0,0).rho*xBCRightVelX
+        c.rhoVelocityBoundary[1] =   c(-xoffset,0,0).rhoVelocity[1] * xSignY + c(-xoffset,0,0).rho*xBCRightVelY
+        c.rhoVelocityBoundary[2] =   c(-xoffset,0,0).rhoVelocity[2] * xSignZ + c(-xoffset,0,0).rho*xBCRightVelZ
+        c.rhoEnergyBoundary      =   c(-xoffset,0,0).rho * ( cv * c(-xoffset,0,0).temperature + 0.5*
+                                                     ((c(-xoffset,0,0).velocity[0] * xSignX + xBCRightVelX) * (c(-xoffset,0,0).velocity[0] * xSignX + xBCRightVelX) +
+                                                      (c(-xoffset,0,0).velocity[1] * xSignY + xBCRightVelY) * (c(-xoffset,0,0).velocity[1] * xSignY + xBCRightVelY) +
+                                                      (c(-xoffset,0,0).velocity[2] * xSignZ + xBCRightVelZ) * (c(-xoffset,0,0).velocity[2] * xSignZ + xBCRightVelZ))) --c(-xoffset,0,0).rhoEnergy
         c.velocityBoundary[0]    =   c(-xoffset,0,0).velocity[0] * xSignX + xBCRightVelX
         c.velocityBoundary[1]    =   c(-xoffset,0,0).velocity[1] * xSignY + xBCRightVelY
         c.velocityBoundary[2]    =   c(-xoffset,0,0).velocity[2] * xSignZ + xBCRightVelZ
@@ -1584,10 +1738,13 @@ Flow.UpdateGhostFieldsStep1 = liszt kernel(c : grid.cells)
     if c.yneg_depth > 0 then
         var yoffset = YOffset(c.yneg_depth)
         c.rhoBoundary            =   c(0,yoffset,0).rho
-        c.rhoVelocityBoundary[0] =   c(0,yoffset,0).rhoVelocity[0] * ySignX + yBCLeftVelX
-        c.rhoVelocityBoundary[1] =   c(0,yoffset,0).rhoVelocity[1] * ySignY + yBCLeftVelY
-        c.rhoVelocityBoundary[2] =   c(0,yoffset,0).rhoVelocity[2] * ySignZ + yBCLeftVelZ
-        c.rhoEnergyBoundary      =   c(0,yoffset,0).rhoEnergy
+        c.rhoVelocityBoundary[0] =   c(0,yoffset,0).rhoVelocity[0] * ySignX + c(0,yoffset,0).rho*yBCLeftVelX
+        c.rhoVelocityBoundary[1] =   c(0,yoffset,0).rhoVelocity[1] * ySignY + c(0,yoffset,0).rho*yBCLeftVelY
+        c.rhoVelocityBoundary[2] =   c(0,yoffset,0).rhoVelocity[2] * ySignZ + c(0,yoffset,0).rho*yBCLeftVelZ
+        c.rhoEnergyBoundary      =   c(0,yoffset,0).rho * ( cv * c(0,yoffset,0).temperature + 0.5*
+                                                     ((c(0,yoffset,0).velocity[0] * ySignX + yBCLeftVelX) * (c(0,yoffset,0).velocity[0] * ySignX + yBCLeftVelX) +
+                                                      (c(0,yoffset,0).velocity[1] * ySignY + yBCLeftVelY) * (c(0,yoffset,0).velocity[1] * ySignY + yBCLeftVelY) +
+                                                      (c(0,yoffset,0).velocity[2] * ySignZ + yBCLeftVelZ) * (c(0,yoffset,0).velocity[2] * ySignZ + yBCLeftVelZ))) --c(0,yoffset,0).rhoEnergy
         c.velocityBoundary[0]    =   c(0,yoffset,0).velocity[0] * ySignX + yBCLeftVelX
         c.velocityBoundary[1]    =   c(0,yoffset,0).velocity[1] * ySignY + yBCLeftVelY
         c.velocityBoundary[2]    =   c(0,yoffset,0).velocity[2] * ySignZ + yBCLeftVelZ
@@ -1597,10 +1754,13 @@ Flow.UpdateGhostFieldsStep1 = liszt kernel(c : grid.cells)
     if c.ypos_depth > 0 then
         var yoffset = YOffset(c.ypos_depth)
         c.rhoBoundary            =   c(0,-yoffset,0).rho
-        c.rhoVelocityBoundary[0] =   c(0,-yoffset,0).rhoVelocity[0] * ySignX + yBCRightVelX
-        c.rhoVelocityBoundary[1] =   c(0,-yoffset,0).rhoVelocity[1] * ySignY + yBCRightVelY
-        c.rhoVelocityBoundary[2] =   c(0,-yoffset,0).rhoVelocity[2] * ySignZ + yBCRightVelZ
-        c.rhoEnergyBoundary      =   c(0,-yoffset,0).rhoEnergy
+        c.rhoVelocityBoundary[0] =   c(0,-yoffset,0).rhoVelocity[0] * ySignX + c(0,-yoffset,0).rho*yBCRightVelX
+        c.rhoVelocityBoundary[1] =   c(0,-yoffset,0).rhoVelocity[1] * ySignY + c(0,-yoffset,0).rho*yBCRightVelY
+        c.rhoVelocityBoundary[2] =   c(0,-yoffset,0).rhoVelocity[2] * ySignZ + c(0,-yoffset,0).rho*yBCRightVelZ
+        c.rhoEnergyBoundary      =   c(0,-yoffset,0).rho * ( cv * c(0,-yoffset,0).temperature + 0.5*
+                                                     ((c(0,-yoffset,0).velocity[0] * ySignX + yBCRightVelX) * (c(0,-yoffset,0).velocity[0] * ySignX + yBCRightVelX) +
+                                                      (c(0,-yoffset,0).velocity[1] * ySignY + yBCRightVelY) * (c(0,-yoffset,0).velocity[1] * ySignY + yBCRightVelY) +
+                                                      (c(0,-yoffset,0).velocity[2] * ySignZ + yBCRightVelZ) * (c(0,-yoffset,0).velocity[2] * ySignZ + yBCRightVelZ))) --
         c.velocityBoundary[0]    =   c(0,-yoffset,0).velocity[0] * ySignX + yBCRightVelX
         c.velocityBoundary[1]    =   c(0,-yoffset,0).velocity[1] * ySignY + yBCRightVelY
         c.velocityBoundary[2]    =   c(0,-yoffset,0).velocity[2] * ySignZ + yBCRightVelZ
@@ -1610,10 +1770,13 @@ Flow.UpdateGhostFieldsStep1 = liszt kernel(c : grid.cells)
     if c.zneg_depth > 0 then
         var zoffset = ZOffset(c.zneg_depth)
         c.rhoBoundary            =   c(0,0,zoffset).rho
-        c.rhoVelocityBoundary[0] =   c(0,0,zoffset).rhoVelocity[0] * zSignX + zBCLeftVelX
-        c.rhoVelocityBoundary[1] =   c(0,0,zoffset).rhoVelocity[1] * zSignY + zBCLeftVelY
-        c.rhoVelocityBoundary[2] =   c(0,0,zoffset).rhoVelocity[2] * zSignZ + zBCLeftVelZ
-        c.rhoEnergyBoundary      =   c(0,0,zoffset).rhoEnergy
+        c.rhoVelocityBoundary[0] =   c(0,0,zoffset).rhoVelocity[0] * zSignX + c(0,0,zoffset).rho*zBCLeftVelX
+        c.rhoVelocityBoundary[1] =   c(0,0,zoffset).rhoVelocity[1] * zSignY + c(0,0,zoffset).rho*zBCLeftVelY
+        c.rhoVelocityBoundary[2] =   c(0,0,zoffset).rhoVelocity[2] * zSignZ + c(0,0,zoffset).rho*zBCLeftVelZ
+        c.rhoEnergyBoundary      =   c(0,0,zoffset).rho * ( cv * c(0,0,zoffset).temperature + 0.5*
+                                                     ((c(0,0,zoffset).velocity[0] * zSignX + zBCLeftVelX) * (c(0,0,zoffset).velocity[0] * zSignX + zBCLeftVelX) +
+                                                      (c(0,0,zoffset).velocity[1] * zSignY + zBCLeftVelY) * (c(0,0,zoffset).velocity[1] * zSignY + zBCLeftVelY) +
+                                                      (c(0,0,zoffset).velocity[2] * zSignZ + zBCLeftVelZ) * (c(0,0,zoffset).velocity[2] * zSignZ + zBCLeftVelZ))) --c(0,0,zoffset).rhoEnergy
         c.velocityBoundary[0]    =   c(0,0,zoffset).velocity[0] * zSignX + zBCLeftVelX
         c.velocityBoundary[1]    =   c(0,0,zoffset).velocity[1] * zSignY + zBCLeftVelY
         c.velocityBoundary[2]    =   c(0,0,zoffset).velocity[2] * zSignZ + zBCLeftVelZ
@@ -1623,10 +1786,13 @@ Flow.UpdateGhostFieldsStep1 = liszt kernel(c : grid.cells)
     if c.zpos_depth > 0 then
         var zoffset = ZOffset(c.zpos_depth)
         c.rhoBoundary            =   c(0,0,-zoffset).rho
-        c.rhoVelocityBoundary[0] =   c(0,0,-zoffset).rhoVelocity[0] * zSignX + zBCRightVelX
-        c.rhoVelocityBoundary[1] =   c(0,0,-zoffset).rhoVelocity[1] * zSignY + zBCRightVelY
-        c.rhoVelocityBoundary[2] =   c(0,0,-zoffset).rhoVelocity[2] * zSignZ + zBCRightVelZ
-        c.rhoEnergyBoundary      =   c(0,0,-zoffset).rhoEnergy
+        c.rhoVelocityBoundary[0] =   c(0,0,-zoffset).rhoVelocity[0] * zSignX + c(0,0,-zoffset).rho*zBCRightVelX
+        c.rhoVelocityBoundary[1] =   c(0,0,-zoffset).rhoVelocity[1] * zSignY + c(0,0,-zoffset).rho*zBCRightVelY
+        c.rhoVelocityBoundary[2] =   c(0,0,-zoffset).rhoVelocity[2] * zSignZ + c(0,0,-zoffset).rho*zBCRightVelZ
+        c.rhoEnergyBoundary      =   c(0,0,-zoffset).rho * ( cv * c(0,0,-zoffset).temperature + 0.5*
+                                                     ((c(0,0,-zoffset).velocity[0] * zSignX + zBCRightVelX) * (c(0,0,-zoffset).velocity[0] * zSignX + zBCRightVelX) +
+                                                      (c(0,0,-zoffset).velocity[1] * zSignY + zBCRightVelY) * (c(0,0,-zoffset).velocity[1] * zSignY + zBCRightVelY) +
+                                                      (c(0,0,-zoffset).velocity[2] * zSignZ + zBCRightVelZ) * (c(0,0,-zoffset).velocity[2] * zSignZ + zBCRightVelZ))) --c(0,0,-zoffset).rhoEnergy
         c.velocityBoundary[0]    =   c(0,0,-zoffset).velocity[0] * zSignX + zBCRightVelX
         c.velocityBoundary[1]    =   c(0,0,-zoffset).velocity[1] * zSignY + zBCRightVelY
         c.velocityBoundary[2]    =   c(0,0,-zoffset).velocity[2] * zSignZ + zBCRightVelZ
@@ -1737,53 +1903,81 @@ function Flow.UpdateGhostVelocity()
 end
 
 Flow.UpdateGhostConservedStep1 = liszt kernel(c : grid.cells)
+
+    -- Compute the Cv for updating the Energy equation
+    var cv = fluid_options.gasConstant / (fluid_options.gamma - 1.0)
+
     if c.xneg_depth > 0 then
         var xoffset = XOffset(c.xneg_depth)
         c.rhoBoundary            =   c(xoffset,0,0).rho
-        c.rhoVelocityBoundary[0] =   c(xoffset,0,0).rhoVelocity[0] * xSignX + xBCLeftVelX
-        c.rhoVelocityBoundary[1] =   c(xoffset,0,0).rhoVelocity[1] * xSignY + xBCLeftVelY
-        c.rhoVelocityBoundary[2] =   c(xoffset,0,0).rhoVelocity[2] * xSignZ + xBCLeftVelZ
-        c.rhoEnergyBoundary      =   c(xoffset,0,0).rhoEnergy
+        c.rhoVelocityBoundary[0] =   c(xoffset,0,0).rhoVelocity[0] * xSignX + c(xoffset,0,0).rho*xBCLeftVelX
+        c.rhoVelocityBoundary[1] =   c(xoffset,0,0).rhoVelocity[1] * xSignY + c(xoffset,0,0).rho*xBCLeftVelY
+        c.rhoVelocityBoundary[2] =   c(xoffset,0,0).rhoVelocity[2] * xSignZ + c(xoffset,0,0).rho*xBCLeftVelZ
+        --c.rhoEnergyBoundary      =   c(xoffset,0,0).rhoEnergy
+        c.rhoEnergyBoundary      =   c(xoffset,0,0).rho * ( cv * c(xoffset,0,0).temperature + 0.5*
+                                                     ((c(xoffset,0,0).velocity[0] * xSignX + xBCLeftVelX) * (c(xoffset,0,0).velocity[0] * xSignX + xBCLeftVelX) +
+                                                      (c(xoffset,0,0).velocity[1] * xSignY + xBCLeftVelY) * (c(xoffset,0,0).velocity[1] * xSignY + xBCLeftVelY) +
+                                                      (c(xoffset,0,0).velocity[2] * xSignZ + xBCLeftVelZ) * (c(xoffset,0,0).velocity[2] * xSignZ + xBCLeftVelZ))) --
     end
     if c.xpos_depth > 0 then
         var xoffset = XOffset(c.xpos_depth)
         c.rhoBoundary            =   c(-xoffset,0,0).rho
-        c.rhoVelocityBoundary[0] =   c(-xoffset,0,0).rhoVelocity[0] * xSignX + xBCRightVelX
-        c.rhoVelocityBoundary[1] =   c(-xoffset,0,0).rhoVelocity[1] * xSignY + xBCRightVelY
-        c.rhoVelocityBoundary[2] =   c(-xoffset,0,0).rhoVelocity[2] * xSignZ + xBCRightVelZ
-        c.rhoEnergyBoundary      =   c(-xoffset,0,0).rhoEnergy
+        c.rhoVelocityBoundary[0] =   c(-xoffset,0,0).rhoVelocity[0] * xSignX + c(-xoffset,0,0).rho*xBCRightVelX
+        c.rhoVelocityBoundary[1] =   c(-xoffset,0,0).rhoVelocity[1] * xSignY + c(-xoffset,0,0).rho*xBCRightVelY
+        c.rhoVelocityBoundary[2] =   c(-xoffset,0,0).rhoVelocity[2] * xSignZ + c(-xoffset,0,0).rho*xBCRightVelZ
+        --c.rhoEnergyBoundary      =   c(-xoffset,0,0).rhoEnergy
+        c.rhoEnergyBoundary      =   c(-xoffset,0,0).rho * ( cv * c(-xoffset,0,0).temperature + 0.5*
+                                                     ((c(-xoffset,0,0).velocity[0] * xSignX + xBCRightVelX) * (c(-xoffset,0,0).velocity[0] * xSignX + xBCRightVelX) +
+                                                      (c(-xoffset,0,0).velocity[1] * xSignY + xBCRightVelY) * (c(-xoffset,0,0).velocity[1] * xSignY + xBCRightVelY) +
+                                                      (c(-xoffset,0,0).velocity[2] * xSignZ + xBCRightVelZ) * (c(-xoffset,0,0).velocity[2] * xSignZ + xBCRightVelZ)))
     end
     if c.yneg_depth > 0 then
         var yoffset = YOffset(c.yneg_depth)
         c.rhoBoundary            =   c(0,yoffset,0).rho
-        c.rhoVelocityBoundary[0] =   c(0,yoffset,0).rhoVelocity[0] * ySignX + yBCLeftVelX
-        c.rhoVelocityBoundary[1] =   c(0,yoffset,0).rhoVelocity[1] * ySignY + yBCLeftVelY
-        c.rhoVelocityBoundary[2] =   c(0,yoffset,0).rhoVelocity[2] * ySignZ + yBCLeftVelZ
-        c.rhoEnergyBoundary      =   c(0,yoffset,0).rhoEnergy
+        c.rhoVelocityBoundary[0] =   c(0,yoffset,0).rhoVelocity[0] * ySignX + c(0,yoffset,0).rho*yBCLeftVelX
+        c.rhoVelocityBoundary[1] =   c(0,yoffset,0).rhoVelocity[1] * ySignY + c(0,yoffset,0).rho*yBCLeftVelY
+        c.rhoVelocityBoundary[2] =   c(0,yoffset,0).rhoVelocity[2] * ySignZ + c(0,yoffset,0).rho*yBCLeftVelZ
+        --c.rhoEnergyBoundary      =   c(0,yoffset,0).rhoEnergy
+        c.rhoEnergyBoundary      =   c(0,yoffset,0).rho * ( cv * c(0,yoffset,0).temperature + 0.5*
+                                                     ((c(0,yoffset,0).velocity[0] * ySignX + yBCLeftVelX) * (c(0,yoffset,0).velocity[0] * ySignX + yBCLeftVelX) +
+                                                      (c(0,yoffset,0).velocity[1] * ySignY + yBCLeftVelY) * (c(0,yoffset,0).velocity[1] * ySignY + yBCLeftVelY) +
+                                                      (c(0,yoffset,0).velocity[2] * ySignZ + yBCLeftVelZ) * (c(0,yoffset,0).velocity[2] * ySignZ + yBCLeftVelZ)))
     end
     if c.ypos_depth > 0 then
         var yoffset = YOffset(c.ypos_depth)
         c.rhoBoundary            =   c(0,-yoffset,0).rho
-        c.rhoVelocityBoundary[0] =   c(0,-yoffset,0).rhoVelocity[0] * ySignX + yBCRightVelX
-        c.rhoVelocityBoundary[1] =   c(0,-yoffset,0).rhoVelocity[1] * ySignY + yBCRightVelY
-        c.rhoVelocityBoundary[2] =   c(0,-yoffset,0).rhoVelocity[2] * ySignZ + yBCRightVelZ
-        c.rhoEnergyBoundary      =   c(0,-yoffset,0).rhoEnergy
+        c.rhoVelocityBoundary[0] =   c(0,-yoffset,0).rhoVelocity[0] * ySignX + c(0,-yoffset,0).rho*yBCRightVelX
+        c.rhoVelocityBoundary[1] =   c(0,-yoffset,0).rhoVelocity[1] * ySignY + c(0,-yoffset,0).rho*yBCRightVelY
+        c.rhoVelocityBoundary[2] =   c(0,-yoffset,0).rhoVelocity[2] * ySignZ + c(0,-yoffset,0).rho*yBCRightVelZ
+        --c.rhoEnergyBoundary      =   c(0,-yoffset,0).rhoEnergy
+        c.rhoEnergyBoundary      =   c(0,-yoffset,0).rho * ( cv * c(0,-yoffset,0).temperature + 0.5*
+                                                     ((c(0,-yoffset,0).velocity[0] * ySignX + yBCRightVelX) * (c(0,-yoffset,0).velocity[0] * ySignX + yBCRightVelX) +
+                                                      (c(0,-yoffset,0).velocity[1] * ySignY + yBCRightVelY) * (c(0,-yoffset,0).velocity[1] * ySignY + yBCRightVelY) +
+                                                      (c(0,-yoffset,0).velocity[2] * ySignZ + yBCRightVelZ) * (c(0,-yoffset,0).velocity[2] * ySignZ + yBCRightVelZ)))
     end
     if c.zneg_depth > 0 then
         var zoffset = ZOffset(c.zneg_depth)
         c.rhoBoundary            =   c(0,0,zoffset).rho
-        c.rhoVelocityBoundary[0] =   c(0,0,zoffset).rhoVelocity[0] * zSignX + zBCLeftVelX
-        c.rhoVelocityBoundary[1] =   c(0,0,zoffset).rhoVelocity[1] * zSignY + zBCLeftVelY
-        c.rhoVelocityBoundary[2] =   c(0,0,zoffset).rhoVelocity[2] * zSignZ + zBCLeftVelZ
-        c.rhoEnergyBoundary      =   c(0,0,zoffset).rhoEnergy
+        c.rhoVelocityBoundary[0] =   c(0,0,zoffset).rhoVelocity[0] * zSignX + c(0,0,zoffset).rho*zBCLeftVelX
+        c.rhoVelocityBoundary[1] =   c(0,0,zoffset).rhoVelocity[1] * zSignY + c(0,0,zoffset).rho*zBCLeftVelY
+        c.rhoVelocityBoundary[2] =   c(0,0,zoffset).rhoVelocity[2] * zSignZ + c(0,0,zoffset).rho*zBCLeftVelZ
+        --c.rhoEnergyBoundary      =   c(0,0,zoffset).rhoEnergy
+        c.rhoEnergyBoundary      =   c(0,0,zoffset).rho * ( cv * c(0,0,zoffset).temperature + 0.5*
+                                                     ((c(0,0,zoffset).velocity[0] * zSignX + zBCLeftVelX) * (c(0,0,zoffset).velocity[0] * zSignX + zBCLeftVelX) +
+                                                      (c(0,0,zoffset).velocity[1] * zSignY + zBCLeftVelY) * (c(0,0,zoffset).velocity[1] * zSignY + zBCLeftVelY) +
+                                                      (c(0,0,zoffset).velocity[2] * zSignZ + zBCLeftVelZ) * (c(0,0,zoffset).velocity[2] * zSignZ + zBCLeftVelZ)))
     end
     if c.zpos_depth > 0 then
         var zoffset = ZOffset(c.zpos_depth)
         c.rhoBoundary            =   c(0,0,-zoffset).rho
-        c.rhoVelocityBoundary[0] =   c(0,0,-zoffset).rhoVelocity[0] * zSignX + zBCRightVelX
-        c.rhoVelocityBoundary[1] =   c(0,0,-zoffset).rhoVelocity[1] * zSignY + zBCRightVelY
-        c.rhoVelocityBoundary[2] =   c(0,0,-zoffset).rhoVelocity[2] * zSignZ + zBCRightVelZ
-        c.rhoEnergyBoundary      =   c(0,0,-zoffset).rhoEnergy
+        c.rhoVelocityBoundary[0] =   c(0,0,-zoffset).rhoVelocity[0] * zSignX + c(0,0,-zoffset).rho*zBCRightVelX
+        c.rhoVelocityBoundary[1] =   c(0,0,-zoffset).rhoVelocity[1] * zSignY + c(0,0,-zoffset).rho*zBCRightVelY
+        c.rhoVelocityBoundary[2] =   c(0,0,-zoffset).rhoVelocity[2] * zSignZ + c(0,0,-zoffset).rho*zBCRightVelZ
+        --c.rhoEnergyBoundary      =   c(0,0,-zoffset).rhoEnergy
+        c.rhoEnergyBoundary      =   c(0,0,-zoffset).rho * ( cv * c(0,0,-zoffset).temperature + 0.5*
+                                                     ((c(0,0,-zoffset).velocity[0] * zSignX + zBCRightVelX) * (c(0,0,-zoffset).velocity[0] * zSignX + zBCRightVelX) +
+                                                      (c(0,0,-zoffset).velocity[1] * zSignY + zBCRightVelY) * (c(0,0,-zoffset).velocity[1] * zSignY + zBCRightVelY) +
+                                                      (c(0,0,-zoffset).velocity[2] * zSignZ + zBCRightVelZ) * (c(0,0,-zoffset).velocity[2] * zSignZ + zBCRightVelZ)))
     end
 end
 Flow.UpdateGhostConservedStep2 = liszt kernel(c : grid.cells)
@@ -2268,6 +2462,7 @@ end
 
 Particles.UpdateAuxiliaryStep1 = liszt kernel(p : particles)
     if p.state == 1 then
+        --L.print(p.position[0])
         p.position_ghost[0] = p.position[0]
         p.position_ghost[1] = p.position[1]
         p.position_ghost[2] = p.position[2]
@@ -2487,36 +2682,36 @@ end
 
 -- Write particles field to output file
 Particles.WriteField = function (outputFileNamePrefix,field)
-    -- Make up complete file name based on name of field
-    local outputFileName = outputFileNamePrefix .. "_" ..
-                           field:Name() .. ".txt"
-    -- Open file
-    local outputFile = io.output(outputFileName)
-    -- Write data
-    local values = field:DumpToList()
-    local N      = field:Size()
+  -- Make up complete file name based on name of field
+  local outputFileName = outputFileNamePrefix .. "_" ..
+  field:Name() .. ".txt"
+  -- Open file
+  local outputFile = io.output(outputFileName)
+  -- Write data
+  local values = field:DumpToList()
+  local N      = field:Size()
 
-    if field:Type():isVector() then
-        local veclen = field:Type().N
-        io.write("# ", N, " ", veclen, "\n")
-        for i=1,N do
-            local s = ''
-            for j=1,veclen do
-                local t = tostring(values[i][j]):gsub('ULL',' ')
-                s = s .. ' ' .. t .. ''
-            end
-            -- i-1 to return to 0 indexing
-            io.write("", i-1, s, "\n")
-        end
-    else
-        io.write("# ", N, " ", 1, "\n")
-        for i=1,N do
-            local t = tostring(values[i]):gsub('ULL', ' ')
-            -- i-1 to return to 0 indexing
-            io.write("", i-1, ' ', t,"\n")
-        end
+  if field:Type():isVector() then
+    local veclen = field:Type().N
+    io.write("# ", N, " ", veclen, "\n")
+    for i=1,N do
+      local s = ''
+      for j=1,veclen do
+        local t = tostring(values[i][j]):gsub('ULL',' ')
+        s = s .. ' ' .. t .. ''
+      end
+      -- i-1 to return to 0 indexing
+      io.write("", i-1, s, "\n")
     end
-    io.close()
+    else
+    io.write("# ", N, " ", 1, "\n")
+    for i=1,N do
+      local t = tostring(values[i]):gsub('ULL', ' ')
+      -- i-1 to return to 0 indexing
+      io.write("", i-1, ' ', t,"\n")
+    end
+  end
+  io.close()
 end
 
 ----------------
@@ -2650,15 +2845,17 @@ end
 
 function TimeIntegrator.InitializeVariables()
     Flow.InitializeCenterCoordinates(grid.cells)
-    Flow.InitializeVertexCoordinates(grid.dual_cells)
+    Flow.InitializeCellRindLayer(grid.cells.interior)
+    Flow.InitializeVertexCoordinates(grid.vertices)
+    Flow.InitializeVertexRindLayer(grid.vertices.interior)
     Flow.InitializePrimitives(grid.cells.interior)
     Flow.UpdateConservedFromPrimitive(grid.cells.interior)
     Flow.UpdateGhost()
     Flow.UpdateAuxiliary()
 
     Particles.Feed(particles)
-    --Particles.Locate(particles)
-    --Particles.SetVelocitiesToFlow(particles)
+    Particles.Locate(particles)
+    Particles.SetVelocitiesToFlow(particles)
 end
 
 function TimeIntegrator.ComputeDFunctionDt()
@@ -2668,7 +2865,7 @@ function TimeIntegrator.ComputeDFunctionDt()
     Flow.AddBodyForces(grid.cells.interior)
     Particles.AddFlowCoupling(particles)
     --Flow.AddParticlesCoupling(particles)
-    Particles.AddBodyForces(particles)
+    --Particles.AddBodyForces(particles)
     --Particles.AddRadiation(particles)
 end
 
@@ -2762,200 +2959,297 @@ end
 
 function IO.WriteOutput(timeStep)
 
-    -- Output log headers at a specified frequency
+-- Output log headers at a specified frequency
 
-    if timeStep % TimeIntegrator.headerFrequency == 0 then
-        io.stdout:write("\n Current time step: ",
-        string.format(" %2.6e",TimeIntegrator.deltaTime:get()), " s.\n")
-        io.stdout:write(" Min Flow Temp: ",
-        string.format("%11.6f",Flow.minTemperature:get()), " K.")
-        io.stdout:write(" Max Flow Temp: ",
-        string.format("%11.6f",Flow.maxTemperature:get()), " K.\n\n")
-        io.stdout:write(string.format("%8s",'    Iter'),
-        string.format("%12s",'   Time(s)'),
-        string.format("%12s",'Avg Press'),
-        string.format("%12s",'Avg Temp'),
-        string.format("%12s",'Avg KE'),
-        string.format("%12s",'Particle T'),'\n')
-    end
-
-    -- Check if we have particles (avoid nan printed to screen)
-
-    local particle_avg_temp = 0.0
-    if particles_options.num > 0 then
-      particle_avg_temp = Particles.averageTemperature:get()
-    end
-
-    -- Ouput the current stats to the console for this iteration
-
-    io.stdout:write(string.format("%8d",timeStep),
-    string.format(" %11.6f",TimeIntegrator.simTime:get()),
-    string.format(" %11.6f",Flow.averagePressure:get()),
-    string.format(" %11.6f",Flow.averageTemperature:get()),
-    string.format(" %11.6f",Flow.averageKineticEnergy:get()),
-    string.format(" %11.6f",particle_avg_temp),'\n')
-
-    -- Check if it is time to output to file
-    if timeStep % TimeIntegrator.outputEveryTimeSteps == 0 then
-
-        -- Native Python output format
-        if IO.outputFormat == 0 then
-            --print("Time to output")
-            local outputFileName = IO.outputFileNamePrefix .. "_" ..
-              tostring(timeStep)
-            Flow.WriteField(outputFileName .. "_flow",
-              grid:xSize(), grid:ySize(), grid:zSize(),
-              grid.cells.temperature)
-            --Flow.WriteField(outputFileName .. "_flow",
-            --  grid:xSize(), grid:ySize(), grid:zSize(),
-            --  grid.cells.rho)
-            Flow.WriteField(outputFileName .. "_flow",
-              grid:xSize(), grid:ySize(), grid:zSize(),
-              grid.cells.pressure)
-            Flow.WriteField(outputFileName .. "_flow",
-              grid:xSize(), grid:ySize(), grid:zSize(),
-              grid.cells.kineticEnergy)
-            Particles.WriteField(outputFileName .. "_particles",
-              particles.position)
-            Particles.WriteField(outputFileName .. "_particles",
-              particles.velocity)
-            Particles.WriteField(outputFileName .. "_particles",
-              particles.temperature)
-            Particles.WriteField(outputFileName .. "_particles",
-              particles.state)
-            Particles.WriteField(outputFileName .. "_particles",
-              particles.id)
-            Particles.WriteField(outputFileName .. "_particles",
-              particles.groupID)
-
-        elseif IO.outputFormat == 1 then
-
-            -- Tecplot ASCII format
-            local outputFileName = IO.outputFileNamePrefix .. "_" ..
-              tostring(timeStep) .. ".dat"
-
-            -- Open file
-            local outputFile = io.output(outputFileName)
-
-            -- Write header
-            io.write('TITLE = "Data"\n')
-            io.write('VARIABLES = "X", "Y", "Z", "Density", "X-Velocity", "Y-Velocity", "Z-Velocity", "Pressure", "Temperature"\n')
-            io.write('ZONE STRANDID=', timeStep, ' SOLUTIONTIME=', TimeIntegrator.simTime:get(), ' I=', grid:xSize()+1, ' J=', grid:ySize()+1, ' K=', grid:zSize()+1, ' DATAPACKING=BLOCK VARLOCATION=([4-9]=CELLCENTERED)\n')
-
-            --grid.dual_cells:NewField('boundary_for_output', L.bool)
-            --grid.dual_cells.boundary_for_output:Load(false)
-            --local record_boundary = liszt kernel(dc : grid.dual_cells)
-            --  dc.boundary_for_output =
-            --end
-
-            --for i=1,n do
-            --  for ...
-            --    xyz = F(i,j,k)
-            --end
-
-            local s = ''
-
-            -- Write data
-            local values = grid.dual_cells.centerCoordinates:DumpToList()
-            local N      = grid.dual_cells.centerCoordinates:Size()
-            local veclen = grid.dual_cells.centerCoordinates:Type().N
-
-            -- Need to dump all x coords (fastest), then y, then z
-            for j=1,veclen do
-                s = ''
-                for i=1,N do
-                    local t = tostring(values[i][j]):gsub('ULL',' ')
-                    s = s .. ' ' .. t .. ''
-                    if i % 5 == 0 then
-                        s = s .. '\n'
-                        io.write("", s, "\n")
-                        s = ''
-                    end
-                end
-                -- i-1 to return to 0 indexing
-                io.write("", s, "\n")
-            end
-
-            -- Now write density, velocity, pressure, temperature
-
-            values = grid.cells.rho:DumpToList()
-            N      = grid.cells.rho:Size()
-            --for j=1,veclen do
-            s = ''
-            for i=1,N do
-              local t = tostring(values[i]):gsub('ULL',' ')
-              s = s .. ' ' .. t .. ''
-              if i % 5 == 0 then
-                s = s .. '\n'
-io.write("", s, "\n")
-s = ''
+if timeStep % TimeIntegrator.headerFrequency == 0 then
+  io.stdout:write("\n Current time step: ",
+    string.format(" %2.6e",TimeIntegrator.deltaTime:get()), " s.\n")
+  io.stdout:write(" Min Flow Temp: ",
+    string.format("%11.6f",Flow.minTemperature:get()), " K.")
+  io.stdout:write(" Max Flow Temp: ",
+    string.format("%11.6f",Flow.maxTemperature:get()), " K.\n\n")
+  io.stdout:write(string.format("%8s",'    Iter'),
+    string.format("%12s",'   Time(s)'),
+    string.format("%12s",'Avg Press'),
+    string.format("%12s",'Avg Temp'),
+    string.format("%12s",'Avg KE'),
+    string.format("%12s",'Particle T'),'\n')
 end
-            end
-            -- i-1 to return to 0 indexing
-            io.write("", s, "\n")
-            --end
 
-            values = grid.cells.velocity:DumpToList()
-            N      = grid.cells.velocity:Size()
-            veclen = grid.cells.velocity:Type().N
-            for j=1,veclen do
-             s = ''
-            for i=1,N do
-            local t = tostring(values[i][j]):gsub('ULL',' ')
-            s = s .. ' ' .. t .. ''
-              if i % 5 == 0 then
-                s = s .. '\n'
-io.write("", s, "\n")
-s = ''
-              end
-            end
-            io.write("", s, "\n")
-            end
+-- Check if we have particles (avoid nan printed to screen)
 
-            values = grid.cells.pressure:DumpToList()
-            N      = grid.cells.pressure:Size()
-            --for j=1,veclen do
-            s = ''
-            for i=1,N do
-            local t = tostring(values[i]):gsub('ULL',' ')
-            s = s .. ' ' .. t .. ''
-            if i % 5 == 0 then
-            s = s .. '\n'
-io.write("", s, "\n")
-s = ''
-            end
-            end
-            -- i-1 to return to 0 indexing
-            io.write("", s, "\n")
-            --end
+  local particle_avg_temp = 0.0
+  if particles_options.num > 0 then
+    particle_avg_temp = Particles.averageTemperature:get()
+  end
 
-            values = grid.cells.temperature:DumpToList()
-            N      = grid.cells.temperature:Size()
-            --for j=1,veclen do
-            s = ''
-            for i=1,N do
-            local t = tostring(values[i]):gsub('ULL',' ')
-            s = s .. ' ' .. t .. ''
-            if i % 5 == 0 then
-            s = s .. '\n'
-io.write("", s, "\n")
-s = ''
-            end
-            end
-            -- i-1 to return to 0 indexing
-            io.write("", s, "\n")
-            --end
+-- Ouput the current stats to the console for this iteration
 
-            io.close()
+  io.stdout:write(string.format("%8d",timeStep),
+  string.format(" %11.6f",TimeIntegrator.simTime:get()),
+  string.format(" %11.6f",Flow.averagePressure:get()),
+  string.format(" %11.6f",Flow.averageTemperature:get()),
+  string.format(" %11.6f",Flow.averageKineticEnergy:get()),
+  string.format(" %11.6f",particle_avg_temp),'\n')
 
-            -- Write the Tecplot header
-            --Flow.WriteTecplotHeader(outputFileName)
-
-        else
-            print("Output format not defined. No output written to disk.")
-        end
-
+  -- Check if it is time to output a restart file
+  if timeStep % TimeIntegrator.restartEveryTimeSteps == 0 then
+    
+    -- Prepare the restart file name for the current iteration
+    
+    local outputFileName = IO.outputFileNamePrefix .. "restart_" ..
+    tostring(timeStep) .. ".dat"
+    
+    -- Open file
+    
+    local outputFile = io.output(outputFileName)
+    
+    -- Dump the fields to lists for writing
+    
+    local rho      = grid.cells.rho:DumpToList()
+    local pressure = grid.cells.pressure:DumpToList()
+    local velocity = grid.cells.velocity:DumpToList()
+    
+    local nCells = grid.cells.velocity:Size()
+    local nDim   = grid.cells.velocity:Type().N
+    
+    -- Write header: number of cells, iteration, physical time
+    
+    io.write('Soleil Flow Restart\n')
+    local s = '' .. tostring(nCells)
+    s = s .. ' ' .. tostring(timeStep)
+    s = s .. ' ' .. tostring(TimeIntegrator.simTime:get()) .. '\n'
+    io.write(s)
+    
+    -- Write the primitve variables: density, pressure, u, v, w. 
+    -- One row per cell, in the order it was dumped to the list.
+    
+    for i=1,nCells do
+      s = ''
+      local dens = tostring(rho[i]):gsub('ULL',' ')
+      s = s .. dens .. ' '
+      local pres = tostring(pressure[i]):gsub('ULL',' ')
+      s = s .. pres .. ' '
+      for j=1,nDim do
+        local vel = tostring(velocity[i][j]):gsub('ULL',' ')
+        s = s .. vel .. ' '
+      end
+      s = s .. '\n'
+      io.write(s)
     end
+    
+    -- Close the restart file
+    io.close()
+    
+  end
+
+-- Check if it is time to output to file
+if timeStep % TimeIntegrator.outputEveryTimeSteps == 0 then
+
+-- Native Python output format
+if IO.outputFormat == IO.Python then
+
+  -- On the first iteration only, output the cell coords and particle diameters
+  if timeStep == 0 then
+      Flow.WriteField(IO.outputFileNamePrefix,
+                      grid:xSize(), grid:ySize(), grid:zSize(),
+                      grid.cells.centerCoordinates)
+      Particles.WriteField(IO.outputFileNamePrefix .. "_particles",
+                           particles.diameter)
+  end
+
+--print("Time to output")
+local outputFileName = IO.outputFileNamePrefix .. "_" ..
+tostring(timeStep)
+Flow.WriteField(outputFileName .. "_flow",
+  grid:xSize(), grid:ySize(), grid:zSize(),
+  grid.cells.temperature)
+--Flow.WriteField(outputFileName .. "_flow",
+--  grid:xSize(), grid:ySize(), grid:zSize(),
+--  grid.cells.rho)
+Flow.WriteField(outputFileName .. "_flow",
+  grid:xSize(), grid:ySize(), grid:zSize(),
+  grid.cells.pressure)
+Flow.WriteField(outputFileName .. "_flow",
+  grid:xSize(), grid:ySize(), grid:zSize(),
+  grid.cells.kineticEnergy)
+Particles.WriteField(outputFileName .. "_particles",
+  particles.position)
+Particles.WriteField(outputFileName .. "_particles",
+  particles.velocity)
+Particles.WriteField(outputFileName .. "_particles",
+  particles.temperature)
+Particles.WriteField(outputFileName .. "_particles",
+  particles.state)
+Particles.WriteField(outputFileName .. "_particles",
+  particles.id)
+Particles.WriteField(outputFileName .. "_particles",
+  particles.groupID)
+
+elseif IO.outputFormat == IO.Tecplot then
+
+-- Tecplot ASCII format
+local outputFileName = IO.outputFileNamePrefix .. "flow_" ..
+tostring(timeStep) .. ".dat"
+
+-- Open file
+local outputFile = io.output(outputFileName)
+
+-- Get the bool fields for the rind layer so we can avoid writing
+local cell_rind = grid.cells.cellRindLayer:DumpToList()
+local vert_rind = grid.vertices.vertexRindLayer:DumpToList()
+
+-- Compute the number of vertices to be written
+
+-- Write header
+io.write('TITLE = "Data"\n')
+io.write('VARIABLES = "X", "Y", "Z", "Density", "X-Velocity", "Y-Velocity", "Z-Velocity", "Pressure", "Temperature"\n')
+io.write('ZONE STRANDID=', timeStep+1, ' SOLUTIONTIME=', TimeIntegrator.simTime:get(), ' I=', grid_options.xnum+1, ' J=', grid_options.ynum+1, ' K=', grid_options.znum+1, ' DATAPACKING=BLOCK VARLOCATION=([4-9]=CELLCENTERED)\n')
+
+local s = ''
+
+-- Write data
+local values = grid.vertices.centerCoordinates:DumpToList()
+local N      = grid.vertices.centerCoordinates:Size()
+local veclen = grid.vertices.centerCoordinates:Type().N
+
+-- Need to dump all x coords (fastest), then y, then z
+for j=1,veclen do
+  s = ''
+  for i=1,N do
+    local t = tostring(values[i][j]):gsub('ULL',' ')
+-- only write this value if it's interior
+if vert_rind[i] == 0 then
+  s = s .. ' ' .. t .. ''
+end
+if i % 5 == 0 then
+  s = s .. '\n'
+  io.write("", s)
+  s = ''
+end
+end
+-- i-1 to return to 0 indexing
+io.write("", s)
+end
+
+-- Now write density, velocity, pressure, temperature
+
+values = grid.cells.rho:DumpToList()
+N      = grid.cells.rho:Size()
+--for j=1,veclen do
+s = ''
+for i=1,N do
+  local t = tostring(values[i]):gsub('ULL',' ')
+  if cell_rind[i] == 0 then
+    s = s .. ' ' .. t .. ''
+  end
+  if i % 5 == 0 then
+    s = s .. '\n'
+    io.write("", s)
+    s = ''
+  end
+end
+-- i-1 to return to 0 indexing
+io.write("", s)
+--end
+
+values = grid.cells.velocity:DumpToList()
+N      = grid.cells.velocity:Size()
+veclen = grid.cells.velocity:Type().N
+for j=1,veclen do
+  s = ''
+  for i=1,N do
+    local t = tostring(values[i][j]):gsub('ULL',' ')
+    if cell_rind[i]== 0 then
+      s = s .. ' ' .. t .. ''
+    end
+    if i % 5 == 0 then
+      s = s .. '\n'
+      io.write("", s)
+      s = ''
+    end
+  end
+  io.write("", s)
+end
+
+values = grid.cells.pressure:DumpToList()
+N      = grid.cells.pressure:Size()
+--for j=1,veclen do
+s = ''
+for i=1,N do
+  local t = tostring(values[i]):gsub('ULL',' ')
+  if cell_rind[i]== 0 then
+    s = s .. ' ' .. t .. ''
+  end
+  if i % 5 == 0 then
+    s = s .. '\n'
+    io.write("", s)
+    s = ''
+  end
+end
+-- i-1 to return to 0 indexing
+io.write("", s)
+--end
+
+values = grid.cells.temperature:DumpToList()
+N      = grid.cells.temperature:Size()
+--for j=1,veclen do
+s = ''
+for i=1,N do
+  local t = tostring(values[i]):gsub('ULL',' ')
+  if cell_rind[i]== 0 then
+    s = s .. ' ' .. t .. ''
+  end
+  if i % 5 == 0 then
+    s = s .. '\n'
+    io.write("", s)
+    s = ''
+  end
+end
+-- i-1 to return to 0 indexing
+io.write("", s)
+--end
+
+io.close()
+
+-- Write a file for the particle positions
+-- Tecplot ASCII format
+local particleFileName = IO.outputFileNamePrefix .. "particles_" ..
+tostring(timeStep) .. ".dat"
+
+-- Open file
+local particleFile = io.output(particleFileName)
+
+-- Compute the number of vertices to be written
+
+-- Write header
+--io.write('TITLE = "Data"\n')
+--io.write('VARIABLES = "X", "Y", "Z", "Density", "X-Velocity", "Y-Velocity", "Z-Velocity", "Pressure", "Temperature"\n')
+io.write('ZONE SOLUTIONTIME=', TimeIntegrator.simTime:get(), '\n')
+
+values = particles.position:DumpToList()
+N      = particles.position:Size()
+veclen = particles.position:Type().N
+for i=1,N do
+  s = ''
+  for j=1,veclen do
+    local t = tostring(values[i][j]):gsub('ULL',' ')
+    s = s .. ' ' .. t .. ''
+  end
+  s = s .. '\n'
+  io.write("", s)
+end
+
+io.close()
+
+-- Write the Tecplot header
+--Flow.WriteTecplotHeader(outputFileName)
+
+else
+  print("Output format not defined. No output written to disk.")
+end
+
+end
 end
 
 ----------------
@@ -2963,42 +3257,32 @@ end
 ----------------
 
 function Visualization.Draw()
-    --vdb.vbegin()
-    --vdb.frame()
-    --Flow.DrawKernel(grid.cells)
-    --Particles.DrawKernel(particles)
-    --vdb.vend()
+    vdb.vbegin()
+    vdb.frame()
+    Flow.DrawKernel(grid.cells)
+    Particles.DrawKernel(particles)
+    vdb.vend()
 end
 
 -----------------------------------------------------------------------------
 --[[                            MAIN EXECUTION                           ]]--
 -----------------------------------------------------------------------------
 
+-- Initialize all variables
+
 TimeIntegrator.InitializeVariables()
-
-Flow.WriteField(IO.outputFileNamePrefix,
-                grid:xSize(), grid:ySize(), grid:zSize(),
-                grid.cells.centerCoordinates)
-Particles.WriteField(IO.outputFileNamePrefix .. "_particles",
-                     particles.diameter)
-
+Statistics.ComputeSpatialAverages()
 IO.WriteOutput(TimeIntegrator.timeStep:get())
-
--- Start an external iteration counter
-local iter = 0
 
 -- Main iteration loop
 
 while ((TimeIntegrator.simTime:get() < TimeIntegrator.final_time) and
-       (iter < TimeIntegrator.max_iter)) do
+       (TimeIntegrator.timeStep:get() < TimeIntegrator.max_iter)) do
 
     TimeIntegrator.CalculateDeltaTime()
     TimeIntegrator.AdvanceTimeStep()
     Statistics.ComputeSpatialAverages()
     IO.WriteOutput(TimeIntegrator.timeStep:get())
     Visualization.Draw()
-
-    -- Increment iteration counter
-    iter = iter + 1
 
 end
