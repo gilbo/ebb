@@ -1,4 +1,6 @@
-import "compiler.liszt" 
+import "compiler.liszt"
+--L.default_processor = L.GPU
+
 local Grid  = L.require 'domains.grid' 
 local cmath = terralib.includecstring [[ 
 #include <math.h> 
