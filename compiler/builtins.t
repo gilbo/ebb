@@ -39,7 +39,7 @@ function B.id.check(ast, ctxt)
         return L.error
     end
 
-    if not ast.params[1].node_type:isScalarRow() then
+    if not args[1].node_type:isScalarRow() then
         ctxt:error(ast, "expected a relational row as the argument for id()")
         return L.error
     end

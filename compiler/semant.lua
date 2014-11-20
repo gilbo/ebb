@@ -1014,11 +1014,45 @@ local function QuoteParams(all_params_asts)
 end
 
 local function RunMacro(ctxt,src_node,the_macro,params)
-    local quoted_params = QuoteParams(params)
-    local result = the_macro.genfunc(unpack(quoted_params))
+    --local quoted_params = QuoteParams(params)
+    local param_syms   = {}
+    local declarations = {}
+    for i, p_ast in ipairs(params) do
+        local decl       = ast.DeclStatement:DeriveFrom(src_node)
+        decl.name        = ast.GenSymbol('_macro_arg_'..tostring(i))
+        decl.initializer = p_ast
+        decl.node_type   = p_ast.node_type
+
+        local n     = ast.Name:DeriveFrom(p_ast)
+        n.name      = decl.name
+        n.node_type = p_ast.node_type
+
+        local q = ast.Quote:DeriveFrom(p_ast)
+        q.code = n
+        q.node_type = n.node_type
+
+        if p_ast.is_centered then
+            n.is_centered = true
+            q.is_centered = true
+        end
+
+        declarations[i] = decl
+        param_syms[i]   = q
+    end
+
+    local result = the_macro.genfunc(unpack(param_syms))
 
     if ast.is_ast(result) and result:is(ast.Quote) then
-        return result
+        local block = ast.Block:DeriveFrom(src_node)
+        block.statements = declarations
+
+        local expansion     = ast.LetExpr:DeriveFrom(src_node)
+        expansion.block     = block
+        expansion.exp       = result
+        expansion.node_type = result.node_type
+        return expansion
+        --local qexp          = ast.Quote:DeriveFrom(src_node)
+        --return expansion:check(ctxt)
     else
         ctxt:error(src_node, 'Macros must return quoted code')
         local errnode     = src_node:clone()
