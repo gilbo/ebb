@@ -963,6 +963,7 @@ function main()
   }
   integrator:setupFieldsKernels(mesh)
 
+  local t1, t2
   -- print("Performing time steps ...")
   -- visualize(volumetric_mesh)
   DumpDeformationToFile(volumetric_mesh, "out/mesh_liszt_"..tostring(0))

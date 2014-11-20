@@ -56,7 +56,7 @@ if options.config:
             legion_root_dir = words[1]
         if words[0] == 'luabind_dir':
             luabind_dir = words[1]
-        if words[0] == 'luajir_dir':
+        if words[0] == 'luajit_dir':
             luajit_dir = words[1]
 
 terra_exe = os.path.join(terra_dir, 'terra')

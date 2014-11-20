@@ -1,40 +1,41 @@
 -- Launch liszt program as a top level legion task.
 
-terralib.require 'legionlib-terra'
+local C = terralib.require "compiler.c"
 
--- Error handler used in top level task for meaningful traceback on errors.
--- This function is copied from launch_script.t.
+-- Legion library
+terralib.require "legionlib-terra"
+local Lc = terralib.includecstring([[
+#include "legion_c.h"
+]])
+
+-- Setup tablesand constants  for Legion runtime in Liszt.
+local function setup_liszt_for_legion(ctx, runtime)
+  rawset(_G, '_legion', true)
+  local legion_env = { runtime = runtime,
+                       ctx = ctx }
+  rawset(_G, '_legion_env', legion_env)
+  return 0
+end
+local terra_setup_liszt_for_legion =
+  terralib.cast( { &Lc.legion_context_t,
+                   &Lc.legion_runtime_t } -> int, setup_liszt_for_legion )
+
+TID_TOP_LEVEL = 100
+
+-- Error handler to display stack trace
 local function top_level_err_handler ( errobj )
   local err = tostring(errobj)
-  if string.match(err, 'stack traceback:') then
+  if string.match(err, "stack traceback:") then
     print(err)
   else
-    print(err .. '\n' .. debug.traceback())
+    print(err .. "\n" .. debug.traceback())
   end
   os.exit(1)
 end
 
--- Setup tables for Legion runtime in Liszt.
-local function setup_for_legion(binding)
-  local L = terralib.require 'compiler.lisztlib'
-  L._runtime = L._Legion
-  L._runtime.binding = binding
-  local type_map = {
-                     [L.float] = 'float',
-                     [L.double] = 'double',
-                     [L.int] = 'int',
-                     [L.bool] = 'int'
-                   }
-  L._LegionTypes = {}
-  for k, v in ipairs(type_map) do
-    L._LegionTypes[k] = PrimType[v]
-  end
-end
-
-function top_level_task(binding, regions, args)
-  setup_for_legion(binding)
-  -- launch application
-  local script_filename = args[1]
+-- Launch Liszt application
+function load_liszt()
+  local script_filename = arg[1]
   local success = xpcall( function ()
     assert(terralib.loadfile(script_filename))()
   end, top_level_err_handler)
@@ -45,12 +46,35 @@ function top_level_task(binding, regions, args)
   end
 end
 
-TOP_LEVEL = 100
-
-if rawget(_G, "arg") then
-    local binding = LegionLib:init_binding(arg[0])
-    binding:set_top_level_task_id(TOP_LEVEL)
-    binding:register_single_task(TOP_LEVEL, "top_level_task",
-                                 Processor.LOC_PROC, false)
-    binding:start(arg)
+-- Run Liszt compiler/ Lua-Terra interpreter as a top level task
+local terra top_level_task(task_args : Lc.legion_task_t,
+                           regions : &Lc.legion_physical_region_t,
+                           num_regions : uint32,
+                           ctx : Lc.legion_context_t,
+                           runtime : Lc.legion_runtime_t)
+  C.printf("Setting up Legion ...\n")
+  terra_setup_liszt_for_legion(&ctx, &runtime)
+  C.printf("Loading Liszt application ...\n")
+  load_liszt()
+  C.printf("Finished Liszt application\n")
 end
+
+-- Main function that launches Legion runtime
+local terra main()
+  Lc.legion_runtime_register_task_void(
+    TID_TOP_LEVEL,
+    Lc.LOC_PROC,
+    true,
+    false,
+    1,
+    Lc.legion_task_config_options_t {
+      leaf = false,
+      inner = false,
+      idempotent = false },
+    'top_level_task',
+    top_level_task)
+  Lc.legion_runtime_set_top_level_task_id(TID_TOP_LEVEL)
+  Lc.legion_runtime_start(0, [&rawstring](0), false)
+end
+
+main()
