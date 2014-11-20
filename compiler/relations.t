@@ -15,6 +15,7 @@ local JSON = require('compiler.JSON')
 local DynamicArray = terralib.require('compiler.rawdata').DynamicArray
 
 local use_legion = rawget(_G, '_legion')
+local use_direct = not use_legion
 local Lg = use_legion and terralib.require "compiler.legionlib"
 
 local valid_name_err_msg =
@@ -67,20 +68,18 @@ function L.NewRelation(size, name)
   },
   L.LRelation)
 
-  if not use_legion then
+  if use_direct then
     -- create a mask to track which rows are live.
     rawset(rel, '_is_live_mask', L.LField.New(rel, '_is_live_mask', L.bool))
     rel._is_live_mask:Load(true)
-  else
+  elseif use_legion then
     -- create a logical region.
-    local logical_region = Lg.NewLogicalRegion(size)
+    local params = { rows_max = size,
+                     rows_init = size,
+                     relation = rel,
+                   }
+    local logical_region = Lg.NewLogicalRegion(params)
     rawset(rel, '_logical_region', logical_region)
-    logical_region:AllocateRows(size)
-    -- create a mask to track which rows are live.
-    -- TODO: we probably do not need this with Legion, as Legion handles row
-    -- inserts and deletes.
-    -- TODO: for now, initialize this field to true.
-    -- rawset(rel, '_is_live_mask', L.LField.New(rel, '_is_live_mask', L.bool))
   end
 
   return rel
@@ -463,11 +462,12 @@ function L.LField.New(rel, name, typ)
   field.type    = typ
   field.name    = name
   field.owner   = rel
-  if not use_legion then
+  if use_direct then
     field.array   = nil
     field:Allocate()
-  else
-    print("Unimplemented legion new field")
+  elseif use_legion then
+    local logical_region = rel._logical_region
+    field.fid = logical_region:AllocateField(typ)
   end
   return field
 end

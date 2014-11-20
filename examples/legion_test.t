@@ -5,5 +5,14 @@ print("* This is a Liszt application *")
 
 import "compiler.liszt"
 
--- Declaring new relation
-local points = L.NewRelation(5, 'points')
+-- Create relations and fields
+local points = L.NewRelation(4, 'points')
+points:NewField('x', L.int)
+points:NewField('y', L.int)
+local edges = L.NewRelation(4, 'edges')
+edges:NewField('head', points)
+edges:NewField('tail', points)
+
+
+-- Create physical region
+points._logical_region:CreatePhysicalRegion( { fields = { points.x } } )
