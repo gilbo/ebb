@@ -1,4 +1,9 @@
 import "compiler.liszt"
+
+-- Uncomment the next line to target a GPU. Note that terra should
+-- be compiled with GPU support (ENABLE_CUDA & CUDA_HOME vars are
+-- needed. 
+
 --L.default_processor = L.GPU
 
 local Grid  = L.require 'domains.grid' 
@@ -76,6 +81,10 @@ Particles.FeederUQCase                 = L.NewGlobal(L.int, 2)
 Particles.CollectorNone     = L.NewGlobal(L.int, 0)
 Particles.CollectorOutOfBox = L.NewGlobal(L.int, 1)
 
+-- Particle Type (Fixed or Free)
+Particles.Fixed = L.NewGlobal(L.int, 0)
+Particles.Free  = L.NewGlobal(L.int, 1)
+
 -- Output formats
 IO.Python  = L.NewGlobal(L.int, 0)
 IO.Tecplot = L.NewGlobal(L.int, 1)
@@ -95,25 +104,25 @@ local white = L.NewVector(L.float,{1.0,1.0,1.0})
 -----------------------------------------------------------------------------
 
 local grid_options = {
-xnum = config.xnum,
-ynum = config.ynum,
-znum = config.znum,
-origin = config.origin,
-xWidth = config.xWidth,
-yWidth = config.yWidth,
-zWidth = config.zWidth,
-xBCLeft     = config.xBCLeft,
-xBCLeftVel  = config.xBCLeftVel,
-xBCRight    = config.xBCRight,
-xBCRightVel = config.xBCRightVel,
-yBCLeft     = config.yBCLeft,
-yBCLeftVel  = config.yBCLeftVel,
-yBCRight    = config.yBCRight,
-yBCRightVel = config.yBCRightVel,
-zBCLeft     = config.zBCLeft,
-zBCLeftVel  = config.zBCLeftVel,
-zBCRight    = config.zBCRight,
-zBCRightVel = config.zBCRightVel,
+  xnum = config.xnum,
+  ynum = config.ynum,
+  znum = config.znum,
+  origin = config.origin,
+  xWidth = config.xWidth,
+  yWidth = config.yWidth,
+  zWidth = config.zWidth,
+  xBCLeft     = config.xBCLeft,
+  xBCLeftVel  = config.xBCLeftVel,
+  xBCRight    = config.xBCRight,
+  xBCRightVel = config.xBCRightVel,
+  yBCLeft     = config.yBCLeft,
+  yBCLeftVel  = config.yBCLeftVel,
+  yBCRight    = config.yBCRight,
+  yBCRightVel = config.yBCRightVel,
+  zBCLeft     = config.zBCLeft,
+  zBCLeftVel  = config.zBCLeftVel,
+  zBCRight    = config.zBCRight,
+  zBCRightVel = config.zBCRightVel
 }
 
 -- Define offsets for boundary conditions in flow solver
@@ -343,11 +352,11 @@ elseif config.viscosity_model  == 'Sutherland' then
 else
   error("Viscosity model not defined")
 end
-fluid_options.gasConstant = config.gasConstant
-fluid_options.gamma = config.gamma
-fluid_options.dynamic_viscosity_ref = config.dynamic_viscosity_ref
+fluid_options.gasConstant                = config.gasConstant
+fluid_options.gamma                      = config.gamma
+fluid_options.dynamic_viscosity_ref      = config.dynamic_viscosity_ref
 fluid_options.dynamic_viscosity_temp_ref = config.dynamic_viscosity_temp_ref
-fluid_options.prandtl = config.prandtl
+fluid_options.prandtl                    = config.prandtl
 
 
 local flow_options = {}
@@ -410,19 +419,26 @@ local particles_options = {
     --collectorType = Particles.CollectorOutOfBox,
     --collectorParams = L.NewGlobal(L.vector(L.double,6),{0.5,0.5,0.5,12,6,6}),
 
-    num = 0.0,
-    convective_coefficient = L.NewGlobal(L.double, 0.7), -- W m^-2 K^-1
-    heat_capacity = L.NewGlobal(L.double, 0.7), -- J Kg^-1 K^-1
-    initialTemperature = 250,
-    density = 8900, --1000, --8900,
-    diameter_mean = 1e-5, -- 1.2e-5, --0.03,
-    diameter_maxDeviation = 0.0, --0.02,
-    bodyForce = L.NewGlobal(L.vec3d, {0,-0.0,0}),
-    --bodyForce = L.NewGlobal(L.vec3d, {0,-1.1,0}),
-    emissivity = 0.5, --0.4
-    absorptivity = 0.5 -- Equal to emissivity in thermal equilibrium
-                       -- (Kirchhoff law of thermal radiation)
+    num = config.num,
+    convective_coefficient = L.NewGlobal(L.double,
+                                         config.convectiveCoefficient),
+    heat_capacity = L.NewGlobal(L.double, config.heatCapacity),
+    initialTemperature = config.initialTemperature,
+    density = config.density,
+    diameter_mean = config.diameter_mean,
+    diameter_maxDeviation = config.diameter_maxDeviation,
+    bodyForce = L.NewGlobal(L.vec3d, config.bodyForceParticles),
+    emissivity = config.emissivity,
+    absorptivity = config.absorptivity
 }
+-- Lastly, check whether the particles are fixed or free
+if config.particleType == 'Fixed' then
+  particles_options.particleType = Particles.Fixed
+elseif config.particleType == 'Free' then
+  particles_options.particleType = Particles.Free
+else
+  error("Particle motion type not defined (Fixed or Free)")
+end
 
 local radiation_options = {
     radiationIntensity = config.radiationIntensity
@@ -446,6 +462,7 @@ IO.outputFileNamePrefix = config.outputDirectory
 
 -- Create empty arrays for storing the restart, in case we will be
 -- reading them from a file and initializing using them below.
+
 local restartnCells, restartIter, restartTime
 local rho_data_array = {}
 local pressure_data_array = {}
@@ -457,7 +474,8 @@ if flow_options.initCase == Flow.Restart then
   -- Notice that the path is relative to this script's location on
   -- disk rather than the present working directory, which varies
   -- depending on where we invoke this script from.
-  local restart_filename = IO.outputFileNamePrefix .. 'outputrestart_101000.dat'
+  local restart_filename = IO.outputFileNamePrefix .. 'restart_' ..
+                           config.restartIter .. '.dat'
 
   -- Restart files have the following format
   --
@@ -518,24 +536,25 @@ end
 --[[                       GRID/PARTICLES RELATIONS                      ]]--
 -----------------------------------------------------------------------------
 
--- Check boundary type consistency
+-- Check boundary type consistency for the periodic BCs
+
 if ( grid_options.xBCLeft  == 'periodic' and 
      grid_options.xBCRight ~= 'periodic' ) or 
    ( grid_options.xBCLeft  ~= 'periodic' and 
      grid_options.xBCRight == 'periodic' ) then
-    error("Boundary conditions in x should match periodicity")
+    error("Boundary conditions in x should match for periodicity")
 end
 if ( grid_options.yBCLeft  == 'periodic' and 
      grid_options.yBCRight ~= 'periodic' ) or 
    ( grid_options.yBCLeft  ~= 'periodic' and 
      grid_options.yBCRight == 'periodic' ) then
-    error("Boundary conditions in y should match periodicity")
+    error("Boundary conditions in y should match for periodicity")
 end
 if ( grid_options.zBCLeft  == 'periodic' and 
      grid_options.zBCRight ~= 'periodic' ) or 
    ( grid_options.zBCLeft  ~= 'periodic' and 
      grid_options.zBCRight == 'periodic' ) then
-    error("Boundary conditions in z should match periodicity")
+    error("Boundary conditions in z should match for periodicity")
 end
 if ( grid_options.xBCLeft  == 'periodic' and 
      grid_options.xBCRight == 'periodic' ) then
@@ -622,7 +641,7 @@ LoadConstant(1)
 grid.cells:NewField('cellRindLayer', L.int):
 LoadConstant(1)
 
--- Primitive variables (may be initialized from a restart)
+-- Primitive variables (note that these may be initialized from a restart)
 grid.cells:NewField('rho', L.double)
 grid.cells:NewField('pressure', L.double)
 grid.cells:NewField('velocity', L.vec3d)
@@ -851,24 +870,33 @@ print("--------------------------- Start Solver ----------------------------")
 
 -- Norm of a vector
 local norm = liszt function(v)
-    return cmath.sqrt(L.dot(v, v))
+    return L.sqrt(L.dot(v, v))
 end
 
 -- Compute fluid dynamic viscosity from fluid temperature
 local GetDynamicViscosity = liszt function(temperature)
+  var viscosity = fluid_options.dynamic_viscosity_ref
+  if fluid_options.viscosity_model == Viscosity.Constant then
+    -- Constant
+    viscosity = fluid_options.dynamic_viscosity_ref
+  elseif fluid_options.viscosity_model == Viscosity.PowerLaw then
     -- Power Law
-    --return fluid_options.dynamic_viscosity_ref *
-    --    cmath.pow(temperature/fluid_options.dynamic_viscosity_temp_ref, 0.75)
+    viscosity = fluid_options.dynamic_viscosity_ref *
+        cmath.pow(temperature/fluid_options.dynamic_viscosity_temp_ref, 0.75)
+  elseif fluid_options.viscosity_model == Viscosity.Sutherland then
     -- Sutherland's Law
-    return fluid_options.dynamic_viscosity_ref * 
-         cmath.pow((temperature/fluid_options.dynamic_viscosity_temp_ref),(3.0/2.0))*
-         ((fluid_options.dynamic_viscosity_temp_ref + 110.4)/
-          (temperature + 110.4))
+    viscosity = fluid_options.dynamic_viscosity_ref *
+    cmath.pow((temperature/fluid_options.dynamic_viscosity_temp_ref),(3.0/2.0))*
+    ((fluid_options.dynamic_viscosity_temp_ref + 110.4)/
+     (temperature + 110.4))
+  end
+  return viscosity
+
 end
 
 -- Compute fluid flow sound speed based on temperature
 local GetSoundSpeed = liszt function(temperature)
-    return cmath.sqrt(fluid_options.gamma * 
+    return L.sqrt(fluid_options.gamma *
                       fluid_options.gasConstant *
                       temperature)
 end
@@ -885,7 +913,7 @@ particles:NewFieldFunction('mass', liszt function(p)
     return p.volume * p.density
 end)
 
-------------------------------------------------------------------------------
+-----------------------------------------------------------------------------
 --[[                             LISZT MACROS                            ]]--
 -----------------------------------------------------------------------------
 
@@ -1045,11 +1073,10 @@ Flow.InitializePrimitives = liszt kernel(c : grid.cells)
       c.velocity[1] = flow_options.initParams[3]
       c.velocity[2] = flow_options.initParams[4]
     elseif flow_options.initCase == Flow.Restart then
-    
      -- Do nothing here, since we have initialized above.
-    
     end
 end
+
 Flow.UpdateConservedFromPrimitive = liszt kernel(c : grid.cells)
 
     -- Equation of state: T = p / ( R * rho )
@@ -1077,7 +1104,6 @@ Flow.InitializeTemporaries = liszt kernel(c : grid.cells)
     c.rhoVelocity_new = c.rhoVelocity
     c.rhoEnergy_new   = c.rhoEnergy
 end
-
 
 -- Initialize derivatives
 Flow.InitializeTimeDerivatives = liszt kernel(c : grid.cells)
@@ -2140,7 +2166,7 @@ Flow.CalculateSpectralRadii = liszt kernel(c : grid.cells)
        (cmath.fabs(c.velocity[0])/grid_dx  +
         cmath.fabs(c.velocity[1])/grid_dy  +
         cmath.fabs(c.velocity[2])/grid_dz  +
-        GetSoundSpeed(c.temperature) * cmath.sqrt(dXYZInverseSquare)) *
+        GetSoundSpeed(c.temperature) * L.sqrt(dXYZInverseSquare)) *
        spatial_stencil.firstDerivativeModifiedWaveNumber
     
     -- Viscous spectral radii (including sgs model component)
@@ -2359,7 +2385,14 @@ Particles.AddFlowCoupling = liszt kernel(p: particles)
       flowVelocity    = InterpolateTrilinear(p.dual_cell, p.position, Velocity)
       flowTemperature = InterpolateTrilinear(p.dual_cell, p.position, Temperature)
       flowDynamicViscosity = GetDynamicViscosity(flowTemperature)
-      p.position_t    += p.velocity
+      
+      -- Update the particle position
+      if particles_options.particleType == Particles.Fixed then
+        -- Don't move the particle
+      elseif particles_options.particleType == Particles.Free then
+        p.position_t    += p.velocity
+      end
+      
       -- Relaxation time for small particles 
       -- - particles Reynolds number (set to zero for Stokesian)
       var particleReynoldsNumber =
@@ -2373,7 +2406,13 @@ Particles.AddFlowCoupling = liszt kernel(p: particles)
       p.deltaTemperatureTerm = pi * cmath.pow(p.diameter, 2) *
           particles_options.convective_coefficient *
           (flowTemperature - p.temperature)
-      p.velocity_t += p.deltaVelocityOverRelaxationTime
+          
+      -- Update the particle velocity and temperature
+      if particles_options.particleType == Particles.Fixed then
+        p.velocity_t  = {0.0,0.0,0.0} -- Don't move the particle
+      elseif particles_options.particleType == Particles.Free then
+        p.velocity_t += p.deltaVelocityOverRelaxationTime
+      end
       p.temperature_t += p.deltaTemperatureTerm/
           (p.mass * particles_options.heat_capacity)
     end
@@ -2412,12 +2451,22 @@ end
 -- Set particle velocities to underlying flow velocity for initialization
 Particles.SetVelocitiesToFlow = liszt kernel(p: particles)
     p.dual_cell = grid.dual_locate(p.position)
-    var flow_density     = L.double(0)
-    var flow_velocity    = L.vec3d({0, 0, 0})
-    var flow_temperature = L.double(0)
+    var flowDensity     = L.double(0)
+    var flowVelocity    = L.vec3d({0, 0, 0})
+    var flowTemperature = L.double(0)
     var flowDynamicViscosity = L.double(0)
-    flow_velocity    = InterpolateTrilinear(p.dual_cell, p.position, Velocity)
-    p.velocity = flow_velocity
+    flowDensity     = InterpolateTrilinear(p.dual_cell, p.position, Rho)
+    flowVelocity    = InterpolateTrilinear(p.dual_cell, p.position, Velocity)
+    flowTemperature = InterpolateTrilinear(p.dual_cell, p.position, Temperature)
+    flowDynamicViscosity = GetDynamicViscosity(flowTemperature)
+
+    -- Update the particle velocity
+    if particles_options.particleType == Particles.Fixed then
+      p.velocity_t = {0.0,0.0,0.0} -- Don't move the particle
+    elseif particles_options.particleType == Particles.Free then
+      p.velocity = flowVelocity
+    end
+
 end
 
 -- Update particle variables using derivatives
@@ -3051,15 +3100,11 @@ if IO.outputFormat == IO.Python then
 
   -- On the first iteration only, output the cell coords and particle diameters
   if timeStep == 0 then
-      Flow.WriteField(IO.outputFileNamePrefix,
-                      grid:xSize(), grid:ySize(), grid:zSize(),
-                      grid.cells.centerCoordinates)
-      Particles.WriteField(IO.outputFileNamePrefix .. "_particles",
-                           particles.diameter)
+
   end
 
 --print("Time to output")
-local outputFileName = IO.outputFileNamePrefix .. "_" ..
+local outputFileName = IO.outputFileNamePrefix .. "output_" ..
 tostring(timeStep)
 Flow.WriteField(outputFileName .. "_flow",
   grid:xSize(), grid:ySize(), grid:zSize(),
@@ -3273,6 +3318,12 @@ end
 TimeIntegrator.InitializeVariables()
 Statistics.ComputeSpatialAverages()
 IO.WriteOutput(TimeIntegrator.timeStep:get())
+
+Flow.WriteField(IO.outputFileNamePrefix .. "output",
+                grid:xSize(), grid:ySize(), grid:zSize(),
+                grid.cells.centerCoordinates)
+Particles.WriteField(IO.outputFileNamePrefix .. "output_particles",
+                     particles.diameter)
 
 -- Main iteration loop
 
