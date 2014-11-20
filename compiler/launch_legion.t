@@ -8,11 +8,19 @@ local Lc = terralib.includecstring([[
 #include "legion_c.h"
 ]])
 
--- Setup tablesand constants  for Legion runtime in Liszt.
+local terra dereference_legion_context(ctx : &Lc.legion_context_t)
+  return @ctx
+end
+
+local terra dereference_legion_runtime(runtime : &Lc.legion_runtime_t)
+  return @runtime
+end
+
+-- Setup tables and constants  for Legion runtime in Liszt.
 local function setup_liszt_for_legion(ctx, runtime)
   rawset(_G, '_legion', true)
-  local legion_env = { runtime = runtime,
-                       ctx = ctx }
+  local legion_env = { ctx     = dereference_legion_context(ctx),
+                       runtime = dereference_legion_runtime(runtime) }
   rawset(_G, '_legion_env', legion_env)
   return 0
 end
@@ -20,10 +28,11 @@ local terra_setup_liszt_for_legion =
   terralib.cast( { &Lc.legion_context_t,
                    &Lc.legion_runtime_t } -> int, setup_liszt_for_legion )
 
+-- Top level task
 TID_TOP_LEVEL = 100
 
 -- Error handler to display stack trace
-local function top_level_err_handler ( errobj )
+local function top_level_err_handler(errobj)
   local err = tostring(errobj)
   if string.match(err, "stack traceback:") then
     print(err)
