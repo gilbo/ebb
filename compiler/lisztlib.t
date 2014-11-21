@@ -1,10 +1,15 @@
 local L = {}
 package.loaded["compiler.lisztlib"] = L
 
+local use_legion = rawget(_G, '_legion')
+local use_direct = not use_legion
+
 -- Liszt types are created here
 local T = terralib.require 'compiler.types'
 
-local DataArray = terralib.require('compiler.rawdata').DataArray
+local DataArray = use_direct and
+                  terralib.require('compiler.rawdata').DataArray
+local Lg = use_legion and terralib.require "compiler.legion_data"
 
 -- Use the following to produce
 -- deterministic order of table entries
@@ -70,7 +75,7 @@ terralib.require "compiler.builtins"
 terralib.require "compiler.relations"
 terralib.require "compiler.serialization"
 local semant = terralib.require "compiler.semant"
-local K = terralib.require "compiler.kernel"
+local Ksingle = terralib.require "compiler.kernel_single"
 
 local is_vector = L.is_vector --cache lookup for efficiency
 

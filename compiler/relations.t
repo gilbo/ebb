@@ -1,7 +1,9 @@
-
 -- file/module namespace table
 local R = {}
 package.loaded["compiler.relations"] = R
+
+local use_legion = rawget(_G, '_legion')
+local use_direct = not use_legion
 
 local L = terralib.require "compiler.lisztlib"
 local T = terralib.require "compiler.types"
@@ -12,11 +14,9 @@ local PN = terralib.require "lib.pathname"
 
 local JSON = require('compiler.JSON')
 
-local DynamicArray = terralib.require('compiler.rawdata').DynamicArray
-
-local use_legion = rawget(_G, '_legion')
-local use_direct = not use_legion
-local Lg = use_legion and terralib.require "compiler.legionlib"
+local DynamicArray = use_direct and
+                     terralib.require('compiler.rawdata').DynamicArray
+local Lg = use_legion and terralib.require "compiler.legion_data"
 
 local valid_name_err_msg =
   "must be valid Lua Identifiers: a letter or underscore,"..
@@ -974,11 +974,3 @@ function L.LRelation:Defrag()
   -- mark as compact
   self._typestate.fragmented = false
 end
-
-
-
-
-
-
-
-

@@ -1,5 +1,5 @@
 local L = {}
-package.loaded["compiler.legionlib"] = L
+package.loaded["compiler.legion_data"] = L
 
 local C = terralib.require "compiler.c"
 
@@ -34,9 +34,9 @@ PhysicalRegion.__index = PhysicalRegion
 L.PhysicalRegion = PhysicalRegion
 
 
------------------------------------------------------------------------------
--- Module methods, to create logical regions, and allocate rows and fields --
------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+--[[                        Logical region methods                         ]]--
+-------------------------------------------------------------------------------
 
 function LogicalRegion:AllocateRows(num)
   if self.rows_live + num > self.rows_max then
@@ -92,7 +92,7 @@ L.coherence = {
 
 
 -------------------------------------------------------------------------------
---[[              Create physical regions and task launchers               ]]--
+--[[                        Physical region methods                        ]]--
 -------------------------------------------------------------------------------
 
 function LogicalRegion:CreatePhysicalRegion(params)

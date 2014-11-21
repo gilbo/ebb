@@ -1,5 +1,5 @@
 local K = {}
-package.loaded["compiler.kernel"] = K
+package.loaded["compiler.kernel_single"] = K
 
 -- Use the following to produce
 -- deterministic order of table entries
