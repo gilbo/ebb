@@ -289,19 +289,6 @@ function L.NewMacro(generator)
     return setmetatable({genfunc=generator}, LMacro)    
 end
 
-L.Where = L.NewMacro(function(field,key)
-    if field == nil or key == nil then
-        error("Where expects 2 arguments")
-    end
-    local w = ast.Where:DeriveFrom(field)
-    w.field = field
-    w.key   = key
-    local q = ast.Quote:DeriveFrom(field)
-    q.code  = semant.check({}, w)
-    q.node_type = q.code.node_type
-    return q
-end)
-
 local specialization = terralib.require('compiler.specialization')
 
 function L.NewUserFunc(func_ast, luaenv)

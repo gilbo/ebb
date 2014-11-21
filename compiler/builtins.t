@@ -5,6 +5,7 @@ local L = terralib.require "compiler.lisztlib"
 local T = terralib.require "compiler.types"
 local C = terralib.require "compiler.c"
 local G = terralib.require "compiler.gpu_util"
+local AST = terralib.require "compiler.ast"
 
 ---------------------------------------------
 --[[ Builtin functions                   ]]--
@@ -29,6 +30,23 @@ function B.isBuiltin(f)
     return getmetatable(f) == Builtin
 end
 
+
+-- internal macro style built-in
+B.Where = Builtin.new(function ()
+                        error("Where cannot be called in Lua code") end)
+function B.Where.check(call_ast, ctxt)
+    if #(call_ast.params) ~= 2 then
+        ctxt:error(ast, "Where expects exactly 2 arguments")
+        return L.error
+    end
+
+    local w = AST.Where:DeriveFrom(call_ast)
+    w.field = call_ast.params[1]
+    w.key   = call_ast.params[2]
+    return w:check(ctxt)
+end
+
+
 local id = function () error("id expects a relation row") end
 B.id = Builtin.new(id)
 
@@ -52,7 +70,8 @@ function B.id.codegen(ast, ctxt)
 end
 
 
-local UNSAFE_ROW = function() error('UNSAFE_ROW cannot be called as Lua') end
+local UNSAFE_ROW = function()
+    error('UNSAFE_ROW cannot be called in Lua code') end
 B.UNSAFE_ROW = Builtin.new(UNSAFE_ROW)
 
 function B.UNSAFE_ROW.check(ast, ctxt)
@@ -683,6 +702,7 @@ function B.terra_to_func(terrafn)
     return newfunc
 end
 
+L.Where  = B.Where
 L.print  = B.print
 L.assert = B.assert
 L.dot    = B.dot

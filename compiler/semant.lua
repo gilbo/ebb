@@ -1239,8 +1239,16 @@ function ast.Call:check(ctxt)
 
     local v = func.node_type:isInternal() and func.node_type.value
     if v and L.is_builtin(v) then
-        call.func      = v
-        call.node_type = v.check(call, ctxt)
+        -- check the built-in.  If an ast is returned,
+        -- then we assume the built-in is functioning as an internal macro
+        -- Otherwise, assume standard built-in behavior
+        local check_result = v.check(call, ctxt)
+        if ast.is_ast(check_result) then
+            return check_result
+        else
+            call.func      = v
+            call.node_type = check_result
+        end
     elseif v and L.is_macro(v) then
         -- replace the call node with the inlined AST
         call = RunMacro(ctxt, self, v, call.params)
@@ -1331,7 +1339,8 @@ function ast.LuaObject:check(ctxt)
     return self
 end
 function ast.Where:check(ctxt)
-    --note: where is generated in a macro, so its fields are already type-checked
+    --note: where is generated in an internal macro,
+    --      so its fields are already type-checked
     local fieldobj = self.field.node_type
     local keytype  = self.key.node_type
     if not fieldobj:isInternal() or not L.is_field(fieldobj.value) then
