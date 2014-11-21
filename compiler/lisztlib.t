@@ -2,12 +2,12 @@ local L = {}
 package.loaded["compiler.lisztlib"] = L
 
 local use_legion = rawget(_G, '_legion')
-local use_direct = not use_legion
+local use_single = not use_legion
 
 -- Liszt types are created here
 local T = terralib.require 'compiler.types'
 
-local DataArray = use_direct and
+local DataArray = use_single and
                   terralib.require('compiler.rawdata').DataArray
 local Lg = use_legion and terralib.require "compiler.legion_data"
 
@@ -75,7 +75,8 @@ terralib.require "compiler.builtins"
 terralib.require "compiler.relations"
 terralib.require "compiler.serialization"
 local semant = terralib.require "compiler.semant"
-local Ksingle = terralib.require "compiler.kernel_single"
+local K = (use_single and terralib.require "compiler.kernel_single") or
+          (use_legion and terralib.require "compiler.kernel_legion")
 
 local is_vector = L.is_vector --cache lookup for efficiency
 

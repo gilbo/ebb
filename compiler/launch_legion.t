@@ -8,6 +8,9 @@ local Lc = terralib.includecstring([[
 #include "legion_c.h"
 ]])
 
+-- Legion tasks for launching Liszt kernels
+local T = terralib.require "compiler.legion_tasks"
+
 local terra dereference_legion_context(ctx : &Lc.legion_context_t)
   return @ctx
 end
@@ -22,11 +25,11 @@ local function setup_liszt_for_legion(ctx, runtime)
   local legion_env = { ctx     = dereference_legion_context(ctx),
                        runtime = dereference_legion_runtime(runtime) }
   rawset(_G, '_legion_env', legion_env)
-  return 0
+  return true
 end
 local terra_setup_liszt_for_legion =
   terralib.cast( { &Lc.legion_context_t,
-                   &Lc.legion_runtime_t } -> int, setup_liszt_for_legion )
+                   &Lc.legion_runtime_t } -> bool, setup_liszt_for_legion )
 
 -- Top level task
 TID_TOP_LEVEL = 100
@@ -71,17 +74,26 @@ end
 -- Main function that launches Legion runtime
 local terra main()
   Lc.legion_runtime_register_task_void(
-    TID_TOP_LEVEL,
-    Lc.LOC_PROC,
-    true,
-    false,
-    1,
+    TID_TOP_LEVEL, Lc.LOC_PROC, true, false, 1,
     Lc.legion_task_config_options_t {
       leaf = false,
       inner = false,
       idempotent = false },
-    'top_level_task',
-    top_level_task)
+    'top_level_task', top_level_task)
+  Lc.legion_runtime_register_task_void(
+    T.TID_SIMPLE, Lc.LOC_PROC, true, true, 1,
+    Lc.legion_task_config_options_t {
+      leaf = false,
+      inner = false,
+      idempotent = false },
+    'simple_task', T.simple_task)
+  Lc.legion_runtime_register_task(
+    T.TID_FUT, Lc.LOC_PROC, true, true, 1,
+    Lc.legion_task_config_options_t {
+      leaf = false,
+      inner = false,
+      idempotent = false },
+    'fut_task', T.fut_task)
   Lc.legion_runtime_set_top_level_task_id(TID_TOP_LEVEL)
   Lc.legion_runtime_start(0, [&rawstring](0), false)
 end
