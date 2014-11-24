@@ -1757,7 +1757,9 @@ Flow.UpdateAuxiliaryVelocity = liszt kernel(c : grid.cells)
 end
 
 -- Helper function for updating the ghost fields to minimize repeated code
-local UpdateGhostFieldsHelper = liszt function(c_bnd, c_int, SignX, SignY, SignZ, BCVelX, BCVelY, BCVelZ)
+local UpdateGhostFieldsHelper = liszt function(c_bnd, c_int,
+                                               SignX, SignY, SignZ,
+                                               BCVelX, BCVelY, BCVelZ)
 
   -- Compute the Cv for updating the Energy equation
   var cv = fluid_options.gasConstant / (fluid_options.gamma - 1.0)
@@ -1781,40 +1783,34 @@ end
 Flow.UpdateGhostFieldsStep1 = liszt kernel(c : grid.cells)
     if c.xneg_depth > 0 then
         -- Find offset for this cell and retrieve the correct interior cell
-        var xoffset = XOffset(c.xneg_depth)
-        var c_int = c(xoffset,0,0)
-        UpdateGhostFieldsHelper(c, c_int, xSignX, xSignY, xSignZ, xBCLeftVelX, xBCLeftVelY, xBCLeftVelZ)
-
+        UpdateGhostFieldsHelper(c, c(XOffset(c.xneg_depth),0,0),
+                                xSignX, xSignY, xSignZ,
+                                xBCLeftVelX, xBCLeftVelY, xBCLeftVelZ)
     end
     if c.xpos_depth > 0 then
-        var xoffset = XOffset(c.xpos_depth)
-        var c_int = c(-xoffset,0,0)
-        UpdateGhostFieldsHelper(c, c_int, xSignX, xSignY, xSignZ, xBCRightVelX, xBCRightVelY, xBCRightVelZ)
-
+        UpdateGhostFieldsHelper(c, c(-XOffset(c.xpos_depth),0,0),
+                                xSignX, xSignY, xSignZ,
+                                xBCRightVelX, xBCRightVelY, xBCRightVelZ)
     end
     if c.yneg_depth > 0 then
-        var yoffset = YOffset(c.yneg_depth)
-        var c_int = c(0,yoffset,0)
-        UpdateGhostFieldsHelper(c, c_int, ySignX, ySignY, ySignZ, yBCLeftVelX, yBCLeftVelY, yBCLeftVelZ)
-        
+        UpdateGhostFieldsHelper(c, c(0,YOffset(c.yneg_depth),0),
+                                ySignX, ySignY, ySignZ,
+                                yBCLeftVelX, yBCLeftVelY, yBCLeftVelZ)
     end
     if c.ypos_depth > 0 then
-        var yoffset = YOffset(c.ypos_depth)
-        var c_int = c(0,-yoffset,0)
-        UpdateGhostFieldsHelper(c, c_int, ySignX, ySignY, ySignZ, yBCRightVelX, yBCRightVelY, yBCRightVelZ)
-
+        UpdateGhostFieldsHelper(c, c(0,-YOffset(c.ypos_depth),0),
+                                ySignX, ySignY, ySignZ,
+                                yBCRightVelX, yBCRightVelY, yBCRightVelZ)
     end
     if c.zneg_depth > 0 then
-        var zoffset = ZOffset(c.zneg_depth)
-        var c_int = c(0,0,zoffset)
-        UpdateGhostFieldsHelper(c, c_int, zSignX, zSignY, zSignZ, zBCLeftVelX, zBCLeftVelY, zBCLeftVelZ)
-        
+        UpdateGhostFieldsHelper(c, c(0,0,ZOffset(c.zneg_depth)),
+                                zSignX, zSignY, zSignZ,
+                                zBCLeftVelX, zBCLeftVelY, zBCLeftVelZ)
     end
     if c.zpos_depth > 0 then
-        var zoffset = ZOffset(c.zpos_depth)
-        var c_int = c(0,0,-zoffset)
-        UpdateGhostFieldsHelper(c, c_int, zSignX, zSignY, zSignZ, zBCRightVelX, zBCRightVelY, zBCRightVelZ)
-        
+        UpdateGhostFieldsHelper(c, c(0,0,-ZOffset(c.zpos_depth)),
+                                zSignX, zSignY, zSignZ,
+                                zBCRightVelX, zBCRightVelY, zBCRightVelZ)
     end
 end
 Flow.UpdateGhostFieldsStep2 = liszt kernel(c : grid.cells)
@@ -1873,42 +1869,47 @@ function Flow.UpdateGhostThermodynamics()
     Flow.UpdateGhostThermodynamicsStep2(grid.cells.boundary)
 end
 
+-- Helper function for updating the ghost fields to minimize repeated code
+local UpdateGhostVelocityHelper = liszt function(c_bnd, c_int,
+                                                 SignX, SignY, SignZ,
+                                                 BCVelX, BCVelY, BCVelZ)
+
+  -- Update the boundary cell based on the values in the matching interior cell
+  c_bnd.velocityBoundary[0] =   c_int.velocity[0] * SignX + BCVelX
+  c_bnd.velocityBoundary[1] =   c_int.velocity[1] * SignY + BCVelY
+  c_bnd.velocityBoundary[2] =   c_int.velocity[2] * SignZ + BCVelZ
+
+end
 Flow.UpdateGhostVelocityStep1 = liszt kernel(c : grid.cells)
     if c.xneg_depth > 0 then
-        var xoffset = XOffset(c.xneg_depth)
-        c.velocityBoundary[0] =   c(xoffset,0,0).velocity[0] * xSignX + xBCLeftVelX
-        c.velocityBoundary[1] =   c(xoffset,0,0).velocity[1] * xSignY + xBCLeftVelY
-        c.velocityBoundary[2] =   c(xoffset,0,0).velocity[2] * xSignZ + xBCLeftVelZ
+        UpdateGhostVelocityHelper(c, c(XOffset(c.xneg_depth),0,0),
+                                  xSignX, xSignY, xSignZ,
+                                  xBCLeftVelX, xBCLeftVelY, xBCLeftVelZ)
     end
     if c.xpos_depth > 0 then
-        var xoffset = XOffset(c.xpos_depth)
-        c.velocityBoundary[0] =   c(-xoffset,0,0).velocity[0] * xSignX + xBCRightVelX
-        c.velocityBoundary[1] =   c(-xoffset,0,0).velocity[1] * xSignY + xBCRightVelY
-        c.velocityBoundary[2] =   c(-xoffset,0,0).velocity[2] * xSignZ + xBCRightVelZ
+        UpdateGhostFieldsHelper(c, c(-XOffset(c.xpos_depth),0,0),
+                                xSignX, xSignY, xSignZ,
+                                xBCRightVelX, xBCRightVelY, xBCRightVelZ)
     end
     if c.yneg_depth > 0 then
-        var yoffset = YOffset(c.yneg_depth)
-        c.velocityBoundary[0] =   c(0,yoffset,0).velocity[0] * ySignX + yBCLeftVelX
-        c.velocityBoundary[1] =   c(0,yoffset,0).velocity[1] * ySignY + yBCLeftVelY
-        c.velocityBoundary[2] =   c(0,yoffset,0).velocity[2] * ySignZ + yBCLeftVelZ
+        UpdateGhostFieldsHelper(c, c(0,YOffset(c.yneg_depth),0),
+                                ySignX, ySignY, ySignZ,
+                                yBCLeftVelX, yBCLeftVelY, yBCLeftVelZ)
     end
     if c.ypos_depth > 0 then
-        var yoffset = YOffset(c.ypos_depth)
-        c.velocityBoundary[0] =   c(0,-yoffset,0).velocity[0] * ySignX + yBCRightVelX
-        c.velocityBoundary[1] =   c(0,-yoffset,0).velocity[1] * ySignY + yBCRightVelY
-        c.velocityBoundary[2] =   c(0,-yoffset,0).velocity[2] * ySignZ + yBCRightVelZ
+      UpdateGhostFieldsHelper(c, c(0,-YOffset(c.ypos_depth),0),
+                              ySignX, ySignY, ySignZ,
+                              yBCRightVelX, yBCRightVelY, yBCRightVelZ)
     end
     if c.zneg_depth > 0 then
-        var zoffset = ZOffset(c.zneg_depth)
-        c.velocityBoundary[0] =   c(0,0,zoffset).velocity[0] * zSignX + zBCLeftVelX
-        c.velocityBoundary[1] =   c(0,0,zoffset).velocity[1] * zSignY + zBCLeftVelY
-        c.velocityBoundary[2] =   c(0,0,zoffset).velocity[2] * zSignZ + zBCLeftVelZ
+        UpdateGhostFieldsHelper(c, c(0,0,ZOffset(c.zneg_depth)),
+                                zSignX, zSignY, zSignZ,
+                                zBCLeftVelX, zBCLeftVelY, zBCLeftVelZ)
     end
     if c.zpos_depth > 0 then
-        var zoffset = ZOffset(c.zpos_depth)
-        c.velocityBoundary[0] =   c(0,0,-zoffset).velocity[0] * zSignX + zBCRightVelX
-        c.velocityBoundary[1] =   c(0,0,-zoffset).velocity[1] * zSignY + zBCRightVelY
-        c.velocityBoundary[2] =   c(0,0,-zoffset).velocity[2] * zSignZ + zBCRightVelZ
+        UpdateGhostFieldsHelper(c, c(0,0,-ZOffset(c.zpos_depth)),
+                                zSignX, zSignY, zSignZ,
+                                zBCRightVelX, zBCRightVelY, zBCRightVelZ)
     end
 end
 Flow.UpdateGhostVelocityStep2 = liszt kernel(c : grid.cells)
