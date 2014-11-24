@@ -4,9 +4,9 @@
 return {
   
   -- Flow Initialization  Options --
-  initCase    = 'Uniform', -- Uniform, Restart, TaylorGreen2DVortex, TaylorGreen3DVortex
-  initParams  = {0.000525805,43.4923,0.0,0.0,0.0}, -- necessary input conditions
-  bodyForce   = {0,0.0,0}, -- body force in x, y, z
+  initCase     = 'Uniform', -- Uniform, Restart, TaylorGreen2DVortex, TaylorGreen3DVortex
+  initParams = {0.000525805,43.4923,0.0,0.0,0.0}, -- necessary input conditions
+  bodyForce = {0,0.0,0}, -- body force in x, y, z
   restartIter = 110000,
   
   -- Grid Options --
@@ -36,14 +36,15 @@ return {
   
   --Time Integration Options --
   final_time            = 20.00001,
-  max_iter              = 50000,
-  cfl                   = 2.0,
+  max_iter              = 1000,
+  cfl                   = 2.0, -- Negative CFL implies that we will used fixed delta T
+  delta_time            = 1e-5,
   
   --- File Output Options --
-  outputEveryTimeSteps  = 100,
-  restartEveryTimeSteps = 100,
+  outputEveryTimeSteps  = 500,
+  restartEveryTimeSteps = 500,
   headerFrequency       = 20,
-  outputFormat = 'Python', --Tecplot or Python
+  outputFormat = 'Tecplot', --Tecplot or Python
   outputDirectory = '../soleilOutput/', -- relative to the liszt-in-terra home directory
   
   -- Fluid Options --
@@ -56,19 +57,24 @@ return {
   
   -- Particle Options --
   particleType = 'Free', -- Fixed or Free
-  num = 100.0,
+  twoWayCoupling = 'OFF', -- ON or OFF
+  num = 1000.0,
   convectiveCoefficient = 0.7, -- W m^-2 K^-1
   heatCapacity = 0.7, -- J Kg^-1 K^-1
   initialTemperature = 250, -- K
-  density = 8900, --1000, --8900,
-  diameter_mean = 1e-5, -- 1.2e-5, --0.03,
-  diameter_maxDeviation = 0.0, --0.02,
-  bodyForceParticles = {0,-0.0,0}, -- {0,-1.1,0}
-  emissivity = 0.5, --0.4
+  density = 8900, -- kg/m^3
+  diameter_mean = 1e-4, -- m
+  diameter_maxDeviation = 0.0, -- m, for statistical distribution
+  bodyForceParticles = {0.0,0.0,0.0},
+  emissivity = 0.5,
   absorptivity = 0.5, -- Equal to emissivity in thermal equilibrium
   -- (Kirchhoff law of thermal radiation)
   
   -- Radiation Options --
-  radiationIntensity = 10.0,
+  radiationType = 'OFF', -- ON or OFF
+  radiationIntensity = 1e3,
+  
+  -- vdb visualization --
+  visualize = 'OFF', -- ON or OFF
   
 }

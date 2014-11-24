@@ -89,6 +89,10 @@ Particles.Free  = L.NewGlobal(L.int, 1)
 IO.Python  = L.NewGlobal(L.int, 0)
 IO.Tecplot = L.NewGlobal(L.int, 1)
 
+-- General ON/OFF Flags
+OFF = L.NewGlobal(L.bool, false)
+ON  = L.NewGlobal(L.bool, true)
+
 -----------------------------------------------------------------------------
 --[[                       COLORS FOR VISUALIZATION                      ]]--
 -----------------------------------------------------------------------------
@@ -104,13 +108,18 @@ local white = L.NewVector(L.float,{1.0,1.0,1.0})
 -----------------------------------------------------------------------------
 
 local grid_options = {
-  xnum = config.xnum,
-  ynum = config.ynum,
-  znum = config.znum,
-  origin = config.origin,
-  xWidth = config.xWidth,
-  yWidth = config.yWidth,
-  zWidth = config.zWidth,
+  -- Number of cells in the x, y, & z directions
+  xnum        = config.xnum,
+  ynum        = config.ynum,
+  znum        = config.znum,
+  -- Origin of the computational domain (meters)
+  origin      = config.origin,
+  -- Width of the computational domain in the x, y, & z directions (meters)
+  xWidth      = config.xWidth,
+  yWidth      = config.yWidth,
+  zWidth      = config.zWidth,
+  -- Boundary condition type for each face of the block and possible
+  -- wall velocity, if no-slip.
   xBCLeft     = config.xBCLeft,
   xBCLeftVel  = config.xBCLeftVel,
   xBCRight    = config.xBCRight,
@@ -337,6 +346,7 @@ TimeIntegrator.final_time            = config.final_time
 TimeIntegrator.max_iter              = config.max_iter
 TimeIntegrator.timeStep              = L.NewGlobal(L.int,0)
 TimeIntegrator.cfl                   = config.cfl
+TimeIntegrator.delta_time            = config.delta_time
 TimeIntegrator.outputEveryTimeSteps  = config.outputEveryTimeSteps
 TimeIntegrator.restartEveryTimeSteps = config.restartEveryTimeSteps
 TimeIntegrator.headerFrequency       = config.headerFrequency
@@ -439,10 +449,23 @@ elseif config.particleType == 'Free' then
 else
   error("Particle motion type not defined (Fixed or Free)")
 end
+if config.twoWayCoupling == 'ON' then
+  particles_options.twoWayCoupling = ON
+elseif config.twoWayCoupling == 'OFF' then
+  particles_options.twoWayCoupling = OFF
+else
+  error("Particle two-way couplding not defined (ON or OFF)")
+end
 
-local radiation_options = {
-    radiationIntensity = config.radiationIntensity
-}
+local radiation_options = {}
+if config.radiationType == 'ON' then
+  radiation_options.radiationType = ON
+elseif config.radiationType == 'OFF' then
+  radiation_options.radiationType = OFF
+else
+  error("Radiation type not defined (ON or OFF)")
+end
+radiation_options.radiationIntensity = config.radiationIntensity
 
 -- IO options
 -- Choose an output format (Python native or Tecplot)
@@ -455,6 +478,17 @@ else
 end
 -- Store the directory for all output files from the config
 IO.outputFileNamePrefix = config.outputDirectory
+
+-- VDB options
+-- Check whether VDB is requested or not
+local vdb_options = {}
+if config.visualize == 'ON' then
+  vdb_options.visualize = ON
+elseif config.visualize == 'OFF' then
+  vdb_options.visualize = OFF
+else
+  error("VDB visualization not defined (ON or OFF)")
+end
 
 -----------------------------------------------------------------------------
 --[[                       Load Data for a Restart                       ]]--
@@ -1654,7 +1688,7 @@ end
 ---------------------
 
 Flow.AddParticlesCoupling = liszt kernel(p : particles)
-    if p.state == 1 then
+    if p.state == 1  and particles_options.twoWayCoupling == ON then
         -- WARNING: Assumes that deltaVelocityOverRelaxationTime and 
         -- deltaTemperatureTerm have been computed previously 
         -- (for example, when adding the flow coupling to the particles, 
@@ -2399,7 +2433,7 @@ Particles.AddFlowCoupling = liszt kernel(p: particles)
         (p.density * norm(flowVelocity - p.velocity) * p.diameter) / 
         flowDynamicViscosity
       var relaxationTime = 
-        ( p.density * cmath.pow(p.diameter,2) / (18.0 * flowDynamicViscosity) ) /
+        ( p.density * cmath.pow(p.diameter,2)/(18.0 * flowDynamicViscosity))/
         ( 1.0 + 0.15 * cmath.pow(particleReynoldsNumber,0.687) )
       p.deltaVelocityOverRelaxationTime = 
         (flowVelocity - p.velocity) / relaxationTime
@@ -2433,7 +2467,7 @@ end
 ------------
 
 Particles.AddRadiation = liszt kernel(p : particles)
-    if p.state == 1 then
+    if p.state == 1 and radiation_options.radiationType == ON then
         -- Calculate absorbed radiation intensity considering optically thin
         -- particles, for a collimated radiation source with negligible 
         -- blackbody self radiation
@@ -2913,9 +2947,9 @@ function TimeIntegrator.ComputeDFunctionDt()
     Flow.AddViscous()
     Flow.AddBodyForces(grid.cells.interior)
     Particles.AddFlowCoupling(particles)
-    --Flow.AddParticlesCoupling(particles)
-    --Particles.AddBodyForces(particles)
-    --Particles.AddRadiation(particles)
+    Flow.AddParticlesCoupling(particles)
+    Particles.AddBodyForces(particles)
+    Particles.AddRadiation(particles)
 end
 
 function TimeIntegrator.UpdateSolution(stage)
@@ -2941,24 +2975,36 @@ function TimeIntegrator.AdvanceTimeStep()
 end
 
 function TimeIntegrator.CalculateDeltaTime()
-
+  
+  -- Check whether we are imposing a delta time or basing it on the CFL,
+  -- i.e. a negative CFL was imposed in the config
+  if TimeIntegrator.cfl < 0 then
+    
+    -- Impose a fixed time step from the config
+    TimeIntegrator.deltaTime:set(TimeIntegrator.delta_time)
+    
+  else
+  
+    -- Calculate the convective, viscous, and heat spectral radii
     Flow.CalculateSpectralRadii(grid.cells)
-
+    
     local maxV = maxViscousSpectralRadius:get()
     local maxH = maxHeatConductionSpectralRadius:get()
     local maxC = maxConvectiveSpectralRadius:get()
-
+    
     -- Calculate diffusive spectral radius as the maximum between
     -- heat conduction and convective spectral radii
     local maxD = ( maxV > maxH ) and maxV or maxH
-
-    -- Calculate global spectral radius as the maximum between the convective 
+    
+    -- Calculate global spectral radius as the maximum between the convective
     -- and diffusive spectral radii
     local spectralRadius = ( maxD > maxC ) and maxD or maxC
-
+    
+    -- Delta time using the CFL and max spectral radius for stability
     TimeIntegrator.deltaTime:set(TimeIntegrator.cfl / spectralRadius)
-    --TimeIntegrator.deltaTime:set(0.01)
-
+    
+  end
+  
 end
 
 -------------
@@ -3032,8 +3078,7 @@ end
     particle_avg_temp = Particles.averageTemperature:get()
   end
 
--- Ouput the current stats to the console for this iteration
-
+  -- Ouput the current stats to the console for this iteration
   io.stdout:write(string.format("%8d",timeStep),
   string.format(" %11.6f",TimeIntegrator.simTime:get()),
   string.format(" %11.6f",Flow.averagePressure:get()),
@@ -3098,11 +3143,6 @@ if timeStep % TimeIntegrator.outputEveryTimeSteps == 0 then
 -- Native Python output format
 if IO.outputFormat == IO.Python then
 
-  -- On the first iteration only, output the cell coords and particle diameters
-  if timeStep == 0 then
-
-  end
-
 --print("Time to output")
 local outputFileName = IO.outputFileNamePrefix .. "output_" ..
 tostring(timeStep)
@@ -3152,6 +3192,7 @@ io.write('VARIABLES = "X", "Y", "Z", "Density", "X-Velocity", "Y-Velocity", "Z-V
 io.write('ZONE STRANDID=', timeStep+1, ' SOLUTIONTIME=', TimeIntegrator.simTime:get(), ' I=', grid_options.xnum+1, ' J=', grid_options.ynum+1, ' K=', grid_options.znum+1, ' DATAPACKING=BLOCK VARLOCATION=([4-9]=CELLCENTERED)\n')
 
 local s = ''
+local k = 0 -- Add a counter in order to remove space (hack for now)
 
 -- Write data
 local values = grid.vertices.centerCoordinates:DumpToList()
@@ -3161,13 +3202,15 @@ local veclen = grid.vertices.centerCoordinates:Type().N
 -- Need to dump all x coords (fastest), then y, then z
 for j=1,veclen do
   s = ''
+  k = 1
   for i=1,N do
     local t = tostring(values[i][j]):gsub('ULL',' ')
 -- only write this value if it's interior
 if vert_rind[i] == 0 then
   s = s .. ' ' .. t .. ''
+  k = k + 1
 end
-if i % 5 == 0 then
+if k % 5 == 0 then
   s = s .. '\n'
   io.write("", s)
   s = ''
@@ -3183,12 +3226,14 @@ values = grid.cells.rho:DumpToList()
 N      = grid.cells.rho:Size()
 --for j=1,veclen do
 s = ''
+k = 1
 for i=1,N do
   local t = tostring(values[i]):gsub('ULL',' ')
   if cell_rind[i] == 0 then
     s = s .. ' ' .. t .. ''
+    k = k+1
   end
-  if i % 5 == 0 then
+  if k % 5 == 0 then
     s = s .. '\n'
     io.write("", s)
     s = ''
@@ -3203,12 +3248,14 @@ N      = grid.cells.velocity:Size()
 veclen = grid.cells.velocity:Type().N
 for j=1,veclen do
   s = ''
+  k = 1
   for i=1,N do
     local t = tostring(values[i][j]):gsub('ULL',' ')
     if cell_rind[i]== 0 then
       s = s .. ' ' .. t .. ''
+      k = k+1
     end
-    if i % 5 == 0 then
+    if k % 5 == 0 then
       s = s .. '\n'
       io.write("", s)
       s = ''
@@ -3219,14 +3266,15 @@ end
 
 values = grid.cells.pressure:DumpToList()
 N      = grid.cells.pressure:Size()
---for j=1,veclen do
 s = ''
+k = 1
 for i=1,N do
   local t = tostring(values[i]):gsub('ULL',' ')
   if cell_rind[i]== 0 then
     s = s .. ' ' .. t .. ''
+    k = k+1
   end
-  if i % 5 == 0 then
+  if k % 5 == 0 then
     s = s .. '\n'
     io.write("", s)
     s = ''
@@ -3240,12 +3288,14 @@ values = grid.cells.temperature:DumpToList()
 N      = grid.cells.temperature:Size()
 --for j=1,veclen do
 s = ''
+k = 1
 for i=1,N do
   local t = tostring(values[i]):gsub('ULL',' ')
   if cell_rind[i]== 0 then
     s = s .. ' ' .. t .. ''
+    k = k+1
   end
-  if i % 5 == 0 then
+  if k % 5 == 0 then
     s = s .. '\n'
     io.write("", s)
     s = ''
@@ -3269,26 +3319,26 @@ local particleFile = io.output(particleFileName)
 
 -- Write header
 --io.write('TITLE = "Data"\n')
---io.write('VARIABLES = "X", "Y", "Z", "Density", "X-Velocity", "Y-Velocity", "Z-Velocity", "Pressure", "Temperature"\n')
+io.write('VARIABLES = "X", "Y", "Z", "Diameter"\n')
 io.write('ZONE SOLUTIONTIME=', TimeIntegrator.simTime:get(), '\n')
 
 values = particles.position:DumpToList()
 N      = particles.position:Size()
 veclen = particles.position:Type().N
+local diameter = particles.diameter:DumpToList()
+
 for i=1,N do
   s = ''
   for j=1,veclen do
     local t = tostring(values[i][j]):gsub('ULL',' ')
     s = s .. ' ' .. t .. ''
   end
-  s = s .. '\n'
+  local diam = tostring(diameter[i]):gsub('ULL',' ')
+  s = s .. ' ' .. diam .. '\n'
   io.write("", s)
 end
 
 io.close()
-
--- Write the Tecplot header
---Flow.WriteTecplotHeader(outputFileName)
 
 else
   print("Output format not defined. No output written to disk.")
@@ -3319,11 +3369,15 @@ TimeIntegrator.InitializeVariables()
 Statistics.ComputeSpatialAverages()
 IO.WriteOutput(TimeIntegrator.timeStep:get())
 
-Flow.WriteField(IO.outputFileNamePrefix .. "output",
-                grid:xSize(), grid:ySize(), grid:zSize(),
-                grid.cells.centerCoordinates)
-Particles.WriteField(IO.outputFileNamePrefix .. "output_particles",
-                     particles.diameter)
+-- For Native Python output, we need the center coords and particle diameters
+-- before the first iteration.
+if IO.outputFormat == IO.Python then
+  Flow.WriteField(IO.outputFileNamePrefix .. "output",
+                  grid:xSize(), grid:ySize(), grid:zSize(),
+                  grid.cells.centerCoordinates)
+  Particles.WriteField(IO.outputFileNamePrefix .. "output_particles",
+                       particles.diameter)
+end
 
 -- Main iteration loop
 
@@ -3334,6 +3388,10 @@ while ((TimeIntegrator.simTime:get() < TimeIntegrator.final_time) and
     TimeIntegrator.AdvanceTimeStep()
     Statistics.ComputeSpatialAverages()
     IO.WriteOutput(TimeIntegrator.timeStep:get())
-    Visualization.Draw()
-
+    
+    -- Visualize the simulation with VDB if requested
+    if vdb_options.visualize == ON then
+      Visualization.Draw()
+    end
+    
 end
