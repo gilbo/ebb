@@ -1782,7 +1782,6 @@ local UpdateGhostFieldsHelper = liszt function(c_bnd, c_int,
 end
 Flow.UpdateGhostFieldsStep1 = liszt kernel(c : grid.cells)
     if c.xneg_depth > 0 then
-        -- Find offset for this cell and retrieve the correct interior cell
         UpdateGhostFieldsHelper(c, c(XOffset(c.xneg_depth),0,0),
                                 xSignX, xSignY, xSignZ,
                                 xBCLeftVelX, xBCLeftVelY, xBCLeftVelZ)
@@ -1826,37 +1825,33 @@ function Flow.UpdateGhost()
     Flow.UpdateGhostFieldsStep2(grid.cells.boundary)
 end
 
+-- Helper function for updating the ghost fields to minimize repeated code
+local UpdateGhostThermodynamicsHelper = liszt function(c_bnd, c_int)
+
+  -- Update the boundary cell based on the values in the matching interior cell
+  c_bnd.pressureBoundary    = c_int.pressure
+  c_bnd.temperatureBoundary = c_int.temperature
+
+end
 Flow.UpdateGhostThermodynamicsStep1 = liszt kernel(c : grid.cells)
-    if c.xneg_depth > 0 then
-        var xoffset = XOffset(c.xneg_depth)
-        c.pressureBoundary       =   c(xoffset,0,0).pressure
-        c.temperatureBoundary    =   c(xoffset,0,0).temperature
-    end
-    if c.xpos_depth > 0 then
-        var xoffset = XOffset(c.xpos_depth)
-        c.pressureBoundary       =   c(-xoffset,0,0).pressure
-        c.temperatureBoundary    =   c(-xoffset,0,0).temperature
-    end
-    if c.yneg_depth > 0 then
-        var yoffset = YOffset(c.yneg_depth)
-        c.pressureBoundary       =   c(0,yoffset,0).pressure
-        c.temperatureBoundary    =   c(0,yoffset,0).temperature
-    end
-    if c.ypos_depth > 0 then
-        var yoffset = YOffset(c.ypos_depth)
-        c.pressureBoundary       =   c(0,-yoffset,0).pressure
-        c.temperatureBoundary    =   c(0,-yoffset,0).temperature
-    end
-    if c.zpos_depth > 0 then
-        var zoffset = ZOffset(c.zpos_depth)
-        c.pressureBoundary       =   c(0,0,-zoffset).pressure
-        c.temperatureBoundary    =   c(0,0,-zoffset).temperature
-    end
-    if c.zneg_depth > 0 then
-        var zoffset = ZOffset(c.zneg_depth)
-        c.pressureBoundary       =   c(0,0,zoffset).pressure
-        c.temperatureBoundary    =   c(0,0,zoffset).temperature
-    end
+  if c.xneg_depth > 0 then
+    UpdateGhostThermodynamicsHelper(c, c(XOffset(c.xneg_depth),0,0))
+  end
+  if c.xpos_depth > 0 then
+    UpdateGhostThermodynamicsHelper(c, c(-XOffset(c.xpos_depth),0,0))
+  end
+  if c.yneg_depth > 0 then
+    UpdateGhostThermodynamicsHelper(c, c(0,YOffset(c.yneg_depth),0))
+  end
+  if c.ypos_depth > 0 then
+    UpdateGhostThermodynamicsHelper(c, c(0,-YOffset(c.ypos_depth),0))
+  end
+  if c.zneg_depth > 0 then
+    UpdateGhostThermodynamicsHelper(c, c(0,0,ZOffset(c.zneg_depth)))
+  end
+  if c.zpos_depth > 0 then
+    UpdateGhostThermodynamicsHelper(c, c(0,0,-ZOffset(c.zpos_depth)))
+  end
 end
 Flow.UpdateGhostThermodynamicsStep2 = liszt kernel(c : grid.cells)
     if c.in_boundary then
@@ -1920,83 +1915,56 @@ function Flow.UpdateGhostVelocity()
     Flow.UpdateGhostVelocityStep2(grid.cells.boundary)
 end
 
+-- Helper function for updating the conservatives to minimize repeated code
+local UpdateGhostConservedHelper = liszt function(c_bnd, c_int,
+                                                  SignX, SignY, SignZ,
+                                                  BCVelX, BCVelY, BCVelZ)
+
+  -- Compute the Cv for updating the Energy equation
+  var cv = fluid_options.gasConstant / (fluid_options.gamma - 1.0)
+
+  -- Update the boundary cell based on the values in the matching interior cell
+  c_bnd.rhoBoundary            =   c_int.rho
+  c_bnd.rhoVelocityBoundary[0] =   c_int.rhoVelocity[0] * SignX + c_int.rho*BCVelX
+  c_bnd.rhoVelocityBoundary[1] =   c_int.rhoVelocity[1] * SignY + c_int.rho*BCVelY
+  c_bnd.rhoVelocityBoundary[2] =   c_int.rhoVelocity[2] * SignZ + c_int.rho*BCVelZ
+  c_bnd.rhoEnergyBoundary      =   c_int.rho * ( cv * c_int.temperature + 0.5*
+                                                ((c_int.velocity[0] * SignX + BCVelX) * (c_int.velocity[0] * SignX + BCVelX) +
+                                                 (c_int.velocity[1] * SignY + BCVelY) * (c_int.velocity[1] * SignY + BCVelY) +
+                                                 (c_int.velocity[2] * SignZ + BCVelZ) * (c_int.velocity[2] * SignZ + BCVelZ)))  --c_int.rhoEnergy
+
+end
 Flow.UpdateGhostConservedStep1 = liszt kernel(c : grid.cells)
-
-    -- Compute the Cv for updating the Energy equation
-    var cv = fluid_options.gasConstant / (fluid_options.gamma - 1.0)
-
-    if c.xneg_depth > 0 then
-        var xoffset = XOffset(c.xneg_depth)
-        c.rhoBoundary            =   c(xoffset,0,0).rho
-        c.rhoVelocityBoundary[0] =   c(xoffset,0,0).rhoVelocity[0] * xSignX + c(xoffset,0,0).rho*xBCLeftVelX
-        c.rhoVelocityBoundary[1] =   c(xoffset,0,0).rhoVelocity[1] * xSignY + c(xoffset,0,0).rho*xBCLeftVelY
-        c.rhoVelocityBoundary[2] =   c(xoffset,0,0).rhoVelocity[2] * xSignZ + c(xoffset,0,0).rho*xBCLeftVelZ
-        --c.rhoEnergyBoundary      =   c(xoffset,0,0).rhoEnergy
-        c.rhoEnergyBoundary      =   c(xoffset,0,0).rho * ( cv * c(xoffset,0,0).temperature + 0.5*
-                                                     ((c(xoffset,0,0).velocity[0] * xSignX + xBCLeftVelX) * (c(xoffset,0,0).velocity[0] * xSignX + xBCLeftVelX) +
-                                                      (c(xoffset,0,0).velocity[1] * xSignY + xBCLeftVelY) * (c(xoffset,0,0).velocity[1] * xSignY + xBCLeftVelY) +
-                                                      (c(xoffset,0,0).velocity[2] * xSignZ + xBCLeftVelZ) * (c(xoffset,0,0).velocity[2] * xSignZ + xBCLeftVelZ))) --
-    end
-    if c.xpos_depth > 0 then
-        var xoffset = XOffset(c.xpos_depth)
-        c.rhoBoundary            =   c(-xoffset,0,0).rho
-        c.rhoVelocityBoundary[0] =   c(-xoffset,0,0).rhoVelocity[0] * xSignX + c(-xoffset,0,0).rho*xBCRightVelX
-        c.rhoVelocityBoundary[1] =   c(-xoffset,0,0).rhoVelocity[1] * xSignY + c(-xoffset,0,0).rho*xBCRightVelY
-        c.rhoVelocityBoundary[2] =   c(-xoffset,0,0).rhoVelocity[2] * xSignZ + c(-xoffset,0,0).rho*xBCRightVelZ
-        --c.rhoEnergyBoundary      =   c(-xoffset,0,0).rhoEnergy
-        c.rhoEnergyBoundary      =   c(-xoffset,0,0).rho * ( cv * c(-xoffset,0,0).temperature + 0.5*
-                                                     ((c(-xoffset,0,0).velocity[0] * xSignX + xBCRightVelX) * (c(-xoffset,0,0).velocity[0] * xSignX + xBCRightVelX) +
-                                                      (c(-xoffset,0,0).velocity[1] * xSignY + xBCRightVelY) * (c(-xoffset,0,0).velocity[1] * xSignY + xBCRightVelY) +
-                                                      (c(-xoffset,0,0).velocity[2] * xSignZ + xBCRightVelZ) * (c(-xoffset,0,0).velocity[2] * xSignZ + xBCRightVelZ)))
-    end
-    if c.yneg_depth > 0 then
-        var yoffset = YOffset(c.yneg_depth)
-        c.rhoBoundary            =   c(0,yoffset,0).rho
-        c.rhoVelocityBoundary[0] =   c(0,yoffset,0).rhoVelocity[0] * ySignX + c(0,yoffset,0).rho*yBCLeftVelX
-        c.rhoVelocityBoundary[1] =   c(0,yoffset,0).rhoVelocity[1] * ySignY + c(0,yoffset,0).rho*yBCLeftVelY
-        c.rhoVelocityBoundary[2] =   c(0,yoffset,0).rhoVelocity[2] * ySignZ + c(0,yoffset,0).rho*yBCLeftVelZ
-        --c.rhoEnergyBoundary      =   c(0,yoffset,0).rhoEnergy
-        c.rhoEnergyBoundary      =   c(0,yoffset,0).rho * ( cv * c(0,yoffset,0).temperature + 0.5*
-                                                     ((c(0,yoffset,0).velocity[0] * ySignX + yBCLeftVelX) * (c(0,yoffset,0).velocity[0] * ySignX + yBCLeftVelX) +
-                                                      (c(0,yoffset,0).velocity[1] * ySignY + yBCLeftVelY) * (c(0,yoffset,0).velocity[1] * ySignY + yBCLeftVelY) +
-                                                      (c(0,yoffset,0).velocity[2] * ySignZ + yBCLeftVelZ) * (c(0,yoffset,0).velocity[2] * ySignZ + yBCLeftVelZ)))
-    end
-    if c.ypos_depth > 0 then
-        var yoffset = YOffset(c.ypos_depth)
-        c.rhoBoundary            =   c(0,-yoffset,0).rho
-        c.rhoVelocityBoundary[0] =   c(0,-yoffset,0).rhoVelocity[0] * ySignX + c(0,-yoffset,0).rho*yBCRightVelX
-        c.rhoVelocityBoundary[1] =   c(0,-yoffset,0).rhoVelocity[1] * ySignY + c(0,-yoffset,0).rho*yBCRightVelY
-        c.rhoVelocityBoundary[2] =   c(0,-yoffset,0).rhoVelocity[2] * ySignZ + c(0,-yoffset,0).rho*yBCRightVelZ
-        --c.rhoEnergyBoundary      =   c(0,-yoffset,0).rhoEnergy
-        c.rhoEnergyBoundary      =   c(0,-yoffset,0).rho * ( cv * c(0,-yoffset,0).temperature + 0.5*
-                                                     ((c(0,-yoffset,0).velocity[0] * ySignX + yBCRightVelX) * (c(0,-yoffset,0).velocity[0] * ySignX + yBCRightVelX) +
-                                                      (c(0,-yoffset,0).velocity[1] * ySignY + yBCRightVelY) * (c(0,-yoffset,0).velocity[1] * ySignY + yBCRightVelY) +
-                                                      (c(0,-yoffset,0).velocity[2] * ySignZ + yBCRightVelZ) * (c(0,-yoffset,0).velocity[2] * ySignZ + yBCRightVelZ)))
-    end
-    if c.zneg_depth > 0 then
-        var zoffset = ZOffset(c.zneg_depth)
-        c.rhoBoundary            =   c(0,0,zoffset).rho
-        c.rhoVelocityBoundary[0] =   c(0,0,zoffset).rhoVelocity[0] * zSignX + c(0,0,zoffset).rho*zBCLeftVelX
-        c.rhoVelocityBoundary[1] =   c(0,0,zoffset).rhoVelocity[1] * zSignY + c(0,0,zoffset).rho*zBCLeftVelY
-        c.rhoVelocityBoundary[2] =   c(0,0,zoffset).rhoVelocity[2] * zSignZ + c(0,0,zoffset).rho*zBCLeftVelZ
-        --c.rhoEnergyBoundary      =   c(0,0,zoffset).rhoEnergy
-        c.rhoEnergyBoundary      =   c(0,0,zoffset).rho * ( cv * c(0,0,zoffset).temperature + 0.5*
-                                                     ((c(0,0,zoffset).velocity[0] * zSignX + zBCLeftVelX) * (c(0,0,zoffset).velocity[0] * zSignX + zBCLeftVelX) +
-                                                      (c(0,0,zoffset).velocity[1] * zSignY + zBCLeftVelY) * (c(0,0,zoffset).velocity[1] * zSignY + zBCLeftVelY) +
-                                                      (c(0,0,zoffset).velocity[2] * zSignZ + zBCLeftVelZ) * (c(0,0,zoffset).velocity[2] * zSignZ + zBCLeftVelZ)))
-    end
-    if c.zpos_depth > 0 then
-        var zoffset = ZOffset(c.zpos_depth)
-        c.rhoBoundary            =   c(0,0,-zoffset).rho
-        c.rhoVelocityBoundary[0] =   c(0,0,-zoffset).rhoVelocity[0] * zSignX + c(0,0,-zoffset).rho*zBCRightVelX
-        c.rhoVelocityBoundary[1] =   c(0,0,-zoffset).rhoVelocity[1] * zSignY + c(0,0,-zoffset).rho*zBCRightVelY
-        c.rhoVelocityBoundary[2] =   c(0,0,-zoffset).rhoVelocity[2] * zSignZ + c(0,0,-zoffset).rho*zBCRightVelZ
-        --c.rhoEnergyBoundary      =   c(0,0,-zoffset).rhoEnergy
-        c.rhoEnergyBoundary      =   c(0,0,-zoffset).rho * ( cv * c(0,0,-zoffset).temperature + 0.5*
-                                                     ((c(0,0,-zoffset).velocity[0] * zSignX + zBCRightVelX) * (c(0,0,-zoffset).velocity[0] * zSignX + zBCRightVelX) +
-                                                      (c(0,0,-zoffset).velocity[1] * zSignY + zBCRightVelY) * (c(0,0,-zoffset).velocity[1] * zSignY + zBCRightVelY) +
-                                                      (c(0,0,-zoffset).velocity[2] * zSignZ + zBCRightVelZ) * (c(0,0,-zoffset).velocity[2] * zSignZ + zBCRightVelZ)))
-    end
+  if c.xneg_depth > 0 then
+    UpdateGhostConservedHelper(c, c(XOffset(c.xneg_depth),0,0),
+                               xSignX, xSignY, xSignZ,
+                               xBCLeftVelX, xBCLeftVelY, xBCLeftVelZ)
+  end
+  if c.xpos_depth > 0 then
+    UpdateGhostConservedHelper(c, c(-XOffset(c.xpos_depth),0,0),
+                               xSignX, xSignY, xSignZ,
+                               xBCRightVelX, xBCRightVelY, xBCRightVelZ)
+  end
+  if c.yneg_depth > 0 then
+    UpdateGhostConservedHelper(c, c(0,YOffset(c.yneg_depth),0),
+                               ySignX, ySignY, ySignZ,
+                               yBCLeftVelX, yBCLeftVelY, yBCLeftVelZ)
+  end
+  if c.ypos_depth > 0 then
+    UpdateGhostConservedHelper(c, c(0,-YOffset(c.ypos_depth),0),
+                               ySignX, ySignY, ySignZ,
+                               yBCRightVelX, yBCRightVelY, yBCRightVelZ)
+  end
+  if c.zneg_depth > 0 then
+    UpdateGhostConservedHelper(c, c(0,0,ZOffset(c.zneg_depth)),
+                               zSignX, zSignY, zSignZ,
+                               zBCLeftVelX, zBCLeftVelY, zBCLeftVelZ)
+  end
+  if c.zpos_depth > 0 then
+    UpdateGhostConservedHelper(c, c(0,0,-ZOffset(c.zpos_depth)),
+                               zSignX, zSignY, zSignZ,
+                               zBCRightVelX, zBCRightVelY, zBCRightVelZ)
+  end
 end
 Flow.UpdateGhostConservedStep2 = liszt kernel(c : grid.cells)
     c.pressure    = c.pressureBoundary
@@ -2195,12 +2163,12 @@ Flow.IntegrateQuantities = liszt kernel(c : grid.cells)
     --var cellVolume = c.xCellWidth() * c.yCellWidth() * c.zCellWidth()
     var cellVolume = grid_dx * grid_dy * grid_dz
     Flow.numberOfInteriorCells += 1
-    Flow.areaInterior += cellVolume
-    Flow.averagePressure += c.pressure * cellVolume
-    Flow.averageTemperature += c.temperature * cellVolume
-    Flow.averageKineticEnergy += c.kineticEnergy * cellVolume
-    Flow.minTemperature min= c.temperature
-    Flow.maxTemperature max= c.temperature
+    Flow.areaInterior          += cellVolume
+    Flow.averagePressure       += c.pressure * cellVolume
+    Flow.averageTemperature    += c.temperature * cellVolume
+    Flow.averageKineticEnergy  += c.kineticEnergy * cellVolume
+    Flow.minTemperature      min= c.temperature
+    Flow.maxTemperature      max= c.temperature
 end
 
 ---------
