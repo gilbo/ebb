@@ -36,13 +36,13 @@ return {
   
   --Time Integration Options --
   final_time            = 20.00001,
-  max_iter              = 1000,
+  max_iter              = 50000,
   cfl                   = 2.0, -- Negative CFL implies that we will used fixed delta T
   delta_time            = 1e-5,
   
   --- File Output Options --
-  outputEveryTimeSteps  = 500,
-  restartEveryTimeSteps = 500,
+  outputEveryTimeSteps  = 1000,
+  restartEveryTimeSteps = 1000,
   headerFrequency       = 20,
   outputFormat = 'Tecplot', --Tecplot or Python
   outputDirectory = '../soleilOutput/', -- relative to the liszt-in-terra home directory

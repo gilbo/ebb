@@ -2093,7 +2093,7 @@ Flow.UpdateGhostVelocityGradientStep1 = liszt kernel(c : grid.cells)
         c.velocityGradientZBoundary[2] = - c(0,0,zoffset).velocityGradientZ[2]
     end
     if c.zpos_depth > 0 then
-        var zoffset = YOffset(c.zpos_depth)
+        var zoffset = ZOffset(c.zpos_depth)
         c.velocityGradientXBoundary[0] =   c(0,0,-zoffset).velocityGradientX[0]
         c.velocityGradientXBoundary[1] =   c(0,0,-zoffset).velocityGradientX[1]
         c.velocityGradientXBoundary[2] = - c(0,0,-zoffset).velocityGradientX[2]
