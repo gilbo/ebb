@@ -416,8 +416,13 @@ local particles_options = {
     feederType = Particles.FeederAtStartTimeInRandomBox,
     --feederParams = L.NewGlobal(L.vector(L.double,6),
     --                           {pi,pi,pi,2*pi,2*pi,2*pi}), -- TGV problem
-    feederParams = L.NewGlobal(L.vector(L.double,6),  -- Cavity problem
-                               {0.5,0.5,0.5/32.0,1.0,1.0,1.0/32.0}),
+    feederParams = L.NewGlobal(L.vector(L.double,6),  -- Default is entire box
+                               {(grid_options.origin[1]+grid_options.xWidth)/2.,
+                               (grid_options.origin[2]+grid_options.yWidth)/2.,
+                               (grid_options.origin[3]+grid_options.zWidth)/2.,
+                               (grid_options.origin[1]+grid_options.xWidth),
+                               (grid_options.origin[2]+grid_options.yWidth),
+                               (grid_options.origin[3]+grid_options.zWidth)}),
 
     -- Feeding a given number of particles every timestep randomly
     -- distributed on a box defined by its center and sides
@@ -441,7 +446,7 @@ local particles_options = {
     -- Particles.Collect kernel where it is specialized
     --
     -- Do not collect particles (freely move within the domain)
-    collectorType = Particles.CollectorNone,
+    collectorType   = Particles.CollectorNone,
     collectorParams = L.NewGlobal(L.vector(L.double,1),{0}),
     
     -- Collect all particles that exit a box defined by its Cartesian 
@@ -1058,6 +1063,7 @@ Flow.InitializeCellRindLayer = liszt kernel(c : grid.cells)
 end
 
 -- Hard coding the vertices until we have access in grid.t
+-- WARNING: Here, I am using the id numbers, but this is unsafe!
 Flow.InitializeVertexCoordinates = liszt kernel(v : grid.vertices)
     var x = grid_originX + grid_dx * (L.double(v.xid))
     var y = grid_originY + grid_dy * (L.double(v.yid))
@@ -3230,36 +3236,77 @@ io.write('ZONE STRANDID=', timeStep+1, ' SOLUTIONTIME=',
 local s = ''
 local k = 0 -- Add a counter in order to remove space (hack for now)
 
--- Write data
-local values = grid.vertices.centerCoordinates:DumpToList()
-local N      = grid.vertices.centerCoordinates:Size()
-local veclen = grid.vertices.centerCoordinates:Type().N
+-- Here, we will recompute the coordinates just for output.
+-- This is being done as a workaround for the difference in 
+-- vertex handling between periodic and wall cases.
+local xCoord = {}          -- create the matrix
+local yCoord = {}          -- create the matrix
+local zCoord = {}          -- create the matrix
+local iVertex = 1
+for k =1,grid_options.znum+1 do
+  for j=1,grid_options.ynum+1 do
+    for i=1,grid_options.xnum+1 do
+      xCoord[iVertex] = gridOriginInteriorX + (grid_options.xWidth /
+                                               grid_options.xnum * (i-1))
+      yCoord[iVertex] = gridOriginInteriorY + (grid_options.yWidth /
+                                               grid_options.ynum  * (j-1))
+      zCoord[iVertex] = gridOriginInteriorZ + (grid_options.zWidth /
+                                               grid_options.znum  * (k-1))
+      iVertex = iVertex+1
+    end
+  end
+end
+local nVertex = iVertex-1
 
--- Need to dump all x coords (fastest), then y, then z
-for j=1,veclen do
-  s = ''
-  k = 1
-  for i=1,N do
-    local t = tostring(values[i][j]):gsub('ULL',' ')
--- only write this value if it's interior
-if vert_rind[i] == 0 then
+-- Write the x-coordinates
+s = ''
+k = 1
+for i=1,nVertex do
+  local t = tostring(xCoord[i])
   s = s .. ' ' .. t .. ''
   k = k + 1
+  if k % 5 == 0 then
+    s = s .. '\n'
+    io.write("", s)
+    s = ''
+  end
 end
-if k % 5 == 0 then
-  s = s .. '\n'
-  io.write("", s)
-  s = ''
-end
-end
--- i-1 to return to 0 indexing
 io.write("", s)
+
+-- Write the y-coordinates
+s = ''
+k = 1
+for i=1,nVertex do
+  local t = tostring(yCoord[i])
+  s = s .. ' ' .. t .. ''
+  k = k + 1
+  if k % 5 == 0 then
+    s = s .. '\n'
+    io.write("", s)
+    s = ''
+  end
 end
+io.write("", s)
+
+-- Write the z-coordinates
+s = ''
+k = 1
+for i=1,nVertex do
+  local t = tostring(zCoord[i])
+  s = s .. ' ' .. t .. ''
+  k = k + 1
+  if k % 5 == 0 then
+    s = s .. '\n'
+    io.write("", s)
+    s = ''
+  end
+end
+io.write("", s)
 
 -- Now write density, velocity, pressure, temperature
 
-values = grid.cells.rho:DumpToList()
-N      = grid.cells.rho:Size()
+local values = grid.cells.rho:DumpToList()
+local N      = grid.cells.rho:Size()
 --for j=1,veclen do
 s = ''
 k = 1
@@ -3281,7 +3328,7 @@ io.write("", s)
 
 values = grid.cells.velocity:DumpToList()
 N      = grid.cells.velocity:Size()
-veclen = grid.cells.velocity:Type().N
+local veclen = grid.cells.velocity:Type().N
 for j=1,veclen do
   s = ''
   k = 1
