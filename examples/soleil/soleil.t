@@ -138,9 +138,7 @@ local grid_options = {
 -- The sign variables define the necessary reflections for the
 -- different types of BCs. The wall velocity is specified above,
 -- and then the velocity adjustment is calculated here and applied
--- to the boundaries below. WARNING: we are assuming uniform meshes
--- here as well, as the 2.0 results in a simple average to match
--- the specified wall velocity when the BC is applied.
+-- to the boundaries below.
 
 -- Define offsets, signs, and velocities for the x BCs
 
@@ -331,8 +329,8 @@ if config.spatialOrder == 2 then
     numFirstDerivativeCoeffs = 4,
     firstDerivativeCoeffs = L.NewVector(L.double,
                                         {0.0,45.0/60.0,-9.0/60.0, 1.0/60.0}),
-                                        firstDerivativeModifiedWaveNumber = 1.59,
-                                        secondDerivativeModifiedWaveNumber = 6.04
+                                        firstDerivativeModifiedWaveNumber=1.59,
+                                        secondDerivativeModifiedWaveNumber=6.04
   }
   else
     error("Spatial stencil order not implemented")
@@ -396,8 +394,8 @@ local particles_options = {
     feederType = Particles.FeederAtStartTimeInRandomBox,
     --feederParams = L.NewGlobal(L.vector(L.double,6),
     --                           {pi,pi,pi,2*pi,2*pi,2*pi}), -- TGV problem
-    feederParams = L.NewGlobal(L.vector(L.double,6),
-                               {0.5,0.5,0.5/32.0,1.0,1.0,1.0/32.0}), -- Cavity problem
+    feederParams = L.NewGlobal(L.vector(L.double,6),  -- Cavity problem
+                               {0.5,0.5,0.5/32.0,1.0,1.0,1.0/32.0}),
 
     -- Feeding a given number of particles every timestep randomly
     -- distributed on a box defined by its center and sides
@@ -1764,20 +1762,24 @@ local UpdateGhostFieldsHelper = liszt function(c_bnd, c_int,
   -- Compute the Cv for updating the Energy equation
   var cv = fluid_options.gasConstant / (fluid_options.gamma - 1.0)
 
+  -- Compute the new velocity (including any wall conditions)
+  var velocity = L.vec3d({0.0, 0.0, 0.0})
+  velocity[0] = c_int.rhoVelocity[0]/c_int.rho * SignX + BCVelX
+  velocity[1] = c_int.rhoVelocity[1]/c_int.rho * SignY + BCVelY
+  velocity[2] = c_int.rhoVelocity[2]/c_int.rho * SignZ + BCVelZ
+
   -- Update the boundary cell based on the values in the matching interior cell
-  c_bnd.rhoBoundary            =   c_int.rho
-  c_bnd.rhoVelocityBoundary[0] =   c_int.rhoVelocity[0] * SignX + c_int.rho*BCVelX
-  c_bnd.rhoVelocityBoundary[1] =   c_int.rhoVelocity[1] * SignY + c_int.rho*BCVelY
-  c_bnd.rhoVelocityBoundary[2] =   c_int.rhoVelocity[2] * SignZ + c_int.rho*BCVelZ
-  c_bnd.rhoEnergyBoundary      =   c_int.rho * ( cv * c_int.temperature + 0.5*
-                                                     ((c_int.velocity[0] * SignX + BCVelX) * (c_int.velocity[0] * SignX + BCVelX) +
-                                                      (c_int.velocity[1] * SignY + BCVelY) * (c_int.velocity[1] * SignY + BCVelY) +
-                                                      (c_int.velocity[2] * SignZ + BCVelZ) * (c_int.velocity[2] * SignZ + BCVelZ))) --c(xoffset,0,0).rhoEnergy
-  c_bnd.velocityBoundary[0]    =   c_int.velocity[0] * SignX + BCVelX
-  c_bnd.velocityBoundary[1]    =   c_int.velocity[1] * SignY + BCVelY
-  c_bnd.velocityBoundary[2]    =   c_int.velocity[2] * SignZ + BCVelZ
-  c_bnd.pressureBoundary       =   c_int.pressure
-  c_bnd.temperatureBoundary    =   c_int.temperature
+  c_bnd.rhoBoundary            =  c_int.rho
+  c_bnd.rhoVelocityBoundary[0] =  c_int.rho*velocity[0]
+  c_bnd.rhoVelocityBoundary[1] =  c_int.rho*velocity[1]
+  c_bnd.rhoVelocityBoundary[2] =  c_int.rho*velocity[2]
+  c_bnd.rhoEnergyBoundary      =  c_int.rho * (cv * c_int.temperature +
+                                              0.5*L.dot(velocity,velocity))
+  c_bnd.velocityBoundary[0]    =  velocity[0]
+  c_bnd.velocityBoundary[1]    =  velocity[1]
+  c_bnd.velocityBoundary[2]    =  velocity[2]
+  c_bnd.pressureBoundary       =  c_int.pressure
+  c_bnd.temperatureBoundary    =  c_int.temperature
 
 end
 Flow.UpdateGhostFieldsStep1 = liszt kernel(c : grid.cells)
@@ -1813,7 +1815,6 @@ Flow.UpdateGhostFieldsStep1 = liszt kernel(c : grid.cells)
     end
 end
 Flow.UpdateGhostFieldsStep2 = liszt kernel(c : grid.cells)
-    c.pressure    = c.pressureBoundary
     c.rho         = c.rhoBoundary
     c.rhoVelocity = c.rhoVelocityBoundary
     c.rhoEnergy   = c.rhoEnergyBoundary
@@ -1923,15 +1924,19 @@ local UpdateGhostConservedHelper = liszt function(c_bnd, c_int,
   -- Compute the Cv for updating the Energy equation
   var cv = fluid_options.gasConstant / (fluid_options.gamma - 1.0)
 
+  -- Compute the new velocity (including any wall conditions)
+  var velocity = L.vec3d({0.0, 0.0, 0.0})
+  velocity[0] = c_int.rhoVelocity[0]/c_int.rho * SignX + BCVelX
+  velocity[1] = c_int.rhoVelocity[1]/c_int.rho * SignY + BCVelY
+  velocity[2] = c_int.rhoVelocity[2]/c_int.rho * SignZ + BCVelZ
+  
   -- Update the boundary cell based on the values in the matching interior cell
   c_bnd.rhoBoundary            =   c_int.rho
-  c_bnd.rhoVelocityBoundary[0] =   c_int.rhoVelocity[0] * SignX + c_int.rho*BCVelX
-  c_bnd.rhoVelocityBoundary[1] =   c_int.rhoVelocity[1] * SignY + c_int.rho*BCVelY
-  c_bnd.rhoVelocityBoundary[2] =   c_int.rhoVelocity[2] * SignZ + c_int.rho*BCVelZ
-  c_bnd.rhoEnergyBoundary      =   c_int.rho * ( cv * c_int.temperature + 0.5*
-                                                ((c_int.velocity[0] * SignX + BCVelX) * (c_int.velocity[0] * SignX + BCVelX) +
-                                                 (c_int.velocity[1] * SignY + BCVelY) * (c_int.velocity[1] * SignY + BCVelY) +
-                                                 (c_int.velocity[2] * SignZ + BCVelZ) * (c_int.velocity[2] * SignZ + BCVelZ)))  --c_int.rhoEnergy
+  c_bnd.rhoVelocityBoundary[0] =   c_int.rho*velocity[0]
+  c_bnd.rhoVelocityBoundary[1] =   c_int.rho*velocity[1]
+  c_bnd.rhoVelocityBoundary[2] =   c_int.rho*velocity[2]
+  c_bnd.rhoEnergyBoundary      =   c_int.rho * (cv * c_int.temperature +
+                                                0.5*L.dot(velocity,velocity))
 
 end
 Flow.UpdateGhostConservedStep1 = liszt kernel(c : grid.cells)
@@ -1977,17 +1982,17 @@ function Flow.UpdateGhostConserved()
 end
 
 Flow.UpdateAuxiliaryThermodynamics = liszt kernel(c : grid.cells)
-    var kineticEnergy = 
-      0.5 * c.rho * L.dot(c.velocity,c.velocity)
-    -- Define temporary pressure variable to avoid error like this:
-    -- Errors during typechecking liszt
-    -- examples/soleil/soleil.t:557: access of 'cells.pressure' field in <Read> phase
-    -- conflicts with earlier access in <Write> phase at examples/soleil/soleil.t:555
-    -- when I try to reuse the c.pressure variable to calculate the temperature
-    var pressure = (fluid_options.gamma - 1.0) * 
-                   ( c.rhoEnergy - kineticEnergy )
-    c.pressure = pressure 
-    c.temperature =  pressure / ( fluid_options.gasConstant * c.rho)
+  var kineticEnergy =
+    0.5 * c.rho * L.dot(c.velocity,c.velocity)
+--Define temporary pressure variable to avoid error like this:
+--Errors during typechecking liszt
+--examples/soleil/soleil.t:557: access of 'cells.pressure' field in <Read> phase
+--conflicts with earlier access in <Write> phase at examples/soleil/soleil.t:555
+--when I try to reuse the c.pressure variable to calculate the temperature
+  var pressure = (fluid_options.gamma - 1.0) *
+                 ( c.rhoEnergy - kineticEnergy )
+  c.pressure = pressure 
+  c.temperature =  pressure / ( fluid_options.gasConstant * c.rho)
 end
 
 ---------------------
@@ -2334,47 +2339,47 @@ end
 
 -- Update particle fields based on flow fields
 Particles.AddFlowCoupling = liszt kernel(p: particles)
-    if p.state == 1 then
-      p.dual_cell = grid.dual_locate(p.position)
-      var flowDensity     = L.double(0)
-      var flowVelocity    = L.vec3d({0, 0, 0})
-      var flowTemperature = L.double(0)
-      var flowDynamicViscosity = L.double(0)
-      flowDensity     = InterpolateTrilinear(p.dual_cell, p.position, Rho)
-      flowVelocity    = InterpolateTrilinear(p.dual_cell, p.position, Velocity)
-      flowTemperature = InterpolateTrilinear(p.dual_cell, p.position, Temperature)
-      flowDynamicViscosity = GetDynamicViscosity(flowTemperature)
-      
-      -- Update the particle position
-      if particles_options.particleType == Particles.Fixed then
-        -- Don't move the particle
+  if p.state == 1 then
+    p.dual_cell = grid.dual_locate(p.position)
+    var flowDensity     = L.double(0)
+    var flowVelocity    = L.vec3d({0, 0, 0})
+    var flowTemperature = L.double(0)
+    var flowDynamicViscosity = L.double(0)
+    flowDensity     = InterpolateTrilinear(p.dual_cell, p.position, Rho)
+    flowVelocity    = InterpolateTrilinear(p.dual_cell, p.position, Velocity)
+    flowTemperature = InterpolateTrilinear(p.dual_cell, p.position, Temperature)
+    flowDynamicViscosity = GetDynamicViscosity(flowTemperature)
+    
+    -- Update the particle position
+    if particles_options.particleType == Particles.Fixed then
+      -- Don't move the particle
       elseif particles_options.particleType == Particles.Free then
-        p.position_t    += p.velocity
-      end
-      
-      -- Relaxation time for small particles 
-      -- - particles Reynolds number (set to zero for Stokesian)
-      var particleReynoldsNumber =
-        (p.density * norm(flowVelocity - p.velocity) * p.diameter) / 
-        flowDynamicViscosity
-      var relaxationTime = 
-        ( p.density * cmath.pow(p.diameter,2)/(18.0 * flowDynamicViscosity))/
-        ( 1.0 + 0.15 * cmath.pow(particleReynoldsNumber,0.687) )
-      p.deltaVelocityOverRelaxationTime = 
-        (flowVelocity - p.velocity) / relaxationTime
-      p.deltaTemperatureTerm = pi * cmath.pow(p.diameter, 2) *
-          particles_options.convective_coefficient *
-          (flowTemperature - p.temperature)
-          
-      -- Update the particle velocity and temperature
-      if particles_options.particleType == Particles.Fixed then
-        p.velocity_t  = {0.0,0.0,0.0} -- Don't move the particle
-      elseif particles_options.particleType == Particles.Free then
-        p.velocity_t += p.deltaVelocityOverRelaxationTime
-      end
-      p.temperature_t += p.deltaTemperatureTerm/
-          (p.mass * particles_options.heat_capacity)
+      p.position_t    += p.velocity
     end
+    
+    -- Relaxation time for small particles
+    -- - particles Reynolds number (set to zero for Stokesian)
+    var particleReynoldsNumber =
+    (p.density * norm(flowVelocity - p.velocity) * p.diameter) /
+    flowDynamicViscosity
+    var relaxationTime =
+    ( p.density * cmath.pow(p.diameter,2)/(18.0 * flowDynamicViscosity))/
+    ( 1.0 + 0.15 * cmath.pow(particleReynoldsNumber,0.687) )
+    p.deltaVelocityOverRelaxationTime =
+    (flowVelocity - p.velocity) / relaxationTime
+    p.deltaTemperatureTerm = pi * cmath.pow(p.diameter, 2) *
+    particles_options.convective_coefficient *
+    (flowTemperature - p.temperature)
+    
+    -- Update the particle velocity and temperature
+    if particles_options.particleType == Particles.Fixed then
+      p.velocity_t  = {0.0,0.0,0.0} -- Don't move the particle
+      elseif particles_options.particleType == Particles.Free then
+      p.velocity_t += p.deltaVelocityOverRelaxationTime
+    end
+    p.temperature_t += p.deltaTemperatureTerm/
+    (p.mass * particles_options.heat_capacity)
+  end
 end
 
 --------------
@@ -3113,8 +3118,12 @@ local vert_rind = grid.vertices.vertexRindLayer:DumpToList()
 
 -- Write header
 io.write('TITLE = "Data"\n')
-io.write('VARIABLES = "X", "Y", "Z", "Density", "X-Velocity", "Y-Velocity", "Z-Velocity", "Pressure", "Temperature"\n')
-io.write('ZONE STRANDID=', timeStep+1, ' SOLUTIONTIME=', TimeIntegrator.simTime:get(), ' I=', grid_options.xnum+1, ' J=', grid_options.ynum+1, ' K=', grid_options.znum+1, ' DATAPACKING=BLOCK VARLOCATION=([4-9]=CELLCENTERED)\n')
+io.write('VARIABLES = "X", "Y", "Z", "Density", "X-Velocity", "Y-Velocity",',
+         '"Z-Velocity", "Pressure", "Temperature"\n')
+io.write('ZONE STRANDID=', timeStep+1, ' SOLUTIONTIME=',
+         TimeIntegrator.simTime:get(), ' I=', grid_options.xnum+1, ' J=',
+         grid_options.ynum+1, ' K=', grid_options.znum+1,
+         ' DATAPACKING=BLOCK VARLOCATION=([4-9]=CELLCENTERED)\n')
 
 local s = ''
 local k = 0 -- Add a counter in order to remove space (hack for now)
