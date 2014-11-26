@@ -1876,36 +1876,36 @@ local UpdateGhostVelocityHelper = liszt function(c_bnd, c_int,
 
 end
 Flow.UpdateGhostVelocityStep1 = liszt kernel(c : grid.cells)
-    if c.xneg_depth > 0 then
-        UpdateGhostVelocityHelper(c, c(XOffset(c.xneg_depth),0,0),
-                                  xSignX, xSignY, xSignZ,
-                                  xBCLeftVelX, xBCLeftVelY, xBCLeftVelZ)
-    end
-    if c.xpos_depth > 0 then
-        UpdateGhostFieldsHelper(c, c(-XOffset(c.xpos_depth),0,0),
-                                xSignX, xSignY, xSignZ,
-                                xBCRightVelX, xBCRightVelY, xBCRightVelZ)
-    end
-    if c.yneg_depth > 0 then
-        UpdateGhostFieldsHelper(c, c(0,YOffset(c.yneg_depth),0),
-                                ySignX, ySignY, ySignZ,
-                                yBCLeftVelX, yBCLeftVelY, yBCLeftVelZ)
-    end
-    if c.ypos_depth > 0 then
-      UpdateGhostFieldsHelper(c, c(0,-YOffset(c.ypos_depth),0),
+  if c.xneg_depth > 0 then
+    UpdateGhostVelocityHelper(c, c(XOffset(c.xneg_depth),0,0),
+                              xSignX, xSignY, xSignZ,
+                              xBCLeftVelX, xBCLeftVelY, xBCLeftVelZ)
+  end
+  if c.xpos_depth > 0 then
+    UpdateGhostVelocityHelper(c, c(-XOffset(c.xpos_depth),0,0),
+                              xSignX, xSignY, xSignZ,
+                              xBCRightVelX, xBCRightVelY, xBCRightVelZ)
+  end
+  if c.yneg_depth > 0 then
+    UpdateGhostVelocityHelper(c, c(0,YOffset(c.yneg_depth),0),
+                              ySignX, ySignY, ySignZ,
+                              yBCLeftVelX, yBCLeftVelY, yBCLeftVelZ)
+  end
+  if c.ypos_depth > 0 then
+    UpdateGhostVelocityHelper(c, c(0,-YOffset(c.ypos_depth),0),
                               ySignX, ySignY, ySignZ,
                               yBCRightVelX, yBCRightVelY, yBCRightVelZ)
-    end
-    if c.zneg_depth > 0 then
-        UpdateGhostFieldsHelper(c, c(0,0,ZOffset(c.zneg_depth)),
-                                zSignX, zSignY, zSignZ,
-                                zBCLeftVelX, zBCLeftVelY, zBCLeftVelZ)
-    end
-    if c.zpos_depth > 0 then
-        UpdateGhostFieldsHelper(c, c(0,0,-ZOffset(c.zpos_depth)),
-                                zSignX, zSignY, zSignZ,
-                                zBCRightVelX, zBCRightVelY, zBCRightVelZ)
-    end
+  end
+  if c.zneg_depth > 0 then
+    UpdateGhostVelocityHelper(c, c(0,0,ZOffset(c.zneg_depth)),
+                              zSignX, zSignY, zSignZ,
+                              zBCLeftVelX, zBCLeftVelY, zBCLeftVelZ)
+  end
+  if c.zpos_depth > 0 then
+    UpdateGhostVelocityHelper(c, c(0,0,-ZOffset(c.zpos_depth)),
+                              zSignX, zSignY, zSignZ,
+                              zBCRightVelX, zBCRightVelY, zBCRightVelZ)
+  end
 end
 Flow.UpdateGhostVelocityStep2 = liszt kernel(c : grid.cells)
     c.velocity = c.velocityBoundary
@@ -1967,7 +1967,6 @@ Flow.UpdateGhostConservedStep1 = liszt kernel(c : grid.cells)
   end
 end
 Flow.UpdateGhostConservedStep2 = liszt kernel(c : grid.cells)
-    c.pressure    = c.pressureBoundary
     c.rho         = c.rhoBoundary
     c.rhoVelocity = c.rhoVelocityBoundary
     c.rhoEnergy   = c.rhoEnergyBoundary
