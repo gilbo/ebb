@@ -36,13 +36,13 @@ return {
   
   --Time Integration Options --
   final_time            = 20.00001,
-  max_iter              = 50000,
+  max_iter              = 20000,
   cfl                   = 2.0, -- Negative CFL implies that we will used fixed delta T
   delta_time            = 1e-5,
   
   --- File Output Options --
-  outputEveryTimeSteps  = 1000,
-  restartEveryTimeSteps = 1000,
+  outputEveryTimeSteps  = 100,
+  restartEveryTimeSteps = 100,
   headerFrequency       = 20,
   outputFormat = 'Tecplot', --Tecplot or Python
   outputDirectory = '../soleilOutput/', -- relative to the liszt-in-terra home directory
@@ -58,13 +58,13 @@ return {
   -- Particle Options --
   particleType = 'Free', -- Fixed or Free
   twoWayCoupling = 'OFF', -- ON or OFF
-  num = 1000.0,
+  num = 5000.0,
   convectiveCoefficient = 0.7, -- W m^-2 K^-1
   heatCapacity = 0.7, -- J Kg^-1 K^-1
   initialTemperature = 250, -- K
   density = 8900, -- kg/m^3
-  diameter_mean = 1e-4, -- m
-  diameter_maxDeviation = 0.0, -- m, for statistical distribution
+  diameter_mean = 1e-3, -- m
+  diameter_maxDeviation = 1e-4, -- m, for statistical distribution
   bodyForceParticles = {0.0,0.0,0.0},
   emissivity = 0.5,
   absorptivity = 0.5, -- Equal to emissivity in thermal equilibrium

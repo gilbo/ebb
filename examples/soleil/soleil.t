@@ -85,6 +85,10 @@ Particles.CollectorOutOfBox = L.NewGlobal(L.int, 1)
 Particles.Fixed = L.NewGlobal(L.int, 0)
 Particles.Free  = L.NewGlobal(L.int, 1)
 
+-- Particle Boundary
+Particles.Permeable = L.NewGlobal(L.int, 0)
+Particles.Solid     = L.NewGlobal(L.int, 1)
+
 -- Output formats
 IO.Python  = L.NewGlobal(L.int, 0)
 IO.Tecplot = L.NewGlobal(L.int, 1)
@@ -167,6 +171,8 @@ if grid_options.xBCLeft  == "periodic" and
   xBCRightVelX = 0.0
   xBCRightVelY = 0.0
   xBCRightVelZ = 0.0
+  grid_options.xBCLeftParticles  = Particles.Permeable
+  grid_options.xBCRightParticles = Particles.Permeable
 elseif grid_options.xBCLeft == "symmetry" and
        grid_options.xBCRight == "symmetry" then
   XOffset = XOffsetSymmetry
@@ -179,6 +185,8 @@ elseif grid_options.xBCLeft == "symmetry" and
   xBCRightVelX = 0.0
   xBCRightVelY = 0.0
   xBCRightVelZ = 0.0
+  grid_options.xBCLeftParticles  = Particles.Solid
+  grid_options.xBCRightParticles = Particles.Solid
 elseif grid_options.xBCLeft  == "wall" and
        grid_options.xBCRight == "wall" then
   XOffset = XOffsetSymmetry
@@ -191,6 +199,8 @@ elseif grid_options.xBCLeft  == "wall" and
   xBCRightVelX = 2.0*grid_options.xBCRightVel[1]
   xBCRightVelY = 2.0*grid_options.xBCRightVel[2]
   xBCRightVelZ = 2.0*grid_options.xBCRightVel[3]
+  grid_options.xBCLeftParticles  = Particles.Solid
+  grid_options.xBCRightParticles = Particles.Solid
 else
   error("Boundary conditions in x not implemented")
 end
@@ -218,6 +228,8 @@ if grid_options.yBCLeft  == "periodic" and
   yBCRightVelX = 0.0
   yBCRightVelY = 0.0
   yBCRightVelZ = 0.0
+  grid_options.yBCLeftParticles  = Particles.Permeable
+  grid_options.yBCRightParticles = Particles.Permeable
 elseif grid_options.yBCLeft  == "symmetry" and
        grid_options.yBCRight == "symmetry" then
   YOffset = YOffsetSymmetry
@@ -230,6 +242,8 @@ elseif grid_options.yBCLeft  == "symmetry" and
   yBCRightVelX = 0.0
   yBCRightVelY = 0.0
   yBCRightVelZ = 0.0
+  grid_options.yBCLeftParticles  = Particles.Solid
+  grid_options.yBCRightParticles = Particles.Solid
 elseif grid_options.yBCLeft  == "wall" and
        grid_options.yBCRight == "wall" then
   YOffset = YOffsetSymmetry
@@ -242,6 +256,8 @@ elseif grid_options.yBCLeft  == "wall" and
   yBCRightVelX = 2.0*grid_options.yBCRightVel[1]
   yBCRightVelY = 2.0*grid_options.yBCRightVel[2]
   yBCRightVelZ = 2.0*grid_options.yBCRightVel[3]
+  grid_options.yBCLeftParticles  = Particles.Solid
+  grid_options.yBCRightParticles = Particles.Solid
 else
   error("Boundary conditions in y not implemented")
 end
@@ -273,6 +289,8 @@ if grid_options.zBCLeft  == "periodic" and
   zBCRightVelX = 0.0
   zBCRightVelY = 0.0
   zBCRightVelZ = 0.0
+  grid_options.zBCLeftParticles  = Particles.Permeable
+  grid_options.zBCRightParticles = Particles.Permeable
 elseif grid_options.zBCLeft == "symmetry" and
        grid_options.zBCRight == "symmetry" then
   ZOffset = ZOffsetSymmetry
@@ -285,6 +303,8 @@ elseif grid_options.zBCLeft == "symmetry" and
   zBCRightVelX = 0.0
   zBCRightVelY = 0.0
   zBCRightVelZ = 0.0
+  grid_options.zBCLeftParticles  = Particles.Solid
+  grid_options.zBCRightParticles = Particles.Solid
 elseif grid_options.zBCLeft  == "wall" and
        grid_options.zBCRight == "wall" then
   ZOffset = ZOffsetSymmetry
@@ -297,6 +317,8 @@ elseif grid_options.zBCLeft  == "wall" and
   zBCRightVelX = 2.0*grid_options.zBCRightVel[1]
   zBCRightVelY = 2.0*grid_options.zBCRightVel[2]
   zBCRightVelZ = 2.0*grid_options.zBCRightVel[3]
+  grid_options.zBCLeftParticles  = Particles.Solid
+  grid_options.zBCRightParticles = Particles.Solid
 else
   error("Boundary conditions in z not implemented")
 end
@@ -785,6 +807,8 @@ LoadConstant(L.NewVector(L.double, {0, 0, 0}))
 particles:NewField('temperature', L.double):
 LoadConstant(particles_options.initialTemperature)
 particles:NewField('position_ghost', L.vec3d):
+LoadConstant(L.NewVector(L.double, {0, 0, 0}))
+particles:NewField('velocity_ghost', L.vec3d):
 LoadConstant(L.NewVector(L.double, {0, 0, 0}))
 
 particles:NewField('diameter', L.double):
@@ -2475,33 +2499,111 @@ end
 
 Particles.UpdateAuxiliaryStep1 = liszt kernel(p : particles)
     if p.state == 1 then
-        --L.print(p.position[0])
+
+        -- Initialize position and velocity before we check for collisions
+        
         p.position_ghost[0] = p.position[0]
         p.position_ghost[1] = p.position[1]
         p.position_ghost[2] = p.position[2]
+        p.velocity_ghost[0] = p.velocity[0]
+        p.velocity_ghost[1] = p.velocity[1]
+        p.velocity_ghost[2] = p.velocity[2]
+        
+        -- Check here for particles exiting the domain. For periodic
+        -- boundaries, the particle is transported to the matching periodic
+        -- face. For symmetry or wall boundaries, an elastic collision is
+        -- assumed. To start, the collision is perfectly elastic.
+        
+        -- Left X boundary
         if p.position[0] < gridOriginInteriorX then
+          if grid_options.xBCLeftParticles == Particles.Permeable then
             p.position_ghost[0] = p.position[0] + grid_options.xWidth
+          elseif grid_options.xBCLeftParticles == Particles.Solid then
+            var overshoot = gridOriginInteriorX - p.position[0]
+            p.position_ghost[0] = gridOriginInteriorX + overshoot
+            if p.velocity[0] < 0 then
+              p.velocity_ghost[0] = -p.velocity[0]
+            end
+          end
         end
+        
+        -- Right X boundary
         if p.position[0] > gridOriginInteriorX + grid_options.xWidth then
+          if grid_options.xBCRightParticles == Particles.Permeable then
             p.position_ghost[0] = p.position[0] - grid_options.xWidth
+          elseif grid_options.xBCRightParticles == Particles.Solid then
+            var overshoot = p.position[0] - (gridOriginInteriorX +
+                                             grid_options.xWidth)
+            p.position_ghost[0] = (gridOriginInteriorX +
+                                   grid_options.xWidth) - overshoot
+            if p.velocity[0] > 0 then
+              p.velocity_ghost[0] = -p.velocity[0]
+            end
+          end
         end
+        
+        -- Left Y boundary
         if p.position[1] < gridOriginInteriorY then
+          if grid_options.yBCLeftParticles == Particles.Permeable then
             p.position_ghost[1] = p.position[1] + grid_options.yWidth
+          elseif grid_options.yBCLeftParticles == Particles.Solid then
+            var overshoot = gridOriginInteriorY - p.position[1]
+            p.position_ghost[1] = gridOriginInteriorY + overshoot
+            if p.velocity[1] < 0 then
+              p.velocity_ghost[1] = -p.velocity[1]
+            end
+          end
         end
+        
+        -- Right Y boundary
         if p.position[1] > gridOriginInteriorY + grid_options.yWidth then
+          if grid_options.yBCRightParticles == Particles.Permeable then
             p.position_ghost[1] = p.position[1] - grid_options.yWidth
+          elseif grid_options.yBCRightParticles == Particles.Solid then
+            var overshoot = p.position[1] - (gridOriginInteriorY +
+                                             grid_options.yWidth)
+            p.position_ghost[1] = (gridOriginInteriorY +
+                                   grid_options.yWidth) - overshoot
+            if p.velocity[1] > 0 then
+              p.velocity_ghost[1] = -p.velocity[1]
+            end
+          end
         end
+        
+        -- Left Z boundary
         if p.position[2] < gridOriginInteriorZ then
+          if grid_options.zBCLeftParticles == Particles.Permeable then
             p.position_ghost[2] = p.position[2] + grid_options.zWidth
+          elseif grid_options.zBCLeftParticles == Particles.Solid then
+            var overshoot = gridOriginInteriorZ - p.position[2]
+            p.position_ghost[2] = gridOriginInteriorZ + overshoot
+            if p.velocity[2] < 0 then
+              p.velocity_ghost[2] = -p.velocity[2]
+            end
+          end
         end
+        
+        -- Right Z boundary
         if p.position[2] > gridOriginInteriorZ + grid_options.zWidth then
+          if grid_options.zBCRightParticles == Particles.Permeable then
             p.position_ghost[2] = p.position[2] - grid_options.zWidth
+          elseif grid_options.zBCRightParticles == Particles.Solid then
+            var overshoot = p.position[2] - (gridOriginInteriorZ +
+                                             grid_options.zWidth)
+            p.position_ghost[2] = (gridOriginInteriorZ +
+                                   grid_options.zWidth) - overshoot
+            if p.velocity[2] > 0 then
+              p.velocity_ghost[2] = -p.velocity[2]
+            end
+          end
         end
+        
     end
 end
 Particles.UpdateAuxiliaryStep2 = liszt kernel(p : particles)
     if p.state == 1 then
         p.position = p.position_ghost
+        p.velocity = p.velocity_ghost
     end
 end
 
@@ -3253,14 +3355,14 @@ local particleFile = io.output(particleFileName)
 
 -- Write header
 --io.write('TITLE = "Data"\n')
-io.write('VARIABLES = "X", "Y", "Z", "Diameter"\n')
+io.write('VARIABLES = "X", "Y", "Z", "Diameter", "Temperature"\n')
 io.write('ZONE SOLUTIONTIME=', TimeIntegrator.simTime:get(), '\n')
 
 values = particles.position:DumpToList()
 N      = particles.position:Size()
 veclen = particles.position:Type().N
-local diameter = particles.diameter:DumpToList()
-
+local diameter  = particles.diameter:DumpToList()
+local particleT = particles.temperature:DumpToList()
 for i=1,N do
   s = ''
   for j=1,veclen do
@@ -3268,7 +3370,8 @@ for i=1,N do
     s = s .. ' ' .. t .. ''
   end
   local diam = tostring(diameter[i]):gsub('ULL',' ')
-  s = s .. ' ' .. diam .. '\n'
+  local temp = tostring(particleT[i]):gsub('ULL',' ')
+  s = s .. ' ' .. diam .. ' ' .. temp .. '\n'
   io.write("", s)
 end
 
