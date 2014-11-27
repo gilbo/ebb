@@ -1,6 +1,6 @@
 -- This is a Lua config file for the Soleil code.
 
--- This case defines the 64x64 Taylor-Green vortex problem
+-- This case defines the 32x32 lid-driven cavity problem
 return {
   
   -- Flow Initialization  Options --
