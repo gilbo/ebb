@@ -1,10 +1,15 @@
 local L = {}
 package.loaded["compiler.lisztlib"] = L
 
+local use_legion = rawget(_G, '_legion')
+local use_single = not use_legion
+
 -- Liszt types are created here
 local T = terralib.require 'compiler.types'
 
-local DataArray = terralib.require('compiler.rawdata').DataArray
+local DataArray = use_single and
+                  terralib.require('compiler.rawdata').DataArray
+local Lg = use_legion and terralib.require "compiler.legion_data"
 
 -- Use the following to produce
 -- deterministic order of table entries
@@ -70,7 +75,8 @@ terralib.require "compiler.builtins"
 terralib.require "compiler.relations"
 terralib.require "compiler.serialization"
 local semant = terralib.require "compiler.semant"
-local K = terralib.require "compiler.kernel"
+local K = (use_single and terralib.require "compiler.kernel_single") or
+          (use_legion and terralib.require "compiler.kernel_legion")
 
 local is_vector = L.is_vector --cache lookup for efficiency
 
@@ -281,19 +287,6 @@ end
 function L.NewMacro(generator)
     return setmetatable({genfunc=generator}, LMacro)    
 end
-
-L.Where = L.NewMacro(function(field,key)
-    if field == nil or key == nil then
-        error("Where expects 2 arguments")
-    end
-    local w = ast.Where:DeriveFrom(field)
-    w.field = field
-    w.key   = key
-    local q = ast.Quote:DeriveFrom(field)
-    q.code  = semant.check({}, w)
-    q.node_type = q.code.node_type
-    return q
-end)
 
 local specialization = terralib.require('compiler.specialization')
 

@@ -1,5 +1,5 @@
 local L = {}
-package.loaded["compiler.legionlib"] = L
+package.loaded["compiler.legion_data"] = L
 
 local C = terralib.require "compiler.c"
 
@@ -34,10 +34,11 @@ PhysicalRegion.__index = PhysicalRegion
 L.PhysicalRegion = PhysicalRegion
 
 
------------------------------------------------------------------------------
--- Module methods, to create logical regions, and allocate rows and fields --
------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+--[[                        Logical region methods                         ]]--
+-------------------------------------------------------------------------------
 
+-- NOTE: Call from top level task only.
 function LogicalRegion:AllocateRows(num)
   if self.rows_live + num > self.rows_max then
     error("Cannot allocate more rows for relation ", self.relation:Name())
@@ -47,6 +48,7 @@ function LogicalRegion:AllocateRows(num)
 end
 
 -- NOTE: Assuming here that the compile time limit is never be hit.
+-- NOTE: Call from top level task only.
 function LogicalRegion:AllocateField(typ)
   local fid = Lc.legion_field_allocator_allocate_field(
                  self.fsa, terralib.sizeof(typ.terratype), self.field_ids)
@@ -54,6 +56,7 @@ function LogicalRegion:AllocateField(typ)
   return fid
 end
 
+-- NOTE: Call from top level task only.
 function L.NewLogicalRegion(params)
   local l = { rows_max  = params.rows_max,
               rows_live = 0,
@@ -92,9 +95,13 @@ L.coherence = {
 
 
 -------------------------------------------------------------------------------
---[[              Create physical regions and task launchers               ]]--
+--[[                        Physical region methods                        ]]--
 -------------------------------------------------------------------------------
 
+
+-- Create inline physical region, useful when physical regions are needed in
+-- the top level task.
+-- NOTE: Call from top level task only.
 function LogicalRegion:CreatePhysicalRegion(params)
   local lreg = self.handle
   local privilege = params.privilege or L.privilege.default
@@ -112,6 +119,9 @@ function LogicalRegion:CreatePhysicalRegion(params)
   return p
 end
 
+-- Wait till physical region is valid, to be called after creating an inline
+-- physical region.
+-- NOTE: Call from top level task only.
 function PhysicalRegion:WaitUntilValid()
   Lc.legion_physical_region_wait_until_valid(self.handle)
 end

@@ -1,7 +1,9 @@
-
 -- file/module namespace table
 local R = {}
 package.loaded["compiler.relations"] = R
+
+local use_legion = rawget(_G, '_legion')
+local use_single = not use_legion
 
 local L = terralib.require "compiler.lisztlib"
 local T = terralib.require "compiler.types"
@@ -12,11 +14,9 @@ local PN = terralib.require "lib.pathname"
 
 local JSON = require('compiler.JSON')
 
-local DynamicArray = terralib.require('compiler.rawdata').DynamicArray
-
-local use_legion = rawget(_G, '_legion')
-local use_direct = not use_legion
-local Lg = use_legion and terralib.require "compiler.legionlib"
+local DynamicArray = use_single and
+                     terralib.require('compiler.rawdata').DynamicArray
+local Ld = use_legion and terralib.require "compiler.legion_data"
 
 local valid_name_err_msg =
   "must be valid Lua Identifiers: a letter or underscore,"..
@@ -68,7 +68,7 @@ function L.NewRelation(size, name)
   },
   L.LRelation)
 
-  if use_direct then
+  if use_single then
     -- create a mask to track which rows are live.
     rawset(rel, '_is_live_mask', L.LField.New(rel, '_is_live_mask', L.bool))
     rel._is_live_mask:Load(true)
@@ -78,7 +78,7 @@ function L.NewRelation(size, name)
                      rows_init = size,
                      relation = rel,
                    }
-    local logical_region = Lg.NewLogicalRegion(params)
+    local logical_region = Ld.NewLogicalRegion(params)
     rawset(rel, '_logical_region', logical_region)
   end
 
@@ -462,7 +462,7 @@ function L.LField.New(rel, name, typ)
   field.type    = typ
   field.name    = name
   field.owner   = rel
-  if use_direct then
+  if use_single then
     field.array   = nil
     field:Allocate()
   elseif use_legion then
@@ -974,11 +974,3 @@ function L.LRelation:Defrag()
   -- mark as compact
   self._typestate.fragmented = false
 end
-
-
-
-
-
-
-
-
