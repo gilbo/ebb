@@ -10,6 +10,10 @@ local PN = L.require 'lib.pathname'
 local turtle = VEGFileIO.LoadTetmesh
   'examples/fem/turtle-volumetric-homogeneous.veg'
 
+-- local I = terralib.includecstring([[
+-- #include "cuda_profiler_api.h"
+-- ]])
+
 local mesh = turtle
 local gravity = 9.81
 
@@ -660,6 +664,7 @@ function ImplicitBackwardEulerIntegrator:setupFieldsKernels(mesh)
   mesh.vertices:NewField('z', L.vec3d):Load({ 0, 0, 0 })
   mesh.vertices:NewField('p', L.vec3d):Load({ 0, 0, 0 })
   mesh.vertices:NewField('Ap', L.vec3d):Load({ 0, 0, 0 })
+  mesh.vertices:NewField('dummy', L.vec3d):Load({ 0, 0, 0 })
 
   mesh.edges:NewField('raydamp', L.mat3d)
 
@@ -669,126 +674,161 @@ function ImplicitBackwardEulerIntegrator:setupFieldsKernels(mesh)
   self.alpha = L.NewGlobal(L.double, 0)
   self.beta = L.NewGlobal(L.double, 0)
 
-  liszt kernel self.initializeQFields (v : mesh.vertices)
+  local liszt kernel initializeQFields (v : mesh.vertices)
     v.q_1 = v.q
     v.qvel_1 = v.qvel
     v.qaccel = { 0, 0, 0 }
     v.qaccel_1 = { 0, 0, 0 }
   end
+  self.initializeQFields = initializeQFields
 
-  liszt kernel self.initializeqdelta (v : mesh.vertices)
+  local liszt kernel initializeqdelta (v : mesh.vertices)
     v.qdelta = v.qresidual
   end
+  self.initializeqdelta = initializeqdelta
 
-  liszt kernel self.scaleInternalForces (v : mesh.vertices)
+  local liszt kernel scaleInternalForces (v : mesh.vertices)
     v.internal_forces = self.internalForcesScalingFactor * v.internal_forces
   end
+  self.scaleInternalForces = scaleInternalForces
 
-  liszt kernel self.scaleStiffnessMatrix (e : mesh.edges)
+  local liszt kernel scaleStiffnessMatrix (e : mesh.edges)
     e.stiffness = self.internalForcesScalingFactor * e.stiffness
   end
+  self.scaleStiffnessMatrix = scaleStiffnessMatrix
 
-  liszt kernel self.createRayleighDampMatrix (e : mesh.edges)
+  local liszt kernel createRayleighDampMatrix (e : mesh.edges)
     e.raydamp = self.dampingStiffnessCoef * e.stiffness +
                 diagonalMatrix(self.dampingMassCoef * e.mass)
   end
+  self.createRayleighDampMatrix = createRayleighDampMatrix
 
-  liszt kernel self.updateqresidual1 (v : mesh.vertices)
+  local liszt kernel updateqresidual1 (v : mesh.vertices)
     for e in v.edges do
       v.qresidual += multiplyMatVec3(e.stiffness, (e.head.q_1 - e.head.q))
     end
   end
+  self.updateqresidual1 = updateqresidual1
 
-  liszt kernel self.updateqresidual2 (v : mesh.vertices)
+  local liszt kernel updateqresidual2 (v : mesh.vertices)
     for e in v.edges do
       v.qresidual += multiplyMatVec3(e.stiffness, e.head.qvel)
     end
   end
+  self.updateqresidual2 = updateqresidual2
 
-  liszt kernel self.updateqresidual3 (v : mesh.vertices)
+  local liszt kernel updateqresidual3 (v : mesh.vertices)
     v.qresidual += (v.internal_forces - v.external_forces)
     v.qresidual = - ( self.timestep * v.qresidual )
   end
+  self.updateqresidual3 = updateqresidual3
 
-  liszt kernel self.updateqresidual4 (v : mesh.vertices)
+  local liszt kernel updateqresidual4 (v : mesh.vertices)
     for e in v.edges do
       v.qresidual += e.mass * (e.head.qvel_1 - e.head.qvel)
     end
   end
+  self.updateqresidual4 = updateqresidual4
 
-  liszt kernel self.updateStiffness1 (e : mesh.edges)
+  local liszt kernel updateStiffness1 (e : mesh.edges)
     e.stiffness = self.timestep * e.stiffness
     e.stiffness += e.raydamp
     -- TODO: This damping matrix seems to be zero unless set otherwise.
     -- e.stiffness = e.stiffness + e.dampingmatrix
   end
+  self.updateStiffness1 = updateStiffness1
 
-  liszt kernel self.updateStiffness11 (e : mesh.edges)
+  local liszt kernel updateStiffness11 (e : mesh.edges)
     e.stiffness = self.timestep * e.stiffness
   end
+  self.updateStiffness11 = updateStiffness11
 
-  liszt kernel self.updateStiffness12 (e : mesh.edges)
+  local liszt kernel updateStiffness12 (e : mesh.edges)
     e.stiffness += e.raydamp
   end
+  self.updateStiffness12 = updateStiffness12
 
-  liszt kernel self.updateStiffness2 (e : mesh.edges)
+  local liszt kernel updateStiffness2 (e : mesh.edges)
     e.stiffness = self.timestep * e.stiffness
     e.stiffness += diagonalMatrix(e.mass)
   end
+  self.updateStiffness2 = updateStiffness2
 
-  liszt kernel self.getError (v : mesh.vertices)
+  local liszt kernel getError (v : mesh.vertices)
     self.err += L.dot(v.qdelta, v.qdelta)
   end
+  self.getError = getError
 
-  liszt kernel self.pcgCalculatePreconditioner (v : mesh.vertices)
+  local liszt kernel pcgCalculatePreconditioner (v : mesh.vertices)
     var stiff = v.diag.stiffness
     var diag = { stiff[0,0], stiff[1,1], stiff[2,2] }
     v.precond = { 1.0/diag[0], 1.0/diag[1], 1.0/diag[2] }
   end
+  self.pcgCalculatePreconditioner = pcgCalculatePreconditioner
 
-  liszt kernel self.pcgCalculateExactResidual (v : mesh.vertices)
+  local liszt kernel pcgCalculateExactResidual (v : mesh.vertices)
     v.r = { 0, 0, 0 }
     for e in v.edges do
       v.r += multiplyMatVec3(e.stiffness, e.head.x)
     end
     v.r = v.qdelta - v.r
   end
+  self.pcgCalculateExactResidual = pcgCalculateExactResidual
 
-  liszt kernel self.pcgCalculateNormResidual (v : mesh.vertices)
+  local liszt kernel pcgCalculateNormResidual (v : mesh.vertices)
     self.normRes += L.dot(multiplyVectors(v.r, v.precond), v.r)
   end
+  self.pcgCalculateNormResidual = pcgCalculateNormResidual
 
-  liszt kernel self.pcgInitialize (v : mesh.vertices)
+  local liszt kernel pcgInitialize (v : mesh.vertices)
     v.p = multiplyVectors(v.r, v.precond)
   end
+  self.pcgInitialize = pcgInitialize
 
-  liszt kernel self.pcgComputeAlphaDenom (v : mesh.vertices)
+  local liszt kernel pcgComputeAp (v : mesh.vertices)
     v.Ap = { 0, 0, 0 }
     for e in v.edges do
       v.Ap += multiplyMatVec3(e.stiffness, e.head.p)
     end
+  end
+  self.pcgComputeAp = pcgComputeAp
+
+  local liszt kernel pcgComputeDummy (v : mesh.vertices)
+    v.dummy = { 0, 0, 0 }
+    for e in v.edges do
+      v.dummy += e.head.p
+    end
+  end
+  self.pcgComputeDummy = pcgComputeDummy
+
+  local liszt kernel pcgComputeAlphaDenom (v : mesh.vertices)
     self.alphaDenom += L.dot(v.p, v.Ap)
   end
+  self.pcgComputeAlphaDenom = pcgComputeAlphaDenom
 
-  liszt kernel self.pcgUpdateX (v : mesh.vertices)
+  local liszt kernel pcgUpdateX (v : mesh.vertices)
     v.x += self.alpha * v.p
   end
+  self.pcgUpdateX = pcgUpdateX
 
-  liszt kernel self.pcgUpdateResidual (v : mesh.vertices)
+  local liszt kernel pcgUpdateResidual (v : mesh.vertices)
     v.r -= self.alpha * v.Ap
   end
+  self.pcgUpdateResidual = pcgUpdateResidual
 
-  liszt kernel self.pcgUpdateP (v : mesh.vertices)
+  local liszt kernel pcgUpdateP (v : mesh.vertices)
     v.p = self.beta * v.p + multiplyVectors(v.precond, v.r)
   end
+  self.pcgUpdateP = pcgUpdateP
 
-  liszt kernel self.updateAfterSolve (v : mesh.vertices)
+  local liszt kernel updateAfterSolve (v : mesh.vertices)
     v.qdelta = v.x
     v.qvel += v.qdelta
     -- TODO: subtracting q from q?
     -- q += q_1-q + self.timestep * qvel
     v.q = v.q_1 + self.timestep * v.qvel
   end
+  self.updateAfterSolve = updateAfterSolve
 
 end
 
@@ -796,6 +836,7 @@ end
 -- It uses the same algorithm as Vega (exact residual on 30th iteration). But
 -- the symbol names are kept to match the pseudo code on Wikipedia for clarity.
 function ImplicitBackwardEulerIntegrator:solvePCG(mesh)
+--  I.cudaProfilerStart()
   local timer_total = Timer.New()
   timer_total:Start()
   mesh.vertices.x:Load({ 0, 0, 0 })
@@ -810,6 +851,8 @@ function ImplicitBackwardEulerIntegrator:solvePCG(mesh)
   while normRes > thresh and
         iter <= self.cgMaxIterations do
     -- print("PCG iteration "..iter)
+    self.pcgComputeAp(mesh.vertices)
+    self.pcgComputeDummy(mesh.vertices)
     self.alphaDenom:set(0)
     self.pcgComputeAlphaDenom(mesh.vertices)
     self.alpha:set( normRes / self.alphaDenom:get() )
@@ -828,6 +871,7 @@ function ImplicitBackwardEulerIntegrator:solvePCG(mesh)
     iter = iter + 1
   end
   print("Time for solver is "..(timer_total:Stop()*1E6).." us")
+--  I.cudaProfilerStop()
 end
 
 function ImplicitBackwardEulerIntegrator:doTimestep(mesh)
