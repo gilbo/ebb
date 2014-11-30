@@ -10,7 +10,7 @@ local Lc = terralib.includecstring([[
 #include "legion_c.h"
 ]])
 
-local codegen = terralib.require "compiler.codegen"
+local codegen = terralib.require "compiler.codegen_legion"
 local Ld      = terralib.require "compiler.legion_data"
 local Lt      = terralib.require "compiler.legion_tasks"
 
@@ -47,19 +47,11 @@ local runtime = legion_env.runtime
 --   (We could cache the region requirements later if that makes sense.)
 --]]--
 
--- Placeholder for kernel executable.
-local terra code_unimplemented(regions : &Lc.legion_physical_region_t,
-                               num_region : uint32, ctx : Lc.legion_context_t,
-                               runtime : Lc.legion_runtime_t)
-  C.printf("Kernel executable unimplemented\n")
-  return false
-end
-
--- Set up pointer to Liszt generated code to be invoked from a Legion task.
-local terra SetUpKernelLauncher()
-  var kernel_launcher = Lt.NewKernelLauncher(code_unimplemented)
-  return kernel_launcher
-end
+-- Terra wrapper to create a kernel launcher
+-- local terra NewKernelLauncher()
+--   var kernel_launcher = Lt.NewKernelLauncher()
+--   return kernel_launcher
+-- end
 
 -- Setup physical regions and arguments for a Legion task, and launch the
 -- Legion task.
@@ -67,7 +59,7 @@ end
 local function SetUpAndLaunchTask(params)
   local launcher = Lt.CreateTaskLauncher(
                       { task_type        = Lt.TaskTypes.simple,
-                         kernel_launcher = params.kernel_launcher } )
+                        kernel_launcher = params.kernel_launcher } )
   Lt.LaunchTask( { task_launcher = launcher,
                    ctx = ctx,
                    runtime =  runtime } )
@@ -76,28 +68,39 @@ end
 -- Setup and Launch Legion task when a Liszt kernel is invoked from an
 -- application.
 L.LKernel.__call  = function (kobj, relset)
-    if not (relset and (L.is_relation(relset) or L.is_subset(relset)))
-    then
-        error("A kernel must be called on a relation or subset.", 2)
-    end
+  if not (relset and (L.is_relation(relset) or L.is_subset(relset)))
+  then
+      error("A kernel must be called on a relation or subset.", 2)
+  end
 
-    local proc = L.default_processor
+  local proc = L.default_processor
 
-    -- GENERATE CODE (USING BRAN?) FOR LEGION TASK
-    -- signature for legion code includes
-    --   * physical regions, a map from accessed fields to physical regions
-    --   * globals?
-    --   * pointer to legion ctx - may not need this
-    --   * pointer to legion runtime - may not need this
-    local kernel_launcher = SetUpKernelLauncher()
+  -- retreive the correct bran or create a new one
+  local bran = seedbank_lookup({ kernel = kobj,
+                                 relset = relset,
+                                 proc   = proc
+                               })
 
-    -- PREPARE LEGION TASK ARGUMENTS (physical regions, globals)
-    SetUpAndLaunchTask({ kernel_launcher = kernel_launcher })
+  -- GENERATE CODE (USING BRAN?) FOR LEGION TASK
+  -- signature for legion code includes
+  --   * physical regions, a map from accessed fields to physical regions
+  --   * globals?
+  --   * pointer to legion ctx - may not need this
+  --   * pointer to legion runtime - may not need this
+  if not bran.kernel_launcher then
+    bran.relset = relset
+    bran.kernel = kobj
+    bran.location = proc
+    bran:generate()
+  end
 
-    -- PREPARE LEGION TASK REGION REQUIREMENTS
+  -- PREPARE LEGION TASK ARGUMENTS (physical regions, globals)
+  SetUpAndLaunchTask({ kernel_launcher = bran.kernel_launcher })
 
-    -- LAUNCH LEGION "KERNEL" TASK, WITH A POINTER TO THE GEBERATED EXECUTABLE
-    print("Unimplemented kernel call for legion runtime")
+  -- PREPARE LEGION TASK REGION REQUIREMENTS
+
+  -- LAUNCH LEGION "KERNEL" TASK, WITH A POINTER TO THE GEBERATED EXECUTABLE
+  print("Unimplemented kernel call for legion runtime")
 end
 
 -- LEGION "KERNEL" TASK
@@ -108,3 +111,38 @@ end
 -------------------------------------------------------------------------------
 --[[                                 Brans                                 ]]--
 -------------------------------------------------------------------------------
+
+function Bran:generate()
+  -- GENERATE CODE FOR LEGION TASK
+  -- signature for legion code includes
+  --   * physical regions, a map from accessed fields to physical regions
+  --   * globals?
+  --   * pointer to legion ctx - may not need this
+  --   * pointer to legion runtime - may not need this
+  local bran      = self
+  local kernel    = bran.kernel
+  local typed_ast = bran.kernel.typed_ast
+
+  if L.is_relation(bran.relset) then
+    bran.relation = bran.relset
+  else
+    error("Subsets not implemented with Legion runtime")
+  end
+
+  -- type checking the kernel signature against the invocation
+  if typed_ast.relation ~= bran.relation then
+    error('Kernels may only be called on a relation they were typed with', 3)
+  end
+
+  -- compile an executable (placeholder right now)
+  bran.executable = codegen.codegen(typed_ast, bran)
+  -- create a liszt kernel launcher, to invoke from legion task (a convenience
+  -- data structure to pass a function type around, since there are no typedefs)
+  -- TODO: Cannot pass a terra function to another terra function.
+  -- Doing so throws error "cannot convert 'table' to 'bool (*)()'".
+  -- Should fix this, and remove the wrapper terra function defined below.
+  local terra NewKernelLauncher()
+    return Lt.NewKernelLauncher(bran.executable)
+  end
+  bran.kernel_launcher = NewKernelLauncher()
+end

@@ -3,7 +3,7 @@ package.loaded["compiler.kernel_single"] = K
 local Kc = terralib.require "compiler.kernel_common"
 local L = terralib.require "compiler.lisztlib"
 
-local codegen        = terralib.require "compiler.codegen"
+local codegen        = terralib.require "compiler.codegen_single"
 local DataArray = terralib.require('compiler.rawdata').DataArray
 
 
