@@ -114,7 +114,8 @@ local LISZT_ROOT_DIR_CACHED
   local info = debug.getinfo(1, "S")
   local src  = info.source
   -- strip leading '@' and trailing '/compiler/pathname.t'
-  LISZT_ROOT_DIR_CACHED = src:sub(2,-21)
+  local strip = ('/lib/pathname.t'):len()
+  LISZT_ROOT_DIR_CACHED = src:sub(2,-strip-1)
 end)()
 
 -- functions providing absolute paths as strings
