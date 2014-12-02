@@ -982,63 +982,113 @@ end)
 --local Rho = L.NewMacro(function(r)
 --    return liszt `r.rho
 --end)
-local Rho = liszt function(r)
-    return r.rho
+--local Rho = liszt function(r)
+--    return r.rho
+--end
+--
+--local Velocity = L.NewMacro(function(r)
+--    return liszt `r.velocity
+--end)
+--
+--local Temperature = L.NewMacro(function(r)
+--    return liszt `r.temperature
+--end)
+
+local function GenerateTrilinearInterpolation(field_name)
+  return liszt function(dc, xyz)
+    var c000 = dc.vertex.cell(-1, -1, -1)
+    var c100 = dc.vertex.cell( 0, -1, -1)
+    var c010 = dc.vertex.cell(-1,  0, -1)
+    var c110 = dc.vertex.cell( 0,  0, -1)
+    var c001 = dc.vertex.cell(-1, -1,  0)
+    var c101 = dc.vertex.cell( 0, -1,  0)
+    var c011 = dc.vertex.cell(-1,  0,  0)
+    var c111 = dc.vertex.cell( 0,  0,  0)
+    -- The following approach is valid for non-uniform grids, as it relies
+    -- on the cell centers of the neighboring cells of the given dual cell
+    -- (dc).
+    -- WARNING: However, it poses a problem when periodicity is applied, as
+    -- the built-in wrapping currently returns a cell which is on the
+    -- opposite end of the grid, if the dual cell is in the periodic 
+    -- boundary. Note that the field values are correctly retrieved through
+    -- the wrapping, but not the positions used to define the weights of the
+    -- interpolation
+    --var dX = (xyz[0] - c000.center[0])/(c100.center[0] - c000.center[0])
+    --var dY = (xyz[1] - c000.center[1])/(c010.center[1] - c000.center[1])
+    --var dZ = (xyz[2] - c000.center[2])/(c001.center[2] - c000.center[2])
+    -- WARNING: This assumes uniform mesh, and retrieves the position of the
+    -- particle relative to the neighboring cells without resorting to the
+    -- dual-cell itself, but purely based on grid origin and spacing
+    -- See the other approch above (commented) for the generalization to
+    -- non-uniform grids (with the current problem of not being usable if
+    -- periodicity is enforced)
+    var dX   = cmath.fmod((xyz[0] - grid_originX)/grid_dx + 0.5, 1.0)
+    var dY   = cmath.fmod((xyz[1] - grid_originY)/grid_dy + 0.5, 1.0)
+    var dZ   = cmath.fmod((xyz[2] - grid_originZ)/grid_dz + 0.5, 1.0)
+
+    var oneMinusdX = 1.0 - dX
+    var oneMinusdY = 1.0 - dY
+    var oneMinusdZ = 1.0 - dZ
+    var weight00 = c000.[field_name] * oneMinusdX + c100.[field_name] * dX 
+    var weight10 = c010.[field_name] * oneMinusdX + c110.[field_name] * dX
+    var weight01 = c001.[field_name] * oneMinusdX + c101.[field_name] * dX
+    var weight11 = c011.[field_name] * oneMinusdX + c111.[field_name] * dX
+    var weight0  = weight00 * oneMinusdY + weight10 * dY
+    var weight1  = weight01 * oneMinusdY + weight11 * dY
+    
+    return weight0 * oneMinusdZ + weight1 * dZ
+  end
 end
 
-local Velocity = L.NewMacro(function(r)
-    return liszt `r.velocity
-end)
+local InterpolateTriRho = GenerateTrilinearInterpolation('rho')
+local InterpolateTriVelocity = GenerateTrilinearInterpolation('velocity')
+local InterpolateTriTemperature = GenerateTrilinearInterpolation('temperature')
 
-local Temperature = L.NewMacro(function(r)
-    return liszt `r.temperature
-end)
-
-local InterpolateTrilinear = L.NewMacro(function(dc, xyz, Field)
-    return liszt quote
-        var c000 = dc.vertex.cell(-1, -1, -1)
-        var c100 = dc.vertex.cell( 0, -1, -1)
-        var c010 = dc.vertex.cell(-1,  0, -1)
-        var c110 = dc.vertex.cell( 0,  0, -1)
-        var c001 = dc.vertex.cell(-1, -1,  0)
-        var c101 = dc.vertex.cell( 0, -1,  0)
-        var c011 = dc.vertex.cell(-1,  0,  0)
-        var c111 = dc.vertex.cell( 0,  0,  0)
-        -- The following approach is valid for non-uniform grids, as it relies
-        -- on the cell centers of the neighboring cells of the given dual cell
-        -- (dc).
-        -- WARNING: However, it poses a problem when periodicity is applied, as
-        -- the built-in wrapping currently returns a cell which is on the
-        -- opposite end of the grid, if the dual cell is in the periodic 
-        -- boundary. Note that the field values are correctly retrieved through
-        -- the wrapping, but not the positions used to define the weights of the
-        -- interpolation
-        --var dX = (xyz[0] - c000.center[0])/(c100.center[0] - c000.center[0])
-        --var dY = (xyz[1] - c000.center[1])/(c010.center[1] - c000.center[1])
-        --var dZ = (xyz[2] - c000.center[2])/(c001.center[2] - c000.center[2])
-        -- WARNING: This assumes uniform mesh, and retrieves the position of the
-        -- particle relative to the neighboring cells without resorting to the
-        -- dual-cell itself, but purely based on grid origin and spacing
-        -- See the other approch above (commented) for the generalization to
-        -- non-uniform grids (with the current problem of not being usable if
-        -- periodicity is enforced)
-        var dX   = cmath.fmod((xyz[0] - grid_originX)/grid_dx + 0.5, 1.0)
-        var dY   = cmath.fmod((xyz[1] - grid_originY)/grid_dy + 0.5, 1.0)
-        var dZ   = cmath.fmod((xyz[2] - grid_originZ)/grid_dz + 0.5, 1.0)
-
-        var oneMinusdX = 1.0 - dX
-        var oneMinusdY = 1.0 - dY
-        var oneMinusdZ = 1.0 - dZ
-        var weight00 = Field(c000) * oneMinusdX + Field(c100) * dX 
-        var weight10 = Field(c010) * oneMinusdX + Field(c110) * dX
-        var weight01 = Field(c001) * oneMinusdX + Field(c101) * dX
-        var weight11 = Field(c011) * oneMinusdX + Field(c111) * dX
-        var weight0  = weight00 * oneMinusdY + weight10 * dY
-        var weight1  = weight01 * oneMinusdY + weight11 * dY
-    in
-        weight0 * oneMinusdZ + weight1 * dZ
-    end
-end)
+--local InterpolateTrilinear = L.NewMacro(function(dc, xyz, Field)
+--  return liszt quote
+--    var c000 = dc.vertex.cell(-1, -1, -1)
+--    var c100 = dc.vertex.cell( 0, -1, -1)
+--    var c010 = dc.vertex.cell(-1,  0, -1)
+--    var c110 = dc.vertex.cell( 0,  0, -1)
+--    var c001 = dc.vertex.cell(-1, -1,  0)
+--    var c101 = dc.vertex.cell( 0, -1,  0)
+--    var c011 = dc.vertex.cell(-1,  0,  0)
+--    var c111 = dc.vertex.cell( 0,  0,  0)
+--    -- The following approach is valid for non-uniform grids, as it relies
+--    -- on the cell centers of the neighboring cells of the given dual cell
+--    -- (dc).
+--    -- WARNING: However, it poses a problem when periodicity is applied, as
+--    -- the built-in wrapping currently returns a cell which is on the
+--    -- opposite end of the grid, if the dual cell is in the periodic 
+--    -- boundary. Note that the field values are correctly retrieved through
+--    -- the wrapping, but not the positions used to define the weights of the
+--    -- interpolation
+--    --var dX = (xyz[0] - c000.center[0])/(c100.center[0] - c000.center[0])
+--    --var dY = (xyz[1] - c000.center[1])/(c010.center[1] - c000.center[1])
+--    --var dZ = (xyz[2] - c000.center[2])/(c001.center[2] - c000.center[2])
+--    -- WARNING: This assumes uniform mesh, and retrieves the position of the
+--    -- particle relative to the neighboring cells without resorting to the
+--    -- dual-cell itself, but purely based on grid origin and spacing
+--    -- See the other approch above (commented) for the generalization to
+--    -- non-uniform grids (with the current problem of not being usable if
+--    -- periodicity is enforced)
+--    var dX   = cmath.fmod((xyz[0] - grid_originX)/grid_dx + 0.5, 1.0)
+--    var dY   = cmath.fmod((xyz[1] - grid_originY)/grid_dy + 0.5, 1.0)
+--    var dZ   = cmath.fmod((xyz[2] - grid_originZ)/grid_dz + 0.5, 1.0)
+--
+--    var oneMinusdX = 1.0 - dX
+--    var oneMinusdY = 1.0 - dY
+--    var oneMinusdZ = 1.0 - dZ
+--    var weight00 = Field(c000) * oneMinusdX + Field(c100) * dX 
+--    var weight10 = Field(c010) * oneMinusdX + Field(c110) * dX
+--    var weight01 = Field(c001) * oneMinusdX + Field(c101) * dX
+--    var weight11 = Field(c011) * oneMinusdX + Field(c111) * dX
+--    var weight0  = weight00 * oneMinusdY + weight10 * dY
+--    var weight1  = weight01 * oneMinusdY + weight11 * dY
+--  in
+--    weight0 * oneMinusdZ + weight1 * dZ
+--  end
+--end)
 
 -----------------------------------------------------------------------------
 --[[                            LISZT KERNELS                            ]]--
@@ -2375,9 +2425,13 @@ Particles.AddFlowCoupling = liszt kernel(p: particles)
     var flowVelocity    = L.vec3d({0, 0, 0})
     var flowTemperature = L.double(0)
     var flowDynamicViscosity = L.double(0)
-    flowDensity     = InterpolateTrilinear(p.dual_cell, p.position, Rho)
-    flowVelocity    = InterpolateTrilinear(p.dual_cell, p.position, Velocity)
-    flowTemperature = InterpolateTrilinear(p.dual_cell, p.position, Temperature)
+
+    flowDensity     = InterpolateTriRho(p.dual_cell, p.position)
+    flowVelocity    = InterpolateTriVelocity(p.dual_cell, p.position)
+    flowTemperature = InterpolateTriTemperature(p.dual_cell, p.position)
+    --flowDensity     = InterpolateTrilinear(p.dual_cell, p.position, Rho)
+    --flowVelocity    = InterpolateTrilinear(p.dual_cell, p.position, Velocity)
+    --flowTemperature = InterpolateTrilinear(p.dual_cell, p.position, Temperature)
     flowDynamicViscosity = GetDynamicViscosity(flowTemperature)
     
     -- Update the particle position
@@ -2449,9 +2503,12 @@ Particles.SetVelocitiesToFlow = liszt kernel(p: particles)
     var flowVelocity    = L.vec3d({0, 0, 0})
     var flowTemperature = L.double(0)
     var flowDynamicViscosity = L.double(0)
-    flowDensity     = InterpolateTrilinear(p.dual_cell, p.position, Rho)
-    flowVelocity    = InterpolateTrilinear(p.dual_cell, p.position, Velocity)
-    flowTemperature = InterpolateTrilinear(p.dual_cell, p.position, Temperature)
+    flowDensity     = InterpolateTriRho(p.dual_cell, p.position)
+    flowVelocity    = InterpolateTriVelocity(p.dual_cell, p.position)
+    flowTemperature = InterpolateTriTemperature(p.dual_cell, p.position)
+    --flowDensity     = InterpolateTrilinear(p.dual_cell, p.position, Rho)
+    --flowVelocity    = InterpolateTrilinear(p.dual_cell, p.position, Velocity)
+    --flowTemperature = InterpolateTrilinear(p.dual_cell, p.position, Temperature)
     flowDynamicViscosity = GetDynamicViscosity(flowTemperature)
 
     -- Update the particle velocity
