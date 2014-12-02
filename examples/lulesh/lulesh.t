@@ -33,10 +33,27 @@ grid.cells:NewField("scratchpade06", L.double):Load(0.0)
 ------------------------------------------------------------------------------------------
 --[[ Node-centered properties                                                         ]]--
 ------------------------------------------------------------------------------------------
-grid.vertices:NewField("position",  L.vec3d):Load({0.0,0.0,0.0})
-grid.vertices:NewField("velocity",  L.vec3d):Load({0.0,0.0,0.0})
-grid.vertices:NewField("forces",    L.vec3d):Load({0.0,0.0,0.0})
+--grid.vertices:NewField("position",  L.vec3d):Load({0.0,0.0,0.0})
+--grid.vertices:NewField("velocity",  L.vec3d):Load({0.0,0.0,0.0})
+--grid.vertices:NewField("forces",    L.vec3d):Load({0.0,0.0,0.0})
+-- Position
+grid.vertices:NewField("px", L.double):Load(0)
+grid.vertices:NewField("py", L.double):Load(0)
+grid.vertices:NewField("pz", L.double):Load(0)
+-- Velocity
+grid.vertices:NewField("vx", L.double):Load(0)
+grid.vertices:NewField("vy", L.double):Load(0)
+grid.vertices:NewField("vz", L.double):Load(0)
+-- Forces
+grid.vertices:NewField("fx", L.double):Load(0)
+grid.vertices:NewField("fy", L.double):Load(0)
+grid.vertices:NewField("fz", L.double):Load(0)
+
 grid.vertices:NewField("mass",      L.float):Load(0) -- nodal mass
+
+grid.vertices:NewFieldMacro("position", L.NewMacro(function(v) return liszt `{v.px, v.py, v.pz} end))
+grid.vertices:NewFieldMacro("velocity", L.NewMacro(function(v) return liszt `{v.vx, v.vy, v.vz} end))
+grid.vertices:NewFieldMacro("forces",   L.NewMacro(function(v) return liszt `{v.fx, v.fy, v.fz} end))
 
 
 ------------------------------------------------------------------------------------------
@@ -157,27 +174,27 @@ end
 -- form
 local getLocalNodeCoordVectors = liszt function(c)
   return {
-    c.v[0].position[0], c.v[0].position[1], c.v[0].position[2],
-    c.v[1].position[0], c.v[1].position[1], c.v[1].position[2],
-    c.v[2].position[0], c.v[2].position[1], c.v[2].position[2],
-    c.v[3].position[0], c.v[3].position[1], c.v[3].position[2],
-    c.v[4].position[0], c.v[4].position[1], c.v[4].position[2],
-    c.v[5].position[0], c.v[5].position[1], c.v[5].position[2],
-    c.v[6].position[0], c.v[6].position[1], c.v[6].position[2],
-    c.v[7].position[0], c.v[7].position[1], c.v[7].position[2]
+    c.v[0].px, c.v[0].py, c.v[0].pz,
+    c.v[1].px, c.v[1].py, c.v[1].pz,
+    c.v[2].px, c.v[2].py, c.v[2].pz,
+    c.v[3].px, c.v[3].py, c.v[3].pz,
+    c.v[4].px, c.v[4].py, c.v[4].pz,
+    c.v[5].px, c.v[5].py, c.v[5].pz,
+    c.v[6].px, c.v[6].py, c.v[6].pz,
+    c.v[7].px, c.v[7].py, c.v[7].pz
     }
 end
 
 local getLocalNodeVelocityVectors = liszt function(c)
   return {
-    c.v[0].velocity[0], c.v[0].velocity[1], c.v[0].velocity[2],
-    c.v[1].velocity[0], c.v[1].velocity[1], c.v[1].velocity[2],
-    c.v[2].velocity[0], c.v[2].velocity[1], c.v[2].velocity[2],
-    c.v[3].velocity[0], c.v[3].velocity[1], c.v[3].velocity[2],
-    c.v[4].velocity[0], c.v[4].velocity[1], c.v[4].velocity[2],
-    c.v[5].velocity[0], c.v[5].velocity[1], c.v[5].velocity[2],
-    c.v[6].velocity[0], c.v[6].velocity[1], c.v[6].velocity[2],
-    c.v[7].velocity[0], c.v[7].velocity[1], c.v[7].velocity[2]
+    c.v[0].vx, c.v[0].vy, c.v[0].vz,
+    c.v[1].vx, c.v[1].vy, c.v[1].vz,
+    c.v[2].vx, c.v[2].vy, c.v[2].vz,
+    c.v[3].vx, c.v[3].vy, c.v[3].vz,
+    c.v[4].vx, c.v[4].vy, c.v[4].vz,
+    c.v[5].vx, c.v[5].vy, c.v[5].vz,
+    c.v[6].vx, c.v[6].vy, c.v[6].vz,
+    c.v[7].vx, c.v[7].vy, c.v[7].vz
     }
 end
 local row = liszt function(localCoords, i)
@@ -321,16 +338,24 @@ local sumElemFaceNormal = liszt function (coords20, coords31, stress)
   return area
 end
 
-local calcElemNodeNormals = liszt function(localCoords, stress)
-    var r0 = row(localCoords, 0)
-    var r1 = row(localCoords, 1)
-    var r2 = row(localCoords, 2)
-    var r3 = row(localCoords, 3)
-    var r4 = row(localCoords, 4)
-    var r5 = row(localCoords, 5)
-    var r6 = row(localCoords, 6)
-    var r7 = row(localCoords, 7)
-  
+local calcElemNodeNormals = liszt function(c, stress)
+    var x = {c.v[0].px, c.v[1].px, c.v[2].px, c.v[3].px,
+             c.v[4].px, c.v[5].px, c.v[6].px, c.v[7].px }
+    var y = {c.v[0].py, c.v[1].py, c.v[2].py, c.v[3].py,
+             c.v[4].py, c.v[5].py, c.v[6].py, c.v[7].py }
+    var z = {c.v[0].pz, c.v[1].pz, c.v[2].pz, c.v[3].pz,
+             c.v[4].pz, c.v[5].pz, c.v[6].pz, c.v[7].pz }
+
+
+    var r0 = {x[0], y[0], z[0]}
+    var r1 = {x[1], y[1], z[1]}
+    var r2 = {x[2], y[2], z[2]}
+    var r3 = {x[3], y[3], z[3]}
+    var r4 = {x[4], y[4], z[4]}
+    var r5 = {x[5], y[5], z[5]}
+    var r6 = {x[6], y[6], z[6]}
+    var r7 = {x[7], y[7], z[7]}
+
     -- evaluate face one: nodes 0, 1, 2, 3
     var temp0 = sumElemFaceNormal(r2-r0, r3-r1, stress)
   
@@ -366,82 +391,6 @@ local calcElemNodeNormals = liszt function(localCoords, stress)
     }
 end
 
---[[
-local voluDer = liszt function(x0,x1,x2,x3,x4,x5,
-                               y0,y1,y2,y3,y4,y5,
-                               z0,z1,z2,z3,z4,z5)
-  var dvdx =   (y1 + y2) * (z0 + z1) - (y0 + y1) * (z1 + z2) +
-               (y0 + y4) * (z3 + z4) - (y3 + y4) * (z0 + z4) -
-               (y2 + y5) * (z3 + z5) + (y3 + y5) * (z2 + z5)
-
-  var dvdy = - (x1 + x2) * (z0 + z1) + (x0 + x1) * (z1 + z2) -
-               (x0 + x4) * (z3 + z4) + (x3 + x4) * (z0 + z4) +
-               (x2 + x5) * (z3 + z5) - (x3 + x5) * (z2 + z5)
-
-  var dvdz = - (y1 + y2) * (x0 + x1) + (y0 + y1) * (x1 + x2) -
-               (y0 + y4) * (x3 + x4) + (y3 + y4) * (x0 + x4) +
-               (y2 + y5) * (x3 + x5) - (y3 + y5) * (x2 + x5)
-
-  return { dvdx/12.0, dvdy/12.0, dvdz/12.0 }
-end
-
-local calcElemVolumeDerivative = liszt function (c, localCoords)
-  var v0 = voluDer(localCoords[1*3+0], localCoords[2*3+0], localCoords[3*3+0],
-                   localCoords[4*3+0], localCoords[5*3+0], localCoords[7*3+0],
-                   localCoords[1*3+1], localCoords[2*3+1], localCoords[3*3+1],
-                   localCoords[4*3+1], localCoords[5*3+1], localCoords[7*3+1],
-                   localCoords[1*3+2], localCoords[2*3+2], localCoords[3*3+2],
-                   localCoords[4*3+2], localCoords[5*3+2], localCoords[7*3+2])
-  var v3 = voluDer(localCoords[0*3+0], localCoords[1*3+0], localCoords[2*3+0],
-                   localCoords[7*3+0], localCoords[4*3+0], localCoords[6*3+0],
-                   localCoords[0*3+1], localCoords[1*3+1], localCoords[2*3+1],
-                   localCoords[7*3+1], localCoords[4*3+1], localCoords[6*3+1],
-                   localCoords[0*3+2], localCoords[1*3+2], localCoords[2*3+2],
-                   localCoords[7*3+2], localCoords[4*3+2], localCoords[6*3+2])
-  var v2 = voluDer(localCoords[3*3+0], localCoords[0*3+0], localCoords[1*3+0],
-                   localCoords[6*3+0], localCoords[7*3+0], localCoords[5*3+0],
-                   localCoords[3*3+1], localCoords[0*3+1], localCoords[1*3+1],
-                   localCoords[6*3+1], localCoords[7*3+1], localCoords[5*3+1],
-                   localCoords[3*3+2], localCoords[0*3+2], localCoords[1*3+2],
-                   localCoords[6*3+2], localCoords[7*3+2], localCoords[5*3+2])
-  var v1 = voluDer(localCoords[2*3+0], localCoords[3*3+0], localCoords[0*3+0],
-                   localCoords[5*3+0], localCoords[6*3+0], localCoords[4*3+0],
-                   localCoords[2*3+1], localCoords[3*3+1], localCoords[0*3+1],
-                   localCoords[5*3+1], localCoords[6*3+1], localCoords[4*3+1],
-                   localCoords[2*3+2], localCoords[3*3+2], localCoords[0*3+2],
-                   localCoords[5*3+2], localCoords[6*3+2], localCoords[4*3+2])
-  var v4 = voluDer(localCoords[7*3+0], localCoords[6*3+0], localCoords[5*3+0],
-                   localCoords[0*3+0], localCoords[3*3+0], localCoords[1*3+0],
-                   localCoords[7*3+1], localCoords[6*3+1], localCoords[5*3+1],
-                   localCoords[0*3+1], localCoords[3*3+1], localCoords[1*3+1],
-                   localCoords[7*3+2], localCoords[6*3+2], localCoords[5*3+2],
-                   localCoords[0*3+2], localCoords[3*3+2], localCoords[1*3+2])
-  var v5 = voluDer(localCoords[4*3+0], localCoords[7*3+0], localCoords[6*3+0],
-                   localCoords[1*3+0], localCoords[0*3+0], localCoords[2*3+0],
-                   localCoords[4*3+1], localCoords[7*3+1], localCoords[6*3+1],
-                   localCoords[1*3+1], localCoords[0*3+1], localCoords[2*3+1],
-                   localCoords[4*3+2], localCoords[7*3+2], localCoords[6*3+2],
-                   localCoords[1*3+2], localCoords[0*3+2], localCoords[2*3+2])
-  var v6 = voluDer(localCoords[5*3+0], localCoords[4*3+0], localCoords[7*3+0],
-                   localCoords[2*3+0], localCoords[1*3+0], localCoords[3*3+0],
-                   localCoords[5*3+1], localCoords[4*3+1], localCoords[7*3+1],
-                   localCoords[2*3+1], localCoords[1*3+1], localCoords[3*3+1],
-                   localCoords[5*3+2], localCoords[4*3+2], localCoords[7*3+2],
-                   localCoords[2*3+2], localCoords[1*3+2], localCoords[3*3+2])
-  var v7 = voluDer(localCoords[6*3+0], localCoords[5*3+0], localCoords[4*3+0],
-                   localCoords[3*3+0], localCoords[2*3+0], localCoords[0*3+0],
-                   localCoords[6*3+1], localCoords[5*3+1], localCoords[4*3+1],
-                   localCoords[3*3+1], localCoords[2*3+1], localCoords[0*3+1],
-                   localCoords[6*3+2], localCoords[5*3+2], localCoords[4*3+2],
-                   localCoords[3*3+2], localCoords[2*3+2], localCoords[0*3+2])
-
-  return { v0[0], v1[0], v2[0], v3[0], v4[0], v5[0], v6[0], v7[0],
-           v0[1], v1[1], v2[1], v3[1], v4[1], v5[1], v6[1], v7[1],
-           v0[2], v1[2], v2[2], v3[2], v4[2], v5[2], v6[2], v7[2] }
-end
-]]--
-
-
 local voluDer = liszt function(p0,p1,p2,p3,p4,p5)
   var m01 = p0.position + p1.position
   var m12 = p1.position + p2.position
@@ -465,7 +414,7 @@ local voluDer = liszt function(p0,p1,p2,p3,p4,p5)
   return { dvdx/12.0, dvdy/12.0, dvdz/12.0 }
 end
 
-local calcElemVolumeDerivative = liszt function (c, localCoords)
+local calcElemVolumeDerivative = liszt function (c)
   var p0 = c.v[0]
   var p1 = c.v[1]
   var p2 = c.v[2]
@@ -489,10 +438,6 @@ local calcElemVolumeDerivative = liszt function (c, localCoords)
            v0[2], v1[2], v2[2], v3[2], v4[2], v5[2], v6[2], v7[2] }
 end
 
-
-
-
-
 local liszt kernel initialVolumeCalc(c : grid.cells)
 
   --var localCoords = getLocalNodeCoordVectors(c)
@@ -515,9 +460,9 @@ end
 -- Grid initializes position over cell centers, so we need to
 -- initialize vertex positions manually.
 local liszt kernel initVectorPosition(v : grid.vertices)
-  v.position = { L.double(v.xid) * sz / N, 
-                 L.double(v.yid) * sz / N,
-                 L.double(v.zid) * sz / N }
+  v.px = L.double(v.xid) * sz / N
+  v.py = L.double(v.yid) * sz / N
+  v.pz = L.double(v.zid) * sz / N
 end
 
 function m.initMeshParameters ()
@@ -567,23 +512,33 @@ function timeIncrement( )
   m.cycle = m.cycle + 1
 end
 
-local liszt kernel  integrateStressForElems(c : grid.cells)
-  var localCoords = getLocalNodeCoordVectors(c)
-  -- scratchpade01 used here to store the determinant.
-  -- Volume calculation involves extra work for numerical consistency.
-  c.scratchpade01 = calcElemShapeFunctionDerivatives1(localCoords)
-  var stress = -c.p - c.q
-  var f = calcElemNodeNormals(localCoords, {stress, stress, stress})
-
-  c.v[0].forces += row(f,0)
-  c.v[1].forces += row(f,1)
-  c.v[2].forces += row(f,2)
-  c.v[3].forces += row(f,3)
-  c.v[4].forces += row(f,4)
-  c.v[5].forces += row(f,5)
-  c.v[6].forces += row(f,6)
-  c.v[7].forces += row(f,7)
+local liszt function accumulateForces(c, f)
+  c.v[0].fx += row(f,0)[0]
+  c.v[0].fy += row(f,0)[1]
+  c.v[0].fz += row(f,0)[2]
+  c.v[1].fx += row(f,1)[0]
+  c.v[1].fy += row(f,1)[1]
+  c.v[1].fz += row(f,1)[2]
+  c.v[2].fx += row(f,2)[0]
+  c.v[2].fy += row(f,2)[1]
+  c.v[2].fz += row(f,2)[2]
+  c.v[3].fx += row(f,3)[0]
+  c.v[3].fy += row(f,3)[1]
+  c.v[3].fz += row(f,3)[2]
+  c.v[4].fx += row(f,4)[0]
+  c.v[4].fy += row(f,4)[1]
+  c.v[4].fz += row(f,4)[2]
+  c.v[5].fx += row(f,5)[0]
+  c.v[5].fy += row(f,5)[1]
+  c.v[5].fz += row(f,5)[2]
+  c.v[6].fx += row(f,6)[0]
+  c.v[6].fy += row(f,6)[1]
+  c.v[6].fz += row(f,6)[2]
+  c.v[7].fx += row(f,7)[0]
+  c.v[7].fy += row(f,7)[1]
+  c.v[7].fz += row(f,7)[2]
 end
+
 
 local liszt function mmult_4x8x3(ma, mb)
   var result : L.vector(L.double, 12)
@@ -681,13 +636,13 @@ local transpose_4x8 = L.NewMacro(function(m)
   }
 end)
 
-local liszt kernel calcFBHourglassForceForElems(c : grid.cells)
+local liszt kernel calcVolumeForceForElems (c : grid.cells)
   var determ = c.volo * c.vol
   var volinv = 1.0 / determ
   var volume13 = L.cbrt(determ)
   var coefficient = -m.hgcoef * 0.01 * c.ss * c.mass / volume13
   var localCoords = getLocalNodeCoordVectors(c)
-  var pf = calcElemVolumeDerivative(c, localCoords)
+  var pf = calcElemVolumeDerivative(c)
 
   -- 4x8 matrix
   var gamma : L.vector(L.double, 32) = {
@@ -719,26 +674,15 @@ local liszt kernel calcFBHourglassForceForElems(c : grid.cells)
 --  var localVelocities = getLocalNodeVelocityVectors(c)
 --  var hgf = coefficient *
 --            mmult_8x4x3(hourgamXpose, mmult_4x8x3(hourgam, localVelocities))
-
-  c.v[0].forces += row(hgf, 0)
-  c.v[1].forces += row(hgf, 1)
-  c.v[2].forces += row(hgf, 2)
-  c.v[3].forces += row(hgf, 3)
-  c.v[4].forces += row(hgf, 4)
-  c.v[5].forces += row(hgf, 5)
-  c.v[6].forces += row(hgf, 6)
-  c.v[7].forces += row(hgf, 7)
-  --c.force_temp = hgf
-end
-print('calcFBHourglassForceForElems AST Size: ',
-      calcFBHourglassForceForElems.typed_ast:astSize())
-
-function calcVolumeForceForElems ()
-  integrateStressForElems(grid.cells)
-
+  -- Volume calculation involves extra work for numerical consistency.
   if m.hgcoef > 0.0 then
-    calcFBHourglassForceForElems(grid.cells)
+    var stress = -c.p - c.q
+    var f = calcElemNodeNormals(c, {stress, stress, stress})
+    hgf += f
+  --accumulateForces(c, f)
   end
+  accumulateForces(c, hgf)
+  --c.force_temp = hgf
 end
 
 local liszt kernel calcPositionForNodes(v : grid.vertices)
@@ -753,13 +697,22 @@ local liszt kernel calcPositionForNodes(v : grid.vertices)
   if fabs(vtmp[0]) < m.u_cut then vtmp[0] = 0.0 end
   if fabs(vtmp[1]) < m.u_cut then vtmp[1] = 0.0 end
   if fabs(vtmp[2]) < m.u_cut then vtmp[2] = 0.0 end
-  v.velocity  = vtmp
-  v.position += vtmp * m.deltatime
-  v.forces = {0.0,0.0,0.0}
+  v.vx = vtmp[0]
+  v.vy = vtmp[1]
+  v.vz = vtmp[2]
+
+  var pdelta = vtmp * m.deltatime
+  v.px += pdelta[0]
+  v.py += pdelta[1]
+  v.pz += pdelta[2]
+  
+  v.fx = 0
+  v.fy = 0
+  v.fz = 0
 end
 
 function lagrangeNodal ()
-  calcVolumeForceForElems()
+  calcVolumeForceForElems(grid.cells)
   calcPositionForNodes(grid.vertices)
 end
 
