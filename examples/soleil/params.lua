@@ -5,9 +5,9 @@ return {
   
   -- Flow Initialization  Options --
   initCase     = 'Uniform', -- Uniform, Restart, TaylorGreen2DVortex, TaylorGreen3DVortex
-  initParams = {1.0,71.42857142857143,0.0,0.0,0.0}, -- necessary input conditions
+  initParams = {1.0,84151.05269999999,0.0,0.0,0.0}, -- necessary input conditions
   bodyForce = {0,0.0,0}, -- body force in x, y, z
-  restartIter = 20000,
+  restartIter = 0,
   
   -- Grid Options --
   xnum = 64, -- number of cells in the x-direction
@@ -16,7 +16,7 @@ return {
   origin = {0.0, 0.0, 0.0}, -- spatial origin of the computational domain
   xWidth = 1.0,
   yWidth = 1.0,
-  zWidth = 0.1,
+  zWidth = 1.0,
   -- BCs on each boundary: 'periodic,' 'symmetry,' or 'wall'
   xBCLeft  = 'wall',
   xBCLeftVel = {0.0, 0.0, 0.0},
@@ -25,10 +25,10 @@ return {
   yBCLeft  = 'wall',
   yBCLeftVel = {0.0, 0.0, 0.0},
   yBCRight = 'wall',
-  yBCRightVel = {1.0, 0.0, 0.0},
-  zBCLeft  = 'symmetry',
+  yBCRightVel = {0.0, 0.0, 0.0},
+  zBCLeft  = 'wall',
   zBCLeftVel = {0.0, 0.0, 0.0},
-  zBCRight = 'symmetry',
+  zBCRight = 'wall',
   zBCRightVel = {0.0, 0.0, 0.0},
   
   -- Spatial Integration Options --
@@ -36,16 +36,16 @@ return {
   
   --Time Integration Options --
   final_time            = 2000.00001,
-  max_iter              = 50000,
+  max_iter              = 5000,
   cfl                   = -2.0, -- Negative CFL implies that we will used fixed delta T
-  delta_time            = 1e-3,
+  delta_time            = 1e-2,
   
   --- File Output Options --
   wrtRestart = 'ON',
   wrtVolumeSolution = 'ON',
   wrt1DSlice = 'ON',
-  outputEveryTimeSteps  = 1000,
-  restartEveryTimeSteps = 1000,
+  outputEveryTimeSteps  = 50,
+  restartEveryTimeSteps = 50,
   headerFrequency       = 20,
   outputFormat = 'Tecplot', --Tecplot or Python
   outputDirectory = '../soleilOutput/', -- relative to the liszt-in-terra home directory
@@ -54,28 +54,30 @@ return {
   gasConstant = 287.058,
   gamma = 1.4,
   viscosity_model = 'Constant', -- Constant, PowerLaw, Sutherland
-  dynamic_viscosity_ref = 2.0e-3,
-  dynamic_viscosity_temp_ref = 0.248830,
-  prandtl = 0.72,
+  dynamic_viscosity_ref = 1.0e-3,
+  dynamic_viscosity_temp_ref = 293.15,
+  prandtl = 36.8,
 
   -- Particle Options --
+  initParticles = 'Restart', -- 'Random' or 'Restart'
+  restartParticleIter = 0,
   particleType = 'Free', -- Fixed or Free
   twoWayCoupling = 'OFF', -- ON or OFF
-  num = 1000.0,
-  convectiveCoefficient = 0.7, -- W m^-2 K^-1
-  heatCapacity = 0.7, -- J Kg^-1 K^-1
-  initialTemperature = 0.248830, -- K
-  density = 8900, --1000, --8900,
-  diameter_mean = 1e-3, --1e-5, -- 1.2e-5, --0.03,
-  diameter_maxDeviation = 5e-4, --0.02,
-  bodyForceParticles = {0,0,0}, -- {0,-1.1,0}
+  num = 1.0,
+  convectiveCoefficient = 275.0, -- W m^-2 K^-1
+  heatCapacity = 4e2, -- J Kg^-1 K^-1
+  initialTemperature = 293.15, -- K
+  density = 1e4, --1000, --8900,
+  diameter_mean = 2e-4, --1e-5, -- 1.2e-5, --0.03,
+  diameter_maxDeviation = 0.0, --0.02,
+  bodyForceParticles = {0,-10,0}, -- {0,-1.1,0}
   emissivity = 0.5, --0.4
   absorptivity = 0.5, -- Equal to emissivity in thermal equilibrium
   -- (Kirchhoff law of thermal radiation)
   
   -- Radiation Options --
   radiationType = 'OFF', -- ON or OFF
-  radiationIntensity = 1e1,
+  radiationIntensity = 0.0,
   
   -- vdb visualization --
   visualize = 'OFF', -- ON or OFF

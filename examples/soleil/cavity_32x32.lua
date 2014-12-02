@@ -58,6 +58,8 @@ return {
   prandtl = 0.72,
   
   -- Particle Options --
+  initParticles = 'Random', -- 'Random' or 'Restart'
+  restartParticleIter = 0,
   particleType = 'Free', -- Fixed or Free
   twoWayCoupling = 'OFF',
   num = 100.0,

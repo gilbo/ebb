@@ -76,6 +76,7 @@ Viscosity.Sutherland = L.NewGlobal(L.int, 2)
 Particles.FeederAtStartTimeInRandomBox = L.NewGlobal(L.int, 0)
 Particles.FeederOverTimeInRandomBox    = L.NewGlobal(L.int, 1)
 Particles.FeederUQCase                 = L.NewGlobal(L.int, 2)
+Particles.Restart                      = L.NewGlobal(L.int, 2)
 
 -- Particles collector
 Particles.CollectorNone     = L.NewGlobal(L.int, 0)
@@ -464,8 +465,16 @@ local particles_options = {
     diameter_maxDeviation = config.diameter_maxDeviation,
     bodyForce = L.NewGlobal(L.vec3d, config.bodyForceParticles),
     emissivity = config.emissivity,
-    absorptivity = config.absorptivity
+    absorptivity = config.absorptivity,
+    restartParticleIter = config.restartParticleIter,
 }
+if config.initParticles == 'Random' then
+  particles_options.initParticles = Particles.Random
+  elseif config.initParticles == 'Restart' then
+  particles_options.initParticles = Particles.Restart
+  else
+  error("Particle initialization type not defined")
+end
 -- Lastly, check whether the particles are fixed or free
 if config.particleType == 'Fixed' then
   particles_options.particleType = Particles.Fixed
@@ -609,6 +618,77 @@ if flow_options.initCase == Flow.Restart then
   TimeIntegrator.timeStep:set(restartIter)
   TimeIntegrator.simTime:set(restartTime)
   TimeIntegrator.max_iter = TimeIntegrator.max_iter + restartIter
+  
+end
+
+-- Now check for and load a particle restart file if requested
+
+local restartnParticles, restartPartIter, restartPartTime
+local particle_pos_array = {}
+local particle_vel_array = {}
+local particle_temp_array = {}
+local particle_diam_array = {}
+
+
+if particles_options.initParticles == Particles.Restart then
+  
+  -- here's the path object for our soleil restart file we want to read in.
+  -- Notice that the path is relative to this script's location on
+  -- disk rather than the present working directory, which varies
+  -- depending on where we invoke this script from.
+  local restart_filename = IO.outputFileNamePrefix .. 'restart_particles_' ..
+  config.restartParticleIter .. '.dat'
+  
+  -- Particle restart files have the following format
+  --
+  --[[
+   Soleil Particle Restart
+   #particles currentIteration currentPhysicalTime
+   x0 y0 z0 u0 v0 w0 temperature0 diameter0
+   ...
+   ...   #particles rows of values for each particle
+   ...
+   ]]--
+  
+  -- In Lua, we can open files just like in C
+  local soleil_in = io.open(tostring(restart_filename), "r")
+  if not soleil_in then
+    error('Error: failed to open '..tostring(restart_filename))
+  end
+  
+  -- we can read a line like so
+  local SOLEIL_SIG = soleil_in:read('*line')
+  
+  if SOLEIL_SIG ~= 'Soleil Particle Restart' then
+    error('Restart file must begin with the first line "Soleil Particle Restart"')
+  end
+  
+  -- read the counts of cells, iterations, and the time
+  restartnParticles = soleil_in:read('*number')
+  restartPartIter   = soleil_in:read('*number')
+  restartPartTime   = soleil_in:read('*number')
+  
+  -- now read in all the density, pressure, and velocity data
+  
+  for i = 1, restartnParticles do
+    local pos_vec = {
+      soleil_in:read('*number'),
+      soleil_in:read('*number'),
+      soleil_in:read('*number')
+    }
+    particle_pos_array[i] = pos_vec
+    local vel_vec = {
+      soleil_in:read('*number'),
+      soleil_in:read('*number'),
+      soleil_in:read('*number')
+    }
+    particle_vel_array[i]  = vel_vec
+    particle_temp_array[i] = soleil_in:read('*number')
+    particle_diam_array[i] = soleil_in:read('*number')
+  end
+  
+  -- don't forget to close the file when done
+  soleil_in:close()
   
 end
 
@@ -826,36 +906,44 @@ particles:NewField('dual_cell', grid.dual_cells):
 LoadConstant(0)
 particles:NewField('cell', grid.cells):
 LoadConstant(0)
-particles:NewField('position', L.vec3d):
-LoadConstant(L.NewVector(L.double, {0, 0, 0}))
-particles:NewField('velocity', L.vec3d):
-LoadConstant(L.NewVector(L.double, {0, 0, 0}))
-particles:NewField('temperature', L.double):
-LoadConstant(particles_options.initialTemperature)
-particles:NewField('position_ghost', L.vec3d):
-LoadConstant(L.NewVector(L.double, {0, 0, 0}))
-particles:NewField('velocity_ghost', L.vec3d):
-LoadConstant(L.NewVector(L.double, {0, 0, 0}))
 
-particles:NewField('diameter', L.double):
--- Initialize to random distribution with given mean value and maximum 
--- deviation from it
-Load(function(i)
-    return cmath.rand_unity() * particles_options.diameter_maxDeviation +
-           particles_options.diameter_mean
-end)
-particles:NewField('density', L.double):
-LoadConstant(particles_options.density)
-
-particles:NewField('deltaVelocityOverRelaxationTime', L.vec3d):
-LoadConstant(L.NewVector(L.double, {0, 0, 0}))
-particles:NewField('deltaTemperatureTerm', L.double):
-LoadConstant(0)
+particles:NewField('position', L.vec3d)
+particles:NewField('velocity', L.vec3d)
+particles:NewField('temperature', L.double)
+particles:NewField('diameter', L.double)
 -- state of a particle:
 --   - a particle not yet fed has a state = 0
 --   - a particle fed into the domain and active has a state = 1
 --   - a particle already collected has a state = 2
-particles:NewField('state', L.int):
+particles:NewField('state', L.int)
+if particles_options.initParticles == Particles.Restart then
+  particles.position:Load(particle_pos_array)
+  particles.velocity:Load(particle_vel_array)
+  particles.temperature:Load(particle_temp_array)
+  particles.diameter:Load(particle_diam_array)
+  particles.state:LoadConstant(1)
+else
+particles.position:LoadConstant(L.NewVector(L.double, {0, 0, 0}))
+particles.velocity:LoadConstant(L.NewVector(L.double, {0, 0, 0}))
+particles.temperature:LoadConstant(particles_options.initialTemperature)
+-- Initialize to random distribution with given mean value and maximum
+-- deviation from it
+particles.diameter:Load(function(i)
+                        return cmath.rand_unity() * particles_options.diameter_maxDeviation +
+                        particles_options.diameter_mean
+                        end)
+particles.state:LoadConstant(0)
+end
+
+particles:NewField('position_ghost', L.vec3d):
+LoadConstant(L.NewVector(L.double, {0, 0, 0}))
+particles:NewField('velocity_ghost', L.vec3d):
+LoadConstant(L.NewVector(L.double, {0, 0, 0}))
+particles:NewField('density', L.double):
+LoadConstant(particles_options.density)
+particles:NewField('deltaVelocityOverRelaxationTime', L.vec3d):
+LoadConstant(L.NewVector(L.double, {0, 0, 0}))
+particles:NewField('deltaTemperatureTerm', L.double):
 LoadConstant(0)
 -- ID field
 particles:NewField('id', L.int):
@@ -3482,12 +3570,13 @@ local particleFile = io.output(particleFileName)
 
 -- Write header
 --io.write('TITLE = "Data"\n')
-io.write('VARIABLES = "X", "Y", "Z", "Diameter", "Temperature"\n')
+io.write('VARIABLES = "X", "Y", "Z", "X-Velocity", "Y-Velocity", "Z-Velocity", "Temperature", "Diameter"\n')
 io.write('ZONE SOLUTIONTIME=', TimeIntegrator.simTime:get(), '\n')
 
 values = particles.position:DumpToList()
 N      = particles.position:Size()
 veclen = particles.position:Type().N
+local p_velocity = particles.velocity:DumpToList()
 local diameter  = particles.diameter:DumpToList()
 local particleT = particles.temperature:DumpToList()
 for i=1,N do
@@ -3496,9 +3585,13 @@ for i=1,N do
     local t = tostring(values[i][j]):gsub('ULL',' ')
     s = s .. ' ' .. t .. ''
   end
-  local diam = tostring(diameter[i]):gsub('ULL',' ')
+  for j=1,veclen do
+    local t = tostring(p_velocity[i][j]):gsub('ULL',' ')
+    s = s .. ' ' .. t .. ''
+  end
   local temp = tostring(particleT[i]):gsub('ULL',' ')
-  s = s .. ' ' .. diam .. ' ' .. temp .. '\n'
+  local diam = tostring(diameter[i]):gsub('ULL',' ')
+  s = s .. ' ' .. temp .. ' ' .. diam .. '\n'
   io.write("", s)
 end
 
@@ -3592,6 +3685,60 @@ if (timeStep % TimeIntegrator.outputEveryTimeSteps == 0 and
   -- Close the file
   io.close()
   
+end
+
+-- Check if it is time to output a particle restart file
+if (timeStep % TimeIntegrator.restartEveryTimeSteps == 0 and
+    IO.wrtRestart == ON) then
+    
+    -- Prepare the restart file name for the current iteration
+    
+    local outputFileName = IO.outputFileNamePrefix .. "restart_particles_" ..
+    tostring(timeStep) .. ".dat"
+    
+    -- Open file
+    
+    local outputFile = io.output(outputFileName)
+    
+    -- Dump the fields to lists for writing
+    
+    local p_position = particles.position:DumpToList()
+    local p_velocity = particles.velocity:DumpToList()
+    local diameter   = particles.diameter:DumpToList()
+    local particleT  = particles.temperature:DumpToList()
+    
+    local nParticles = particles.position:Size()
+    local nDim       = particles.position:Type().N
+    
+    -- Write header: number of particles, iteration, physical time
+    
+    io.write('Soleil Particle Restart\n')
+    local s = '' .. tostring(nParticles)
+    s = s .. ' ' .. tostring(timeStep)
+    s = s .. ' ' .. tostring(TimeIntegrator.simTime:get()) .. '\n'
+    io.write(s)
+    
+    -- Write the primitve variables for the particles
+
+    for i=1,nParticles do
+      s = ''
+      for j=1,nDim do
+        local t = tostring(p_position[i][j]):gsub('ULL',' ')
+        s = s .. ' ' .. t .. ''
+      end
+      for j=1,nDim do
+        local t = tostring(p_velocity[i][j]):gsub('ULL',' ')
+        s = s .. ' ' .. t .. ''
+      end
+      local temp = tostring(particleT[i]):gsub('ULL',' ')
+      local diam = tostring(diameter[i]):gsub('ULL',' ')
+      s = s .. ' ' .. temp .. ' ' .. diam .. '\n'
+      io.write("", s)
+    end
+    
+    -- Close the restart file
+    io.close()
+    
 end
 
 end
