@@ -116,6 +116,10 @@ local LISZT_ROOT_DIR_CACHED
   -- strip leading '@' and trailing '/compiler/pathname.t'
   local strip = ('/lib/pathname.t'):len()
   LISZT_ROOT_DIR_CACHED = src:sub(2,-strip-1)
+  if LISZT_ROOT_DIR_CACHED:sub(1,1) == '.' then
+    LISZT_ROOT_DIR_CACHED = WORKING_DIRECTORY_CACHED..
+                            (LISZT_ROOT_DIR_CACHED:sub(2))
+  end
 end)()
 
 -- functions providing absolute paths as strings
