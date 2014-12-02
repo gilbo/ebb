@@ -501,6 +501,27 @@ elseif config.outputFormat == 'Tecplot' then
 else
   error("Output format not implemented")
 end
+if config.wrtRestart == 'ON' then
+  IO.wrtRestart = ON
+  elseif config.wrtRestart == 'OFF' then
+  IO.wrtRestart = OFF
+  else
+  error("Restart writing not defined (ON or OFF)")
+end
+if config.wrtVolumeSolution == 'ON' then
+  IO.wrtVolumeSolution = ON
+  elseif config.wrtVolumeSolution == 'OFF' then
+  IO.wrtVolumeSolution = OFF
+  else
+  error("Volume solution writing not defined (ON or OFF)")
+end
+if config.wrt1DSlice == 'ON' then
+  IO.wrt1DSlice = ON
+  elseif config.wrt1DSlice == 'OFF' then
+  IO.wrt1DSlice = OFF
+  else
+  error("1D slice writing not defined (ON or OFF)")
+end
 -- Store the directory for all output files from the config
 IO.outputFileNamePrefix = config.outputDirectory
 
@@ -2118,75 +2139,75 @@ end
 Flow.UpdateGhostVelocityGradientStep1 = liszt kernel(c : grid.cells)
     if c.xneg_depth > 0 then
         var xoffset = XOffset(c.xneg_depth)
-        c.velocityGradientXBoundary[0] = - c(xoffset,0,0).velocityGradientX[0]
-        c.velocityGradientXBoundary[1] =   c(xoffset,0,0).velocityGradientX[1]
-        c.velocityGradientXBoundary[2] =   c(xoffset,0,0).velocityGradientX[2]
-        c.velocityGradientYBoundary[0] = - c(xoffset,0,0).velocityGradientY[0]
-        c.velocityGradientYBoundary[1] =   c(xoffset,0,0).velocityGradientY[1]
-        c.velocityGradientYBoundary[2] =   c(xoffset,0,0).velocityGradientY[2]
-        c.velocityGradientZBoundary[0] = - c(xoffset,0,0).velocityGradientZ[0]
-        c.velocityGradientZBoundary[1] =   c(xoffset,0,0).velocityGradientZ[1]
-        c.velocityGradientZBoundary[2] =   c(xoffset,0,0).velocityGradientZ[2]
+        c.velocityGradientXBoundary[0] = xSignX * c(xoffset,0,0).velocityGradientX[0]
+        c.velocityGradientXBoundary[1] = xSignY * c(xoffset,0,0).velocityGradientX[1]
+        c.velocityGradientXBoundary[2] = xSignZ * c(xoffset,0,0).velocityGradientX[2]
+        c.velocityGradientYBoundary[0] = xSignX * c(xoffset,0,0).velocityGradientY[0]
+        c.velocityGradientYBoundary[1] = xSignY * c(xoffset,0,0).velocityGradientY[1]
+        c.velocityGradientYBoundary[2] = xSignZ * c(xoffset,0,0).velocityGradientY[2]
+        c.velocityGradientZBoundary[0] = xSignX * c(xoffset,0,0).velocityGradientZ[0]
+        c.velocityGradientZBoundary[1] = xSignY * c(xoffset,0,0).velocityGradientZ[1]
+        c.velocityGradientZBoundary[2] = xSignZ * c(xoffset,0,0).velocityGradientZ[2]
     end
     if c.xpos_depth > 0 then
         var xoffset = XOffset(c.xpos_depth)
-        c.velocityGradientXBoundary[0] = - c(-xoffset,0,0).velocityGradientX[0]
-        c.velocityGradientXBoundary[1] =   c(-xoffset,0,0).velocityGradientX[1]
-        c.velocityGradientXBoundary[2] =   c(-xoffset,0,0).velocityGradientX[2]
-        c.velocityGradientYBoundary[0] = - c(-xoffset,0,0).velocityGradientY[0]
-        c.velocityGradientYBoundary[1] =   c(-xoffset,0,0).velocityGradientY[1]
-        c.velocityGradientYBoundary[2] =   c(-xoffset,0,0).velocityGradientY[2]
-        c.velocityGradientZBoundary[0] = - c(-xoffset,0,0).velocityGradientZ[0]
-        c.velocityGradientZBoundary[1] =   c(-xoffset,0,0).velocityGradientZ[1]
-        c.velocityGradientZBoundary[2] =   c(-xoffset,0,0).velocityGradientZ[2]
+        c.velocityGradientXBoundary[0] = xSignX * c(-xoffset,0,0).velocityGradientX[0]
+        c.velocityGradientXBoundary[1] = xSignY * c(-xoffset,0,0).velocityGradientX[1]
+        c.velocityGradientXBoundary[2] = xSignZ * c(-xoffset,0,0).velocityGradientX[2]
+        c.velocityGradientYBoundary[0] = xSignX * c(-xoffset,0,0).velocityGradientY[0]
+        c.velocityGradientYBoundary[1] = xSignY * c(-xoffset,0,0).velocityGradientY[1]
+        c.velocityGradientYBoundary[2] = xSignZ * c(-xoffset,0,0).velocityGradientY[2]
+        c.velocityGradientZBoundary[0] = xSignX * c(-xoffset,0,0).velocityGradientZ[0]
+        c.velocityGradientZBoundary[1] = xSignY * c(-xoffset,0,0).velocityGradientZ[1]
+        c.velocityGradientZBoundary[2] = xSignZ * c(-xoffset,0,0).velocityGradientZ[2]
     end
     if c.yneg_depth > 0 then
         var yoffset = YOffset(c.yneg_depth)
-        c.velocityGradientXBoundary[0] =   c(0,yoffset,0).velocityGradientX[0]
-        c.velocityGradientXBoundary[1] = - c(0,yoffset,0).velocityGradientX[1]
-        c.velocityGradientXBoundary[2] =   c(0,yoffset,0).velocityGradientX[2]
-        c.velocityGradientYBoundary[0] =   c(0,yoffset,0).velocityGradientY[0]
-        c.velocityGradientYBoundary[1] = - c(0,yoffset,0).velocityGradientY[1]
-        c.velocityGradientYBoundary[2] =   c(0,yoffset,0).velocityGradientY[2]
-        c.velocityGradientZBoundary[0] =   c(0,yoffset,0).velocityGradientZ[0]
-        c.velocityGradientZBoundary[1] = - c(0,yoffset,0).velocityGradientZ[1]
-        c.velocityGradientZBoundary[2] =   c(0,yoffset,0).velocityGradientZ[2]
+        c.velocityGradientXBoundary[0] = ySignX * c(0,yoffset,0).velocityGradientX[0]
+        c.velocityGradientXBoundary[1] = ySignY * c(0,yoffset,0).velocityGradientX[1]
+        c.velocityGradientXBoundary[2] = ySignZ * c(0,yoffset,0).velocityGradientX[2]
+        c.velocityGradientYBoundary[0] = ySignX * c(0,yoffset,0).velocityGradientY[0]
+        c.velocityGradientYBoundary[1] = ySignY * c(0,yoffset,0).velocityGradientY[1]
+        c.velocityGradientYBoundary[2] = ySignZ * c(0,yoffset,0).velocityGradientY[2]
+        c.velocityGradientZBoundary[0] = ySignX * c(0,yoffset,0).velocityGradientZ[0]
+        c.velocityGradientZBoundary[1] = ySignY * c(0,yoffset,0).velocityGradientZ[1]
+        c.velocityGradientZBoundary[2] = ySignZ * c(0,yoffset,0).velocityGradientZ[2]
     end
     if c.ypos_depth > 0 then
         var yoffset = YOffset(c.ypos_depth)
-        c.velocityGradientXBoundary[0] =   c(0,-yoffset,0).velocityGradientX[0]
-        c.velocityGradientXBoundary[1] = - c(0,-yoffset,0).velocityGradientX[1]
-        c.velocityGradientXBoundary[2] =   c(0,-yoffset,0).velocityGradientX[2]
-        c.velocityGradientYBoundary[0] =   c(0,-yoffset,0).velocityGradientY[0]
-        c.velocityGradientYBoundary[1] = - c(0,-yoffset,0).velocityGradientY[1]
-        c.velocityGradientYBoundary[2] =   c(0,-yoffset,0).velocityGradientY[2]
-        c.velocityGradientZBoundary[0] =   c(0,-yoffset,0).velocityGradientZ[0]
-        c.velocityGradientZBoundary[1] = - c(0,-yoffset,0).velocityGradientZ[1]
-        c.velocityGradientZBoundary[2] =   c(0,-yoffset,0).velocityGradientZ[2]
+        c.velocityGradientXBoundary[0] = ySignX * c(0,-yoffset,0).velocityGradientX[0]
+        c.velocityGradientXBoundary[1] = ySignY * c(0,-yoffset,0).velocityGradientX[1]
+        c.velocityGradientXBoundary[2] = ySignZ * c(0,-yoffset,0).velocityGradientX[2]
+        c.velocityGradientYBoundary[0] = ySignX * c(0,-yoffset,0).velocityGradientY[0]
+        c.velocityGradientYBoundary[1] = ySignY * c(0,-yoffset,0).velocityGradientY[1]
+        c.velocityGradientYBoundary[2] = ySignZ * c(0,-yoffset,0).velocityGradientY[2]
+        c.velocityGradientZBoundary[0] = ySignX * c(0,-yoffset,0).velocityGradientZ[0]
+        c.velocityGradientZBoundary[1] = ySignY * c(0,-yoffset,0).velocityGradientZ[1]
+        c.velocityGradientZBoundary[2] = ySignZ * c(0,-yoffset,0).velocityGradientZ[2]
     end
     if c.zneg_depth > 0 then
         var zoffset = ZOffset(c.zneg_depth)
-        c.velocityGradientXBoundary[0] =   c(0,0,zoffset).velocityGradientX[0]
-        c.velocityGradientXBoundary[1] =   c(0,0,zoffset).velocityGradientX[1]
-        c.velocityGradientXBoundary[2] = - c(0,0,zoffset).velocityGradientX[2]
-        c.velocityGradientYBoundary[0] =   c(0,0,zoffset).velocityGradientY[0]
-        c.velocityGradientYBoundary[1] =   c(0,0,zoffset).velocityGradientY[1]
-        c.velocityGradientYBoundary[2] = - c(0,0,zoffset).velocityGradientY[2]
-        c.velocityGradientZBoundary[0] =   c(0,0,zoffset).velocityGradientZ[0]
-        c.velocityGradientZBoundary[1] =   c(0,0,zoffset).velocityGradientZ[1]
-        c.velocityGradientZBoundary[2] = - c(0,0,zoffset).velocityGradientZ[2]
+        c.velocityGradientXBoundary[0] = zSignX * c(0,0,zoffset).velocityGradientX[0]
+        c.velocityGradientXBoundary[1] = zSignY * c(0,0,zoffset).velocityGradientX[1]
+        c.velocityGradientXBoundary[2] = zSignZ * c(0,0,zoffset).velocityGradientX[2]
+        c.velocityGradientYBoundary[0] = zSignX * c(0,0,zoffset).velocityGradientY[0]
+        c.velocityGradientYBoundary[1] = zSignY * c(0,0,zoffset).velocityGradientY[1]
+        c.velocityGradientYBoundary[2] = zSignZ * c(0,0,zoffset).velocityGradientY[2]
+        c.velocityGradientZBoundary[0] = zSignX * c(0,0,zoffset).velocityGradientZ[0]
+        c.velocityGradientZBoundary[1] = zSignY * c(0,0,zoffset).velocityGradientZ[1]
+        c.velocityGradientZBoundary[2] = zSignZ * c(0,0,zoffset).velocityGradientZ[2]
     end
     if c.zpos_depth > 0 then
         var zoffset = ZOffset(c.zpos_depth)
-        c.velocityGradientXBoundary[0] =   c(0,0,-zoffset).velocityGradientX[0]
-        c.velocityGradientXBoundary[1] =   c(0,0,-zoffset).velocityGradientX[1]
-        c.velocityGradientXBoundary[2] = - c(0,0,-zoffset).velocityGradientX[2]
-        c.velocityGradientYBoundary[0] =   c(0,0,-zoffset).velocityGradientY[0]
-        c.velocityGradientYBoundary[1] =   c(0,0,-zoffset).velocityGradientY[1]
-        c.velocityGradientYBoundary[2] = - c(0,0,-zoffset).velocityGradientY[2]
-        c.velocityGradientZBoundary[0] =   c(0,0,-zoffset).velocityGradientZ[0]
-        c.velocityGradientZBoundary[1] =   c(0,0,-zoffset).velocityGradientZ[1]
-        c.velocityGradientZBoundary[2] = - c(0,0,-zoffset).velocityGradientZ[2]
+        c.velocityGradientXBoundary[0] = zSignX * c(0,0,-zoffset).velocityGradientX[0]
+        c.velocityGradientXBoundary[1] = zSignY * c(0,0,-zoffset).velocityGradientX[1]
+        c.velocityGradientXBoundary[2] = zSignZ * c(0,0,-zoffset).velocityGradientX[2]
+        c.velocityGradientYBoundary[0] = zSignX * c(0,0,-zoffset).velocityGradientY[0]
+        c.velocityGradientYBoundary[1] = zSignY * c(0,0,-zoffset).velocityGradientY[1]
+        c.velocityGradientYBoundary[2] = zSignZ * c(0,0,-zoffset).velocityGradientY[2]
+        c.velocityGradientZBoundary[0] = zSignX * c(0,0,-zoffset).velocityGradientZ[0]
+        c.velocityGradientZBoundary[1] = zSignY * c(0,0,-zoffset).velocityGradientZ[1]
+        c.velocityGradientZBoundary[2] = zSignZ * c(0,0,-zoffset).velocityGradientZ[2]
     end
 end
 Flow.UpdateGhostVelocityGradientStep2 = liszt kernel(c : grid.cells)
@@ -3182,7 +3203,8 @@ end
   string.format(" %11.6f",particle_avg_temp),'\n')
 
   -- Check if it is time to output a restart file
-  if timeStep % TimeIntegrator.restartEveryTimeSteps == 0 then
+  if (timeStep % TimeIntegrator.restartEveryTimeSteps == 0 and
+      IO.wrtRestart == ON) then
     
     -- Prepare the restart file name for the current iteration
     
@@ -3233,7 +3255,8 @@ end
   end
 
 -- Check if it is time to output to file
-if timeStep % TimeIntegrator.outputEveryTimeSteps == 0 then
+if (timeStep % TimeIntegrator.outputEveryTimeSteps == 0 and
+    IO.wrtVolumeSolution == ON) then
 
 -- Native Python output format
 if IO.outputFormat == IO.Python then
@@ -3244,9 +3267,9 @@ tostring(timeStep)
 Flow.WriteField(outputFileName .. "_flow",
   grid:xSize(), grid:ySize(), grid:zSize(),
   grid.cells.temperature)
---Flow.WriteField(outputFileName .. "_flow",
---  grid:xSize(), grid:ySize(), grid:zSize(),
---  grid.cells.rho)
+Flow.WriteField(outputFileName .. "_flow",
+  grid:xSize(), grid:ySize(), grid:zSize(),
+  grid.cells.rho)
 Flow.WriteField(outputFileName .. "_flow",
   grid:xSize(), grid:ySize(), grid:zSize(),
   grid.cells.pressure)
@@ -3483,6 +3506,92 @@ io.close()
 
 else
   print("Output format not defined. No output written to disk.")
+end
+
+-- Write center line velocities (x & y)
+if (timeStep % TimeIntegrator.outputEveryTimeSteps == 0 and
+  IO.wrt1DSlice == ON) then
+  
+  -- First, write the x-vel, then the y-vel in two separate files
+  
+  local outputFileName = IO.outputFileNamePrefix .. "x_velocity.csv"
+  
+  -- Open file
+  
+  local outputFile = io.output(outputFileName)
+  
+  -- CSV header
+  io.write('"Y", "X_Vel"\n')
+  
+  -- Dump the fields to lists for writing
+  
+  local cellCenter = grid.cells.centerCoordinates:DumpToList()
+  local velocity   = grid.cells.velocity:DumpToList()
+  
+  local nCells = grid.cells.velocity:Size()
+  local nDim   = grid.cells.velocity:Type().N
+  
+  -- Check for the vertical center of the domain and write the x-vel
+  
+  for i=1,nCells do
+    local s = ''
+    local x = cellCenter[i][1]
+    local y = cellCenter[i][2]
+    local z = cellCenter[i][3]
+    local ycor = tostring(cellCenter[i][2]):gsub('ULL',' ')
+    local xvel = velocity[i][1]
+    if x < (gridOriginInteriorX + grid_options.xWidth/2.0 + grid_options.xWidth /
+            (2.0*grid_options.xnum)) and x > (gridOriginInteriorX + grid_options.xWidth/2.0 - grid_options.xWidth / (2.0*grid_options.xnum)) and
+            y < (gridOriginInteriorY + grid_options.yWidth) and y > (gridOriginInteriorY) and z < (gridOriginInteriorZ + grid_options.zWidth) and z > (gridOriginInteriorZ) then
+            s = ycor .. ', ' .. tostring(xvel) .. '\n'
+            io.write(s)
+    end
+    
+  end
+  
+  -- Close the file
+  io.close()
+  
+  -- Now the y-vel in a separate file
+  
+  local outputFileName = IO.outputFileNamePrefix .. "y_velocity.csv"
+  
+  -- Open file
+  
+  local outputFile = io.output(outputFileName)
+  
+  -- CSV header
+  io.write('"X", "Y_Vel"\n')
+  
+  -- Dump the fields to lists for writing
+  
+  local cellCenter = grid.cells.centerCoordinates:DumpToList()
+  local velocity   = grid.cells.velocity:DumpToList()
+  
+  local nCells = grid.cells.velocity:Size()
+  local nDim   = grid.cells.velocity:Type().N
+  
+  -- Check for the vertical center of the domain and write the x-vel
+  
+  for i=1,nCells do
+    local s = ''
+    local x = cellCenter[i][1]
+    local y = cellCenter[i][2]
+    local z = cellCenter[i][3]
+    local xcor = tostring(cellCenter[i][1]):gsub('ULL',' ')
+    local yvel = velocity[i][2]
+    if y < (gridOriginInteriorY + grid_options.yWidth/2.0 + grid_options.yWidth /
+            (2.0*grid_options.ynum)) and y > (gridOriginInteriorY + grid_options.yWidth/2.0 - grid_options.yWidth / (2.0*grid_options.ynum)) and
+            x < (gridOriginInteriorX + grid_options.xWidth) and x > (gridOriginInteriorX) and z < (gridOriginInteriorZ + grid_options.zWidth) and z > (gridOriginInteriorZ) then
+            s = xcor .. ', ' .. tostring(yvel) .. '\n'
+            io.write(s)
+    end
+    
+  end
+  
+  -- Close the file
+  io.close()
+  
 end
 
 end

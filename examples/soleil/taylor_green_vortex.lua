@@ -41,6 +41,9 @@ return {
   delta_time            = 1e-5,
   
   --- File Output Options --
+  wrtRestart = 'ON',
+  wrtVolumeSolution = 'ON',
+  wrt1DSlice = 'ON',
   outputEveryTimeSteps  = 50,
   restartEveryTimeSteps = 50,
   headerFrequency       = 20,

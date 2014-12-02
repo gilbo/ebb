@@ -40,6 +40,9 @@ return {
   cfl                   = 2.0,
   
   --- File Output Options --
+  wrtRestart = 'ON',
+  wrtVolumeSolution = 'ON',
+  wrt1DSlice = 'ON',
   outputEveryTimeSteps  = 100,
   restartEveryTimeSteps = 100,
   headerFrequency       = 20,
