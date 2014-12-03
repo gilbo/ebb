@@ -76,7 +76,8 @@ Viscosity.Sutherland = L.NewGlobal(L.int, 2)
 Particles.FeederAtStartTimeInRandomBox = L.NewGlobal(L.int, 0)
 Particles.FeederOverTimeInRandomBox    = L.NewGlobal(L.int, 1)
 Particles.FeederUQCase                 = L.NewGlobal(L.int, 2)
-Particles.Restart                      = L.NewGlobal(L.int, 2)
+Particles.Random                       = L.NewGlobal(L.int, 3)
+Particles.Restart                      = L.NewGlobal(L.int, 4)
 
 -- Particles collector
 Particles.CollectorNone     = L.NewGlobal(L.int, 0)
@@ -456,6 +457,8 @@ local particles_options = {
     --collectorParams = L.NewGlobal(L.vector(L.double,6),{0.5,0.5,0.5,12,6,6}),
 
     num = config.num,
+    restitution_coefficient = L.NewGlobal(L.double,
+                                          config.restitutionCoefficient),
     convective_coefficient = L.NewGlobal(L.double,
                                          config.convectiveCoefficient),
     heat_capacity = L.NewGlobal(L.double, config.heatCapacity),
@@ -470,9 +473,9 @@ local particles_options = {
 }
 if config.initParticles == 'Random' then
   particles_options.initParticles = Particles.Random
-  elseif config.initParticles == 'Restart' then
+elseif config.initParticles == 'Restart' then
   particles_options.initParticles = Particles.Restart
-  else
+else
   error("Particle initialization type not defined")
 end
 -- Lastly, check whether the particles are fixed or free
@@ -939,6 +942,9 @@ particles:NewField('position_ghost', L.vec3d):
 LoadConstant(L.NewVector(L.double, {0, 0, 0}))
 particles:NewField('velocity_ghost', L.vec3d):
 LoadConstant(L.NewVector(L.double, {0, 0, 0}))
+particles:NewField('velocity_t_ghost', L.vec3d):
+LoadConstant(L.NewVector(L.double, {0, 0, 0}))
+
 particles:NewField('density', L.double):
 LoadConstant(particles_options.density)
 particles:NewField('deltaVelocityOverRelaxationTime', L.vec3d):
@@ -2580,7 +2586,7 @@ end
 --------------
 
 Particles.AddBodyForces= liszt kernel(p : particles)
-    if p.state == 1 then
+    if p.state == 1 and particles_options.particleType == Particles.Free then
         p.velocity_t += particles_options.bodyForce
     end
 end
@@ -2621,8 +2627,10 @@ Particles.SetVelocitiesToFlow = liszt kernel(p: particles)
     flowDynamicViscosity = GetDynamicViscosity(flowTemperature)
 
     -- Update the particle velocity
-    if particles_options.particleType == Particles.Fixed then
-      p.velocity_t = {0.0,0.0,0.0} -- Don't move the particle
+if (particles_options.particleType == Particles.Fixed) then
+      p.velocity = {0.0,0.0,0.0} -- Don't move the particle
+      elseif (particles_options.initParticles == Particles.Restart) then
+      -- Do nothing, as we loaded the veloity from a restart
     elseif particles_options.particleType == Particles.Free then
       p.velocity = flowVelocity
     end
@@ -2672,14 +2680,17 @@ end
 Particles.UpdateAuxiliaryStep1 = liszt kernel(p : particles)
     if p.state == 1 then
 
-        -- Initialize position and velocity before we check for collisions
+        -- Initialize position and velocity before we check for wall collisions
         
-        p.position_ghost[0] = p.position[0]
-        p.position_ghost[1] = p.position[1]
-        p.position_ghost[2] = p.position[2]
-        p.velocity_ghost[0] = p.velocity[0]
-        p.velocity_ghost[1] = p.velocity[1]
-        p.velocity_ghost[2] = p.velocity[2]
+        p.position_ghost[0]   = p.position[0]
+        p.position_ghost[1]   = p.position[1]
+        p.position_ghost[2]   = p.position[2]
+        p.velocity_ghost[0]   = p.velocity[0]
+        p.velocity_ghost[1]   = p.velocity[1]
+        p.velocity_ghost[2]   = p.velocity[2]
+        p.velocity_t_ghost[0] = p.velocity_t[0]
+        p.velocity_t_ghost[1] = p.velocity_t[1]
+        p.velocity_t_ghost[2] = p.velocity_t[2]
         
         -- Check here for particles exiting the domain. For periodic
         -- boundaries, the particle is transported to the matching periodic
@@ -2691,11 +2702,25 @@ Particles.UpdateAuxiliaryStep1 = liszt kernel(p : particles)
           if grid_options.xBCLeftParticles == Particles.Permeable then
             p.position_ghost[0] = p.position[0] + grid_options.xWidth
           elseif grid_options.xBCLeftParticles == Particles.Solid then
-            var overshoot = gridOriginInteriorX - p.position[0]
-            p.position_ghost[0] = gridOriginInteriorX + overshoot
-            if p.velocity[0] < 0 then
-              p.velocity_ghost[0] = -p.velocity[0]
+
+            -- Set the position to be on the wall
+            p.position_ghost[0] = gridOriginInteriorX
+
+            -- Apply an impulse to kick particle away from the wall
+            var impulse = -(1.0+particles_options.restitution_coefficient)*p.velocity[0]
+            if impulse <= 0 then
+              p.velocity_ghost[0] += impulse
             end
+
+            -- Add a contact force in case particle rests on the wall
+            var contact_force = -1.0*p.velocity_t[0]
+
+            -- To prevent sticky walls, only add contact force if current
+            -- force would push the particle through the wall
+            if contact_force > 0 then
+              p.velocity_t_ghost[0] += contact_force
+            end
+
           end
         end
         
@@ -2704,13 +2729,25 @@ Particles.UpdateAuxiliaryStep1 = liszt kernel(p : particles)
           if grid_options.xBCRightParticles == Particles.Permeable then
             p.position_ghost[0] = p.position[0] - grid_options.xWidth
           elseif grid_options.xBCRightParticles == Particles.Solid then
-            var overshoot = p.position[0] - (gridOriginInteriorX +
-                                             grid_options.xWidth)
-            p.position_ghost[0] = (gridOriginInteriorX +
-                                   grid_options.xWidth) - overshoot
-            if p.velocity[0] > 0 then
-              p.velocity_ghost[0] = -p.velocity[0]
+
+            -- Set the position to be on the wall
+            p.position_ghost[0] = gridOriginInteriorX + grid_options.xWidth
+
+            -- Apply an impulse to kick particle away from the wall
+            var impulse = -(1.0+particles_options.restitution_coefficient)*p.velocity[0]
+            if impulse >= 0 then
+              p.velocity_ghost[0] += impulse
             end
+
+            -- Add a contact force in case particle rests on the wall
+            var contact_force = -1.0*p.velocity_t[0]
+
+            -- To prevent sticky walls, only add contact force if current
+            -- force would push the particle through the wall
+            if contact_force < 0 then
+              p.velocity_t_ghost[0] += contact_force
+            end
+    
           end
         end
         
@@ -2719,12 +2756,27 @@ Particles.UpdateAuxiliaryStep1 = liszt kernel(p : particles)
           if grid_options.yBCLeftParticles == Particles.Permeable then
             p.position_ghost[1] = p.position[1] + grid_options.yWidth
           elseif grid_options.yBCLeftParticles == Particles.Solid then
-            var overshoot = gridOriginInteriorY - p.position[1]
-            p.position_ghost[1] = gridOriginInteriorY + overshoot
-            if p.velocity[1] < 0 then
-              p.velocity_ghost[1] = -p.velocity[1]
+          
+            -- Set the position to be on the wall
+            p.position_ghost[1] = gridOriginInteriorY
+            
+            -- Apply an impulse to kick particle away from the wall
+            var impulse = -(1.0+particles_options.restitution_coefficient)*p.velocity[1]
+            if impulse <= 0 then
+            p.velocity_ghost[1] += impulse
             end
+            
+            -- Add a contact force in case particle rests on the wall
+            var contact_force = -1.0*p.velocity_t[1]
+            
+            -- To prevent sticky walls, only add contact force if current
+            -- force would push the particle through the wall
+            if contact_force > 0 then
+            p.velocity_t_ghost[1] += contact_force
+            end
+          
           end
+          
         end
         
         -- Right Y boundary
@@ -2732,13 +2784,25 @@ Particles.UpdateAuxiliaryStep1 = liszt kernel(p : particles)
           if grid_options.yBCRightParticles == Particles.Permeable then
             p.position_ghost[1] = p.position[1] - grid_options.yWidth
           elseif grid_options.yBCRightParticles == Particles.Solid then
-            var overshoot = p.position[1] - (gridOriginInteriorY +
-                                             grid_options.yWidth)
-            p.position_ghost[1] = (gridOriginInteriorY +
-                                   grid_options.yWidth) - overshoot
-            if p.velocity[1] > 0 then
-              p.velocity_ghost[1] = -p.velocity[1]
+
+            -- Set the position to be on the wall
+            p.position_ghost[1] = gridOriginInteriorY + grid_options.yWidth
+
+            -- Apply an impulse to kick particle away from the wall
+            var impulse = -(1.0+particles_options.restitution_coefficient)*p.velocity[1]
+            if impulse >= 0 then
+              p.velocity_ghost[1] += impulse
             end
+
+            -- Add a contact force in case particle rests on the wall
+            var contact_force = -1.0*p.velocity_t[1]
+
+            -- To prevent sticky walls, only add contact force if current
+            -- force would push the particle through the wall
+            if contact_force < 0 then
+              p.velocity_t_ghost[1] += contact_force
+            end
+
           end
         end
         
@@ -2747,11 +2811,25 @@ Particles.UpdateAuxiliaryStep1 = liszt kernel(p : particles)
           if grid_options.zBCLeftParticles == Particles.Permeable then
             p.position_ghost[2] = p.position[2] + grid_options.zWidth
           elseif grid_options.zBCLeftParticles == Particles.Solid then
-            var overshoot = gridOriginInteriorZ - p.position[2]
-            p.position_ghost[2] = gridOriginInteriorZ + overshoot
-            if p.velocity[2] < 0 then
-              p.velocity_ghost[2] = -p.velocity[2]
+
+            -- Set the position to be on the wall
+            p.position_ghost[2] = gridOriginInteriorZ
+
+            -- Apply an impulse to kick particle away from the wall
+            var impulse = -(1.0+particles_options.restitution_coefficient)*p.velocity[2]
+            if impulse <= 0 then
+              p.velocity_ghost[2] += impulse
             end
+
+            -- Add a contact force in case particle rests on the wall
+            var contact_force = -1.0*p.velocity_t[2]
+
+            -- To prevent sticky walls, only add contact force if current
+            -- force would push the particle through the wall
+            if contact_force > 0 then
+              p.velocity_t_ghost[2] += contact_force
+            end
+
           end
         end
         
@@ -2760,13 +2838,25 @@ Particles.UpdateAuxiliaryStep1 = liszt kernel(p : particles)
           if grid_options.zBCRightParticles == Particles.Permeable then
             p.position_ghost[2] = p.position[2] - grid_options.zWidth
           elseif grid_options.zBCRightParticles == Particles.Solid then
-            var overshoot = p.position[2] - (gridOriginInteriorZ +
-                                             grid_options.zWidth)
-            p.position_ghost[2] = (gridOriginInteriorZ +
-                                   grid_options.zWidth) - overshoot
-            if p.velocity[2] > 0 then
-              p.velocity_ghost[2] = -p.velocity[2]
+
+            -- Set the position to be on the wall
+            p.position_ghost[2] = gridOriginInteriorZ + grid_options.zWidth
+
+            -- Apply an impulse to kick particle away from the wall
+            var impulse = -(1.0+particles_options.restitution_coefficient)*p.velocity[2]
+            if impulse >= 0 then
+              p.velocity_ghost[2] += impulse
             end
+
+            -- Add a contact force in case particle rests on the wall
+            var contact_force = -1.0*p.velocity_t[2]
+
+            -- To prevent sticky walls, only add contact force if current
+            -- force would push the particle through the wall
+            if contact_force < 0 then
+              p.velocity_t_ghost[2] += contact_force
+            end
+    
           end
         end
         
@@ -2774,8 +2864,9 @@ Particles.UpdateAuxiliaryStep1 = liszt kernel(p : particles)
 end
 Particles.UpdateAuxiliaryStep2 = liszt kernel(p : particles)
     if p.state == 1 then
-        p.position = p.position_ghost
-        p.velocity = p.velocity_ghost
+        p.position   = p.position_ghost
+        p.velocity   = p.velocity_ghost
+        p.velocity_t = p.velocity_t_ghost
     end
 end
 

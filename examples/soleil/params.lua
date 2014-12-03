@@ -36,16 +36,16 @@ return {
   
   --Time Integration Options --
   final_time            = 2000.00001,
-  max_iter              = 5000,
-  cfl                   = -2.0, -- Negative CFL implies that we will used fixed delta T
+  max_iter              = 2500,
+  cfl                   = -1.0, -- Negative CFL implies that we will used fixed delta T
   delta_time            = 1e-2,
   
   --- File Output Options --
   wrtRestart = 'ON',
   wrtVolumeSolution = 'ON',
   wrt1DSlice = 'ON',
-  outputEveryTimeSteps  = 50,
-  restartEveryTimeSteps = 50,
+  outputEveryTimeSteps  = 100,
+  restartEveryTimeSteps = 100,
   headerFrequency       = 20,
   outputFormat = 'Tecplot', --Tecplot or Python
   outputDirectory = '../soleilOutput/', -- relative to the liszt-in-terra home directory
@@ -63,7 +63,8 @@ return {
   restartParticleIter = 0,
   particleType = 'Free', -- Fixed or Free
   twoWayCoupling = 'OFF', -- ON or OFF
-  num = 1.0,
+  num = 20.0,
+  restitutionCoefficient = 1.0,
   convectiveCoefficient = 275.0, -- W m^-2 K^-1
   heatCapacity = 4e2, -- J Kg^-1 K^-1
   initialTemperature = 293.15, -- K
