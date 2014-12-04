@@ -63,6 +63,7 @@ return {
   particleType = 'Free', -- Fixed or Free
   twoWayCoupling = 'OFF',
   num = 100.0,
+  restitutionCoefficient = 1.0,
   convectiveCoefficient = 0.7, -- W m^-2 K^-1
   heatCapacity = 0.7, -- J Kg^-1 K^-1
   initialTemperature = 250, -- K
