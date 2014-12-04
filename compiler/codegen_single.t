@@ -237,8 +237,8 @@ end
 local checkCudaError = macro(function(code)
     return quote
         if code ~= 0 then
-            C.printf("CUDA ERROR: ")
-            error(C.cudaGetErrorString(code))
+            C.printf("CUDA ERROR: %s\n", C.cudaGetErrorString(code))
+            error("Cuda error")
         end
     end
 end)
