@@ -1058,11 +1058,11 @@ local GetDynamicViscosity = liszt function(temperature)
   elseif fluid_options.viscosity_model == Viscosity.PowerLaw then
     -- Power Law
     viscosity = fluid_options.dynamic_viscosity_ref *
-        cmath.pow(temperature/fluid_options.dynamic_viscosity_temp_ref, 0.75)
+        L.pow(temperature/fluid_options.dynamic_viscosity_temp_ref, 0.75)
   elseif fluid_options.viscosity_model == Viscosity.Sutherland then
     -- Sutherland's Law
     viscosity = fluid_options.dynamic_viscosity_ref *
-    cmath.pow((temperature/fluid_options.dynamic_viscosity_temp_ref),(3.0/2.0))*
+    L.pow((temperature/fluid_options.dynamic_viscosity_temp_ref),(3.0/2.0))*
     ((fluid_options.dynamic_viscosity_temp_ref + 110.4)/
      (temperature + 110.4))
   end
@@ -1078,10 +1078,10 @@ end
 -- Function to retrieve particle area, volume and mass
 -- These are Liszt user-defined function that behave like a field
 particles:NewFieldFunction('area', liszt function(p)
-    return pi * cmath.pow(p.diameter, 2)
+    return pi * L.pow(p.diameter, 2)
 end)
 particles:NewFieldFunction('volume', liszt function(p)
-    return pi * cmath.pow(p.diameter, 3) / 6.0
+    return pi * L.pow(p.diameter, 3) / 6.0
 end)
 particles:NewFieldFunction('mass', liszt function(p)
     return p.volume * p.density
@@ -1265,7 +1265,7 @@ Flow.InitializePrimitives = liszt kernel(c : grid.cells)
                     L.cos(2.0*xy[1])
       c.pressure = 
           taylorGreenPressure + 
-          taylorGreenDensity * cmath.pow(taylorGreenVelocity,2) / 16 *
+          taylorGreenDensity * L.pow(taylorGreenVelocity,2) / 16 *
           factorA * factorB
     elseif flow_options.initCase == Flow.TaylorGreen3DVortex then
       -- Define Taylor Green Vortex
@@ -1289,7 +1289,7 @@ Flow.InitializePrimitives = liszt kernel(c : grid.cells)
                     L.cos(2.0*xy[1])
       c.pressure = 
           taylorGreenPressure + 
-          taylorGreenDensity * cmath.pow(taylorGreenVelocity,2) / 16 *
+          taylorGreenDensity * L.pow(taylorGreenVelocity,2) / 16 *
           factorA * factorB
     elseif flow_options.initCase == Flow.Uniform then
       c.rho         = flow_options.initParams[0]
@@ -2562,11 +2562,11 @@ Particles.AddFlowCoupling = liszt kernel(p: particles)
     (p.density * norm(flowVelocity - p.velocity) * p.diameter) /
     flowDynamicViscosity
     var relaxationTime =
-    ( p.density * cmath.pow(p.diameter,2)/(18.0 * flowDynamicViscosity))/
-    ( 1.0 + 0.15 * cmath.pow(particleReynoldsNumber,0.687) )
+    ( p.density * L.pow(p.diameter,2)/(18.0 * flowDynamicViscosity))/
+    ( 1.0 + 0.15 * L.pow(particleReynoldsNumber,0.687) )
     p.deltaVelocityOverRelaxationTime =
     (flowVelocity - p.velocity) / relaxationTime
-    p.deltaTemperatureTerm = pi * cmath.pow(p.diameter, 2) *
+    p.deltaTemperatureTerm = pi * L.pow(p.diameter, 2) *
     particles_options.convective_coefficient *
     (flowTemperature - p.temperature)
     
@@ -2875,7 +2875,7 @@ end
 ---------
 
 -- Particles feeder
-Particles.Feed = liszt kernel(p: particles)
+liszt kernel Particles.Feed(p: particles)
 
     if p.state == 0 then
 
@@ -2921,7 +2921,7 @@ Particles.Feed = liszt kernel(p: particles)
         var injectorBox_velocityZ = particles_options.feederParams[8]
         var injectorBox_particlesPerTimeStep = particles_options.feederParams[9]
         -- Inject particle if matching timeStep requirements
-        if cmath.floor(p.id/injectorBox_particlesPerTimeStep) ==
+        if L.floor(p.id/injectorBox_particlesPerTimeStep) ==
            TimeIntegrator.timeStep then
             p.position[0] = injectorBox_centerX +
                             (cmath.rand_unity()-0.5) * injectorBox_widthX
@@ -2962,14 +2962,14 @@ Particles.Feed = liszt kernel(p: particles)
         var injectorB_velocityZ = particles_options.feederParams[18]
         var injectorB_particlesPerTimeStep = particles_options.feederParams[19]
         var numberOfParticlesInA = 
-             cmath.floor(particles_options.num*injectorA_particlesPerTimeStep/
+             L.floor(particles_options.num*injectorA_particlesPerTimeStep/
              (injectorA_particlesPerTimeStep+injectorB_particlesPerTimeStep))
         var numberOfParticlesInB = 
-             cmath.ceil(particles_options.num*injectorB_particlesPerTimeStep/
+             L.ceil(particles_options.num*injectorB_particlesPerTimeStep/
              (injectorA_particlesPerTimeStep+injectorB_particlesPerTimeStep))
         -- Inject particles at injectorA if matching timeStep requirements
-        if cmath.floor(p.id/injectorA_particlesPerTimeStep) ==
-           TimeIntegrator.timeStep then
+        if L.floor(p.id/injectorA_particlesPerTimeStep) ==
+          TimeIntegrator.timeStep then
             p.position[0] = injectorA_centerX +
                             (cmath.rand_unity()-0.5) * injectorA_widthX
             p.position[1] = injectorA_centerY +
@@ -2987,9 +2987,9 @@ Particles.Feed = liszt kernel(p: particles)
         -- will get over-riden by injector B; this can only occur at the same
         -- timeStep, as otherwise p.state is already set to 1 and the program 
         -- will not enter this route)
-        if cmath.floor((p.id-numberOfParticlesInA)/
+        if L.floor((p.id-numberOfParticlesInA)/
                        injectorB_particlesPerTimeStep) ==
-           TimeIntegrator.timeStep then
+          TimeIntegrator.timeStep then
             p.position[0] = injectorB_centerX +
                             (cmath.rand_unity()-0.5) * injectorB_widthX
             p.position[1] = injectorB_centerY +

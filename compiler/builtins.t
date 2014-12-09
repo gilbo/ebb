@@ -452,94 +452,107 @@ function B.length.codegen(ast, ctxt)
     end
 end
 
-function check_number (ast, ctxt)
+function Builtin.newDoubleFunction(name, cpu_fn, gpu_fn)
+    local lua_fn = function (arg) return cpu_fn(arg) end
+
+    local b = Builtin.new(lua_fn)
+
+    function b.check (ast, ctxt)
+        local args = ast.params
+        if #args ~= 1 then
+            ctxt:error(ast, name.." expects exactly 1 argument (instead got " .. #args .. ")")
+            return L.error
+        end
+        local lt = args[1].node_type
+        if not lt:isNumeric() then
+            ctxt:error(args[1], "argument to "..name.." must be numeric")
+        end
+        if lt:isVector() then
+            ctxt:error(args[1], "argument to "..name.." must be a scalar")
+            return L.error
+        end
+        return L.double
+    end
+
+    function b.codegen (ast, ctxt)
+        local exp = ast.params[1]:codegen(ctxt)
+        if ctxt:onGPU() then
+            return `gpu_fn([exp])
+        else
+            return `cpu_fn([exp])
+        end
+    end
+    return b
+end
+
+L.cos   = Builtin.newDoubleFunction('cos',   C.cos,   G.cos)
+L.acos  = Builtin.newDoubleFunction('acos',  C.acos,  G.acos)
+L.sin   = Builtin.newDoubleFunction('sin',   C.sin,   G.sin)
+L.asin  = Builtin.newDoubleFunction('asin',  C.asin,  G.asin)
+L.tan   = Builtin.newDoubleFunction('tan',   C.tan,   G.tan)
+L.atan  = Builtin.newDoubleFunction('atan',  C.atan,  G.atan)
+L.sqrt  = Builtin.newDoubleFunction('sqrt',  C.sqrt,  G.sqrt)
+L.cbrt  = Builtin.newDoubleFunction('cbrt',  C.cbrt,  G.cbrt)
+L.floor = Builtin.newDoubleFunction('floor', C.floor, G.floor)
+L.ceil  = Builtin.newDoubleFunction('ceil',  C.ceil,  G.ceil)
+
+terra b_and (a : int, b : int)
+    return a and b
+end
+
+L.band = Builtin.new(b_and)
+function L.band.check (ast, ctxt)
     local args = ast.params
-    if #args ~= 1 then
-        ctxt:error(ast, "cbrt expects exactly 1 argument (instead got " .. #args .. ")")
+    if #args ~= 2 then ctxt:error(ast, "binary_and expects 2 arguments (instead got " .. #args .. ")")
         return L.error
     end
-    local lt = args[1].node_type
-    if not lt:isNumeric() then
-        ctxt:error(args[1], "argument to cbrt must be numeric")
+    for i = 1, #args do
+        local lt = args[i].node_type
+        if lt ~= L.int then
+            ctxt:error(args[i], "argument "..i.."to binary_and must be numeric")
+            return L.error
+        end
     end
-    if lt:isVector() then
-        ctxt:error(args[1], "argument to cbrt must be a scalar")
+    return L.int
+end
+function L.band.codegen(ast, ctxt)
+    local exp1 = ast.params[1]:codegen(ctxt)
+    local exp2 = ast.params[2]:codegen(ctxt)
+    return `b_and([exp1], [exp2])
+end
+
+L.pow = Builtin.new(C.pow)
+function L.pow.check (ast, ctxt)
+    local args = ast.params
+    if #args ~= 2 then ctxt:error(ast, "pow expects 2 arguments (instead got " .. #args .. ")")
         return L.error
+    end
+    for i = 1, #args do
+        local lt = args[i].node_type
+        if not lt:isNumeric() then
+            ctxt:error(args[i], "argument "..i.." to pow must be numeric")
+            return L.error
+        end
+    end
+    for i = 1, #args do
+        local lt = args[i].node_type
+        if not lt:isScalar() then
+            ctxt:error(args[i], "argument "..i.." to pow must be a scalar")
+            return L.error
+        end
     end
     return L.double
 end
-
-local function cos (val)
-    return C.cos(val)
-end
-
-L.cos = Builtin.new(cos)
-
-function L.cos.check (ast, ctxt)
-    return check_number(ast, ctxt)
-end
-
-function L.cos.codegen (ast, ctxt)
-    local exp = ast.params[1]:codegen(ctxt)
+function L.pow.codegen(ast, ctxt)
+    local exp1 = ast.params[1]:codegen(ctxt)
+    local exp2 = ast.params[2]:codegen(ctxt)
     if ctxt:onGPU() then
-        return `G.cos([exp])
+        return `G.pow([exp1], [exp2])
+    else
+        return `C.pow([exp1], [exp2])
     end
-    return `C.cos([exp])
 end
 
-local function sin (val)
-    return C.sin(val)
-end
-
-L.sin = Builtin.new(sin)
-
-function L.sin.check (ast, ctxt)
-    return check_number(ast, ctxt)
-end
-
-function L.sin.codegen (ast, ctxt)
-    local exp = ast.params[1]:codegen(ctxt)
-    if ctxt:onGPU() then
-        return `G.sin([exp])
-    end
-    return `C.sin([exp])
-end
-
-local function sqrt (val)
-    return C.sqrt(val)
-end
-
-L.sqrt = Builtin.new(sqrt)
-
-function L.sqrt.check(ast, ctxt)
-    return check_number(ast, ctxt)
-end
-
-function L.sqrt.codegen(ast,ctxt)
-    local exp = ast.params[1]:codegen(ctxt)
-    if ctxt:onGPU() then
-        return `G.sqrt([exp])
-    end
-    return `C.sqrt([exp])
-end
-
-local function cbrt (val)
-    return C.cbrt(val)
-end
-
-L.cbrt = Builtin.new(cbrt)
-
-function L.cbrt.check(ast, ctxt)
-    return check_number(ast, ctxt)
-end
-
-function L.cbrt.codegen(ast,ctxt)
-    local exp = ast.params[1]:codegen(ctxt)
-    if ctxt:onGPU() then
-        return `G.cbrt([exp])
-    end
-    return `C.cbrt([exp])
-end
 
 local function all(v)
     if not v.type:isVector() then
