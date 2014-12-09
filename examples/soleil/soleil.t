@@ -42,7 +42,7 @@ local config = loadfile(filename)()
 --[[                            CONSTANT VARIABLES                       ]]--
 -----------------------------------------------------------------------------
 
-local pi = 2.0*cmath.acos(0)
+local pi = 2.0*L.acos(0)
 local twoPi = 2.0*pi
 
 -----------------------------------------------------------------------------
@@ -1137,9 +1137,9 @@ local function GenerateTrilinearInterpolation(field_name)
     -- See the other approch above (commented) for the generalization to
     -- non-uniform grids (with the current problem of not being usable if
     -- periodicity is enforced)
-    var dX   = cmath.fmod((xyz[0] - grid_originX)/grid_dx + 0.5, 1.0)
-    var dY   = cmath.fmod((xyz[1] - grid_originY)/grid_dy + 0.5, 1.0)
-    var dZ   = cmath.fmod((xyz[2] - grid_originZ)/grid_dz + 0.5, 1.0)
+    var dX   = L.fmod((xyz[0] - grid_originX)/grid_dx + 0.5, 1.0)
+    var dY   = L.fmod((xyz[1] - grid_originY)/grid_dy + 0.5, 1.0)
+    var dZ   = L.fmod((xyz[2] - grid_originZ)/grid_dz + 0.5, 1.0)
 
     var oneMinusdX = 1.0 - dX
     var oneMinusdY = 1.0 - dY
@@ -1187,9 +1187,9 @@ local InterpolateTriTemperature = GenerateTrilinearInterpolation('temperature')
 --    -- See the other approch above (commented) for the generalization to
 --    -- non-uniform grids (with the current problem of not being usable if
 --    -- periodicity is enforced)
---    var dX   = cmath.fmod((xyz[0] - grid_originX)/grid_dx + 0.5, 1.0)
---    var dY   = cmath.fmod((xyz[1] - grid_originY)/grid_dy + 0.5, 1.0)
---    var dZ   = cmath.fmod((xyz[2] - grid_originZ)/grid_dz + 0.5, 1.0)
+--    var dX   = L.fmod((xyz[0] - grid_originX)/grid_dx + 0.5, 1.0)
+--    var dY   = L.fmod((xyz[1] - grid_originY)/grid_dy + 0.5, 1.0)
+--    var dZ   = L.fmod((xyz[2] - grid_originZ)/grid_dz + 0.5, 1.0)
 --
 --    var oneMinusdX = 1.0 - dX
 --    var oneMinusdY = 1.0 - dY
@@ -2322,9 +2322,9 @@ Flow.CalculateSpectralRadii = liszt kernel(c : grid.cells)
                             1.0/grid_dz * 1.0/grid_dz
     -- Convective spectral radii
     c.convectiveSpectralRadius = 
-       (cmath.fabs(c.velocity[0])/grid_dx  +
-        cmath.fabs(c.velocity[1])/grid_dy  +
-        cmath.fabs(c.velocity[2])/grid_dz  +
+       (L.fabs(c.velocity[0])/grid_dx  +
+        L.fabs(c.velocity[1])/grid_dy  +
+        L.fabs(c.velocity[2])/grid_dz  +
         GetSoundSpeed(c.temperature) * L.sqrt(dXYZInverseSquare)) *
        spatial_stencil.firstDerivativeModifiedWaveNumber
     

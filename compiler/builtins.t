@@ -452,7 +452,9 @@ function B.length.codegen(ast, ctxt)
     end
 end
 
-function Builtin.newDoubleFunction(name, cpu_fn, gpu_fn)
+function Builtin.newDoubleFunction(name)
+    local cpu_fn = C[name]
+    local gpu_fn = G[name]
     local lua_fn = function (arg) return cpu_fn(arg) end
 
     local b = Builtin.new(lua_fn)
@@ -485,16 +487,17 @@ function Builtin.newDoubleFunction(name, cpu_fn, gpu_fn)
     return b
 end
 
-L.cos   = Builtin.newDoubleFunction('cos',   C.cos,   G.cos)
-L.acos  = Builtin.newDoubleFunction('acos',  C.acos,  G.acos)
-L.sin   = Builtin.newDoubleFunction('sin',   C.sin,   G.sin)
-L.asin  = Builtin.newDoubleFunction('asin',  C.asin,  G.asin)
-L.tan   = Builtin.newDoubleFunction('tan',   C.tan,   G.tan)
-L.atan  = Builtin.newDoubleFunction('atan',  C.atan,  G.atan)
-L.sqrt  = Builtin.newDoubleFunction('sqrt',  C.sqrt,  G.sqrt)
-L.cbrt  = Builtin.newDoubleFunction('cbrt',  C.cbrt,  G.cbrt)
-L.floor = Builtin.newDoubleFunction('floor', C.floor, G.floor)
-L.ceil  = Builtin.newDoubleFunction('ceil',  C.ceil,  G.ceil)
+L.cos   = Builtin.newDoubleFunction('cos')
+L.acos  = Builtin.newDoubleFunction('acos')
+L.sin   = Builtin.newDoubleFunction('sin')
+L.asin  = Builtin.newDoubleFunction('asin')
+L.tan   = Builtin.newDoubleFunction('tan')
+L.atan  = Builtin.newDoubleFunction('atan')
+L.sqrt  = Builtin.newDoubleFunction('sqrt')
+L.cbrt  = Builtin.newDoubleFunction('cbrt')
+L.floor = Builtin.newDoubleFunction('floor')
+L.ceil  = Builtin.newDoubleFunction('ceil')
+L.fabs  = Builtin.newDoubleFunction('fabs')
 
 terra b_and (a : int, b : int)
     return a and b
@@ -553,6 +556,37 @@ function L.pow.codegen(ast, ctxt)
     end
 end
 
+L.fmod = Builtin.new(C.fmod)
+function L.fmod.check (ast, ctxt)
+    local args = ast.params
+    if #args ~= 2 then ctxt:error(ast, "fmod expects 2 arguments (instead got " .. #args .. ")")
+        return L.error
+    end
+    for i = 1, #args do
+        local lt = args[i].node_type
+        if not lt:isNumeric() then
+            ctxt:error(args[i], "argument "..i.." to fmod must be numeric")
+            return L.error
+        end
+    end
+    for i = 1, #args do
+        local lt = args[i].node_type
+        if not lt:isScalar() then
+            ctxt:error(args[i], "argument "..i.." to fmod must be a scalar")
+            return L.error
+        end
+    end
+    return L.double
+end
+function L.fmod.codegen(ast, ctxt)
+    local exp1 = ast.params[1]:codegen(ctxt)
+    local exp2 = ast.params[2]:codegen(ctxt)
+    if ctxt:onGPU() then
+        return `G.fmod([exp1], [exp2])
+    else
+        return `C.fmod([exp1], [exp2])
+    end
+end
 
 local function all(v)
     if not v.type:isVector() then

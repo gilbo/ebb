@@ -99,6 +99,7 @@ local asin = terralib.externfunction("__nv_asin", double -> double)
 local tan  = terralib.externfunction("__nv_tan",  double -> double)
 local atan = terralib.externfunction("__nv_atan", double -> double)
 local pow  = terralib.externfunction("__nv_pow",  {double, double} -> double)
+local fmod = terralib.externfunction("__nv_fmod", {double, double} -> double)
 
 
 --[[------------------------------------------------------------------------]]--
@@ -240,7 +241,9 @@ GPU.tan   = tan
 GPU.atan  = atan
 GPU.floor = cudalib.nvvm_floor_d
 GPU.ceil  = cudalib.nvvm_ceil_d
+GPU.fabs  = cudalib.nvvm_fabs_d
 GPU.pow   = pow
+GPU.fmod  = fmod
 
 -- Intrinsic atomic reductions:
 GPU.atomic_add_float = atomic_add_float
