@@ -2,7 +2,6 @@ import "compiler.liszt"
 
 local Grid = {}
 package.loaded["domains.grid"] = Grid
-local cmath = terralib.includecstring '#include "math.h"'
 
 local L = terralib.require "compiler.lisztlib"
 
@@ -12,7 +11,7 @@ Grid2d.__index = Grid2d
 Grid3d.__index = Grid3d
 
 local int_floor = L.NewMacro(function(v)
-    return liszt ` L.int(cmath.floor(v))
+    return liszt ` L.int(L.floor(v))
 end)
 local max_impl = L.NewMacro(function(a,b)
     return liszt quote
