@@ -1,25 +1,31 @@
 import 'compiler.liszt'
 local vdb = L.require 'lib.vdb'
--- L.default_processor = L.GPU
+L.default_processor = L.GPU
 
 local Tetmesh = L.require 'examples.fem.tetmesh'
 local VEGFileIO = L.require 'examples.fem.vegfileio'
 local PN = L.require 'lib.pathname'
 
 -- print("Loading mesh ...")
-local turtle = VEGFileIO.LoadTetmesh
-  'examples/fem/turtle-volumetric-homogeneous.veg'
+-- small mesh  --
+-- local volumetricMeshFileName = './examples/fem/turtle-volumetric-homogeneous.veg'
+-- medium mesh --
+local volumetricMeshFileName = './examples/fem/asianDragon-homogeneous.veg'
+-- large mesh  --
+-- local volumetricMeshFileName = './examples/fem/simple-bridge-tet.veg'
+local mesh = VEGFileIO.LoadTetmesh(volumetricMeshFileName)
 
--- local I = terralib.includecstring([[
--- #include "cuda_profiler_api.h"
--- ]])
+local I = terralib.includecstring([[
+#include "cuda_profiler_api.h"
+]])
 
-local mesh = turtle
 local gravity = 9.81
+
+print("Number of edges : " .. tostring(mesh.edges:Size() .. "\n"))
 
 function initConfigurations()
   local options = {
-    volumetricMeshFilename = 'examples/fem/turtle-volumetric-homogeneous.veg',
+    volumetricMeshFilename      = volumetricMeshFileName,
     timestep                    = 0.1,
     dampingMassCoef             = 1.0, -- alt. 10.0
     dampingStiffnessCoef        = 0.01, -- alt 0.001
@@ -415,6 +421,7 @@ local liszt kernel addIFLinearTerms (t : mesh.tetrahedra)
   for ci = 0,4 do
     var c = t.v[ci]
     for ai = 0,4 do
+      -- var force : L.vec3d = { 0.1, 0.2, 0.3 }
       var qa = t.v[ai].q
       var Aca = tetCoeffA(t, dots, ci, ai)
       var Aac = tetCoeffA(t, dots, ai, ci)
@@ -664,7 +671,6 @@ function ImplicitBackwardEulerIntegrator:setupFieldsKernels(mesh)
   mesh.vertices:NewField('z', L.vec3d):Load({ 0, 0, 0 })
   mesh.vertices:NewField('p', L.vec3d):Load({ 0, 0, 0 })
   mesh.vertices:NewField('Ap', L.vec3d):Load({ 0, 0, 0 })
-  mesh.vertices:NewField('dummy', L.vec3d):Load({ 0, 0, 0 })
 
   mesh.edges:NewField('raydamp', L.mat3d)
 
@@ -755,7 +761,9 @@ function ImplicitBackwardEulerIntegrator:setupFieldsKernels(mesh)
   self.updateStiffness2 = updateStiffness2
 
   local liszt kernel getError (v : mesh.vertices)
-    self.err += L.dot(v.qdelta, v.qdelta)
+    var qd = v.qdelta
+    var err = L.dot(qd, qd)
+    self.err += err
   end
   self.getError = getError
 
@@ -786,20 +794,14 @@ function ImplicitBackwardEulerIntegrator:setupFieldsKernels(mesh)
   self.pcgInitialize = pcgInitialize
 
   local liszt kernel pcgComputeAp (v : mesh.vertices)
-    v.Ap = { 0, 0, 0 }
     for e in v.edges do
       v.Ap += multiplyMatVec3(e.stiffness, e.head.p)
     end
   end
+  -- local liszt kernel pcgComputeAp (e : mesh.edges)
+  --   e.tail.Ap += multiplyMatVec3(e.stiffness, e.head.p)
+  -- end
   self.pcgComputeAp = pcgComputeAp
-
-  local liszt kernel pcgComputeDummy (v : mesh.vertices)
-    v.dummy = { 0, 0, 0 }
-    for e in v.edges do
-      v.dummy += e.head.p
-    end
-  end
-  self.pcgComputeDummy = pcgComputeDummy
 
   local liszt kernel pcgComputeAlphaDenom (v : mesh.vertices)
     self.alphaDenom += L.dot(v.p, v.Ap)
@@ -836,7 +838,7 @@ end
 -- It uses the same algorithm as Vega (exact residual on 30th iteration). But
 -- the symbol names are kept to match the pseudo code on Wikipedia for clarity.
 function ImplicitBackwardEulerIntegrator:solvePCG(mesh)
---  I.cudaProfilerStart()
+  -- I.cudaProfilerStart()
   local timer_total = Timer.New()
   timer_total:Start()
   mesh.vertices.x:Load({ 0, 0, 0 })
@@ -850,9 +852,9 @@ function ImplicitBackwardEulerIntegrator:solvePCG(mesh)
   local thresh = self.cgEpsilon * self.cgEpsilon * normRes
   while normRes > thresh and
         iter <= self.cgMaxIterations do
-    -- print("PCG iteration "..iter)
+    mesh.vertices.Ap:Load({ 0, 0, 0 })
     self.pcgComputeAp(mesh.vertices)
-    self.pcgComputeDummy(mesh.vertices)
+    -- self.pcgComputeAp(mesh.edges)
     self.alphaDenom:set(0)
     self.pcgComputeAlphaDenom(mesh.vertices)
     self.alpha:set( normRes / self.alphaDenom:get() )
@@ -870,8 +872,8 @@ function ImplicitBackwardEulerIntegrator:solvePCG(mesh)
     self.pcgUpdateP(mesh.vertices)
     iter = iter + 1
   end
+  -- I.cudaProfilerStop()
   print("Time for solver is "..(timer_total:Stop()*1E6).." us")
---  I.cudaProfilerStop()
 end
 
 function ImplicitBackwardEulerIntegrator:doTimestep(mesh)
@@ -998,7 +1000,7 @@ end
 function main()
   local options = initConfigurations()
 
-  local volumetric_mesh = turtle
+  local volumetric_mesh = mesh
 
   local nvertices = volumetric_mesh:nVerts()
   -- No fixed vertices for now
