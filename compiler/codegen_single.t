@@ -349,14 +349,6 @@ function unrolled_block_reduce (op, typ, ptr, tid, block_size)
             end
             G.barrier()
         end
-
-        -- Pairwise reductions over > 32 threads need to be synchronized b/c
-        -- they aren't guaranteed to be executed in lockstep, as they are
-        -- running in multiple warps.  But the store must be volatile or the
-        -- compiler might re-order them!
-        --if step > WARP_SIZE then
-        --    expr = quote [expr] G.barrier()
-        --end
     end
     return expr
 end
@@ -374,7 +366,6 @@ function reduce_global_shared_memory (ctxt, commit_final_value)
 
     reduce_code = quote
       [reduce_code]
-
       [unrolled_block_reduce(reduceop, gtype, shared, tid, ctxt.gpu:blockSize())]
       if [tid] == 0 then
         escape
@@ -424,6 +415,7 @@ function generate_final_reduce (ctxt, fn_name)
         end
       end
     end
+    G.barrier()
     [reduce_global_shared_memory(ctxt, true)]
   end
 
