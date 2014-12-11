@@ -10,9 +10,9 @@ local PN = L.require 'lib.pathname'
 -- small mesh  --
 -- local volumetricMeshFileName = './examples/fem/turtle-volumetric-homogeneous.veg'
 -- medium mesh --
-local volumetricMeshFileName = './examples/fem/asianDragon-homogeneous.veg'
+-- local volumetricMeshFileName = './examples/fem/asianDragon-homogeneous.veg'
 -- large mesh  --
--- local volumetricMeshFileName = './examples/fem/simple-bridge-tet.veg'
+local volumetricMeshFileName = './examples/fem/simple-bridge-tet.veg'
 local mesh = VEGFileIO.LoadTetmesh(volumetricMeshFileName)
 
 local I = terralib.includecstring([[
@@ -620,12 +620,10 @@ local computeStiffnessMatrixHelper = function(tetrahedra)
   timer:Start()
   addStiffQuadraticTerms(tetrahedra)
   print("Time for quadratic terms is "..(timer:Stop()*1E6).." us")
-  -- print("Computing quadratic contributions to stiffness matrix ...")
   -- print("Computing cubic contributions to stiffness matrix ...")
   timer:Start()
   addStiffCubicTerms(tetrahedra)
   print("Time for cubic terms is "..(timer:Stop()*1E6).." us")
-  -- print("Computing quadratic contributions to stiffness matrix ...")
 end
 
 function computeStiffnessMatrix(mesh)
