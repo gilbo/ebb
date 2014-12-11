@@ -344,7 +344,8 @@ function unrolled_block_reduce (op, typ, ptr, tid, block_size)
         expr = quote
             [expr]
             if tid < step then
-              [ptr][tid] = [mat_bin_exp(op, typ, `[ptr][tid], `[ptr][tid + step], typ, typ)]
+              var exp = [mat_bin_exp(op, typ, `[ptr][tid], `[ptr][tid + step], typ, typ)]
+              terralib.attrstore(&[ptr][tid], exp, {isvolatile=true})
             end
             G.barrier()
         end
