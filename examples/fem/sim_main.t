@@ -204,66 +204,11 @@ function DumpDeformationToFile(mesh, file_name)
 end
 
 ------------------------------------------------------------------------------
--- Visualize vertex displacements.
-
-local sqrt3 = math.sqrt(3)
-
-local liszt function trinorm(p0,p1,p2)
-  var d1 = p1-p0
-  var d2 = p2-p0
-  var n  = L.cross(d1,d2)
-  var len = L.length(n)
-  if len < 1e-10 then len = L.float(1e-10) end
-  return n/len
-end
-local liszt function dot_to_color(d)
-  var val = d * 0.5 + 0.5
-  var col = L.vec3f({val,val,val})
-  return col
-end
-
-local lightdir = L.NewVector(L.float,{sqrt3,sqrt3,sqrt3})
-
-local liszt kernel visualizeDeformation ( t : mesh.tetrahedra )
-  var p0 = t.v[0].pos + t.v[0].q
-  var p1 = t.v[1].pos + t.v[1].q
-  var p2 = t.v[2].pos + t.v[2].q
-  var p3 = t.v[3].pos + t.v[3].q
-
-  var flipped : L.double = 1.0
-  if getElementDet(t) < 0 then flipped = -1.0 end
-
-  var d0 = flipped * L.dot(lightdir, trinorm(p1,p2,p3))
-  var d1 = flipped * L.dot(lightdir, trinorm(p0,p3,p2))
-  var d2 = flipped * L.dot(lightdir, trinorm(p0,p1,p3))
-  var d3 = flipped * L.dot(lightdir, trinorm(p1,p0,p2))
-
-  vdb.color(dot_to_color(d0))
-  vdb.triangle(p1, p2, p3)
-  vdb.color(dot_to_color(d1))
-  vdb.triangle(p0, p3, p2)
-  vdb.color(dot_to_color(d2))
-  vdb.triangle(p0, p1, p3)
-  vdb.color(dot_to_color(d3))
-  vdb.triangle(p1, p0, p2)
-end
-
-function visualize(mesh)
-  vdb.vbegin()
-  vdb.frame()
-  visualizeDeformation(mesh.tetrahedra)
-  vdb.vend()
-  -- print('Hit enter for next frame')
-  io.read()
-  -- os.execute("sleep 1")
-end
-
-------------------------------------------------------------------------------
 -- For corresponding VEGA code, see
 --    libraries/volumetricMesh/generateMassMatrix.cpp (computeMassMatrix)
 --    libraries/volumetricMesh/tetMesh.cpp (computeElementMassMatrix)
 
--- The following implementation combines computing element matrix and updating
+-- The following implemfntation combines computing element matrix and updating
 -- global mass matrix, for convenience.
 -- Also, it corresponds to inflate3Dim=False.
 -- Inflate3Dim adds the same entry for each dimension, in the implementation
@@ -421,7 +366,6 @@ local liszt kernel addIFLinearTerms (t : mesh.tetrahedra)
   for ci = 0,4 do
     var c = t.v[ci]
     for ai = 0,4 do
-      -- var force : L.vec3d = { 0.1, 0.2, 0.3 }
       var qa = t.v[ai].q
       var Aca = tetCoeffA(t, dots, ci, ai)
       var Aac = tetCoeffA(t, dots, ai, ci)
@@ -792,13 +736,11 @@ function ImplicitBackwardEulerIntegrator:setupFieldsKernels(mesh)
   self.pcgInitialize = pcgInitialize
 
   local liszt kernel pcgComputeAp (v : mesh.vertices)
+    v.Ap = { 0, 0, 0 }
     for e in v.edges do
       v.Ap += multiplyMatVec3(e.stiffness, e.head.p)
     end
   end
-  -- local liszt kernel pcgComputeAp (e : mesh.edges)
-  --   e.tail.Ap += multiplyMatVec3(e.stiffness, e.head.p)
-  -- end
   self.pcgComputeAp = pcgComputeAp
 
   local liszt kernel pcgComputeAlphaDenom (v : mesh.vertices)
@@ -852,7 +794,6 @@ function ImplicitBackwardEulerIntegrator:solvePCG(mesh)
         iter <= self.cgMaxIterations do
     mesh.vertices.Ap:Load({ 0, 0, 0 })
     self.pcgComputeAp(mesh.vertices)
-    -- self.pcgComputeAp(mesh.edges)
     self.alphaDenom:set(0)
     self.pcgComputeAlphaDenom(mesh.vertices)
     self.alpha:set( normRes / self.alphaDenom:get() )
@@ -977,19 +918,13 @@ function clearExternalForces(mesh)
 end
 
 local liszt kernel setExternalForces (v : mesh.vertices)
-  var pos = v.pos + v.q
-  v.external_forces = { -1000*(pos[0]), 2000, 0 }
-end
-
-local s = mesh:nVerts()/2
-function setConstantForce(mesh)
-  mesh.vertices.external_forces:Load( { 1000.0, 1000.0, 0 } )
+  var pos = v.pos
+  v.external_forces = { 10*pos[1], -20*(5-pos[1]), 0 }
 end
 
 function setExternalConditions(mesh, iter)
-  -- setExternalForces(mesh.vertices)
   if iter == 1 then
-    setConstantForce(mesh)
+    setExternalForces(mesh.vertices)
   end
 end
 
@@ -1003,7 +938,7 @@ function main()
   local nvertices = volumetric_mesh:nVerts()
   -- No fixed vertices for now
   local numFixedVertices = 0
-  local numFixedDOFs     = 3*numFixedVertices
+  local numFixedDOFs     = 0
   local fixedDOFs        = nil
 
   -- print("Computing mass matrix ...")
@@ -1031,9 +966,7 @@ function main()
   }
   integrator:setupFieldsKernels(mesh)
 
-  local t1, t2
   -- print("Performing time steps ...")
-  -- visualize(volumetric_mesh)
   DumpDeformationToFile(volumetric_mesh, "out/mesh_liszt_"..tostring(0))
 
   local timer = Timer.New()
@@ -1044,7 +977,6 @@ function main()
     integrator:doTimestep(volumetric_mesh)
     print("Time for step "..i.." is "..(timer:Stop()*1E6).." us")
     print("")
-    -- visualize(volumetric_mesh)
     DumpDeformationToFile(volumetric_mesh, "out/mesh_liszt_"..tostring(i))
   end
 
