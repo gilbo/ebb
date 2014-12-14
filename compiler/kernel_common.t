@@ -30,33 +30,24 @@ end
 --[[
 
 We use a Kernel as the primary unit of computation.
-  For internal use, we define the related concepts of Signature and Bran
+  For internal use, we define the related concept of a Bran
 
 ((
 etymology:
   a Bran is the outer part of a kernel, encasing the germ and endosperm
-
 ))
-
-A Signature -- a Terra struct.
-          It provides a type wrapper for easily passing parameters to a generated
-          cuda kernel to provide dynamic context at execution time.
-          Example entries:
-            - number of rows in the relation
-            - subset masks
-            - field data pointers
 
 A Bran -- a Lua table
           It provides metadata about a particular kernel specialization.
           e.g. one bran for each (kernel, runtime, subset) tuple
           Examples entries:
-            - signature params: (relation, subset)
-            - a Signature
+            - specialization params: (relation, subset)
+            - the argument layout
             - executable function
             - field/phase signature
 
 Each Kernel may have many Brans, each a compile-time specialization
-Each Bran may have a different assignment of Signature values for each execution
+Each Bran may have a different binding of argument values for each execution
 
 ]]--
 
