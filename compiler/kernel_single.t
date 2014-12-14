@@ -7,51 +7,46 @@ local codegen        = terralib.require "compiler.codegen_single"
 local DataArray = terralib.require('compiler.rawdata').DataArray
 
 
--------------------------------------------------------------------------------
---[[ Kernels, Brans, Signatures                                            ]]--
--------------------------------------------------------------------------------
-
 local Bran = Kc.Bran
-local Seedbank = Kc.Seedbank
 local seedbank_lookup = Kc.seedbank_lookup
 
 
 -------------------------------------------------------------------------------
---[[ Signatures                                                            ]]--
+--[[ ArgLayout                                                            ]]--
 -------------------------------------------------------------------------------
 
 -- Create a Lua Object that generates the needed Terra structure to pass
 -- fields, globals and temporary allocated memory to the kernel as arguments
-local SignatureTemplate = {}
-SignatureTemplate.__index = SignatureTemplate
+local ArgLayout = {}
+ArgLayout.__index = ArgLayout
 
-function SignatureTemplate.New()
+function ArgLayout.New()
   return setmetatable({
     fields    = terralib.newlist(),
     globals   = terralib.newlist(),
     reduce    = terralib.newlist()
-  }, SignatureTemplate)
+  }, ArgLayout)
 end
 
-function SignatureTemplate:addField(name, typ)
+function ArgLayout:addField(name, typ)
   table.insert(self.fields, { field=name, type=&typ })
 end
 
-function SignatureTemplate:addGlobal(name, typ)
+function ArgLayout:addGlobal(name, typ)
   table.insert(self.globals, { field=name, type=&typ })
   table.insert(self.globals, { field='reduce_'..name,type=&typ})
 end
 
-function SignatureTemplate:turnSubsetOn()
+function ArgLayout:turnSubsetOn()
   self.subset_on = true
 end
 
-function SignatureTemplate:addInsertion()
+function ArgLayout:addInsertion()
   self.insert_on = true
 end
 
 local taddr = uint64 --L.addr:terraType() -- weird dependency error
-function SignatureTemplate:TerraStruct()
+function ArgLayout:TerraStruct()
   if self.terrastruct then return self.terrastruct end
   local terrastruct = terralib.types.newstruct(self.name)
 
@@ -78,11 +73,10 @@ function SignatureTemplate:TerraStruct()
   return terrastruct
 end
 
-function SignatureTemplate:isGenerated()
+function ArgLayout:isCompiled()
   return self.terrastruct ~= nil
 end
 
-K.SignatureTemplate = SignatureTemplate
 
 
 -------------------------------------------------------------------------------
@@ -90,116 +84,57 @@ K.SignatureTemplate = SignatureTemplate
 -------------------------------------------------------------------------------
 
 L.LKernel.__call  = function (kobj, relset)
-    if not (relset and (L.is_relation(relset) or L.is_subset(relset)))
-    then
-        error("A kernel must be called on a relation or subset.", 2)
-    end
+  if not (relset and (L.is_relation(relset) or L.is_subset(relset)))
+  then
+      error("A kernel must be called on a relation or subset.", 2)
+  end
 
-    local proc = L.default_processor
+  local proc = L.default_processor
 
-    -- retreive the correct bran or create a new one
-    local bran = seedbank_lookup({
-        kernel=kobj,
-        relset=relset,
-        proc=proc,
-    })
-    if not bran.executable then
-      bran.relset = relset
-      bran.kernel = kobj
-      bran.location = proc
-      bran:generate()
-    end
+  -- retreive the correct bran or create a new one
+  local bran = Bran.BuildOrFetch({
+      kernel=kobj,
+      relset=relset,
+      proc=proc,
+  })
 
-    -- determine whether or not this kernel invocation is
-    -- safe to run or not.
-    bran:dynamicChecks()
+  -- determine whether or not this kernel invocation is
+  -- safe to run or not.
+  bran:dynamicChecks()
 
 
-    -- set execution parameters in the signature
-    local signature    = bran.signature:ptr()
-    signature.n_rows   = bran.relation:ConcreteSize()
-    -- bind the subset data
-    if bran.subset then
-      signature.use_boolmask     = false
-      if bran.subset then
-        if bran.subset._boolmask then
-          signature.use_boolmask = true
-          signature.boolmask     = bran.subset._boolmask:DataPtr()
-        elseif bran.subset._index then
-          signature.index        = bran.subset._index:DataPtr()
-          signature.index_size   = bran.subset._index:Size()
-        else
-          assert(false)
-        end
-      end
-    end
-    -- bind insert data
-    if bran.insert_data then
-      local insert_rel            = bran.insert_data.relation
-      local center_size_logical   = bran.relation:Size()
-      local insert_size_concrete  = insert_rel:ConcreteSize()
+  -- Bind inserts and deletions early in case data-resizing is triggered
+  if bran.insert_data then  bran:bindInsertData()   end
+  if bran.delete_data then  bran:bindDeleteData()   end
 
-      bran.insert_data.n_inserted:set(0)
-      -- cache the old size
-      bran.insert_data.last_concrete_size = insert_size_concrete
-      -- set the write head to point to the end of array
-      signature.insert_write = insert_size_concrete
-      -- resize to create more space at the end of the array
-      insert_rel:ResizeConcrete(insert_size_concrete +
-                                center_size_logical)
-    end
-    -- bind delete data (just a global here)
-    if bran.delete_data then
-      -- FORCE CONVERSION OUT OF UINT64; NOTE DANGEROUS
-      local relsize = tonumber(bran.delete_data.relation._logical_size)
-      bran.delete_data.updated_size:set(relsize)
-    end
-    -- bind the field data (MUST COME LAST)
-    for field, _ in pairs(bran.field_ids) do
-      bran:setField(field)
-    end
-    for globl, _ in pairs(bran.global_ids) do
-      bran:setGlobal(globl)
-    end
+  -- Bind the rest of the data
+  bran:bindFieldGlobalSubsetArgs()
 
-    -- launch the kernel
-    bran.executable(bran.signature:ptr())
 
-    -- adjust sizes based on extracted information
-    if bran.insert_data then
-      local insert_rel        = bran.insert_data.relation
-      local old_concrete_size = bran.insert_data.last_concrete_size
-      local old_logical_size  = insert_rel._logical_size
-      -- WARNING UNSAFE CONVERSION FROM UINT64 to DOUBLE
-      local n_inserted        = tonumber(bran.insert_data.n_inserted:get())
+  -- launch the kernel
+  bran.executable(bran.args:ptr())
 
-      -- shrink array back down to where we actually ended up writing
-      local new_concrete_size = old_concrete_size + n_inserted
-      insert_rel:ResizeConcrete(new_concrete_size)
-      -- update the logical view of the size
-      insert_rel._logical_size = old_logical_size + n_inserted
 
-      -- NOTE that this relation is definitely fragmented now
-      bran.insert_data.relation._typestate.fragmented = true
-    end
-    if bran.delete_data then
-      -- WARNING UNSAFE CONVERSION FROM UINT64 TO DOUBLE
-      local rel = bran.delete_data.relation
-      local updated_size = tonumber(bran.delete_data.updated_size:get())
-      rel._logical_size = updated_size
-      rel._typestate.fragmented = true
-
-      -- if we have too low an occupancy
-      if rel:Size() < 0.5 * rel:ConcreteSize() then
-        rel:Defrag()
-      end
-    end
+  -- Handle post execution Insertion and Deletion Behaviors
+  if bran.insert_data then  bran:postprocessInsertions()  end
+  if bran.delete_data then  bran:postprocessDeletions()   end
 end
 
 
 -------------------------------------------------------------------------------
 --[[ Brans                                                                 ]]--
 -------------------------------------------------------------------------------
+
+function Bran.BuildOrFetch(sig)
+  local bran = seedbank_lookup(sig)
+  if not bran.executable then
+    bran.relset = sig.relset
+    bran.kernel = sig.kernel
+    bran.location = sig.proc
+    bran:generate()
+  end
+  return bran
+end
 
 function Bran:generate()
   local bran      = self
@@ -219,37 +154,19 @@ function Bran:generate()
       error('Kernels may only be called on a relation they were typed with', 3)
   end
 
-  bran.signature_template = SignatureTemplate.New()
+  bran.arg_layout = ArgLayout.New()
 
-  -- fix the mapping for the fields before compiling the executable
-  bran.field_ids    = {}
-  bran.n_field_ids  = 0
-  for field, _ in pairs(kernel.field_use) do
-    bran:getFieldId(field)
-  end
-  bran:getFieldId(bran.relation._is_live_mask)
-  -- fix the mapping for the globals before compiling the executable
-  bran.global_ids   = {}
-  bran.n_global_ids = 0
-  for globl, _ in pairs(kernel.global_use) do
-    bran:getGlobalId(globl)
-  end
-  -- setup subsets?
-  if bran.subset then bran.signature_template:turnSubsetOn() end
-
-  -- setup insert and delete
-  if kernel.inserts then
-    bran:generateInserts()
-  end
-  if kernel.deletes then
-    bran:generateDeletes()
-  end
+  -- setup various kinds of data in the arg layout
+  bran:setupFieldsGlobalsSubsets()
+  -- also setup insertion and/or deletion if used
+  if kernel.inserts then    bran:setupInserts()   end
+  if kernel.deletes then    bran:setupDeletes()   end
 
   -- allocate memory for the signature on the CPU.  It will be used
-  -- to hold the parameter values that will be passed to the liszt kernel.
-  bran.signature = DataArray.New{
+  -- to hold the parameter values that will be passed to the Liszt kernel.
+  bran.args = DataArray.New{
     size = 1,
-    type = bran.signature_template:TerraStruct(),
+    type = bran.arg_layout:TerraStruct(),
     processor = L.CPU -- DON'T MOVE
   }
 
@@ -257,21 +174,42 @@ function Bran:generate()
   bran.executable = codegen.codegen(typed_ast, bran)
 end
 
-function Bran:signatureType()
-  return self.signature_template:TerraStruct()
+function Bran:setupFieldsGlobalsSubsets()
+  -- initialize id structures
+  self.field_ids    = {}
+  self.n_field_ids  = 0
+
+  self.global_ids   = {}
+  self.n_global_ids = 0
+
+  -- reserve ids
+  for field, _ in pairs(self.kernel.field_use) do
+    self:getFieldId(field)
+  end
+  self:getFieldId(self.relation._is_live_mask)
+  for globl, _ in pairs(self.kernel.global_use) do
+    self:getGlobalId(globl)
+  end
+
+  -- setup subsets if appropriate
+  if self.subset then
+    self.arg_layout:turnSubsetOn()
+  end
 end
+
+--                  ---------------------------------------                  --
 
 function Bran:getFieldId(field)
   local id = self.field_ids[field]
   if not id then
-    if self.signature_template:isGenerated() then
+    if self.arg_layout:isCompiled() then
       error('INTERNAL ERROR: cannot add new fields after struct gen')
     end
     id = 'field_'..tostring(self.n_field_ids)..'_'..field:Name()
     self.n_field_ids = self.n_field_ids+1
 
     self.field_ids[field] = id
-    self.signature_template:addField(id, field:Type():terraType())
+    self.arg_layout:addField(id, field:Type():terraType())
   end
   return id
 end
@@ -279,14 +217,14 @@ end
 function Bran:getGlobalId(global)
   local id = self.global_ids[global]
   if not id then
-    if self.signature_template:isGenerated() then
+    if self.arg_layout:isCompiled() then
       error('INTERNAL ERROR: cannot add new globals after struct gen')
     end
     id = 'global_'..tostring(self.n_global_ids) -- no global names
     self.n_global_ids = self.n_global_ids+1
 
     self.global_ids[global] = id
-    self.signature_template:addGlobal(id, global.type:terraType())
+    self.arg_layout:addGlobal(id, global.type:terraType())
   end
   return id
 end
@@ -294,15 +232,15 @@ end
 function Bran:setField(field)
   local id = self:getFieldId(field)
   local dataptr = field:DataPtr()
-  self.signature:ptr()[id] = dataptr
+  self.args:ptr()[id] = dataptr
 end
 function Bran:setGlobal(global)
   local id = self:getGlobalId(global)
   local dataptr = global:DataPtr()
-  self.signature:ptr()[id] = dataptr
+  self.args:ptr()[id] = dataptr
 end
 function Bran:signatureType ()
-  return self.signature_template:TerraStruct()
+  return self.arg_layout:TerraStruct()
 end
 function Bran:getFieldPtr(signature_ptr, field)
   local id = self:getFieldId(field)
@@ -318,40 +256,87 @@ function Bran:getGlobalScratchPtr(signature_ptr, global)
     return `[signature_ptr].[id]
 end
 
+--                  ---------------------------------------                  --
+
 function Bran:dynamicChecks()
   -- Check that the fields are resident on the correct processor
-  -- TODO(crystal)  - error message here can be confusing.  For example, the
-  -- dynamic check may report an error on the location of a field generated by a
-  -- liszt library.  Since the user is not aware of how/when the field was
-  -- generated, this makes it hard to determine how to fix the error.  Perhaps we
-  -- should report *all* incorrectly located fields? Or at least prefer printing
-  -- fields that are not prefaced with an underscore?
+  local underscore_field_fail = nil
   for field, _ in pairs(self.field_ids) do
     if field.array:location() ~= self.location then
-      error("cannot execute kernel because field "..field:FullName()..
-            " is not currently located on "..tostring(self.location), 3)
+      if field:Name():sub(1,1) == '_' then
+        underscore_field_fail = field
+      else
+        error("cannot execute kernel because field "..field:FullName()..
+              " is not currently located on "..tostring(self.location), 3)
+      end
     end
+  end
+  if underscore_field_fail then
+    error("cannot execute kernel because hidden field "..
+          underscore_field_fail:FullName()..
+          " is not currently located on "..tostring(self.location), 3)
   end
 
-  if self.insert_data then 
-    if self.location ~= L.CPU then
-      error("insert statement is currently only supported in CPU-mode.", 3)
-    end
-    local rel = self.insert_data.relation
-    local unsafe_msg = rel:UnsafeToInsert(self.insert_data.record_type)
-    if unsafe_msg then error(unsafe_msg, 3) end
-  end
-  if self.delete_data then
-    if self.location ~= L.CPU then
-      error("delete statement is currently only supported in CPU-mode.", 3)
-    end
-    local unsafe_msg = self.delete_data.relation:UnsafeToDelete()
-    if unsafe_msg then error(unsafe_msg, 3) end
+  if self.insert_data or self.delete_data then
+    self:dynamicInsertDeleteChecks()
   end
 end
 
+--                  ---------------------------------------                  --
 
-function Bran:generateInserts()
+function Bran:bindFieldGlobalSubsetArgs()
+  local argptr    = self.args:ptr()
+  argptr.n_rows   = self.relation:ConcreteSize()
+
+  if self.subset then
+    argptr.use_boolmask   = false
+    if self.subset._boolmask then
+      argptr.use_boolmask = true
+      argptr.boolmask     = self.subset._boolmask:DataPtr()
+    elseif self.subset._index then
+      argptr.index        = self.subset._index:DataPtr()
+      argptr.index_size   = self.subset._index:Size()
+    else
+      error('INTERNAL ERROR: trying to bind subset, '..
+            'must have boolmask or index')
+    end
+  end
+
+  for field, _ in pairs(self.field_ids) do
+    self:setField(field)
+  end
+  for globl, _ in pairs(self.global_ids) do
+    self:setGlobal(globl)
+  end
+end
+
+-------------------------------------------------------------------------------
+--[[ Insert / Delete Extensions                                            ]]--
+-------------------------------------------------------------------------------
+
+function Bran:dynamicInsertDeleteChecks()
+  -- Check if we can safely perform an INSERTION
+  if self.insert_data then 
+    if self.location ~= L.CPU then
+      error("insert statement is currently only supported in CPU-mode.", 4)
+    end
+    local rel = self.insert_data.relation
+    local unsafe_msg = rel:UnsafeToInsert(self.insert_data.record_type)
+    if unsafe_msg then error(unsafe_msg, 4) end
+  end
+  -- Check if we can safetly perform a DELETION
+  if self.delete_data then
+    if self.location ~= L.CPU then
+      error("delete statement is currently only supported in CPU-mode.", 4)
+    end
+    local unsafe_msg = self.delete_data.relation:UnsafeToDelete()
+    if unsafe_msg then error(unsafe_msg, 4) end
+  end
+end
+
+--                  ---------------------------------------                  --
+
+function Bran:setupInserts()
   local bran = self
   assert(bran.location == L.CPU)
 
@@ -369,10 +354,44 @@ function Bran:generateInserts()
     bran:getFieldId(field)
   end
   bran:getFieldId(rel._is_live_mask)
-  bran.signature_template:addInsertion()
+  bran.arg_layout:addInsertion()
 end
 
-function Bran:generateDeletes()
+function Bran:bindInsertData()
+  local insert_rel                    = self.insert_data.relation
+  local center_size_logical           = self.relation:Size()
+  local insert_size_concrete          = insert_rel:ConcreteSize()
+
+  self.insert_data.n_inserted:set(0)
+  -- cache the old size
+  self.insert_data.last_concrete_size = insert_size_concrete
+  -- set the write head to point to the end of array
+  self.args:ptr().insert_write        = insert_size_concrete
+  -- resize to create more space at the end of the array
+  insert_rel:ResizeConcrete(insert_size_concrete +
+                            center_size_logical)
+end
+
+function Bran:postprocessInsertions()
+  local insert_rel        = self.insert_data.relation
+  local old_concrete_size = self.insert_data.last_concrete_size
+  local old_logical_size  = insert_rel._logical_size
+  -- WARNING UNSAFE CONVERSION FROM UINT64 to DOUBLE
+  local n_inserted        = tonumber(self.insert_data.n_inserted:get())
+
+  -- shrink array back down to where we actually ended up writing
+  local new_concrete_size = old_concrete_size + n_inserted
+  insert_rel:ResizeConcrete(new_concrete_size)
+  -- update the logical view of the size
+  insert_rel._logical_size = old_logical_size + n_inserted
+
+  -- NOTE that this relation is definitely fragmented now
+  self.insert_data.relation._typestate.fragmented = true
+end
+
+--                  ---------------------------------------                  --
+
+function Bran:setupDeletes()
   local bran = self
   assert(bran.location == L.CPU)
 
@@ -384,3 +403,26 @@ function Bran:generateDeletes()
   -- register global variable
   bran:getGlobalId(bran.delete_data.updated_size)
 end
+
+function Bran:bindDeleteData()
+  local relsize = tonumber(self.delete_data.relation._logical_size)
+  self.delete_data.updated_size:set(relsize)
+end
+
+function Bran:postprocessDeletions()
+  -- WARNING UNSAFE CONVERSION FROM UINT64 TO DOUBLE
+  local rel = self.delete_data.relation
+  local updated_size = tonumber(self.delete_data.updated_size:get())
+  rel._logical_size = updated_size
+  rel._typestate.fragmented = true
+
+  -- if we have too low an occupancy
+  if rel:Size() < 0.5 * rel:ConcreteSize() then
+    rel:Defrag()
+  end
+end
+
+
+
+
+

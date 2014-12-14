@@ -34,7 +34,7 @@ We use a Kernel as the primary unit of computation.
 
 ((
 etymology:
-  a Bran is the outer part of a kernel, encasing the signature and endosperm
+  a Bran is the outer part of a kernel, encasing the germ and endosperm
 
 ))
 
@@ -70,7 +70,6 @@ end
 
 -- Seedbank is a cache of brans
 local Seedbank = {}
-K.Seebank = Seedbank
 
 function K.seedbank_lookup(sig)
   local str_sig = ''
