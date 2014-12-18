@@ -1,23 +1,24 @@
 import 'compiler.liszt'
 local vdb = L.require 'lib.vdb'
-L.default_processor = L.GPU
+-- L.default_processor = L.GPU
 
 local Tetmesh = L.require 'examples.fem.tetmesh'
 local VEGFileIO = L.require 'examples.fem.vegfileio'
 local PN = L.require 'lib.pathname'
 
--- print("Loading mesh ...")
--- small mesh  --
--- local volumetricMeshFileName = './examples/fem/turtle-volumetric-homogeneous.veg'
--- medium mesh --
--- local volumetricMeshFileName = './examples/fem/asianDragon-homogeneous.veg'
--- large mesh  --
-local volumetricMeshFileName = './examples/fem/simple-bridge-tet.veg'
+local mesh_files = {
+    [1] = './examples/fem/turtle-volumetric-homogeneous.veg', -- default, tiny, 347 vertices, 1185 tets
+    [2] = './examples/fem/asianDragon-homogeneous.veg', -- 959 vertices, 2591 tets
+    [3] = '/home/liszt/vega-models/hose_small.veg', -- use on lightroast
+    [4] = '/home/liszt/vega-models/hose_medium.veg', -- use on lightroast
+}
+local volumetricMeshFileName = mesh_files[2]
+print("Loading " .. volumetricMeshFileName)
 local mesh = VEGFileIO.LoadTetmesh(volumetricMeshFileName)
 
-local I = terralib.includecstring([[
-#include "cuda_profiler_api.h"
-]])
+-- local I = terralib.includecstring([[
+-- #include "cuda_profiler_api.h"
+-- ]])
 
 local gravity = 9.81
 
@@ -33,9 +34,10 @@ function initConfigurations()
 
     maxIterations               = 1,
     epsilon                     = 1e-6,
-    numTimesteps                = 10,
+    numTimesteps                = 5,
 
     cgEpsilon                   = 1e-6,
+    -- cgMaxIterations             = 1
     cgMaxIterations             = 10000
   }
   return options
@@ -126,10 +128,9 @@ end
 
 -- Matrix vector product
 local liszt function multiplyMatVec3(M, x)
-  var y = { M[0, 0]*x[0] + M[0, 1]*x[1] + M[0, 2]*x[2],
+  return  { M[0, 0]*x[0] + M[0, 1]*x[1] + M[0, 2]*x[2],
             M[1, 0]*x[0] + M[1, 1]*x[1] + M[1, 2]*x[2],
             M[2, 0]*x[0] + M[2, 1]*x[1] + M[2, 2]*x[2] }
-  return y
 end
 local liszt function multiplyVectors(x, y)
   return { x[0]*y[0], x[1]*y[1], x[2]*y[2]  }
@@ -440,15 +441,15 @@ local computeInternalForcesHelper = function(tetrahedra)
   -- print("Computing linear contributions to internal_forces ...")
   timer:Start()
   addIFLinearTerms(tetrahedra)
-  print("Time for linear terms is "..(timer:Stop()*1E6).." us")
+  print("Time for internal forces linear terms is "..(timer:Stop()*1E6).." us")
   -- print("Computing quadratic contributions to internal_forces ...")
   timer:Start()
   addIFQuadraticTerms(tetrahedra)
-  print("Time for quadratic terms is "..(timer:Stop()*1E6).." us")
+  print("Time for internal forces quadratic terms is "..(timer:Stop()*1E6).." us")
   -- print("Computing cubic contributions to internal_forces ...")
   timer:Start()
   addIFCubicTerms(tetrahedra)
-  print("Time for cubic terms is "..(timer:Stop()*1E6).." us")
+  print("Time for internal forces cubic terms is "..(timer:Stop()*1E6).." us")
 end
 
 function computeInternalForces(mesh)
@@ -559,15 +560,15 @@ local computeStiffnessMatrixHelper = function(tetrahedra)
   -- print("Computing linear contributions to stiffness matrix ...")
   timer:Start()
   addStiffLinearTerms(tetrahedra)
-  print("Time for linear terms is "..(timer:Stop()*1E6).." us")
+  print("Time for stiffness linear terms is "..(timer:Stop()*1E6).." us")
   -- print("Computing quadratic contributions to stiffness matrix ...")
   timer:Start()
   addStiffQuadraticTerms(tetrahedra)
-  print("Time for quadratic terms is "..(timer:Stop()*1E6).." us")
+  print("Time for stiffness quadratic terms is "..(timer:Stop()*1E6).." us")
   -- print("Computing cubic contributions to stiffness matrix ...")
   timer:Start()
   addStiffCubicTerms(tetrahedra)
-  print("Time for cubic terms is "..(timer:Stop()*1E6).." us")
+  print("Time for stiffness cubic terms is "..(timer:Stop()*1E6).." us")
 end
 
 function computeStiffnessMatrix(mesh)
@@ -736,10 +737,13 @@ function ImplicitBackwardEulerIntegrator:setupFieldsKernels(mesh)
   self.pcgInitialize = pcgInitialize
 
   local liszt kernel pcgComputeAp (v : mesh.vertices)
-    v.Ap = { 0, 0, 0 }
+    var Ap : L.vec3d = { 0, 0, 0 }
     for e in v.edges do
-      v.Ap += multiplyMatVec3(e.stiffness, e.head.p)
+      var A = e.stiffness
+      var p = e.head.p
+      Ap += multiplyMatVec3(A, p)
     end
+    v.Ap = Ap
   end
   self.pcgComputeAp = pcgComputeAp
 
@@ -777,8 +781,15 @@ end
 -- The following pcg solver uses Jacobi preconditioner, as implemented in Vega.
 -- It uses the same algorithm as Vega (exact residual on 30th iteration). But
 -- the symbol names are kept to match the pseudo code on Wikipedia for clarity.
+local t_solver = Timer.New()
+local t_normres = Timer.New()
+local t_computeap = Timer.New()
+local t_alphadenom = Timer.New()
+local t_updatex = Timer.New()
+local t_updatep = Timer.New()
 function ImplicitBackwardEulerIntegrator:solvePCG(mesh)
   -- I.cudaProfilerStart()
+  t_solver:Start()
   local timer_total = Timer.New()
   timer_total:Start()
   mesh.vertices.x:Load({ 0, 0, 0 })
@@ -787,17 +798,24 @@ function ImplicitBackwardEulerIntegrator:solvePCG(mesh)
   self.pcgCalculateExactResidual(mesh.vertices)
   self.normRes:set(0)
   self.pcgInitialize(mesh.vertices)
+  t_normres:Start()
   self.pcgCalculateNormResidual(mesh.vertices)
+  t_normres:Pause()
   local normRes = self.normRes:get()
   local thresh = self.cgEpsilon * self.cgEpsilon * normRes
   while normRes > thresh and
         iter <= self.cgMaxIterations do
-    mesh.vertices.Ap:Load({ 0, 0, 0 })
+    t_computeap:Start()
     self.pcgComputeAp(mesh.vertices)
+    t_computeap:Pause()
     self.alphaDenom:set(0)
+    t_alphadenom:Start()
     self.pcgComputeAlphaDenom(mesh.vertices)
+    t_alphadenom:Pause()
     self.alpha:set( normRes / self.alphaDenom:get() )
+    t_updatex:Start()
     self.pcgUpdateX(mesh.vertices)
+    t_updatex:Pause()
     if iter % 30 == 0 then
       self.pcgCalculateExactResidual(mesh.vertices)
     else
@@ -805,16 +823,25 @@ function ImplicitBackwardEulerIntegrator:solvePCG(mesh)
     end
     local normResOld = normRes
     self.normRes:set(0)
+    t_normres:Start()
     self.pcgCalculateNormResidual(mesh.vertices)
+    t_normres:Pause()
     normRes = self.normRes:get()
     self.beta:set( normRes / normResOld )
+    t_updatep:Start()
     self.pcgUpdateP(mesh.vertices)
+    t_updatep:Pause()
     iter = iter + 1
   end
+  if normRes > thresh then
+      error("PCG solver did not converge!")
+  end
+  t_solver:Pause()
   -- I.cudaProfilerStop()
   print("Time for solver is "..(timer_total:Stop()*1E6).." us")
 end
 
+local timer_solver_reset = true
 function ImplicitBackwardEulerIntegrator:doTimestep(mesh)
   local timer_total = Timer.New()
   local timer_inner = Timer.New()
@@ -900,6 +927,15 @@ function ImplicitBackwardEulerIntegrator:doTimestep(mesh)
     end
 
     self:solvePCG(mesh)
+    if timer_solver_reset == true then
+        t_solver:Reset()
+        t_normres:Reset()
+        t_computeap:Reset()
+        t_alphadenom:Reset()
+        t_updatex:Reset()
+        t_updatep:Reset()
+        timer_solver_reset = false
+    end
 
     -- Reinsert the rows?
 
@@ -919,7 +955,7 @@ end
 
 local liszt kernel setExternalForces (v : mesh.vertices)
   var pos = v.pos
-  v.external_forces = { 10*pos[1], -20*(5-pos[1]), 0 }
+  v.external_forces = { 10000, -80*(50-pos[1]), 0 }
 end
 
 function setExternalConditions(mesh, iter)
@@ -979,6 +1015,13 @@ function main()
     print("")
     DumpDeformationToFile(volumetric_mesh, "out/mesh_liszt_"..tostring(i))
   end
+
+  print("Total solver time = " .. t_solver:GetTime()*1E3 .. "ms")
+  print("Total normres time = " .. t_normres:GetTime()*1E3 .. "ms")
+  print("Total computeap time = " .. t_computeap:GetTime()*1E3 .. "ms")
+  print("Total alphadenom time = " .. t_alphadenom:GetTime()*1E3 .. "ms")
+  print("Total updatex time = " .. t_updatex:GetTime()*1E3 .. "ms")
+  print("Total updatep time = " .. t_updatep:GetTime()*1E3 .. "ms")
 
   -- read out the state here somehow?
 end
