@@ -42,7 +42,7 @@ local config = loadfile(filename)()
 --[[                            CONSTANT VARIABLES                       ]]--
 -----------------------------------------------------------------------------
 
-local pi = 2.0*cmath.acos(0)
+local pi = 2.0*L.acos(0)
 local twoPi = 2.0*pi
 
 -----------------------------------------------------------------------------
@@ -76,6 +76,8 @@ Viscosity.Sutherland = L.NewGlobal(L.int, 2)
 Particles.FeederAtStartTimeInRandomBox = L.NewGlobal(L.int, 0)
 Particles.FeederOverTimeInRandomBox    = L.NewGlobal(L.int, 1)
 Particles.FeederUQCase                 = L.NewGlobal(L.int, 2)
+Particles.Random                       = L.NewGlobal(L.int, 3)
+Particles.Restart                      = L.NewGlobal(L.int, 4)
 
 -- Particles collector
 Particles.CollectorNone     = L.NewGlobal(L.int, 0)
@@ -455,6 +457,8 @@ local particles_options = {
     --collectorParams = L.NewGlobal(L.vector(L.double,6),{0.5,0.5,0.5,12,6,6}),
 
     num = config.num,
+    restitution_coefficient = L.NewGlobal(L.double,
+                                          config.restitutionCoefficient),
     convective_coefficient = L.NewGlobal(L.double,
                                          config.convectiveCoefficient),
     heat_capacity = L.NewGlobal(L.double, config.heatCapacity),
@@ -464,8 +468,16 @@ local particles_options = {
     diameter_maxDeviation = config.diameter_maxDeviation,
     bodyForce = L.NewGlobal(L.vec3d, config.bodyForceParticles),
     emissivity = config.emissivity,
-    absorptivity = config.absorptivity
+    absorptivity = config.absorptivity,
+    restartParticleIter = config.restartParticleIter,
 }
+if config.initParticles == 'Random' then
+  particles_options.initParticles = Particles.Random
+elseif config.initParticles == 'Restart' then
+  particles_options.initParticles = Particles.Restart
+else
+  error("Particle initialization type not defined")
+end
 -- Lastly, check whether the particles are fixed or free
 if config.particleType == 'Fixed' then
   particles_options.particleType = Particles.Fixed
@@ -500,6 +512,27 @@ elseif config.outputFormat == 'Tecplot' then
   IO.outputFormat = IO.Tecplot
 else
   error("Output format not implemented")
+end
+if config.wrtRestart == 'ON' then
+  IO.wrtRestart = ON
+  elseif config.wrtRestart == 'OFF' then
+  IO.wrtRestart = OFF
+  else
+  error("Restart writing not defined (ON or OFF)")
+end
+if config.wrtVolumeSolution == 'ON' then
+  IO.wrtVolumeSolution = ON
+  elseif config.wrtVolumeSolution == 'OFF' then
+  IO.wrtVolumeSolution = OFF
+  else
+  error("Volume solution writing not defined (ON or OFF)")
+end
+if config.wrt1DSlice == 'ON' then
+  IO.wrt1DSlice = ON
+  elseif config.wrt1DSlice == 'OFF' then
+  IO.wrt1DSlice = OFF
+  else
+  error("1D slice writing not defined (ON or OFF)")
 end
 -- Store the directory for all output files from the config
 IO.outputFileNamePrefix = config.outputDirectory
@@ -588,6 +621,77 @@ if flow_options.initCase == Flow.Restart then
   TimeIntegrator.timeStep:set(restartIter)
   TimeIntegrator.simTime:set(restartTime)
   TimeIntegrator.max_iter = TimeIntegrator.max_iter + restartIter
+  
+end
+
+-- Now check for and load a particle restart file if requested
+
+local restartnParticles, restartPartIter, restartPartTime
+local particle_pos_array = {}
+local particle_vel_array = {}
+local particle_temp_array = {}
+local particle_diam_array = {}
+
+
+if particles_options.initParticles == Particles.Restart then
+  
+  -- here's the path object for our soleil restart file we want to read in.
+  -- Notice that the path is relative to this script's location on
+  -- disk rather than the present working directory, which varies
+  -- depending on where we invoke this script from.
+  local restart_filename = IO.outputFileNamePrefix .. 'restart_particles_' ..
+  config.restartParticleIter .. '.dat'
+  
+  -- Particle restart files have the following format
+  --
+  --[[
+   Soleil Particle Restart
+   #particles currentIteration currentPhysicalTime
+   x0 y0 z0 u0 v0 w0 temperature0 diameter0
+   ...
+   ...   #particles rows of values for each particle
+   ...
+   ]]--
+  
+  -- In Lua, we can open files just like in C
+  local soleil_in = io.open(tostring(restart_filename), "r")
+  if not soleil_in then
+    error('Error: failed to open '..tostring(restart_filename))
+  end
+  
+  -- we can read a line like so
+  local SOLEIL_SIG = soleil_in:read('*line')
+  
+  if SOLEIL_SIG ~= 'Soleil Particle Restart' then
+    error('Restart file must begin with the first line "Soleil Particle Restart"')
+  end
+  
+  -- read the counts of cells, iterations, and the time
+  restartnParticles = soleil_in:read('*number')
+  restartPartIter   = soleil_in:read('*number')
+  restartPartTime   = soleil_in:read('*number')
+  
+  -- now read in all the density, pressure, and velocity data
+  
+  for i = 1, restartnParticles do
+    local pos_vec = {
+      soleil_in:read('*number'),
+      soleil_in:read('*number'),
+      soleil_in:read('*number')
+    }
+    particle_pos_array[i] = pos_vec
+    local vel_vec = {
+      soleil_in:read('*number'),
+      soleil_in:read('*number'),
+      soleil_in:read('*number')
+    }
+    particle_vel_array[i]  = vel_vec
+    particle_temp_array[i] = soleil_in:read('*number')
+    particle_diam_array[i] = soleil_in:read('*number')
+  end
+  
+  -- don't forget to close the file when done
+  soleil_in:close()
   
 end
 
@@ -805,36 +909,47 @@ particles:NewField('dual_cell', grid.dual_cells):
 LoadConstant(0)
 particles:NewField('cell', grid.cells):
 LoadConstant(0)
-particles:NewField('position', L.vec3d):
-LoadConstant(L.NewVector(L.double, {0, 0, 0}))
-particles:NewField('velocity', L.vec3d):
-LoadConstant(L.NewVector(L.double, {0, 0, 0}))
-particles:NewField('temperature', L.double):
-LoadConstant(particles_options.initialTemperature)
-particles:NewField('position_ghost', L.vec3d):
-LoadConstant(L.NewVector(L.double, {0, 0, 0}))
-particles:NewField('velocity_ghost', L.vec3d):
-LoadConstant(L.NewVector(L.double, {0, 0, 0}))
 
-particles:NewField('diameter', L.double):
--- Initialize to random distribution with given mean value and maximum 
--- deviation from it
-Load(function(i)
-    return cmath.rand_unity() * particles_options.diameter_maxDeviation +
-           particles_options.diameter_mean
-end)
-particles:NewField('density', L.double):
-LoadConstant(particles_options.density)
-
-particles:NewField('deltaVelocityOverRelaxationTime', L.vec3d):
-LoadConstant(L.NewVector(L.double, {0, 0, 0}))
-particles:NewField('deltaTemperatureTerm', L.double):
-LoadConstant(0)
+particles:NewField('position', L.vec3d)
+particles:NewField('velocity', L.vec3d)
+particles:NewField('temperature', L.double)
+particles:NewField('diameter', L.double)
 -- state of a particle:
 --   - a particle not yet fed has a state = 0
 --   - a particle fed into the domain and active has a state = 1
 --   - a particle already collected has a state = 2
-particles:NewField('state', L.int):
+particles:NewField('state', L.int)
+if particles_options.initParticles == Particles.Restart then
+  particles.position:Load(particle_pos_array)
+  particles.velocity:Load(particle_vel_array)
+  particles.temperature:Load(particle_temp_array)
+  particles.diameter:Load(particle_diam_array)
+  particles.state:LoadConstant(1)
+else
+particles.position:LoadConstant(L.NewVector(L.double, {0, 0, 0}))
+particles.velocity:LoadConstant(L.NewVector(L.double, {0, 0, 0}))
+particles.temperature:LoadConstant(particles_options.initialTemperature)
+-- Initialize to random distribution with given mean value and maximum
+-- deviation from it
+particles.diameter:Load(function(i)
+                        return cmath.rand_unity() * particles_options.diameter_maxDeviation +
+                        particles_options.diameter_mean
+                        end)
+particles.state:LoadConstant(0)
+end
+
+particles:NewField('position_ghost', L.vec3d):
+LoadConstant(L.NewVector(L.double, {0, 0, 0}))
+particles:NewField('velocity_ghost', L.vec3d):
+LoadConstant(L.NewVector(L.double, {0, 0, 0}))
+particles:NewField('velocity_t_ghost', L.vec3d):
+LoadConstant(L.NewVector(L.double, {0, 0, 0}))
+
+particles:NewField('density', L.double):
+LoadConstant(particles_options.density)
+particles:NewField('deltaVelocityOverRelaxationTime', L.vec3d):
+LoadConstant(L.NewVector(L.double, {0, 0, 0}))
+particles:NewField('deltaTemperatureTerm', L.double):
 LoadConstant(0)
 -- ID field
 particles:NewField('id', L.int):
@@ -943,11 +1058,11 @@ local GetDynamicViscosity = liszt function(temperature)
   elseif fluid_options.viscosity_model == Viscosity.PowerLaw then
     -- Power Law
     viscosity = fluid_options.dynamic_viscosity_ref *
-        cmath.pow(temperature/fluid_options.dynamic_viscosity_temp_ref, 0.75)
+        L.pow(temperature/fluid_options.dynamic_viscosity_temp_ref, 0.75)
   elseif fluid_options.viscosity_model == Viscosity.Sutherland then
     -- Sutherland's Law
     viscosity = fluid_options.dynamic_viscosity_ref *
-    cmath.pow((temperature/fluid_options.dynamic_viscosity_temp_ref),(3.0/2.0))*
+    L.pow((temperature/fluid_options.dynamic_viscosity_temp_ref),(3.0/2.0))*
     ((fluid_options.dynamic_viscosity_temp_ref + 110.4)/
      (temperature + 110.4))
   end
@@ -963,10 +1078,10 @@ end
 -- Function to retrieve particle area, volume and mass
 -- These are Liszt user-defined function that behave like a field
 particles:NewFieldFunction('area', liszt function(p)
-    return pi * cmath.pow(p.diameter, 2)
+    return pi * L.pow(p.diameter, 2)
 end)
 particles:NewFieldFunction('volume', liszt function(p)
-    return pi * cmath.pow(p.diameter, 3) / 6.0
+    return pi * L.pow(p.diameter, 3) / 6.0
 end)
 particles:NewFieldFunction('mass', liszt function(p)
     return p.volume * p.density
@@ -1022,9 +1137,9 @@ local function GenerateTrilinearInterpolation(field_name)
     -- See the other approch above (commented) for the generalization to
     -- non-uniform grids (with the current problem of not being usable if
     -- periodicity is enforced)
-    var dX   = cmath.fmod((xyz[0] - grid_originX)/grid_dx + 0.5, 1.0)
-    var dY   = cmath.fmod((xyz[1] - grid_originY)/grid_dy + 0.5, 1.0)
-    var dZ   = cmath.fmod((xyz[2] - grid_originZ)/grid_dz + 0.5, 1.0)
+    var dX   = L.fmod((xyz[0] - grid_originX)/grid_dx + 0.5, 1.0)
+    var dY   = L.fmod((xyz[1] - grid_originY)/grid_dy + 0.5, 1.0)
+    var dZ   = L.fmod((xyz[2] - grid_originZ)/grid_dz + 0.5, 1.0)
 
     var oneMinusdX = 1.0 - dX
     var oneMinusdY = 1.0 - dY
@@ -1072,9 +1187,9 @@ local InterpolateTriTemperature = GenerateTrilinearInterpolation('temperature')
 --    -- See the other approch above (commented) for the generalization to
 --    -- non-uniform grids (with the current problem of not being usable if
 --    -- periodicity is enforced)
---    var dX   = cmath.fmod((xyz[0] - grid_originX)/grid_dx + 0.5, 1.0)
---    var dY   = cmath.fmod((xyz[1] - grid_originY)/grid_dy + 0.5, 1.0)
---    var dZ   = cmath.fmod((xyz[2] - grid_originZ)/grid_dz + 0.5, 1.0)
+--    var dX   = L.fmod((xyz[0] - grid_originX)/grid_dx + 0.5, 1.0)
+--    var dY   = L.fmod((xyz[1] - grid_originY)/grid_dy + 0.5, 1.0)
+--    var dZ   = L.fmod((xyz[2] - grid_originZ)/grid_dz + 0.5, 1.0)
 --
 --    var oneMinusdX = 1.0 - dX
 --    var oneMinusdY = 1.0 - dY
@@ -1150,7 +1265,7 @@ Flow.InitializePrimitives = liszt kernel(c : grid.cells)
                     L.cos(2.0*xy[1])
       c.pressure = 
           taylorGreenPressure + 
-          taylorGreenDensity * cmath.pow(taylorGreenVelocity,2) / 16 *
+          taylorGreenDensity * L.pow(taylorGreenVelocity,2) / 16 *
           factorA * factorB
     elseif flow_options.initCase == Flow.TaylorGreen3DVortex then
       -- Define Taylor Green Vortex
@@ -1174,7 +1289,7 @@ Flow.InitializePrimitives = liszt kernel(c : grid.cells)
                     L.cos(2.0*xy[1])
       c.pressure = 
           taylorGreenPressure + 
-          taylorGreenDensity * cmath.pow(taylorGreenVelocity,2) / 16 *
+          taylorGreenDensity * L.pow(taylorGreenVelocity,2) / 16 *
           factorA * factorB
     elseif flow_options.initCase == Flow.Uniform then
       c.rho         = flow_options.initParams[0]
@@ -2118,75 +2233,75 @@ end
 Flow.UpdateGhostVelocityGradientStep1 = liszt kernel(c : grid.cells)
     if c.xneg_depth > 0 then
         var xoffset = XOffset(c.xneg_depth)
-        c.velocityGradientXBoundary[0] = - c(xoffset,0,0).velocityGradientX[0]
-        c.velocityGradientXBoundary[1] =   c(xoffset,0,0).velocityGradientX[1]
-        c.velocityGradientXBoundary[2] =   c(xoffset,0,0).velocityGradientX[2]
-        c.velocityGradientYBoundary[0] = - c(xoffset,0,0).velocityGradientY[0]
-        c.velocityGradientYBoundary[1] =   c(xoffset,0,0).velocityGradientY[1]
-        c.velocityGradientYBoundary[2] =   c(xoffset,0,0).velocityGradientY[2]
-        c.velocityGradientZBoundary[0] = - c(xoffset,0,0).velocityGradientZ[0]
-        c.velocityGradientZBoundary[1] =   c(xoffset,0,0).velocityGradientZ[1]
-        c.velocityGradientZBoundary[2] =   c(xoffset,0,0).velocityGradientZ[2]
+        c.velocityGradientXBoundary[0] = xSignX * c(xoffset,0,0).velocityGradientX[0]
+        c.velocityGradientXBoundary[1] = xSignY * c(xoffset,0,0).velocityGradientX[1]
+        c.velocityGradientXBoundary[2] = xSignZ * c(xoffset,0,0).velocityGradientX[2]
+        c.velocityGradientYBoundary[0] = xSignX * c(xoffset,0,0).velocityGradientY[0]
+        c.velocityGradientYBoundary[1] = xSignY * c(xoffset,0,0).velocityGradientY[1]
+        c.velocityGradientYBoundary[2] = xSignZ * c(xoffset,0,0).velocityGradientY[2]
+        c.velocityGradientZBoundary[0] = xSignX * c(xoffset,0,0).velocityGradientZ[0]
+        c.velocityGradientZBoundary[1] = xSignY * c(xoffset,0,0).velocityGradientZ[1]
+        c.velocityGradientZBoundary[2] = xSignZ * c(xoffset,0,0).velocityGradientZ[2]
     end
     if c.xpos_depth > 0 then
         var xoffset = XOffset(c.xpos_depth)
-        c.velocityGradientXBoundary[0] = - c(-xoffset,0,0).velocityGradientX[0]
-        c.velocityGradientXBoundary[1] =   c(-xoffset,0,0).velocityGradientX[1]
-        c.velocityGradientXBoundary[2] =   c(-xoffset,0,0).velocityGradientX[2]
-        c.velocityGradientYBoundary[0] = - c(-xoffset,0,0).velocityGradientY[0]
-        c.velocityGradientYBoundary[1] =   c(-xoffset,0,0).velocityGradientY[1]
-        c.velocityGradientYBoundary[2] =   c(-xoffset,0,0).velocityGradientY[2]
-        c.velocityGradientZBoundary[0] = - c(-xoffset,0,0).velocityGradientZ[0]
-        c.velocityGradientZBoundary[1] =   c(-xoffset,0,0).velocityGradientZ[1]
-        c.velocityGradientZBoundary[2] =   c(-xoffset,0,0).velocityGradientZ[2]
+        c.velocityGradientXBoundary[0] = xSignX * c(-xoffset,0,0).velocityGradientX[0]
+        c.velocityGradientXBoundary[1] = xSignY * c(-xoffset,0,0).velocityGradientX[1]
+        c.velocityGradientXBoundary[2] = xSignZ * c(-xoffset,0,0).velocityGradientX[2]
+        c.velocityGradientYBoundary[0] = xSignX * c(-xoffset,0,0).velocityGradientY[0]
+        c.velocityGradientYBoundary[1] = xSignY * c(-xoffset,0,0).velocityGradientY[1]
+        c.velocityGradientYBoundary[2] = xSignZ * c(-xoffset,0,0).velocityGradientY[2]
+        c.velocityGradientZBoundary[0] = xSignX * c(-xoffset,0,0).velocityGradientZ[0]
+        c.velocityGradientZBoundary[1] = xSignY * c(-xoffset,0,0).velocityGradientZ[1]
+        c.velocityGradientZBoundary[2] = xSignZ * c(-xoffset,0,0).velocityGradientZ[2]
     end
     if c.yneg_depth > 0 then
         var yoffset = YOffset(c.yneg_depth)
-        c.velocityGradientXBoundary[0] =   c(0,yoffset,0).velocityGradientX[0]
-        c.velocityGradientXBoundary[1] = - c(0,yoffset,0).velocityGradientX[1]
-        c.velocityGradientXBoundary[2] =   c(0,yoffset,0).velocityGradientX[2]
-        c.velocityGradientYBoundary[0] =   c(0,yoffset,0).velocityGradientY[0]
-        c.velocityGradientYBoundary[1] = - c(0,yoffset,0).velocityGradientY[1]
-        c.velocityGradientYBoundary[2] =   c(0,yoffset,0).velocityGradientY[2]
-        c.velocityGradientZBoundary[0] =   c(0,yoffset,0).velocityGradientZ[0]
-        c.velocityGradientZBoundary[1] = - c(0,yoffset,0).velocityGradientZ[1]
-        c.velocityGradientZBoundary[2] =   c(0,yoffset,0).velocityGradientZ[2]
+        c.velocityGradientXBoundary[0] = ySignX * c(0,yoffset,0).velocityGradientX[0]
+        c.velocityGradientXBoundary[1] = ySignY * c(0,yoffset,0).velocityGradientX[1]
+        c.velocityGradientXBoundary[2] = ySignZ * c(0,yoffset,0).velocityGradientX[2]
+        c.velocityGradientYBoundary[0] = ySignX * c(0,yoffset,0).velocityGradientY[0]
+        c.velocityGradientYBoundary[1] = ySignY * c(0,yoffset,0).velocityGradientY[1]
+        c.velocityGradientYBoundary[2] = ySignZ * c(0,yoffset,0).velocityGradientY[2]
+        c.velocityGradientZBoundary[0] = ySignX * c(0,yoffset,0).velocityGradientZ[0]
+        c.velocityGradientZBoundary[1] = ySignY * c(0,yoffset,0).velocityGradientZ[1]
+        c.velocityGradientZBoundary[2] = ySignZ * c(0,yoffset,0).velocityGradientZ[2]
     end
     if c.ypos_depth > 0 then
         var yoffset = YOffset(c.ypos_depth)
-        c.velocityGradientXBoundary[0] =   c(0,-yoffset,0).velocityGradientX[0]
-        c.velocityGradientXBoundary[1] = - c(0,-yoffset,0).velocityGradientX[1]
-        c.velocityGradientXBoundary[2] =   c(0,-yoffset,0).velocityGradientX[2]
-        c.velocityGradientYBoundary[0] =   c(0,-yoffset,0).velocityGradientY[0]
-        c.velocityGradientYBoundary[1] = - c(0,-yoffset,0).velocityGradientY[1]
-        c.velocityGradientYBoundary[2] =   c(0,-yoffset,0).velocityGradientY[2]
-        c.velocityGradientZBoundary[0] =   c(0,-yoffset,0).velocityGradientZ[0]
-        c.velocityGradientZBoundary[1] = - c(0,-yoffset,0).velocityGradientZ[1]
-        c.velocityGradientZBoundary[2] =   c(0,-yoffset,0).velocityGradientZ[2]
+        c.velocityGradientXBoundary[0] = ySignX * c(0,-yoffset,0).velocityGradientX[0]
+        c.velocityGradientXBoundary[1] = ySignY * c(0,-yoffset,0).velocityGradientX[1]
+        c.velocityGradientXBoundary[2] = ySignZ * c(0,-yoffset,0).velocityGradientX[2]
+        c.velocityGradientYBoundary[0] = ySignX * c(0,-yoffset,0).velocityGradientY[0]
+        c.velocityGradientYBoundary[1] = ySignY * c(0,-yoffset,0).velocityGradientY[1]
+        c.velocityGradientYBoundary[2] = ySignZ * c(0,-yoffset,0).velocityGradientY[2]
+        c.velocityGradientZBoundary[0] = ySignX * c(0,-yoffset,0).velocityGradientZ[0]
+        c.velocityGradientZBoundary[1] = ySignY * c(0,-yoffset,0).velocityGradientZ[1]
+        c.velocityGradientZBoundary[2] = ySignZ * c(0,-yoffset,0).velocityGradientZ[2]
     end
     if c.zneg_depth > 0 then
         var zoffset = ZOffset(c.zneg_depth)
-        c.velocityGradientXBoundary[0] =   c(0,0,zoffset).velocityGradientX[0]
-        c.velocityGradientXBoundary[1] =   c(0,0,zoffset).velocityGradientX[1]
-        c.velocityGradientXBoundary[2] = - c(0,0,zoffset).velocityGradientX[2]
-        c.velocityGradientYBoundary[0] =   c(0,0,zoffset).velocityGradientY[0]
-        c.velocityGradientYBoundary[1] =   c(0,0,zoffset).velocityGradientY[1]
-        c.velocityGradientYBoundary[2] = - c(0,0,zoffset).velocityGradientY[2]
-        c.velocityGradientZBoundary[0] =   c(0,0,zoffset).velocityGradientZ[0]
-        c.velocityGradientZBoundary[1] =   c(0,0,zoffset).velocityGradientZ[1]
-        c.velocityGradientZBoundary[2] = - c(0,0,zoffset).velocityGradientZ[2]
+        c.velocityGradientXBoundary[0] = zSignX * c(0,0,zoffset).velocityGradientX[0]
+        c.velocityGradientXBoundary[1] = zSignY * c(0,0,zoffset).velocityGradientX[1]
+        c.velocityGradientXBoundary[2] = zSignZ * c(0,0,zoffset).velocityGradientX[2]
+        c.velocityGradientYBoundary[0] = zSignX * c(0,0,zoffset).velocityGradientY[0]
+        c.velocityGradientYBoundary[1] = zSignY * c(0,0,zoffset).velocityGradientY[1]
+        c.velocityGradientYBoundary[2] = zSignZ * c(0,0,zoffset).velocityGradientY[2]
+        c.velocityGradientZBoundary[0] = zSignX * c(0,0,zoffset).velocityGradientZ[0]
+        c.velocityGradientZBoundary[1] = zSignY * c(0,0,zoffset).velocityGradientZ[1]
+        c.velocityGradientZBoundary[2] = zSignZ * c(0,0,zoffset).velocityGradientZ[2]
     end
     if c.zpos_depth > 0 then
         var zoffset = ZOffset(c.zpos_depth)
-        c.velocityGradientXBoundary[0] =   c(0,0,-zoffset).velocityGradientX[0]
-        c.velocityGradientXBoundary[1] =   c(0,0,-zoffset).velocityGradientX[1]
-        c.velocityGradientXBoundary[2] = - c(0,0,-zoffset).velocityGradientX[2]
-        c.velocityGradientYBoundary[0] =   c(0,0,-zoffset).velocityGradientY[0]
-        c.velocityGradientYBoundary[1] =   c(0,0,-zoffset).velocityGradientY[1]
-        c.velocityGradientYBoundary[2] = - c(0,0,-zoffset).velocityGradientY[2]
-        c.velocityGradientZBoundary[0] =   c(0,0,-zoffset).velocityGradientZ[0]
-        c.velocityGradientZBoundary[1] =   c(0,0,-zoffset).velocityGradientZ[1]
-        c.velocityGradientZBoundary[2] = - c(0,0,-zoffset).velocityGradientZ[2]
+        c.velocityGradientXBoundary[0] = zSignX * c(0,0,-zoffset).velocityGradientX[0]
+        c.velocityGradientXBoundary[1] = zSignY * c(0,0,-zoffset).velocityGradientX[1]
+        c.velocityGradientXBoundary[2] = zSignZ * c(0,0,-zoffset).velocityGradientX[2]
+        c.velocityGradientYBoundary[0] = zSignX * c(0,0,-zoffset).velocityGradientY[0]
+        c.velocityGradientYBoundary[1] = zSignY * c(0,0,-zoffset).velocityGradientY[1]
+        c.velocityGradientYBoundary[2] = zSignZ * c(0,0,-zoffset).velocityGradientY[2]
+        c.velocityGradientZBoundary[0] = zSignX * c(0,0,-zoffset).velocityGradientZ[0]
+        c.velocityGradientZBoundary[1] = zSignY * c(0,0,-zoffset).velocityGradientZ[1]
+        c.velocityGradientZBoundary[2] = zSignZ * c(0,0,-zoffset).velocityGradientZ[2]
     end
 end
 Flow.UpdateGhostVelocityGradientStep2 = liszt kernel(c : grid.cells)
@@ -2207,9 +2322,9 @@ Flow.CalculateSpectralRadii = liszt kernel(c : grid.cells)
                             1.0/grid_dz * 1.0/grid_dz
     -- Convective spectral radii
     c.convectiveSpectralRadius = 
-       (cmath.fabs(c.velocity[0])/grid_dx  +
-        cmath.fabs(c.velocity[1])/grid_dy  +
-        cmath.fabs(c.velocity[2])/grid_dz  +
+       (L.fabs(c.velocity[0])/grid_dx  +
+        L.fabs(c.velocity[1])/grid_dy  +
+        L.fabs(c.velocity[2])/grid_dz  +
         GetSoundSpeed(c.temperature) * L.sqrt(dXYZInverseSquare)) *
        spatial_stencil.firstDerivativeModifiedWaveNumber
     
@@ -2447,11 +2562,11 @@ Particles.AddFlowCoupling = liszt kernel(p: particles)
     (p.density * norm(flowVelocity - p.velocity) * p.diameter) /
     flowDynamicViscosity
     var relaxationTime =
-    ( p.density * cmath.pow(p.diameter,2)/(18.0 * flowDynamicViscosity))/
-    ( 1.0 + 0.15 * cmath.pow(particleReynoldsNumber,0.687) )
+    ( p.density * L.pow(p.diameter,2)/(18.0 * flowDynamicViscosity))/
+    ( 1.0 + 0.15 * L.pow(particleReynoldsNumber,0.687) )
     p.deltaVelocityOverRelaxationTime =
     (flowVelocity - p.velocity) / relaxationTime
-    p.deltaTemperatureTerm = pi * cmath.pow(p.diameter, 2) *
+    p.deltaTemperatureTerm = pi * L.pow(p.diameter, 2) *
     particles_options.convective_coefficient *
     (flowTemperature - p.temperature)
     
@@ -2471,7 +2586,7 @@ end
 --------------
 
 Particles.AddBodyForces= liszt kernel(p : particles)
-    if p.state == 1 then
+    if p.state == 1 and particles_options.particleType == Particles.Free then
         p.velocity_t += particles_options.bodyForce
     end
 end
@@ -2512,8 +2627,10 @@ Particles.SetVelocitiesToFlow = liszt kernel(p: particles)
     flowDynamicViscosity = GetDynamicViscosity(flowTemperature)
 
     -- Update the particle velocity
-    if particles_options.particleType == Particles.Fixed then
-      p.velocity_t = {0.0,0.0,0.0} -- Don't move the particle
+if (particles_options.particleType == Particles.Fixed) then
+      p.velocity = {0.0,0.0,0.0} -- Don't move the particle
+      elseif (particles_options.initParticles == Particles.Restart) then
+      -- Do nothing, as we loaded the veloity from a restart
     elseif particles_options.particleType == Particles.Free then
       p.velocity = flowVelocity
     end
@@ -2563,14 +2680,17 @@ end
 Particles.UpdateAuxiliaryStep1 = liszt kernel(p : particles)
     if p.state == 1 then
 
-        -- Initialize position and velocity before we check for collisions
+        -- Initialize position and velocity before we check for wall collisions
         
-        p.position_ghost[0] = p.position[0]
-        p.position_ghost[1] = p.position[1]
-        p.position_ghost[2] = p.position[2]
-        p.velocity_ghost[0] = p.velocity[0]
-        p.velocity_ghost[1] = p.velocity[1]
-        p.velocity_ghost[2] = p.velocity[2]
+        p.position_ghost[0]   = p.position[0]
+        p.position_ghost[1]   = p.position[1]
+        p.position_ghost[2]   = p.position[2]
+        p.velocity_ghost[0]   = p.velocity[0]
+        p.velocity_ghost[1]   = p.velocity[1]
+        p.velocity_ghost[2]   = p.velocity[2]
+        p.velocity_t_ghost[0] = p.velocity_t[0]
+        p.velocity_t_ghost[1] = p.velocity_t[1]
+        p.velocity_t_ghost[2] = p.velocity_t[2]
         
         -- Check here for particles exiting the domain. For periodic
         -- boundaries, the particle is transported to the matching periodic
@@ -2582,11 +2702,25 @@ Particles.UpdateAuxiliaryStep1 = liszt kernel(p : particles)
           if grid_options.xBCLeftParticles == Particles.Permeable then
             p.position_ghost[0] = p.position[0] + grid_options.xWidth
           elseif grid_options.xBCLeftParticles == Particles.Solid then
-            var overshoot = gridOriginInteriorX - p.position[0]
-            p.position_ghost[0] = gridOriginInteriorX + overshoot
-            if p.velocity[0] < 0 then
-              p.velocity_ghost[0] = -p.velocity[0]
+
+            -- Set the position to be on the wall
+            p.position_ghost[0] = gridOriginInteriorX
+
+            -- Apply an impulse to kick particle away from the wall
+            var impulse = -(1.0+particles_options.restitution_coefficient)*p.velocity[0]
+            if impulse <= 0 then
+              p.velocity_ghost[0] += impulse
             end
+
+            -- Add a contact force in case particle rests on the wall
+            var contact_force = -1.0*p.velocity_t[0]
+
+            -- To prevent sticky walls, only add contact force if current
+            -- force would push the particle through the wall
+            if contact_force > 0 then
+              p.velocity_t_ghost[0] += contact_force
+            end
+
           end
         end
         
@@ -2595,13 +2729,25 @@ Particles.UpdateAuxiliaryStep1 = liszt kernel(p : particles)
           if grid_options.xBCRightParticles == Particles.Permeable then
             p.position_ghost[0] = p.position[0] - grid_options.xWidth
           elseif grid_options.xBCRightParticles == Particles.Solid then
-            var overshoot = p.position[0] - (gridOriginInteriorX +
-                                             grid_options.xWidth)
-            p.position_ghost[0] = (gridOriginInteriorX +
-                                   grid_options.xWidth) - overshoot
-            if p.velocity[0] > 0 then
-              p.velocity_ghost[0] = -p.velocity[0]
+
+            -- Set the position to be on the wall
+            p.position_ghost[0] = gridOriginInteriorX + grid_options.xWidth
+
+            -- Apply an impulse to kick particle away from the wall
+            var impulse = -(1.0+particles_options.restitution_coefficient)*p.velocity[0]
+            if impulse >= 0 then
+              p.velocity_ghost[0] += impulse
             end
+
+            -- Add a contact force in case particle rests on the wall
+            var contact_force = -1.0*p.velocity_t[0]
+
+            -- To prevent sticky walls, only add contact force if current
+            -- force would push the particle through the wall
+            if contact_force < 0 then
+              p.velocity_t_ghost[0] += contact_force
+            end
+    
           end
         end
         
@@ -2610,12 +2756,27 @@ Particles.UpdateAuxiliaryStep1 = liszt kernel(p : particles)
           if grid_options.yBCLeftParticles == Particles.Permeable then
             p.position_ghost[1] = p.position[1] + grid_options.yWidth
           elseif grid_options.yBCLeftParticles == Particles.Solid then
-            var overshoot = gridOriginInteriorY - p.position[1]
-            p.position_ghost[1] = gridOriginInteriorY + overshoot
-            if p.velocity[1] < 0 then
-              p.velocity_ghost[1] = -p.velocity[1]
+          
+            -- Set the position to be on the wall
+            p.position_ghost[1] = gridOriginInteriorY
+            
+            -- Apply an impulse to kick particle away from the wall
+            var impulse = -(1.0+particles_options.restitution_coefficient)*p.velocity[1]
+            if impulse <= 0 then
+            p.velocity_ghost[1] += impulse
             end
+            
+            -- Add a contact force in case particle rests on the wall
+            var contact_force = -1.0*p.velocity_t[1]
+            
+            -- To prevent sticky walls, only add contact force if current
+            -- force would push the particle through the wall
+            if contact_force > 0 then
+            p.velocity_t_ghost[1] += contact_force
+            end
+          
           end
+          
         end
         
         -- Right Y boundary
@@ -2623,13 +2784,25 @@ Particles.UpdateAuxiliaryStep1 = liszt kernel(p : particles)
           if grid_options.yBCRightParticles == Particles.Permeable then
             p.position_ghost[1] = p.position[1] - grid_options.yWidth
           elseif grid_options.yBCRightParticles == Particles.Solid then
-            var overshoot = p.position[1] - (gridOriginInteriorY +
-                                             grid_options.yWidth)
-            p.position_ghost[1] = (gridOriginInteriorY +
-                                   grid_options.yWidth) - overshoot
-            if p.velocity[1] > 0 then
-              p.velocity_ghost[1] = -p.velocity[1]
+
+            -- Set the position to be on the wall
+            p.position_ghost[1] = gridOriginInteriorY + grid_options.yWidth
+
+            -- Apply an impulse to kick particle away from the wall
+            var impulse = -(1.0+particles_options.restitution_coefficient)*p.velocity[1]
+            if impulse >= 0 then
+              p.velocity_ghost[1] += impulse
             end
+
+            -- Add a contact force in case particle rests on the wall
+            var contact_force = -1.0*p.velocity_t[1]
+
+            -- To prevent sticky walls, only add contact force if current
+            -- force would push the particle through the wall
+            if contact_force < 0 then
+              p.velocity_t_ghost[1] += contact_force
+            end
+
           end
         end
         
@@ -2638,11 +2811,25 @@ Particles.UpdateAuxiliaryStep1 = liszt kernel(p : particles)
           if grid_options.zBCLeftParticles == Particles.Permeable then
             p.position_ghost[2] = p.position[2] + grid_options.zWidth
           elseif grid_options.zBCLeftParticles == Particles.Solid then
-            var overshoot = gridOriginInteriorZ - p.position[2]
-            p.position_ghost[2] = gridOriginInteriorZ + overshoot
-            if p.velocity[2] < 0 then
-              p.velocity_ghost[2] = -p.velocity[2]
+
+            -- Set the position to be on the wall
+            p.position_ghost[2] = gridOriginInteriorZ
+
+            -- Apply an impulse to kick particle away from the wall
+            var impulse = -(1.0+particles_options.restitution_coefficient)*p.velocity[2]
+            if impulse <= 0 then
+              p.velocity_ghost[2] += impulse
             end
+
+            -- Add a contact force in case particle rests on the wall
+            var contact_force = -1.0*p.velocity_t[2]
+
+            -- To prevent sticky walls, only add contact force if current
+            -- force would push the particle through the wall
+            if contact_force > 0 then
+              p.velocity_t_ghost[2] += contact_force
+            end
+
           end
         end
         
@@ -2651,13 +2838,25 @@ Particles.UpdateAuxiliaryStep1 = liszt kernel(p : particles)
           if grid_options.zBCRightParticles == Particles.Permeable then
             p.position_ghost[2] = p.position[2] - grid_options.zWidth
           elseif grid_options.zBCRightParticles == Particles.Solid then
-            var overshoot = p.position[2] - (gridOriginInteriorZ +
-                                             grid_options.zWidth)
-            p.position_ghost[2] = (gridOriginInteriorZ +
-                                   grid_options.zWidth) - overshoot
-            if p.velocity[2] > 0 then
-              p.velocity_ghost[2] = -p.velocity[2]
+
+            -- Set the position to be on the wall
+            p.position_ghost[2] = gridOriginInteriorZ + grid_options.zWidth
+
+            -- Apply an impulse to kick particle away from the wall
+            var impulse = -(1.0+particles_options.restitution_coefficient)*p.velocity[2]
+            if impulse >= 0 then
+              p.velocity_ghost[2] += impulse
             end
+
+            -- Add a contact force in case particle rests on the wall
+            var contact_force = -1.0*p.velocity_t[2]
+
+            -- To prevent sticky walls, only add contact force if current
+            -- force would push the particle through the wall
+            if contact_force < 0 then
+              p.velocity_t_ghost[2] += contact_force
+            end
+    
           end
         end
         
@@ -2665,8 +2864,9 @@ Particles.UpdateAuxiliaryStep1 = liszt kernel(p : particles)
 end
 Particles.UpdateAuxiliaryStep2 = liszt kernel(p : particles)
     if p.state == 1 then
-        p.position = p.position_ghost
-        p.velocity = p.velocity_ghost
+        p.position   = p.position_ghost
+        p.velocity   = p.velocity_ghost
+        p.velocity_t = p.velocity_t_ghost
     end
 end
 
@@ -2675,7 +2875,7 @@ end
 ---------
 
 -- Particles feeder
-Particles.Feed = liszt kernel(p: particles)
+liszt kernel Particles.Feed(p: particles)
 
     if p.state == 0 then
 
@@ -2721,7 +2921,7 @@ Particles.Feed = liszt kernel(p: particles)
         var injectorBox_velocityZ = particles_options.feederParams[8]
         var injectorBox_particlesPerTimeStep = particles_options.feederParams[9]
         -- Inject particle if matching timeStep requirements
-        if cmath.floor(p.id/injectorBox_particlesPerTimeStep) ==
+        if L.floor(p.id/injectorBox_particlesPerTimeStep) ==
            TimeIntegrator.timeStep then
             p.position[0] = injectorBox_centerX +
                             (cmath.rand_unity()-0.5) * injectorBox_widthX
@@ -2762,14 +2962,14 @@ Particles.Feed = liszt kernel(p: particles)
         var injectorB_velocityZ = particles_options.feederParams[18]
         var injectorB_particlesPerTimeStep = particles_options.feederParams[19]
         var numberOfParticlesInA = 
-             cmath.floor(particles_options.num*injectorA_particlesPerTimeStep/
+             L.floor(particles_options.num*injectorA_particlesPerTimeStep/
              (injectorA_particlesPerTimeStep+injectorB_particlesPerTimeStep))
         var numberOfParticlesInB = 
-             cmath.ceil(particles_options.num*injectorB_particlesPerTimeStep/
+             L.ceil(particles_options.num*injectorB_particlesPerTimeStep/
              (injectorA_particlesPerTimeStep+injectorB_particlesPerTimeStep))
         -- Inject particles at injectorA if matching timeStep requirements
-        if cmath.floor(p.id/injectorA_particlesPerTimeStep) ==
-           TimeIntegrator.timeStep then
+        if L.floor(p.id/injectorA_particlesPerTimeStep) ==
+          TimeIntegrator.timeStep then
             p.position[0] = injectorA_centerX +
                             (cmath.rand_unity()-0.5) * injectorA_widthX
             p.position[1] = injectorA_centerY +
@@ -2787,9 +2987,9 @@ Particles.Feed = liszt kernel(p: particles)
         -- will get over-riden by injector B; this can only occur at the same
         -- timeStep, as otherwise p.state is already set to 1 and the program 
         -- will not enter this route)
-        if cmath.floor((p.id-numberOfParticlesInA)/
+        if L.floor((p.id-numberOfParticlesInA)/
                        injectorB_particlesPerTimeStep) ==
-           TimeIntegrator.timeStep then
+          TimeIntegrator.timeStep then
             p.position[0] = injectorB_centerX +
                             (cmath.rand_unity()-0.5) * injectorB_widthX
             p.position[1] = injectorB_centerY +
@@ -3182,7 +3382,8 @@ end
   string.format(" %11.6f",particle_avg_temp),'\n')
 
   -- Check if it is time to output a restart file
-  if timeStep % TimeIntegrator.restartEveryTimeSteps == 0 then
+  if (timeStep % TimeIntegrator.restartEveryTimeSteps == 0 and
+      IO.wrtRestart == ON) then
     
     -- Prepare the restart file name for the current iteration
     
@@ -3233,7 +3434,8 @@ end
   end
 
 -- Check if it is time to output to file
-if timeStep % TimeIntegrator.outputEveryTimeSteps == 0 then
+if (timeStep % TimeIntegrator.outputEveryTimeSteps == 0 and
+    IO.wrtVolumeSolution == ON) then
 
 -- Native Python output format
 if IO.outputFormat == IO.Python then
@@ -3244,9 +3446,9 @@ tostring(timeStep)
 Flow.WriteField(outputFileName .. "_flow",
   grid:xSize(), grid:ySize(), grid:zSize(),
   grid.cells.temperature)
---Flow.WriteField(outputFileName .. "_flow",
---  grid:xSize(), grid:ySize(), grid:zSize(),
---  grid.cells.rho)
+Flow.WriteField(outputFileName .. "_flow",
+  grid:xSize(), grid:ySize(), grid:zSize(),
+  grid.cells.rho)
 Flow.WriteField(outputFileName .. "_flow",
   grid:xSize(), grid:ySize(), grid:zSize(),
   grid.cells.pressure)
@@ -3459,12 +3661,13 @@ local particleFile = io.output(particleFileName)
 
 -- Write header
 --io.write('TITLE = "Data"\n')
-io.write('VARIABLES = "X", "Y", "Z", "Diameter", "Temperature"\n')
+io.write('VARIABLES = "X", "Y", "Z", "X-Velocity", "Y-Velocity", "Z-Velocity", "Temperature", "Diameter"\n')
 io.write('ZONE SOLUTIONTIME=', TimeIntegrator.simTime:get(), '\n')
 
 values = particles.position:DumpToList()
 N      = particles.position:Size()
 veclen = particles.position:Type().N
+local p_velocity = particles.velocity:DumpToList()
 local diameter  = particles.diameter:DumpToList()
 local particleT = particles.temperature:DumpToList()
 for i=1,N do
@@ -3473,9 +3676,13 @@ for i=1,N do
     local t = tostring(values[i][j]):gsub('ULL',' ')
     s = s .. ' ' .. t .. ''
   end
-  local diam = tostring(diameter[i]):gsub('ULL',' ')
+  for j=1,veclen do
+    local t = tostring(p_velocity[i][j]):gsub('ULL',' ')
+    s = s .. ' ' .. t .. ''
+  end
   local temp = tostring(particleT[i]):gsub('ULL',' ')
-  s = s .. ' ' .. diam .. ' ' .. temp .. '\n'
+  local diam = tostring(diameter[i]):gsub('ULL',' ')
+  s = s .. ' ' .. temp .. ' ' .. diam .. '\n'
   io.write("", s)
 end
 
@@ -3483,6 +3690,146 @@ io.close()
 
 else
   print("Output format not defined. No output written to disk.")
+end
+
+-- Write center line velocities (x & y)
+if (timeStep % TimeIntegrator.outputEveryTimeSteps == 0 and
+  IO.wrt1DSlice == ON) then
+  
+  -- First, write the x-vel, then the y-vel in two separate files
+  
+  local outputFileName = IO.outputFileNamePrefix .. "x_velocity.csv"
+  
+  -- Open file
+  
+  local outputFile = io.output(outputFileName)
+  
+  -- CSV header
+  io.write('"Y", "X_Vel"\n')
+  
+  -- Dump the fields to lists for writing
+  
+  local cellCenter = grid.cells.centerCoordinates:DumpToList()
+  local velocity   = grid.cells.velocity:DumpToList()
+  
+  local nCells = grid.cells.velocity:Size()
+  local nDim   = grid.cells.velocity:Type().N
+  
+  -- Check for the vertical center of the domain and write the x-vel
+  
+  for i=1,nCells do
+    local s = ''
+    local x = cellCenter[i][1]
+    local y = cellCenter[i][2]
+    local z = cellCenter[i][3]
+    local ycor = tostring(cellCenter[i][2]):gsub('ULL',' ')
+    local xvel = velocity[i][1]
+    if x < (gridOriginInteriorX + grid_options.xWidth/2.0 + grid_options.xWidth /
+            (2.0*grid_options.xnum)) and x > (gridOriginInteriorX + grid_options.xWidth/2.0 - grid_options.xWidth / (2.0*grid_options.xnum)) and
+            y < (gridOriginInteriorY + grid_options.yWidth) and y > (gridOriginInteriorY) and z < (gridOriginInteriorZ + grid_options.zWidth) and z > (gridOriginInteriorZ) then
+            s = ycor .. ', ' .. tostring(xvel) .. '\n'
+            io.write(s)
+    end
+    
+  end
+  
+  -- Close the file
+  io.close()
+  
+  -- Now the y-vel in a separate file
+  
+  local outputFileName = IO.outputFileNamePrefix .. "y_velocity.csv"
+  
+  -- Open file
+  
+  local outputFile = io.output(outputFileName)
+  
+  -- CSV header
+  io.write('"X", "Y_Vel"\n')
+  
+  -- Dump the fields to lists for writing
+  
+  local cellCenter = grid.cells.centerCoordinates:DumpToList()
+  local velocity   = grid.cells.velocity:DumpToList()
+  
+  local nCells = grid.cells.velocity:Size()
+  local nDim   = grid.cells.velocity:Type().N
+  
+  -- Check for the vertical center of the domain and write the x-vel
+  
+  for i=1,nCells do
+    local s = ''
+    local x = cellCenter[i][1]
+    local y = cellCenter[i][2]
+    local z = cellCenter[i][3]
+    local xcor = tostring(cellCenter[i][1]):gsub('ULL',' ')
+    local yvel = velocity[i][2]
+    if y < (gridOriginInteriorY + grid_options.yWidth/2.0 + grid_options.yWidth /
+            (2.0*grid_options.ynum)) and y > (gridOriginInteriorY + grid_options.yWidth/2.0 - grid_options.yWidth / (2.0*grid_options.ynum)) and
+            x < (gridOriginInteriorX + grid_options.xWidth) and x > (gridOriginInteriorX) and z < (gridOriginInteriorZ + grid_options.zWidth) and z > (gridOriginInteriorZ) then
+            s = xcor .. ', ' .. tostring(yvel) .. '\n'
+            io.write(s)
+    end
+    
+  end
+  
+  -- Close the file
+  io.close()
+  
+end
+
+-- Check if it is time to output a particle restart file
+if (timeStep % TimeIntegrator.restartEveryTimeSteps == 0 and
+    IO.wrtRestart == ON) then
+    
+    -- Prepare the restart file name for the current iteration
+    
+    local outputFileName = IO.outputFileNamePrefix .. "restart_particles_" ..
+    tostring(timeStep) .. ".dat"
+    
+    -- Open file
+    
+    local outputFile = io.output(outputFileName)
+    
+    -- Dump the fields to lists for writing
+    
+    local p_position = particles.position:DumpToList()
+    local p_velocity = particles.velocity:DumpToList()
+    local diameter   = particles.diameter:DumpToList()
+    local particleT  = particles.temperature:DumpToList()
+    
+    local nParticles = particles.position:Size()
+    local nDim       = particles.position:Type().N
+    
+    -- Write header: number of particles, iteration, physical time
+    
+    io.write('Soleil Particle Restart\n')
+    local s = '' .. tostring(nParticles)
+    s = s .. ' ' .. tostring(timeStep)
+    s = s .. ' ' .. tostring(TimeIntegrator.simTime:get()) .. '\n'
+    io.write(s)
+    
+    -- Write the primitve variables for the particles
+
+    for i=1,nParticles do
+      s = ''
+      for j=1,nDim do
+        local t = tostring(p_position[i][j]):gsub('ULL',' ')
+        s = s .. ' ' .. t .. ''
+      end
+      for j=1,nDim do
+        local t = tostring(p_velocity[i][j]):gsub('ULL',' ')
+        s = s .. ' ' .. t .. ''
+      end
+      local temp = tostring(particleT[i]):gsub('ULL',' ')
+      local diam = tostring(diameter[i]):gsub('ULL',' ')
+      s = s .. ' ' .. temp .. ' ' .. diam .. '\n'
+      io.write("", s)
+    end
+    
+    -- Close the restart file
+    io.close()
+    
 end
 
 end

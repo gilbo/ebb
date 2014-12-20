@@ -40,6 +40,9 @@ return {
   cfl                   = 2.0,
   
   --- File Output Options --
+  wrtRestart = 'ON',
+  wrtVolumeSolution = 'ON',
+  wrt1DSlice = 'ON',
   outputEveryTimeSteps  = 100,
   restartEveryTimeSteps = 100,
   headerFrequency       = 20,
@@ -55,9 +58,12 @@ return {
   prandtl = 0.72,
   
   -- Particle Options --
+  initParticles = 'Random', -- 'Random' or 'Restart'
+  restartParticleIter = 0,
   particleType = 'Free', -- Fixed or Free
   twoWayCoupling = 'OFF',
   num = 100.0,
+  restitutionCoefficient = 1.0,
   convectiveCoefficient = 0.7, -- W m^-2 K^-1
   heatCapacity = 0.7, -- J Kg^-1 K^-1
   initialTemperature = 250, -- K

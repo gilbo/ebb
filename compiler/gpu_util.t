@@ -93,7 +93,14 @@ terralib.linklibrary("runtime/libdevice.bc")
 
 local cbrt = terralib.externfunction("__nv_cbrt", double -> double)
 local cos  = terralib.externfunction("__nv_cos",  double -> double)
+local acos = terralib.externfunction("__nv_acos", double -> double)
 local sin  = terralib.externfunction("__nv_sin",  double -> double)
+local asin = terralib.externfunction("__nv_asin", double -> double)
+local tan  = terralib.externfunction("__nv_tan",  double -> double)
+local atan = terralib.externfunction("__nv_atan", double -> double)
+local pow  = terralib.externfunction("__nv_pow",  {double, double} -> double)
+local fmod = terralib.externfunction("__nv_fmod", {double, double} -> double)
+
 
 --[[------------------------------------------------------------------------]]--
 --[[ Atomic reductions                                                      ]]--
@@ -224,10 +231,19 @@ GPU.sync       = terralib.externfunction("cudaThreadSynchronize", {} -> int)
 
 GPU.get_grid_dimensions = get_grid_dimensions
 
-GPU.cbrt = cbrt
-GPU.sqrt = cudalib.nvvm_sqrt_rm_d
-GPU.cos  = cos
-GPU.sin  = sin
+GPU.cbrt  = cbrt
+GPU.sqrt  = cudalib.nvvm_sqrt_rm_d
+GPU.cos   = cos
+GPU.acos  = acos
+GPU.sin   = sin
+GPU.asin  = asin
+GPU.tan   = tan
+GPU.atan  = atan
+GPU.floor = cudalib.nvvm_floor_d
+GPU.ceil  = cudalib.nvvm_ceil_d
+GPU.fabs  = cudalib.nvvm_fabs_d
+GPU.pow   = pow
+GPU.fmod  = fmod
 
 -- Intrinsic atomic reductions:
 GPU.atomic_add_float = atomic_add_float
