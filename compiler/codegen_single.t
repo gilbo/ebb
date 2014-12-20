@@ -93,7 +93,7 @@ function Context:runtimeSignature()
   return self.signature_ptr
 end
 function Context:cpuSignature()
-  return self.bran.signature:ptr()
+  return self.bran.args:ptr()
 end
 function Context:isLiveCheck(param_var)
   local ptr = self:FieldPtr(self.bran.relation._is_live_mask)
