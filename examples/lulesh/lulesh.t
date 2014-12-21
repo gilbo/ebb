@@ -6,7 +6,7 @@ local PN    = L.require 'lib.pathname'
 local Grid  = L.require "domains.grid"
 
 
-local N = 45
+local N = 60
 local sz = 1.125
 local grid = Grid.NewGrid3d({
   size   = {  N,  N,  N },
@@ -1137,6 +1137,11 @@ local liszt function calcEnergyForElems (p_old, e_old, q_old, compression, compH
   return { p_new, e_new, q_new, bvc, pbvc }
 end
 
+local liszt function updateVolumesForElem (c)
+  var tmpV = c.vnew
+  if fabs(tmpV - 1.0) < m.v_cut then tmpV = 1.0 end
+  c.vol = tmpV
+end
 
 local liszt function evalEOSForElem (c)
   var rho0         = m.refdens
@@ -1182,9 +1187,10 @@ local liszt function evalEOSForElem (c)
   c.ss = ssc
 end
 
-local liszt kernel calcMQRegionAndEvalEOS(c : grid.cells)
+local liszt kernel applyMaterialPropertiesAndUpdateVolume(c : grid.cells)
   calcMonotonicQRegionForElem(c)
   evalEOSForElem(c)
+  updateVolumesForElem(c)
 end
 
 local liszt kernel updateVolumeForElements(c : grid.cells)
@@ -1195,13 +1201,12 @@ end
 
 function lagrangeElements ()
   calcKinemAndMQGradientsForElems(grid.cells)
-  -- TODO: material boundary set?
-  calcMQRegionAndEvalEOS(grid.cells)
-  updateVolumeForElements(grid.cells)
+  applyMaterialPropertiesAndUpdateVolume(grid.cells)
 end
 
 
-local liszt kernel courantConstraintKernel(c : grid.cells)
+local liszt kernel timeConstraintKernel (c : grid.cells)
+  -- courant constraint calculation
   var qqc_tmp : L.double = m.qqc
   var qqc2    = 64.0 * qqc_tmp * qqc_tmp
 
@@ -1217,38 +1222,31 @@ local liszt kernel courantConstraintKernel(c : grid.cells)
   if vdovtmp ~= 0.0 then
     dtcourant_tmp min= dtf
   end
-end
 
-function calcCourantConstraintForElems()
-  dtcourant_tmp:set(1e20)
-  courantConstraintKernel(grid.cells)
-  local result = dtcourant_tmp:get()
-  if result ~= 1e20 then
-    m.dtcourant = result
-  end
-end
-
-local liszt kernel hydroConstraintKernel(c : grid.cells)
-  var vdovtmp = c.vdov
+  vdovtmp = c.vdov
   if vdovtmp ~= 0.0 then
     var dtdvov = m.dvovmax / (fabs(vdovtmp) + 1.e-20)
     dthydro_tmp min= dtdvov
   end
-end
 
-function calcHydroConstraintForElems()
-  dthydro_tmp:set(1e20)
-  hydroConstraintKernel(grid.cells)
-  local result = dthydro_tmp:get()
-  if result ~= 1e20 then
-    m.dthydro = result
-  end
-end
 
+end
 
 function calcTimeConstraintsForElems ()
-  calcCourantConstraintForElems()
-  calcHydroConstraintForElems()
+  dthydro_tmp:set(1e20)
+  dtcourant_tmp:set(1e20)
+
+  timeConstraintKernel(grid.cells)
+
+  local courant_result = dtcourant_tmp:get()
+  if courant_result ~= 1e20 then
+    m.dtcourant = courant_result
+  end
+
+  local dthydro_result = dthydro_tmp:get()
+  if dthydro_result ~= 1e20 then
+    m.dthydro = dthydro_result
+  end
 end
 
 function lagrangeLeapFrog ()
