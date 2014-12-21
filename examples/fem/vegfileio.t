@@ -103,15 +103,15 @@ function VEGFileIO.LoadTetmesh(path)
           path..'@'..tostring(line_no)..':\n'..msg,2)
   end
   while line ~= nil do
+
+    -- TRIM WHITE SPACE AT FRONT
+    line = line:sub(line:match("^%s*"):len() + 1)
+
     local first_char = line:sub(0,1)
 
     -- BLANK LINES (length 0)
     if first_char:len() == 0 then
       -- skip
-
-    -- BAD LINES (with whitespace)
-    elseif first_char:find('%s') then
-      report_error('Lines may not begin with whitespace')
 
     -- COMMENT LINES
     elseif first_char == '#' then
@@ -232,12 +232,12 @@ function VEGFileIO.LoadTetmesh(path)
 
   -- check completeness
   if #vertices ~= n_vertices then
-    report_error('File claimed that there are '..n_vertices..' vertices, '..
-                 'but we found '..#vertices..' vertices')
+    report_error('File claimed that there are '.. tostring(n_vertices) ..' vertices, '..
+                 'but we found '.. tostring(#vertices) ..' vertices')
   end
   if #elements ~= n_elements then
-    report_error('File claimed that there are '..n_elements..' elements, '..
-                 'but we found '..#elements..' elements')
+    report_error('File claimed that there are '.. tostring(n_elements) ..' elements, '..
+                 'but we found '.. tostring(#elements) ..' elements')
   end
 
   local mesh = Tetmesh.LoadFromLists(vertices, elements)
