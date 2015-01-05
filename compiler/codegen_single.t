@@ -480,7 +480,7 @@ function compute_nblocks (ctxt)
 end
 
 function gpu_codegen (kernel_ast, ctxt)
-  local BLOCK_SIZE   = 64
+  local BLOCK_SIZE   = ctxt.bran.blocksize
   local MAX_GRID_DIM = 65536
 
   -----------------------------
