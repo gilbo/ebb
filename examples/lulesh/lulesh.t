@@ -636,6 +636,8 @@ local transpose_4x8 = L.NewMacro(function(m)
   }
 end)
 
+
+
 local liszt kernel calcVolumeForceForElems (c : grid.cells)
   var determ = c.volo * c.vol
   var volinv = 1.0 / determ
@@ -653,27 +655,14 @@ local liszt kernel calcVolumeForceForElems (c : grid.cells)
   }
 
   -- 4x8 matrix
-  var gamma_x_local = mmult_4x8x3(gamma, localCoords)
-  var gamma_x_local_x_pf = mmult_4x3x8(gamma_x_local, pf)
-  var hourgam = gamma - volinv * gamma_x_local_x_pf
+  var hourgam = gamma - volinv *
+                        mmult_4x3x8(mmult_4x8x3(gamma, localCoords), pf)
   -- 8x4 matrix
   var hourgamXpose = transpose_4x8(hourgam)
   -- 8x3 matrix
   var localVelocities = getLocalNodeVelocityVectors(c)
-  var hourgam_x_vel = mmult_4x8x3(hourgam, localVelocities)
-  var hour_x_hour_x_vel = mmult_8x4x3(hourgamXpose, hourgam_x_vel)
-  var hgf = coefficient * hour_x_hour_x_vel
-
--- TODO: The problem here was duplicating code when inlining macros I believe
-
---  var hourgam = gamma - volinv *
---                        mmult_4x3x8(mmult_4x8x3(gamma, localCoords), pf)
---  -- 8x4 matrix
---  var hourgamXpose = transpose_4x8(hourgam)
---  -- 8x3 matrix
---  var localVelocities = getLocalNodeVelocityVectors(c)
---  var hgf = coefficient *
---            mmult_8x4x3(hourgamXpose, mmult_4x8x3(hourgam, localVelocities))
+  var hgf = coefficient *
+            mmult_8x4x3(hourgamXpose, mmult_4x8x3(hourgam, localVelocities))
   -- Volume calculation involves extra work for numerical consistency.
   if m.hgcoef > 0.0 then
     var stress = -c.p - c.q
@@ -1267,9 +1256,10 @@ end
 ------------------------------------------------------------------------------------------
 local function runSolver ()
   m.initMeshParameters()
-  start_time = terralib.currenttimeinseconds()
+  --start_time = terralib.currenttimeinseconds()
   --while m.cycle < 100 do
   while m.time < m.stoptime do
+    if m.cycle == 1 then start_time = terralib.currenttimeinseconds() end
     timeIncrement()
     lagrangeLeapFrog()
     if m.cycle % 10 == 0 then
@@ -1280,7 +1270,8 @@ local function runSolver ()
 end
 
 local function printStats()
-  local average_iteration_time = (end_time - start_time) / m.cycle * 1e3
+  local average_iteration_time = (end_time - start_time) / (m.cycle-1) * 1e3
+  print("[[Note that timing started AFTER first iteration]]")
   print("Total elapsed time = " .. tostring(end_time - start_time))
   print("  ms per iteration = " .. tostring(average_iteration_time))
   print("   Problem size        = " .. tostring(N))

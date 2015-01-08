@@ -8,7 +8,7 @@ local L = terralib.require 'compiler.lisztlib'
 local G = terralib.require 'compiler.gpu_util'
 local Cc = terralib.require 'compiler.codegen_common'
 
-local OUTPUT_PTX=false
+L._INTERNAL_DEV_OUTPUT_PTX = false
 --[[--------------------------------------------------------------------]]--
 --[[                 Context Object for Compiler Pass                   ]]--
 --[[--------------------------------------------------------------------]]--
@@ -425,7 +425,7 @@ function generate_final_reduce (ctxt, fn_name)
   end
   final_reduce:setname(fn_name)
   -- using id here to set debug name of kernel for tuning/debugging
-  return G.kernelwrap(final_reduce, OUTPUT_PTX)
+  return G.kernelwrap(final_reduce, L._INTERNAL_DEV_OUTPUT_PTX)
 end
 
 function allocate_reduction_space (n_blocks, ctxt)
@@ -552,7 +552,7 @@ function gpu_codegen (kernel_ast, ctxt)
   end
   cuda_kernel:setname(kernel_ast.id)
   -- using kernel_ast.id here to set debug name of kernel for tuning/debugging
-  cuda_kernel = G.kernelwrap(cuda_kernel, OUTPUT_PTX)
+  cuda_kernel = G.kernelwrap(cuda_kernel, L._INTERNAL_DEV_OUTPUT_PTX)
 
   --------------------------
   --[[ Codegen launcher ]]--
