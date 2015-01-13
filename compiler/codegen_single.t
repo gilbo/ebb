@@ -552,7 +552,10 @@ function gpu_codegen (kernel_ast, ctxt)
   end
   cuda_kernel:setname(kernel_ast.id)
   -- using kernel_ast.id here to set debug name of kernel for tuning/debugging
-  cuda_kernel = G.kernelwrap(cuda_kernel, L._INTERNAL_DEV_OUTPUT_PTX)
+  
+  -- limit 
+  local annotations = { {"maxntidx",64}, {"minctasm",6} }
+  cuda_kernel = G.kernelwrap(cuda_kernel, L._INTERNAL_DEV_OUTPUT_PTX, annotations)
 
   --------------------------
   --[[ Codegen launcher ]]--

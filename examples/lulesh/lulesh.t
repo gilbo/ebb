@@ -390,7 +390,7 @@ local calcElemNodeNormals = liszt function(c, stress)
       r6[0], r6[1], r6[2], r7[0], r7[1], r7[2]
     }
 end
-
+local twelfth = 1.0/12.0
 local voluDer = liszt function(p0,p1,p2,p3,p4,p5)
   var m01 = p0.position + p1.position
   var m12 = p1.position + p2.position
@@ -398,7 +398,7 @@ local voluDer = liszt function(p0,p1,p2,p3,p4,p5)
   var m34 = p3.position + p4.position 
   var m25 = p2.position + p5.position
   var m35 = p3.position + p5.position
-
+  
   var dvdx =   m12[1] * m01[2] - m01[1] * m12[2] +
                m04[1] * m34[2] - m34[1] * m04[2] -
                m25[1] * m35[2] + m35[1] * m25[2]
@@ -411,7 +411,7 @@ local voluDer = liszt function(p0,p1,p2,p3,p4,p5)
                m04[1] * m34[0] + m34[1] * m04[0] +
                m25[1] * m35[0] - m35[1] * m25[0]
 
-  return { dvdx/12.0, dvdy/12.0, dvdz/12.0 }
+  return { dvdx*twelfth, dvdy*twelfth, dvdz*twelfth }
 end
 
 local calcElemVolumeDerivative = liszt function (c)
@@ -656,7 +656,7 @@ local liszt kernel calcVolumeForceForElems (c : grid.cells)
 
   -- 4x8 matrix
   var hourgam = gamma - volinv *
-                        mmult_4x3x8(mmult_4x8x3(gamma, localCoords), pf)
+                        mmult_4x3x8(mmult_4x8x3(gamma, localCoords), pf) -- this is CalcHourglassModes
   -- 8x4 matrix
   var hourgamXpose = transpose_4x8(hourgam)
   -- 8x3 matrix

@@ -3,7 +3,7 @@ local C = terralib.require 'compiler.c'
 -- Wrap a Terra function such that it takes no struct or array arguments by value.
 -- All occurrences of struct(or array)-by-value are unpacked before being passed in
 --    and then re-packed once inside the function.
-return function(terrafn, verbose)
+return function(terrafn, verbose, annotations)
 	terrafn:setinlined(true)
 	terrafn:emitllvm()	-- To guarantee we have a type
 	local succ, T = terrafn:peektype()
@@ -58,7 +58,7 @@ return function(terrafn, verbose)
 	local terra kernel([kernelSyms]) : {}
 		terrafn([repackExprs])
 	end
-	local inline = terralib.cudacompile({[terrafn.name]=kernel}, verbose)[terrafn.name]
+	local inline = terralib.cudacompile({[terrafn.name]={kernel = kernel, annotations = annotations}}, verbose)[terrafn.name]
 	-- We return a wrapper around the kernel that takes the original arguments, unpacks
 	--    them, then calls the kernel.
 	local terra wrapper(kernelparams: &terralib.CUDAParams, [outersyms]) : {}
