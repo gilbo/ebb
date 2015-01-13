@@ -6,7 +6,7 @@ local PN    = L.require 'lib.pathname'
 local Grid  = L.require "domains.grid"
 
 
-local N = 60
+local N = 150
 local sz = 1.125
 local grid = Grid.NewGrid3d({
   size   = {  N,  N,  N },
@@ -15,7 +15,8 @@ local grid = Grid.NewGrid3d({
 
 })
 
-
+local twelfth = 1.0/12.0
+local eighth = 1.0/8.0 
 ------------------------------------------------------------------------------------------
 --[[ Element-centered temporaries                                                     ]]--
 ------------------------------------------------------------------------------------------
@@ -99,7 +100,6 @@ grid.cells.e:Load(function(index)
   else return 0
   end
 end)
-
 
 ------------------------------------------------------------------------------------------
 --[[ Global mesh parameters                                                           ]]--
@@ -223,7 +223,7 @@ local calcElemVolume = liszt function (c)
   var volume = TRIPLE_PRODUCT( d31+d72, d63, d20 ) +
                TRIPLE_PRODUCT( d43+d57, d64, d70 ) +
                TRIPLE_PRODUCT( d14+d25, d61, d50 )
-  return volume / 12.0
+  return volume * twelfth
 end
 --local calcElemVolume = liszt function (localCoords)
 --  var d61 = row(localCoords,6) - row(localCoords,1)
@@ -390,7 +390,6 @@ local calcElemNodeNormals = liszt function(c, stress)
       r6[0], r6[1], r6[2], r7[0], r7[1], r7[2]
     }
 end
-local twelfth = 1.0/12.0
 local voluDer = liszt function(p0,p1,p2,p3,p4,p5)
   var m01 = p0.position + p1.position
   var m12 = p1.position + p2.position
@@ -446,7 +445,7 @@ local liszt kernel initialVolumeCalc(c : grid.cells)
   c.volo = volume
   c.mass = volume
 
-  var dvol = L.float(volume / 8.0)
+  var dvol = L.float(volume * eighth)
   c.v[0].mass += dvol
   c.v[1].mass += dvol
   c.v[2].mass += dvol
@@ -459,10 +458,13 @@ end
 
 -- Grid initializes position over cell centers, so we need to
 -- initialize vertex positions manually.
+
+local Nth = 1.0 / N
+
 local liszt kernel initVectorPosition(v : grid.vertices)
-  v.px = L.double(v.xid) * sz / N
-  v.py = L.double(v.yid) * sz / N
-  v.pz = L.double(v.zid) * sz / N
+  v.px = L.double(v.xid) * sz * Nth
+  v.py = L.double(v.yid) * sz * Nth
+  v.pz = L.double(v.zid) * sz * Nth
 end
 
 function m.initMeshParameters ()
@@ -817,6 +819,7 @@ end
 
 -- This function uses the scratchpade01-03 fields to temporarily store 2nd derivatives
 -- of position (?) in x, y, z
+local third = 1.0/3.0
 local liszt function calcKinematicsForElem(c, localCoords, localVelocities)
   var volume = calcElemVolume(c)
   var relativeVolume = volume / c.volo
@@ -828,8 +831,11 @@ local liszt function calcKinematicsForElem(c, localCoords, localVelocities)
   c.arealg = calcElemCharacteristicLength(localCoords, volume)
 
   var dt2 = 0.5 * m.deltatime
-  for i = 0, 24 do
+  for i = 0, 24, 4 do
     localCoords[i] -= dt2 * localVelocities[i]
+    localCoords[i+1] -= dt2 * localVelocities[i+1]
+    localCoords[i+2] -= dt2 * localVelocities[i+2]
+    localCoords[i+3] -= dt2 * localVelocities[i+3]
   end
 
   var b = calcElemShapeFunctionDerivatives2(localCoords)
@@ -837,7 +843,7 @@ local liszt function calcKinematicsForElem(c, localCoords, localVelocities)
 
   var D = calcElemVelocityGradient(localVelocities, b, detJ)
   var vdov_tmp = D[0] + D[1] + D[2]
-  var vdovthird = vdov_tmp / 3.0
+  var vdovthird = vdov_tmp * third
   c.vdov = vdov_tmp
   c.scratchpade01 = D[0] - vdovthird -- dxx
   c.scratchpade02 = D[1] - vdovthird -- dyy
@@ -905,10 +911,14 @@ local liszt function calcMonotonicQGradientsForElem(c, localCoords, localVelocit
 end
 
 -- fused Kinematics and Monotonic Q Gradient calculations
-local liszt kernel calcKinemAndMQGradientsForElems(c : grid.cells)
+local liszt kernel calcKinemAndMQGradientsForElems1(c : grid.cells)
   var localCoords     = getLocalNodeCoordVectors(c)
   var localVelocities = getLocalNodeVelocityVectors(c)
   calcKinematicsForElem(c, localCoords, localVelocities)
+  end
+local liszt kernel calcKinemAndMQGradientsForElems2(c : grid.cells)
+  var localCoords     = getLocalNodeCoordVectors(c)
+  var localVelocities = getLocalNodeVelocityVectors(c)
   calcMonotonicQGradientsForElem(c, localCoords, localVelocities)
 end
 
@@ -1189,7 +1199,8 @@ local liszt kernel updateVolumeForElements(c : grid.cells)
 end
 
 function lagrangeElements ()
-  calcKinemAndMQGradientsForElems(grid.cells)
+  calcKinemAndMQGradientsForElems1(grid.cells)
+  calcKinemAndMQGradientsForElems2(grid.cells)
   applyMaterialPropertiesAndUpdateVolume(grid.cells)
 end
 
@@ -1257,8 +1268,8 @@ end
 local function runSolver ()
   m.initMeshParameters()
   --start_time = terralib.currenttimeinseconds()
-  --while m.cycle < 100 do
-  while m.time < m.stoptime do
+  while m.cycle < 100 do
+  --while m.time < m.stoptime do
     if m.cycle == 1 then start_time = terralib.currenttimeinseconds() end
     timeIncrement()
     lagrangeLeapFrog()
