@@ -69,7 +69,7 @@ local function unrolled_block_reduce (ptr, tid)
         expr = quote
             [expr]
             if tid < step then [ptr][tid] = [ptr][tid] + [ptr][tid + step] end
-            cudalib.ptx_bar_sync(0)
+            cudalib.nvvm_barrier0()
         end
 
         -- Pairwise reductions over > 32 threads need to be synchronized b/c

@@ -132,9 +132,7 @@ local atomic_add_float = terralib.intrinsic("llvm.nvvm.atomic.load.add.f32.p0f32
 --[[ Implementation of slow atomics                                         ]]--
 --[[------------------------------------------------------------------------]]--
 local cas_uint64 = terra(address : &uint64, compare : uint64, value : uint64)
-    var old : uint64 = @address
-    terralib.asm(terralib.types.uint64, "atom.global.cas.b64 $0, [$1], $2, $3;","l,l,l,l",true,old,address,compare,value)
-    return old
+    return terralib.asm(terralib.types.uint64, "atom.global.cas.b64 $0, [$1], $2, $3;","=l,l,l,l",true,address,compare,value)
 end
 
 local cas_uint32 = terra(address : &uint32, compare : uint32, value : uint32)
@@ -226,7 +224,7 @@ GPU.thread_id  = thread_id
 GPU.global_tid = global_tid
 GPU.num_blocks = num_blocks
 
-GPU.barrier    = macro(function() return quote cudalib.ptx_bar_sync(0) end end)
+GPU.barrier    = macro(function() return quote cudalib.nvvm_barrier0() end end)
 GPU.sync       = terralib.externfunction("cudaThreadSynchronize", {} -> int)
 
 GPU.get_grid_dimensions = get_grid_dimensions
