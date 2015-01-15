@@ -1019,31 +1019,39 @@ function ast.FieldAccess:codegen (ctxt)
   return `@(dataptr + [index])
 end
 
+local fmin = terralib.externfunction("__nv_fmin", {double,double} -> double)
+local fmax = terralib.externfunction("__nv_fmax", {double,double} -> double)
 
 
+local minexp = macro(function(lhe,rhe)
+    if lhe:gettype() == double and L.default_processor == L.GPU then
+        return `fmin(lhe,rhe)
+    else 
+      return quote
+        var a = [lhe]
+        var b = [rhe]
+        var result = a
+        if result > b then result = b end
+      in
+        result
+      end
+    end
+end)
 
-
-local minexp = function(lhe, rhe)
-  return quote
-    var a = [lhe]
-    var b = [rhe]
-    var result = a
-    if result > b then result = b end
-  in
-    result
-  end
-end
-
-local maxexp = function(lhe, rhe)
-  return quote
-    var a = [lhe]
-    var b = [rhe]
-    var result = a
-    if result < b then result = b end
-  in
-    result
-  end
-end
+local maxexp = macro(function(lhe,rhe)
+    if lhe:gettype() == double and L.default_processor == L.GPU then
+        return `fmax(lhe,rhe)
+    else 
+      return quote
+        var a = [lhe]
+        var b = [rhe]
+        var result = a
+        if result < b then result = b end
+      in
+        result
+      end
+    end
+end)
 
 function bin_exp (op, lhe, rhe)
   if     op == '+'   then return `[lhe] +   [rhe]
@@ -1060,8 +1068,8 @@ function bin_exp (op, lhe, rhe)
   elseif op == '>='  then return `[lhe] >=  [rhe]
   elseif op == '=='  then return `[lhe] ==  [rhe]
   elseif op == '~='  then return `[lhe] ~=  [rhe]
-  elseif op == 'max' then return maxexp(lhe, rhe)
-  elseif op == 'min' then return minexp(lhe, rhe)
+  elseif op == 'max' then return `maxexp(lhe, rhe)
+  elseif op == 'min' then return `minexp(lhe, rhe)
   end
 end
 
