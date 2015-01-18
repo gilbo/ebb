@@ -8,7 +8,7 @@ terra:
     
 clean:
 	make -C runtime clean
-	rm -f terra
+	rm terra
 	
 test: all
 	terra/terra run_tests.lua
