@@ -101,7 +101,7 @@ L.LKernel.__call  = function (kobj, relset, params)
     })
   else
     if proc == L.GPU then
-      local blocksize = (params and params.blocksize) or 64
+local blocksize = 64
       bran = Bran.BuildOrFetch({
           kernel=kobj,
           relset=relset,
