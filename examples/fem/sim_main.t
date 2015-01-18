@@ -1,6 +1,6 @@
 import 'compiler.liszt'
 local vdb = L.require 'lib.vdb'
--- L.default_processor = L.GPU
+L.default_processor = L.GPU
 
 local Tetmesh = L.require 'examples.fem.tetmesh'
 local VEGFileIO = L.require 'examples.fem.vegfileio'
@@ -12,13 +12,13 @@ local mesh_files = {
     [3] = '/home/liszt/vega-models/hose_small.veg', -- use on lightroast
     [4] = '/home/liszt/vega-models/hose_medium.veg', -- use on lightroast
 }
-local volumetricMeshFileName = mesh_files[2]
+local volumetricMeshFileName = mesh_files[4]
 print("Loading " .. volumetricMeshFileName)
 local mesh = VEGFileIO.LoadTetmesh(volumetricMeshFileName)
 
--- local I = terralib.includecstring([[
--- #include "cuda_profiler_api.h"
--- ]])
+local I = terralib.includecstring([[
+#include "cuda_profiler_api.h"
+]])
 
 local gravity = 9.81
 
@@ -806,43 +806,43 @@ function ImplicitBackwardEulerIntegrator:solvePCG(mesh)
   local timer_total = Timer.New()
   timer_total:Start()
   mesh.vertices.x:Load({ 0, 0, 0 })
-  self.pcgCalculatePreconditioner(mesh.vertices)
+  self.pcgCalculatePreconditioner(mesh.vertices, {blocksize=16})
   local iter = 1
-  self.pcgCalculateExactResidual(mesh.vertices)
+  self.pcgCalculateExactResidual(mesh.vertices, {blocksize=16})
   self.normRes:set(0)
-  self.pcgInitialize(mesh.vertices)
+  self.pcgInitialize(mesh.vertices, {blocksize=16})
   t_normres:Start()
-  self.pcgCalculateNormResidual(mesh.vertices)
+  self.pcgCalculateNormResidual(mesh.vertices, {blocksize=16})
   t_normres:Pause()
   local normRes = self.normRes:get()
   local thresh = self.cgEpsilon * self.cgEpsilon * normRes
   while normRes > thresh and
         iter <= self.cgMaxIterations do
     t_computeap:Start()
-    self.pcgComputeAp(mesh.vertices)
+    self.pcgComputeAp(mesh.vertices, {blocksize=16})
     t_computeap:Pause()
     self.alphaDenom:set(0)
     t_alphadenom:Start()
-    self.pcgComputeAlphaDenom(mesh.vertices)
+    self.pcgComputeAlphaDenom(mesh.vertices, {blocksize=64})
     t_alphadenom:Pause()
     self.alpha:set( normRes / self.alphaDenom:get() )
     t_updatex:Start()
-    self.pcgUpdateX(mesh.vertices)
+    self.pcgUpdateX(mesh.vertices, {blocksize=64})
     t_updatex:Pause()
     if iter % 30 == 0 then
-      self.pcgCalculateExactResidual(mesh.vertices)
+      self.pcgCalculateExactResidual(mesh.vertices, {blocksize=16})
     else
-      self.pcgUpdateResidual(mesh.vertices)
+      self.pcgUpdateResidual(mesh.vertices, {blocksize=64})
     end
     local normResOld = normRes
     self.normRes:set(0)
     t_normres:Start()
-    self.pcgCalculateNormResidual(mesh.vertices)
+    self.pcgCalculateNormResidual(mesh.vertices, {blocksize=64})
     t_normres:Pause()
     normRes = self.normRes:get()
     self.beta:set( normRes / normResOld )
     t_updatep:Start()
-    self.pcgUpdateP(mesh.vertices)
+    self.pcgUpdateP(mesh.vertices, {blocksize=64})
     t_updatep:Pause()
     iter = iter + 1
   end
