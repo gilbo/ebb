@@ -9,7 +9,7 @@ local Cc = terralib.require 'compiler.codegen_common'
 
 -- Legion dependencies
 terralib.require "compiler.legion_data"
-terralib.require "legionlib-terra"
+terralib.require "legionlib"
 local Lc = terralib.includecstring([[
 #include "legion_c.h"
 ]])
@@ -83,6 +83,7 @@ function cpu_codegen (kernel_ast, ctxt)
     -- Placeholder for kernel executable.
     local kernel_body = quote
       C.printf("Kernel executable unimplemented\n")
+      C.printf("In codegen_legion.t\n")
       return false
     end
 

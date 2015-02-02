@@ -3,7 +3,7 @@
 local C = terralib.require "compiler.c"
 
 -- Legion library
-terralib.require "legionlib-terra"
+terralib.require "legionlib"
 local Lc = terralib.includecstring([[
 #include "legion_c.h"
 ]])

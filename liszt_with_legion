@@ -64,7 +64,7 @@ terra_exe = os.path.join(terra_dir, 'terra')
 if options.legion and options.legion == True:
     os_name = platform.system()
     legion_runtime_dir = os.path.join(legion_root_dir, 'runtime')
-    bindings_dir = os.path.join(legion_root_dir, 'bindings', 'lua')
+    bindings_dir = os.path.join(legion_root_dir, 'bindings', 'terra')
     liszt_runtime_dir = script_dir
     terra_path = [
             '?.lua',

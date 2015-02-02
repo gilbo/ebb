@@ -4,7 +4,7 @@ package.loaded["compiler.legion_tasks"] = T
 local C = terralib.require "compiler.c"
 
 -- Legion library
-terralib.require "legionlib-terra"
+terralib.require "legionlib"
 local Lc = terralib.includecstring([[
 #include "legion_c.h"
 ]])
@@ -88,14 +88,6 @@ T.TaskTypes = { simple = 'simple', fut = 'fut' }
 --[[                         Legion task launcher                          ]]--
 -------------------------------------------------------------------------------
 
--- Placeholder for kernel executable.
-local terra code_unimplemented(regions : &Lc.legion_physical_region_t,
-                               num_region : uint32, ctx : Lc.legion_context_t,
-                               runtime : Lc.legion_runtime_t)
-  C.printf("Kernel executable unimplemented\n")
-  return false
-end
-
 function T.CreateTaskLauncher(params)
   local args = params.kernel_launcher:PackToTaskArg()
   if params.task_type == T.TaskTypes.simple then
@@ -116,5 +108,7 @@ function T.LaunchTask(p)
   local f = Lc.legion_task_launcher_execute(p.runtime, p.ctx, p.task_launcher)
   -- TODO: no need to wait on future value technically, but Legion exits before
   -- the task is completed, why?
+  -- NOTE: This is going to cause the program to crash right now, but we need
+  -- it till we implement waiting for all unfinished tasks.
   local res = Lc.legion_future_get_result(f)
 end

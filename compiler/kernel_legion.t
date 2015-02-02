@@ -5,7 +5,7 @@ local L = terralib.require "compiler.lisztlib"
 local C = terralib.require "compiler.c"
 
 local Tc = terralib.require "compiler.typedefs"
-terralib.require "legionlib-terra"
+terralib.require "legionlib"
 local Lc = terralib.includecstring([[
 #include "legion_c.h"
 ]])
