@@ -39,6 +39,7 @@ end
 --[[ LRelation methods                                                     ]]--
 -------------------------------------------------------------------------------
 
+-- Create a generic relation
 function L.NewRelation(size, name)
     -- error check
   if not name or type(name) ~= "string" then
@@ -74,14 +75,75 @@ function L.NewRelation(size, name)
     rel._is_live_mask:Load(true)
   elseif use_legion then
     -- create a logical region.
-    local params = { rows_max = size,
-                     rows_init = size,
-                     relation = rel,
-                   }
-    local logical_region = Ld.NewLogicalRegion(params)
+    local dom_params =
+    {
+      relation = rel,
+      rows_max = size,
+      rows_init = size
+    }
+    local logical_region = Ld.NewLogicalRegion(dom_params)
     rawset(rel, '_logical_region', logical_region)
   end
 
+  return rel
+end
+
+-- Create a relation that has an underlying grid data layout
+function L.NewGridRelation(name, params)
+    -- error check
+  if not name or type(name) ~= "string" then
+    error("NewRelation() expects a string as the 2nd argument", 2)
+  end
+  if not L.is_valid_lua_identifier(name) then
+    error(L.valid_name_err_msg.relation, 2)
+  end
+
+  local dim = #params.bounds
+  local bounds = params.bounds
+  if not (dim == 1 or dim == 2 or dim == 3) then
+    error("Invalid dimension size " .. tostring(dim), 3)
+  end
+  local size = 1
+  for d = 1, dim do
+    size = size * bounds[d]
+  end
+
+  -- construct and return the relation
+  local rel = setmetatable( {
+    _concrete_size = size,
+    _logical_size  = size,
+
+    _fields    = terralib.newlist(),
+    _subsets   = terralib.newlist(),
+    _macros    = terralib.newlist(),
+    _functions = terralib.newlist(),
+
+    _incoming_refs = {}, -- used for walking reference graph
+    _name      = name,
+    _typestate = {
+      --groupedby   = false, -- use _grouping entry's presence instead
+      fragmented  = false,
+      --has_subsets = false, -- use #_subsets
+      grid        = true,
+    },
+  },
+  L.LRelation)
+
+  if use_single then
+    -- create a mask to track which rows are live.
+    rawset(rel, '_is_live_mask', L.LField.New(rel, '_is_live_mask', L.bool))
+    rel._is_live_mask:Load(true)
+  elseif use_legion then
+    -- create a logical region.
+    local dom_params =
+    {
+      relation = rel,
+      dimensions = dim,
+      bounds = bounds
+    }
+    local logical_region = Ld.NewGridLogicalRegion(dom_params)
+    rawset(rel, '_logical_region', logical_region)
+  end
   return rel
 end
 
