@@ -81,8 +81,8 @@ function L.NewRelation(size, name)
       rows_max = size,
       rows_init = size
     }
-    local logical_region = Ld.NewLogicalRegion(dom_params)
-    rawset(rel, '_logical_region', logical_region)
+    local logical_region_wrapper = Ld.NewLogicalRegion(dom_params)
+    rawset(rel, '_logical_region_wrapper', logical_region_wrapper)
   end
 
   return rel
@@ -141,8 +141,8 @@ function L.NewGridRelation(name, params)
       dimensions = dim,
       bounds = bounds
     }
-    local logical_region = Ld.NewGridLogicalRegion(dom_params)
-    rawset(rel, '_logical_region', logical_region)
+    local logical_region_wrapper = Ld.NewGridLogicalRegion(dom_params)
+    rawset(rel, '_logical_region_wrapper', logical_region_wrapper)
   end
   return rel
 end
@@ -528,8 +528,8 @@ function L.LField.New(rel, name, typ)
     field.array   = nil
     field:Allocate()
   elseif use_legion then
-    local logical_region = rel._logical_region
-    field.fid = logical_region:AllocateField(typ)
+    local logical_region_wrapper = rel._logical_region_wrapper
+    field.fid = logical_region_wrapper:AllocateField(typ)
   end
   return field
 end

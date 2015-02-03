@@ -144,20 +144,24 @@ end
 --[[                    Privilege and coherence values                     ]]--
 -------------------------------------------------------------------------------
 
+-- There are more privileges in Legion, like write discard. We should separate
+-- exclusive into read_write and write_discard for better performance.
 L.privilege = {
-  read_only     = Lc.READ_ONLY,
-  read_write    = Lc.READ_WRITE,
-  write_discard = Lc.WRITE_DISCARD,
-  reduce        = Lc.REDUCE,
-  default       = Lc.READ_WRITE
+  EXCLUSIVE           = Lc.READ_WRITE,
+  READ                = Lc.READ_ONLY,
+  READ_OR_EXCLUISVE   = Lc.READ_WRITE,
+  REDUCE              = Lc.REDUCE,
+  REDUCE_OR_EXCLUSIVE = Lc.REDUCE,
 }
 
+-- TODO: How should we use this? Right now, read/ exclusive use EXCLUSIVE,
+-- reduction uses ATOMIC.
 L.coherence = {
-  exclusive    = Lc.EXCLUSIVE,
-  atomic       = Lc.ATOMIC,
-  simultaneous = Lc.SIMULTANEOUS,
-  relaxed      = Lc.RELAXED,
-  default      = Lc.EXCLUSIVE
+  EXCLUSIVE           = Lc.EXCLUSIVE,
+  READ                = Lc.EXCLUSIVE,
+  READ_OR_EXCLUISVE   = Lc.EXCLUSIVE,
+  REDUCE              = Lc.REDUCE,
+  REDUCE_OR_EXCLUSIVE = Lc.REDUCE,
 }
 
 
@@ -169,22 +173,23 @@ L.coherence = {
 -- Create inline physical region, useful when physical regions are needed in
 -- the top level task.
 -- NOTE: Call from top level task only.
-function LogicalRegion:CreatePhysicalRegion(params)
-  local lreg = self.handle
-  local privilege = params.privilege or L.privilege.default
-  local coherence = params.coherence or L.coherence.default
-  local input_launcher = Lc.legion_inline_launcher_create_logical_region(
-                            lreg, privilege, coherence, lreg,
-                            0, false, 0, 0)
-  local fields = params.fields
-  for i = 1, #fields do
-    Lc.legion_inline_launcher_add_field(input_launcher, fields[i].fid, true)
-  end
-  local p = {}
-  p.handle = Lc.legion_inline_launcher_execute(runtime, ctx, input_launcher)
-  setmetatable(p, PhysicalRegion)
-  return p
-end
+-- TODO: This is broken
+-- function LogicalRegion:CreatePhysicalRegion(params)
+--   local lreg = self.handle
+--   local privilege = params.privilege or L.privilege.default
+--   local coherence = params.coherence or L.coherence.default
+--   local input_launcher = Lc.legion_inline_launcher_create_logical_region(
+--                             lreg, privilege, coherence, lreg,
+--                             0, false, 0, 0)
+--   local fields = params.fields
+--   for i = 1, #fields do
+--     Lc.legion_inline_launcher_add_field(input_launcher, fields[i].fid, true)
+--   end
+--   local p = {}
+--   p.handle = Lc.legion_inline_launcher_execute(runtime, ctx, input_launcher)
+--   setmetatable(p, PhysicalRegion)
+--   return p
+-- end
 
 -- Wait till physical region is valid, to be called after creating an inline
 -- physical region.

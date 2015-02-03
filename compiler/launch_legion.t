@@ -8,8 +8,7 @@ local Lc = terralib.includecstring([[
 #include "legion_c.h"
 ]])
 
--- Legion tasks for launching Liszt kernels
-local T = terralib.require "compiler.legion_tasks"
+local T = terralib.require "compiler.legion_task_types"
 
 local terra dereference_legion_context(ctx : &Lc.legion_context_t)
   return @ctx

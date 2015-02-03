@@ -13,6 +13,7 @@ local Lc = terralib.includecstring([[
 local codegen = terralib.require "compiler.codegen_legion"
 local Ld      = terralib.require "compiler.legion_data"
 local Lt      = terralib.require "compiler.legion_tasks"
+local Tt      = terralib.require "compiler.legion_task_types"
 
 -------------------------------------------------------------------------------
 --[[                            Kernels, Brans                             ]]--
@@ -47,22 +48,18 @@ local runtime = legion_env.runtime
 --   (We could cache the region requirements later if that makes sense.)
 --]]--
 
--- Terra wrapper to create a kernel launcher
--- local terra NewKernelLauncher()
---   var kernel_launcher = Lt.NewKernelLauncher()
---   return kernel_launcher
--- end
-
 -- Setup physical regions and arguments for a Legion task, and launch the
 -- Legion task.
--- NOTE: call from top level task only.
-local function SetUpAndLaunchTask(params)
+local function SetUpAndLaunchTask(params, leg_args)
   local launcher = Lt.CreateTaskLauncher(
-                      { task_type        = Lt.TaskTypes.simple,
-                        kernel_launcher = params.kernel_launcher } )
-  Lt.LaunchTask( { task_launcher = launcher,
-                   ctx = ctx,
-                   runtime =  runtime } )
+                      {
+                        task_type        = Tt.TaskTypes.simple,
+                        kernel_launcher  = params.kernel_launcher,
+                        kernel           = params.kernel,
+                      } )
+  Lt.LaunchTask( {
+                   task_launcher = launcher
+                 }, leg_args )
 end
 
 -- Setup and Launch Legion task when a Liszt kernel is invoked from an
@@ -95,7 +92,11 @@ L.LKernel.__call  = function (kobj, relset)
   end
 
   -- PREPARE LEGION TASK ARGUMENTS (physical regions, globals)
-  SetUpAndLaunchTask({ kernel_launcher = bran.kernel_launcher })
+  SetUpAndLaunchTask({
+                       kernel          = bran.kernel,
+                       kernel_launcher = bran.kernel_launcher,
+                     },
+                     { ctx = ctx, runtime = runtime } )
 
   -- PREPARE LEGION TASK REGION REQUIREMENTS
 
@@ -142,7 +143,7 @@ function Bran:generate()
   -- Doing so throws error "cannot convert 'table' to 'bool (*)()'".
   -- Should fix this, and remove the wrapper terra function defined below.
   local terra NewKernelLauncher()
-    return Lt.NewKernelLauncher(bran.executable)
+    return Tt.NewKernelLauncher(bran.executable)
   end
   bran.kernel_launcher = NewKernelLauncher()
 end

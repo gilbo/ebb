@@ -9,93 +9,57 @@ local Lc = terralib.includecstring([[
 #include "legion_c.h"
 ]])
 
+local Ld = terralib.require "compiler.legion_data"
+local Tt = terralib.require "compiler.legion_task_types"
+
 
 -------------------------------------------------------------------------------
 --[[                       Kernel Launcher Template                        ]]--
 -------------------------------------------------------------------------------
---[[ Kernel laucnher template is a wrapper for a callback function that is
---   passed to a Legion task, when a Liszt kernel is invoked. We pass a
---   function as an argument to a Legion task, because there isn't a way to
---   dynamically register and invoke tasks.
---]]--
 
-struct KernelLauncherTemplate {
-  Launch : { &Lc.legion_physical_region_t,
-             uint32,
-             Lc.legion_context_t,
-             Lc.legion_runtime_t } -> bool;
-}
-T.KernelLauncherTemplate = KernelLauncherTemplate
-
-terra T.NewKernelLauncher(
-  kernel_code : { &Lc.legion_physical_region_t, uint32, Lc.legion_context_t,
-                  Lc.legion_runtime_t } -> bool )
-  var l : KernelLauncherTemplate
-  l.Launch = kernel_code
-  return l
-end
-
-local KernelLauncherSize = terralib.sizeof(KernelLauncherTemplate)
-
--- Pack kernel launcher into a task argument for Legion.
-terra KernelLauncherTemplate:PackToTaskArg()
-  var sub_args = Lc.legion_task_argument_t {
-    args = [&opaque](self),
-    arglen = KernelLauncherSize
-  }
-  return sub_args
-end
-
-
--------------------------------------------------------------------------------
---[[                             Legion Tasks                              ]]--
--------------------------------------------------------------------------------
---[[ A simple task is a task that does not have any return value. A fut_task
---   is a task that returns a Legion future, or return value.
---]]--
-
-terra T.simple_task(args : Lc.legion_task_t,
-                    regions : &Lc.legion_physical_region_t,
-                    num_regions : uint32,
-                    ctx : Lc.legion_context_t,
-                    runtime : Lc.legion_runtime_t)
-  C.printf("Executing simple task\n")
-  var arglen = Lc.legion_task_get_arglen(args)
-  assert(arglen == KernelLauncherSize)
-  var kernel_launcher : &KernelLauncherTemplate =
-    [&KernelLauncherTemplate](Lc.legion_task_get_args(args))
-  kernel_launcher.Launch(regions, num_regions, ctx, runtime)
-end
-
-T.TID_SIMPLE = 200
-
-terra T.fut_task(args : Lc.legion_task_t,
-                 regions : &Lc.legion_physical_region_t,
-                 num_regions : uint32,
-                 ctx : Lc.legion_context_t,
-                 runtime : Lc.legion_runtime_t) : Lc.legion_task_result_t
-  C.printf("Executing future task\n")
-  var dummy : int = 9
-  var result = Lc.legion_task_result_create(&dummy, terralib.sizeof(int))
-  return result
-end
-
-T.TID_FUT = 300
-
-T.TaskTypes = { simple = 'simple', fut = 'fut' }
+local KernelLauncherTemplate = Tt.KernelLauncherTemplate
+local KernelLauncherSize     = Tt.KernelLauncherSize
 
 -------------------------------------------------------------------------------
 --[[                         Legion task launcher                          ]]--
 -------------------------------------------------------------------------------
 
+
+
 function T.CreateTaskLauncher(params)
   local args = params.kernel_launcher:PackToTaskArg()
-  if params.task_type == T.TaskTypes.simple then
+  -- Simple task that does not return any values
+  if params.task_type == Tt.TaskTypes.simple then
+    -- task launcher
     local task_launcher = Lc.legion_task_launcher_create(
-                             T.TID_SIMPLE, args,
+                             -- TODO: switch to simple once waiting on
+                             -- unifinished tasks is resolved 
+                             -- Tt.TID_SIMPLE, args,
+                             Tt.TID_FUT, args,
                              Lc.legion_predicate_true(), 0, 0)
+    local field_use = params.kernel.field_use
+    -- Create region requirements
+    -- TODO: A separate region for each field access for now. Can group fields
+    -- by relation, access mode and partitions to reduce number of physical
+    -- regions.
+    local reg_req = {}
+    for field, access in pairs(field_use) do
+      print("Region req for " .. tostring(field.name) .. " : " .. tostring(access))
+      local rel = field.owner
+      reg_req[field] =
+        Lc.legion_task_launcher_add_region_requirement_logical_region(
+          task_launcher, rel._logical_region_wrapper.handle,
+          Ld.privilege[tostring(access)], Ld.coherence[tostring(access)],
+          rel._logical_region_wrapper.handle, 0, false )
+    end
+    for field, access in pairs(field_use) do
+      print(tostring(field.name) .. " : " .. tostring(access))
+      Lc.legion_task_launcher_add_field(
+        task_launcher, reg_req[field], field.fid, true )
+      print("Added field to region requirement")
+    end
     return task_launcher
-  elseif params.task_type == T.TaskTypes.fut then
+  elseif params.task_type == Tt.TaskTypes.fut then
     error("INTERNAL ERROR: Liszt does not handle tasks with future values yet")
   else
     error("INTERNAL ERROR: Unknown task type")
@@ -103,9 +67,11 @@ function T.CreateTaskLauncher(params)
 end
 
 -- Launches Legion task and returns.
-function T.LaunchTask(p)
+function T.LaunchTask(p, leg_args)
   print("Launching legion task")
-  local f = Lc.legion_task_launcher_execute(p.runtime, p.ctx, p.task_launcher)
+  local f = Lc.legion_task_launcher_execute(leg_args.runtime, leg_args.ctx,
+                                            p.task_launcher)
+  print("Launched task")
   -- TODO: no need to wait on future value technically, but Legion exits before
   -- the task is completed, why?
   -- NOTE: This is going to cause the program to crash right now, but we need

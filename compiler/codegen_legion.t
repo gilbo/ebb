@@ -89,6 +89,7 @@ function cpu_codegen (kernel_ast, ctxt)
 
     -- special iteration logic for subset-mapped kernels
     if ctxt.bran.subset then
+      C.printf("This is a subset??")
       error("Unimplemented subsets codegen with Legion runtime")
     else
       -- kernel_body = quote

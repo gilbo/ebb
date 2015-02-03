@@ -7,9 +7,9 @@ import "compiler.liszt"
 
 -- Create relations and fields
 -- local points = L.NewRelation(4, 'points')
--- local points = L.NewGridRelation('points', { bounds = {4} })
+local points = L.NewGridRelation('points', { bounds = {4} })
 -- local points = L.NewGridRelation('points', { bounds = {4, 2} })
-local points = L.NewGridRelation('points', { bounds = {4, 2, 1} })
+-- local points = L.NewGridRelation('points', { bounds = {4, 2, 1} })
 points:NewField('x', L.int)
 points:NewField('y', L.int)
 local edges = L.NewRelation(4, 'edges')
