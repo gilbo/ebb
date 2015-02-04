@@ -8,8 +8,8 @@ VO.__index = VO
 package.loaded["gl.vo"] = VO
 
 local ffi = require 'ffi'
-local gl  = terralib.require 'gl.gl'
-local DLD = terralib.require 'compiler.dld'
+local gl  = require 'gl.gl'
+local DLD = require 'compiler.dld'
 
 
 

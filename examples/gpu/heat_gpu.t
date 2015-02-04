@@ -10,7 +10,7 @@ L.default_processor = L.GPU
 --------------------------------------------------------------------------------
 -- CUDA headers are included in compiler.C
 -- Enums should be declared there
-local C = terralib.require "compiler.c"
+local C = require "compiler.c"
 
 local tid   = cudalib.nvvm_read_ptx_sreg_tid_x   -- threadId.x
 local ntid  = cudalib.nvvm_read_ptx_sreg_ntid_x  -- terralib.intrinsic("llvm.nvvm.read.ptx.sreg.ntid.x",{} -> int)
@@ -21,8 +21,8 @@ local aadd  = terralib.intrinsic("llvm.nvvm.atomic.load.add.f32.p0f32", {&float,
 --------------------------------------------------------------------------------
 --[[ Read in mesh relation, initialize fields                               ]]--
 --------------------------------------------------------------------------------
-local PN    = terralib.require 'lib.pathname'
-local LMesh = terralib.require "domains.lmesh"
+local PN    = require 'lib.pathname'
+local LMesh = require "domains.lmesh"
 local M     = LMesh.Load(PN.scriptdir():concat("rmesh.lmesh"):tostring())
 
 local function init_temp (i)

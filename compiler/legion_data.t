@@ -1,10 +1,10 @@
 local L = {}
 package.loaded["compiler.legion_data"] = L
 
-local C = terralib.require "compiler.c"
+local C = require "compiler.c"
 
-local Tc = terralib.require "compiler.typedefs"
-terralib.require "legionlib"
+local Tc = require "compiler.typedefs"
+require "legionlib"
 local Lc = terralib.includecstring([[
 #include "legion_c.h"
 ]])

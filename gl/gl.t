@@ -6,7 +6,7 @@ local gl = {}
 package.loaded["gl.gl"] = gl
 
 local ffi = require 'ffi'
-local C   = terralib.require 'compiler.c'
+local C   = require 'compiler.c'
 
 
 -- declare preprocessor constants we want to retreive

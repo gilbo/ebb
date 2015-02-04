@@ -1,14 +1,14 @@
 -- Launch liszt program as a top level legion task.
 
-local C = terralib.require "compiler.c"
+local C = require "compiler.c"
 
 -- Legion library
-terralib.require "legionlib"
+require "legionlib"
 local Lc = terralib.includecstring([[
 #include "legion_c.h"
 ]])
 
-local T = terralib.require "compiler.legion_task_types"
+local T = require "compiler.legion_task_types"
 
 local terra dereference_legion_context(ctx : &Lc.legion_context_t)
   return @ctx

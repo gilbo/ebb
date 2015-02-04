@@ -5,11 +5,11 @@
 local GClef_Module = {}
 package.loaded["gl.gclef"] = GClef_Module
 
-local L = terralib.require "compiler.lisztlib"
-local C = terralib.require "compiler.c"
-local DLD = terralib.require "compiler.dld"
+local L = require "compiler.lisztlib"
+local C = require "compiler.c"
+local DLD = require "compiler.dld"
 
-local VO = terralib.require "gl.vo"
+local VO = require "gl.vo"
 
 
 -- COPIED FROM ldb.t

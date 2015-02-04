@@ -1,11 +1,11 @@
 local B = {}
 package.loaded["compiler.builtins"] = B
 
-local L = terralib.require "compiler.lisztlib"
-local T = terralib.require "compiler.types"
-local C = terralib.require "compiler.c"
-local G = terralib.require "compiler.gpu_util"
-local AST = terralib.require "compiler.ast"
+local L = require "compiler.lisztlib"
+local T = require "compiler.types"
+local C = require "compiler.c"
+local G = require "compiler.gpu_util"
+local AST = require "compiler.ast"
 
 ---------------------------------------------
 --[[ Builtin functions                   ]]--

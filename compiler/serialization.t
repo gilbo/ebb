@@ -3,13 +3,13 @@
 local Serial = {}
 package.loaded["compiler.serialization"] = Serial
 
-terralib.require('compiler.relations')
+require('compiler.relations')
 
-local L = terralib.require "compiler.lisztlib"
-local T = terralib.require "compiler.types"
-local C = terralib.require "compiler.c"
+local L = require "compiler.lisztlib"
+local T = require "compiler.types"
+local C = require "compiler.c"
 
-local PN = terralib.require "lib.pathname"
+local PN = require "lib.pathname"
 local Pathname = PN.Pathname
 local ffi = require('ffi')
 
@@ -286,7 +286,7 @@ end
 --[[ Relation Schema Saving                                                ]]--
 -------------------------------------------------------------------------------
 
-local JSONSchema = terralib.require 'compiler.JSONSchema'
+local JSONSchema = require 'compiler.JSONSchema'
 
 local primitive_type_schema = {
   basic_kind  = 'primitive',

@@ -1,16 +1,16 @@
 local T = {}
 package.loaded["compiler.legion_tasks"] = T
 
-local C = terralib.require "compiler.c"
+local C = require "compiler.c"
 
 -- Legion library
-terralib.require "legionlib"
+require "legionlib"
 local Lc = terralib.includecstring([[
 #include "legion_c.h"
 ]])
 
-local Ld = terralib.require "compiler.legion_data"
-local Tt = terralib.require "compiler.legion_task_types"
+local Ld = require "compiler.legion_data"
+local Tt = require "compiler.legion_task_types"
 
 
 -------------------------------------------------------------------------------

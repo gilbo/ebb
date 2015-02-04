@@ -5,18 +5,18 @@ package.loaded["compiler.relations"] = R
 local use_legion = rawget(_G, '_legion')
 local use_single = not use_legion
 
-local L = terralib.require "compiler.lisztlib"
-local T = terralib.require "compiler.types"
-local C = terralib.require "compiler.c"
-local DLD = terralib.require "compiler.dld"
+local L = require "compiler.lisztlib"
+local T = require "compiler.types"
+local C = require "compiler.c"
+local DLD = require "compiler.dld"
 
-local PN = terralib.require "lib.pathname"
+local PN = require "lib.pathname"
 
 local JSON = require('compiler.JSON')
 
 local DynamicArray = use_single and
-                     terralib.require('compiler.rawdata').DynamicArray
-local Ld = use_legion and terralib.require "compiler.legion_data"
+                     require('compiler.rawdata').DynamicArray
+local Ld = use_legion and require "compiler.legion_data"
 
 local valid_name_err_msg =
   "must be valid Lua Identifiers: a letter or underscore,"..

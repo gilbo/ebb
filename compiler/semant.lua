@@ -2,9 +2,9 @@ local S = {}
 package.loaded["compiler.semant"] = S
 
 local ast = require "compiler.ast"
-local B   = terralib.require "compiler.builtins"
-local T   = terralib.require "compiler.types"
-local L   = terralib.require 'compiler.lisztlib'
+local B   = require "compiler.builtins"
+local T   = require "compiler.types"
+local L   = require 'compiler.lisztlib'
 --[[
     AST:check(ctxt) type checking routines
         These methods define type checking.

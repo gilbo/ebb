@@ -1,4 +1,4 @@
-local C = terralib.require 'compiler.c'
+local C = require 'compiler.c'
 
 -- Wrap a Terra function such that it takes no struct or array arguments by value.
 -- All occurrences of struct(or array)-by-value are unpacked before being passed in

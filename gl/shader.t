@@ -6,9 +6,9 @@ package.loaded["gl.shader"] = Shader
 Shader.__index = Shader
 
 local ffi   = require 'ffi'
-local C     = terralib.require 'compiler.c'
-local gl    = terralib.require 'gl.gl'
-local mat4f = terralib.require 'gl.mat4f'
+local C     = require 'compiler.c'
+local gl    = require 'gl.gl'
+local mat4f = require 'gl.mat4f'
 
 
 function Shader.new()

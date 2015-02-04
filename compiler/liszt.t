@@ -4,9 +4,9 @@
 
 local P = require "compiler.parser"
 
-local lisztlib = terralib.require "compiler.lisztlib"
-local specialization = terralib.require "compiler.specialization"
-local semant = terralib.require "compiler.semant"
+local lisztlib = require "compiler.lisztlib"
+local specialization = require "compiler.specialization"
+local semant = require "compiler.semant"
 -- include liszt library for programmer
 L = lisztlib
 
