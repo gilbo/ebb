@@ -1,8 +1,10 @@
 terra
+legion
 *.o
 *.so
 *.bc
 *.dylib
+*.txt
 .metadata
 build
 
