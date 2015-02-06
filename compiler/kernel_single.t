@@ -1,10 +1,10 @@
 local K = {}
 package.loaded["compiler.kernel_single"] = K
-local Kc = terralib.require "compiler.kernel_common"
-local L = terralib.require "compiler.lisztlib"
+local Kc = require "compiler.kernel_common"
+local L = require "compiler.lisztlib"
 
-local codegen        = terralib.require "compiler.codegen_single"
-local DataArray = terralib.require('compiler.rawdata').DataArray
+local codegen        = require "compiler.codegen_single"
+local DataArray = require('compiler.rawdata').DataArray
 
 
 local Bran = Kc.Bran
@@ -83,7 +83,7 @@ end
 --[[ Kernels                                                               ]]--
 -------------------------------------------------------------------------------
 
-L.LKernel.__call  = function (kobj, relset)
+L.LKernel.__call  = function (kobj, relset, params)
   if not (relset and (L.is_relation(relset) or L.is_subset(relset)))
   then
       error("A kernel must be called on a relation or subset.", 2)
@@ -92,11 +92,24 @@ L.LKernel.__call  = function (kobj, relset)
   local proc = L.default_processor
 
   -- retreive the correct bran or create a new one
-  local bran = Bran.BuildOrFetch({
-      kernel=kobj,
-      relset=relset,
-      proc=proc,
-  })
+  local bran = {}
+  if proc == L.CPU then
+    bran = Bran.BuildOrFetch({
+        kernel=kobj,
+        relset=relset,
+        proc=proc,
+    })
+  else
+    if proc == L.GPU then
+      local blocksize = (params and params.blocksize) or 64
+      bran = Bran.BuildOrFetch({
+          kernel=kobj,
+          relset=relset,
+          proc=proc,
+          blocksize=blocksize,
+      })
+    end
+  end
 
   -- determine whether or not this kernel invocation is
   -- safe to run or not.
@@ -131,6 +144,9 @@ function Bran.BuildOrFetch(sig)
     bran.relset = sig.relset
     bran.kernel = sig.kernel
     bran.location = sig.proc
+    if bran.location == L.GPU then
+      bran.blocksize = sig.blocksize
+    end
     bran:generate()
   end
   return bran

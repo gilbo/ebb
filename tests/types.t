@@ -1,8 +1,8 @@
 --------------------------------------------------------------------------------
 --[[ Test implementation of type system for consistency                     ]]--
 --------------------------------------------------------------------------------
-local T = terralib.require "compiler.types"
-local L = terralib.require "compiler.liszt"
+local L = require "compiler.liszt"
+local T = require "compiler.types"
 require "tests.test"
 
 local ptypes = { [int]   = L.int, 

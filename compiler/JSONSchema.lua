@@ -4,7 +4,7 @@ local JSONSchema = {}
 JSONSchema.__index = JSONSchema
 package.loaded["compiler.JSONSchema"] = JSONSchema
 
-local JSON = terralib.require 'compiler.JSON'
+local JSON = require 'compiler.JSON'
 
 
 -------------------------------------------------------------------------------

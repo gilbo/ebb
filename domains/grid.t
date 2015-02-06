@@ -3,7 +3,7 @@ import "compiler.liszt"
 local Grid = {}
 package.loaded["domains.grid"] = Grid
 
-local L = terralib.require "compiler.lisztlib"
+local L = require "compiler.lisztlib"
 
 local Grid2d = {}
 local Grid3d = {}

@@ -3,8 +3,8 @@ local S = {}
 package.loaded["compiler.specialization"] = S
 
 local ast = require "compiler.ast"
-local B   = terralib.require "compiler.builtins"
-local T   = terralib.require "compiler.types"
+local B   = require "compiler.builtins"
+local T   = require "compiler.types"
 
 
 

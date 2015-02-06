@@ -1,5 +1,5 @@
 -- location to put all C includes
--- the rest of the compiler should just terralib.require this file
+-- the rest of the compiler should just require this file
 
 -- Super ultra hack to get the directory of this file,
 -- which can be mangled into the root Liszt directory.

@@ -5,11 +5,11 @@ local use_legion = rawget(_G, '_legion')
 local use_single = not use_legion
 
 -- Liszt types are created here
-local T = terralib.require 'compiler.types'
+local T = require 'compiler.types'
 
 local DataArray = use_single and
-                  terralib.require('compiler.rawdata').DataArray
-local Lg = use_legion and terralib.require "compiler.legion_data"
+                  require('compiler.rawdata').DataArray
+local Lg = use_legion and require "compiler.legion_data"
 
 -- Use the following to produce
 -- deterministic order of table entries
@@ -33,7 +33,7 @@ end
 -------------------------------------------------------------------------------
 
 function L.require( str )
-    local loaded_module = terralib.require( str )
+    local loaded_module = require( str )
     return loaded_module
 end
 
@@ -68,15 +68,15 @@ local LMacro     = make_prototype("LMacro","macro")
 local LUserFunc  = make_prototype("LUserFunc", "user_func")
 local Kernel     = make_prototype("LKernel","kernel")
 
-local C = terralib.require "compiler.c"
-local T = terralib.require "compiler.types"
-local ast = terralib.require "compiler.ast"
-terralib.require "compiler.builtins"
-terralib.require "compiler.relations"
-terralib.require "compiler.serialization"
-local semant = terralib.require "compiler.semant"
-local K = (use_single and terralib.require "compiler.kernel_single") or
-          (use_legion and terralib.require "compiler.kernel_legion")
+local C = require "compiler.c"
+local T = require "compiler.types"
+local ast = require "compiler.ast"
+require "compiler.builtins"
+require "compiler.relations"
+require "compiler.serialization"
+local semant = require "compiler.semant"
+local K = (use_single and require "compiler.kernel_single") or
+          (use_legion and require "compiler.kernel_legion")
 
 local is_vector = L.is_vector --cache lookup for efficiency
 
@@ -288,7 +288,7 @@ function L.NewMacro(generator)
     return setmetatable({genfunc=generator}, LMacro)    
 end
 
-local specialization = terralib.require('compiler.specialization')
+local specialization = require('compiler.specialization')
 
 function L.NewUserFunc(func_ast, luaenv)
     local new_user_func = setmetatable({}, L.LUserFunc)

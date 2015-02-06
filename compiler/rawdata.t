@@ -5,7 +5,7 @@ local Raw = {}
 package.loaded["compiler.rawdata"] = Raw
 
 
-local C = terralib.require "compiler.c"
+local C = require "compiler.c"
 
 
 -------------------------------------------------------------------------------

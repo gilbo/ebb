@@ -8,18 +8,18 @@ import "compiler.liszt"
 ]]--
 
 local ffi = require 'ffi'
-local gl  = terralib.require 'gl.gl'
-local VO = terralib.require 'gl.vo'
-local dld = terralib.require 'compiler.dld'
-local mat4f = terralib.require 'gl.mat4f'
+local gl  = require 'gl.gl'
+local VO = require 'gl.vo'
+local dld = require 'compiler.dld'
+local mat4f = require 'gl.mat4f'
 
-local C = terralib.require 'compiler.c'
+local C = require 'compiler.c'
 local vdb = L.require 'lib.vdb'
 
-local glshader = terralib.require 'gl.shader'
+local glshader = require 'gl.shader'
 
 -- patch in gclef to the relations
-terralib.require 'gl.gclef'
+require 'gl.gclef'
 
 print(mat4f.id() * mat4f.id())
 

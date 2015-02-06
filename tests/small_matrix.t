@@ -1,6 +1,6 @@
 import "compiler.liszt"
 require 'tests/test'
---local types = terralib.require "compiler.types"
+--local types = require "compiler.types"
 
 
 --------------------------

@@ -3,7 +3,7 @@ if not terralib.cudacompile then error("Terra is not compiled with cuda support"
 terralib.linklibrary("/usr/local/cuda/lib/libcuda.dylib")
 --local cas32 = terralib.intrinsic('llvm.nvvm.atom.cas.gen.i', {&int, int, int} -> {int})
 
-local C = terralib.require 'compiler.c'
+local C = require 'compiler.c'
 local aadd = terralib.intrinsic("llvm.nvvm.atomic.load.add.f32.p0f32", {&float,float} -> {float})
 
 terra reduce_float (sum : &float)

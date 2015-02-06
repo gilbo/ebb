@@ -1,15 +1,14 @@
 -- Launch liszt program as a top level legion task.
 
-local C = terralib.require "compiler.c"
+local C = require "compiler.c"
 
 -- Legion library
-terralib.require "legionlib-terra"
+require "legionlib"
 local Lc = terralib.includecstring([[
 #include "legion_c.h"
 ]])
 
--- Legion tasks for launching Liszt kernels
-local T = terralib.require "compiler.legion_tasks"
+local T = require "compiler.legion_task_types"
 
 local terra dereference_legion_context(ctx : &Lc.legion_context_t)
   return @ctx
@@ -51,11 +50,8 @@ function load_liszt()
   local success = xpcall( function ()
     assert(terralib.loadfile(script_filename))()
   end, top_level_err_handler)
-  if success then
-    os.exit(0)
-  else
-    os.exit(1)
-  end
+  print("Loaded Liszt with success " .. tostring(success))
+  print("Legion tasks may still be executing in the background ...")
 end
 
 -- Run Liszt compiler/ Lua-Terra interpreter as a top level task
@@ -67,7 +63,7 @@ local terra top_level_task(task_args : Lc.legion_task_t,
   C.printf("Setting up Legion ...\n")
   terra_setup_liszt_for_legion(&ctx, &runtime)
   C.printf("Loading Liszt application ...\n")
-  load_liszt()
+  var success = load_liszt()
   C.printf("Finished Liszt application\n")
 end
 
