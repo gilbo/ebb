@@ -54,8 +54,7 @@ local function SetUpAndLaunchTask(params, leg_args)
   local launcher = Lt.CreateTaskLauncher(
                       {
                         task_type        = Tt.TaskTypes.simple,
-                        kernel_launcher  = params.kernel_launcher,
-                        kernel           = params.kernel,
+                        bran             = params.bran,
                       } )
   Lt.LaunchTask( {
                    task_launcher = launcher
@@ -88,14 +87,12 @@ L.LKernel.__call  = function (kobj, relset)
     bran.relset = relset
     bran.kernel = kobj
     bran.location = proc
+    bran.field_reg_map = {}
     bran:generate()
   end
 
   -- PREPARE LEGION TASK ARGUMENTS (physical regions, globals)
-  SetUpAndLaunchTask({
-                       kernel          = bran.kernel,
-                       kernel_launcher = bran.kernel_launcher,
-                     },
+  SetUpAndLaunchTask({ bran = bran },
                      { ctx = ctx, runtime = runtime } )
 
   -- PREPARE LEGION TASK REGION REQUIREMENTS

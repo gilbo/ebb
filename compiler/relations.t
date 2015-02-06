@@ -65,6 +65,7 @@ function L.NewRelation(size, name)
       --groupedby   = false, -- use _grouping entry's presence instead
       fragmented  = false,
       --has_subsets = false, -- use #_subsets
+      grid        = false,
     },
   },
   L.LRelation)
@@ -125,6 +126,7 @@ function L.NewGridRelation(name, params)
       fragmented  = false,
       --has_subsets = false, -- use #_subsets
       grid        = true,
+      dimensions  = dim,
     },
   },
   L.LRelation)

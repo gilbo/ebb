@@ -20,37 +20,51 @@ local Tt = require "compiler.legion_task_types"
 local KernelLauncherTemplate = Tt.KernelLauncherTemplate
 local KernelLauncherSize     = Tt.KernelLauncherSize
 
+
 -------------------------------------------------------------------------------
 --[[                         Legion task launcher                          ]]--
 -------------------------------------------------------------------------------
 
 
-
+-- Creates a task launcher with task region requirements.
+-- Implementation details:
+--  * This creates a separate region requirement for each accessed field. We
+--  can group multiple fields into one region requirement, based on stencil
+--  and access privileges.
+--  * A region requirement with no fields is created as region req 0. This is
+--  for iterating over the index space. We can instead do book-keeping about
+--  whcih region can be used for performing iteration, or something else?
 function T.CreateTaskLauncher(params)
-  local args = params.kernel_launcher:PackToTaskArg()
+  local args = params.bran.kernel_launcher:PackToTaskArg()
   -- Simple task that does not return any values
   if params.task_type == Tt.TaskTypes.simple then
     -- task launcher
     local task_launcher = Lc.legion_task_launcher_create(
-                             -- TODO: switch to simple once waiting on
-                             -- unifinished tasks is resolved 
-                             -- Tt.TID_SIMPLE, args,
-                             Tt.TID_FUT, args,
+                             Tt.TID_SIMPLE, args,
                              Lc.legion_predicate_true(), 0, 0)
-    local field_use = params.kernel.field_use
-    -- Create region requirements
-    -- TODO: A separate region for each field access for now. Can group fields
-    -- by relation, access mode and partitions to reduce number of physical
-    -- regions.
+    local field_use = params.bran.kernel.field_use
+    params.bran.field_reg_map = {}
+    local field_reg_map = params.bran.field_reg_map
+    local relset = params.bran.relset
+    -- Add a region requirement for iterating into region req 0
+    Lc.legion_task_launcher_add_region_requirement_logical_region(
+      task_launcher, relset._logical_region_wrapper.handle,
+      Ld.privilege.READ, Ld.coherence.READ,
+      relset._logical_region_wrapper.handle, 0, false )
+    -- Add region requirements for all fields that kernel accesses
     local reg_req = {}
+    local reg_num = 1
     for field, access in pairs(field_use) do
-      print("Region req for " .. tostring(field.name) .. " : " .. tostring(access))
       local rel = field.owner
+      print("Region req for " .. tostring(field.name) .. " from relation " ..
+            tostring(rel) ..  " : " .. tostring(access))
       reg_req[field] =
         Lc.legion_task_launcher_add_region_requirement_logical_region(
           task_launcher, rel._logical_region_wrapper.handle,
           Ld.privilege[tostring(access)], Ld.coherence[tostring(access)],
           rel._logical_region_wrapper.handle, 0, false )
+      field_reg_map[field] = reg_num
+      reg_num = reg_num + 1
     end
     for field, access in pairs(field_use) do
       print(tostring(field.name) .. " : " .. tostring(access))
@@ -72,9 +86,4 @@ function T.LaunchTask(p, leg_args)
   local f = Lc.legion_task_launcher_execute(leg_args.runtime, leg_args.ctx,
                                             p.task_launcher)
   print("Launched task")
-  -- TODO: no need to wait on future value technically, but Legion exits before
-  -- the task is completed, why?
-  -- NOTE: This is going to cause the program to crash right now, but we need
-  -- it till we implement waiting for all unfinished tasks.
-  local res = Lc.legion_future_get_result(f)
 end

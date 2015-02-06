@@ -118,6 +118,7 @@ function L.NewGridLogicalRegion(params)
               relation  = params.relation,
               field_ids = 0,
               bounds = params.bounds,
+              dimensions = params.dimensions,
             }
   -- index space
   local bounds = params.bounds

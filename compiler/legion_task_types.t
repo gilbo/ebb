@@ -22,13 +22,13 @@ local struct KernelLauncherTemplate {
   Launch : { &Lc.legion_physical_region_t,
              uint32,
              Lc.legion_context_t,
-             Lc.legion_runtime_t } -> bool;
+             Lc.legion_runtime_t } -> {};
 }
 T.KernelLauncherTemplate = KernelLauncherTemplate
 
 terra T.NewKernelLauncher(
   kernel_code : { &Lc.legion_physical_region_t, uint32, Lc.legion_context_t,
-                  Lc.legion_runtime_t } -> bool )
+                  Lc.legion_runtime_t } -> {} )
   var l : KernelLauncherTemplate
   l.Launch = kernel_code
   return l
