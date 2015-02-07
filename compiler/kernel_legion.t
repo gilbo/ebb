@@ -87,11 +87,10 @@ L.LKernel.__call  = function (kobj, relset)
     bran.relset = relset
     bran.kernel = kobj
     bran.location = proc
-    bran.field_reg_map = {}
+    Lt.SetUpTaskArgs( { bran = bran} )
     bran:generate()
   end
 
-  -- PREPARE LEGION TASK ARGUMENTS (physical regions, globals)
   SetUpAndLaunchTask({ bran = bran },
                      { ctx = ctx, runtime = runtime } )
 
