@@ -21,7 +21,9 @@ edges:NewField('tail', points)
 -- points._logical_region:CreatePhysicalRegion( { fields = { points.x } } )
 
 local liszt kernel CenteredWrite(p : points)
+  p.x = 1
   p.x = 2
+  -- p.x
 end
 
 CenteredWrite(points)
