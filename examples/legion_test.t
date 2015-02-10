@@ -7,14 +7,16 @@ import "compiler.liszt"
 
 -- Create relations and fields
 -- local points = L.NewRelation(4, 'points')
--- local points = L.NewGridRelation('points', { bounds = {4} })
-local points = L.NewGridRelation('points', { bounds = {4, 2} })
+local points = L.NewGridRelation('points', { bounds = {4} })
+-- local points = L.NewGridRelation('points', { bounds = {4, 2} })
 -- local points = L.NewGridRelation('points', { bounds = {4, 2, 1} })
 points:NewField('x', L.int)
 points:NewField('y', L.int)
-local edges = L.NewRelation(4, 'edges')
-edges:NewField('head', points)
-edges:NewField('tail', points)
+points:NewField('z', L.int)
+points:NewField('t', L.int)
+-- local edges = L.NewRelation(4, 'edges')
+-- edges:NewField('head', points)
+-- edges:NewField('tail', points)
 
 
 -- Create physical region
@@ -22,8 +24,14 @@ edges:NewField('tail', points)
 
 local liszt kernel CenteredWrite(p : points)
   p.x = 1
-  p.x = 2
-  -- p.x
+end
+
+local liszt kernel CenteredAdd(p : points)
+  p.y = 2
+  p.z = p.x + p.y
+  p.z = p.z + 1
+  p.z
 end
 
 CenteredWrite(points)
+CenteredAdd(points)

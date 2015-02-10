@@ -91,13 +91,10 @@ L.LKernel.__call  = function (kobj, relset)
     bran:generate()
   end
 
+  -- Create legion task requirements and launch task
   SetUpAndLaunchTask({ bran = bran },
                      { ctx = ctx, runtime = runtime } )
 
-  -- PREPARE LEGION TASK REGION REQUIREMENTS
-
-  -- LAUNCH LEGION "KERNEL" TASK, WITH A POINTER TO THE GEBERATED EXECUTABLE
-  print("Unimplemented kernel call for legion runtime")
 end
 
 -- LEGION "KERNEL" TASK
