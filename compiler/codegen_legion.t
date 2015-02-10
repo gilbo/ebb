@@ -165,109 +165,102 @@ function cpu_codegen (kernel_ast, ctxt)
       error("INTERNAL ERROR: Unstructured field ptrs/ pregions case not handled")
     end
 
-    -- one iteration code inside Liszt kernel
+    -- code for one iteration inside Liszt kernel
     local kernel_body = quote
       [ kernel_ast.body:codegen(ctxt) ]
       C.printf("Kernel body incomplete\n")
     end
 
     -- generate iteration code over domain
-    local body = function() end
+    local body = quote end
 
-    -- grids
+    -- GRIDS
     if ctxt:IsGrid() then
       -- 1 dimensional
       local dim =  ctxt:GridDimensions()
 
-      body = function()
-
-        -- add ptrs to field data and corresponding offsets
-        local field_init = quote
-          var [field_ptrs]
-        end
-        local field_init_f = quote end
-        -- skip region 0 which is used for iterator
-        local fields_added = 0
-        for r = 1, ctxt:NumRegions() do
-          local reg = ctxt:Region(r)
-          for f = 1, reg.num_fields do
-            field_init_f = quote
-              [field_init_f]
+      -- add ptrs to field data and corresponding offsets
+      local field_init = quote
+        var [field_ptrs]
+      end
+      local field_init_f = quote end
+      local fields_added = 0
+      for r = 1, ctxt:NumRegions() do
+        local reg = ctxt:Region(r)
+        for f = 1, reg.num_fields do
+          field_init_f = quote
+            [field_init_f]
+            do
+              var preg = [Largs].regions[r-1]
+              var is   = Lc.legion_physical_region_get_logical_region(preg).index_space
+              var dom  = Lc.legion_index_space_get_domain([Largs].lg_runtime, [Largs].lg_ctx, is)
+              var rect = [ LegionGetRectFromDom[dim] ](dom)
               do
-                var preg = [Largs].regions[r-1]
-                var is   = Lc.legion_physical_region_get_logical_region(preg).index_space
-                var dom  = Lc.legion_index_space_get_domain([Largs].lg_runtime, [Largs].lg_ctx, is)
-                var rect = [ LegionGetRectFromDom[dim] ](dom)
-                do
-                  var acc  = Lc.legion_physical_region_get_field_accessor_generic(
-                    preg, [ ctxt:FieldIdFromArg(r, f) ])
-                  var subrect : LegionRect[dim]
-                  var strides : Lc.legion_byte_offset_t[dim]
-                  var base = [&int8]([ LegionRawPtrFromAcc[dim] ](
-                    acc, rect, &subrect, strides))
-                  C.printf("In legion task - setup, adding field id %i from region %i\n", [ctxt:FieldIdFromArg(r, f)], r-1)
-                  [field_ptrs][fields_added] = [ fieldData[dim] ] { base, strides }
-                end
+                var acc  = Lc.legion_physical_region_get_field_accessor_generic(
+                  preg, [ ctxt:FieldIdFromArg(r, f) ])
+                var subrect : LegionRect[dim]
+                var strides : Lc.legion_byte_offset_t[dim]
+                var base = [&int8]([ LegionRawPtrFromAcc[dim] ](
+                  acc, rect, &subrect, strides))
+                C.printf("In legion task - setup, adding field id %i from region %i\n", [ctxt:FieldIdFromArg(r, f)], r-1)
+                [field_ptrs][fields_added] = [ fieldData[dim] ] { base, strides }
               end
             end
-            fields_added = fields_added + 1
+          end
+          fields_added = fields_added + 1
+        end
+      end
+
+      -- setup loop bounds
+      local setup = quote
+        [field_init]
+        [field_init_f]
+        var r   = Lc.legion_physical_region_get_logical_region([Largs].regions[0])
+        var is  = r.index_space
+        var dom = Lc.legion_index_space_get_domain([Largs].lg_runtime, [Largs].lg_ctx, is)
+        C.printf(" --- Begin loop ---\n")
+        var [rect] = [ LegionGetRectFromDom[dim] ](dom)
+      end
+
+      -- loop over domain
+      if dim == 1 then
+        body = quote
+          [setup]
+          for i = [rect].lo.x[0], [rect].hi.x[0]+1 do
+            -- C.printf("Loop iteration %i\n", i)
+            var [iter] = [ domIndex[1] ] { arrayof(int, i) }
+            [kernel_body]
           end
         end
-
-        -- setup loop bounds
-        local setup = quote
-          [field_init]
-          [field_init_f]
-          var r   = Lc.legion_physical_region_get_logical_region([Largs].regions[0])
-          var is  = r.index_space
-          var dom = Lc.legion_index_space_get_domain([Largs].lg_runtime, [Largs].lg_ctx, is)
-          C.printf(" --- Begin loop ---\n")
-          var [rect] = [ LegionGetRectFromDom[dim] ](dom)
-        end
-
-        -- loop over domain
-        local body = quote end
-        if dim == 1 then
-          body = quote
-            [setup]
-            for i = [rect].lo.x[0], [rect].hi.x[0]+1 do
-              -- C.printf("Loop iteration %i\n", i)
-              var [iter] = [ domIndex[1] ] { arrayof(int, i) }
+      end
+      if dim == 2 then
+        body = quote
+          [setup]
+          for i = [rect].lo.x[0], [rect].hi.x[0]+1 do
+            for j  = [rect].lo.x[1], [rect].hi.x[1]+1 do
+              -- C.printf("Loop iteration %i, %i\n", i, j)
+              var [iter] = [ domIndex[2] ] { arrayof(int, i, j) }
               [kernel_body]
             end
           end
         end
-        if dim == 2 then
-          body = quote
-            [setup]
-            for i = [rect].lo.x[0], [rect].hi.x[0]+1 do
-              for j  = [rect].lo.x[1], [rect].hi.x[1]+1 do
+      end
+      if dim == 3 then
+        body = quote
+          [setup]
+          for i = [rect].lo.x[0], [rect].hi.x[0]+1 do
+            for j  = [rect].lo.x[1], [rect].hi.x[1]+1 do
+              for k  = [rect].lo.x[2], [rect].hi.x[2]+1 do
                 -- C.printf("Loop iteration %i, %i\n", i, j)
-                var [iter] = [ domIndex[2] ] { arrayof(int, i, j) }
+                var [iter] = [ domIndex[3] ] { arrayof(int, i, j, k) }
                 [kernel_body]
               end
             end
           end
         end
-        if dim == 3 then
-          body = quote
-            [setup]
-            for i = [rect].lo.x[0], [rect].hi.x[0]+1 do
-              for j  = [rect].lo.x[1], [rect].hi.x[1]+1 do
-                for k  = [rect].lo.x[2], [rect].hi.x[2]+1 do
-                  -- C.printf("Loop iteration %i, %i\n", i, j)
-                  var [iter] = [ domIndex[3] ] { arrayof(int, i, j, k) }
-                  [kernel_body]
-                end
-              end
-            end
-          end
-        end
+      end
 
-        return body
-      end -- body
-
-    -- unstructured domains
+    -- UNSTRUCTURED DOMAINS
     else
       error("INTERNAL ERROR: Codegen for unstructured relations unimplemented")
     end
@@ -279,7 +272,7 @@ function cpu_codegen (kernel_ast, ctxt)
       var [Largs] = leg_args
 
       -- Add symbol for physical regions &/ or field data
-      [body()]
+      [body]
     end
 
   ctxt:leaveblock()
@@ -339,7 +332,7 @@ function ast.FieldAccess:codegen (ctxt)
   local access = quote
     var strides = [fdata].strides
     var ptr = [&fttype]([fdata].ptr + [IndexToOffset(ctxt, index, strides)] )
-    -- C.printf("Data was %i\n", @ptr)
+   --  C.printf("Data was %i\n", @ptr)
   in
     @ptr
   end
