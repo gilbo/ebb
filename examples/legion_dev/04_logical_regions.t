@@ -28,7 +28,7 @@ local launch_task = macro(function(TASK_ID, arg, argtype, runtime, ctx)
         arglen  = sizeof(argtype)
       },
       Lg.legion_predicate_true(),
-      0, --Lg.legion_mapper_id_t,
+      0, --Lg.legion_mapper_id_t
       0  --Lg.legion_mapping_tag_id_t
     )
     var future = Lg.legion_task_launcher_execute(runtime,ctx,launcher)
