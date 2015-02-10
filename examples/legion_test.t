@@ -33,5 +33,13 @@ local liszt kernel CenteredAdd(p : points)
   p.z
 end
 
+local liszt kernel ReduceField(p : points)
+  p.y += 7
+  p.z *= 2
+  p.y
+  p.z
+end
+
 CenteredWrite(points)
 CenteredAdd(points)
+ReduceField(points)

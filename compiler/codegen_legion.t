@@ -319,7 +319,7 @@ function ast.FieldWrite:codegen (ctxt)
     assign.lvalue = self.fieldaccess
     assign.exp    = self.exp
     if self.reduceop then
-      error("INTERNAL ERROR: Reductions not implemented with Legion")
+      assign.reduceop = self.reduceop
     end
     return assign:codegen(ctxt)
   end
@@ -332,7 +332,7 @@ function ast.FieldAccess:codegen (ctxt)
   local access = quote
     var strides = [fdata].strides
     var ptr = [&fttype]([fdata].ptr + [IndexToOffset(ctxt, index, strides)] )
-   --  C.printf("Data was %i\n", @ptr)
+   -- C.printf("Data was %i\n", @ptr)
   in
     @ptr
   end
