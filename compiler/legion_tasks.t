@@ -26,6 +26,47 @@ local KernelLauncherSize     = Tt.KernelLauncherSize
 -------------------------------------------------------------------------------
 
 
+-- Creates a map of region requirements, to be used when creating region
+-- requirements for task launcher, and when codegen-ing task executable.
+function T.SetUpTaskArgs(params)
+  -- TODO: make this into a class
+  local field_use = params.bran.kernel.field_use
+  params.bran.arg_layout = {}
+  local arg_layout = params.bran.arg_layout
+
+  -- field to region number
+  arg_layout.field_to_rnum = {}
+  local field_to_rnum = arg_layout.field_to_rnum
+
+  -- field location
+  arg_layout.field_num = {}
+  local field_num = arg_layout.field_num
+  local num_fields = 1
+
+  -- region metadata
+  arg_layout.regions = {}
+  local regions = arg_layout.regions
+
+  -- only one region for now
+  regions[1] = {}
+  regions[1].relation = params.bran.relset
+  regions[1].fields = {}
+  regions[1].num_fields = 0
+
+  for field, access in pairs(field_use) do
+    local reg_num = 1
+    field_num[field] = num_fields
+    field_to_rnum[field] = reg_num
+    regions[reg_num].num_fields = regions[reg_num].num_fields + 1
+    regions[reg_num].fields[regions[reg_num].num_fields] = field
+    num_fields = num_fields + 1
+  end
+
+  arg_layout.num_regions = 1
+  arg_layout.num_fields = num_fields - 1
+end
+
+
 -- Creates a task launcher with task region requirements.
 -- Implementation details:
 --  * This creates a separate region requirement for each accessed field. We
@@ -33,7 +74,7 @@ local KernelLauncherSize     = Tt.KernelLauncherSize
 --  and access privileges.
 --  * A region requirement with no fields is created as region req 0. This is
 --  for iterating over the index space. We can instead do book-keeping about
---  whcih region can be used for performing iteration, or something else?
+--  which region can be used for performing iteration, or something else?
 function T.CreateTaskLauncher(params)
   local args = params.bran.kernel_launcher:PackToTaskArg()
   -- Simple task that does not return any values
@@ -43,34 +84,27 @@ function T.CreateTaskLauncher(params)
                              Tt.TID_SIMPLE, args,
                              Lc.legion_predicate_true(), 0, 0)
     local field_use = params.bran.kernel.field_use
-    params.bran.field_reg_map = {}
-    local field_reg_map = params.bran.field_reg_map
     local relset = params.bran.relset
-    -- Add a region requirement for iterating into region req 0
-    Lc.legion_task_launcher_add_region_requirement_logical_region(
-      task_launcher, relset._logical_region_wrapper.handle,
-      Ld.privilege.READ, Ld.coherence.READ,
-      relset._logical_region_wrapper.handle, 0, false )
-    -- Add region requirements for all fields that kernel accesses
+    local field_to_rnum = params.bran.arg_layout.field_to_rnum
+    local regions = params.bran.arg_layout.regions
+    local num_regions = params.bran.arg_layout.num_regions
     local reg_req = {}
-    local reg_num = 1
-    for field, access in pairs(field_use) do
-      local rel = field.owner
-      print("Region req for " .. tostring(field.name) .. " from relation " ..
-            tostring(rel) ..  " : " .. tostring(access))
-      reg_req[field] =
+    for r = 1, num_regions do
+      local region = regions[r]
+      local rel = region.relation
+      reg_req[r] =
         Lc.legion_task_launcher_add_region_requirement_logical_region(
           task_launcher, rel._logical_region_wrapper.handle,
-          Ld.privilege[tostring(access)], Ld.coherence[tostring(access)],
+          Lc.READ_WRITE, Lc.EXCLUSIVE,
           rel._logical_region_wrapper.handle, 0, false )
-      field_reg_map[field] = reg_num
-      reg_num = reg_num + 1
-    end
-    for field, access in pairs(field_use) do
-      print(tostring(field.name) .. " : " .. tostring(access))
-      Lc.legion_task_launcher_add_field(
-        task_launcher, reg_req[field], field.fid, true )
-      print("Added field to region requirement")
+      for f = 1, region.num_fields do
+        local field = region.fields[f]
+        local access = field_use[field]
+        local rel = field.owner
+        print("In create task launcher, adding field " .. field.fid .. " to region req " .. r)
+        Lc.legion_task_launcher_add_field(
+          task_launcher, reg_req[r], field.fid, true )
+      end
     end
     return task_launcher
   elseif params.task_type == Tt.TaskTypes.fut then
@@ -83,7 +117,7 @@ end
 -- Launches Legion task and returns.
 function T.LaunchTask(p, leg_args)
   print("Launching legion task")
-  local f = Lc.legion_task_launcher_execute(leg_args.runtime, leg_args.ctx,
-                                            p.task_launcher)
+   Lc.legion_task_launcher_execute(leg_args.runtime, leg_args.ctx,
+                                   p.task_launcher)
   print("Launched task")
 end

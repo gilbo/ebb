@@ -18,17 +18,22 @@ local Lc = terralib.includecstring([[
 --   dynamically register and invoke tasks.
 --]]--
 
+local struct LegionTaskArgs {
+  task : Lc.legion_task_t,
+  regions : &Lc.legion_physical_region_t,
+  num_regions : uint32,
+  lg_ctx : Lc.legion_context_t,
+  lg_runtime : Lc.legion_runtime_t
+}
+T.LegionTaskArgs = LegionTaskArgs
+
 local struct KernelLauncherTemplate {
-  Launch : { &Lc.legion_physical_region_t,
-             uint32,
-             Lc.legion_context_t,
-             Lc.legion_runtime_t } -> {};
+  Launch : { LegionTaskArgs } -> {};
 }
 T.KernelLauncherTemplate = KernelLauncherTemplate
 
 terra T.NewKernelLauncher(
-  kernel_code : { &Lc.legion_physical_region_t, uint32, Lc.legion_context_t,
-                  Lc.legion_runtime_t } -> {} )
+  kernel_code : { LegionTaskArgs } -> {} )
   var l : KernelLauncherTemplate
   l.Launch = kernel_code
   return l
@@ -54,34 +59,34 @@ end
 --   is a task that returns a Legion future, or return value.
 --]]--
 
-terra T.simple_task(args : Lc.legion_task_t,
+terra T.simple_task(task : Lc.legion_task_t,
                     regions : &Lc.legion_physical_region_t,
                     num_regions : uint32,
                     ctx : Lc.legion_context_t,
                     runtime : Lc.legion_runtime_t)
   C.printf("Executing simple task\n")
-  var arglen = Lc.legion_task_get_arglen(args)
+  var arglen = Lc.legion_task_get_arglen(task)
   C.printf("Arglen in task is %i\n", arglen)
   assert(arglen == KernelLauncherSize)
   var kernel_launcher : &KernelLauncherTemplate =
-    [&KernelLauncherTemplate](Lc.legion_task_get_args(args))
-  kernel_launcher.Launch(regions, num_regions, ctx, runtime)
+    [&KernelLauncherTemplate](Lc.legion_task_get_args(task))
+  kernel_launcher.Launch( LegionTaskArgs { task, regions, num_regions, ctx, runtime } )
   C.printf("Completed executing simple task\n")
 end
 
 T.TID_SIMPLE = 200
 
-terra T.fut_task(args : Lc.legion_task_t,
+terra T.fut_task(task : Lc.legion_task_t,
                  regions : &Lc.legion_physical_region_t,
                  num_regions : uint32,
                  ctx : Lc.legion_context_t,
                  runtime : Lc.legion_runtime_t) : Lc.legion_task_result_t
   C.printf("Executing future task\n")
-  var arglen = Lc.legion_task_get_arglen(args)
+  var arglen = Lc.legion_task_get_arglen(task)
   assert(arglen == KernelLauncherSize)
   var kernel_launcher : &KernelLauncherTemplate =
-    [&KernelLauncherTemplate](Lc.legion_task_get_args(args))
-  kernel_launcher.Launch(regions, num_regions, ctx, runtime)
+    [&KernelLauncherTemplate](Lc.legion_task_get_args(task))
+  kernel_launcher.Launch( LegionTaskArgs { task, regions, num_regions, ctx, runtime } )
   var dummy : int = 9
   var result = Lc.legion_task_result_create(&dummy, terralib.sizeof(int))
   C.printf("Completed executing future task task\n")

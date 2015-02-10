@@ -77,14 +77,14 @@ local terra main()
       idempotent = false },
     'top_level_task', top_level_task)
   Lc.legion_runtime_register_task_void(
-    T.TID_SIMPLE, Lc.LOC_PROC, true, true, 1,
+    T.TID_SIMPLE, Lc.LOC_PROC, true, false, 1,
     Lc.legion_task_config_options_t {
       leaf = false,
       inner = false,
       idempotent = false },
     'simple_task', T.simple_task)
   Lc.legion_runtime_register_task(
-    T.TID_FUT, Lc.LOC_PROC, true, true, 1,
+    T.TID_FUT, Lc.LOC_PROC, true, false, 1,
     Lc.legion_task_config_options_t {
       leaf = false,
       inner = false,

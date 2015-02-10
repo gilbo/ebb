@@ -87,18 +87,14 @@ L.LKernel.__call  = function (kobj, relset)
     bran.relset = relset
     bran.kernel = kobj
     bran.location = proc
-    bran.field_reg_map = {}
+    Lt.SetUpTaskArgs( { bran = bran} )
     bran:generate()
   end
 
-  -- PREPARE LEGION TASK ARGUMENTS (physical regions, globals)
+  -- Create legion task requirements and launch task
   SetUpAndLaunchTask({ bran = bran },
                      { ctx = ctx, runtime = runtime } )
 
-  -- PREPARE LEGION TASK REGION REQUIREMENTS
-
-  -- LAUNCH LEGION "KERNEL" TASK, WITH A POINTER TO THE GEBERATED EXECUTABLE
-  print("Unimplemented kernel call for legion runtime")
 end
 
 -- LEGION "KERNEL" TASK

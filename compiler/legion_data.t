@@ -63,7 +63,7 @@ end
 -- Internal method: Ask Legion to create 1 dimensional index space
 local terra Create1DGridIndexSpace(x : int)
   var pt_lo = Lc.legion_point_1d_t { arrayof(int, 0) }
-  var pt_hi = Lc.legion_point_1d_t { arrayof(int, x) }
+  var pt_hi = Lc.legion_point_1d_t { arrayof(int, x-1) }
   var rect = Lc.legion_rect_1d_t { pt_lo, pt_hi }
   var dom = Lc.legion_domain_from_rect_1d(rect)
   return Lc.legion_index_space_create_domain(runtime, ctx, dom)
@@ -72,7 +72,7 @@ end
 -- Internal method: Ask Legion to create 2 dimensional index space
 local terra Create2DGridIndexSpace(x : int, y : int)
   var pt_lo = Lc.legion_point_2d_t { arrayof(int, 0, 0) }
-  var pt_hi = Lc.legion_point_2d_t { arrayof(int, x, y) }
+  var pt_hi = Lc.legion_point_2d_t { arrayof(int, x-1, y-1) }
   var rect = Lc.legion_rect_2d_t { pt_lo, pt_hi }
   var dom = Lc.legion_domain_from_rect_2d(rect)
   return Lc.legion_index_space_create_domain(runtime, ctx, dom)
@@ -81,7 +81,7 @@ end
 -- Internal method: Ask Legion to create 3 dimensional index space
 local terra Create3DGridIndexSpace(x : int, y : int, z : int)
   var pt_lo = Lc.legion_point_3d_t { arrayof(int, 0, 0, 0) }
-  var pt_hi = Lc.legion_point_3d_t { arrayof(int, x, y, z) }
+  var pt_hi = Lc.legion_point_3d_t { arrayof(int, x-1, y-1, z-1) }
   var rect = Lc.legion_rect_3d_t { pt_lo, pt_hi }
   var dom = Lc.legion_domain_from_rect_3d(rect)
   return Lc.legion_index_space_create_domain(runtime, ctx, dom)
