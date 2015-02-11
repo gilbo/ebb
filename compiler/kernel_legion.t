@@ -87,7 +87,7 @@ L.LKernel.__call  = function (kobj, relset)
     bran.relset = relset
     bran.kernel = kobj
     bran.location = proc
-    Lt.SetUpTaskArgs( { bran = bran} )
+    Lt.SetUpArgLayout( { bran = bran} )
     bran:generate()
   end
 
