@@ -42,24 +42,13 @@ local runtime = legion_env.runtime
 --   Legion task with a pointer to this executable. A Legion task unwraps the
 --   kernel launcher from its local arguments, and invokes the function (which
 --   is the entry point for Liszt generated code). The generated code uses
---   physical regions, instead of any direct data pointers. Liszt runtime
---   creates the region requirements for the field and global uses every time
---   the kernel is invoked, to pass these requirements to the task launcher.
---   (We could cache the region requirements later if that makes sense.)
+--   physical regions, instead of any direct data pointers.
+--   SetupArgLayout computes region-field layout, generate() (codegen) uses
+--   this computed layout, and CreateTaskLauncher uses the layout as well as
+--   the generated executable. The launcher is stored in bran for launching
+--   tasks over the same relation in future, without having to compute the
+--   launcher and region requirements again.
 --]]--
-
--- Setup physical regions and arguments for a Legion task, and launch the
--- Legion task.
-local function SetUpAndLaunchTask(params, leg_args)
-  local launcher = Lt.CreateTaskLauncher(
-                      {
-                        task_type        = Tt.TaskTypes.simple,
-                        bran             = params.bran,
-                      } )
-  Lt.LaunchTask( {
-                   task_launcher = launcher
-                 }, leg_args )
-end
 
 -- Setup and Launch Legion task when a Liszt kernel is invoked from an
 -- application.
@@ -78,24 +67,22 @@ L.LKernel.__call  = function (kobj, relset)
                                })
 
   -- GENERATE CODE (USING BRAN?) FOR LEGION TASK
-  -- signature for legion code includes
-  --   * physical regions, a map from accessed fields to physical regions
-  --   * globals?
-  --   * pointer to legion ctx - may not need this
-  --   * pointer to legion runtime - may not need this
   if not bran.kernel_launcher then
     bran.relset = relset
     bran.kernel = kobj
     bran.location = proc
-    -- needed only once, before codegen
     Lt.SetUpArgLayout( { bran = bran} )
     bran:generate()
+    bran.task_launcher = Lt.CreateTaskLauncher(
+                            {
+                              task_type        = Tt.TaskTypes.simple,
+                              bran             = bran,
+                            } )
   end
 
-  -- Create legion task requirements and launch task, needed every time the
-  -- task is launched.
-  SetUpAndLaunchTask({ bran = bran },
-                     { ctx = ctx, runtime = runtime } )
+  -- Launch task
+  Lt.LaunchTask( { task_launcher = bran.task_launcher },
+                 { ctx = ctx, runtime = runtime } )
 
 end
 

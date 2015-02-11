@@ -120,8 +120,11 @@ end
 
 
 -- Creates a map of region requirements, to be used when creating region
--- requirements for task launcher, and when codegen-ing task executable.
--- Need to compute this once only.
+-- requirements.
+-- implementation details:
+-- This computes a trivial region requirement with just one region right now.
+-- TODO: Update this to add region requirements for all different regions,
+-- based on field use.
 function T.SetUpArgLayout(params)
 
   local field_use = params.bran.kernel.field_use
@@ -144,8 +147,10 @@ end
 
 -- Creates a task launcher with task region requirements.
 -- Implementation details:
---   Creates a separate region requirement for every region in arg_layout.
---   This needs to be computed every time before launching a task.
+-- * Creates a separate region requirement for every region in arg_layout. 
+-- * NOTE: This is not combined with SetUpArgLayout because of a needed codegen
+--   phase in between : codegen can happen only after SetUpArgLayout, and the
+--   launcher can be created only after executable from codegen is available.
 function T.CreateTaskLauncher(params)
   local args = params.bran.kernel_launcher:PackToTaskArg()
   -- Simple task that does not return any values
@@ -155,7 +160,6 @@ function T.CreateTaskLauncher(params)
                              Tt.TID_SIMPLE, args,
                              Lc.legion_predicate_true(), 0, 0)
 
-    local field_use = params.bran.kernel.field_use
     local relset = params.bran.relset
     local arg_layout = params.bran.arg_layout
 
@@ -166,6 +170,8 @@ function T.CreateTaskLauncher(params)
     for _, region in ipairs(regions) do
       local r = arg_layout:RegIdx(region)
       local rel = region:Relation()
+      -- Just use READ_WRITE and EXCLUSIVE for now.
+      -- Will need to update this when doing partitions.
       reg_req[r] =
         Lc.legion_task_launcher_add_region_requirement_logical_region(
           task_launcher, rel._logical_region_wrapper.handle,
@@ -173,7 +179,6 @@ function T.CreateTaskLauncher(params)
           rel._logical_region_wrapper.handle, 0, false )
       for _, field in ipairs(region:Fields()) do
         local f = arg_layout:FieldIdx(field, region)
-        local access = field_use[field]
         local rel = field.owner
         print("In create task launcher, adding field " .. field.fid .. " to region req " .. r)
         Lc.legion_task_launcher_add_field(

@@ -132,6 +132,12 @@ end
 ----------------------------------------------------------------------------
 --[[                         CPU Codegen                                ]]--
 ----------------------------------------------------------------------------
+--[[ Codegen uses arg_layout to get base pointers for every region-field pair.
+--   This computation is in the setup phase, before the loop. Storing these 
+--   field pointers (along with their offsets) makes field accesses easier
+--   (also potentially avoiding repeated function calls to get the base pointer
+--   and offsets).
+--]]--
 
 function cpu_codegen (kernel_ast, ctxt)
   ctxt:enterblock()
