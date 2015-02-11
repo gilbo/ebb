@@ -87,11 +87,13 @@ L.LKernel.__call  = function (kobj, relset)
     bran.relset = relset
     bran.kernel = kobj
     bran.location = proc
+    -- needed only once, before codegen
     Lt.SetUpArgLayout( { bran = bran} )
     bran:generate()
   end
 
-  -- Create legion task requirements and launch task
+  -- Create legion task requirements and launch task, needed every time the
+  -- task is launched.
   SetUpAndLaunchTask({ bran = bran },
                      { ctx = ctx, runtime = runtime } )
 

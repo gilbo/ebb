@@ -26,6 +26,9 @@ local KernelLauncherSize     = Tt.KernelLauncherSize
 -------------------------------------------------------------------------------
 
 -- information about fields in a region, privileges etc
+-- this is constant across invocations, used only once during codegen.
+-- legion task arguments on the other hand will have to be computed every time
+-- a kernel is invoked.
 local ArgRegion = {}
 ArgRegion.__index = ArgRegion
 local function NewArgRegion(rel)
@@ -53,9 +56,9 @@ function ArgRegion:NumFields()
   return self.num_fields
 end
 
-function ArgRegion:AddField(field, idx)
+function ArgRegion:AddField(field)
   self.num_fields = self.num_fields + 1
-  self.fields[field] = idx
+  self.fields[self.num_fields] = field
 end
 
 -- information about regions passed by Legion, number of fields etc
@@ -67,11 +70,11 @@ local function NewArgLayout()
     -- number of regions
     num_regions = 0,
     -- list of regions for a Legion task
+    region_idx  = {},
     regions     = {},
     -- total number of fields over all regions
-    num_fields  = 0,
-    -- fields with idx for codegen
-    fields      = {}
+    field_idx   = {},
+    num_fields  = 0
   }
   setmetatable(arg, ArgLayout)
   return arg
@@ -92,21 +95,22 @@ end
 
 function ArgLayout:AddRegion(reg)
   self.num_regions = self.num_regions + 1
-  self.regions[reg] = self.num_regions
+  self.region_idx[reg] = self.num_regions
+  self.regions[self.num_regions] = reg
 end
 
 function ArgLayout:AddFieldToRegion(field, reg)
   self.num_fields = self.num_fields + 1
-  self.fields[field] = self.num_fields
-  reg:AddField(field, self.num_fields)
+  self.field_idx[field] = self.num_fields
+  reg:AddField(field)
 end
 
 function ArgLayout:RegIdx(reg)
-  return self.regions[reg]
+  return self.region_idx[reg]
 end
 
 function ArgLayout:FieldIdx(field)
-  return self.fields[field]
+  return self.field_idx[field]
 end
 
 
@@ -117,6 +121,7 @@ end
 
 -- Creates a map of region requirements, to be used when creating region
 -- requirements for task launcher, and when codegen-ing task executable.
+-- Need to compute this once only.
 function T.SetUpArgLayout(params)
 
   local field_use = params.bran.kernel.field_use
@@ -139,12 +144,8 @@ end
 
 -- Creates a task launcher with task region requirements.
 -- Implementation details:
---  * This creates a separate region requirement for each accessed field. We
---  can group multiple fields into one region requirement, based on stencil
---  and access privileges.
---  * A region requirement with no fields is created as region req 0. This is
---  for iterating over the index space. We can instead do book-keeping about
---  which region can be used for performing iteration, or something else?
+--   Creates a separate region requirement for every region in arg_layout.
+--   This needs to be computed every time before launching a task.
 function T.CreateTaskLauncher(params)
   local args = params.bran.kernel_launcher:PackToTaskArg()
   -- Simple task that does not return any values
@@ -162,7 +163,7 @@ function T.CreateTaskLauncher(params)
     local num_regions = params.bran.arg_layout:NumRegions()
     local reg_req = {}
 
-    for region, _ in pairs(regions) do
+    for _, region in ipairs(regions) do
       local r = arg_layout:RegIdx(region)
       local rel = region:Relation()
       reg_req[r] =
@@ -170,7 +171,7 @@ function T.CreateTaskLauncher(params)
           task_launcher, rel._logical_region_wrapper.handle,
           Lc.READ_WRITE, Lc.EXCLUSIVE,
           rel._logical_region_wrapper.handle, 0, false )
-      for field, _ in pairs(region:Fields()) do
+      for _, field in ipairs(region:Fields()) do
         local f = arg_layout:FieldIdx(field, region)
         local access = field_use[field]
         local rel = field.owner

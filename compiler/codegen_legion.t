@@ -176,9 +176,9 @@ function cpu_codegen (kernel_ast, ctxt)
       end
       local field_init_f = quote end
       local fields_added = 0
-      for reg, _ in pairs(ctxt:Regions()) do
+      for _, reg in ipairs(ctxt:Regions()) do
         local r = ctxt:RegIdx(reg)
-        for field, _ in pairs(ctxt:Fields(reg)) do
+        for _, field in ipairs(ctxt:Fields(reg)) do
           field_init_f = quote
             [field_init_f]
             do
