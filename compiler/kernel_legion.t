@@ -26,11 +26,6 @@ local ctx = legion_env.ctx
 local runtime = legion_env.runtime
 
 
-
-
-
-
-
 -------------------------------------------------------------------------------
 --[[                Argument layout (known during codegen)                 ]]--
 -------------------------------------------------------------------------------
@@ -109,6 +104,21 @@ function ArgLayout:AddRegion(reg)
   self.regions[self.num_regions] = reg
 end
 
+-- Check if region corresponding to a relation is present.
+-- If not, create one, based on params.
+-- This creates one region for every relation right now.
+function ArgLayout:GetRegion(params)
+  local relation = params.relation
+  for _, reg in pairs(self:Regions()) do
+    if reg:Relation() == relation then
+      return reg
+    end
+  end
+  local reg = NewArgRegion(relation)
+  self:AddRegion(reg)
+  return reg
+end
+
 function ArgLayout:AddFieldToRegion(field, reg)
   self.num_fields = self.num_fields + 1
   self.field_idx[field] = self.num_fields
@@ -133,8 +143,6 @@ end
 -- requirements.
 -- implementation details:
 -- This computes a trivial region requirement with just one region right now.
--- TODO: Update this to add region requirements for all different regions,
--- based on field use.
 function K.SetUpArgLayout(params)
 
   local field_use = params.bran.kernel.field_use
@@ -143,17 +151,12 @@ function K.SetUpArgLayout(params)
   params.bran.arg_layout = NewArgLayout()
   local arg_layout = params.bran.arg_layout
 
-  -- only one region for now
-  local region = NewArgRegion(params.bran.relset)
-  arg_layout:AddRegion(region)
-
-  -- add all fields to this region
   for field, access in pairs(field_use) do
-    arg_layout:AddFieldToRegion(field, region)
+    local reg = arg_layout:GetRegion({ relation = field.owner })
+    arg_layout:AddFieldToRegion(field, reg)
   end
 
 end
-
 
 -- Creates a task launcher with task region requirements.
 -- Implementation details:
@@ -264,10 +267,6 @@ L.LKernel.__call  = function (kobj, relset)
                  { ctx = ctx, runtime = runtime } )
 
 end
-
--- LEGION "KERNEL" TASK
--- build signature
--- run executable
 
 
 -------------------------------------------------------------------------------
