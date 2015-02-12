@@ -15,84 +15,163 @@ local KernelLauncherSize     = LW.KernelLauncherSize
 
 
 -------------------------------------------------------------------------------
+--[[                Argument layout (known during codegen)                 ]]--
+-------------------------------------------------------------------------------
+
+-- information about fields in a region, privileges etc
+-- this is constant across invocations, used only once during codegen.
+-- legion task arguments on the other hand will have to be computed every time
+-- a kernel is invoked.
+local ArgRegion = {}
+ArgRegion.__index = ArgRegion
+local function NewArgRegion(rel)
+  local reg = {
+    relation   = rel,
+    -- fields in this region
+    fields     = {},
+    -- number of fields this region contains
+    num_fields = 0,
+  }
+  setmetatable(reg, ArgRegion)
+  return reg
+end
+T.NewArgRegion = NewArgRegion
+
+function ArgRegion:Relation()
+  return self.relation
+end
+
+function ArgRegion:Fields()
+  return self.fields
+end
+
+function ArgRegion:NumFields()
+  return self.num_fields
+end
+
+function ArgRegion:AddField(field)
+  self.num_fields = self.num_fields + 1
+  self.fields[self.num_fields] = field
+end
+
+-- information about regions passed by Legion, number of fields etc
+local ArgLayout = {}
+ArgLayout.__index = ArgLayout
+T.ArgLayout = ArgLayout
+local function NewArgLayout()
+  local arg = {
+    -- number of regions
+    num_regions = 0,
+    -- list of regions for a Legion task
+    region_idx  = {},
+    regions     = {},
+    -- total number of fields over all regions
+    field_idx   = {},
+    num_fields  = 0
+  }
+  setmetatable(arg, ArgLayout)
+  return arg
+end
+T.NewArgLayout = NewArgLayout
+
+function ArgLayout:NumRegions()
+  return self.num_regions
+end
+
+function ArgLayout:Regions()
+  return self.regions
+end
+
+function ArgLayout:NumFields()
+  return self.num_fields
+end
+
+function ArgLayout:AddRegion(reg)
+  self.num_regions = self.num_regions + 1
+  self.region_idx[reg] = self.num_regions
+  self.regions[self.num_regions] = reg
+end
+
+function ArgLayout:AddFieldToRegion(field, reg)
+  self.num_fields = self.num_fields + 1
+  self.field_idx[field] = self.num_fields
+  reg:AddField(field)
+end
+
+function ArgLayout:RegIdx(reg)
+  return self.region_idx[reg]
+end
+
+function ArgLayout:FieldIdx(field)
+  return self.field_idx[field]
+end
+
+
+-------------------------------------------------------------------------------
 --[[                         Legion task launcher                          ]]--
 -------------------------------------------------------------------------------
 
 
 -- Creates a map of region requirements, to be used when creating region
--- requirements for task launcher, and when codegen-ing task executable.
-function T.SetUpTaskArgs(params)
-  -- TODO: make this into a class
+-- requirements.
+-- implementation details:
+-- This computes a trivial region requirement with just one region right now.
+-- TODO: Update this to add region requirements for all different regions,
+-- based on field use.
+function T.SetUpArgLayout(params)
+
   local field_use = params.bran.kernel.field_use
-  params.bran.arg_layout = {}
+
+  -- arg layout
+  params.bran.arg_layout = NewArgLayout()
   local arg_layout = params.bran.arg_layout
 
-  -- field to region number
-  arg_layout.field_to_rnum = {}
-  local field_to_rnum = arg_layout.field_to_rnum
-
-  -- field location
-  arg_layout.field_num = {}
-  local field_num = arg_layout.field_num
-  local num_fields = 1
-
-  -- region metadata
-  arg_layout.regions = {}
-  local regions = arg_layout.regions
-
   -- only one region for now
-  regions[1] = {}
-  regions[1].relation = params.bran.relset
-  regions[1].fields = {}
-  regions[1].num_fields = 0
+  local region = NewArgRegion(params.bran.relset)
+  arg_layout:AddRegion(region)
 
+  -- add all fields to this region
   for field, access in pairs(field_use) do
-    local reg_num = 1
-    field_num[field] = num_fields
-    field_to_rnum[field] = reg_num
-    regions[reg_num].num_fields = regions[reg_num].num_fields + 1
-    regions[reg_num].fields[regions[reg_num].num_fields] = field
-    num_fields = num_fields + 1
+    arg_layout:AddFieldToRegion(field, region)
   end
 
-  arg_layout.num_regions = 1
-  arg_layout.num_fields = num_fields - 1
 end
 
 
 -- Creates a task launcher with task region requirements.
 -- Implementation details:
---  * This creates a separate region requirement for each accessed field. We
---  can group multiple fields into one region requirement, based on stencil
---  and access privileges.
---  * A region requirement with no fields is created as region req 0. This is
---  for iterating over the index space. We can instead do book-keeping about
---  which region can be used for performing iteration, or something else?
+-- * Creates a separate region requirement for every region in arg_layout. 
+-- * NOTE: This is not combined with SetUpArgLayout because of a needed codegen
+--   phase in between : codegen can happen only after SetUpArgLayout, and the
+--   launcher can be created only after executable from codegen is available.
 function T.CreateTaskLauncher(params)
   local args = params.bran.kernel_launcher:PackToTaskArg()
   -- Simple task that does not return any values
   if params.task_type == LW.TaskTypes.simple then
     -- task launcher
     local task_launcher = LW.legion_task_launcher_create(
-                             LW.TID_SIMPLE, args,
-                             LW.legion_predicate_true(), 0, 0)
-    local field_use = params.bran.kernel.field_use
+                             Tt.TID_SIMPLE, args,
+                             Lc.legion_predicate_true(), 0, 0)
+
     local relset = params.bran.relset
-    local field_to_rnum = params.bran.arg_layout.field_to_rnum
-    local regions = params.bran.arg_layout.regions
-    local num_regions = params.bran.arg_layout.num_regions
+    local arg_layout = params.bran.arg_layout
+
+    local regions = arg_layout:Regions()
+    local num_regions = params.bran.arg_layout:NumRegions()
     local reg_req = {}
-    for r = 1, num_regions do
-      local region = regions[r]
-      local rel = region.relation
+
+    for _, region in ipairs(regions) do
+      local r = arg_layout:RegIdx(region)
+      local rel = region:Relation()
+      -- Just use READ_WRITE and EXCLUSIVE for now.
+      -- Will need to update this when doing partitions.
       reg_req[r] =
         LW.legion_task_launcher_add_region_requirement_logical_region(
           task_launcher, rel._logical_region_wrapper.handle,
           LW.READ_WRITE, LW.EXCLUSIVE,
           rel._logical_region_wrapper.handle, 0, false )
-      for f = 1, region.num_fields do
-        local field = region.fields[f]
-        local access = field_use[field]
+      for _, field in ipairs(region:Fields()) do
+        local f = arg_layout:FieldIdx(field, region)
         local rel = field.owner
         print("In create task launcher, adding field " .. field.fid .. " to region req " .. r)
         LW.legion_task_launcher_add_field(

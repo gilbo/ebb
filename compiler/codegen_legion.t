@@ -75,47 +75,35 @@ function Context:GridDimensions()
 end
 
 function Context:NumRegions()
-  return self.bran.arg_layout.num_regions
+  return self.bran.arg_layout:NumRegions()
 end
 
 function Context:NumFields()
-  return self.bran.arg_layout.num_fields
+  return self.bran.arg_layout:NumFields()
 end
 
-function Context:Region(reg_num)
-  return self.bran.arg_layout.regions[reg_num]
+function Context:Regions()
+  return self.bran.arg_layout:Regions()
 end
 
-function Context:NumFieldsForRegion(reg_num)
-  return self.bran.arg_layout.regions[reg_num].num_fields
+function Context:Fields(reg)
+  return reg:Fields()
 end
 
 function Context:FieldData(field)
-  local findex = self.bran.arg_layout.field_num[field]
+  local findex = self.bran.arg_layout:FieldIdx(field)
   local fd     = self:localenv()['_field_ptrs']
   assert(terralib.issymbol(fd))
   -- field data does not contain region 0, which is used only for iterating
   return `([fd][ findex - 1 ])
 end
 
-function Context:FieldFromArg(reg_num, field_num)
-  return self.bran.arg_layout.regions[reg_num].fields[fnum]
+function Context:RegIdx(reg)
+  return self.bran.arg_layout:RegIdx(reg)
 end
 
-function Context:FieldIdFromArg(reg_num, field_num)
-  return self.bran.arg_layout.regions[reg_num].fields[field_num].fid
-end
-
-function Context:IndexSpaceIterator()
-  -- TODO: 
-  -- > Return a symbol for index space iterator corresponding to logical reion
-  --   for relation over which kernel is invoked.
-end
-
-function Context:FieldAccessor(relation, field)
-  -- TODO:
-  -- > Return a symbol for accessing field from physical region for given pair
-  --   of relation, field.
+function Context:FieldIdx(field, reg)
+  return self.bran.arg_layout:FieldIdx(field, reg)
 end
 
 
@@ -139,6 +127,12 @@ end
 ----------------------------------------------------------------------------
 --[[                         CPU Codegen                                ]]--
 ----------------------------------------------------------------------------
+--[[ Codegen uses arg_layout to get base pointers for every region-field pair.
+--   This computation is in the setup phase, before the loop. Storing these 
+--   field pointers (along with their offsets) makes field accesses easier
+--   (also potentially avoiding repeated function calls to get the base pointer
+--   and offsets).
+--]]--
 
 function cpu_codegen (kernel_ast, ctxt)
   ctxt:enterblock()
@@ -169,6 +163,9 @@ function cpu_codegen (kernel_ast, ctxt)
     -- generate iteration code over domain
     local body = quote end
 
+    assert(ctxt:NumRegions() > 0, "Liszt kernel" .. tostring(kernel_ast.id) ..
+          " should have at least 1 physical region")
+
     -- GRIDS
     if ctxt:IsGrid() then
       -- 1 dimensional
@@ -180,9 +177,9 @@ function cpu_codegen (kernel_ast, ctxt)
       end
       local field_init_f = quote end
       local fields_added = 0
-      for r = 1, ctxt:NumRegions() do
-        local reg = ctxt:Region(r)
-        for f = 1, reg.num_fields do
+      for _, reg in ipairs(ctxt:Regions()) do
+        local r = ctxt:RegIdx(reg)
+        for _, field in ipairs(ctxt:Fields(reg)) do
           field_init_f = quote
             [field_init_f]
             do
@@ -191,13 +188,14 @@ function cpu_codegen (kernel_ast, ctxt)
               var dom  = LW.legion_index_space_get_domain([Largs].lg_runtime, [Largs].lg_ctx, is)
               var rect = [ LegionGetRectFromDom[dim] ](dom)
               do
-                var acc  = LW.legion_physical_region_get_field_accessor_generic(
-                  preg, [ ctxt:FieldIdFromArg(r, f) ])
+                var acc =
+                  LW.legion_physical_region_get_field_accessor_generic(
+                    preg, [field.fid] )
                 var subrect : LegionRect[dim]
                 var strides : LW.legion_byte_offset_t[dim]
                 var base = [&int8]([ LegionRawPtrFromAcc[dim] ](
                   acc, rect, &subrect, strides))
-                C.printf("In legion task - setup, adding field id %i from region %i\n", [ctxt:FieldIdFromArg(r, f)], r-1)
+                C.printf("In legion task - setup, adding field id %i from region %i\n", [ctxt:FieldIdx(field, reg)], r-1)
                 [field_ptrs][fields_added] = [ fieldData[dim] ] { base, strides }
               end
             end
@@ -327,7 +325,7 @@ function ast.FieldAccess:codegen (ctxt)
   local access = quote
     var strides = [fdata].strides
     var ptr = [&fttype]([fdata].ptr + [IndexToOffset(ctxt, index, strides)] )
-   -- C.printf("Data was %i\n", @ptr)
+    -- C.printf("Data was %i\n", @ptr)
   in
     @ptr
   end
