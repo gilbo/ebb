@@ -22,7 +22,7 @@ terralib.includepath = terralib.includepath..';'..runtime_dir..
 package.path = package.path .. ';'..bindings_dir..'/?.t'
 
 if #arg > 0 then
-  terralib.loadfile('./compiler/launch_script.t')()
+  assert(terralib.loadfile('./compiler/launch_legion.t'))()
 else
   os.execute('terra/terra')
 end

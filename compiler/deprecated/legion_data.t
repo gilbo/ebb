@@ -4,7 +4,7 @@ package.loaded["compiler.legion_data"] = L
 local C = require "compiler.c"
 
 local Tc = require "compiler.typedefs"
-require "legionlib"
+--require "legionlib"
 local Lc = terralib.includecstring([[
 #include "legion_c.h"
 ]])
@@ -14,24 +14,24 @@ local Lc = terralib.includecstring([[
 --[[                          Legion environment                           ]]--
 -------------------------------------------------------------------------------
 
-local legion_env = rawget(_G, '_legion_env')
-local ctx = legion_env.ctx
-local runtime = legion_env.runtime
+local legion_env  = rawget(_G, '_legion_env')
+local ctx         = legion_env.ctx
+local runtime     = legion_env.runtime
 
 
 -------------------------------------------------------------------------------
 --[[                                 Types                                 ]]--
 -------------------------------------------------------------------------------
 
-local fid_t = Lc.legion_field_id_t
+local fid_t = LW.legion_field_id_t
 
-local LogicalRegion = {}
-LogicalRegion.__index = LogicalRegion
-L.LogicalRegion = LogicalRegion
+local LogicalRegion     = {}
+LogicalRegion.__index   = LogicalRegion
+L.LogicalRegion         = LogicalRegion
 
-local PhysicalRegion = {}
-PhysicalRegion.__index = PhysicalRegion
-L.PhysicalRegion = PhysicalRegion
+local PhysicalRegion    = {}
+PhysicalRegion.__index  = PhysicalRegion
+L.PhysicalRegion        = PhysicalRegion
 
 
 -------------------------------------------------------------------------------
@@ -47,14 +47,14 @@ function LogicalRegion:AllocateRows(num)
       error("Cannot allocate more rows for relation ", self.relation:Name())
     end
   end
-  Lc.legion_index_allocator_alloc(self.isa, num)
+  LW.legion_index_allocator_alloc(self.isa, num)
   self.rows_live = self.rows_live + num
 end
 
 -- NOTE: Assuming here that the compile time limit is never be hit.
 -- NOTE: Call from top level task only.
 function LogicalRegion:AllocateField(typ)
-  local fid = Lc.legion_field_allocator_allocate_field(
+  local fid = LW.legion_field_allocator_allocate_field(
                  self.fsa, terralib.sizeof(typ.terratype), self.field_ids)
   self.field_ids = self.field_ids + 1
   return fid

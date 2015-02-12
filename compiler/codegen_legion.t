@@ -8,12 +8,7 @@ local L = require 'compiler.lisztlib'
 local Cc = require 'compiler.codegen_common'
 
 -- Legion dependencies
-require "legionlib"
-local Lc = terralib.includecstring([[
-#include "legion_c.h"
-]])
-local Ld = require "compiler.legion_data"
-local Tt = require "compiler.legion_task_types"
+local LW = require "compiler.legionwrap"
 
 
 -------------------------------------------------------------------------------
@@ -45,24 +40,24 @@ local fieldData = {}
 for dim = 1, 3 do
   fieldData[dim] = struct {
     ptr : &int8,
-    strides : Lc.legion_byte_offset_t[dim] ;
+    strides : LW.legion_byte_offset_t[dim] ;
   }
 end
 
 local LegionRect = {}
-LegionRect[1] = Lc.legion_rect_1d_t
-LegionRect[2] = Lc.legion_rect_2d_t
-LegionRect[3] = Lc.legion_rect_3d_t
+LegionRect[1] = LW.legion_rect_1d_t
+LegionRect[2] = LW.legion_rect_2d_t
+LegionRect[3] = LW.legion_rect_3d_t
 
 local LegionGetRectFromDom = {}
-LegionGetRectFromDom[1] = Lc.legion_domain_get_rect_1d
-LegionGetRectFromDom[2] = Lc.legion_domain_get_rect_2d
-LegionGetRectFromDom[3] = Lc.legion_domain_get_rect_3d
+LegionGetRectFromDom[1] = LW.legion_domain_get_rect_1d
+LegionGetRectFromDom[2] = LW.legion_domain_get_rect_2d
+LegionGetRectFromDom[3] = LW.legion_domain_get_rect_3d
 
 local LegionRawPtrFromAcc = {}
-LegionRawPtrFromAcc[1] = Lc.legion_accessor_generic_raw_rect_ptr_1d
-LegionRawPtrFromAcc[2] = Lc.legion_accessor_generic_raw_rect_ptr_2d
-LegionRawPtrFromAcc[3] = Lc.legion_accessor_generic_raw_rect_ptr_3d
+LegionRawPtrFromAcc[1] = LW.legion_accessor_generic_raw_rect_ptr_1d
+LegionRawPtrFromAcc[2] = LW.legion_accessor_generic_raw_rect_ptr_2d
+LegionRawPtrFromAcc[3] = LW.legion_accessor_generic_raw_rect_ptr_3d
 
 
 -------------------------------------------------------------------------------
@@ -149,7 +144,7 @@ function cpu_codegen (kernel_ast, ctxt)
   ctxt:enterblock()
 
     -- symbols for arguments to executable
-    local Largs = symbol(Tt.LegionTaskArgs)
+    local Largs = symbol(LW.TaskArgs)
     ctxt:localenv()['_legion_args'] = Largs
 
     -- symbols for iteration and field data
@@ -192,14 +187,14 @@ function cpu_codegen (kernel_ast, ctxt)
             [field_init_f]
             do
               var preg = [Largs].regions[r-1]
-              var is   = Lc.legion_physical_region_get_logical_region(preg).index_space
-              var dom  = Lc.legion_index_space_get_domain([Largs].lg_runtime, [Largs].lg_ctx, is)
+              var is   = LW.legion_physical_region_get_logical_region(preg).index_space
+              var dom  = LW.legion_index_space_get_domain([Largs].lg_runtime, [Largs].lg_ctx, is)
               var rect = [ LegionGetRectFromDom[dim] ](dom)
               do
-                var acc  = Lc.legion_physical_region_get_field_accessor_generic(
+                var acc  = LW.legion_physical_region_get_field_accessor_generic(
                   preg, [ ctxt:FieldIdFromArg(r, f) ])
                 var subrect : LegionRect[dim]
-                var strides : Lc.legion_byte_offset_t[dim]
+                var strides : LW.legion_byte_offset_t[dim]
                 var base = [&int8]([ LegionRawPtrFromAcc[dim] ](
                   acc, rect, &subrect, strides))
                 C.printf("In legion task - setup, adding field id %i from region %i\n", [ctxt:FieldIdFromArg(r, f)], r-1)
@@ -215,9 +210,9 @@ function cpu_codegen (kernel_ast, ctxt)
       local setup = quote
         [field_init]
         [field_init_f]
-        var r   = Lc.legion_physical_region_get_logical_region([Largs].regions[0])
+        var r   = LW.legion_physical_region_get_logical_region([Largs].regions[0])
         var is  = r.index_space
-        var dom = Lc.legion_index_space_get_domain([Largs].lg_runtime, [Largs].lg_ctx, is)
+        var dom = LW.legion_index_space_get_domain([Largs].lg_runtime, [Largs].lg_ctx, is)
         C.printf(" --- Begin loop ---\n")
         var [rect] = [ LegionGetRectFromDom[dim] ](dom)
       end
@@ -265,7 +260,7 @@ function cpu_codegen (kernel_ast, ctxt)
       error("INTERNAL ERROR: Codegen for unstructured relations unimplemented")
     end
 
-    local k = terra (leg_args : Tt.LegionTaskArgs)
+    local k = terra (leg_args : LW.TaskArgs)
       -- Plain terra code, needs to be converted to code that uses symbols
       -- and probably moved up to kernel body
       C.printf("------------ Executing a legion task -------------\n")

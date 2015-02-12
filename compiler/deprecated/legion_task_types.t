@@ -4,7 +4,7 @@ package.loaded["compiler.legion_task_types"] = T
 local C = require "compiler.c"
 
 -- Legion library
-require "legionlib"
+--require "legionlib"
 local Lc = terralib.includecstring([[
 #include "legion_c.h"
 ]])

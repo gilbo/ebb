@@ -1,7 +1,7 @@
 local L = {}
 package.loaded["compiler.lisztlib"] = L
 
-local use_legion = rawget(_G, '_legion')
+local use_legion = not not rawget(_G, '_legion_env')
 local use_single = not use_legion
 
 -- Liszt types are created here
@@ -9,7 +9,6 @@ local T = require 'compiler.types'
 
 local DataArray = use_single and
                   require('compiler.rawdata').DataArray
-local Lg = use_legion and require "compiler.legion_data"
 
 -- Use the following to produce
 -- deterministic order of table entries

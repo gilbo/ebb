@@ -2,7 +2,7 @@
 local R = {}
 package.loaded["compiler.relations"] = R
 
-local use_legion = rawget(_G, '_legion')
+local use_legion = not not rawget(_G, '_legion_env')
 local use_single = not use_legion
 
 local L = require "compiler.lisztlib"
@@ -16,7 +16,8 @@ local JSON = require('compiler.JSON')
 
 local DynamicArray = use_single and
                      require('compiler.rawdata').DynamicArray
-local Ld = use_legion and require "compiler.legion_data"
+--local Ld = use_legion and require "compiler.legion_data"
+local LW = use_legion and require "compiler.legionwrap"
 
 local valid_name_err_msg =
   "must be valid Lua Identifiers: a letter or underscore,"..
@@ -82,7 +83,7 @@ function L.NewRelation(size, name)
       rows_max = size,
       rows_init = size
     }
-    local logical_region_wrapper = Ld.NewLogicalRegion(dom_params)
+    local logical_region_wrapper = LW.NewLogicalRegion(dom_params)
     rawset(rel, '_logical_region_wrapper', logical_region_wrapper)
   end
 
@@ -143,7 +144,7 @@ function L.NewGridRelation(name, params)
       dimensions = dim,
       bounds = bounds
     }
-    local logical_region_wrapper = Ld.NewGridLogicalRegion(dom_params)
+    local logical_region_wrapper = LW.NewGridLogicalRegion(dom_params)
     rawset(rel, '_logical_region_wrapper', logical_region_wrapper)
   end
   return rel

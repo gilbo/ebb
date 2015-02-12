@@ -3,22 +3,15 @@ package.loaded["compiler.legion_tasks"] = T
 
 local C = require "compiler.c"
 
--- Legion library
-require "legionlib"
-local Lc = terralib.includecstring([[
-#include "legion_c.h"
-]])
-
-local Ld = require "compiler.legion_data"
-local Tt = require "compiler.legion_task_types"
+local LW = require "compiler.legionwrap"
 
 
 -------------------------------------------------------------------------------
 --[[                       Kernel Launcher Template                        ]]--
 -------------------------------------------------------------------------------
 
-local KernelLauncherTemplate = Tt.KernelLauncherTemplate
-local KernelLauncherSize     = Tt.KernelLauncherSize
+local KernelLauncherTemplate = LW.KernelLauncherTemplate
+local KernelLauncherSize     = LW.KernelLauncherSize
 
 
 -------------------------------------------------------------------------------
@@ -78,11 +71,11 @@ end
 function T.CreateTaskLauncher(params)
   local args = params.bran.kernel_launcher:PackToTaskArg()
   -- Simple task that does not return any values
-  if params.task_type == Tt.TaskTypes.simple then
+  if params.task_type == LW.TaskTypes.simple then
     -- task launcher
-    local task_launcher = Lc.legion_task_launcher_create(
-                             Tt.TID_SIMPLE, args,
-                             Lc.legion_predicate_true(), 0, 0)
+    local task_launcher = LW.legion_task_launcher_create(
+                             LW.TID_SIMPLE, args,
+                             LW.legion_predicate_true(), 0, 0)
     local field_use = params.bran.kernel.field_use
     local relset = params.bran.relset
     local field_to_rnum = params.bran.arg_layout.field_to_rnum
@@ -93,21 +86,21 @@ function T.CreateTaskLauncher(params)
       local region = regions[r]
       local rel = region.relation
       reg_req[r] =
-        Lc.legion_task_launcher_add_region_requirement_logical_region(
+        LW.legion_task_launcher_add_region_requirement_logical_region(
           task_launcher, rel._logical_region_wrapper.handle,
-          Lc.READ_WRITE, Lc.EXCLUSIVE,
+          LW.READ_WRITE, LW.EXCLUSIVE,
           rel._logical_region_wrapper.handle, 0, false )
       for f = 1, region.num_fields do
         local field = region.fields[f]
         local access = field_use[field]
         local rel = field.owner
         print("In create task launcher, adding field " .. field.fid .. " to region req " .. r)
-        Lc.legion_task_launcher_add_field(
+        LW.legion_task_launcher_add_field(
           task_launcher, reg_req[r], field.fid, true )
       end
     end
     return task_launcher
-  elseif params.task_type == Tt.TaskTypes.fut then
+  elseif params.task_type == LW.TaskTypes.fut then
     error("INTERNAL ERROR: Liszt does not handle tasks with future values yet")
   else
     error("INTERNAL ERROR: Unknown task type")
@@ -117,7 +110,7 @@ end
 -- Launches Legion task and returns.
 function T.LaunchTask(p, leg_args)
   print("Launching legion task")
-   Lc.legion_task_launcher_execute(leg_args.runtime, leg_args.ctx,
+   LW.legion_task_launcher_execute(leg_args.runtime, leg_args.ctx,
                                    p.task_launcher)
   print("Launched task")
 end

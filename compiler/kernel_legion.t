@@ -4,16 +4,8 @@ local Kc = require "compiler.kernel_common"
 local L = require "compiler.lisztlib"
 local C = require "compiler.c"
 
-local Tc = require "compiler.typedefs"
-require "legionlib"
-local Lc = terralib.includecstring([[
-#include "legion_c.h"
-]])
-
 local codegen = require "compiler.codegen_legion"
-local Ld      = require "compiler.legion_data"
-local Lt      = require "compiler.legion_tasks"
-local Tt      = require "compiler.legion_task_types"
+local LW      = require "compiler.legionwrap"
 
 -------------------------------------------------------------------------------
 --[[                            Kernels, Brans                             ]]--
@@ -22,7 +14,7 @@ local Tt      = require "compiler.legion_task_types"
 local Bran = Kc.Bran
 local Seedbank = Kc.Seedbank
 local seedbank_lookup = Kc.seedbank_lookup
-local KernelLauncherTemplate = Lt.KernelLauncherTemplate
+local KernelLauncherTemplate = LW.KernelLauncherTemplate
 
 
 -------------------------------------------------------------------------------
@@ -51,12 +43,12 @@ local runtime = legion_env.runtime
 -- Setup physical regions and arguments for a Legion task, and launch the
 -- Legion task.
 local function SetUpAndLaunchTask(params, leg_args)
-  local launcher = Lt.CreateTaskLauncher(
+  local launcher = LW.CreateTaskLauncher(
                       {
-                        task_type        = Tt.TaskTypes.simple,
+                        task_type        = LW.TaskTypes.simple,
                         bran             = params.bran,
                       } )
-  Lt.LaunchTask( {
+  LW.LaunchTask( {
                    task_launcher = launcher
                  }, leg_args )
 end
@@ -87,7 +79,7 @@ L.LKernel.__call  = function (kobj, relset)
     bran.relset = relset
     bran.kernel = kobj
     bran.location = proc
-    Lt.SetUpTaskArgs( { bran = bran} )
+    LW.SetUpTaskArgs( { bran = bran} )
     bran:generate()
   end
 
@@ -136,7 +128,7 @@ function Bran:generate()
   -- Doing so throws error "cannot convert 'table' to 'bool (*)()'".
   -- Should fix this, and remove the wrapper terra function defined below.
   local terra NewKernelLauncher()
-    return Tt.NewKernelLauncher(bran.executable)
+    return LW.NewKernelLauncher(bran.executable)
   end
   bran.kernel_launcher = NewKernelLauncher()
 end

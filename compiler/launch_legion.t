@@ -1,34 +1,33 @@
 -- Launch liszt program as a top level legion task.
 
+-- set up a global structure to stash legion variables into
+rawset(_G, '_legion_env', {})
+
 local C = require "compiler.c"
 
 -- Legion library
-require "legionlib"
-local Lc = terralib.includecstring([[
-#include "legion_c.h"
-]])
+local LW = require "compiler.legionwrap"
 
-local T = require "compiler.legion_task_types"
-
-local terra dereference_legion_context(ctx : &Lc.legion_context_t)
+local terra dereference_legion_context(ctx : &LW.legion_context_t)
   return @ctx
 end
 
-local terra dereference_legion_runtime(runtime : &Lc.legion_runtime_t)
+local terra dereference_legion_runtime(runtime : &LW.legion_runtime_t)
   return @runtime
 end
 
 -- Setup tables and constants  for Legion runtime in Liszt.
 local function setup_liszt_for_legion(ctx, runtime)
-  rawset(_G, '_legion', true)
-  local legion_env = { ctx     = dereference_legion_context(ctx),
-                       runtime = dereference_legion_runtime(runtime) }
-  rawset(_G, '_legion_env', legion_env)
+  local legion_env = rawget(_G, '_legion_env')
+  legion_env.ctx      = dereference_legion_context(ctx)
+  legion_env.runtime  = dereference_legion_runtime(runtime)
+  legion_env.terraargs:get().ctx      = ctx
+  legion_env.terraargs:get().runtime  = runtime
   return true
 end
 local terra_setup_liszt_for_legion =
-  terralib.cast( { &Lc.legion_context_t,
-                   &Lc.legion_runtime_t } -> bool, setup_liszt_for_legion )
+  terralib.cast( { &LW.legion_context_t,
+                   &LW.legion_runtime_t } -> bool, setup_liszt_for_legion )
 
 -- Top level task
 TID_TOP_LEVEL = 100
@@ -36,10 +35,16 @@ TID_TOP_LEVEL = 100
 -- Error handler to display stack trace
 local function top_level_err_handler(errobj)
   local err = tostring(errobj)
-  if string.match(err, "stack traceback:") then
-    print(err)
+  if string.match(err, 'stack traceback:') then
+    -- trim the error?
+    local start_i, end_i = string.find(err, '\t./compiler/launch_script.t')
+    local trimmed = string.sub(err, 1, start_i-1)
+    print(trimmed)
+    --print("FDSDSFSFDD")
   else
-    print(err .. "\n" .. debug.traceback())
+    print(err)
+    --print(err .. '\n' .. debug.traceback())
+    --print("SDLFNPOIDFS")
   end
   os.exit(1)
 end
@@ -55,43 +60,45 @@ function load_liszt()
 end
 
 -- Run Liszt compiler/ Lua-Terra interpreter as a top level task
-local terra top_level_task(task_args : Lc.legion_task_t,
-                           regions : &Lc.legion_physical_region_t,
-                           num_regions : uint32,
-                           ctx : Lc.legion_context_t,
-                           runtime : Lc.legion_runtime_t)
+local terra top_level_task(
+  task_args   : LW.legion_task_t,
+  regions     : &LW.legion_physical_region_t,
+  num_regions : uint32,
+  ctx         : LW.legion_context_t,
+  runtime     : LW.legion_runtime_t
+)
   C.printf("Setting up Legion ...\n")
   terra_setup_liszt_for_legion(&ctx, &runtime)
   C.printf("Loading Liszt application ...\n")
-  var success = load_liszt()
+  load_liszt()
   C.printf("Finished Liszt application\n")
 end
 
 -- Main function that launches Legion runtime
 local terra main()
-  Lc.legion_runtime_register_task_void(
-    TID_TOP_LEVEL, Lc.LOC_PROC, true, false, 1,
-    Lc.legion_task_config_options_t {
+  LW.legion_runtime_register_task_void(
+    TID_TOP_LEVEL, LW.LOC_PROC, true, false, 1,
+    LW.legion_task_config_options_t {
       leaf = false,
       inner = false,
       idempotent = false },
     'top_level_task', top_level_task)
-  Lc.legion_runtime_register_task_void(
-    T.TID_SIMPLE, Lc.LOC_PROC, true, false, 1,
-    Lc.legion_task_config_options_t {
+  LW.legion_runtime_register_task_void(
+    LW.TID_SIMPLE, LW.LOC_PROC, true, false, 1,
+    LW.legion_task_config_options_t {
       leaf = false,
       inner = false,
       idempotent = false },
-    'simple_task', T.simple_task)
-  Lc.legion_runtime_register_task(
-    T.TID_FUT, Lc.LOC_PROC, true, false, 1,
-    Lc.legion_task_config_options_t {
+    'simple_task', LW.simple_task)
+  LW.legion_runtime_register_task(
+    LW.TID_FUT, LW.LOC_PROC, true, false, 1,
+    LW.legion_task_config_options_t {
       leaf = false,
       inner = false,
       idempotent = false },
-    'fut_task', T.fut_task)
-  Lc.legion_runtime_set_top_level_task_id(TID_TOP_LEVEL)
-  Lc.legion_runtime_start(0, [&rawstring](0), false)
+    'fut_task', LW.fut_task)
+  LW.legion_runtime_set_top_level_task_id(TID_TOP_LEVEL)
+  LW.legion_runtime_start(0, [&rawstring](0), false)
 end
 
 main()
