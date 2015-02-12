@@ -7,8 +7,50 @@
 
 -- If we can run from elsewhere, then make sure to modify the Lua/Terra paths
 
+
+local USE_LEGION = false
+local RUN_SCRIPT = false
+
+-- Pre-Process arguments
 if #arg > 0 then
-  terralib.loadfile('./compiler/launch_script.t')()
+  local write_i = 1
+  for i=1,#arg do
+    if arg[i] == '-legion' or arg[i] == '--legion' then
+      USE_LEGION = true
+    else
+      arg[write_i] = arg[i]
+      write_i = write_i + 1
+    end
+  end
+  for k=write_i,#arg do arg[k] = nil end
+end
+if #arg > 0 then RUN_SCRIPT = true end
+
+
+
+if USE_LEGION then
+  -- Here, make sure that the legion library is loaded.
+  local legion_dir    = './legion'
+  local bindings_dir  = legion_dir..'/bindings/terra'
+  local runtime_dir   = legion_dir..'/runtime'
+
+  -- Link in a particular library
+  terralib.linklibrary(bindings_dir..'/liblegion_terra.so')
+  -- Extend the Terra path that looks for C header files
+  terralib.includepath = terralib.includepath..';'..runtime_dir..
+                                               ';'..bindings_dir
+  -- Extend the Lua path
+  package.path = package.path .. ';'..bindings_dir..'/?.t'
+end
+
+
+
+if RUN_SCRIPT then
+  if USE_LEGION then
+    assert(terralib.loadfile('./compiler/launch_legion.t'))()
+  else
+    assert(terralib.loadfile('./compiler/launch_script.t'))()
+  end
 else
   os.execute('terra/terra')
 end
