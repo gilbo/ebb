@@ -198,14 +198,13 @@ end
 -- NOTE: Call from top level task only.
 function LW.NewLogicalRegion(params)
   local l = {
-              type = 'unstructured',
+              type      = 'unstructured',
               relation  = params.relation,
               field_ids = 0,
-              rows_max  = params.rows_max,
-              rows_live = 0,
+              n_rows    = params.n_rows,
             }
   -- index space
-  l.is  = LW.legion_index_space_create(LE.runtime, LE.ctx, l.rows_max)
+  l.is  = Create1DGridIndexSpace(l.n_rows)
   l.isa = LW.legion_index_allocator_create(LE.runtime, LE.ctx, l.is)
   -- field space
   l.fs  = LW.legion_field_space_create(LE.runtime, LE.ctx)
@@ -213,7 +212,6 @@ function LW.NewLogicalRegion(params)
   -- logical region
   l.handle = LW.legion_logical_region_create(LE.runtime, LE.ctx, l.is, l.fs)
   setmetatable(l, LogicalRegion)
-  l:AllocateRows(params.rows_init)
   return l
 end
 
@@ -221,11 +219,11 @@ end
 -- NOTE: Call from top level task only.
 function LW.NewGridLogicalRegion(params)
   local l = {
-              type = 'grid',
-              relation  = params.relation,
-              field_ids = 0,
-              bounds = params.bounds,
-              dimensions = params.dimensions,
+              type        = 'grid',
+              relation    = params.relation,
+              field_ids   = 0,
+              bounds      = params.bounds,
+              dimensions  = params.dimensions,
             }
   -- index space
   local bounds = params.bounds
@@ -306,6 +304,102 @@ LW.coherence = {
 function PhysicalRegion:WaitUntilValid()
   LW.legion_physical_region_wait_until_valid(self.handle)
 end
+
+
+
+
+---------------------)(Q#$&Y@)#*$(*&_)@----------------------------------------
+--[[         GILBERT added this to make field loading work.                ]]--
+--[[           Think of this as a workspace, not final organization        ]]--
+-----------------------------------------)(Q#$&Y@)#*$(*&_)@--------------------
+
+
+
+-- The ControlScanner lets the top-level/control task
+-- scan any logical region in order to load or extract data from fields
+LW.ControlScanner         = {}
+LW.ControlScanner.__index = LW.ControlScanner
+
+function LW.NewControlScanner(params)
+  if not params.logical_region then
+    error('Expects logical_region argument', 2)
+  elseif not params.n_rows then
+    error('Expects fields list argument', 2)
+  elseif not params.privilege then
+    error('Expects privilege argument', 2)
+  elseif not params.fields then
+    error('Expects fields list argument', 2)
+  end
+
+  -- create the launcher and bind in the fields
+  local il = LW.legion_inline_launcher_create_logical_region(
+    params.logical_region,  -- legion_logical_region_t handle
+    params.privilege,       -- legion_privilege_mode_t
+    LW.EXCLUSIVE,           -- legion_coherence_property_t
+    params.logical_region,  -- legion_logical_region_t parent
+    0,                      -- legion_mapping_tag_id_t region_tag /* = 0 */
+    false,                  -- bool verified /* = false*/
+    0,                      -- legion_mapper_id_t id /* = 0 */
+    0                       -- legion_mapping_tag_id_t launcher_tag /* = 0 */
+  )
+  local fields = {}
+  for i,fid in ipairs(params.fields) do
+    LW.legion_inline_launcher_add_field(il, fid, true)
+    fields[i] = fid
+  end
+
+  -- launch and create the physical region mapping
+  local pr = LW.legion_inline_launcher_execute(LE.runtime, LE.ctx, il)
+
+  -- create object to return
+  local launchobj = setmetatable({
+    inline_launcher = il,
+    physical_region = pr,
+    fields          = fields,
+    n_rows          = params.n_rows,
+  }, LW.ControlScanner)
+  return launchobj
+end
+
+function LW.ControlScanner:scan(per_row_callback)
+  local accs = {}
+  local offs = {}
+  local ptrs = {}
+
+  -- initialize access data for the field data
+  local subrect = global(LW.legion_rect_1d_t)
+  local rect    = global(LW.legion_rect_1d_t)
+        rect:get().lo.x[0] = 0
+        rect:get().hi.x[0] = self.n_rows-1
+  for i,fid in ipairs(self.fields) do
+    accs[i] = LW.legion_physical_region_get_field_accessor_generic(
+                self.physical_region, fid)
+    offs[i] = global(LW.legion_byte_offset_t)
+    ptrs[i] = terralib.cast(&int8, LW.legion_accessor_generic_raw_rect_ptr_1d(
+                accs[i], rect, subrect:getpointer(), offs[i]:getpointer() ))
+  end
+
+  -- Iterate through the rows
+  for k=0,self.n_rows-1 do
+    per_row_callback(k, unpack(ptrs))
+    for i=1,#self.fields do
+      ptrs[i] = ptrs[i] + offs[i]:get().offset
+    end
+  end
+
+  -- clean-up
+  for i=1,#self.fields do
+    LW.legion_accessor_generic_destroy(accs[i])
+  end
+end
+
+function LW.ControlScanner:close()
+  LW.legion_runtime_unmap_region(LE.runtime, LE.ctx, self.physical_region)
+  LW.legion_physical_region_destroy(self.physical_region)
+  LW.legion_inline_launcher_destroy(self.inline_launcher)
+end
+
+
 
 
 

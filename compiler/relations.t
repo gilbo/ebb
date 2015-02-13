@@ -16,7 +16,6 @@ local JSON = require('compiler.JSON')
 
 local DynamicArray = use_single and
                      require('compiler.rawdata').DynamicArray
---local Ld = use_legion and require "compiler.legion_data"
 local LW = use_legion and require "compiler.legionwrap"
 
 local valid_name_err_msg =
@@ -80,8 +79,7 @@ function L.NewRelation(size, name)
     local dom_params =
     {
       relation = rel,
-      rows_max = size,
-      rows_init = size
+      n_rows   = size,
     }
     local logical_region_wrapper = LW.NewLogicalRegion(dom_params)
     rawset(rel, '_logical_region_wrapper', logical_region_wrapper)
@@ -706,26 +704,46 @@ function L.LField:LoadFunction(lua_callback)
   if self.owner:isFragmented() then
     error('cannot load into fragmented relation', 2)
   end
-  self:Allocate()
 
-  -- NEEDS REVISION FOR CASE OF FRAGMENTATION
-  self.array:write_ptr(function(dataptr)
-    if self.type:isSmallMatrix() then
-      for i = 0, self:Size() - 1 do
-        local val = lua_callback(i)
-        dataptr[i] = convert_mat(val, self.type)
+  if use_legion then
+    -- Ok, we need to map some stuff down here
+    local scanner = LW.NewControlScanner {
+      logical_region = self.owner._logical_region_wrapper.handle,
+      n_rows         = self:Size(),
+      privilege      = LW.WRITE_ONLY,
+      fields         = {self.fid},
+    }
+    scanner:scan(function(i, dataptr)
+      local val = lua_callback(i)
+      if self.type:isSmallMatrix() then
+        val = convert_mat(val, self.type)
+      elseif self.type:isVector() then
+        val = convert_vec(val, self.type)
       end
-    elseif self.type:isVector() then
-      for i = 0, self:Size() - 1 do
-        local val = lua_callback(i)
-        dataptr[i] = convert_vec(val, self.type)
+      terralib.cast(&(self.type:terraType()), dataptr)[0] = val
+    end)
+    scanner:close()
+  elseif use_single then
+    self:Allocate()
+    -- NEEDS REVISION FOR CASE OF FRAGMENTATION
+    self.array:write_ptr(function(dataptr)
+      if self.type:isSmallMatrix() then
+        for i = 0, self:Size() - 1 do
+          local val = lua_callback(i)
+          dataptr[i] = convert_mat(val, self.type)
+        end
+      elseif self.type:isVector() then
+        for i = 0, self:Size() - 1 do
+          local val = lua_callback(i)
+          dataptr[i] = convert_vec(val, self.type)
+        end
+      else
+        for i = 0, self:Size() - 1 do
+          dataptr[i] = lua_callback(i)
+        end
       end
-    else
-      for i = 0, self:Size() - 1 do
-        dataptr[i] = lua_callback(i)
-      end
-    end
-  end) -- write_ptr
+    end) -- write_ptr
+  end
 end
 
 function L.LField:LoadList(tbl)
@@ -752,6 +770,10 @@ function L.LField:LoadFromMemory(mem)
   end
   self:Allocate()
 
+  if use_legion then
+    error('Load from memory while using Legion is unimplemented', 2)
+  end
+
   -- NEEDS REVISION FOR CASE OF FRAGMENTATION
 
   -- avoid extra copies by wrapping and using the standard copy
@@ -768,18 +790,21 @@ function L.LField:LoadConstant(constant)
   if self.owner:isFragmented() then
     error('cannot load into fragmented relation', 2)
   end
-  self:Allocate()
-  if self.type:isSmallMatrix() then
-    constant = convert_mat(constant, self.type)
-  elseif self.type:isVector() then
-    constant = convert_vec(constant, self.type)
-  end
+  --self:Allocate()
+  --if self.type:isSmallMatrix() then
+  --  constant = convert_mat(constant, self.type)
+  --elseif self.type:isVector() then
+  --  constant = convert_vec(constant, self.type)
+  --end
 
-  self.array:write_ptr(function(dataptr)
-    for i = 0, self:ConcreteSize() - 1 do
-      dataptr[i] = constant
-    end
-  end) -- write_ptr
+  self:LoadFunction(function()
+    return constant
+  end)
+--  self.array:write_ptr(function(dataptr)
+--    for i = 0, self:ConcreteSize() - 1 do
+--      dataptr[i] = constant
+--    end
+--  end) -- write_ptr
 end
 
 -- generic dispatch function for loads
@@ -791,11 +816,17 @@ function L.LField:Load(arg)
   if      type(arg) == 'function' then
     return self:LoadFunction(arg)
   elseif  type(arg) == 'cdata' then
+    if use_legion then
+      error('Load from memory while using Legion is unimplemented', 2)
+    end
     local typ = terralib.typeof(arg)
     if typ and typ:ispointer() then
       return self:LoadFromMemory(arg)
     end
   elseif  type(arg) == 'string' or PN.is_pathname(arg) then
+    if use_legion then
+      error('Load from file while using Legion is unimplemented', 2)
+    end
     return self:LoadFromFile(arg)
   elseif  type(arg) == 'table' and not L.is_vector(arg) then
     if self.type:isVector() and #arg == self.type.N then
@@ -839,19 +870,6 @@ local function terraval_to_lua(val, typ)
   end
 end
 
-function L.LField:DumpToList()
-  if self.owner:isFragmented() then
-    error('cannot dump from fragmented relation', 2)
-  end
-  local arr = {}
-  self.array:read_ptr(function(dataptr)
-    for i = 0, self:ConcreteSize()-1 do
-      arr[i+1] = terraval_to_lua(dataptr[i], self.type)
-    end
-  end) -- read_ptr
-  return arr
-end
-
 -- callback(i, val)
 --      i:      which row we're outputting (starting at 0)
 --      val:    the value of this field for the ith row
@@ -866,6 +884,23 @@ function L.LField:DumpFunction(lua_callback)
     end
   end) -- read_ptr
 end
+
+function L.LField:DumpToList()
+  if self.owner:isFragmented() then
+    error('cannot dump from fragmented relation', 2)
+  end
+  local arr = {}
+  self:DumpFunction(function(i,val)
+    arr[i+1] = val
+  end)
+  --self.array:read_ptr(function(dataptr)
+  --  for i = 0, self:ConcreteSize()-1 do
+  --    arr[i+1] = terraval_to_lua(dataptr[i], self.type)
+  --  end
+  --end) -- read_ptr
+  return arr
+end
+
 
 function L.LField:print()
   print(self.name..": <" .. tostring(self.type:terraType()) .. '>')
