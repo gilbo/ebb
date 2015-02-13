@@ -707,13 +707,20 @@ function L.LField:LoadFunction(lua_callback)
 
   if use_legion then
     -- Ok, we need to map some stuff down here
+    local n_rows = self:Size()
+    local dimensions = nil
+    if self.owner._typestate.grid then
+      n_rows = nil
+      dimensions = self.owner._logical_region_wrapper.bounds
+    end
     local scanner = LW.NewControlScanner {
       logical_region = self.owner._logical_region_wrapper.handle,
-      n_rows         = self:Size(),
+      n_rows         = n_rows,
+      dimensions     = dimensions,
       privilege      = LW.WRITE_ONLY,
       fields         = {self.fid},
     }
-    scanner:scan(function(i, dataptr)
+    local function writecallback(i, dataptr)
       local val = lua_callback(i)
       if self.type:isSmallMatrix() then
         val = convert_mat(val, self.type)
@@ -721,7 +728,12 @@ function L.LField:LoadFunction(lua_callback)
         val = convert_vec(val, self.type)
       end
       terralib.cast(&(self.type:terraType()), dataptr)[0] = val
-    end)
+    end
+    if self.owner._typestate.grid then
+      scanner:scanGrid(writecallback)
+    else
+      scanner:scanLinear(writecallback)
+    end
     scanner:close()
   elseif use_single then
     self:Allocate()
