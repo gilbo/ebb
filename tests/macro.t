@@ -1,7 +1,7 @@
 import "compiler.liszt"
 
-local R = L.NewRelation(4,"relation")
-R:NewField("result", L.uint64)
+local R = L.NewRelation { size = 4, name = 'relation' }
+R:NewField("result", L. uint64)
 
 -- This macro emits a side effect every time it is evaluated
 local side_effect = L.NewMacro(function(x)

@@ -79,9 +79,8 @@ end)
 --[[                Setup Liszt Relations & init GClef                   ]]--
 -----------------------------------------------------------------------------
 
-local triangles = L.NewRelation(1, 'triangles')
-local vertices  = L.NewRelation(3, 'vertices')
-
+local triangles = L.NewRelation { size = 1, name = 'triangles' }
+local vertices  = L.NewRelation { size = 3, name = 'vertices' }
 triangles:NewField('v0', vertices):Load(function(i) return 3*i + 0 end)
 triangles:NewField('v1', vertices):Load(function(i) return 3*i + 1 end)
 triangles:NewField('v2', vertices):Load(function(i) return 3*i + 2 end)

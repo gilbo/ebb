@@ -465,10 +465,10 @@ Grid.NewGrid2d{
         _bd_depth   = copy_table(params.boundary_depth),
         _periodic   = copy_table(params.periodic_boundary),
         -- relations
-        cells       = L.NewRelation(nCells, 'cells'),
-        edges       = L.NewRelation(nEdges, 'edges'),
-        dual_cells  = L.NewRelation(nDualCells, 'dual_cells'),
-        vertices    = L.NewRelation(nVerts, 'vertices'),
+        cells       = L.NewRelation{ size = nCells, name = 'cells' }
+        edges       = L.NewRelation{ size = nEdges, name = 'edges' }
+        dual_cells  = L.NewRelation{ size = nDualCells, name = 'dual_cells' }
+        vertices    = L.NewRelation{ size = nVerts, name = 'vertices' }
     }, Grid2d)
 
     setup2dCells(grid)
@@ -1057,10 +1057,10 @@ Grid.NewGrid3d{
         _bd_depth   = copy_table(params.boundary_depth),
         _periodic   = copy_table(params.periodic_boundary),
         -- relations
-        cells       = L.NewRelation(nCells, 'cells'),
-        edges       = L.NewRelation(nEdges, 'edges'),
-        dual_cells  = L.NewRelation(nDualCells, 'dual_cells'),
-        vertices    = L.NewRelation(nVerts, 'vertices'),
+        cells       = L.NewRelation{ size = nCells, name = 'cells' }
+        edges       = L.NewRelation{ size = nEdges, name = 'edges' }
+        dual_cells  = L.NewRelation{ size = nDualCells, name = 'dual_cells' }
+        vertices    = L.NewRelation{ size = nVerts, name = 'vertices' }
     }, Grid3d)
 
     setup3dCells(grid)

@@ -3,8 +3,8 @@ require "tests/test"
 
 
 
-local triangles = L.NewRelation(1, 'triangles')
-local vertices  = L.NewRelation(3, 'vertices')
+local triangles = L.NewRelation { size = 1, name = 'triangles' }
+local vertices  = L.NewRelation { size = 3, name = 'vertices' }
 
 triangles:NewField('v0', vertices)
 triangles:NewField('v1', vertices)

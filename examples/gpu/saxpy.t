@@ -13,7 +13,7 @@ local N = 100000
 L.default_processor = L.GPU
 
 function run_liszt_saxpy (tests)
-	local R = L.NewRelation(N,"R")
+	local R = L.NewRelation { size = N, name = 'R' }
 	R:NewField("x", L.float):Load(function(i) return i   end)
 	R:NewField("y", L.float):Load(function(i) return i*i end)
 	R:NewField("z", L.float)
@@ -42,7 +42,7 @@ end
 local saxpy_kernel = terralib.cudacompile({terra_saxpy=terra_saxpy},true).terra_saxpy
 
 function run_terra_saxpy (tests)
-	local T = L.NewRelation(N,"R")
+	local T = L.NewRelation { size = N, name = 'R' }
 	T:NewField("x", L.float):Load(function(i) return i   end)
 	T:NewField("y", L.float):Load(function(i) return i*i end)
 	T:NewField("z", L.float)

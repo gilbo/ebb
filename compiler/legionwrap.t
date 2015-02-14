@@ -323,11 +323,12 @@ LW.ControlScanner.__index = LW.ControlScanner
 function LW.NewControlScanner(params)
   if not params.logical_region then
     error('Expects logical_region argument', 2)
-  elseif not params.n_rows then
-    error('Expects fields list argument', 2)
   elseif not params.privilege then
     error('Expects privilege argument', 2)
   elseif not params.fields then
+    error('Expects fields list argument', 2)
+  end
+  if not (params.n_rows or params.dimensions) then
     error('Expects fields list argument', 2)
   end
 
@@ -352,16 +353,22 @@ function LW.NewControlScanner(params)
   local pr = LW.legion_inline_launcher_execute(LE.runtime, LE.ctx, il)
 
   -- create object to return
+  local dimensions = nil
+  if params.dimensions then
+    dimensions =
+      { params.dimensions[1], params.dimensions[2], params.dimensions[3] }
+  end
   local launchobj = setmetatable({
     inline_launcher = il,
     physical_region = pr,
     fields          = fields,
     n_rows          = params.n_rows,
+    dimensions      = dimensions,
   }, LW.ControlScanner)
   return launchobj
 end
 
-function LW.ControlScanner:scan(per_row_callback)
+function LW.ControlScanner:scanLinear(per_row_callback)
   local accs = {}
   local offs = {}
   local ptrs = {}
@@ -386,6 +393,80 @@ function LW.ControlScanner:scan(per_row_callback)
       ptrs[i] = ptrs[i] + offs[i]:get().offset
     end
   end
+
+  -- clean-up
+  for i=1,#self.fields do
+    LW.legion_accessor_generic_destroy(accs[i])
+  end
+end
+
+
+-- UGGGGH AWFUL MESS BUT IT WORKS AT LEAST
+function LW.ControlScanner:scanGrid(per_row_callback)
+  local dims = self.dimensions
+  local accs = {}
+  local offs = {}
+  local ptrs = {}
+
+  -- initialize access data for the field data
+  local subrect
+  local rect
+  local get_raw_rect_ptr
+  if #dims == 2 then
+    subrect            = global(LW.legion_rect_2d_t)
+    rect               = global(LW.legion_rect_2d_t)
+    rect:get().lo.x[0] = 0
+    rect:get().lo.x[1] = 0
+    rect:get().hi.x[0] = dims[1]-1
+    rect:get().hi.x[1] = dims[2]-1
+    get_raw_rect_ptr   = LW.legion_accessor_generic_raw_rect_ptr_2d
+  elseif #dims == 3 then
+    subrect            = global(LW.legion_rect_3d_t)
+    rect               = global(LW.legion_rect_3d_t)
+    rect:get().lo.x[0] = 0
+    rect:get().lo.x[1] = 0
+    rect:get().lo.x[3] = 0
+    rect:get().hi.x[0] = dims[1]-1
+    rect:get().hi.x[1] = dims[2]-1
+    rect:get().hi.x[2] = dims[3]-1
+    get_raw_rect_ptr   = LW.legion_accessor_generic_raw_rect_ptr_3d
+  else
+    error('INTERNAL: impossible branch')
+  end
+
+  for i,fid in ipairs(self.fields) do
+    accs[i] = LW.legion_physical_region_get_field_accessor_generic(
+                self.physical_region, fid)
+    local offtemp = global(LW.legion_byte_offset_t[#dims])
+    ptrs[i] = terralib.cast(&int8, get_raw_rect_ptr(
+                accs[i], rect, subrect:getpointer(),
+                terralib.cast(&LW.legion_byte_offset_t, offtemp:getpointer())
+              ))
+    offs[i] = {
+      offtemp:get()[0].offset,
+      offtemp:get()[1].offset,
+    }
+    if #dims == 3 then offs[i][3] = offtemp:get()[2].offset end
+  end
+
+  -- kludge the 3d case
+  if #dims == 2 then
+    dims[3] = 1
+    for i=1,#self.fields do offs[i][3] = 0 end -- doesn't matter
+  end
+
+  -- Iterate through the rows
+  for zi = 0,dims[3]-1 do
+    for yi = 0,dims[2]-1 do
+      for xi = 0,dims[1]-1 do
+        local i = (zi * dims[2] + yi) * dims[1] + xi
+        local callptrs = {}
+        for fi=1,#self.fields do
+          callptrs[fi] = ptrs[fi] +
+                         zi * offs[fi][3] + yi * offs[fi][2] + xi * offs[fi][1]
+        end
+        per_row_callback(i, unpack(callptrs))
+  end end end
 
   -- clean-up
   for i=1,#self.fields do

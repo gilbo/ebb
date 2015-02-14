@@ -402,7 +402,7 @@ function Bran:postprocessInsertions()
   insert_rel._logical_size = old_logical_size + n_inserted
 
   -- NOTE that this relation is definitely fragmented now
-  self.insert_data.relation._typestate.fragmented = true
+  self.insert_data.relation:_INTERNAL_MarkFragmented()
 end
 
 --                  ---------------------------------------                  --
@@ -430,7 +430,7 @@ function Bran:postprocessDeletions()
   local rel = self.delete_data.relation
   local updated_size = tonumber(self.delete_data.updated_size:get())
   rel._logical_size = updated_size
-  rel._typestate.fragmented = true
+  rel:_INTERNAL_MarkFragmented()
 
   -- if we have too low an occupancy
   if rel:Size() < 0.5 * rel:ConcreteSize() then

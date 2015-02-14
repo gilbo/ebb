@@ -94,13 +94,13 @@ off_in:close()
 -- The 'L' namespace is available because of the
 -- initial 'import "compiler.liszt"' statement at the top of this file
 
-local triangles = L.NewRelation(n_tris, 'triangles')
-local vertices  = L.NewRelation(n_verts, 'vertices')
+local triangles = L.NewRelation { size = n_tris, name = 'triangles' }
+local vertices  = L.NewRelation { size = n_verts, name = 'vertices' }
 
--- The first parameter to the L.NewRelation call tells it how
+-- The size parameter to the L.NewRelation call tells it how
 -- many rows we'd like the relation to have.
 
--- The second parameter to the L.NewRelation call tells it what
+-- The name parameter to the L.NewRelation call tells it what
 -- name we're going to refer to the relation with.
 
 ------------------------------------------------------------------------------
@@ -415,70 +415,6 @@ for i = 1,300 do
   vdb.vend()
   -- END EXTRA
 end
-
-
-------------------------------------------------------------------------------
-
--- Having finished the simulation, we'd like to write this data to disk
--- for later retreival.  We can do this with...
-L.SaveRelationSchema {
-  relations = {
-    triangles = triangles,
-    vertices = vertices
-  },
-  file      = PN.scriptdir() .. "simple_trimesh_diffusion_output",
-  notes     = "These are some example notes being stored",
-}
--- The L.SaveRelationSchema call takes a table of arguments.  These are...
-  -- relations - a Lua table of all the relations we want to save.
-  --             We name each of these relations.  For example, if we had
-  --             written {
-  --                my_triangles = triangles, ...
-  --             }
-  --             then the triangles relation would be saved to disk with
-  --             the name 'my_triangles' instead.
-  -- file ------ a string or pathname identifying the directory to
-  --             save the relations to.  We recommend creating a new
-  --             directory for each set of saved relations.
-  -- notes ----- a string to be saved along with the rest of the data.
-  --             These notes are a good place to leave little reminders
-  --             for yourself about what this file is / is for.
-  --             Use them however you wish!
-
--- Look at what got written to disk.  You should see a new directory.
--- Inside it, everything will be organized like this
---  simple_trimesh_diffusion_output/
---      schema.json
---      vertices/
---          pos.field
---          temperature.field
---          d_temperature.field
---          nTriangles.field
---      triangles/
---          v1.field
---          v2.field
---          v3.field
---          area.field
---
--- The schema.json file is a human-readable text-file using a format
--- called JSON.  The schema file defines what relations are saved in
--- this directory, how many rows are in each relation, and which fields
--- are present on each relation, along with their type.
--- For each field, an address is stored in the schema.json file pointing
--- to the *.field file storing the data for that field.
--- The *.field files are binary files which are simply arrays of data
--- with a brief header to help read the file.
-
--- In order to load all of these relations back into Liszt, we simply
--- execute the following call:
-local loaded_data = L.LoadRelationSchema {
-  file = PN.scriptdir() .. "simple_trimesh_diffusion_output"
-}
--- The call will automatically look for a schema.json file, and then
--- follow the directions there to load in all the field data.
-
-
--- This save/load feature can be used to checkpoint the simulation, etc.
 
 
 ------------------------------------------------------------------------------

@@ -293,7 +293,11 @@ end
 --
 
 local N_particles = N * N
-local particles = L.NewRelation(N_particles, 'particles')
+local particles = L.NewRelation {
+    size = N_particles,
+    name = 'particles',
+    mode = 'ELASTIC',
+}
 
 particles:NewField('dual_cell', grid.dual_cells):Load(function(i)
     local xid = math.floor(i%N)

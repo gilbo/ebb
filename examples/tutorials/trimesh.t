@@ -31,8 +31,8 @@ function Trimesh.LoadFromLists(positions, v1s, v2s, v3s)
   local n_verts = #positions
 
   -- Define two new relations and store them in the mesh
-  mesh.triangles = L.NewRelation(n_tris, 'triangles')
-  mesh.vertices  = L.NewRelation(n_verts, 'vertices')
+  mesh.triangles = L.NewRelation { size = n_tris, name = 'triangles' }
+  mesh.vertices  = L.NewRelation { size = n_verts, name = 'vertices' }
 
   -- Define the fields
   mesh.vertices:NewField('pos', L.vec3d)

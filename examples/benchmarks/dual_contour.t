@@ -34,7 +34,11 @@ local xcw, ycw, zcw = grid:xCellWidth(), grid:yCellWidth(), grid:zCellWidth()
 
 -- quads
 
-local quads = L.NewRelation(0, 'quads')
+local quads = L.NewRelation {
+    mode = 'ELASTIC',
+    size = 0,
+    name = 'quads',
+}
 -- just use the grid's cells as surrogates for vertices
 quads:NewField('v0', grid.cells):Load(0)
 quads:NewField('v1', grid.cells):Load(0)

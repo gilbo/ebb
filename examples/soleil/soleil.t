@@ -903,7 +903,10 @@ LoadConstant(0)
 
 -- Declare and initialize particle relation and fields over the particle
 
-local particles = L.NewRelation(particles_options.num, 'particles')
+local particles = L.NewRelation {
+  size = particles_options.num,
+  name = 'particles'
+}
 
 particles:NewField('dual_cell', grid.dual_cells):
 LoadConstant(0)

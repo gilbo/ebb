@@ -49,7 +49,7 @@ local function build_edges(mesh, vs) --v1s, v2s, v3s)
   end
 
   -- basic data
-  mesh.edges = L.NewRelation(n_edges, 'edges')
+  mesh.edges = L.NewRelation { size = n_edges, name = 'edges' }
   mesh.edges:NewField('tail', mesh.vertices):Load(e_tail)
   mesh.edges:NewField('head', mesh.vertices):Load(e_head)
 
@@ -103,8 +103,8 @@ function Trimesh.LoadFromLists(positions, tri_verts) --v1s, v2s, v3s)
   local n_verts = #positions
 
   -- Define two new relations and store them in the mesh
-  mesh.triangles = L.NewRelation(n_tris, 'triangles')
-  mesh.vertices  = L.NewRelation(n_verts, 'vertices')
+  mesh.triangles = L.NewRelation { size = n_tris, name = 'triangles' }
+  mesh.vertices  = L.NewRelation { size = n_verts, name = 'vertices' }
 
   -- Define the fields
   mesh.vertices:NewField('pos', L.vec3d)

@@ -72,7 +72,6 @@ local T = require "compiler.types"
 local ast = require "compiler.ast"
 require "compiler.builtins"
 require "compiler.relations"
-require "compiler.serialization"
 local semant = require "compiler.semant"
 local K = (use_single and require "compiler.kernel_single") or
           (use_legion and require "compiler.kernel_legion")

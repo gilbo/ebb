@@ -117,7 +117,7 @@ local function build_element_edges(mesh, elements)
 
   -- basic data
   -- this is not exactly edges, as it includes rows of type (x, x)
-  mesh.edges = L.NewRelation(n_edges, 'edges')
+  mesh.edges = L.NewRelation { size = n_edges, name = 'edges' }
   mesh.edges:NewField('tail', mesh.vertices):Load(e_tail)
   mesh.edges:NewField('head', mesh.vertices):Load(e_head)
 
@@ -174,8 +174,8 @@ function Tetmesh.LoadFromLists(vertices, elements)
   local n_verts = #vertices
 
   -- Define two new relations and store them in the mesh
-  mesh.tetrahedra = L.NewRelation(n_tets,  'tetrahedra')
-  mesh.vertices   = L.NewRelation(n_verts, 'vertices')
+  mesh.tetrahedra = L.NewRelation { size = n_tets, name = 'tetrahedra' }
+  mesh.vertices   = L.NewRelation { size = n_verts, name = 'vertices' }
 
   -- Define the fields
   mesh.vertices:NewField('pos', L.vec3d)

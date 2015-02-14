@@ -3,8 +3,12 @@ import "compiler.liszt"
 require "tests/test"
 
 
-local cells = L.NewRelation(10, 'cells')
-local particles = L.NewRelation(0, 'particles')
+local cells = L.NewRelation { size = 10, name = 'cells' }
+local particles = L.NewRelation {
+  size = 0,
+  mode = 'ELASTIC',
+  name = 'particles'
+}
 
 cells:NewField('temperature', L.float):Load(0.0)
 particles:NewField('cell', cells)
@@ -31,7 +35,7 @@ test.fail_function(function()
     insert { temperature = L.float(0.1) } into cells
     p.cell.temperature += L.float(0.25)
   end
-end, "Cannot insert into relation cells because%s*it\'s referred to by a field: particles.cell")
+end, "Cannot insert into relation cells because it\'s not ELASTIC")
 --"Cannot access field cells%.temperature while inserting.* into relation cells")
 
 
@@ -52,7 +56,7 @@ test.fail_function(function()
 end, "cannot insert a value into field particles.diameter because it is undefined")
 
 
-local grouped_rel = L.NewRelation(5,'grouped_rel')
+local grouped_rel = L.NewRelation  { size = 5, name = 'grouped_rel' }
 grouped_rel:NewField('cell', cells):Load(function(i)
   return math.floor(i/2) end)
 grouped_rel:GroupBy('cell')
@@ -62,7 +66,7 @@ test.fail_function(function()
   liszt kernel t( c : cells )
     insert { cell = c } into grouped_rel
   end
-end, 'Cannot insert into relation grouped_rel because it\'s grouped')
+end, 'Cannot insert into relation grouped_rel because it\'s not ELASTIC')
 
 -- Inserting into something that isn't a relation
 local sum = L.NewGlobal(L.addr, 0)

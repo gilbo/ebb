@@ -39,7 +39,135 @@ end
 --[[ LRelation methods                                                     ]]--
 -------------------------------------------------------------------------------
 
+-- A Relation can be in at most one of the following MODES
+--    PLAIN
+--    GROUPED (has been sorted for reference)
+--    GRID
+--    ELASTIC (can insert/delete)
+function L.LRelation:isPlain()      return self._mode == 'PLAIN'      end
+function L.LRelation:isGrouped()    return self._mode == 'GROUPED'    end
+function L.LRelation:isGrid()       return self._mode == 'GRID'       end
+function L.LRelation:isElastic()    return self._mode == 'ELASTIC'    end
+
+function L.LRelation:isFragmented() return self._is_fragmented end
+
 -- Create a generic relation
+-- local myrel = L.NewRelation {
+--   name = 'myrel',
+--   mode = 'PLAIN',
+--  [size = 35,]        -- IF mode ~= 'GRID'
+--  [dim  = {45,90}, ]  -- IF mode == 'GRID'
+-- }
+function L.NewRelation(params)
+  -- CHECK the parameters coming in
+  if type(params) ~= 'table' then
+    error("NewRelation() expects a table of named arguments", 2)
+  elseif type(params.name) ~= 'string' then
+    error("NewRelation() expects 'name' string argument", 2)
+  end
+  if not L.is_valid_lua_identifier(params.name) then
+    error(L.valid_name_err_msg.relation, 2)
+  end
+  local mode = params.mode or 'PLAIN'
+  if not params.mode and params.dim then mode = 'GRID' end
+  if mode ~= 'PLAIN' and mode ~= 'GRID'  and mode ~= 'ELASTIC' then
+    error("NewRelation(): Bad 'mode' argument.  Was expecting\n"..
+          "  PLAIN, GRID, or ELASTIC", 2)
+  end
+  if mode == 'GRID' then
+    if type(params.dim) ~= 'table' or
+       (#params.dim ~= 2 and #params.dim ~= 3)
+    then
+      error("NewRelation(): Grids must specify 'dim' argument; "..
+            "a table of 2 to 3 numbers specifying grid size", 2)
+    end
+  else
+    if type(params.size) ~= 'number' then
+      error("NewRelation() expects 'size' numeric argument", 2)
+    end
+  end
+
+  -- CONSTRUCT and return the relation
+  local rel = setmetatable( {
+    _name      = params.name,
+    _mode      = mode,
+
+    _fields    = terralib.newlist(),
+    _subsets   = terralib.newlist(),
+    _macros    = terralib.newlist(),
+    _functions = terralib.newlist(),
+
+    _incoming_refs = {}, -- used for walking reference graph
+  },
+  L.LRelation)
+
+  -- store mode dependent values
+  local size = params.size
+  if mode == 'GRID' then
+    size = 1
+    rawset(rel, '_dim', {})
+    for i,n in ipairs(params.dim) do
+      rel._dim[i] = n
+      size = size * n
+    end
+  end
+  rawset(rel, '_concrete_size', size)
+  rawset(rel, '_logical_size',  size)
+  if rel:isElastic() then
+    rawset(rel, '_is_fragmented', false)
+  end
+
+  -- SINGLE vs. LEGION
+  if use_single then
+    -- create a mask to track which rows are live.
+    rawset(rel, '_is_live_mask', L.LField.New(rel, '_is_live_mask', L.bool))
+    rel._is_live_mask:Load(true)
+
+  elseif use_legion then
+    error('TEMPORARY RELATIONS ARE BROKEN FOR LEGION')
+    -- create a logical region.
+    local dom_params =
+    {
+      relation = rel,
+      n_rows   = size,
+    }
+    local logical_region_wrapper = LW.NewLogicalRegion(dom_params)
+    rawset(rel, '_logical_region_wrapper', logical_region_wrapper)
+
+    -- create a logical region.
+    local dom_params =
+    {
+      relation = rel,
+      dimensions = dim,
+      bounds = bounds
+    }
+    local logical_region_wrapper = LW.NewGridLogicalRegion(dom_params)
+    rawset(rel, '_logical_region_wrapper', logical_region_wrapper)
+  end
+
+  return rel
+end
+
+function L.LRelation:Size()
+  return self._logical_size
+end
+function L.LRelation:ConcreteSize()
+  return self._concrete_size
+end
+function L.LRelation:Name()
+  return self._name
+end
+function L.LRelation:Dims()
+  if not self:isGrid() then
+    return { self:Size() }
+  end
+
+  local dimret = {}
+  for i,n in self._dims do dimret[i] = n end
+  return dimret
+end
+
+--[[
 function L.NewRelation(size, name)
     -- error check
   if not name or type(name) ~= "string" then
@@ -157,14 +285,14 @@ end
 function L.LRelation:Name()
   return self._name
 end
+]]
 
 function L.LRelation:ResizeConcrete(new_size)
-  if self:isGrouped() then
-    error('cannot resize a grouped relation', 2)
+  if not self:isElastic() then
+    error('Can only resize ELASTIC relations', 2)
   end
-  if self:hasSubsets() then
-    error('cannot resize a relation with subsets', 2)
-  end
+  if use_legion then error("Can't resize while using Legion", 2) end
+
   self._is_live_mask.array:resize(new_size)
   for _,field in ipairs(self._fields) do
     field.array:resize(new_size)
@@ -172,18 +300,18 @@ function L.LRelation:ResizeConcrete(new_size)
   self._concrete_size = new_size
 end
 
-function L.LRelation:isFragmented()
-  return self._typestate.fragmented
-end
-function L.LRelation:isCompact()
-  return not self._typestate.fragmented
-end
+--function L.LRelation:isFragmented()
+--  return self._typestate.fragmented
+--end
+--function L.LRelation:isCompact()
+--  return not self._typestate.fragmented
+--end
 function L.LRelation:hasSubsets()
   return #self._subsets ~= 0
 end
-function L.LRelation:isGrouped()
-  return self._grouping ~= nil
-end
+--function L.LRelation:isGrouped()
+--  return self._grouping ~= nil
+--end
 
 -- returns a record type
 function L.LRelation:StructuralType()
@@ -246,24 +374,33 @@ function L.LRelation:NewFieldFunction (name, userfunc)
 end
 
 function L.LRelation:GroupBy(name)
+  if not self:isPlain() then
+    error("GroupBy(): Cannot group a relation "..
+          "unless it's a PLAIN relation", 2)
+  end
+
   local key_field = self[name]
   local live_mask = self._is_live_mask
-  if self._grouping then
+  if self:isGrouped() then
     error("GroupBy(): Relation is already grouped", 2)
   elseif not L.is_field(key_field) then
     error("GroupBy(): Could not find a field named '"..name.."'", 2)
   elseif not key_field.type:isScalarRow() then
     error("GroupBy(): Grouping by non-scalar-row-type fields is "..
-          "currently prohibited.", 2)
+          "prohibited.", 2)
+  end
+
+  if use_legion then
+    error('GroupBy(): Grouping unimplemented for Legion currently', 2)
   end
 
   -- WARNING: The sizing policy will break with dead rows
-  if self:isFragmented() then
-    error("GroupBy(): Cannot group a fragmented relation", 2)
-  end
-  if key_field.type.relation:isFragmented() then
-    error("GroupBy(): Cannot group by a fragmented relation", 2)
-  end
+  --if self:isFragmented() then
+  --  error("GroupBy(): Cannot group a fragmented relation", 2)
+  --end
+  --if key_field.type.relation:isFragmented() then
+  --  error("GroupBy(): Cannot group by a fragmented relation", 2)
+  --end
 
   local num_keys = key_field.type.relation:ConcreteSize() -- # possible keys
   local num_rows = key_field:ConcreteSize()
@@ -301,6 +438,7 @@ function L.LRelation:GroupBy(name)
 end
 
 function L.LRelation:MoveTo( proc )
+  if use_legion then error("MoveTo() unsupported using Legion", 2) end
   if proc ~= L.CPU and proc ~= L.GPU then
     error('must specify valid processor to move to', 2)
   end
@@ -313,6 +451,9 @@ end
 
 
 function L.LRelation:print()
+  if use_legion then
+    error("print() currently unsupported using Legion", 2)
+  end
   print(self._name, "size: ".. tostring(self:Size()),
                     "concrete size: "..tostring(self:ConcreteSize()))
   for i,f in ipairs(self._fields) do
@@ -329,28 +470,28 @@ end
 
 -- returns a useful error message 
 function L.LRelation:UnsafeToDelete()
-  if self:isGrouped() then
-    return 'Cannot delete from relation '..self:Name()..
-           ' because it\'s grouped'
+  if not self:isElastic() then
+    return "Cannot delete from relation "..self:Name()..
+           " because it's not ELASTIC"
   end
   if self:hasSubsets() then
     return 'Cannot delete from relation '..self:Name()..
            ' because it has subsets'
   end
   -- check whether this relation is being referred to by another relation
-  local msg = ''
-  for ref,kind in pairs(self._incoming_refs) do
-    if kind == 'row_field' then
-      msg = msg ..
-        '\n  it\'s referred to by a field: '..ref:FullName()
-    elseif kind == 'group' then
-      msg = msg ..
-        '\n  it\'s being used to group another relation: '..ref:Name()
-    end
-  end
-  if #msg > 0 then
-    return 'Cannot delete from relation '..self:Name()..' because'..msg
-  end
+  --local msg = ''
+  --for ref,kind in pairs(self._incoming_refs) do
+  --  if kind == 'row_field' then
+  --    msg = msg ..
+  --      '\n  it\'s referred to by a field: '..ref:FullName()
+  --  elseif kind == 'group' then
+  --    msg = msg ..
+  --      '\n  it\'s being used to group another relation: '..ref:Name()
+  --  end
+  --end
+  --if #msg > 0 then
+  --  return 'Cannot delete from relation '..self:Name()..' because'..msg
+  --end
 end
 
 function L.LRelation:UnsafeToInsert(record_type)
@@ -465,9 +606,13 @@ function L.LRelation:NewSubsetFromFunction (name, predicate)
   end
 
   -- SIMPLIFYING HACK FOR NOW
-  if self:isFragmented() then
-    error("NewSubsetFromFunction(): Cannot build subsets "..
-          "on a fragmented relation", 2)
+  if self:isElastic() then
+    error("NewSubsetFromFunction(): "..
+          "Subsets of elastic relations are currently unsupported", 2)
+  end
+  if use_legion then
+    error("NewSubsetFromFunction(): subsets are currently unsupported "..
+          "using legion", 2)
   end
 
   -- setup and install the subset object
@@ -551,6 +696,7 @@ function L.LField:Type()
   return self.type
 end
 function L.LField:DataPtr()
+  if use_legion then error('DataPtr() unsupported using legion') end
   return self.array:ptr()
 end
 function L.LField:Relation()
@@ -577,6 +723,14 @@ function L.LRelation:NewField (name, typ)
           "relation as the 2nd argument", 2)
   end
 
+  -- prevent the creation of key fields pointing into elastic relations
+  if typ:isRow() then
+    local rel = typ:baseType().relation
+    if rel:isElastic() then
+      error("NewField(): Cannot create a key-type field referring to "..
+            "an elastic relation", 2)
+    end
+  end
   if self:isFragmented() then
     error("NewField() cannot be called on a fragmented relation.", 2)
   end
@@ -586,7 +740,7 @@ function L.LRelation:NewField (name, typ)
   rawset(self, name, field)
   self._fields:insert(field)
 
-  -- record reverse pointers for row-type field references
+  -- record reverse pointers for key-field references
   if typ:isRow() then
     typ:baseType().relation._incoming_refs[field] = 'row_field'
   end
@@ -596,6 +750,7 @@ end
 
 -- TODO: Hide this function so it's not public
 function L.LField:Allocate()
+  if use_legion then error('No Allocate() using legion') end
   if not self.array then
     self.array = DynamicArray.New{
       size = self:ConcreteSize(),
@@ -607,6 +762,7 @@ end
 -- TODO: Hide this function so it's not public
 -- remove allocated data and clear any depedent data, such as indices
 function L.LField:ClearData ()
+  if use_legion then error('No ClearData() using legion') end
   if self.array then
     self.array:free()
     self.array = nil
@@ -621,6 +777,7 @@ function L.LField:ClearData ()
 end
 
 function L.LField:MoveTo( proc )
+  if use_legion then error('No MoveTo() using legion') end
   if proc ~= L.CPU and proc ~= L.GPU then
     error('must specify valid processor to move to', 2)
   end
@@ -629,6 +786,7 @@ function L.LField:MoveTo( proc )
 end
 
 function L.LRelation:Swap( f1_name, f2_name )
+  if use_legion then error('No Swap() using legion') end
   local f1 = self[f1_name]
   local f2 = self[f2_name]
   if not L.is_field(f1) then
@@ -645,6 +803,7 @@ function L.LRelation:Swap( f1_name, f2_name )
 end
 
 function L.LRelation:Copy( p )
+  if use_legion then error('No Copy() using legion') end
   if type(p) ~= 'table' or not p.from or not p.to then
     error("relation:Copy() should be called using the form\n"..
           "  relation:Copy{from='f1',to='f2'}", 2)
@@ -707,20 +866,13 @@ function L.LField:LoadFunction(lua_callback)
 
   if use_legion then
     -- Ok, we need to map some stuff down here
-    local n_rows = self:Size()
-    local dimensions = nil
-    if self.owner._typestate.grid then
-      n_rows = nil
-      dimensions = self.owner._logical_region_wrapper.bounds
-    end
     local scanner = LW.NewControlScanner {
       logical_region = self.owner._logical_region_wrapper.handle,
-      n_rows         = n_rows,
-      dimensions     = dimensions,
+      n_rows         = self:Size(),
       privilege      = LW.WRITE_ONLY,
       fields         = {self.fid},
     }
-    local function writecallback(i, dataptr)
+    scanner:scan(function(i, dataptr)
       local val = lua_callback(i)
       if self.type:isSmallMatrix() then
         val = convert_mat(val, self.type)
@@ -728,16 +880,11 @@ function L.LField:LoadFunction(lua_callback)
         val = convert_vec(val, self.type)
       end
       terralib.cast(&(self.type:terraType()), dataptr)[0] = val
-    end
-    if self.owner._typestate.grid then
-      scanner:scanGrid(writecallback)
-    else
-      scanner:scanLinear(writecallback)
-    end
+    end)
     scanner:close()
   elseif use_single then
     self:Allocate()
-    -- NEEDS REVISION FOR CASE OF FRAGMENTATION
+
     self.array:write_ptr(function(dataptr)
       if self.type:isSmallMatrix() then
         for i = 0, self:Size() - 1 do
@@ -915,6 +1062,9 @@ end
 
 
 function L.LField:print()
+  if use_legion then
+    error('BROKEN; rewrite using single DUMP choke point')
+  end
   print(self.name..": <" .. tostring(self.type:terraType()) .. '>')
   if not self.array then
     print("...not initialized")
@@ -979,6 +1129,7 @@ end
 
 
 function L.LField:getDLD()
+  error("DLD NEEDS REVISION FOR MODES")
   if self.owner:isFragmented() then
     error('cannot get DLD from fragmented relation', 2)
   end
@@ -1009,9 +1160,19 @@ end
 
 -- Defrag
 
+function L.LRelation:_INTERNAL_MarkFragmented()
+  if not self:isElastic() then
+    error("INTERNAL: Cannot Fragment a non-elastic relation")
+  end
+  rawset(self, '_is_fragmented', true)
+end
 
 function L.LRelation:Defrag()
-  -- NEED MORE CHECKS HERE
+  error("BROKEN IN SUBTLE WAYS")
+  if not self:isElastic() then
+    error("Defrag(): Cannot Defrag a non-elastic relation")
+  end
+  -- TODO: MAKE IDEMPOTENT FOR EFFICIENCY
 
   -- Check that all fields are on CPU:
   for _,field in ipairs(self._fields) do
@@ -1084,5 +1245,5 @@ function L.LRelation:Defrag()
   self:ResizeConcrete(logical_size)
 
   -- mark as compact
-  self._typestate.fragmented = false
+  rawset(self, '_is_fragmented', false)
 end

@@ -103,7 +103,7 @@ local function initMeshRelations(mesh)
 
     for _i, name in ipairs(topo_elems) do
         local n_rows       = tonumber(mesh["n"..name])
-        relations[name]    = L.NewRelation(n_rows, name)
+        relations[name]    = L.NewRelation { size = n_rows, name = name }
         --relations[name]:NewField('value', REF_TYPE)
         --local terra init (mem: &REF_TYPE:terraType(), i : int)
         --    mem[0] = i
@@ -117,7 +117,7 @@ local function initMeshRelations(mesh)
         local old_name   = xtoy.old_name
         local n_t1       = relations[xtoy.t1]:Size()
         local n_rows     = mesh[old_name].row_idx[n_t1]
-        local rel        = L.NewRelation(n_rows, name)
+        local rel        = L.NewRelation { size = n_rows, name = name }
 
         -- store table with name intended for global scope
         relations[name] = rel
@@ -187,7 +187,7 @@ function LMesh.Load(filename)
         local relationname = ffi.string(b.type)
         assert(M[relationname])
         name = sanitizeName(name)
-        local s = L.NewRelation(tonumber(b.size), name)
+        local s = L.NewRelation { size = tonumber(b.size), name = name }
         s:NewField("value",M[relationname])
         s.value:LoadFromMemory(b.data)
         M[name] = s
