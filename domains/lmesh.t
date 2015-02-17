@@ -56,8 +56,8 @@ local function row32_copy_callback(srcmem, stride, offset)
     end
 end
 local function initRowFromMemory32(field, srcmem, stride, offset)
-    if not field.type:isRow() then
-        error('can only call initRowFromMemory32 on row fields', 2)
+    if not field.type:isKey() then
+        error('can only call initRowFromMemory32 on key fields', 2)
     end
 
     stride      = stride or 1

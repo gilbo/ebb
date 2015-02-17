@@ -10,23 +10,6 @@ local T = require 'compiler.types'
 local DataArray = use_single and
                   require('compiler.rawdata').DataArray
 
--- Use the following to produce
--- deterministic order of table entries
--- From the Lua Documentation
-function pairs_sorted(tbl, compare)
-  local arr = {}
-  for k in pairs(tbl) do table.insert(arr, k) end
-  table.sort(arr, compare)
-
-  local i = 0
-  local iter = function() -- iterator
-    i = i + 1
-    if arr[i] == nil then return nil
-    else return arr[i], tbl[arr[i]] end
-  end
-  return iter
-end
-
 -------------------------------------------------------------------------------
 --[[ Liszt modules:                                                        ]]--
 -------------------------------------------------------------------------------
@@ -62,7 +45,8 @@ local LField     = make_prototype("LField","field")
 local LSubset    = make_prototype("LSubset","subset")
 local LIndex     = make_prototype("LIndex","index")
 local LGlobal    = make_prototype("LGlobal","global")
-local LVector    = make_prototype("LVector","vector")
+local LConstant  = make_prototype("LConstant","constant")
+--local LVector    = make_prototype("LVector","vector")
 local LMacro     = make_prototype("LMacro","macro")
 local LUserFunc  = make_prototype("LUserFunc", "user_func")
 local Kernel     = make_prototype("LKernel","kernel")
@@ -111,16 +95,7 @@ function LGlobal:set(val)
     if not T.luaValConformsToType(val, self.type) then error("value does not conform to type of global: " .. self.type:toString(), 2) end
 
     self.data:write_ptr(function(ptr)
-        if self.type:isVector() then
-            if not L.is_vector(val) then
-                val = L.NewVector(self.type:baseType(), val)
-            end
-            for i=0, val.N-1 do
-                ptr[0].d[i] = val.data[i+1]
-            end
-        else
-            ptr[0] = val
-        end
+        ptr[0] = T.luaToLisztVal(val, self.type)
     end)
 end
 
@@ -129,15 +104,7 @@ function LGlobal:get()
     local value
 
     self.data:read_ptr(function(ptr)
-        if self.type:isPrimitive() then
-            value = ptr[0]
-        else
-            value = {}
-            for i=0, self.type.N-1 do
-                value[i+1] = ptr[0].d[i]
-            end
-            value = L.NewVector(self.type:baseType(), value)
-        end
+        value = T.lisztToLuaVal(ptr[0], self.type)
     end)
 
     return value
@@ -148,136 +115,31 @@ function LGlobal:DataPtr()
 end
 
 -------------------------------------------------------------------------------
---[[ LVectors:                                                             ]]--
+--[[ LConstants:                                                           ]]--
 -------------------------------------------------------------------------------
-function L.NewVector(dt, init)
-    if not (T.isLisztType(dt) and dt:isPrimitive()) then
-        error("First argument to L.NewVector() should "..
-              "be a primitive Liszt type", 2)
+
+function L.Constant (typ, init)
+    if not T.isLisztType(typ) or not typ:isValueType() then
+        error("First argument to L.Constant must be a "..
+              "Liszt expression type", 2)
     end
-    if not is_vector(init) and #init == 0 then
-        error("Second argument to L.NewVector should either be "..
-              "an LVector or an array", 2)
-    end
-    local N = is_vector(init) and init.N or #init
-    if not T.luaValConformsToType(init, L.vector(dt, N)) then
-        error("Second argument to L.NewVector() does not "..
-              "conform to specified type", 2)
+    if not T.luaValConformsToType(init, typ) then
+        error("Second argument to L.Constant must be a "..
+              "value of type " .. typ:toString(), 2)
     end
 
-    local data = {}
-    if is_vector(init) then init = init.data end
-    for i = 1, N do
-        -- convert to integer if necessary
-        data[i] = dt == L.int and init[i] - init[i] % 1 or init[i] 
+    local function deep_copy(tbl)
+        if type(tbl) ~= 'table' then return tbl
+        else
+            local cpy = {}
+            for i=1,#tbl do cpy[i] = deep_copy(tbl[i]) end
+            return cpy
+        end
     end
 
-    return setmetatable({N=N, type=L.vector(dt,N), data=data}, LVector)
+    local c = setmetatable({type=typ, value=deep_copy(init)}, LConstant)
+    return c
 end
-
-function LVector.__add (v1, v2)
-    if not is_vector(v1) or not is_vector(v2) then
-        error("Cannot add non-vector type to vector", 2)
-    elseif v1.N ~= v2.N then
-        error("Cannot add vectors of differing lengths", 2)
-    elseif v1.type == L.bool or v2.type == L.bool then
-        error("Cannot add boolean vectors", 2)
-    end
-
-    local data = { }
-    local tp = T.type_meet(v1.type:baseType(), v2.type:baseType())
-
-    for i = 1, #v1.data do
-        data[i] = v1.data[i] + v2.data[i]
-    end
-    return L.NewVector(tp, data)
-end
-
-function LVector.__sub (v1, v2)
-    if not is_vector(v1) then
-        error("Cannot subtract vector from non-vector type", 2)
-    elseif not is_vector(v2) then
-        error("Cannot subtract non-vector type from vector", 2)
-    elseif v1.N ~= v2.N then
-        error("Cannot subtract vectors of differing lengths", 2)
-    elseif v1.type == bool or v2.type == bool then
-        error("Cannot subtract boolean vectors", 2)
-    end
-
-    local data = { }
-    local tp = T.type_meet(v1.type:baseType(), v2.type:baseType())
-
-    for i = 1, #v1.data do
-        data[i] = v1.data[i] - v2.data[i]
-    end
-
-    return L.NewVector(tp, data)
-end
-
-function LVector.__mul (a1, a2)
-    if is_vector(a1) and is_vector(a2) then
-        error("Cannot multiply two vectors", 2)
-    end
-    local v, a
-    if is_vector(a1) then   v, a = a1, a2
-    else                    v, a = a2, a1 end
-
-    if     v.type:isLogical()  then
-        error("Cannot multiply a non-numeric vector", 2)
-    elseif type(a) ~= 'number' then
-        error("Cannot multiply a vector by a non-numeric type", 2)
-    end
-
-    local tm = L.float
-    if v.type == int and a % 1 == 0 then tm = L.int end
-
-    local data = {}
-    for i = 1, #v.data do
-        data[i] = v.data[i] * a
-    end
-    return L.NewVector(tm, data)
-end
-
-function LVector.__div (v, a)
-    if     is_vector(a)    then error("Cannot divide by a vector", 2)
-    elseif v.type:isLogical()  then error("Cannot divide a non-numeric vector", 2)
-    elseif type(a) ~= 'number' then error("Cannot divide a vector by a non-numeric type", 2)
-    end
-
-    local data = {}
-    for i = 1, #v.data do
-        data[i] = v.data[i] / a
-    end
-    return L.NewVector(L.float, data)
-end
-
-function LVector.__mod (v1, a2)
-    if is_vector(a2) then error("Cannot modulus by a vector", 2) end
-    local data = {}
-    for i = 1, v1.N do
-        data[i] = v1.data[i] % a2
-    end
-    local tp = T.type_meet(v1.type:baseType(), L.float)
-    return L.NewVector(tp, data)
-end
-
-function LVector.__unm (v1)
-    if v1.type:isLogical() then error("Cannot negate a non-numeric vector", 2) end
-    local data = {}
-    for i = 1, #v1.data do
-        data[i] = -v1.data[i]
-    end
-    return L.NewVector(v1.type, data)
-end
-
-function LVector.__eq (v1, v2)
-    if v1.N ~= v2.N then return false end
-    for i = 1, v1.N do
-        if v1.data[i] ~= v2.data[i] then return false end
-    end
-    return true
-end
-
 
 -------------------------------------------------------------------------------
 --[[ LMacros:                                                              ]]--

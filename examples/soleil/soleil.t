@@ -103,11 +103,11 @@ ON  = L.NewGlobal(L.bool, true)
 --[[                       COLORS FOR VISUALIZATION                      ]]--
 -----------------------------------------------------------------------------
 
-local unity = L.NewVector(L.float,{1.0,1.0,1.0})
-local red   = L.NewVector(L.float,{1.0,0.0,0.0})
-local green = L.NewVector(L.float,{0.0,1.0,0.0})
-local blue  = L.NewVector(L.float,{0.0,0.0,1.0})
-local white = L.NewVector(L.float,{1.0,1.0,1.0})
+local unity = L.Constant(L.vec3f,{1.0,1.0,1.0})
+local red   = L.Constant(L.vec3f,{1.0,0.0,0.0})
+local green = L.Constant(L.vec3f,{0.0,1.0,0.0})
+local blue  = L.Constant(L.vec3f,{0.0,0.0,1.0})
+local white = L.Constant(L.vec3f,{1.0,1.0,1.0})
 
 -----------------------------------------------------------------------------
 --[[                   INITIALIZE OPTIONS FROM CONFIG                    ]]--
@@ -335,9 +335,9 @@ if config.spatialOrder == 2 then
     order = 2,
     size = 2,
     numInterpolateCoeffs = 2,
-    interpolateCoeffs = L.NewVector(L.double, {0, 0.5}),
+    interpolateCoeffs = L.Constant(L.vec2d, {0, 0.5}),
     numFirstDerivativeCoeffs = 2,
-    firstDerivativeCoeffs = L.NewVector(L.double, {0, 0.5}),
+    firstDerivativeCoeffs = L.Constant(L.vec2d, {0, 0.5}),
     firstDerivativeModifiedWaveNumber = 1.0,
     secondDerivativeModifiedWaveNumber = 4.0,
   }
@@ -349,12 +349,12 @@ if config.spatialOrder == 2 then
     order = 6,
     size = 6,
     numInterpolateCoeffs = 4,
-    interpolateCoeffs = L.NewVector(L.double, {0, 37/60, -8/60, 1/60}),
+    interpolateCoeffs = L.Constant(L.vec4d, {0, 37/60, -8/60, 1/60}),
     numFirstDerivativeCoeffs = 4,
-    firstDerivativeCoeffs = L.NewVector(L.double,
-                                        {0.0,45.0/60.0,-9.0/60.0, 1.0/60.0}),
-                                        firstDerivativeModifiedWaveNumber=1.59,
-                                        secondDerivativeModifiedWaveNumber=6.04
+    firstDerivativeCoeffs = L.Constant(L.vec4d,
+                                       {0.0,45.0/60.0,-9.0/60.0, 1.0/60.0}),
+    firstDerivativeModifiedWaveNumber = 1.59,
+    secondDerivativeModifiedWaveNumber = 6.04
   }
   else
     error("Spatial stencil order not implemented")
@@ -794,112 +794,73 @@ local grid_dy = L.NewGlobal(L.double, grid:yCellWidth())
 local grid_dz = L.NewGlobal(L.double, grid:zCellWidth())
 
 -- Create a field for the center coords of the dual cells (i.e., vertices)
-grid.vertices:NewField('centerCoordinates', L.vec3d):
-LoadConstant(L.NewVector(L.double, {0, 0, 0}))
+grid.vertices:NewField('centerCoordinates', L.vec3d)          :Load({0, 0, 0})
 
 -- Create a field to mark the rind layer so it is not written in the output
 -- We need this for both the dual cells (coords) and cells (cell-center data)
-grid.vertices:NewField('vertexRindLayer', L.int):
-LoadConstant(1)
-grid.cells:NewField('cellRindLayer', L.int):
-LoadConstant(1)
+grid.vertices:NewField('vertexRindLayer', L.int)              :Load(1)
+grid.cells:NewField('cellRindLayer', L.int)                   :Load(1)
 
 -- Primitive variables (note that these may be initialized from a restart)
 grid.cells:NewField('rho', L.double)
 grid.cells:NewField('pressure', L.double)
 grid.cells:NewField('velocity', L.vec3d)
 if flow_options.initCase == Flow.Restart then
-  grid.cells.rho:Load(rho_data_array)
-  grid.cells.pressure:Load(pressure_data_array)
-  grid.cells.velocity:Load(velocity_data_array)
+  grid.cells.rho        :Load(rho_data_array)
+  grid.cells.pressure   :Load(pressure_data_array)
+  grid.cells.velocity   :Load(velocity_data_array)
 else
-  grid.cells.rho:LoadConstant(0)
-  grid.cells.pressure:LoadConstant(0)
-  grid.cells.velocity:LoadConstant(L.NewVector(L.double, {0, 0, 0}))
+  grid.cells.rho        :Load(0)
+  grid.cells.pressure   :Load(0)
+  grid.cells.velocity   :Load({0, 0, 0})
 end
 
 -- Remaining primitive variables
-grid.cells:NewField('centerCoordinates', L.vec3d):
-LoadConstant(L.NewVector(L.double, {0, 0, 0}))
-grid.cells:NewField('velocityGradientX', L.vec3d):
-LoadConstant(L.NewVector(L.double, {0, 0, 0}))
-grid.cells:NewField('velocityGradientY', L.vec3d):
-LoadConstant(L.NewVector(L.double, {0, 0, 0}))
-grid.cells:NewField('velocityGradientZ', L.vec3d):
-LoadConstant(L.NewVector(L.double, {0, 0, 0}))
-grid.cells:NewField('temperature', L.double):
-LoadConstant(0)
-grid.cells:NewField('rhoEnthalpy', L.double):
-LoadConstant(0)
-grid.cells:NewField('kineticEnergy', L.double):
-LoadConstant(0)
-grid.cells:NewField('sgsEnergy', L.double):
-LoadConstant(0)
-grid.cells:NewField('sgsEddyViscosity', L.double):
-LoadConstant(0)
-grid.cells:NewField('sgsEddyKappa', L.double):
-LoadConstant(0)
-grid.cells:NewField('convectiveSpectralRadius', L.double):
-LoadConstant(0)
-grid.cells:NewField('viscousSpectralRadius', L.double):
-LoadConstant(0)
-grid.cells:NewField('heatConductionSpectralRadius', L.double):
-LoadConstant(0)
+grid.cells:NewField('centerCoordinates', L.vec3d)             :Load({0, 0, 0})
+grid.cells:NewField('velocityGradientX', L.vec3d)             :Load({0, 0, 0})
+grid.cells:NewField('velocityGradientY', L.vec3d)             :Load({0, 0, 0})
+grid.cells:NewField('velocityGradientZ', L.vec3d)             :Load({0, 0, 0})
+grid.cells:NewField('temperature', L.double)                  :Load(0)
+grid.cells:NewField('rhoEnthalpy', L.double)                  :Load(0)
+grid.cells:NewField('kineticEnergy', L.double)                :Load(0)
+grid.cells:NewField('sgsEnergy', L.double)                    :Load(0)
+grid.cells:NewField('sgsEddyViscosity', L.double)             :Load(0)
+grid.cells:NewField('sgsEddyKappa', L.double)                 :Load(0)
+grid.cells:NewField('convectiveSpectralRadius', L.double)     :Load(0)
+grid.cells:NewField('viscousSpectralRadius', L.double)        :Load(0)
+grid.cells:NewField('heatConductionSpectralRadius', L.double) :Load(0)
 
 -- Conserved variables
-grid.cells:NewField('rhoVelocity', L.vec3d):
-LoadConstant(L.NewVector(L.double, {0, 0, 0}))
-grid.cells:NewField('rhoEnergy', L.double):
-LoadConstant(0)
+grid.cells:NewField('rhoVelocity', L.vec3d)                   :Load({0, 0, 0})
+grid.cells:NewField('rhoEnergy', L.double)                    :Load(0)
 
 -- Fields for boundary treatment
-grid.cells:NewField('rhoBoundary', L.double):
-LoadConstant(0)
-grid.cells:NewField('rhoVelocityBoundary', L.vec3d):
-LoadConstant(L.NewVector(L.double, {0, 0, 0}))
-grid.cells:NewField('rhoEnergyBoundary', L.double):
-LoadConstant(0)
-grid.cells:NewField('velocityBoundary', L.vec3d):
-LoadConstant(L.NewVector(L.double, {0, 0, 0}))
-grid.cells:NewField('pressureBoundary', L.double):
-LoadConstant(0)
-grid.cells:NewField('temperatureBoundary', L.double):
-LoadConstant(0)
-grid.cells:NewField('velocityGradientXBoundary', L.vec3d):
-LoadConstant(L.NewVector(L.double, {0, 0, 0}))
-grid.cells:NewField('velocityGradientYBoundary', L.vec3d):
-LoadConstant(L.NewVector(L.double, {0, 0, 0}))
-grid.cells:NewField('velocityGradientZBoundary', L.vec3d):
-LoadConstant(L.NewVector(L.double, {0, 0, 0}))
+grid.cells:NewField('rhoBoundary', L.double)                  :Load(0)
+grid.cells:NewField('rhoVelocityBoundary', L.vec3d)           :Load({0, 0, 0})
+grid.cells:NewField('rhoEnergyBoundary', L.double)            :Load(0)
+grid.cells:NewField('velocityBoundary', L.vec3d)              :Load({0, 0, 0})
+grid.cells:NewField('pressureBoundary', L.double)             :Load(0)
+grid.cells:NewField('temperatureBoundary', L.double)          :Load(0)
+grid.cells:NewField('velocityGradientXBoundary', L.vec3d)     :Load({0, 0, 0})
+grid.cells:NewField('velocityGradientYBoundary', L.vec3d)     :Load({0, 0, 0})
+grid.cells:NewField('velocityGradientZBoundary', L.vec3d)     :Load({0, 0, 0})
 
 -- scratch (temporary) fields
 -- intermediate value and copies
-grid.cells:NewField('rho_old', L.double):
-LoadConstant(0)
-grid.cells:NewField('rhoVelocity_old', L.vec3d):
-LoadConstant(L.NewVector(L.double, {0, 0, 0}))
-grid.cells:NewField('rhoEnergy_old', L.double):
-LoadConstant(0)
-grid.cells:NewField('rho_new', L.double):
-LoadConstant(0)
-grid.cells:NewField('rhoVelocity_new', L.vec3d):
-LoadConstant(L.NewVector(L.double, {0, 0, 0}))
-grid.cells:NewField('rhoEnergy_new', L.double):
-LoadConstant(0)
+grid.cells:NewField('rho_old', L.double)                      :Load(0)
+grid.cells:NewField('rhoVelocity_old', L.vec3d)               :Load({0, 0, 0})
+grid.cells:NewField('rhoEnergy_old', L.double)                :Load(0)
+grid.cells:NewField('rho_new', L.double)                      :Load(0)
+grid.cells:NewField('rhoVelocity_new', L.vec3d)               :Load({0, 0, 0})
+grid.cells:NewField('rhoEnergy_new', L.double)                :Load(0)
 -- time derivatives
-grid.cells:NewField('rho_t', L.double):
-LoadConstant(0)
-grid.cells:NewField('rhoVelocity_t', L.vec3d):
-LoadConstant(L.NewVector(L.double, {0, 0, 0}))
-grid.cells:NewField('rhoEnergy_t', L.double):
-LoadConstant(0)
+grid.cells:NewField('rho_t', L.double)                        :Load(0)
+grid.cells:NewField('rhoVelocity_t', L.vec3d)                 :Load({0, 0, 0})
+grid.cells:NewField('rhoEnergy_t', L.double)                  :Load(0)
 -- fluxes
-grid.cells:NewField('rhoFlux', L.double):
-LoadConstant(0)
-grid.cells:NewField('rhoVelocityFlux', L.vec3d):
-LoadConstant(L.NewVector(L.double, {0, 0, 0}))
-grid.cells:NewField('rhoEnergyFlux', L.double):
-LoadConstant(0)
+grid.cells:NewField('rhoFlux', L.double)                      :Load(0)
+grid.cells:NewField('rhoVelocityFlux', L.vec3d)               :Load({0, 0, 0})
+grid.cells:NewField('rhoEnergyFlux', L.double)                :Load(0)
 
 -- Declare and initialize particle relation and fields over the particle
 
@@ -908,10 +869,8 @@ local particles = L.NewRelation {
   name = 'particles'
 }
 
-particles:NewField('dual_cell', grid.dual_cells):
-LoadConstant(0)
-particles:NewField('cell', grid.cells):
-LoadConstant(0)
+particles:NewField('dual_cell', grid.dual_cells)              :Load(0)
+particles:NewField('cell', grid.cells)                        :Load(0)
 
 particles:NewField('position', L.vec3d)
 particles:NewField('velocity', L.vec3d)
@@ -923,70 +882,55 @@ particles:NewField('diameter', L.double)
 --   - a particle already collected has a state = 2
 particles:NewField('state', L.int)
 if particles_options.initParticles == Particles.Restart then
-  particles.position:Load(particle_pos_array)
-  particles.velocity:Load(particle_vel_array)
-  particles.temperature:Load(particle_temp_array)
-  particles.diameter:Load(particle_diam_array)
-  particles.state:LoadConstant(1)
+  particles.position      :Load(particle_pos_array)
+  particles.velocity      :Load(particle_vel_array)
+  particles.temperature   :Load(particle_temp_array)
+  particles.diameter      :Load(particle_diam_array)
+  particles.state         :Load(1)
 else
-particles.position:LoadConstant(L.NewVector(L.double, {0, 0, 0}))
-particles.velocity:LoadConstant(L.NewVector(L.double, {0, 0, 0}))
-particles.temperature:LoadConstant(particles_options.initialTemperature)
+particles.position      :Load({0, 0, 0})
+particles.velocity      :Load({0, 0, 0})
+particles.temperature   :Load(particles_options.initialTemperature)
 -- Initialize to random distribution with given mean value and maximum
 -- deviation from it
-particles.diameter:Load(function(i)
-                        return cmath.rand_unity() * particles_options.diameter_maxDeviation +
-                        particles_options.diameter_mean
-                        end)
-particles.state:LoadConstant(0)
+particles.diameter      :Load(function(i)
+                              return cmath.rand_unity() *
+                                particles_options.diameter_maxDeviation +
+                                particles_options.diameter_mean
+                              end)
+particles.state         :Load(0)
 end
 
-particles:NewField('position_ghost', L.vec3d):
-LoadConstant(L.NewVector(L.double, {0, 0, 0}))
-particles:NewField('velocity_ghost', L.vec3d):
-LoadConstant(L.NewVector(L.double, {0, 0, 0}))
-particles:NewField('velocity_t_ghost', L.vec3d):
-LoadConstant(L.NewVector(L.double, {0, 0, 0}))
+particles:NewField('position_ghost', L.vec3d)                 :Load({0, 0, 0})
+particles:NewField('velocity_ghost', L.vec3d)                 :Load({0, 0, 0})
+particles:NewField('velocity_t_ghost', L.vec3d)               :Load({0, 0, 0})
 
-particles:NewField('density', L.double):
-LoadConstant(particles_options.density)
-particles:NewField('deltaVelocityOverRelaxationTime', L.vec3d):
-LoadConstant(L.NewVector(L.double, {0, 0, 0}))
-particles:NewField('deltaTemperatureTerm', L.double):
-LoadConstant(0)
+particles:NewField('density', L.double)       :Load(particles_options.density)
+particles:NewField('deltaVelocityOverRelaxationTime', L.vec3d):Load({0, 0, 0})
+particles:NewField('deltaTemperatureTerm', L.double)          :Load(0)
 -- ID field
 particles:NewField('id', L.int):
 -- Initialize to random distribution with given mean value and maximum 
 -- deviation from it
 Load(function(i)
-    return i
+    return i -- TODO: THIS IS NOT RANDOM
 end)
 -- groupID: differentiates particles within a given distribution
 -- For example, when multiple injectors are used
-particles:NewField('groupID', L.int):
-LoadConstant(0)
+particles:NewField('groupID', L.int)                          :Load(0)
 
 -- scratch (temporary) fields
 -- intermediate values and copies
-particles:NewField('position_old', L.vec3d):
-LoadConstant(L.NewVector(L.double, {0, 0, 0}))
-particles:NewField('velocity_old', L.vec3d):
-LoadConstant(L.NewVector(L.double, {0, 0, 0}))
-particles:NewField('temperature_old', L.double):
-LoadConstant(0)
-particles:NewField('position_new', L.vec3d):
-LoadConstant(L.NewVector(L.double, {0, 0, 0}))
-particles:NewField('velocity_new', L.vec3d):
-LoadConstant(L.NewVector(L.double, {0, 0, 0}))
-particles:NewField('temperature_new', L.double):
-LoadConstant(0)
+particles:NewField('position_old', L.vec3d)                   :Load({0, 0, 0})
+particles:NewField('velocity_old', L.vec3d)                   :Load({0, 0, 0})
+particles:NewField('temperature_old', L.double)               :Load(0)
+particles:NewField('position_new', L.vec3d)                   :Load({0, 0, 0})
+particles:NewField('velocity_new', L.vec3d)                   :Load({0, 0, 0})
+particles:NewField('temperature_new', L.double)               :Load(0)
 -- derivatives
-particles:NewField('position_t', L.vec3d):
-LoadConstant(L.NewVector(L.double, {0, 0, 0}))
-particles:NewField('velocity_t', L.vec3d):
-LoadConstant(L.NewVector(L.double, {0, 0, 0}))
-particles:NewField('temperature_t', L.double):
-LoadConstant(0)
+particles:NewField('position_t', L.vec3d)                     :Load({0, 0, 0})
+particles:NewField('velocity_t', L.vec3d)                     :Load({0, 0, 0})
+particles:NewField('temperature_t', L.double)                 :Load(0)
 
 
 -- Statistics quantities

@@ -14,7 +14,7 @@ vertices:NewField('pos', L.vector(L.float, 4))
 vertices:NewField('color', L.vector(L.float, 3))
 
 test.eq(triangles:StructuralType():toString(),
-  'Record({ v0=Row(vertices), v1=Row(vertices), v2=Row(vertices) })')
+  'Record({ v0=Key(vertices), v1=Key(vertices), v2=Key(vertices) })')
 test.eq(vertices:StructuralType():toString(),
   'Record({ color=Vector(float,3), pos=Vector(float,4) })')
 

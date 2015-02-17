@@ -102,7 +102,7 @@ test.fail_function(function()
   liszt kernel t(c : cells)
     var x = empty_f()
   end
-end, 'can only assign numbers, bools, or rows')
+end, 'can only assign numbers, bools, or keys')
 test.fail_function(function()
   liszt kernel t(c : cells)
     var x = 2 + empty_f()

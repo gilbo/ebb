@@ -106,6 +106,10 @@ function ast.Block:codegen (ctxt)
   local code = quote end
   for i = 1, #self.statements do
     local stmt = self.statements[i]:codegen(ctxt)
+    --print('stmt')
+    --self:pretty_print()
+    --stmt:printpretty()
+    --print ('tmts')
     code = quote code stmt end
   end
   return code
@@ -337,7 +341,7 @@ function ast.GenericFor:codegen (ctxt)
     local set       = self.set:codegen(ctxt)
     local iter      = symbol("iter")
     local rel       = self.set.node_type.relation
-    local projected = iter
+    local projected = `[L.addr_terra_types[1]]({array([iter])})
 
     for i,p in ipairs(self.set.node_type.projections) do
         local field = rel[p]
@@ -345,7 +349,7 @@ function ast.GenericFor:codegen (ctxt)
         rel         = field.type.relation
         assert(rel)
     end
-    local sym = symbol(L.row(rel):terraType())
+    local sym = symbol(L.key(rel):terraType())
     ctxt:enterblock()
         ctxt:localenv()[self.name] = sym
         local body = self.body:codegen(ctxt)
@@ -517,8 +521,8 @@ function mat_bin_exp(op, result_typ, lhe, rhe, lhtyp, rhtyp)
     return bin_exp(op, lhe, rhe)
   end
 
-  -- handles equality and inequality of rows
-  if lhtyp:isRow() and rhtyp:isRow() then
+  -- handles equality and inequality of keys
+  if lhtyp:isKey() and rhtyp:isKey() then
     return bin_exp(op, lhe, rhe)
   end
 
@@ -561,7 +565,7 @@ function mat_bin_exp(op, result_typ, lhe, rhe, lhtyp, rhtyp)
     if lhtyp:isVector() then -- rhtyp:isVector()
       return symgen_bind2(lhtyp, rhtyp, lhe, rhe, function(lvec,rvec)
         return vec_mapgen(result_typ, function(i)
-          return bin_exp( op, (`lvec.d[i]), `(rvec.d[i]) ) end) end)
+          return bin_exp( op, `(lvec.d[i]), `(rvec.d[i]) ) end) end)
 
     elseif lhtyp:isSmallMatrix() then
       return symgen_bind2(lhtyp, rhtyp, lhe, rhe, function(lmat,rmat)

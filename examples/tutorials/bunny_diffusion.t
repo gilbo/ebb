@@ -381,8 +381,8 @@ local vdb = require('lib.vdb')
 -- in the mesh with a color proportional to their current
 -- temperature.  When we view this data in VDB, we'll see the
 -- heat diffusing across the surface of the bunny model.
-local cold = L.NewVector(L.float,{0.5,0.5,0.5})
-local hot  = L.NewVector(L.float,{1.0,0.0,0.0})
+local cold = L.Constant(L.vec3f,{0.5,0.5,0.5})
+local hot  = L.Constant(L.vec3f,{1.0,0.0,0.0})
 local debug_tri_draw = liszt kernel ( t : triangles )
   -- color a triangle with the average temperature of its vertices
   var avg_temp =

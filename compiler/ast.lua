@@ -436,7 +436,7 @@ end
 
 function A.Bool:pretty_print (indent)
   indent = indent or ''
-  print(indent .. self.kind .. ':' .. self.value)
+  print(indent .. self.kind .. ':' .. tostring(self.value))
 end
 
 function A.String:pretty_print (indent)

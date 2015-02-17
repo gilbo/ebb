@@ -44,10 +44,10 @@ local dt            = L.NewGlobal(L.float, 0.01)
 
 
 grid.cells:NewField('velocity', L.vec2f)
-grid.cells.velocity:Load(L.NewVector(L.float, {0,0}))
+grid.cells.velocity:Load({0,0})
 
 grid.cells:NewField('velocity_prev', L.vec2f)
-grid.cells.velocity_prev:Load(L.NewVector(L.float, {0,0}))
+grid.cells.velocity_prev:Load({0,0})
 
 
 
@@ -134,7 +134,7 @@ local cell_w = grid:xCellWidth()
 local cell_h = grid:yCellWidth()
 
 local advect_dt = L.NewGlobal(L.float, 0.0)
-grid.cells:NewField('lookup_pos', L.vec2f):Load(L.NewVector(L.float, {0,0}))
+grid.cells:NewField('lookup_pos', L.vec2f):Load({0,0})
 grid.cells:NewField('lookup_from', grid.dual_cells):Load(0)
 
 local epsilon = 1.0e-5 * math.max(cell_w, cell_h)
@@ -337,8 +337,8 @@ particles:NewField('dual_cell', grid.dual_cells):Load(function(i)
     end
 end)
 
-particles:NewField('next_pos', L.vec2f):Load(L.NewVector(L.float, {0,0}))
-particles:NewField('pos', L.vec2f):Load(L.NewVector(L.float, {0,0}))
+particles:NewField('next_pos', L.vec2f):Load({0,0})
+particles:NewField('pos', L.vec2f):Load({0,0})
 (liszt kernel (p : particles) -- init...
     p.pos = p.dual_cell.vertex.cell(-1,-1).center +
             L.vec2f({cell_w/2.0, cell_h/2.0})

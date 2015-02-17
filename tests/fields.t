@@ -40,14 +40,14 @@ F.field1:LoadConstant(1)
 F.field2:LoadConstant(2.5)
 F.field3:LoadConstant(6)
 F.field4:LoadConstant(false)
-F.field5:LoadConstant(L.NewVector(L.float, { 0, 0, 0, 0 }))
+F.field5:LoadConstant({ 0, 0, 0, 0 })
 
 
 -----------------
 -- Local vars: --
 -----------------
 local a = 6
-local b = L.NewVector(L.float, {1, 3, 4, 5})
+local b = L.Constant(L.vec4f, {1, 3, 4, 5})
 
 
 -------------------
@@ -138,7 +138,9 @@ local function check_write ()
 	end
 	sum_positions(F)
 
-	local avg = f4:get() / F:Size()
-	test.fuzzy_aeq(avg.data, {2, 4, 5, 6})
+	local f4t = f4:get()
+	local fs  = F:Size()
+	local avg = { f4t[1]/fs, f4t[2]/fs, f4t[3]/fs, f4t[4]/fs }
+	test.fuzzy_aeq(avg, {2, 4, 5, 6})
 end
 check_write()

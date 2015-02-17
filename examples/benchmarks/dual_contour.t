@@ -411,7 +411,7 @@ end
 -- visualize
 -------------------------------
 local sqrt3 = math.sqrt(3)
-local lightdir = L.NewVector(L.float, {1/sqrt3, 1/sqrt3, 1/sqrt3})
+local lightdir = L.Constant(L.vec3f, {1/sqrt3, 1/sqrt3, 1/sqrt3})
 local trinorm = liszt function(p0,p1,p2)
   var n = L.vec3f(L.cross(p1-p0, p2-p0))
   var len = L.length(n)

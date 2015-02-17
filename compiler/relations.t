@@ -12,8 +12,6 @@ local DLD = require "compiler.dld"
 
 local PN = require "lib.pathname"
 
-local JSON = require('compiler.JSON')
-
 local DynamicArray = use_single and
                      require('compiler.rawdata').DynamicArray
 local LW = use_legion and require "compiler.legionwrap"
@@ -119,6 +117,7 @@ function L.NewRelation(params)
 
   -- SINGLE vs. LEGION
   if use_single then
+    -- TODO: Remove the _is_live_mask for inelastic relations
     -- create a mask to track which rows are live.
     rawset(rel, '_is_live_mask', L.LField.New(rel, '_is_live_mask', L.bool))
     rel._is_live_mask:Load(true)
@@ -156,6 +155,13 @@ function L.LRelation:ConcreteSize()
 end
 function L.LRelation:Name()
   return self._name
+end
+function L.LRelation:nDims()
+  if self:isGrid() then
+    return #self._dims
+  else
+    return 1
+  end
 end
 function L.LRelation:Dims()
   if not self:isGrid() then
@@ -385,9 +391,12 @@ function L.LRelation:GroupBy(name)
     error("GroupBy(): Relation is already grouped", 2)
   elseif not L.is_field(key_field) then
     error("GroupBy(): Could not find a field named '"..name.."'", 2)
-  elseif not key_field.type:isScalarRow() then
-    error("GroupBy(): Grouping by non-scalar-row-type fields is "..
+  elseif not key_field.type:isScalarKey() then
+    error("GroupBy(): Grouping by non-scalar-key fields is "..
           "prohibited.", 2)
+  elseif key_field.type.ndims > 1 then
+    error("GroupBy(): Grouping by a grid relation "..
+          "is currently unsupported", 2)
   end
 
   if use_legion then
@@ -408,6 +417,7 @@ function L.LRelation:GroupBy(name)
     key_field = key_field,
     index = L.LIndex.New{
       owner=self,
+      terra_type = L.addr_terra_types[key_field.type.ndims],
       processor = L.default_processor,
       name='groupby_'..key_field:Name(),
       size=num_keys+1
@@ -418,19 +428,19 @@ function L.LRelation:GroupBy(name)
     local prev,pos = 0,0
     key_field.array:read_ptr(function(keyptr)
       for i = 0, num_keys - 1 do
-        indexdata[i] = pos
-        while keyptr[pos] == i and pos < num_rows do
-          if keyptr[pos] < prev then
+        indexdata[i].a[0] = pos
+        while keyptr[pos].a[0] == i and pos < num_rows do
+          if keyptr[pos].a[0] < prev then
             self._grouping.index:Release()
             self._grouping = nil
             error("GroupBy(): Key field '"..name.."' is not sorted.")
           end
-          prev,pos = keyptr[pos], pos+1
+          prev,pos = keyptr[pos].a[0], pos+1
         end
       end
     end) -- key_field read
     assert(pos == num_rows)
-    indexdata[num_keys] = pos
+    indexdata[num_keys].a[0] = pos
   end) -- indexdata write
 
   -- record reference from this relation to the relation it's grouped by
@@ -478,20 +488,6 @@ function L.LRelation:UnsafeToDelete()
     return 'Cannot delete from relation '..self:Name()..
            ' because it has subsets'
   end
-  -- check whether this relation is being referred to by another relation
-  --local msg = ''
-  --for ref,kind in pairs(self._incoming_refs) do
-  --  if kind == 'row_field' then
-  --    msg = msg ..
-  --      '\n  it\'s referred to by a field: '..ref:FullName()
-  --  elseif kind == 'group' then
-  --    msg = msg ..
-  --      '\n  it\'s being used to group another relation: '..ref:Name()
-  --  end
-  --end
-  --if #msg > 0 then
-  --  return 'Cannot delete from relation '..self:Name()..' because'..msg
-  --end
 end
 
 function L.LRelation:UnsafeToInsert(record_type)
@@ -515,7 +511,7 @@ end
 function L.LIndex.New(params)
   if not L.is_relation(params.owner) or
      type(params.name) ~= 'string' or
-     not (params.size or params.data)
+     not (params.size or params.terra_type or params.data)
   then
     error('bad parameters')
   end
@@ -527,14 +523,14 @@ function L.LIndex.New(params)
 
   index._array = DynamicArray.New {
     size = params.size or (#params.data),
-    type = L.addr:terraType(),
+    type = params.terra_type,
     processor = params.processor or L.default_processor,
   }
 
   if params.data then
     index._array:write_ptr(function(ptr)
       for i=1,#params.data do
-        ptr[i-1] = params.data[i]
+        ptr[i-1].a[0] = params.data[i]
       end
     end) -- write_ptr
   end
@@ -647,6 +643,7 @@ function L.LRelation:NewSubsetFromFunction (name, predicate)
   -- USE INDEX
     subset._index = L.LIndex.New{
       owner=self,
+      terra_type = L.key(self):terraType(),
       name=name..'_subset_index',
       data=index_tbl
     }
@@ -716,7 +713,7 @@ function L.LRelation:NewField (name, typ)
   end
   
   if L.is_relation(typ) then
-    typ = L.row(typ)
+    typ = L.key(typ)
   end
   if not T.isLisztType(typ) or not typ:isFieldType() then
     error("NewField() expects a Liszt type or "..
@@ -724,7 +721,7 @@ function L.LRelation:NewField (name, typ)
   end
 
   -- prevent the creation of key fields pointing into elastic relations
-  if typ:isRow() then
+  if typ:isKey() then
     local rel = typ:baseType().relation
     if rel:isElastic() then
       error("NewField(): Cannot create a key-type field referring to "..
@@ -741,8 +738,8 @@ function L.LRelation:NewField (name, typ)
   self._fields:insert(field)
 
   -- record reverse pointers for key-field references
-  if typ:isRow() then
-    typ:baseType().relation._incoming_refs[field] = 'row_field'
+  if typ:isKey() then
+    typ:baseType().relation._incoming_refs[field] = 'key_field'
   end
 
   return field
@@ -828,13 +825,23 @@ function L.LRelation:Copy( p )
 end
 
 
+--[[ convert lua tables or numbers to
+-- Terra structs used to represent key values
+local function convert_key(key_val, typ)
+  if 1 == typ.ndims then
+    return terralib.new(typ:terraType(), { { key_val } })
+  elseif type(key_val) == 'table' and #key_val == typ.ndim then
+    return terralib.new(typ:terraType(), {key_val})
+  else
+    error('Loaded Value was not recognizable as '..
+          'Key of dimension '..tostring(typ.ndims), 3)
+  end
+end
+
 -- convert lua tables or LVectors to
 -- Terra structs used to represent vectors
 local function convert_vec(vec_val, typ)
-  if L.is_vector(vec_val) then
-    -- re-route to the common handler for Lua tables...
-    return convert_vec(vec_val.data, typ)
-  elseif type(vec_val) == 'table' and #vec_val == typ.N then
+  if type(vec_val) == 'table' and #vec_val == typ.N then
     return terralib.new(typ:terraType(), {vec_val})
   else
     error('Loaded Value was not recognizable as compatible Vector', 3)
@@ -858,6 +865,7 @@ local function convert_mat(mat_val, typ)
     error('Loaded Value was not recognizable as compatible Matrix', 3)
   end
 end
+]]
 
 function L.LField:LoadFunction(lua_callback)
   if self.owner:isFragmented() then
@@ -873,34 +881,43 @@ function L.LField:LoadFunction(lua_callback)
       fields         = {self.fid},
     }
     scanner:scan(function(i, dataptr)
-      local val = lua_callback(i)
-      if self.type:isSmallMatrix() then
-        val = convert_mat(val, self.type)
-      elseif self.type:isVector() then
-        val = convert_vec(val, self.type)
-      end
-      terralib.cast(&(self.type:terraType()), dataptr)[0] = val
+      local lval = lua_callback(i)
+      local tval = T.luaToLisztVal(lval)
+      terralib.cast(&(self.type:terraType()), dataptr)[0] = tval
     end)
     scanner:close()
   elseif use_single then
     self:Allocate()
 
     self.array:write_ptr(function(dataptr)
-      if self.type:isSmallMatrix() then
-        for i = 0, self:Size() - 1 do
-          local val = lua_callback(i)
-          dataptr[i] = convert_mat(val, self.type)
+      for i = 0, self:Size() - 1 do
+        local val  = lua_callback(i)
+        if not T.luaValConformsToType(val, self.type) then
+          error("lua value does not conform to field type "..
+                tostring(self.type), 3)
         end
-      elseif self.type:isVector() then
-        for i = 0, self:Size() - 1 do
-          local val = lua_callback(i)
-          dataptr[i] = convert_vec(val, self.type)
-        end
-      else
-        for i = 0, self:Size() - 1 do
-          dataptr[i] = lua_callback(i)
-        end
+        dataptr[i] = T.luaToLisztVal(val, self.type)
       end
+      --if self.type:isSmallMatrix() then
+      --  for i = 0, self:Size() - 1 do
+      --    local val = lua_callback(i)
+      --    dataptr[i] = convert_mat(val, self.type)
+      --  end
+      --elseif self.type:isVector() then
+      --  for i = 0, self:Size() - 1 do
+      --    local val = lua_callback(i)
+      --    dataptr[i] = convert_vec(val, self.type)
+      --  end
+      --elseif self.type:isScalarKey() then
+      --  for i = 0, self:Size() - 1 do
+      --    local val = lua_callback(i)
+      --    dataptr[i] = convert_key(val, self.type)
+      --  end
+      --else
+      --  for i = 0, self:Size() - 1 do
+      --    dataptr[i] = lua_callback(i)
+      --  end
+      --end
     end) -- write_ptr
   end
 end
@@ -922,18 +939,15 @@ function L.LField:LoadList(tbl)
   end)
 end
 
--- TODO: Hide this function so it's not public  (maybe not?)
+-- TODO: DEPRECATED FORM.  (USE DLD?)
 function L.LField:LoadFromMemory(mem)
   if self.owner:isFragmented() then
     error('cannot load into fragmented relation', 2)
   end
-  self:Allocate()
-
   if use_legion then
     error('Load from memory while using Legion is unimplemented', 2)
   end
-
-  -- NEEDS REVISION FOR CASE OF FRAGMENTATION
+  self:Allocate()
 
   -- avoid extra copies by wrapping and using the standard copy
   local wrapped = DynamicArray.Wrap{
@@ -949,21 +963,10 @@ function L.LField:LoadConstant(constant)
   if self.owner:isFragmented() then
     error('cannot load into fragmented relation', 2)
   end
-  --self:Allocate()
-  --if self.type:isSmallMatrix() then
-  --  constant = convert_mat(constant, self.type)
-  --elseif self.type:isVector() then
-  --  constant = convert_vec(constant, self.type)
-  --end
 
   self:LoadFunction(function()
     return constant
   end)
---  self.array:write_ptr(function(dataptr)
---    for i = 0, self:ConcreteSize() - 1 do
---      dataptr[i] = constant
---    end
---  end) -- write_ptr
 end
 
 -- generic dispatch function for loads
@@ -987,8 +990,11 @@ function L.LField:Load(arg)
       error('Load from file while using Legion is unimplemented', 2)
     end
     return self:LoadFromFile(arg)
-  elseif  type(arg) == 'table' and not L.is_vector(arg) then
-    if self.type:isVector() and #arg == self.type.N then
+  elseif  type(arg) == 'table' then
+    if (self.type:isScalarKey() and #arg == self.type.ndims) or
+       (self.type:isVector() and #arg == self.type.N) or
+       (self.type:isSmallMatrix() and #arg == self.type.Nrow) 
+    then
       return self:LoadConstant(arg)
     else
       return self:LoadList(arg)
@@ -1002,31 +1008,78 @@ end
 
 -- convert lua tables or LVectors to
 -- Terra structs used to represent vectors
-local function terraval_to_lua(val, typ)
-  if typ:isSmallMatrix() then
-    local mat = {}
-    local btyp = typ:baseType()
-    for i=1,typ.Nrow do
-      mat[i] = {}
-      for j=1,typ.Ncol do
-        mat[i][j] = terraval_to_lua(val.d[i-1][j-1], btyp) end
-    end
-    return mat
-  elseif typ:isVector() then
-    local vec = {}
-    for i = 1, typ.N do
-      vec[i] = terraval_to_lua(val.d[i-1], typ:baseType())
-    end
-    return vec
-  elseif typ:isNumeric() then
-    return tonumber(val)
-  elseif typ:isLogical() then
-    if tonumber(val) == 0 then return false else return true end
-  elseif typ:isScalarRow() then
-    return tonumber(val)
-  else
-    error('unhandled terra_to_lua conversion')
+--local function terraval_to_lua(val, typ)
+--  if typ:isSmallMatrix() then
+--    local mat = {}
+--    local btyp = typ:baseType()
+--    for i=1,typ.Nrow do
+--      mat[i] = {}
+--      for j=1,typ.Ncol do
+--        mat[i][j] = terraval_to_lua(val.d[i-1][j-1], btyp) end
+--    end
+--    return mat
+--  elseif typ:isVector() then
+--    local vec = {}
+--    for i = 1, typ.N do
+--      vec[i] = terraval_to_lua(val.d[i-1], typ:baseType())
+--    end
+--    return vec
+--  elseif typ:isNumeric() then
+--    return tonumber(val)
+--  elseif typ:isLogical() then
+--    if tonumber(val) == 0 then return false else return true end
+--  elseif typ:isScalarKey() then
+--    if typ.ndims == 1 then
+--      return tonumber(val.a[0])
+--    elseif typ.ndims == 2 then
+--      return { tonumber(val.a[0]), tonumber(val.a[1]) }
+--    elseif typ.ndims == 3 then
+--      return { tonumber(val.a[0]), tonumber(val.a[1]), tonumber(val.a[2]) }
+--    else
+--      error('INTERNAL: Cannot have > 3 dimensional keys')
+--    end
+--  else
+--    error('unhandled terra_to_lua conversion')
+--  end
+--end
+
+
+-- helper to dump multiple fields jointly
+function L.LRelation:JointDump(fields, lua_callback)
+  if self:isFragmented() then
+    error('cannot dump from fragmented relation', 2)
   end
+  local size = self:ConcreteSize()
+  local nfields = #fields
+  local typs = {}
+  local ptrs = {}
+
+  -- main loop part
+  local loop = function()
+    for i=0,size-1 do
+      local vals = {}
+      for k=1,nfields do
+        vals[k] = T.lisztToLuaVal(ptrs[k][i], typs[k])
+      end
+      lua_callback(i, unpack(vals))
+    end
+  end
+
+  for k=1,nfields do
+    local fname = fields[k]
+    local f     = self[fname]
+    typs[k]     = f.type
+    local loopcapture = loop -- THIS IS NEEDED TO STOP INF. RECURSION
+    local outerloop = function()
+      f.array:read_ptr(function(dataptr)
+        ptrs[k] = dataptr
+        loopcapture()
+      end)
+    end
+    loop = outerloop
+  end
+
+  loop()
 end
 
 -- callback(i, val)
@@ -1036,12 +1089,15 @@ function L.LField:DumpFunction(lua_callback)
   if self.owner:isFragmented() then
     error('cannot dump from fragmented relation', 2)
   end
+  -- TODO: replace with the below call?
   self.array:read_ptr(function(dataptr)
     for i = 0, self:ConcreteSize()-1 do
-      local val = terraval_to_lua(dataptr[i], self.type)
+      --local val = terraval_to_lua(dataptr[i], self.type)
+      local val = T.lisztToLuaVal(dataptr[i], self.type)
       lua_callback(i, val)
     end
   end) -- read_ptr
+  --self.owner:JointDump({self:Name()}, lua_callback)
 end
 
 function L.LField:DumpToList()
@@ -1052,14 +1108,32 @@ function L.LField:DumpToList()
   self:DumpFunction(function(i,val)
     arr[i+1] = val
   end)
-  --self.array:read_ptr(function(dataptr)
-  --  for i = 0, self:ConcreteSize()-1 do
-  --    arr[i+1] = terraval_to_lua(dataptr[i], self.type)
-  --  end
-  --end) -- read_ptr
   return arr
 end
 
+
+--local function valtostring(val, typ)
+--  if not typ:isScalarKey() then
+--    local str = tostring(val):gsub('ULL','')
+--    return str
+--  else
+--    local str = tostring(val.a[0]):gsub('ULL','')
+--    if typ.ndims == 1 then
+--      return str
+--    else
+--      local t2 = tostring(val.a[1]):gsub('ULL','')
+--      str = '{ ' .. str .. ', ' .. t2
+--      if typ.ndims == 2 then
+--        return str .. ' }'
+--      elseif typ.ndims == 3 then
+--        local t3 = tostring(val.a[2]):gsub('ULL','')
+--        return str .. ', ' .. t3 .. ' }'
+--      else
+--        error("INTERNAL: keys cannot be >3 dimensional")
+--      end
+--    end
+--  end
+--end
 
 function L.LField:print()
   if use_legion then
@@ -1073,51 +1147,90 @@ function L.LField:print()
     print("  . == live  x == dead")
   end
 
-  local N = self.owner:ConcreteSize()
-  local livemask = self.owner._is_live_mask
-
-  livemask.array:read_ptr(function(liveptr)
-  self.array:read_ptr(function(dataptr)
-    local alive
-    if self.type:isSmallMatrix() then
-      for i = 0, N-1 do
-        if liveptr[i] then alive = ' .'
-        else                alive = ' x' end
-        local s = ''
-        for c = 0, self.type.Ncol-1 do
-          local t = tostring(dataptr[i].d[0][c]):gsub('ULL','')
-          s = s .. t .. ' '
-        end
-        print("", tostring(i) .. alive, s)
-        for r = 1, self.type.Nrow-1 do
-          local s = ''
-          for c = 0, self.type.Ncol-1 do
-            s = s .. tostring(dataptr[i].d[r][c]):gsub('ULL','') .. ' '
-          end
-          print("", "", s)
-        end
-      end
-    elseif self.type:isVector() then
-      for i = 0, N-1 do
-        if liveptr[i] then alive = ' .'
-        else                alive = ' x' end
-        local s = ''
-        for j = 0, self.type.N-1 do
-          local t = tostring(dataptr[i].d[j]):gsub('ULL','')
-          s = s .. t .. ' '
-        end
-        print("", tostring(i) .. alive, s)
-      end
+  local function flattenkey(keytbl)
+    if type(keytbl) ~= 'table' then
+      return keytbl
     else
-      for i = 0, N-1 do
-        if liveptr[i] then alive = ' .'
-        else                alive = ' x' end
-        local t = tostring(dataptr[i]):gsub('ULL', '')
-        print("", tostring(i) .. alive, t)
+      if #keytbl == 2 then
+        return '{ '..keytbl[1]..', '..keytbl[2]..' }'
+      elseif #keytbl == 3 then
+        return '{ '..keytbl[1]..', '..keytbl[2]..', '..keytbl[3]..' }'
+      else
+        error("INTERNAL: Can only have 2d/3d grid keys, printing what???")
       end
     end
-  end) -- dataptr
-  end) -- liveptr
+  end
+
+  self.owner:JointDump(
+  {'_is_live_mask', self:Name()},
+  function (i, islive, datum)
+    local alive = ' .'
+    if not islive then alive = ' x' end
+
+    if self.type:isSmallMatrix() then
+      local s = ''
+      for c=1,self.type.Ncol do s = s .. flattenkey(datum[1][c]) .. ' ' end
+      print("", tostring(i) .. alive, s)
+
+      for r=2,self.type.Nrow do
+        local s = ''
+        for c=1,self.type.Ncol do s = s .. flattenkey(datum[r][c]) .. ' ' end
+        print("", "", s)
+      end
+
+    elseif self.type:isVector() then
+      local s = ''
+      for k=1,self.type.N do s = s .. flattenkey(datum[k]) .. ' ' end
+      print("", tostring(i) .. alive, s)
+
+    else
+      print("", tostring(i) .. alive, flattenkey(datum))
+    end
+  end)
+
+--  local N = self.owner:ConcreteSize()
+--  local livemask = self.owner._is_live_mask
+--
+--  livemask.array:read_ptr(function(liveptr)
+--  self.array:read_ptr(function(dataptr)
+--    local alive
+--    if self.type:isSmallMatrix() then
+--      for i = 0, N-1 do
+--        if liveptr[i] then alive = ' .'
+--        else                alive = ' x' end
+--        local s = ''
+--        for c = 0, self.type.Ncol-1 do
+--          s = s .. valtostring(dataptr[i].d[0][c], self.type) .. ' '
+--        end
+--        print("", tostring(i) .. alive, s)
+--        for r = 1, self.type.Nrow-1 do
+--          local s = ''
+--          for c = 0, self.type.Ncol-1 do
+--            s = s .. valtostring(dataptr[i].d[r][c], self.type) .. ' '
+--          end
+--          print("", "", s)
+--        end
+--      end
+--    elseif self.type:isVector() then
+--      for i = 0, N-1 do
+--        if liveptr[i] then alive = ' .'
+--        else                alive = ' x' end
+--        local s = ''
+--        for j = 0, self.type.N-1 do
+--          s = s .. valtostring(dataptr[i].d[j], self.type) .. ' '
+--        end
+--        print("", tostring(i) .. alive, s)
+--      end
+--    else
+--      for i = 0, N-1 do
+--        if liveptr[i] then alive = ' .'
+--        else                alive = ' x' end
+--        local t = valtostring(dataptr[i], self.type)
+--        print("", tostring(i) .. alive, t)
+--      end
+--    end
+--  end) -- dataptr
+--  end) -- liveptr
 end
 
 

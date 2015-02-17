@@ -24,7 +24,7 @@ particles:NewField('pos', L.vec3d)
 test.fail_function(function()
   -- try to copy each particle
   liszt kernel t( p : particles )
-    insert { cell = L.UNSAFE_ROW( L.addr(0), cells ), pos = {0.1,0.1,0.1} } into particles
+    insert { cell = L.UNSAFE_ROW( L.uint64(0), cells ), pos = {0.1,0.1,0.1} } into particles
   end
 end, "Cannot insert into relation particles while mapping over it")
 
@@ -69,7 +69,7 @@ test.fail_function(function()
 end, 'Cannot insert into relation grouped_rel because it\'s not ELASTIC')
 
 -- Inserting into something that isn't a relation
-local sum = L.NewGlobal(L.addr, 0)
+local sum = L.NewGlobal(L.uint64, 0)
 test.fail_function(function()
   liszt kernel t( c : cells )
     insert { cell = c } into sum

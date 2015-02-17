@@ -6,11 +6,11 @@ local LMesh = L.require "domains.lmesh"
 local mesh = LMesh.Load("examples/mesh.lmesh")
 
 
-local v1 = L.NewVector(L.float, {1, 2, 3})
-local v2 = L.NewVector(L.float, {5, 7, 11})
+local v1 = L.Constant(L.vec3f, {1, 2, 3})
+local v2 = L.Constant(L.vec3f, {5, 7, 11})
 
-local v3 = L.NewVector(L.int, {1, 2, 3})
-local v4 = L.NewVector(L.int, {5, 7, 11})
+local v3 = L.Constant(L.vec3i, {1, 2, 3})
+local v4 = L.Constant(L.vec3i, {5, 7, 11})
 
 local test_cross = liszt kernel(f : mesh.faces)
     assert(cross(v1, v2) == {1, 4, -3}) -- simple test

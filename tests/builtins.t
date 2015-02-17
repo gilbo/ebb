@@ -9,7 +9,7 @@ test.fail_function(function()
 			var v = L.id({ e.head, e.tail })
 			L.print(v)
 		end
-	end, "expected a relational row")
+	end, "expected a relational key")
 
 
 test.fail_function(function()

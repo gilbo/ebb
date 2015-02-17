@@ -32,7 +32,7 @@ test.fail_function(function()
   liszt kernel test( p : particles )
     delete p.cell
   end
-end, "Only centered rows may be deleted")
+end, "Only centered keys may be deleted")
 
 -- CANNOT HAVE 2 DELETE STATEMENTS in the same kernel
 test.fail_function(function()

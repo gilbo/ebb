@@ -3,7 +3,7 @@ local LMesh = L.require "domains.lmesh"
 
 local mesh = LMesh.Load("examples/mesh.lmesh")
 
-local v = L.NewVector(L.float, {1, 2, 3}) 
+local v = L.Constant(L.vec3f, {1, 2, 3}) 
 
 local print_stuff = liszt kernel(f : mesh.faces)
     var m = { { 1.2, 0 }, { 0.4, 1 } }
