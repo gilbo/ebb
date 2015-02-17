@@ -35,6 +35,10 @@ function PhaseType:isReadOnly()
   return self.read and not self.write and not self.reduceop
 end
 
+function PhaseType:isReduce()
+  return self.reduceop
+end
+
 function PhaseType:isCentered()
   return self.centered
 end
@@ -95,6 +99,7 @@ function Context.new(env, diag)
     globals = {},
     inserts = {},
     deletes = {},
+    reduce_global = nil
   }, Context)
   return ctxt
 end
@@ -127,6 +132,16 @@ local function log_helper(ctxt, is_field, f_or_g, phase_type, node)
         'Cannot access field '..f_or_g:FullName()..' while inserting\n('..
         insertfile..':'..insertline..') into relation '..
         f_or_g:Relation():Name())
+    end
+  end
+
+  -- check if more than one globals need to be reduced
+  if not is_field then
+    local g = ctxt.reduce_global
+    if phase_type:isReduce() and g and g ~= f_or_g then
+      ctxt:error(node, 'Cannot reduce more than one global in a kernel\n')
+    else
+      ctxt.reduce_global = f_or_g
     end
   end
 

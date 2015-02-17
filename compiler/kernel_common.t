@@ -88,6 +88,8 @@ function L.NewKernel(kernel_ast, env)
     local specialized    = specialization.specialize(env, kernel_ast)
     new_kernel.typed_ast = semant.check(env, specialized)
 
+    -- TODO: throw an error if more than one global is being reduced
+
     local phase_results   = phase.phasePass(new_kernel.typed_ast)
     new_kernel.field_use  = phase_results.field_use
     new_kernel.global_use = phase_results.global_use
