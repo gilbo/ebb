@@ -13,17 +13,10 @@ local return_code = 0
 
 local function top_level_err_handler ( errobj )
   local err = tostring(errobj)
-  if string.match(err, 'stack traceback:') then
-    -- trim the error?
-    local start_i, end_i = string.find(err, '\t./compiler/launch_script.t')
-    local trimmed = string.sub(err, 1, start_i-1)
-    print(trimmed)
-    --print("FDSDSFSFDD")
-  else
-    print(err)
-    --print(err .. '\n' .. debug.traceback())
-    --print("SDLFNPOIDFS")
+  if not string.match(err, 'stack traceback:') then
+    err = err .. '\n' .. debug.traceback()
   end
+  print(err)
   os.exit(1)
 end
 

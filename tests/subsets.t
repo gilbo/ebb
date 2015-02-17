@@ -3,7 +3,7 @@ require "tests/test"
 
 -- Need a high N to test the index-based representation as well as boolmask
 local N = 40
-local cells = L.NewRelation(N*N, 'cells')
+local cells = L.NewRelation { size = N*N, name = 'cells' }
 
 local function yidx(i) return math.floor(i/N) end
 

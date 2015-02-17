@@ -7,15 +7,14 @@ import "compiler.liszt"
 local g_scal = L.NewGlobal(L.int, 4)
 
 -- Create relations and fields
--- mocal points = L.NewRelation(4, 'points')
-local points = L.NewGridRelation('points', { bounds = {4} })
--- local points = L.NewGridRelation('points', { bounds = {4, 2} })
--- local points = L.NewGridRelation('points', { bounds = {4, 2, 1} })
+-- local points = L.NewRelation(4, 'points')
+local points = L.NewRelation { name = 'points', dim = {3,4} }
+
 points:NewField('x', L.int)
 points:NewField('y', L.int)
 points:NewField('z', L.int)
 points:NewField('t', L.int)
--- local edges = L.NewRelation(4, 'edges')
+-- local edges = L.NewRelation { size = 4, name = 'edges')
 -- edges:NewField('head', points)
 -- edges:NewField('tail', points)
 
@@ -50,7 +49,14 @@ local liszt kernel ReduceField(p : points)
 end
 
 CenteredWrite(points)
--- CenteredWrite(points)
--- CenteredAdd(points)
--- CenteredAdd(points)
--- ReduceField(points)
+CenteredWrite(points)
+CenteredAdd(points)
+CenteredAdd(points)
+ReduceField(points)
+
+local verts = L.NewRelation { name = 'verts', size = 8 }
+verts:NewField('t', L.float):Load(0)
+verts:NewField('pos', L.vec3d):Load({1,2,3})
+
+local grid = L.NewRelation { name = 'cells', dim = {4,3,2} }
+grid:NewField('p', L.double):Load(0)

@@ -2,8 +2,12 @@
 import "compiler.liszt"
 require "tests/test"
 
-local cells = L.NewRelation(10, 'cells')
-local particles = L.NewRelation(10, 'particles')
+local cells = L.NewRelation { size = 10, name = 'cells' }
+local particles = L.NewRelation {
+  size = 10,
+  mode = 'ELASTIC',
+  name = 'particles'
+}
 
 cells:NewField('temperature', L.double):Load(0.0)
 particles:NewField('cell', cells):Load(function (id) return id end)
@@ -21,14 +25,14 @@ test.fail_function(function()
   liszt kernel test( c : cells )
     delete c
   end
-end, "Cannot delete from relation cells because%s*it\'s referred to by a field: particles.cell")
+end, "Cannot delete from relation cells because it\'s not ELASTIC")
 
 -- cannot delete indirectly
 test.fail_function(function()
   liszt kernel test( p : particles )
     delete p.cell
   end
-end, "Only centered rows may be deleted")
+end, "Only centered keys may be deleted")
 
 -- CANNOT HAVE 2 DELETE STATEMENTS in the same kernel
 test.fail_function(function()

@@ -31,7 +31,7 @@ function Context.new(env, diag)
         env         = env,
         diag        = diag,
         loop_count  = 0,
-        centers     = {}, -- variable symbols bound to the centered row
+        centers     = {}, -- variable symbols bound to the centered key
     }, Context)
     return ctxt
 end
@@ -215,7 +215,7 @@ function check_reduce(node, ctxt)
     local ltype     = lvalue.node_type
 
     -- Centered reductions don't need to be atomic!
-    if node.lvalue:is(ast.FieldAccess) and node.lvalue.row.is_centered then return end
+    if node.lvalue:is(ast.FieldAccess) and node.lvalue.key.is_centered then return end
 
     if op == nil then return end
 
@@ -250,8 +250,8 @@ function ast.Assignment:check(ctxt)
         ctxt:error(self.lvalue, "Illegal assignment: left hand side cannot "..
                                 "be assigned")
         return node
-    -- How should we restrict assignments to rows?
-    elseif node.lvalue.node_type:isRow() and
+    -- How should we restrict assignments to keys?
+    elseif node.lvalue.node_type:isKey() and
            ( not ( node.lvalue:is(ast.FieldAccess) or
                    ( node.lvalue:is(ast.SquareIndex) and
                      node.lvalue.base and
@@ -260,7 +260,7 @@ function ast.Assignment:check(ctxt)
                  )
            )
     then
-        ctxt:error(self.lvalue, "Illegal assignment: variables of row type "..
+        ctxt:error(self.lvalue, "Illegal assignment: variables of key type "..
                                 "cannot be re-assigned")
         return node
     end
@@ -315,17 +315,17 @@ function ast.DeclStatement:check(ctxt)
         else
             decl.node_type = exptyp
         end
-        -- if the rhs is a centered row, try to propagate that information
-        -- NOTE: this pseudo-constant propagation is strong b/c
-        -- we don't allow re-assignment of row-type variables
-        if exptyp:isScalarRow() and decl.initializer.is_centered then
+        -- if the rhs is a centered key, try to propagate that information
+        -- NOTE: this pseudo-constant propagation is sound b/c
+        -- we don't allow re-assignment of key-type variables
+        if exptyp:isScalarKey() and decl.initializer.is_centered then
             ctxt:recordcenter(decl.name)
         end
     end
 
     if decl.node_type ~= L.error and not decl.node_type:isFieldType() then
         ctxt:error(self,"can only assign numbers, bools, "..
-                        "or rows to local temporaries")
+                        "or keys to local temporaries")
     end
 
     ctxt:liszt()[decl.name] = decl.node_type
@@ -395,10 +395,10 @@ function ast.GenericFor:check(ctxt)
         rel = rel[p].type.relation
         assert(rel)
     end
-    local rowType = L.row(rel)
+    local keyType = L.key(rel)
     ctxt:enterblock()
     ctxt:enterloop()
-    ctxt:liszt()[r.name] = rowType
+    ctxt:liszt()[r.name] = keyType
     r.body = self.body:check(ctxt)
     ctxt:leaveloop()
     ctxt:leaveblock()
@@ -464,11 +464,11 @@ end
 function ast.DeleteStatement:check(ctxt)
     local delete = self:clone()
 
-    delete.row   = self.row:check(ctxt)
-    local rowtyp = delete.row.node_type
+    delete.key   = self.key:check(ctxt)
+    local keytyp = delete.key.node_type
 
-    if not rowtyp:isScalarRow() or not delete.row.is_centered then
-        ctxt:error(self,"Only centered rows may be deleted")
+    if not keytyp:isScalarKey() or not delete.key.is_centered then
+        ctxt:error(self,"Only centered keys may be deleted")
         return delete
     end
 
@@ -543,13 +543,13 @@ local function coerce_base(btyp, node)
 end
 -- Will coerce base type but not the underlying 
 local function try_bin_coerce(binop, errf)
-  local meet = T.type_meet(binop.lhs.node_type:baseType(),
+  local join = T.type_join(binop.lhs.node_type:baseType(),
                            binop.rhs.node_type:baseType())
-  if meet == L.error then return errf() end
+  if join == L.error then return errf() end
 
-  binop.lhs = coerce_base(meet, binop.lhs)
-  binop.rhs = coerce_base(meet, binop.rhs)
-  binop.node_type = T.type_meet(binop.lhs.node_type, binop.rhs.node_type)
+  binop.lhs = coerce_base(join, binop.lhs)
+  binop.rhs = coerce_base(join, binop.rhs)
+  binop.node_type = T.type_join(binop.lhs.node_type, binop.rhs.node_type)
 
   return binop
 end
@@ -560,13 +560,13 @@ local function try_bin_coerce_bool(binop, errf)
   return node
 end
 local function try_mat_prod_coerce(binop, errf, N, M)
-  local meet = T.type_meet(binop.lhs.node_type:baseType(),
+  local join = T.type_join(binop.lhs.node_type:baseType(),
                            binop.rhs.node_type:baseType())
-  if meet == L.error then return errf() end
-  binop.lhs = coerce_base(meet, binop.lhs)
-  binop.rhs = coerce_base(meet, binop.rhs)
-  if M == nil then binop.node_type = L.vector(meet, N)
-              else binop.node_type = L.smallmatrix(meet, N, M) end
+  if join == L.error then return errf() end
+  binop.lhs = coerce_base(join, binop.lhs)
+  binop.rhs = coerce_base(join, binop.rhs)
+  if M == nil then binop.node_type = L.vector(join, N)
+              else binop.node_type = L.smallmatrix(join, N, M) end
   return binop
 end
 
@@ -592,8 +592,8 @@ function ast.BinaryOp:check(ctxt)
                 '\': ' .. lt:toString() .. ' and ' .. rt:toString())
   end
 
-  -- special case for row types
-  if lt:isRow() and rt:isRow() and (op == '==' or op == '~=') then
+  -- special case for key types
+  if lt:isKey() and rt:isKey() and (op == '==' or op == '~=') then
     if lt ~= rt then return type_err() end
     binop.node_type = L.bool
     return binop
@@ -1133,7 +1133,7 @@ function ast.TableLookup:check(ctxt)
         return err(self, ctxt)
     end
 
-    if ttype:isScalarRow() then
+    if ttype:isScalarKey() then
         local luaval = ttype.relation[member]
 
         -- create a field access normally
@@ -1141,23 +1141,23 @@ function ast.TableLookup:check(ctxt)
             local field         = luaval
             local ast_node      = ast.FieldAccess:DeriveFrom(tab)
             ast_node.name       = member
-            ast_node.row        = tab
-            local name = ast_node.row.name
+            ast_node.key        = tab
+            local name = ast_node.key.name
             if name and ctxt:iscenter(name) then
-                ast_node.row.is_centered = true
+                ast_node.key.is_centered = true
             end
             ast_node.field      = field
             ast_node.node_type  = field.type
             return ast_node
 
-        -- desugar macro-fields from row.macro to macro(row)
+        -- desugar macro-fields from key.macro to macro(key)
         elseif L.is_macro(luaval) then
             return RunMacro(ctxt,self,luaval,{tab})
-        -- desugar function-fields from row.func to func(row)
+        -- desugar function-fields from key.func to func(key)
         elseif L.is_user_func(luaval) then
             return InlineUserFunc(ctxt,self,luaval,{tab})
         else
-            return err(self, ctxt, "Row from "..ttype.relation:Name()..
+            return err(self, ctxt, "Key from "..ttype.relation:Name()..
                                    " does not have field or macro-field "..
                                    "'"..member.."'")
         end
@@ -1276,7 +1276,7 @@ function ast.Call:check(ctxt)
             end
         end
     -- __apply_macro  i.e.  c(1,0)  for offsetting in a grid
-    elseif func.node_type:isScalarRow() then
+    elseif func.node_type:isScalarKey() then
         local apply_macro = func.node_type.relation.__apply_macro
         local params = {func}
         for _,v in ipairs(call.params) do table.insert(params, v) end
@@ -1330,7 +1330,7 @@ end
 
 function ast.FieldAccess:check(ctxt)
     local fa = self:clone()
-    fa.row = self.row:check(ctxt)
+    fa.key = self.key:check(ctxt)
     return fa
 end
 
@@ -1378,10 +1378,10 @@ function ast.LisztKernel:check(ctxt)
        L.is_relation(set.node_type.value)
     then
         kernel.relation             = set.node_type.value
-        local row_type              = L.row(kernel.relation)
+        local key_type              = L.key(kernel.relation)
         -- record the center
         ctxt:recordcenter(kernel.name)
-        ctxt:liszt()[kernel.name]   = row_type
+        ctxt:liszt()[kernel.name]   = key_type
         kernel.body                 = self.body:check(ctxt)
     else
         ctxt:error(kernel.set, "Expected a relation")

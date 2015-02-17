@@ -437,8 +437,8 @@ lang.statement = function (P)
     --[[ delete statement ]]--
   elseif P:nextif("delete") then
     local delete = ast.DeleteStatement:New(P)
-    local row    = P:exp()
-    delete.row   = row
+    local key    = P:exp()
+    delete.key   = key
     return delete
 
     --[[ expression statement / assignment statement ]]--

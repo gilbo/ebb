@@ -7,10 +7,10 @@ local LMesh = L.require "domains.lmesh"
 local M = LMesh.Load("examples/mesh.lmesh")
 
 
-local v1 = L.NewVector(L.float, {1, 2, 3})
-local v2 = L.NewVector(L.int, {1, 2, 3})
-local v3 = L.NewVector(L.float, {7})
-local v4 = L.NewVector(L.int, {0})
+local v1 = L.Constant(L.vec3f, {1, 2, 3})
+local v2 = L.Constant(L.vec3i, {1, 2, 3})
+local v3 = L.Constant(L.vector(L.float, 1), {7})
+local v4 = L.Constant(L.vector(L.int,   1), {0})
 
 local sqrt = terralib.includec('math.h').sqrt
 local ans1 = sqrt(1 + 4 + 9)

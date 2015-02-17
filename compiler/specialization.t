@@ -295,6 +295,42 @@ local function NewLuaObject(anchor, obj)
   return lo
 end
 
+local function prim_to_AST(anchor, primval, typ)
+  if type(primval) == 'number' then
+    local node = ast.Number:DeriveFrom(anchor)
+    node.value = primval
+    node.node_type = typ
+    return node
+  elseif type(primval) == 'boolean' then
+    local node = ast.Bool:DeriveFrom(anchor)
+    node.value = primval
+    node.node_type = L.bool
+    return node
+  else
+    error("INTERNAL: SHOULD only see primitive types number/boolean here")
+  end
+end
+
+local function vec_to_AST(anchor, vecval, typ)
+  local node = ast.VectorLiteral:DeriveFrom(anchor)
+  node.elems = {}
+  for i=1,#vecval do
+    node.elems[i] = prim_to_AST(anchor, vecval[i], typ)
+  end
+  return node
+end
+
+local function mat_to_AST(anchor, matval, typ)
+  -- convert to a vector and let the type-checker expand to matrix literal
+  local node = ast.VectorLiteral:DeriveFrom(anchor)
+  node.elems = {}
+  for i=1,#matval do
+    node.elems[i] = vec_to_AST(anchor, matval[i], typ)
+  end
+  return node
+end
+
+
 -- This function attempts to produce an AST node which looks as if
 -- the resulting AST subtree has just been emitted from the Parser
 local function luav_to_ast(luav, src_node)
@@ -306,16 +342,14 @@ local function luav_to_ast(luav, src_node)
     node        = ast.Global:DeriveFrom(src_node)
     node.global = luav
 
-  -- Vector objects are expanded into literal AST trees
-  elseif L.is_vector(luav) then
-    node            = ast.VectorLiteral:DeriveFrom(src_node)
-    node.elems      = {}
-    -- We have to copy the type here b/c the values
-    -- may not imply the right type
-    node.node_type  = luav.type
-    for i,v in ipairs(luav.data) do
-      node.elems[i] = luav_to_ast(v, src_node)
-      node.elems[i].node_type = luav.type:baseType()
+  elseif L.is_constant(luav) then
+    local bt = luav.type:baseType()
+    if luav.type:isSmallMatrix() then
+      node = mat_to_AST(src_node, luav.value, bt)
+    elseif luav.type:isVector() then
+      node = vec_to_AST(src_node, luav.value, bt)
+    else
+      node = prim_to_AST(src_node, luav.value, bt)
     end
 
   elseif B.isBuiltin(luav) then
@@ -336,12 +370,8 @@ local function luav_to_ast(luav, src_node)
       node = NewLuaObject(src_node, luav)
     end
 
-  elseif type(luav) == 'number' then
-    node       = ast.Number:DeriveFrom(src_node)
-    node.value = luav
-  elseif type(luav) == 'boolean' then
-    node       = ast.Bool:DeriveFrom(src_node)
-    node.value = luav
+  elseif type(luav) == 'number' or type(luav) == 'boolean' then
+    node = prim_to_AST(src_node, luav)
 
   else
     return nil

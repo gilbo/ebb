@@ -82,7 +82,7 @@ local dot_to_color = liszt function(d)
   return col
 end
 
-local lightdir = L.NewVector(L.float,{sqrt3,sqrt3,sqrt3})
+local lightdir = L.Constant(L.vec3f,{sqrt3,sqrt3,sqrt3})
 
 -- EXTRA: (optional.  It demonstrates the use of VDB, a visual debugger)
 local vdb = L.require('lib.vdb')

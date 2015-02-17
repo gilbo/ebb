@@ -1,7 +1,7 @@
 import "compiler.liszt"
 require "tests/test"
 
-local cells = L.NewRelation(10, 'cells')
+local cells = L.NewRelation { size = 10, name = 'cells' }
 
 cells:NewField('f1', L.double):Load(0)
 cells:NewField('f2', L.double):Load(0)

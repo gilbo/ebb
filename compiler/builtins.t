@@ -23,6 +23,9 @@ function Builtin.new(luafunc)
     local codegen = function(ast, ctxt)
         error('unimplemented builtin function codegen')
     end
+    if not luafunc then
+        luafunc = function() error("Cannot call from Lua code") end
+    end
     return setmetatable({check=check, codegen=codegen, luafunc = luafunc},
                         Builtin)
 end
@@ -32,8 +35,7 @@ end
 
 
 -- internal macro style built-in
-B.Where = Builtin.new(function ()
-                        error("Where cannot be called in Lua code") end)
+B.Where = Builtin.new()
 function B.Where.check(call_ast, ctxt)
     if #(call_ast.params) ~= 2 then
         ctxt:error(ast, "Where expects exactly 2 arguments")
@@ -47,33 +49,97 @@ function B.Where.check(call_ast, ctxt)
 end
 
 
-local id = function () error("id expects a relation row") end
-B.id = Builtin.new(id)
+local function id_checks(fname, ast, ctxt, args)
+    if #args ~= 1 then 
+        ctxt:error(ast, fname.." expects exactly 1 argument (instead got " ..
+                        tostring(#args) .. ")")
+        return false
+    end
 
+    if not args[1].node_type:isScalarKey() then
+        ctxt:error(ast, "expected a relational key as the argument for "..
+                        fname.."()")
+        return false
+    end
+    return true
+end
+
+B.id = Builtin.new()
 function B.id.check(ast, ctxt)
     local args = ast.params
-    if #args ~= 1 then 
-        ctxt:error(ast, "id expects exactly 1 argument (instead got " .. tostring(#args) .. ")")
+
+    if not id_checks('id', ast, ctxt, args) then return L.error end
+    if args[1].node_type.ndims ~= 1 then
+        ctxt:error(ast, "Can only use built-in id() on keys of "..
+                        "non-grid relations; "..
+                        "try using xid(), yid() or zid() instead.")
         return L.error
     end
 
-    if not args[1].node_type:isScalarRow() then
-        ctxt:error(ast, "expected a relational row as the argument for id()")
-        return L.error
-    end
-
-    return L.addr
+    return L.uint64
 end
-
 function B.id.codegen(ast, ctxt)
-    return ast.params[1]:codegen(ctxt)
+    return `[ast.params[1]:codegen(ctxt)].a[0]
+end
+
+B.xid = Builtin.new()
+function B.xid.check(ast, ctxt)
+    local args = ast.params
+
+    if not id_checks('xid', ast, ctxt, args) then return L.error end
+    if args[1].node_type.ndims == 1 then
+        ctxt:error(ast, "Can only use built-in xid() on keys of "..
+                        "grid relations; try using id() instead.")
+        return L.error
+    end
+
+    return L.uint64
+end
+function B.xid.codegen(ast, ctxt)
+    return `[ast.params[1]:codegen(ctxt)].a[0]
+end
+
+B.yid = Builtin.new()
+function B.yid.check(ast, ctxt)
+    local args = ast.params
+
+    if not id_checks('yid', ast, ctxt, args) then return L.error end
+    if args[1].node_type.ndims == 1 then
+        ctxt:error(ast, "Can only use built-in yid() on keys of "..
+                        "grid relations; try using id() instead.")
+        return L.error
+    end
+
+    return L.uint64
+end
+function B.yid.codegen(ast, ctxt)
+    return `[ast.params[1]:codegen(ctxt)].a[1]
+end
+
+B.zid = Builtin.new()
+function B.zid.check(ast, ctxt)
+    local args = ast.params
+
+    if not id_checks('zid', ast, ctxt, args) then return L.error end
+    if args[1].node_type.ndims == 1 then
+        ctxt:error(ast, "Can only use built-in zid() on keys of "..
+                        "grid relations; try using id() instead.")
+        return L.error
+    end
+    if args[1].node_type.ndims < 3 then
+        ctxt:error(ast, "The key argument to zid() refers to a 2d grid, "..
+                        "so zid() doesn't make any sense.")
+        return L.error
+    end
+
+    return L.uint64
+end
+function B.zid.codegen(ast, ctxt)
+    return `[ast.params[1]:codegen(ctxt)].a[2]
 end
 
 
-local UNSAFE_ROW = function()
-    error('UNSAFE_ROW cannot be called in Lua code') end
-B.UNSAFE_ROW = Builtin.new(UNSAFE_ROW)
-
+B.UNSAFE_ROW = Builtin.new()
 function B.UNSAFE_ROW.check(ast, ctxt)
     local args = ast.params
     if #args ~= 2 then
@@ -86,29 +152,31 @@ function B.UNSAFE_ROW.check(ast, ctxt)
 
     local addr_type = args[1].node_type
     local rel_type = args[2].node_type
-    if addr_type ~= L.addr then
-        ctxt:error(ast, "UNSAFE_ROW expected an address as the first arg")
+    if addr_type ~= L.uint64 then
+        ctxt:error(ast, "UNSAFE_ROW expected a uint64 as the first arg")
         ret_type = L.error
     end
     if not rel_type:isInternal() or not L.is_relation(rel_type.value) then
         ctxt:error(ast, "UNSAFE_ROW expected a relation as the second arg")
         ret_type = L.error
     end
+    if rel_type.value:isGrid() then
+        ctxt:error(ast, "UNSAFE_ROW cannot generate keys into a grid")
+    end
 
     -- actual typing
     if not ret_type then
-        ret_type = L.row(rel_type.value)
+        ret_type = L.key(rel_type.value)
     end
 
     return ret_type
 end
 function B.UNSAFE_ROW.codegen(ast, ctxt)
-    return ast.params[1]:codegen(ctxt)
+    return `[L.addr_terra_types[1]]({array([ast.params[1]:codegen(ctxt)])})
 end
 
 
 B.assert = Builtin.new(assert)
-
 function B.assert.check(ast, ctxt)
     local args = ast.params
     if #args ~= 1 then
@@ -161,16 +229,15 @@ function B.assert.codegen(ast, ctxt)
 end
 
 B.print = Builtin.new(print)
-
 function B.print.check(ast, ctxt)
     local args = ast.params
     
     for i,output in ipairs(args) do
         local outtype = output.node_type
         if outtype ~= L.error and
-           not outtype:isValueType() and not outtype:isRow()
+           not outtype:isValueType() and not outtype:isKey()
         then
-            ctxt:error(ast, "only numbers, bools, vectors, matrices and rows can be printed")
+            ctxt:error(ast, "only numbers, bools, vectors, matrices and keys can be printed")
         end
     end
 end
@@ -182,7 +249,7 @@ local function printSingle (bt, exp, elemQuotes)
     elseif bt == L.int then
         table.insert(elemQuotes, exp)
         return "%d"
-    elseif bt == L.uint64 or bt:isScalarRow() then
+    elseif bt == L.uint64 then 
         table.insert(elemQuotes, exp)
         return "%lu"
     elseif bt == L.bool then
@@ -207,7 +274,8 @@ local function buildPrintSpec(ctxt, output, printSpec, elemQuotes, definitions)
             var [sym] : tt = [code]
         end
         for i = 0, lt.N - 1 do
-            printSpec = printSpec .. ' ' .. printSingle(bt, `sym.d[i], elemQuotes)
+            printSpec = printSpec .. ' ' ..
+                        printSingle(bt, `sym.d[i], elemQuotes)
         end
         printSpec = printSpec .. " }"
 
@@ -222,19 +290,35 @@ local function buildPrintSpec(ctxt, output, printSpec, elemQuotes, definitions)
         for i = 0, lt.Nrow - 1 do
             printSpec = printSpec .. ' {'
             for j = 0, lt.Ncol - 1 do
-                printSpec = printSpec .. ' ' .. printSingle(bt, `sym.d[i][j], elemQuotes)
+                printSpec = printSpec .. ' ' ..
+                            printSingle(bt, `sym.d[i][j], elemQuotes)
             end
             printSpec = printSpec .. ' }'
         end
         printSpec = printSpec .. ' }'
-
-    elseif lt:isValueType() or lt:isRow() then
+    elseif lt:isScalarKey() then
+        if lt.ndims == 1 then
+            printSpec = printSpec ..
+                        printSingle(L.uint64, `code.a[0], elemQuotes)
+        else
+            local sym = symbol(L.addr_terra_types[lt.ndims])
+            definitions = quote
+                [definitions]
+                var sym = [code]
+            end
+            printSpec = printSpec .. '{'
+            for i = 0, bt.ndims-1 do
+                printSpec = printSpec .. ' ' ..
+                            printSingle(L.uint64, `sym.a[i], elemQuotes)
+            end
+            printSpec = printSpec .. ' }'
+        end
+    elseif lt:isValueType() then
         printSpec = printSpec .. printSingle(lt, code, elemQuotes)
     else
         assert(false and "printed object should always be number, bool, or vector")
     end
     return printSpec, elemQuotes, definitions
-
 end
 
 function B.print.codegen(ast, ctxt)
@@ -257,26 +341,8 @@ function B.print.codegen(ast, ctxt)
 end
 
 
-local function dot(a, b)
-    if not a.type:isVector() then
-        error("first argument to dot must be a vector", 2)
-    end
-    if not b.type:isVector() then
-        error("second argument to dot must be a vector", 2)
-    end
-    if #a.data ~= #b.data then
-        error("cannot dot vectors of differing lengths (" ..
-                #a.data .. " and " .. #b.data .. ")")
-    end
-    local sum = 0
-    for i = 1, #a.data do
-        sum = sum + a.data[i] * b.data[i]
-    end
-    return sum
-end
 
-B.dot = Builtin.new(dot)
-
+B.dot = Builtin.new()
 function B.dot.check(ast, ctxt)
     local args = ast.params
     if #args ~= 2 then
@@ -297,7 +363,7 @@ function B.dot.check(ast, ctxt)
     elseif lt1.N ~= lt2.N then
         ctxt:error(ast, veclen_err)
     else
-        return T.type_meet(lt1:baseType(), lt2:baseType())
+        return T.type_join(lt1:baseType(), lt2:baseType())
     end
 
     return L.error
@@ -329,32 +395,8 @@ function B.dot.codegen(ast, ctxt)
 end
 
 
-local function cross(a, b)
-    if not a.type:isVector() then
-        error("first argument to cross must be a vector", 2)
-    end
-    if not b.type:isVector() then
-        error("second argument to cross must be a vector", 2)
-    end
-    local av = a.data
-    if #av ~= 3 then
-        error("arguments to cross must be vectors of length 3 (first argument is length " ..
-                #av .. ")")
-    end
-    local bv = b.data
-    if #bv ~= 3 then
-        error("arguments to cross must be vectors of length 3 (second argument is length " ..
-                #bv .. ")")
-    end
-    return L.NewVector(T.type_meet(a.type:baseType(), b.type:baseType()), {
-        av[2] * bv[3] - av[3] * bv[2],
-        av[3] * bv[1] - av[1] * bv[3],
-        av[1] * bv[2] - av[2] * bv[1]
-    })
-end 
 
-B.cross = Builtin.new(cross)
-
+B.cross = Builtin.new()
 function B.cross.check(ast, ctxt)
     local args = ast.params
 
@@ -376,7 +418,7 @@ function B.cross.check(ast, ctxt)
     elseif lt1.N ~= 3 or lt2.N ~= 3 then
         ctxt:error(ast, veclen_err)
     else
-        return T.type_meet(lt1, lt2)
+        return T.type_join(lt1, lt2)
     end
 
     return L.error
@@ -390,7 +432,7 @@ function B.cross.codegen(ast, ctxt)
     local lhe   = args[1]:codegen(ctxt)
     local rhe   = args[2]:codegen(ctxt)
 
-    local typ = T.type_meet(args[1].node_type, args[2].node_type)
+    local typ = T.type_join(args[1].node_type, args[2].node_type)
 
     return quote
         var lhval : lhtyp = [lhe]
@@ -405,15 +447,8 @@ function B.cross.codegen(ast, ctxt)
 end
 
 
-local function length(v)
-    if not v.type:isVector() then
-        error("argument to length must be a vector", 2)
-    end
-    return C.sqrt(dot(v, v))
-end
 
-B.length = Builtin.new(length)
-
+B.length = Builtin.new()
 function B.length.check(ast, ctxt)
     local args = ast.params
     if #args ~= 1 then
@@ -499,10 +534,10 @@ L.floor = Builtin.newDoubleFunction('floor')
 L.ceil  = Builtin.newDoubleFunction('ceil')
 L.fabs  = Builtin.newDoubleFunction('fabs')
 
+
 terra b_and (a : int, b : int)
     return a and b
 end
-
 L.band = Builtin.new(b_and)
 function L.band.check (ast, ctxt)
     local args = ast.params
@@ -588,18 +623,9 @@ function L.fmod.codegen(ast, ctxt)
     end
 end
 
-local function all(v)
-    if not v.type:isVector() then
-        error("argument to length must be a vector", 2)
-    end
-    for _,d in ipairs(v.data) do
-        if not d then return false end
-    end
-    return true
-end
 
-B.all = Builtin.new(all)
 
+B.all = Builtin.new()
 function B.all.check(ast, ctxt)
     local args = ast.params
     if #args ~= 1 then
@@ -636,18 +662,8 @@ function B.all.codegen(ast, ctxt)
 end
 
 
-local function any(v)
-    if not v.type:isVector() then
-        error("argument to length must be a vector", 2)
-    end
-    for _,d in ipairs(v.data) do
-        if d then return true end
-    end
-    return false
-end
 
-B.any = Builtin.new(any)
-
+B.any = Builtin.new()
 function B.any.check(ast, ctxt)
     local args = ast.params
     if #args ~= 1 then
@@ -682,6 +698,7 @@ function B.any.codegen(ast, ctxt)
         outexp
     end
 end
+
 
 
 local function map(fn, list)

@@ -17,8 +17,8 @@ s1 = L.NewGlobal(L.int, 0)
 ------------------------
 -- Initialize fields: --
 ------------------------
-mesh.cells.f1:LoadConstant(0)
-mesh.cells.f2:LoadConstant(L.NewVector(L.float, {0,0,0}))
+mesh.cells.f1:Load(0)
+mesh.cells.f2:Load({0,0,0})
 
 
 ---------------------
@@ -49,7 +49,7 @@ test.fail_function(function()
 		var x = cell
   	  	x = cell
 	end
-end, "Illegal assignment: variables of row type cannot be re%-assigned")
+end, "Illegal assignment: variables of key type cannot be re%-assigned")
 
 -- Should fail because we do not allow assignments to fields
 -- (only to indexed fields, globals, and local vars)
@@ -129,7 +129,7 @@ test.fail_function(function()
 	end
 end, "incompatible types: int and bool")
 
-local v = L.NewVector(L.float, {1, 1, 1})
+local v = L.Constant(L.vec3f, {1, 1, 1})
 test.fail_function(function()
 	local liszt kernel t(cell : mesh.cells)
 		lassert(v) -- assert fail, comparison returns a vector of bools

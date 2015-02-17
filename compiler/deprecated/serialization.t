@@ -856,7 +856,7 @@ local interface_description = [[
     -- First, fill out all stub relations
     -- (do this first to allow Row types to match something)
     for rname, rjson in pairs(json.relations) do
-        relations[rname] = L.NewRelation(rjson.size, rname)
+        relations[rname] = L.NewRelation{ name = rname, size = rjson.size }
     end
     -- Second, add fields to the stub relations
     for rname, rjson in pairs(json.relations) do

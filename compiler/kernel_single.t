@@ -45,7 +45,6 @@ function ArgLayout:addInsertion()
   self.insert_on = true
 end
 
-local taddr = uint64 --L.addr:terraType() -- weird dependency error
 function ArgLayout:TerraStruct()
   if self.terrastruct then return self.terrastruct end
   local terrastruct = terralib.types.newstruct(self.name)
@@ -53,6 +52,7 @@ function ArgLayout:TerraStruct()
   -- add counter
   table.insert(terrastruct.entries, {field='n_rows', type=uint64})
   -- add subset data
+  local taddr = L.addr_terra_types[1]
   if self.subset_on then
     table.insert(terrastruct.entries, {field='use_boolmask', type=bool})
     table.insert(terrastruct.entries, {field='boolmask',     type=&bool})
@@ -360,7 +360,7 @@ function Bran:setupInserts()
   bran.insert_data = {
     relation = rel,
     record_type = ast_nodes[1].record_type,
-    n_inserted  = L.NewGlobal(L.addr, 0),
+    n_inserted  = L.NewGlobal(L.uint64, 0),
   }
   -- register the global variable
   bran:getGlobalId(bran.insert_data.n_inserted)
@@ -402,7 +402,7 @@ function Bran:postprocessInsertions()
   insert_rel._logical_size = old_logical_size + n_inserted
 
   -- NOTE that this relation is definitely fragmented now
-  self.insert_data.relation._typestate.fragmented = true
+  self.insert_data.relation:_INTERNAL_MarkFragmented()
 end
 
 --                  ---------------------------------------                  --
@@ -414,7 +414,7 @@ function Bran:setupDeletes()
   local rel = next(bran.kernel.deletes)
   bran.delete_data = {
     relation = rel,
-    updated_size = L.NewGlobal(L.addr, 0)
+    updated_size = L.NewGlobal(L.uint64, 0)
   }
   -- register global variable
   bran:getGlobalId(bran.delete_data.updated_size)
@@ -430,7 +430,7 @@ function Bran:postprocessDeletions()
   local rel = self.delete_data.relation
   local updated_size = tonumber(self.delete_data.updated_size:get())
   rel._logical_size = updated_size
-  rel._typestate.fragmented = true
+  rel:_INTERNAL_MarkFragmented()
 
   -- if we have too low an occupancy
   if rel:Size() < 0.5 * rel:ConcreteSize() then

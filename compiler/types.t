@@ -42,11 +42,11 @@ end
 function Type:isPrimitive()
   return self.kind == "primitive"
 end
-function Type:isScalarRow()
-  return self.kind == "row"
+function Type:isScalarKey()
+  return self.kind == "key"
 end
 function Type:isScalar()
-  return self:isPrimitive() or self:isScalarRow()
+  return self:isPrimitive() or self:isScalarKey()
 end
 function Type:isVector()
   return self.kind == "vector"
@@ -67,7 +67,7 @@ function Type:isRecord()
   return self.kind == "record"
 end
 
--- These types represent Liszt values (not row references though)
+-- These types represent Liszt values (not keys though)
 function Type:isValueType()
   if self:isVector() or self:isSmallMatrix() then
     return self.type:isPrimitive()
@@ -99,8 +99,8 @@ function Type:isLogical ()
   return self:isValueType() and self:terraBaseType() == bool
 end
 
-function Type:isRow()
-  return self:isFieldType() and self:baseType():isScalarRow()
+function Type:isKey()
+  return self:isFieldType() and self:baseType():isScalarKey()
 end
 
 -------------------------------------------------------------------------------
@@ -124,7 +124,7 @@ function Type:terraType()
   if     self:isPrimitive()   then return self.terratype
   elseif self:isVector()      then return self.terratype
   elseif self:isSmallMatrix() then return self.terratype
-  elseif self:isRow()         then return self.terratype
+  elseif self:isKey()         then return self.terratype
   elseif self:isQuery()       then return QueryType
   elseif self:isInternal()    then return emptyStruct
   elseif self:isError()       then return emptyStruct
@@ -143,7 +143,7 @@ end
 local vector_types = {}
 local function vectorType (typ, len)
   -- Liszt may not be fully loaded yet, so...
-  if L.is_relation and L.is_relation(typ) then typ = L.row(typ) end
+  if L.is_relation and L.is_relation(typ) then typ = L.key(typ) end
   if not T.isLisztType(typ) or not typ:isScalar() then
     error("invalid type argument to vector type constructor "..
           "(is this a terra type?)", 2)
@@ -167,7 +167,7 @@ end
 local smatrix_types = {}
 local function smallMatrixType (typ, nrow, ncol)
   -- Liszt may not be fully loaded yet, so...
-  if L.is_relation and L.is_relation(typ) then typ = L.row(typ) end
+  if L.is_relation and L.is_relation(typ) then typ = L.key(typ) end
   if not T.isLisztType(typ) or not typ:isScalar() then
     error("invalid type argument to small matrix type constructor "..
           "(is this a terra type?)", 2)
@@ -206,7 +206,7 @@ local function recordType (rec)
             '  table keys must be strings', 2)
     end
     if not T.isLisztType(typ) or
-       not (typ:isValueType() or typ:isRow())
+       not (typ:isValueType() or typ:isKey())
     then
       error('invalid argument to record type constructor:\n'..
             '  table values must be valid types for fields, not '..
@@ -241,11 +241,20 @@ local function checkrelation(relation)
               "A relation must be provided", 4)
     end
 end
-local rowType = cached(function(relation)
+L.addr_terra_types = {}
+for i=1,3 do
+  local struct_name = "addr_"..tostring(i)
+  L.addr_terra_types[i] = struct { a : uint64[i]; }
+  L.addr_terra_types[i].metamethods.__typename = function(self)
+    return struct_name
+  end
+end
+local keyType = cached(function(relation)
     checkrelation(relation)
-    local rt = Type:new("row")
+    local rt = Type:new("key")
     rt.relation = relation
-    rt.terratype = L.addr:terraType()
+    rt.ndims    = relation:nDims()
+    rt.terratype = L.addr_terra_types[rt.ndims]
     return rt
 end)
 local internalType = cached(function(obj)
@@ -282,15 +291,12 @@ end
 -- Complex type constructors
 L.vector        = vectorType
 L.smallmatrix   = smallMatrixType
-L.row           = rowType
+L.key           = keyType
 L.record        = recordType
 L.internal      = internalType
 L.query         = queryType
 -- Errors
 L.error         = Type:new("error")
-
--- terra type for address/index encoding of row identifiers
-L.addr          = L.uint64
 
 
 
@@ -305,7 +311,7 @@ function Type:toString()
                                           self.type:toString()..','..
                                           tostring(self.Nrow)..','..
                                           tostring(self.Ncol)..')'
-  elseif self:isRow()         then return 'Row('..self.relation:Name()..')'
+  elseif self:isKey()         then return 'Key('..self.relation:Name()..')'
   elseif self:isRecord()      then
     local str = 'Record({ '
     local first_pair = true
@@ -325,130 +331,9 @@ function Type:toString()
 end
 Type.__tostring = Type.toString
 
-local primitive_set = {
-  ["int"   ] = true,
-  ["uint64"] = true,
-  ["bool"  ] = true,
-  ["float" ] = true,
-  ["double"] = true,
-}
--- For inverting the toString mapping
--- only supports primitives and Vectors
-function Type.fromString(str)
-  if str:sub(1,6) == 'Vector' then
-    local base, n = str:match('^Vector%(([^,]*),([^%)]*)%)$')
-    n = tonumber(n)
-    if n == nil then
-      error("When constructing a Vector type from a string, "..
-            "no length was found.", 2)
-    end
-    base = Type.fromString(base)
-    return L.vector(base, n)
-  elseif str:sub(1,11) == 'SmallMatrix' then
-    local base, n, m = str:match('^SmallMatrix%(([^,]*),([^,]*),([^%)]*)%)$')
-    n = tonumber(n)
-    m = tonumber(m)
-    if n == nil or m == nil then
-      error("When constructing a SmallMatrix type from a string, "..
-            "did not find both number of rows and number of columns", 2)
-    end
-    base = Type.fromString(base)
-    return L.smallmatrix(base, n, m)
-  else
-    local lookup = primitive_set[str]
-    if lookup then
-      return L[str]
-    else
-      error("Tried to construct a type from a string which does not "..
-            "express a vector, smallmatrix, or primitive type", 2)
-    end
-  end
-end
-
--- THIS DOES NOT EMIT A STRING
--- It outputs a LUA table which can be JSON stringified safely
-function Type:json_serialize(rel_to_name)
-  rel_to_name = rel_to_name or {}
-  if     self:isPrimitive() then
-    return { basic_kind = 'primitive',
-             primitive = self.name }
-
-  elseif self:isVector()    then
-    return { basic_kind = 'vector',
-             base = self.type:json_serialize(),
-             n = self.N }
-
-  elseif self:isSmallMatrix() then
-    return { basic_kind = 'smallmatrix',
-             base = self.type:json_serialize(),
-             nrow = self.Nrow,
-             ncol = self.Ncol }
-
-  elseif self:isRow()       then
-    local relname = rel_to_name[self.relation]
-    if not relname then
-      error('Could not find a relation name when attempting to '..
-            'JSON serialize a Row type', 2)
-    end
-    return { basic_kind = 'row',
-             relation   = relname }
-
-  else
-    error('Cannot serialize type: '..self:toString(), 2)
-  end
-end
-
--- given a table output by json_serialize, deserialize reconstructs
--- the correct Type object with correct metatable, etc.
-function Type.json_deserialize(json, name_to_rel)
-  name_to_rel = name_to_rel or {}
-  if not type(json) == 'table' then
-    error('Tried to deserialize type, but found a non-object.', 2)
-  end
-  if json.basic_kind == 'primitive' then
-    local primitive = L[json.primitive]
-    if not primitive then
-      error('Tried to deserialize primitive but type "'..json.primitive..
-            '" is not supported.', 2)
-    end
-    return primitive
-
-  elseif json.basic_kind == 'vector' then
-    if type(json.base) ~= 'table' then
-      error('Tried to deserialize vector but missing base type', 2)
-    end
-    local baseType = Type.json_deserialize(json.base)
-    return L.vector(baseType, json.n)
-
-  elseif json.basic_kind == 'smallmatrix' then
-    if type(json.base) ~= 'table' then
-      error('Tried to deserialize smallmatrix but missing base type', 2)
-    end
-    local baseType = Type.json_deserialize(json.base)
-    return L.smallmatrix(baseType, json.nrow, json.ncol)
-
-  elseif json.basic_kind == 'row' then
-    local relation = name_to_rel[json.relation]
-    if not relation then
-      error('Tried to deserialize row type, but couldn\'t find the '..
-            'relation "'..json.relation..'"', 2)
-    end
-    return L.row(relation)
-
-  else
-    error('Cannot deserialize type, could not find basic kind of type', 2)
-  end
-end
-
-
 
 -------------------------------------------------------------------------------
---[[ Type coercion                                                         ]]--
--------------------------------------------------------------------------------
-
-
--------------------------------------------------------------------------------
---[[ Type meeting                                                          ]]--
+--[[ Type ordering / joining / coercion                                    ]]--
 -------------------------------------------------------------------------------
 
 -- CURRENT, COMPLETE RULES FOR PRIMITIVES
@@ -468,16 +353,22 @@ prim_lessthan[L.int][L.double]   = L.double
 prim_lessthan[L.int][L.float]    = L.float -- WARNING: LOSES PRECISION
 prim_lessthan[L.int][L.uint64]   = L.uint64
 
--- primitive meet  (construct by symmetrizing the lessthan table)
-local prim_meet = {}
+-- primitive join  (construct by symmetrizing the lessthan table)
+-- this works because there is currently no primitive type C s.t.
+--    A < C and B < C
+-- but with A and B being incomparable
+local prim_join = {}
 for i,p in ipairs(primitives) do
-  prim_meet[p] = {}
+  prim_join[p] = {}
   for j,q in ipairs(primitives) do
+    -- get both less than values
     local pq = prim_lessthan[p][q]
     local qp = prim_lessthan[q][p]
+    -- choose whichever is not an error
     local val = pq
     if qp ~= L.error then val = qp end
-    prim_meet[p][q] = val
+    -- and assign that as the join value
+    prim_join[p][q] = val
   end
 end
 
@@ -488,6 +379,7 @@ function Type:isCoercableTo(target)
   if not T.isLisztType(target) then return false end
 
   -- identity relationship preserved
+  -- ensures reflexivity of the relation
   if self == target then return true end
 
   -- Only numeric values are coercable otherwise...
@@ -509,6 +401,7 @@ function Type:isCoercableTo(target)
       target = target:baseType()
     end
 
+    -- appeal to the lessthan table for primitive types
     if source:isPrimitive() and target:isPrimitive() then
       local top = prim_lessthan[source][target]
       if top ~= L.error then return true end
@@ -520,54 +413,57 @@ function Type:isCoercableTo(target)
 end
 
 -- helpers
-local function vec_meet(ltype, rtype, N)
-    local btype = prim_meet[ltype:baseType()][rtype:baseType()]
+local function vec_join(ltype, rtype, N)
+    local btype = prim_join[ltype:baseType()][rtype:baseType()]
     if btype == L.error then return L.error
                         else return L.vector(btype, N) end
 end
 
-local function mat_meet(ltype, rtype, N, M)
-  local btype = prim_meet[ltype:baseType()][rtype:baseType()]
+local function mat_join(ltype, rtype, N, M)
+  local btype = prim_join[ltype:baseType()][rtype:baseType()]
   if btype == L.error then return L.error
                       else return L.smallmatrix(btype,N,M) end
 end
 
-local function type_meet(ltype, rtype)
+local function type_join(ltype, rtype)
   -- matching case
   if ltype == rtype then return ltype end
 
   -- outside the matching case, both values must be numeric
+  -- We allow two cases of vector/matrix dimensioning:
+  --    1. both lhs, rhs vectors or matrices of matching dimension
+  --    2. one of lhs, rhs vector/matrix and other scalar
   if ltype:isNumeric() and rtype:isNumeric() then
 
-    -- base-type-meet
-    local base_meet = prim_meet[ltype:baseType()][rtype:baseType()]
-    if base_meet == L.error then return L.error end
+    -- base-type-join
+    local base_join = prim_join[ltype:baseType()][rtype:baseType()]
+    if base_join == L.error then return L.error end
 
-    -- primitive meets
+    -- primitive joins
     if ltype:isPrimitive() and rtype:isPrimitive() then
-      return base_meet
+      return base_join
 
-    -- vector meets
+    -- vector joins
     elseif ltype:isVector() and rtype:isVector() then
       if ltype.N == rtype.N then
-        return L.vector(base_meet, ltype.N) end
+        return L.vector(base_join, ltype.N) end
 
     elseif ltype:isVector() and rtype:isPrimitive() then
-      return L.vector(base_meet, ltype.N)
+      return L.vector(base_join, ltype.N)
 
     elseif ltype:isPrimitive() and rtype:isVector() then
-      return L.vector(base_meet, rtype.N)
+      return L.vector(base_join, rtype.N)
 
-    -- smallmatrix meets
+    -- smallmatrix joins
     elseif ltype:isSmallMatrix() and rtype:isSmallMatrix() then
       if ltype.Nrow == rtype.Nrow or ltype.Ncol == rtype.Ncol then
-        return L.smallmatrix(base_meet, ltype.Nrow, ltype.Ncol) end
+        return L.smallmatrix(base_join, ltype.Nrow, ltype.Ncol) end
 
     elseif ltype:isSmallMatrix() and rtype:isPrimitive() then
-      return L.smallmatrix(base_meet, ltype.Nrow, ltype.Ncol)
+      return L.smallmatrix(base_join, ltype.Nrow, ltype.Ncol)
 
     elseif ltype:isPrimitive() and rtype:isSmallMatrix() then
-      return L.smallmatrix(base_meet, rtype.Nrow, rtype.Ncol)
+      return L.smallmatrix(base_join, rtype.Nrow, rtype.Ncol)
 
     end
   end
@@ -586,27 +482,122 @@ local function luaValConformsToType (luaval, tp)
   if tp:isPrimitive() then
     return (tp:isNumeric() and type(luaval) == 'number') or
            (tp:isLogical() and type(luaval) == 'boolean')
-  -- vectors
-  elseif tp:isVector()  then
-    -- accept an instance of an LVector:
-    if L.is_vector(luaval) then 
-      return (tp:isLogical() and luaval.type:isLogical()) or
-             (tp:isNumeric() and luaval.type:isNumeric())
 
-    -- we also accept arrays as instances of vectors
-    elseif type(luaval) == 'table' then
-      -- make sure array is of the correct length
-      if #luaval ~= tp.N then return false end
-      -- make sure each element conforms to the vector data type
-      for i = 1, #luaval do
-        if not luaValConformsToType(luaval[i], tp:baseType()) then
-          return false
-        end
+  -- keys
+  elseif tp:isScalarKey() then
+    if tp.ndims == 1 then
+      return type(luaval) == 'number'
+    else
+      if type(luaval) ~= 'table' or #luaval ~= tp.ndims then return false end
+      for i=1,tp.ndims do
+        if not type(luaval[i]) == 'number' then return false end
       end
       return true
     end
+
+  -- vectors
+  elseif tp:isVector()  then
+    if type(luaval) ~= 'table' or #luaval ~= tp.N then return false end
+    -- make sure each element conforms to the vector data type
+    for i = 1, #luaval do
+      if not luaValConformsToType(luaval[i], tp:baseType()) then
+        return false
+      end
+    end
+    -- if we made it here, everything checked out
+    return true
+
+  elseif tp:isSmallMatrix() then
+    if type(luaval) ~= 'table' or #luaval ~= tp.Nrow then return false end
+    -- check each row / matrix value
+    for r = 1, #luaval do
+      local row = luaval[r]
+      if type(row) ~= 'table' or #row ~= tp.Ncol then return false end
+      for c = 1, #row do
+        if not luaValConformsToType(row[c], tp:baseType()) then
+          return false
+        end
+      end
+    end
+    -- if we made it here, everything checked out
+    return true
+
   end
   return false
+end
+
+local function luaToLisztVal (luaval, typ)
+  if typ:isPrimitive() then
+    return luaval
+
+  elseif typ:isScalarKey() then
+    if typ.ndims == 1 then
+      return terralib.new(typ:terraType(), { { luaval } })
+    else
+      return terralib.new(typ:terraType(), {luaval})
+    end
+
+  elseif typ:isVector() then
+    local btyp      = typ:baseType()
+    local terraval = terralib.new(typ:terraType())
+    for i=1,typ.N do terraval.d[i-1] = luaToLisztVal(luaval[i], btyp) end
+    return terraval
+
+  elseif typ:isSmallMatrix() then
+    local btyp      = typ:baseType()
+    local terraval = terralib.new(typ:terraType())
+    for r=1,typ.Nrow do for c=1,typ.Ncol do
+      terraval.d[r-1][c-1] = luaToLisztVal(luaval[r][c], btyp)
+    end end
+    return terraval
+
+  else
+    error('INTERNAL: Should not try to convert lua values to this type: '..
+          tostring(typ))
+  end
+end
+
+local function lisztToLuaVal(lzval, typ)
+  if typ:isPrimitive() then
+    if typ:isNumeric() then
+      return tonumber(lzval)
+    elseif typ:isLogical() then
+      return lzval
+    end
+
+  elseif typ:isScalarKey() then
+    if typ.ndims == 1 then
+      return tonumber(lzval.a[0])
+    elseif typ.ndims == 2 then
+      return { tonumber(lzval.a[0]), tonumber(lzval.a[1]) }
+    elseif typ.ndims == 3 then
+      return { tonumber(lzval.a[0]), tonumber(lzval.a[1]),
+                                     tonumber(lzval.a[2]) }
+    else
+      error('INTERNAL: Cannot have > 3 dimensional keys')
+    end
+
+  elseif typ:isVector() then
+    local vec = {}
+    for i=1,typ.N do
+      vec[i] = lisztToLuaVal(lzval.d[i-1], typ:baseType())
+    end
+    return vec
+
+  elseif typ:isSmallMatrix() then
+    local mat = {}
+    for r=1,typ.Nrow do
+      mat[r] = {}
+      for c=1,typ.Ncol do
+        mat[r][c] = lisztToLuaVal(lzval.d[r-1][c-1], typ:baseType())
+      end
+    end
+    return mat
+
+  else
+    error('INTERNAL: Should not try to convert lua values from this type: '..
+          tostring(typ))
+  end
 end
 
 -- converts a terra vector or primitive type into a liszt type
@@ -616,10 +607,10 @@ local function terraToLisztType (tp)
   if typ then return typ end
   
   -- return vector type  (WARNING: different backing for types now...)
-  if tp:isvector() then
-    local p = terraToLisztType(tp.type)
-    return p and L.vector(p,tp.N)
-  end
+  --if tp:isvector() then
+  --  local p = terraToLisztType(tp.type)
+  --  return p and L.vector(p,tp.N)
+  --end
   
   return nil
 end
@@ -671,8 +662,11 @@ end
 -------------------------------------------------------------------------------
 --[[ export type api                                                       ]]--
 -------------------------------------------------------------------------------
-T.type_meet             = type_meet
+T.type_join             = type_join
 T.luaValConformsToType  = luaValConformsToType
+T.luaToLisztVal         = luaToLisztVal
+T.lisztToLuaVal         = lisztToLuaVal
+
 T.terraToLisztType      = terraToLisztType
 T.Type = Type
 

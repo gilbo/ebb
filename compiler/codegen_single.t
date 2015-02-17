@@ -98,7 +98,7 @@ function Context:cpuSignature()
 end
 function Context:isLiveCheck(param_var)
   local ptr = self:FieldPtr(self.bran.relation._is_live_mask)
-  return `ptr[param_var]
+  return `ptr[param_var.a[0]]
 end
 function Context:deleteSizeVar()
   local dd = self.bran.delete_data
@@ -184,10 +184,11 @@ end
 function cpu_codegen (kernel_ast, ctxt)
   ctxt:enterblock()
     -- declare the symbol for iteration
-    local param = symbol(L.row(ctxt.bran.relation):terraType())
+    local param = symbol(L.key(ctxt.bran.relation):terraType())
     ctxt:localenv()[kernel_ast.name] = param
 
     -- insert a check for the live row mask
+
     local body  = quote
       if [ctxt:isLiveCheck(param)] then
         [kernel_ast.body:codegen(ctxt)]
@@ -196,7 +197,8 @@ function cpu_codegen (kernel_ast, ctxt)
 
     -- by default on CPU just iterate over all the possible rows
     local kernel_body = quote
-      for [param] = 0, [ctxt:runtimeSignature()].n_rows do
+      for i = 0, [ctxt:runtimeSignature()].n_rows do
+        var [param] = [L.addr_terra_types[1]]({ a = array(i) })
         [body]
       end
     end
@@ -206,8 +208,9 @@ function cpu_codegen (kernel_ast, ctxt)
       kernel_body = quote
         if [ctxt:runtimeSignature()].use_boolmask then
           var boolmask = [ctxt:runtimeSignature()].boolmask
-          for [param] = 0, [ctxt:runtimeSignature()].n_rows do
-            if boolmask[param] then -- subset guard
+          for i = 0, [ctxt:runtimeSignature()].n_rows do
+            if boolmask[i] then -- subset guard
+              var [param] = [L.addr_terra_types[1]]({ a = array(i) })
               [body]
             end
           end
@@ -493,7 +496,7 @@ function gpu_codegen (kernel_ast, ctxt)
   ctxt:initializeGPUState(BLOCK_SIZE)
   ctxt:enterblock()
     -- declare the symbol for iteration
-    local param = symbol(L.row(ctxt.bran.relation):terraType())
+    local param = symbol(L.key(ctxt.bran.relation):terraType())
     ctxt:localenv()[kernel_ast.name] = param
     local id  = symbol(uint32)
 
@@ -506,23 +509,24 @@ function gpu_codegen (kernel_ast, ctxt)
     if ctxt.bran.subset then
       body = quote
         if [ctxt:runtimeSignature()].use_boolmask then
-          var [param] = id
-          if [param] < [ctxt:runtimeSignature()].n_rows and
-             [ctxt:runtimeSignature()].boolmask[param]
+          if id < [ctxt:runtimeSignature()].n_rows and
+             [ctxt:runtimeSignature()].boolmask[id]
           then
+            var [param] = [L.addr_terra_types[1]]({ a = array(id) })
             [body]
           end
         else
           if id < [ctxt:runtimeSignature()].index_size then
-            var [param] = [ctxt:runtimeSignature()].index[id]
+            var i = [ctxt:runtimeSignature()].index[id]
+            var [param] = [L.addr_terra_types[1]]({ a = array(i) })
             [body]
           end
         end
       end
     else
       body = quote
-        var [param] = id
-        if [param] < [ctxt:runtimeSignature()].n_rows then
+        if id < [ctxt:runtimeSignature()].n_rows then
+          var [param] = [L.addr_terra_types[1]]({ a = array(id) })
           [body]
         end
       end
@@ -705,7 +709,7 @@ function ast.Where:codegen(ctxt)
         var k   = [key]
         var idx = [indexdata]
     in 
-        sType { idx[k], idx[k+1] }
+        sType { idx[k.a[0]].a[0], idx[k.a[0]+1].a[0] }
     end
     return v
 end
@@ -713,7 +717,7 @@ end
 function doProjection(obj,field,ctxt)
     assert(L.is_field(field))
     local dataptr = ctxt:FieldPtr(field)
-    return `dataptr[obj]
+    return `dataptr[obj.a[0]]
 end
 
 
@@ -754,9 +758,9 @@ function ast.FieldWrite:codegen (ctxt)
 end
 
 function ast.FieldAccess:codegen (ctxt)
-  local index = self.row:codegen(ctxt)
+  local index = self.key:codegen(ctxt)
   local dataptr = ctxt:FieldPtr(self.field)
-  return `@(dataptr + [index])
+  return `@(dataptr + [index].a[0])
 end
 
 
@@ -766,11 +770,11 @@ end
 
 
 function ast.DeleteStatement:codegen (ctxt)
-  local relation  = self.row.node_type.relation
+  local relation  = self.key.node_type.relation
 
-  local row       = self.row:codegen(ctxt)
+  local key       = self.key:codegen(ctxt)
   local live_mask = ctxt:FieldPtr(relation._is_live_mask)
-  local set_mask_stmt = quote live_mask[row] = false end
+  local set_mask_stmt = quote live_mask[key.a[0]] = false end
 
   local updated_size     = ctxt:deleteSizeVar()
   local size_update_stmt = quote [updated_size] = [updated_size]-1 end

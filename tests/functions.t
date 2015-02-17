@@ -1,7 +1,7 @@
 import "compiler.liszt"
 require "tests/test"
 
-local cells = L.NewRelation(10, 'cells')
+local cells = L.NewRelation { size = 10, name = 'cells' }
 cells:NewField('position', L.vec2d):Load(function(i)
   local x = i%5
   local y = math.floor(i/5)
@@ -102,7 +102,7 @@ test.fail_function(function()
   liszt kernel t(c : cells)
     var x = empty_f()
   end
-end, 'can only assign numbers, bools, or rows')
+end, 'can only assign numbers, bools, or keys')
 test.fail_function(function()
   liszt kernel t(c : cells)
     var x = 2 + empty_f()

@@ -87,8 +87,8 @@ end
 
 -- EXTRA: (optional.  It demonstrates the use of VDB, a visual debugger)
 local vdb  = L.require('lib.vdb')
-local cold = L.NewVector(L.float,{0.5,0.5,0.5})
-local hot  = L.NewVector(L.float,{1.0,0.0,0.0})
+local cold = L.Constant(L.vec3f,{0.5,0.5,0.5})
+local hot  = L.Constant(L.vec3f,{1.0,0.0,0.0})
 local debug_tri_draw = liszt kernel ( t : bunny.triangles )
   -- color a triangle with the average temperature of its vertices
   var avg_temp =

@@ -1,6 +1,6 @@
 import 'compiler.liszt'
 
-local R = L.NewRelation(32,"relation")
+local R = L.NewRelation  { size = 32, name = 'R' }
 R:NewField('sqrt', L.double):Load(0.0)
 R:NewField('cbrt', L.double):Load(0.0)
 R:NewField('sin',  L.double):Load(0.0)

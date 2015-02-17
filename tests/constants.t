@@ -1,9 +1,9 @@
 import "compiler.liszt"
 require "tests/test"
 
-local LMesh = L.require "domains.lmesh"
-local mesh = LMesh.Load("examples/mesh.lmesh")
+local R = L.NewRelation { name="R", size=5 }
 
+--[[
 nf = mesh.faces:Size()
 sf = L.NewGlobal(L.float, 0.0)
 si = L.NewGlobal(L.int,     0)
@@ -49,3 +49,4 @@ test.eq(sb:get(), false)
 
 --f7(mesh.faces)
 --test.eq(sd:get(), math.pow(2,-nf))
+]]--

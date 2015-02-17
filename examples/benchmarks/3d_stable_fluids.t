@@ -342,7 +342,11 @@ local PARTICLE_LEN = N - (PERIODIC and 0 or 1)
 local PARTICLE_LEN = math.floor(N / 2)
 local PARTICLE_OFF = math.floor((N-PARTICLE_LEN)/2)
 local N_particles = PARTICLE_LEN * PARTICLE_LEN * PARTICLE_LEN
-local particles = L.NewRelation(N_particles, 'particles')
+local particles = L.NewRelation {
+    mode = 'ELASTIC',
+    size = N_particles,
+    name = 'particles',
+}
 
 particles:NewField('dual_cell', grid.dual_cells):Load(function(i)
     local xid = i%PARTICLE_LEN

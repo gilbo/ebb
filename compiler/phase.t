@@ -213,7 +213,7 @@ function Context:loginsert(relation, node)
 end
 
 function Context:logdelete(relation, node)
-  -- check that the row is centered happens in type-checking pass
+  -- check that the key is centered happens in type-checking pass
 
   -- log exclusive write accesses for all the relation's fields
   for _,f in ipairs(relation._fields) do
@@ -314,9 +314,9 @@ ast.NewInertPass('phasePass')
 
 function ast.FieldWrite:phasePass (ctxt)
   -- We intentionally skip over the Field Access here...
-  self.fieldaccess.row:phasePass(ctxt)
+  self.fieldaccess.key:phasePass(ctxt)
 
-  local pargs    = { centered = self.fieldaccess.row.is_centered }
+  local pargs    = { centered = self.fieldaccess.key.is_centered }
   if self.reduceop then
     pargs.reduceop = self.reduceop
   else
@@ -331,10 +331,10 @@ function ast.FieldWrite:phasePass (ctxt)
 end
 
 function ast.FieldAccess:phasePass (ctxt)
-  self.row:phasePass(ctxt)
+  self.key:phasePass(ctxt)
 
   local ptype = PhaseType.New {
-    centered = self.row.is_centered,
+    centered = self.key.is_centered,
     read = true
   }
   ctxt:logfield(self.field, ptype, self)
@@ -345,11 +345,11 @@ function ast.Call:phasePass (ctxt)
   for i,p in ipairs(self.params) do
     -- Terra Funcs may write or do other nasty things...
     if self.func.is_a_terra_func and p:is(ast.FieldAccess) then
-      p.row:phasePass()
+      p.key:phasePass()
 
       local ptype = PhaseType.New {
         write = true, read = true, -- since we can't tell for calls!
-        centered = p.row.is_centered,
+        centered = p.key.is_centered,
       }
       ctxt:logfield(p.field, ptype, p)
     elseif self.func.is_a_terra_func and p:is(ast.Global) then
@@ -421,9 +421,9 @@ function ast.InsertStatement:phasePass(ctxt)
 end
 
 function ast.DeleteStatement:phasePass(ctxt)
-  self.row:phasePass(ctxt)
+  self.key:phasePass(ctxt)
 
-  local relation = self.row.node_type.relation
+  local relation = self.key.node_type.relation
   local unsafe_msg = relation:UnsafeToDelete()
   if unsafe_msg then
     ctxt:error(self, unsafe_msg)
