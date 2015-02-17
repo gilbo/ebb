@@ -139,6 +139,84 @@ LW.PhysicalRegion       = PhysicalRegion
 
 
 -------------------------------------------------------------------------------
+--[[                            Future methods                             ]]--
+-------------------------------------------------------------------------------
+
+function LW.CreateFuture(typ, init)
+  local base_type = typ:terraBaseType()
+  local data_type, data
+  -- scalar
+  if typ:isPrimitive() then
+    data_type = base_type
+    data = terralib.cast(&data_type, C.malloc(terralib.sizeof(data_type)))
+    data[0] = init
+  -- vector
+  elseif typ:isVector() then
+    local N = typ.N
+    data_type = struct { d : base_type[N] }
+    data = terralib.cast(&data_type, C.malloc(terralib.sizeof(data_type)))
+    for i = 1, N do
+      data[0].d[i-1] = init[i]
+    end
+  -- small matrix
+  elseif typ:isSmallMatrix() then
+    local Nrow = typ.Nrow
+    local Ncol = typ.Ncol
+    data_type = struct { d : base_type[Ncol][Nrow] }
+    data = terralib.cast(&data_type, C.malloc(terralib.sizeof(data_type)))
+    for i = 1, Nrow do
+      for j = 1, Ncol do
+        data[0].d[i-1][j-1] = init[i][j]
+      end
+    end
+  end
+  local future = LW.legion_future_from_buffer(LE.runtime, data, terralib.sizeof(data_type))
+                                              -- uerralib.sizeof(data_type))
+  local res    = LW.legion_future_get_result(future)
+  C.free(data)
+  return future
+end
+
+function LW.DestroyFuture(future)
+  LW.legion_future_destroy(future)
+end
+
+function LW.GetResultFuture(typ, future)
+  local leg_result = LW.legion_future_get_result(future)
+  local base_type = typ:terraBaseType()
+  local value
+  -- scalar
+  if typ:isPrimitive() then
+    local data = terralib.cast(&base_type, leg_result.value)
+    value = data[0]
+  -- vector
+  elseif typ:isVector() then
+    local N = typ.N
+    local data_type = struct { d : base_type[N] }
+    local data = terralib.cast(&data_type, leg_result.value)
+    local value = {}
+    for i = 1, N do
+      value[i] = data[0].d[i-1]
+    end
+  -- small matrix
+  elseif typ:isSmallMatrix() then
+    local Nrow = typ.Nrow
+    local Ncol = typ.Ncol
+    local data_type = struct { d : base_type[Ncol][Nrow] }
+    local data = terralib.cast(&data_type, leg_result.value)
+    local value = {}
+    for i = 1, Nrow do
+      value[i] = {}
+      for j = 1, Ncol do
+        value[i][j] = data[0].d[i-1][j-1]
+      end
+    end
+  end
+  return value
+end
+
+
+-------------------------------------------------------------------------------
 --[[                        Logical region methods                         ]]--
 -------------------------------------------------------------------------------
 

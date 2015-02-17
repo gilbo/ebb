@@ -9,6 +9,7 @@ local T = require 'compiler.types'
 
 local DataArray = use_single and
                   require('compiler.rawdata').DataArray
+local LW = use_legion and require "compiler.legionwrap"
 
 -- Use the following to produce
 -- deterministic order of table entries
@@ -82,6 +83,7 @@ local is_vector = L.is_vector --cache lookup for efficiency
 -------------------------------------------------------------------------------
 --[[ LGlobals:                                                             ]]--
 -------------------------------------------------------------------------------
+
 function L.NewGlobal (typ, init)
     if not T.isLisztType(typ) or not typ:isValueType() then error("First argument to L.NewGlobal must be a Liszt expression type", 2) end
     if not T.luaValConformsToType(init, typ) then error("Second argument to L.NewGlobal must be an instance of type " .. typ:toString(), 2) end
@@ -89,8 +91,14 @@ function L.NewGlobal (typ, init)
     local s  = setmetatable({type=typ}, LGlobal)
     local tt = typ:terraType()
 
-    s.data = DataArray.New({size=1,type=tt})
-    s:set(init)
+    if use_single then
+      s.data = DataArray.New({size=1,type=tt})
+      s:set(init)
+
+    elseif use_legion then
+      s.data = LW.CreateFuture(typ, init)
+    end
+
     return s
 end
 
@@ -109,8 +117,9 @@ local function set_cpu_value (_type, data, val)
 end
 
 function LGlobal:set(val)
-    if not T.luaValConformsToType(val, self.type) then error("value does not conform to type of global: " .. self.type:toString(), 2) end
+  if not T.luaValConformsToType(val, self.type) then error("value does not conform to type of global: " .. self.type:toString(), 2) end
 
+  if use_single then
     self.data:write_ptr(function(ptr)
         if self.type:isVector() then
             if not L.is_vector(val) then
@@ -123,12 +132,19 @@ function LGlobal:set(val)
             ptr[0] = val
         end
     end)
+
+  elseif use_legion then
+    if self.data then Lw.DestroyFuture(self.data) end
+    self.data = LW.CreateFuture(self.type, val)
+  end
+
 end
 
 
 function LGlobal:get()
-    local value
+  local value
 
+  if use_single then
     self.data:read_ptr(function(ptr)
         if self.type:isPrimitive() then
             value = ptr[0]
@@ -141,7 +157,21 @@ function LGlobal:get()
         end
     end)
 
-    return value
+  elseif use_legion then
+    local result = LW.GetResultFuture(self.type, self.data)
+    -- scalar
+    if self.type:isPrimitive() then
+      value = result
+    -- vector
+    elseif self.type:isVector() then
+      value = L.NewVector(self.type:baseType(), value)
+    -- small matrix
+    elseif self.type:isSmallMatrix() then
+      error("Unimplemented get for globals of type small matrix")
+    end
+  end
+
+  return value
 end
 
 function LGlobal:DataPtr()
