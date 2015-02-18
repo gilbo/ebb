@@ -68,7 +68,7 @@ end
 -------------------------------------------------------------------------------
 --[[                             Legion Tasks                              ]]--
 -------------------------------------------------------------------------------
---[[ A simple task is a task that does not have any return value. A fut_task
+--[[ A simple task is a task that does not have any return value. A future_task
 --   is a task that returns a Legion future, or return value.
 --]]--
 
@@ -93,7 +93,7 @@ end
 
 LW.TID_SIMPLE = 200
 
-terra LW.fut_task(
+terra LW.future_task(
   task        : LW.legion_task_t,
   regions     : &LW.legion_physical_region_t,
   num_regions : uint32,
@@ -115,10 +115,10 @@ terra LW.fut_task(
   return result
 end
 
-LW.TID_FUT = 300
+LW.TID_FUTURE = 300
 
 -- GLB: Why do we need this table?
-LW.TaskTypes = { simple = 'simple', fut = 'fut' }
+LW.TaskTypes = { simple = 'simple', future = 'future' }
 
 
 
@@ -171,8 +171,9 @@ function LW.CreateFuture(typ, init)
     end
   end
   local future = LW.legion_future_from_buffer(LE.runtime, data, terralib.sizeof(data_type))
-                                              -- uerralib.sizeof(data_type))
-  local res    = LW.legion_future_get_result(future)
+                                              -- terralib.sizeof(data_type))
+  -- local res    = LW.legion_future_get_result(future) -- TODO: temporary, remove once future bug is fixed.
+                                                     -- This should not fail!
   C.free(data)
   return future
 end
@@ -181,7 +182,7 @@ function LW.DestroyFuture(future)
   LW.legion_future_destroy(future)
 end
 
-function LW.GetResultFuture(typ, future)
+function LW.GetResultFromFuture(typ, future)
   local leg_result = LW.legion_future_get_result(future)
   local base_type = typ:terraBaseType()
   local value
@@ -212,6 +213,7 @@ function LW.GetResultFuture(typ, future)
       end
     end
   end
+  LW.legion_task_result_destroy(leg_result)
   return value
 end
 

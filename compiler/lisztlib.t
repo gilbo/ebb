@@ -158,7 +158,7 @@ function LGlobal:get()
     end)
 
   elseif use_legion then
-    local result = LW.GetResultFuture(self.type, self.data)
+    local result = LW.GetResultFromFuture(self.type, self.data)
     -- scalar
     if self.type:isPrimitive() then
       value = result

@@ -91,11 +91,11 @@ function Context:Fields(reg)
 end
 
 function Context:FieldData(field)
-  local findex = self.bran.arg_layout:FieldIdx(field)
+  local fidx   = self.bran.arg_layout:FieldIdx(field)
   local fd     = self:localenv()['_field_ptrs']
   assert(terralib.issymbol(fd))
   -- field data does not contain region 0, which is used only for iterating
-  return `([fd][ findex - 1 ])
+  return `([fd][ fidx - 1 ])
 end
 
 function Context:RegIdx(reg)
@@ -325,7 +325,7 @@ function ast.FieldAccess:codegen (ctxt)
   local access = quote
     var strides = [fdata].strides
     var ptr = [&fttype]([fdata].ptr + [IndexToOffset(ctxt, index, strides)] )
-    -- C.printf("Data was %i\n", @ptr)
+    C.printf("Data was %i\n", @ptr)
   in
     @ptr
   end
