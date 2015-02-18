@@ -142,31 +142,12 @@ LW.PhysicalRegion       = PhysicalRegion
 --[[                            Future methods                             ]]--
 -------------------------------------------------------------------------------
 
-function LW.CreateFuture(typ, init)
+function LW.CreateFuture(typ, cdata)
   local data_type = typ:terraType()
-  local data = terralib.cast(&data_type, C.malloc(terralib.sizeof(data_type)))
-  -- scalar
-  if typ:isPrimitive() then
-    data[0] = init
-  -- vector
-  elseif typ:isVector() then
-    local N = typ.N
-    for i = 1, N do
-      data[0].d[i-1] = init[i]
-    end
-  -- small matrix
-  elseif typ:isSmallMatrix() then
-    local Nrow = typ.Nrow
-    local Ncol = typ.Ncol
-    for i = 1, Nrow do
-      for j = 1, Ncol do
-        data[0].d[i-1][j-1] = init[i][j]
-      end
-    end
-  end
+  local data = terralib.new(data_type[1])
+  data[0] = cdata
   local future = LW.legion_future_from_buffer(LE.runtime, data,
                                               terralib.sizeof(data_type))
-  C.free(data)
   return future
 end
 
