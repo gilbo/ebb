@@ -20,13 +20,13 @@ points:NewField('t', L.int)
 -- edges:NewField('tail', points)
 
 -- Globals
--- local g_scal = L.NewGlobal(L.int, 4)
--- local g_vec  = L.NewGlobal(L.vec2d, {0, 0})
+local g_scal = L.NewGlobal(L.int, 4)
+local g_vec  = L.NewGlobal(L.vec2d, {0, 0})
 -- THIS FAILS RIGHT NOW BECAUSE OF TYPE CHECKING ERRORS
 -- local g_mat  = L.NewGlobal(L.mat3i, { {10, 2, 3}, {4, 50, 6}, {7, 8, 100} })
 
--- print(g_scal:get())
--- print(g_vec:get())
+print(g_scal:get())
+print(g_vec:get())
 
 -- Create physical region
 -- points._logical_region:CreatePhysicalRegion( { fields = { points.x } } )
@@ -50,7 +50,7 @@ local liszt kernel ReduceField(p : points)
 end
 
 CenteredWrite(points)
--- CenteredWrite(points)
+CenteredWrite(points)
 -- CenteredAdd(points)
 -- CenteredAdd(points)
 -- ReduceField(points)

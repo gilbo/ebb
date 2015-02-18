@@ -82,12 +82,24 @@ function Context:NumFields()
   return self.bran.arg_layout:NumFields()
 end
 
+function Context:NumGlobals()
+  return self.bran.arg_layout:NumGlobals()
+end
+
 function Context:Regions()
   return self.bran.arg_layout:Regions()
 end
 
 function Context:Fields(reg)
   return reg:Fields()
+end
+
+function Context:Globals()
+  return self.bran.arg_layout:Globals()
+end
+
+function Context:GlobalToReduce()
+  return self.bran.arg_layout:GlobalToReduce()
 end
 
 function Context:FieldData(field)
