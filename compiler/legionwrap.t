@@ -43,23 +43,55 @@ struct LW.TaskArgs {
   lg_runtime  : LW.legion_runtime_t
 }
 
-struct LW.KernelLauncherTemplate {
+
+---------------
+-- NO RETURN --
+---------------
+
+struct LW.SimpleKernelLauncherTemplate {
   Launch : { LW.TaskArgs } -> {};
 }
 
-terra LW.NewKernelLauncher( kernel_code : { LW.TaskArgs } -> {} )
-  var l : LW.KernelLauncherTemplate
+terra LW.NewSimpleKernelLauncher( kernel_code : { LW.TaskArgs } -> {} )
+  var l : LW.SimpleKernelLauncherTemplate
   l.Launch = kernel_code
   return l
 end
 
-LW.KernelLauncherSize = terralib.sizeof(LW.KernelLauncherTemplate)
+LW.SimpleKernelLauncherSize = terralib.sizeof(LW.SimpleKernelLauncherTemplate)
 
 -- Pack kernel launcher into a task argument for Legion.
-terra LW.KernelLauncherTemplate:PackToTaskArg()
+terra LW.SimpleKernelLauncherTemplate:PackToTaskArg()
   var sub_args = LW.legion_task_argument_t {
     args       = [&opaque](self),
-    arglen     = LW.KernelLauncherSize
+    arglen     = LW.SimpleKernelLauncherSize
+  }
+  return sub_args
+end
+
+
+-------------------------------
+-- RETURN LEGION TASK RESULT --
+-------------------------------
+
+struct LW.FutureKernelLauncherTemplate {
+  Launch : { LW.TaskArgs } -> LW.legion_task_result_t;
+}
+
+terra LW.NewFutureKernelLauncher( kernel_code : { LW.TaskArgs } ->
+                                                LW.legion_task_result_t )
+  var l : LW.FutureKernelLauncherTemplate
+  l.Launch = kernel_code
+  return l
+end
+
+LW.FutureKernelLauncherSize = terralib.sizeof(LW.FutureKernelLauncherTemplate)
+
+-- Pack kernel launcher into a task argument for Legion.
+terra LW.FutureKernelLauncherTemplate:PackToTaskArg()
+  var sub_args = LW.legion_task_argument_t {
+    args       = [&opaque](self),
+    arglen     = LW.FutureKernelLauncherSize
   }
   return sub_args
 end
@@ -82,9 +114,9 @@ terra LW.simple_task(
   C.printf("Executing simple task\n")
   var arglen = LW.legion_task_get_arglen(task)
   C.printf("Arglen in task is %i\n", arglen)
-  assert(arglen == LW.KernelLauncherSize)
+  assert(arglen == LW.SimpleKernelLauncherSize)
   var kernel_launcher =
-    [&LW.KernelLauncherTemplate](LW.legion_task_get_args(task))
+    [&LW.SimpleKernelLauncherTemplate](LW.legion_task_get_args(task))
   kernel_launcher.Launch( LW.TaskArgs {
     task, regions, num_regions, ctx, runtime
   } )
@@ -102,15 +134,13 @@ terra LW.future_task(
 ) : LW.legion_task_result_t
   C.printf("Executing future task\n")
   var arglen = LW.legion_task_get_arglen(task)
-  assert(arglen == LW.KernelLauncherSize)
+  assert(arglen == LW.FutureKernelLauncherSize)
   var kernel_launcher =
-    [&LW.KernelLauncherTemplate](LW.legion_task_get_args(task))
-  kernel_launcher.Launch( LW.TaskArgs {
+    [&LW.FutureKernelLauncherTemplate](LW.legion_task_get_args(task))
+  var result = kernel_launcher.Launch( LW.TaskArgs {
     task, regions, num_regions, ctx, runtime
   } )
   -- TODO: dummy seems likely broken.  It should refer to this task?
-  var dummy : int = 9
-  var result = LW.legion_task_result_create(&dummy, terralib.sizeof(int))
   C.printf("Completed executing future task task\n")
   return result
 end

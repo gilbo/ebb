@@ -14,7 +14,8 @@ local LW      = require "compiler.legionwrap"
 local Bran = Kc.Bran
 local Seedbank = Kc.Seedbank
 local seedbank_lookup = Kc.seedbank_lookup
-local KernelLauncherTemplate = LW.KernelLauncherTemplate
+local SimpleKernelLauncherTemplate = LW.SimpleKernelLauncherTemplate
+local FutureKernelLauncherTemplate = LW.FutureKernelLauncherTemplate
 
 
 -------------------------------------------------------------------------------
@@ -123,8 +124,7 @@ end
 -- Check if region corresponding to a relation is present.
 -- If not, create one, based on params.
 -- This creates one region for every relation right now.
-function ArgLayout:GetRegion(params)
-  local relation = params.relation
+function ArgLayout:GetRegion(relation)
   for _, reg in pairs(self:Regions()) do
     if reg:Relation() == relation then
       return reg
@@ -143,7 +143,7 @@ end
 
 function ArgLayout:AddGlobal(global, phase)
   self.num_globals = self.num_globals + 1
-  self.globals_idx[global] = self.num_globals
+  self.global_idx[global] = self.num_globals
   self.globals[self.num_globals] = global
   if phase:isReduce() then
     self.global_red = global
@@ -230,7 +230,7 @@ function Bran:SetUpArgLayout()
 
   -- regions
   for field, access in pairs(field_use) do
-    local reg = arg_layout:GetRegion({ relation = field.owner })
+    local reg = arg_layout:GetRegion(field.owner)
     arg_layout:AddFieldToRegion(field, reg)
   end
 
@@ -270,10 +270,17 @@ function Bran:generate()
   -- TODO: Cannot pass a terra function to another terra function.
   -- Doing so throws error "cannot convert 'table' to 'bool (*)()'".
   -- Should fix this, and remove the wrapper terra function defined below.
-  local terra NewKernelLauncher()
-    return LW.NewKernelLauncher(bran.executable)
+  if bran:LegionTaskType() == LW.TaskTypes.simple then
+    local terra NewSimpleKernelLauncher()
+      return LW.NewSimpleKernelLauncher(bran.executable)
+    end
+    bran.kernel_launcher = NewSimpleKernelLauncher()
+  else
+    local terra NewFutureKernelLauncher()
+      return LW.NewFutureKernelLauncher(bran.executable)
+    end
+    bran.kernel_launcher = NewFutureKernelLauncher()
   end
-  bran.kernel_launcher = NewKernelLauncher()
 end
 
 function Bran:LegionTaskType()
@@ -305,7 +312,7 @@ function Bran:CreateTaskLauncher()
   -- Tasks with futures, for handling global reductions
   else
     task_launcher = LW.legion_task_launcher_create(
-                       LW.TID_FUT, args,
+                       LW.TID_FUTURE, args,
                        LW.legion_predicate_true(), 0, 0)
   end
 
@@ -351,23 +358,20 @@ function Bran:LaunchTask(leg_args)
                                     self.task_launcher)
   else
     local global = self.arg_layout:GlobalToReduce()
-    local future_ret = LW.legion_task_launcher_execute(leg_args.runtime,
-                                                       leg_args.ctx,
-                                                       self.task_launcher)
-    LW.legion_future_get_result(future_ret) -- wait till value is available
-                                            -- We can remove this once apply and
-                                            -- fold operations are implemented
-                                            -- using legion API, and we figure
-                                            -- out how to safely delete old
-                                            -- future : Is it safe to call
-                                            -- DestroyFuture immediately after
-                                            -- launching the tasks that use the
-                                            -- future?
+    local future = LW.legion_task_launcher_execute(leg_args.runtime,
+                                                   leg_args.ctx,
+                                                   self.task_launcher)
+    local res = LW.legion_future_get_result(future)
+    -- Wait till value is available. We can remove this once apply and
+    -- fold operations are implemented using legion API, and we figure out
+    -- how to safely delete old future : Is it safe to call DestroyFuture
+    -- immediately after launching the tasks that use the future?
     -- TODO: We must apply this return value to old value - necessary for
     -- multiple partitions. Work around right now applies reduction in the
     -- task (Liszt kernel) itself, so we can simply replace the old future.
-    LW.DestroyFuture(global.data)
-    global.data = future_ret
+    global.data = LW.legion_future_from_buffer(leg_args.runtime,
+                                               res.value, res.value_size)
+    LW.legion_task_result_destroy(res)
   end
   print("Launched task")
 end
