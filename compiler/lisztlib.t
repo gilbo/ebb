@@ -124,17 +124,8 @@ function LGlobal:get()
     end)
 
   elseif use_legion then
-    local result = LW.GetResultFuture(self.type, self.data)
-    -- scalar
-    if self.type:isPrimitive() then
-      value = result
-    -- vector
-    elseif self.type:isVector() then
-      value = L.NewVector(self.type:baseType(), value)
-    -- small matrix
-    elseif self.type:isSmallMatrix() then
-      error("Unimplemented get for globals of type small matrix")
-    end
+    value = T.lisztToLuaVal(LW.GetResultFromFuture(self.type, self.data),
+                            self.type)
   end
 
   return value

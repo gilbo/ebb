@@ -68,7 +68,7 @@ end
 -------------------------------------------------------------------------------
 --[[                             Legion Tasks                              ]]--
 -------------------------------------------------------------------------------
---[[ A simple task is a task that does not have any return value. A fut_task
+--[[ A simple task is a task that does not have any return value. A future_task
 --   is a task that returns a Legion future, or return value.
 --]]--
 
@@ -93,7 +93,7 @@ end
 
 LW.TID_SIMPLE = 200
 
-terra LW.fut_task(
+terra LW.future_task(
   task        : LW.legion_task_t,
   regions     : &LW.legion_physical_region_t,
   num_regions : uint32,
@@ -115,10 +115,10 @@ terra LW.fut_task(
   return result
 end
 
-LW.TID_FUT = 300
+LW.TID_FUTURE = 300
 
 -- GLB: Why do we need this table?
-LW.TaskTypes = { simple = 'simple', fut = 'fut' }
+LW.TaskTypes = { simple = 'simple', future = 'future' }
 
 
 
@@ -143,18 +143,14 @@ LW.PhysicalRegion       = PhysicalRegion
 -------------------------------------------------------------------------------
 
 function LW.CreateFuture(typ, init)
-  local base_type = typ:terraBaseType()
-  local data_type, data
+  local data_type = typ:terraType()
+  local data = terralib.cast(&data_type, C.malloc(terralib.sizeof(data_type)))
   -- scalar
   if typ:isPrimitive() then
-    data_type = base_type
-    data = terralib.cast(&data_type, C.malloc(terralib.sizeof(data_type)))
     data[0] = init
   -- vector
   elseif typ:isVector() then
     local N = typ.N
-    data_type = struct { d : base_type[N] }
-    data = terralib.cast(&data_type, C.malloc(terralib.sizeof(data_type)))
     for i = 1, N do
       data[0].d[i-1] = init[i]
     end
@@ -162,17 +158,14 @@ function LW.CreateFuture(typ, init)
   elseif typ:isSmallMatrix() then
     local Nrow = typ.Nrow
     local Ncol = typ.Ncol
-    data_type = struct { d : base_type[Ncol][Nrow] }
-    data = terralib.cast(&data_type, C.malloc(terralib.sizeof(data_type)))
     for i = 1, Nrow do
       for j = 1, Ncol do
         data[0].d[i-1][j-1] = init[i][j]
       end
     end
   end
-  local future = LW.legion_future_from_buffer(LE.runtime, data, terralib.sizeof(data_type))
-                                              -- uerralib.sizeof(data_type))
-  local res    = LW.legion_future_get_result(future)
+  local future = LW.legion_future_from_buffer(LE.runtime, data,
+                                              terralib.sizeof(data_type))
   C.free(data)
   return future
 end
@@ -181,38 +174,12 @@ function LW.DestroyFuture(future)
   LW.legion_future_destroy(future)
 end
 
-function LW.GetResultFuture(typ, future)
+function LW.GetResultFromFuture(typ, future)
   local leg_result = LW.legion_future_get_result(future)
-  local base_type = typ:terraBaseType()
-  local value
-  -- scalar
-  if typ:isPrimitive() then
-    local data = terralib.cast(&base_type, leg_result.value)
-    value = data[0]
-  -- vector
-  elseif typ:isVector() then
-    local N = typ.N
-    local data_type = struct { d : base_type[N] }
-    local data = terralib.cast(&data_type, leg_result.value)
-    local value = {}
-    for i = 1, N do
-      value[i] = data[0].d[i-1]
-    end
-  -- small matrix
-  elseif typ:isSmallMatrix() then
-    local Nrow = typ.Nrow
-    local Ncol = typ.Ncol
-    local data_type = struct { d : base_type[Ncol][Nrow] }
-    local data = terralib.cast(&data_type, leg_result.value)
-    local value = {}
-    for i = 1, Nrow do
-      value[i] = {}
-      for j = 1, Ncol do
-        value[i][j] = data[0].d[i-1][j-1]
-      end
-    end
-  end
-  return value
+  local data_type = typ:terraType()
+  local data = terralib.new(data_type, terralib.cast(&data_type, leg_result.value)[0])
+  LW.legion_task_result_destroy(leg_result)
+  return data
 end
 
 

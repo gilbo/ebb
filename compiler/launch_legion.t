@@ -84,12 +84,12 @@ local terra main()
       idempotent = false },
     'simple_task', LW.simple_task)
   LW.legion_runtime_register_task(
-    LW.TID_FUT, LW.LOC_PROC, true, false, 1,
+    LW.TID_FUTURE, LW.LOC_PROC, true, false, 1,
     LW.legion_task_config_options_t {
       leaf = false,
       inner = false,
       idempotent = false },
-    'fut_task', LW.fut_task)
+    'future_task', LW.future_task)
   LW.legion_runtime_set_top_level_task_id(TID_TOP_LEVEL)
   LW.legion_runtime_start(0, [&rawstring](0), false)
 end

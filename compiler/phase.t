@@ -99,7 +99,7 @@ function Context.new(env, diag)
     globals = {},
     inserts = {},
     deletes = {},
-    reduce_global = nil
+    global_reduce = nil
   }, Context)
   return ctxt
 end
@@ -137,11 +137,11 @@ local function log_helper(ctxt, is_field, f_or_g, phase_type, node)
 
   -- check if more than one globals need to be reduced
   if not is_field then
-    local g = ctxt.reduce_global
+    local g = ctxt.global_reduce
     if phase_type:isReduce() and g and g ~= f_or_g then
       ctxt:error(node, 'Cannot reduce more than one global in a kernel\n')
     else
-      ctxt.reduce_global = f_or_g
+      ctxt.global_reduce = f_or_g
     end
   end
 

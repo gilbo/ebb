@@ -72,14 +72,18 @@ ArgLayout.__index = ArgLayout
 K.ArgLayout = ArgLayout
 local function NewArgLayout()
   local arg = {
-    -- number of regions
+    -- regions
     num_regions = 0,
-    -- list of regions for a Legion task
     region_idx  = {},
-    regions     = {},
-    -- total number of fields over all regions
+    regions     = {}, -- there may not be a one-to-many map from relations to regions
+    -- fields
+    num_fields  = 0,
     field_idx   = {},
-    num_fields  = 0
+    -- gloabls (futures)
+    num_globals = 0,
+    global_idx  = {},
+    globals     = {},
+    global_red  = nil
   }
   setmetatable(arg, ArgLayout)
   return arg
@@ -94,8 +98,20 @@ function ArgLayout:Regions()
   return self.regions
 end
 
+function ArgLayout:Globals()
+  return self.globals
+end
+
+function ArgLayout:GlobalToReduce()
+  return self.global_red
+end
+
 function ArgLayout:NumFields()
   return self.num_fields
+end
+
+function ArgLayout:NumGlobals()
+  return self.num_globals
 end
 
 function ArgLayout:AddRegion(reg)
@@ -125,6 +141,15 @@ function ArgLayout:AddFieldToRegion(field, reg)
   reg:AddField(field)
 end
 
+function ArgLayout:AddGlobal(global, phase)
+  self.num_globals = self.num_globals + 1
+  self.globals_idx[global] = self.num_globals
+  self.globals[self.num_globals] = global
+  if phase:isReduce() then
+    self.global_red = global
+  end
+end
+
 function ArgLayout:RegIdx(reg)
   return self.region_idx[reg]
 end
@@ -133,87 +158,9 @@ function ArgLayout:FieldIdx(field)
   return self.field_idx[field]
 end
 
-
--------------------------------------------------------------------------------
---[[                         Legion task launcher                          ]]--
--------------------------------------------------------------------------------
-
-
--- Creates a map of region requirements, to be used when creating region
--- requirements.
--- implementation details:
--- This computes a trivial region requirement with just one region right now.
-function K.SetUpArgLayout(params)
-
-  local field_use = params.bran.kernel.field_use
-
-  -- arg layout
-  params.bran.arg_layout = NewArgLayout()
-  local arg_layout = params.bran.arg_layout
-
-  for field, access in pairs(field_use) do
-    local reg = arg_layout:GetRegion({ relation = field.owner })
-    arg_layout:AddFieldToRegion(field, reg)
-  end
-
+function ArgLayout:GlobalIdx(global)
+  return self.global_idx[global]
 end
-
--- Creates a task launcher with task region requirements.
--- Implementation details:
--- * Creates a separate region requirement for every region in arg_layout. 
--- * NOTE: This is not combined with SetUpArgLayout because of a needed codegen
---   phase in between : codegen can happen only after SetUpArgLayout, and the
---   launcher can be created only after executable from codegen is available.
-function K.CreateTaskLauncher(params)
-  local args = params.bran.kernel_launcher:PackToTaskArg()
-  -- Simple task that does not return any values
-  if params.task_type == LW.TaskTypes.simple then
-    -- task launcher
-    local task_launcher = LW.legion_task_launcher_create(
-                             LW.TID_SIMPLE, args,
-                             LW.legion_predicate_true(), 0, 0)
-
-    local relset = params.bran.relset
-    local arg_layout = params.bran.arg_layout
-
-    local regions = arg_layout:Regions()
-    local num_regions = params.bran.arg_layout:NumRegions()
-    local reg_req = {}
-
-    for _, region in ipairs(regions) do
-      local r = arg_layout:RegIdx(region)
-      local rel = region:Relation()
-      -- Just use READ_WRITE and EXCLUSIVE for now.
-      -- Will need to update this when doing partitions.
-      reg_req[r] =
-        LW.legion_task_launcher_add_region_requirement_logical_region(
-          task_launcher, rel._logical_region_wrapper.handle,
-          LW.READ_WRITE, LW.EXCLUSIVE,
-          rel._logical_region_wrapper.handle, 0, false )
-      for _, field in ipairs(region:Fields()) do
-        local f = arg_layout:FieldIdx(field, region)
-        local rel = field.owner
-        print("In create task launcher, adding field " .. field.fid .. " to region req " .. r)
-        LW.legion_task_launcher_add_field(
-          task_launcher, reg_req[r], field.fid, true )
-      end
-    end
-    return task_launcher
-  elseif params.task_type == LW.TaskTypes.fut then
-    error("INTERNAL ERROR: Liszt does not handle tasks with future values yet")
-  else
-    error("INTERNAL ERROR: Unknown task type")
-  end
-end
-
--- Launches Legion task and returns.
-function K.LaunchTask(p, leg_args)
-  print("Launching legion task")
-   LW.legion_task_launcher_execute(leg_args.runtime, leg_args.ctx,
-                                   p.task_launcher)
-  print("Launched task")
-end
-
 
 
 -------------------------------------------------------------------------------
@@ -253,18 +200,13 @@ L.LKernel.__call  = function (kobj, relset)
     bran.relset = relset
     bran.kernel = kobj
     bran.location = proc
-    K.SetUpArgLayout( { bran = bran} )
+    bran:SetUpArgLayout()
     bran:generate()
-    bran.task_launcher = K.CreateTaskLauncher(
-                            {
-                              task_type        = LW.TaskTypes.simple,
-                              bran             = bran,
-                            } )
+    bran:CreateTaskLauncher()
   end
 
   -- Launch task
-  K.LaunchTask( { task_launcher = bran.task_launcher },
-                 { ctx = ctx, runtime = runtime } )
+  bran:LaunchTask({ ctx = ctx, runtime = runtime })
 
 end
 
@@ -272,6 +214,32 @@ end
 -------------------------------------------------------------------------------
 --[[                                 Brans                                 ]]--
 -------------------------------------------------------------------------------
+
+-- Computes a layout for region requirements and futures.
+-- implementation details:
+-- This computes a trivial region requirement with just one region per
+-- relation, and one future for very global being used.
+function Bran:SetUpArgLayout()
+
+  local field_use  = self.kernel.field_use
+  local global_use = self.kernel.global_use
+
+  -- arg layout
+  self.arg_layout = NewArgLayout()
+  local arg_layout = self.arg_layout
+
+  -- regions
+  for field, access in pairs(field_use) do
+    local reg = arg_layout:GetRegion({ relation = field.owner })
+    arg_layout:AddFieldToRegion(field, reg)
+  end
+
+  -- globals/ futures
+  for global, access in pairs(global_use) do
+    arg_layout:AddGlobal(global, access)
+  end
+
+end
 
 function Bran:generate()
   -- GENERATE CODE FOR LEGION TASK
@@ -306,4 +274,100 @@ function Bran:generate()
     return LW.NewKernelLauncher(bran.executable)
   end
   bran.kernel_launcher = NewKernelLauncher()
+end
+
+function Bran:LegionTaskType()
+  assert(self.arg_layout)
+  if self.arg_layout.global_red then
+    return LW.TaskTypes.future
+  else
+    return LW.TaskTypes.simple
+  end
+end
+
+-- Creates a task launcher with task region requirements.
+-- Implementation details:
+-- * Creates a separate region requirement for every region in arg_layout. 
+-- * Adds futures corresponding to globals to launcher.
+-- * NOTE: This is not combined with SetUpArgLayout because of a needed codegen
+--   phase in between : codegen can happen only after SetUpArgLayout, and the
+--   launcher can be created only after executable from codegen is available.
+function Bran:CreateTaskLauncher()
+
+  local args = self.kernel_launcher:PackToTaskArg()
+
+  local task_launcher
+  -- Simple task that does not return any values
+  if self:LegionTaskType() == LW.TaskTypes.simple then
+    task_launcher = LW.legion_task_launcher_create(
+                       LW.TID_SIMPLE, args,
+                       LW.legion_predicate_true(), 0, 0)
+  -- Tasks with futures, for handling global reductions
+  else
+    task_launcher = LW.legion_task_launcher_create(
+                       LW.TID_FUT, args,
+                       LW.legion_predicate_true(), 0, 0)
+  end
+
+  local arg_layout = self.arg_layout
+
+  -- region requirements
+  local regions = arg_layout:Regions()
+  for _, region in ipairs(regions) do
+    local r = arg_layout:RegIdx(region)
+    local rel = region:Relation()
+    -- Just use READ_WRITE and EXCLUSIVE for now.
+    -- Will need to update this when doing partitions.
+    local reg_req =
+      LW.legion_task_launcher_add_region_requirement_logical_region(
+        task_launcher, rel._logical_region_wrapper.handle,
+        LW.READ_WRITE, LW.EXCLUSIVE,
+        rel._logical_region_wrapper.handle, 0, false )
+    -- add all fields that should belong to this region req (computed in
+    -- SetupArgLayout)
+    for _, field in ipairs(region:Fields()) do
+      local f = arg_layout:FieldIdx(field, region)
+      local rel = field.owner
+      print("In create task launcher, adding field " .. field.fid .. " to region req " .. r)
+      LW.legion_task_launcher_add_field(
+        task_launcher, reg_req, field.fid, true )
+    end
+  end
+
+  -- futures
+  local globals = arg_layout:Globals()
+  for _, global in ipairs(globals) do
+    LW.legion_task_launcher_add_future(task_launcher, global.data)
+  end
+
+  self.task_launcher = task_launcher
+end
+
+-- Launches Legion task and returns.
+function Bran:LaunchTask(leg_args)
+  print("Launching legion task")
+  if self:LegionTaskType() == LW.TaskTypes.simple then
+    LW.legion_task_launcher_execute(leg_args.runtime, leg_args.ctx,
+                                    self.task_launcher)
+  else
+    local global = self.arg_layout:GlobalToReduce()
+    local future_ret = LW.legion_task_launcher_execute(leg_args.runtime,
+                                                       leg_args.ctx,
+                                                       self.task_launcher)
+    LW.legion_future_get_result(future_ret) -- wait till value is available
+                                            -- We can remove this once apply and
+                                            -- fold operations are implemented
+                                            -- using legion API, and we figure
+                                            -- out how to safely delete old
+                                            -- future : Is it safe to call
+                                            -- DestroyFuture immediately after
+                                            -- launching the tasks that use the
+                                            -- future?
+    -- TODO: We must apply this return value to old value - necessary for
+    -- multiple partitions. Work around right now applies reduction in the
+    -- task (Liszt kernel) itself, so we can simply replace the old future.
+    LW.DestroyFuture(global.data)
+    global.data = future_ret
+  end
+  print("Launched task")
 end
