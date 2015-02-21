@@ -22,10 +22,8 @@ local FutureKernelLauncherTemplate = LW.FutureKernelLauncherTemplate
 --[[                          Legion environment                           ]]--
 -------------------------------------------------------------------------------
 
-local legion_env = rawget(_G, '_legion_env')
-local ctx = legion_env.ctx
-local runtime = legion_env.runtime
-
+local LE = rawget(_G, '_legion_env')
+local legion_env = LE.legion_env:get()
 
 -------------------------------------------------------------------------------
 --[[                Argument layout (known during codegen)                 ]]--
@@ -206,7 +204,7 @@ L.LKernel.__call  = function (kobj, relset)
   end
 
   -- Launch task
-  bran:LaunchTask({ ctx = ctx, runtime = runtime })
+  bran:LaunchTask({ ctx = legion_env.ctx, runtime = legion_env.runtime })
 
 end
 

@@ -20,11 +20,12 @@ for k,v in pairs(APIblob) do LW[k] = v end
 -------------------------------------------------------------------------------
 
 local LE = rawget(_G, '_legion_env')
-local struct EnvArgsForTerra {
-  runtime : &LW.legion_runtime_t,
-  ctx     : &LW.legion_context_t
+local struct LegionEnv {
+  runtime : LW.legion_runtime_t,
+  ctx     : LW.legion_context_t
 }
-LE.terraargs = global(EnvArgsForTerra)
+LE.legion_env = global(LegionEnv)
+local legion_env = LE.legion_env:get()
 
 -------------------------------------------------------------------------------
 --[[                       Kernel Launcher Template                        ]]--
@@ -176,7 +177,7 @@ function LW.CreateFuture(typ, cdata)
   local data_type = typ:terraType()
   local data = terralib.new(data_type[1])
   data[0] = cdata
-  local future = LW.legion_future_from_buffer(LE.runtime, data,
+  local future = LW.legion_future_from_buffer(legion_env.runtime, data,
                                               terralib.sizeof(data_type))
   return future
 end
@@ -227,7 +228,7 @@ local terra Create1DGridIndexSpace(x : int)
   var rect  = LW.legion_rect_1d_t { pt_lo, pt_hi }
   var dom   = LW.legion_domain_from_rect_1d(rect)
   return LW.legion_index_space_create_domain(
-            @(LE.terraargs.runtime), @(LE.terraargs.ctx), dom)
+            legion_env.runtime, legion_env.ctx, dom)
 end
 
 -- Internal method: Ask Legion to create 2 dimensional index space
@@ -237,7 +238,7 @@ local terra Create2DGridIndexSpace(x : int, y : int)
   var rect  = LW.legion_rect_2d_t { pt_lo, pt_hi }
   var dom   = LW.legion_domain_from_rect_2d(rect)
   return LW.legion_index_space_create_domain(
-            @(LE.terraargs.runtime), @(LE.terraargs.ctx), dom)
+            legion_env.runtime, legion_env.ctx, dom)
 end
 
 -- Internal method: Ask Legion to create 3 dimensional index space
@@ -247,7 +248,7 @@ local terra Create3DGridIndexSpace(x : int, y : int, z : int)
   var rect  = LW.legion_rect_3d_t { pt_lo, pt_hi }
   var dom   = LW.legion_domain_from_rect_3d(rect)
   return LW.legion_index_space_create_domain(
-            @(LE.terraargs.runtime), @(LE.terraargs.ctx), dom)
+            legion_env.runtime, legion_env.ctx, dom)
 end
 
 -- Allocate an unstructured logical region
@@ -261,12 +262,16 @@ function LW.NewLogicalRegion(params)
             }
   -- index space
   l.is  = Create1DGridIndexSpace(l.n_rows)
-  l.isa = LW.legion_index_allocator_create(LE.runtime, LE.ctx, l.is)
+  l.isa = LW.legion_index_allocator_create(legion_env.runtime,
+                                           legion_env.ctx, l.is)
   -- field space
-  l.fs  = LW.legion_field_space_create(LE.runtime, LE.ctx)
-  l.fsa = LW.legion_field_allocator_create(LE.runtime, LE.ctx, l.fs)
+  l.fs  = LW.legion_field_space_create(legion_env.runtime,
+                                       legion_env.ctx)
+  l.fsa = LW.legion_field_allocator_create(legion_env.runtime,
+                                           legion_env.ctx, l.fs)
   -- logical region
-  l.handle = LW.legion_logical_region_create(LE.runtime, LE.ctx, l.is, l.fs)
+  l.handle = LW.legion_logical_region_create(legion_env.runtime,
+                                             legion_env.ctx, l.is, l.fs)
   setmetatable(l, LogicalRegion)
   return l
 end
@@ -293,10 +298,14 @@ function LW.NewGridLogicalRegion(params)
     l.is = Create3DGridIndexSpace(bounds[1], bounds[2], bounds[3])
   end
   -- field space
-  l.fs = LW.legion_field_space_create(LE.runtime, LE.ctx)
-  l.fsa = LW.legion_field_allocator_create(LE.runtime, LE.ctx, l.fs)
+  l.fs = LW.legion_field_space_create(legion_env.runtime,
+                                      legion_env.ctx)
+  l.fsa = LW.legion_field_allocator_create(legion_env.runtime,
+                                           legion_env.ctx, l.fs)
   -- logical region
-  l.handle = LW.legion_logical_region_create(LE.runtime, LE.ctx, l.is, l.fs)
+  l.handle = LW.legion_logical_region_create(legion_env.runtime,
+                                             legion_env.ctx,
+                                             l.is, l.fs)
   setmetatable(l, LogicalRegion)
   return l
 end
@@ -406,7 +415,8 @@ function LW.NewControlScanner(params)
   end
 
   -- launch and create the physical region mapping
-  local pr = LW.legion_inline_launcher_execute(LE.runtime, LE.ctx, il)
+  local pr = LW.legion_inline_launcher_execute(legion_env.runtime,
+                                               legion_env.ctx, il)
 
   -- create object to return
   local dimensions = nil
@@ -531,7 +541,9 @@ function LW.ControlScanner:scanGrid(per_row_callback)
 end
 
 function LW.ControlScanner:close()
-  LW.legion_runtime_unmap_region(LE.runtime, LE.ctx, self.physical_region)
+  LW.legion_runtime_unmap_region(legion_env.runtime,
+                                 legion_env.ctx,
+                                 self.physical_region)
   LW.legion_physical_region_destroy(self.physical_region)
   LW.legion_inline_launcher_destroy(self.inline_launcher)
 end

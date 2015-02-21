@@ -16,19 +16,6 @@ local terra dereference_legion_runtime(runtime : &LW.legion_runtime_t)
   return @runtime
 end
 
--- Setup tables and constants  for Legion runtime in Liszt.
-local function setup_liszt_for_legion(ctx, runtime)
-  local legion_env = rawget(_G, '_legion_env')
-  legion_env.ctx      = dereference_legion_context(ctx)
-  legion_env.runtime  = dereference_legion_runtime(runtime)
-  legion_env.terraargs:get().ctx      = ctx
-  legion_env.terraargs:get().runtime  = runtime
-  return true
-end
-local terra_setup_liszt_for_legion =
-  terralib.cast( { &LW.legion_context_t,
-                   &LW.legion_runtime_t } -> bool, setup_liszt_for_legion )
-
 -- Top level task
 TID_TOP_LEVEL = 100
 
@@ -53,6 +40,7 @@ function load_liszt()
 end
 
 -- Run Liszt compiler/ Lua-Terra interpreter as a top level task
+local LE = rawget(_G, '_legion_env')
 local terra top_level_task(
   task_args   : LW.legion_task_t,
   regions     : &LW.legion_physical_region_t,
@@ -61,7 +49,8 @@ local terra top_level_task(
   runtime     : LW.legion_runtime_t
 )
   C.printf("Setting up Legion ...\n")
-  terra_setup_liszt_for_legion(&ctx, &runtime)
+  LE.legion_env.ctx = ctx
+  LE.legion_env.runtime = runtime
   C.printf("Loading Liszt application ...\n")
   load_liszt()
   C.printf("Finished Liszt application\n")
