@@ -82,20 +82,42 @@ function Context:NumFields()
   return self.bran.arg_layout:NumFields()
 end
 
+function Context:NumGlobals()
+  return self.bran.arg_layout:NumGlobals()
+end
+
 function Context:Regions()
   return self.bran.arg_layout:Regions()
+end
+
+function Context:GetRegion(relation)
+  return self.bran.arg_layout:GetRegion(relation)
 end
 
 function Context:Fields(reg)
   return reg:Fields()
 end
 
+function Context:Globals()
+  return self.bran.arg_layout:Globals()
+end
+
+function Context:GlobalToReduce()
+  return self.bran.arg_layout:GlobalToReduce()
+end
+
 function Context:FieldData(field)
-  local findex = self.bran.arg_layout:FieldIdx(field)
+  local fidx   = self.bran.arg_layout:FieldIdx(field)
   local fd     = self:localenv()['_field_ptrs']
   assert(terralib.issymbol(fd))
-  -- field data does not contain region 0, which is used only for iterating
-  return `([fd][ findex - 1 ])
+  return `([fd][ fidx - 1 ])
+end
+
+function Context:GlobalData(global)
+  local gidx   = self.bran.arg_layout:GlobalIdx(global)
+  local gd     = self:localenv()['_global_ptrs']
+  assert(terralib.issymbol(gd))
+  return `([&global.type:terraType()](([gd][ gidx - 1 ]).value))
 end
 
 function Context:RegIdx(reg)
@@ -104,6 +126,10 @@ end
 
 function Context:FieldIdx(field, reg)
   return self.bran.arg_layout:FieldIdx(field, reg)
+end
+
+function Context:GlobalIdx(global)
+  return self.bran.arg_layout:GlobalIdx(global)
 end
 
 
@@ -141,8 +167,8 @@ function cpu_codegen (kernel_ast, ctxt)
     local Largs = symbol(LW.TaskArgs)
     ctxt:localenv()['_legion_args'] = Largs
 
-    -- symbols for iteration and field data
-    local iter, rect, field_ptrs
+    -- symbols for iteration and global/ field data
+    local iter, rect, field_ptrs, global_ptrs
     if ctxt:IsGrid() then
       iter = symbol(domIndex[ctxt:GridDimensions()])
       ctxt:localenv()[kernel_ast.name] = iter
@@ -150,6 +176,8 @@ function cpu_codegen (kernel_ast, ctxt)
       ctxt:localenv()['_rect'] = rect
       field_ptrs = symbol(fieldData[ctxt:GridDimensions()][ctxt:NumFields()])
       ctxt:localenv()['_field_ptrs'] = field_ptrs
+      global_ptrs = symbol(LW.legion_task_result_t[ctxt:NumGlobals()])
+      ctxt:localenv()['_global_ptrs'] = global_ptrs
     else
       error("INTERNAL ERROR: Unstructured field ptrs/ pregions case not handled")
     end
@@ -175,13 +203,12 @@ function cpu_codegen (kernel_ast, ctxt)
       local field_init = quote
         var [field_ptrs]
       end
-      local field_init_f = quote end
-      local fields_added = 0
       for _, reg in ipairs(ctxt:Regions()) do
         local r = ctxt:RegIdx(reg)
         for _, field in ipairs(ctxt:Fields(reg)) do
-          field_init_f = quote
-            [field_init_f]
+          local f = ctxt:FieldIdx(field, reg)
+          field_init = quote
+            [field_init]
             do
               var preg = [Largs].regions[r-1]
               var is   = LW.legion_physical_region_get_logical_region(preg).index_space
@@ -196,19 +223,58 @@ function cpu_codegen (kernel_ast, ctxt)
                 var base = [&int8]([ LegionRawPtrFromAcc[dim] ](
                   acc, rect, &subrect, strides))
                 C.printf("In legion task - setup, adding field id %i from region %i\n", [ctxt:FieldIdx(field, reg)], r-1)
-                [field_ptrs][fields_added] = [ fieldData[dim] ] { base, strides }
+                [field_ptrs][f-1] = [ fieldData[dim] ] { base, strides }
               end
             end
           end
-          fields_added = fields_added + 1
+        end
+      end
+
+      -- Read in global data from futures: assumption that the caller gets
+      -- ownership of returned legion_result_t. Need to do a deep-copy (copy
+      -- value from result) otherwise.
+      local global_init = quote
+        var [global_ptrs]
+      end
+      for _, global in ipairs(ctxt:Globals()) do
+        local g = ctxt:GlobalIdx(global)
+        global_init = quote
+          [global_init]
+          do
+            var fut = LW.legion_task_get_future([Largs].task, g-1)
+            [global_ptrs][g-1] = LW.legion_future_get_result(fut)
+          end
+        end
+      end
+
+      -- Return reduced task result and destroy other future task results
+      local cleanup_and_ret = quote end
+      local global_to_reduce = ctxt:GlobalToReduce()
+      for _, global in ipairs(ctxt:Globals()) do
+        if global ~= global_to_reduce then
+          local g = ctxt:GlobalIdx(global)
+          cleanup_and_ret = quote
+            [cleanup_and_ret]
+            do
+              LW.legion_task_result_destroy([global_ptrs][g-1])
+            end
+          end
+        end
+      end
+      local gred = ctxt:GlobalIdx(global_to_reduce)
+      if gred then
+        cleanup_and_ret = quote
+          [cleanup_and_ret]
+          return [global_ptrs][ gred-1 ]
         end
       end
 
       -- setup loop bounds
+      local it_idx = (ctxt:RegIdx(ctxt:GetRegion(ctxt.bran.relset)) - 1)
       local setup = quote
         [field_init]
-        [field_init_f]
-        var r   = LW.legion_physical_region_get_logical_region([Largs].regions[0])
+        [global_init]
+        var r   = LW.legion_physical_region_get_logical_region([Largs].regions[it_idx])
         var is  = r.index_space
         var dom = LW.legion_index_space_get_domain([Largs].lg_runtime, [Largs].lg_ctx, is)
         C.printf(" --- Begin loop ---\n")
@@ -218,7 +284,6 @@ function cpu_codegen (kernel_ast, ctxt)
       -- loop over domain
       if dim == 1 then
         body = quote
-          [setup]
           for i = [rect].lo.x[0], [rect].hi.x[0]+1 do
             -- C.printf("Loop iteration %i\n", i)
             var [iter] = [ domIndex[1] ] { arrayof(int, i) }
@@ -228,7 +293,6 @@ function cpu_codegen (kernel_ast, ctxt)
       end
       if dim == 2 then
         body = quote
-          [setup]
           for i = [rect].lo.x[0], [rect].hi.x[0]+1 do
             for j  = [rect].lo.x[1], [rect].hi.x[1]+1 do
               -- C.printf("Loop iteration %i, %i\n", i, j)
@@ -240,7 +304,6 @@ function cpu_codegen (kernel_ast, ctxt)
       end
       if dim == 3 then
         body = quote
-          [setup]
           for i = [rect].lo.x[0], [rect].hi.x[0]+1 do
             for j  = [rect].lo.x[1], [rect].hi.x[1]+1 do
               for k  = [rect].lo.x[2], [rect].hi.x[2]+1 do
@@ -253,6 +316,13 @@ function cpu_codegen (kernel_ast, ctxt)
         end
       end
 
+      -- assemble everything
+      body = quote
+        [setup]
+        [body]
+        [cleanup_and_ret]
+      end
+
     -- UNSTRUCTURED DOMAINS
     else
       error("INTERNAL ERROR: Codegen for unstructured relations unimplemented")
@@ -263,8 +333,6 @@ function cpu_codegen (kernel_ast, ctxt)
       -- and probably moved up to kernel body
       C.printf("------------ Executing a legion task -------------\n")
       var [Largs] = leg_args
-
-      -- Add symbol for physical regions &/ or field data
       [body]
     end
 
@@ -278,6 +346,23 @@ end
 ----------------------------------------------------------------------------
 --[[          Codegen Pass Cases involving data access                  ]]--
 ----------------------------------------------------------------------------
+
+function ast.Global:codegen(ctxt)
+  local dataptr = ctxt:GlobalData(self.global)
+  return `@dataptr
+end
+
+function ast.GlobalReduce:codegen(ctxt)
+  if ctxt:onGPU() then
+    error("INTERNAL ERROR: reductions on gpu not implemented")
+  else
+    local assign = ast.Assignment:DeriveFrom(self)
+    assign.lvalue = self.global
+    assign.exp    = self.exp
+    assign.reduceop = self.reduceop
+    return assign:codegen(ctxt)
+  end
+end
 
 local function IndexToOffset(ctxt, index, strides)
   if ctxt:IsGrid() then
@@ -325,7 +410,7 @@ function ast.FieldAccess:codegen (ctxt)
   local access = quote
     var strides = [fdata].strides
     var ptr = [&fttype]([fdata].ptr + [IndexToOffset(ctxt, index, strides)] )
-    -- C.printf("Data was %i\n", @ptr)
+    C.printf("Data was %i\n", @ptr)
   in
     @ptr
   end

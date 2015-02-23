@@ -56,11 +56,12 @@ end
 -------------------------------------------------------------------------------
 
 local LE = rawget(_G, '_legion_env')
-local struct EnvArgsForTerra {
-  runtime : &LW.legion_runtime_t,
-  ctx     : &LW.legion_context_t
+local struct LegionEnv {
+  runtime : LW.legion_runtime_t,
+  ctx     : LW.legion_context_t
 }
-LE.terraargs = global(EnvArgsForTerra)
+LE.legion_env = global(LegionEnv)
+local legion_env = LE.legion_env:get()
 
 -------------------------------------------------------------------------------
 --[[                       Kernel Launcher Template                        ]]--
@@ -79,23 +80,55 @@ struct LW.TaskArgs {
   lg_runtime  : LW.legion_runtime_t
 }
 
-struct LW.KernelLauncherTemplate {
+
+---------------
+-- NO RETURN --
+---------------
+
+struct LW.SimpleKernelLauncherTemplate {
   Launch : { LW.TaskArgs } -> {};
 }
 
-terra LW.NewKernelLauncher( kernel_code : { LW.TaskArgs } -> {} )
-  var l : LW.KernelLauncherTemplate
+terra LW.NewSimpleKernelLauncher( kernel_code : { LW.TaskArgs } -> {} )
+  var l : LW.SimpleKernelLauncherTemplate
   l.Launch = kernel_code
   return l
 end
 
-LW.KernelLauncherSize = terralib.sizeof(LW.KernelLauncherTemplate)
+LW.SimpleKernelLauncherSize = terralib.sizeof(LW.SimpleKernelLauncherTemplate)
 
 -- Pack kernel launcher into a task argument for Legion.
-terra LW.KernelLauncherTemplate:PackToTaskArg()
+terra LW.SimpleKernelLauncherTemplate:PackToTaskArg()
   var sub_args = LW.legion_task_argument_t {
     args       = [&opaque](self),
-    arglen     = LW.KernelLauncherSize
+    arglen     = LW.SimpleKernelLauncherSize
+  }
+  return sub_args
+end
+
+
+-------------------------------
+-- RETURN LEGION TASK RESULT --
+-------------------------------
+
+struct LW.FutureKernelLauncherTemplate {
+  Launch : { LW.TaskArgs } -> LW.legion_task_result_t;
+}
+
+terra LW.NewFutureKernelLauncher( kernel_code : { LW.TaskArgs } ->
+                                                LW.legion_task_result_t )
+  var l : LW.FutureKernelLauncherTemplate
+  l.Launch = kernel_code
+  return l
+end
+
+LW.FutureKernelLauncherSize = terralib.sizeof(LW.FutureKernelLauncherTemplate)
+
+-- Pack kernel launcher into a task argument for Legion.
+terra LW.FutureKernelLauncherTemplate:PackToTaskArg()
+  var sub_args = LW.legion_task_argument_t {
+    args       = [&opaque](self),
+    arglen     = LW.FutureKernelLauncherSize
   }
   return sub_args
 end
@@ -104,7 +137,7 @@ end
 -------------------------------------------------------------------------------
 --[[                             Legion Tasks                              ]]--
 -------------------------------------------------------------------------------
---[[ A simple task is a task that does not have any return value. A fut_task
+--[[ A simple task is a task that does not have any return value. A future_task
 --   is a task that returns a Legion future, or return value.
 --]]--
 
@@ -118,9 +151,9 @@ terra LW.simple_task(
   C.printf("Executing simple task\n")
   var arglen = LW.legion_task_get_arglen(task)
   C.printf("Arglen in task is %i\n", arglen)
-  assert(arglen == LW.KernelLauncherSize)
+  assert(arglen == LW.SimpleKernelLauncherSize)
   var kernel_launcher =
-    [&LW.KernelLauncherTemplate](LW.legion_task_get_args(task))
+    [&LW.SimpleKernelLauncherTemplate](LW.legion_task_get_args(task))
   kernel_launcher.Launch( LW.TaskArgs {
     task, regions, num_regions, ctx, runtime
   } )
@@ -129,7 +162,7 @@ end
 
 LW.TID_SIMPLE = 200
 
-terra LW.fut_task(
+terra LW.future_task(
   task        : LW.legion_task_t,
   regions     : &LW.legion_physical_region_t,
   num_regions : uint32,
@@ -138,23 +171,21 @@ terra LW.fut_task(
 ) : LW.legion_task_result_t
   C.printf("Executing future task\n")
   var arglen = LW.legion_task_get_arglen(task)
-  assert(arglen == LW.KernelLauncherSize)
+  assert(arglen == LW.FutureKernelLauncherSize)
   var kernel_launcher =
-    [&LW.KernelLauncherTemplate](LW.legion_task_get_args(task))
-  kernel_launcher.Launch( LW.TaskArgs {
+    [&LW.FutureKernelLauncherTemplate](LW.legion_task_get_args(task))
+  var result = kernel_launcher.Launch( LW.TaskArgs {
     task, regions, num_regions, ctx, runtime
   } )
   -- TODO: dummy seems likely broken.  It should refer to this task?
-  var dummy : int = 9
-  var result = LW.legion_task_result_create(&dummy, terralib.sizeof(int))
   C.printf("Completed executing future task task\n")
   return result
 end
 
-LW.TID_FUT = 300
+LW.TID_FUTURE = 300
 
 -- GLB: Why do we need this table?
-LW.TaskTypes = { simple = 'simple', fut = 'fut' }
+LW.TaskTypes = { simple = 'simple', future = 'future' }
 
 
 
@@ -172,6 +203,32 @@ LW.LogicalRegion        = LogicalRegion
 local PhysicalRegion    = {}
 PhysicalRegion.__index  = PhysicalRegion
 LW.PhysicalRegion       = PhysicalRegion
+
+
+-------------------------------------------------------------------------------
+--[[                            Future methods                             ]]--
+-------------------------------------------------------------------------------
+
+function LW.CreateFuture(typ, cdata)
+  local data_type = typ:terraType()
+  local data = terralib.new(data_type[1])
+  data[0] = cdata
+  local future = LW.legion_future_from_buffer(legion_env.runtime, data,
+                                              terralib.sizeof(data_type))
+  return future
+end
+
+function LW.DestroyFuture(future)
+  LW.legion_future_destroy(future)
+end
+
+function LW.GetResultFromFuture(typ, future)
+  local leg_result = LW.legion_future_get_result(future)
+  local data_type = typ:terraType()
+  local data = terralib.new(data_type, terralib.cast(&data_type, leg_result.value)[0])
+  LW.legion_task_result_destroy(leg_result)
+  return data
+end
 
 
 -------------------------------------------------------------------------------
@@ -207,7 +264,7 @@ local terra Create1DGridIndexSpace(x : int)
   var rect  = LW.legion_rect_1d_t { pt_lo, pt_hi }
   var dom   = LW.legion_domain_from_rect_1d(rect)
   return LW.legion_index_space_create_domain(
-            @(LE.terraargs.runtime), @(LE.terraargs.ctx), dom)
+            legion_env.runtime, legion_env.ctx, dom)
 end
 
 -- Internal method: Ask Legion to create 2 dimensional index space
@@ -217,7 +274,7 @@ local terra Create2DGridIndexSpace(x : int, y : int)
   var rect  = LW.legion_rect_2d_t { pt_lo, pt_hi }
   var dom   = LW.legion_domain_from_rect_2d(rect)
   return LW.legion_index_space_create_domain(
-            @(LE.terraargs.runtime), @(LE.terraargs.ctx), dom)
+            legion_env.runtime, legion_env.ctx, dom)
 end
 
 -- Internal method: Ask Legion to create 3 dimensional index space
@@ -227,7 +284,7 @@ local terra Create3DGridIndexSpace(x : int, y : int, z : int)
   var rect  = LW.legion_rect_3d_t { pt_lo, pt_hi }
   var dom   = LW.legion_domain_from_rect_3d(rect)
   return LW.legion_index_space_create_domain(
-            @(LE.terraargs.runtime), @(LE.terraargs.ctx), dom)
+            legion_env.runtime, legion_env.ctx, dom)
 end
 
 -- Allocate an unstructured logical region
@@ -241,12 +298,16 @@ function LW.NewLogicalRegion(params)
             }
   -- index space
   l.is  = Create1DGridIndexSpace(l.n_rows)
-  l.isa = LW.legion_index_allocator_create(LE.runtime, LE.ctx, l.is)
+  l.isa = LW.legion_index_allocator_create(legion_env.runtime,
+                                           legion_env.ctx, l.is)
   -- field space
-  l.fs  = LW.legion_field_space_create(LE.runtime, LE.ctx)
-  l.fsa = LW.legion_field_allocator_create(LE.runtime, LE.ctx, l.fs)
+  l.fs  = LW.legion_field_space_create(legion_env.runtime,
+                                       legion_env.ctx)
+  l.fsa = LW.legion_field_allocator_create(legion_env.runtime,
+                                           legion_env.ctx, l.fs)
   -- logical region
-  l.handle = LW.legion_logical_region_create(LE.runtime, LE.ctx, l.is, l.fs)
+  l.handle = LW.legion_logical_region_create(legion_env.runtime,
+                                             legion_env.ctx, l.is, l.fs)
   setmetatable(l, LogicalRegion)
   return l
 end
@@ -273,10 +334,14 @@ function LW.NewGridLogicalRegion(params)
     l.is = Create3DGridIndexSpace(bounds[1], bounds[2], bounds[3])
   end
   -- field space
-  l.fs = LW.legion_field_space_create(LE.runtime, LE.ctx)
-  l.fsa = LW.legion_field_allocator_create(LE.runtime, LE.ctx, l.fs)
+  l.fs = LW.legion_field_space_create(legion_env.runtime,
+                                      legion_env.ctx)
+  l.fsa = LW.legion_field_allocator_create(legion_env.runtime,
+                                           legion_env.ctx, l.fs)
   -- logical region
-  l.handle = LW.legion_logical_region_create(LE.runtime, LE.ctx, l.is, l.fs)
+  l.handle = LW.legion_logical_region_create(legion_env.runtime,
+                                             legion_env.ctx,
+                                             l.is, l.fs)
   setmetatable(l, LogicalRegion)
   return l
 end
@@ -386,7 +451,8 @@ function LW.NewControlScanner(params)
   end
 
   -- launch and create the physical region mapping
-  local pr = LW.legion_inline_launcher_execute(LE.runtime, LE.ctx, il)
+  local pr = LW.legion_inline_launcher_execute(legion_env.runtime,
+                                               legion_env.ctx, il)
 
   local launchobj = setmetatable({
     inline_launcher = il,
@@ -494,7 +560,9 @@ end
 
 
 function LW.ControlScanner:close()
-  LW.legion_runtime_unmap_region(LE.runtime, LE.ctx, self.physical_region)
+  LW.legion_runtime_unmap_region(legion_env.runtime,
+                                 legion_env.ctx,
+                                 self.physical_region)
   LW.legion_physical_region_destroy(self.physical_region)
   LW.legion_inline_launcher_destroy(self.inline_launcher)
 end

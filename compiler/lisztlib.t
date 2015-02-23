@@ -9,6 +9,7 @@ local T = require 'compiler.types'
 
 local DataArray = use_single and
                   require('compiler.rawdata').DataArray
+local LW = use_legion and require "compiler.legionwrap"
 
 -------------------------------------------------------------------------------
 --[[ Liszt modules:                                                        ]]--
@@ -65,6 +66,7 @@ local is_vector = L.is_vector --cache lookup for efficiency
 -------------------------------------------------------------------------------
 --[[ LGlobals:                                                             ]]--
 -------------------------------------------------------------------------------
+
 function L.NewGlobal (typ, init)
     if not T.isLisztType(typ) or not typ:isValueType() then error("First argument to L.NewGlobal must be a Liszt expression type", 2) end
     if not T.luaValConformsToType(init, typ) then error("Second argument to L.NewGlobal must be an instance of type " .. typ:toString(), 2) end
@@ -72,8 +74,15 @@ function L.NewGlobal (typ, init)
     local s  = setmetatable({type=typ}, LGlobal)
     local tt = typ:terraType()
 
-    s.data = DataArray.New({size=1,type=tt})
-    s:set(init)
+    if use_single then
+      s.data = DataArray.New({size=1,type=tt})
+      s:set(init)
+
+    elseif use_legion then
+      local cdata = T.luaToLisztVal(init, typ)
+      s.data = LW.CreateFuture(typ, cdata)
+    end
+
     return s
 end
 
@@ -92,22 +101,36 @@ local function set_cpu_value (_type, data, val)
 end
 
 function LGlobal:set(val)
-    if not T.luaValConformsToType(val, self.type) then error("value does not conform to type of global: " .. self.type:toString(), 2) end
+  if not T.luaValConformsToType(val, self.type) then error("value does not conform to type of global: " .. self.type:toString(), 2) end
 
+  if use_single then
     self.data:write_ptr(function(ptr)
         ptr[0] = T.luaToLisztVal(val, self.type)
     end)
+
+  elseif use_legion then
+    if self.data then Lw.DestroyFuture(self.data) end
+    local cdata = T.luaToLisztVal(val, self.type)
+    self.data = LW.CreateFuture(self.type, cdata)
+  end
+
 end
 
 
 function LGlobal:get()
-    local value
+  local value
 
+  if use_single then
     self.data:read_ptr(function(ptr)
         value = T.lisztToLuaVal(ptr[0], self.type)
     end)
 
-    return value
+  elseif use_legion then
+    value = T.lisztToLuaVal(LW.GetResultFromFuture(self.type, self.data),
+                            self.type)
+  end
+
+  return value
 end
 
 function LGlobal:DataPtr()

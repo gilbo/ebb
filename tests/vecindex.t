@@ -20,11 +20,14 @@ vk(mesh.vertices)
 local x_out = L.NewGlobal(L.float, 0.0)
 local y_out = L.NewGlobal(L.float, 0.0)
 local y_idx = L.NewGlobal(L.int, 1)
-local read_out = liszt kernel(v : mesh.vertices)
+local read_out_const = liszt kernel(v : mesh.vertices)
     x_out += L.float(v.position[0])
+end
+local read_out_var = liszt kernel(v : mesh.vertices)
     y_out += L.float(v.position[y_idx])
 end
-read_out(mesh.vertices)
+read_out_const(mesh.vertices)
+read_out_var(mesh.vertices)
 
 local avgx = x_out:get() / mesh.vertices:Size()
 local avgy = y_out:get() / mesh.vertices:Size()
