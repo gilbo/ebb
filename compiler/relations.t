@@ -307,7 +307,6 @@ function L.LRelation:GroupBy(name)
   end
 
   local key_field = self[name]
-  local live_mask = self._is_live_mask
   if not L.is_field(key_field) then
     error("GroupBy(): Could not find a field named '"..name.."'", 2)
   elseif not key_field.type:isScalarKey() then
@@ -735,7 +734,7 @@ function L.LField:LoadFunction(lua_callback)
               tostring(self.type), 3)
       end
       local tval = T.luaToLisztVal(lval, self.type)
-      terralib.cast(&(self.type:terraType()), ptrs[0])[0] = tval
+      terralib.cast(&(self.type:terraType()), ptrs[1])[0] = tval
     end
   elseif use_single then
     self:Allocate()
