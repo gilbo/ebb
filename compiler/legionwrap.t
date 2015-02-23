@@ -14,6 +14,42 @@ local APIblob = terralib.includecstring([[
 ]])
 for k,v in pairs(APIblob) do LW[k] = v end
 
+local function iterate1d(n)
+  local i = -1
+  return function()
+    i = i+1
+    if i>= n then return nil end
+    return i
+  end
+end
+local function iterate2d(nx,ny)
+  local xi = -1
+  local yi = 0
+  return function()
+    xi = xi+1
+    if xi >= nx then xi = 0; yi = yi + 1 end
+    if yi >= ny then return nil end
+    return xi, yi
+  end
+end
+local function iterate3d(nx,ny,nz)
+  local xi = -1
+  local yi = 0
+  local zi = 0
+  return function()
+    xi = xi+1
+    if xi >= nx then xi = 0; yi = yi + 1 end
+    if yi >= ny then yi = 0; zi = zi + 1 end
+    if zi >= nz then return nil end
+    return xi, yi, zi
+  end
+end
+local function linid(ids,dims)
+  local i = ids[1]
+  if ids[2] then i = i + dims[1]*ids[2] end
+  if ids[3] then i = i + dims[2]*dims[1]*ids[3] end
+  return i
+end
 
 -------------------------------------------------------------------------------
 --[[                          Legion environment                           ]]--
@@ -222,18 +258,18 @@ function LW.NewGridLogicalRegion(params)
               type        = 'grid',
               relation    = params.relation,
               field_ids   = 0,
-              bounds      = params.bounds,
-              dimensions  = params.dimensions,
+              bounds      = params.dims,
+              dimensions  = #params.dims,
             }
   -- index space
-  local bounds = params.bounds
-  if params.dimensions == 1 then
+  local bounds = l.bounds
+  if l.dimensions == 1 then
     l.is = Create1DGridIndexSpace(bounds[1])
   end
-  if params.dimensions == 2 then
+  if l.dimensions == 2 then
     l.is = Create2DGridIndexSpace(bounds[1], bounds[2])
   end
-  if params.dimensions == 3 then
+  if l.dimensions == 3 then
     l.is = Create3DGridIndexSpace(bounds[1], bounds[2], bounds[3])
   end
   -- field space
@@ -328,8 +364,8 @@ function LW.NewControlScanner(params)
   elseif not params.fields then
     error('Expects fields list argument', 2)
   end
-  if not (params.n_rows or params.dimensions) then
-    error('Expects fields list argument', 2)
+  if not params.dimensions then
+    error('Expects dimensions argument', 2)
   end
 
   -- create the launcher and bind in the fields
@@ -352,127 +388,110 @@ function LW.NewControlScanner(params)
   -- launch and create the physical region mapping
   local pr = LW.legion_inline_launcher_execute(LE.runtime, LE.ctx, il)
 
-  -- create object to return
-  local dimensions = nil
-  if params.dimensions then
-    dimensions =
-      { params.dimensions[1], params.dimensions[2], params.dimensions[3] }
-  end
   local launchobj = setmetatable({
     inline_launcher = il,
     physical_region = pr,
     fields          = fields,
-    n_rows          = params.n_rows,
-    dimensions      = dimensions,
+    dimensions      = params.dimensions,
   }, LW.ControlScanner)
   return launchobj
 end
 
-function LW.ControlScanner:scanLinear(per_row_callback)
-  local accs = {}
-  local offs = {}
-  local ptrs = {}
-
-  -- initialize access data for the field data
-  local subrect = global(LW.legion_rect_1d_t)
-  local rect    = global(LW.legion_rect_1d_t)
-        rect:get().lo.x[0] = 0
-        rect:get().hi.x[0] = self.n_rows-1
-  for i,fid in ipairs(self.fields) do
-    accs[i] = LW.legion_physical_region_get_field_accessor_generic(
-                self.physical_region, fid)
-    offs[i] = global(LW.legion_byte_offset_t)
-    ptrs[i] = terralib.cast(&int8, LW.legion_accessor_generic_raw_rect_ptr_1d(
-                accs[i], rect, subrect:getpointer(), offs[i]:getpointer() ))
-  end
-
-  -- Iterate through the rows
-  for k=0,self.n_rows-1 do
-    per_row_callback(k, unpack(ptrs))
-    for i=1,#self.fields do
-      ptrs[i] = ptrs[i] + offs[i]:get().offset
-    end
-  end
-
-  -- clean-up
-  for i=1,#self.fields do
-    LW.legion_accessor_generic_destroy(accs[i])
-  end
-end
-
-
--- UGGGGH AWFUL MESS BUT IT WORKS AT LEAST
-function LW.ControlScanner:scanGrid(per_row_callback)
+function LW.ControlScanner:ScanThenClose()
   local dims = self.dimensions
   local accs = {}
   local offs = {}
   local ptrs = {}
 
-  -- initialize access data for the field data
+  -- initialize field-independent data for iteration
   local subrect
   local rect
   local get_raw_rect_ptr
-  if #dims == 2 then
+  if #dims == 1 then
+    subrect            = global(LW.legion_rect_1d_t)
+    rect               = global(LW.legion_rect_1d_t)
+    get_raw_rect_ptr   = LW.legion_accessor_generic_raw_rect_ptr_1d
+  elseif #dims == 2 then
     subrect            = global(LW.legion_rect_2d_t)
     rect               = global(LW.legion_rect_2d_t)
-    rect:get().lo.x[0] = 0
-    rect:get().lo.x[1] = 0
-    rect:get().hi.x[0] = dims[1]-1
-    rect:get().hi.x[1] = dims[2]-1
     get_raw_rect_ptr   = LW.legion_accessor_generic_raw_rect_ptr_2d
   elseif #dims == 3 then
-    subrect            = global(LW.legion_rect_3d_t)
-    rect               = global(LW.legion_rect_3d_t)
-    rect:get().lo.x[0] = 0
-    rect:get().lo.x[1] = 0
-    rect:get().lo.x[3] = 0
-    rect:get().hi.x[0] = dims[1]-1
-    rect:get().hi.x[1] = dims[2]-1
-    rect:get().hi.x[2] = dims[3]-1
-    get_raw_rect_ptr   = LW.legion_accessor_generic_raw_rect_ptr_3d
+    subrect            = global(LW.legion_rect_2d_t)
+    rect               = global(LW.legion_rect_2d_t)
+    get_raw_rect_ptr   = LW.legion_accessor_generic_raw_rect_ptr_2d
   else
-    error('INTERNAL: impossible branch')
+    error('INTERNAL n_dimensions > 3')
+  end
+  for d=1,#dims do
+    rect:get().lo.x[d-1] = 0
+    rect:get().hi.x[d-1] = dims[d]-1
   end
 
-  for i,fid in ipairs(self.fields) do
-    accs[i] = LW.legion_physical_region_get_field_accessor_generic(
+  -- initialize field-dependent data for iteration
+  for k,fid in ipairs(self.fields) do
+    accs[k] = LW.legion_physical_region_get_field_accessor_generic(
                 self.physical_region, fid)
     local offtemp = global(LW.legion_byte_offset_t[#dims])
-    ptrs[i] = terralib.cast(&int8, get_raw_rect_ptr(
-                accs[i], rect, subrect:getpointer(),
+    ptrs[k] = terralib.cast(&int8, get_raw_rect_ptr(
+                accs[k], rect, subrect:getpointer(),
                 terralib.cast(&LW.legion_byte_offset_t, offtemp:getpointer())
               ))
-    offs[i] = {
-      offtemp:get()[0].offset,
-      offtemp:get()[1].offset,
-    }
-    if #dims == 3 then offs[i][3] = offtemp:get()[2].offset end
+    offs[k] = {}
+    for d=1,#dims do
+      offs[k][d] = offtemp:get()[d-1].offset
+    end
   end
 
-  -- kludge the 3d case
-  if #dims == 2 then
-    dims[3] = 1
-    for i=1,#self.fields do offs[i][3] = 0 end -- doesn't matter
+  -- define what to do when the iteration terminates
+  local function close_up()
+    for k=1,#self.fields do
+      LW.legion_accessor_generic_destroy(accs[k])
+    end
+    self:close()
+    return nil
   end
 
-  -- Iterate through the rows
-  for zi = 0,dims[3]-1 do
-    for yi = 0,dims[2]-1 do
-      for xi = 0,dims[1]-1 do
-        local i = (zi * dims[2] + yi) * dims[1] + xi
-        local callptrs = {}
-        for fi=1,#self.fields do
-          callptrs[fi] = ptrs[fi] +
-                         zi * offs[fi][3] + yi * offs[fi][2] + xi * offs[fi][1]
-        end
-        per_row_callback(i, unpack(callptrs))
-  end end end
+  -- define an iterator/generator
+  if #dims == 1 then
+    local iter = iterate1d(dims[1])
+    return function()
+      local i = iter()
+      if i == nil then return close_up() end
 
-  -- clean-up
-  for i=1,#self.fields do
-    LW.legion_accessor_generic_destroy(accs[i])
+      local callptrs = {}
+      for fi=1,#self.fields do 
+        callptrs[fi] = ptrs[fi] + i*offs[fi][1]
+      end
+      return {i}, callptrs
+    end
+  elseif #dims == 2 then
+    local iter = iterate2d(dims[1], dims[2])
+    return function()
+      local xi,yi = iter()
+      if xi == nil then return close_up() end
+
+      local callptrs = {}
+      for fi=1,#self.fields do 
+        callptrs[fi] = ptrs[fi] + yi*offs[fi][2] + xi*offs[fi][1]
+      end
+      return {xi,yi}, callptrs
+    end
+  elseif #dims == 3 then
+    local iter = iterate3d(dims[1], dims[2], dims[3])
+    return function()
+      local xi,yi,zi = iter()
+      if xi == nil then return close_up() end
+
+      local callptrs = {}
+      for fi=1,#self.fields do 
+        callptrs[fi] = ptrs[fi] +
+                       zi*offs[fi][3] + yi*offs[fi][2] + xi*offs[fi][1]
+      end
+      return {xi,yi,zi}, callptrs
+    end
   end
 end
+
 
 function LW.ControlScanner:close()
   LW.legion_runtime_unmap_region(LE.runtime, LE.ctx, self.physical_region)

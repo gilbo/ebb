@@ -12,8 +12,9 @@ local DLD = require "compiler.dld"
 
 local PN = require "lib.pathname"
 
-local DynamicArray = use_single and
-                     require('compiler.rawdata').DynamicArray
+local rawdata = require('compiler.rawdata')
+local DynamicArray = use_single and rawdata.DynamicArray
+local DataArray    = use_single and rawdata.DataArray
 local LW = use_legion and require "compiler.legionwrap"
 
 local valid_name_err_msg =
@@ -31,6 +32,43 @@ function L.is_valid_lua_identifier(name)
   if not name:match('^[_%a][_%w]*$') then return false end
 
   return true
+end
+
+local function iterate1d(n)
+  local i = -1
+  return function()
+    i = i+1
+    if i>= n then return nil end
+    return i
+  end
+end
+local function iterate2d(nx,ny)
+  local xi = -1
+  local yi = 0
+  return function()
+    xi = xi+1
+    if xi >= nx then xi = 0; yi = yi + 1 end
+    if yi >= ny then return nil end
+    return xi, yi
+  end
+end
+local function iterate3d(nx,ny,nz)
+  local xi = -1
+  local yi = 0
+  local zi = 0
+  return function()
+    xi = xi+1
+    if xi >= nx then xi = 0; yi = yi + 1 end
+    if yi >= ny then yi = 0; zi = zi + 1 end
+    if zi >= nz then return nil end
+    return xi, yi, zi
+  end
+end
+local function linid(ids,dims)
+  local i = ids[1]
+  if ids[2] then i = i + dims[1]*ids[2] end
+  if ids[3] then i = i + dims[2]*dims[1]*ids[3] end
+  return i
 end
 
 -------------------------------------------------------------------------------
@@ -103,9 +141,9 @@ function L.NewRelation(params)
   local size = params.size
   if mode == 'GRID' then
     size = 1
-    rawset(rel, '_dim', {})
+    rawset(rel, '_dims', {})
     for i,n in ipairs(params.dim) do
-      rel._dim[i] = n
+      rel._dims[i] = n
       size = size * n
     end
   end
@@ -123,25 +161,19 @@ function L.NewRelation(params)
     rel._is_live_mask:Load(true)
 
   elseif use_legion then
-    error('TEMPORARY RELATIONS ARE BROKEN FOR LEGION')
+    --error('TEMPORARY RELATIONS ARE BROKEN FOR LEGION')
     -- create a logical region.
-    local dom_params =
-    {
-      relation = rel,
-      n_rows   = size,
-    }
-    local logical_region_wrapper = LW.NewLogicalRegion(dom_params)
-    rawset(rel, '_logical_region_wrapper', logical_region_wrapper)
-
-    -- create a logical region.
-    local dom_params =
-    {
-      relation = rel,
-      dimensions = dim,
-      bounds = bounds
-    }
-    local logical_region_wrapper = LW.NewGridLogicalRegion(dom_params)
-    rawset(rel, '_logical_region_wrapper', logical_region_wrapper)
+    if mode == 'GRID' then
+      rawset(rel, '_logical_region_wrapper', LW.NewGridLogicalRegion {
+        relation = rel,
+        dims     = rel._dims,
+      })
+    else
+      rawset(rel, '_logical_region_wrapper', LW.NewLogicalRegion {
+        relation = rel,
+        n_rows   = size,
+      })
+    end
   end
 
   return rel
@@ -169,155 +201,42 @@ function L.LRelation:Dims()
   end
 
   local dimret = {}
-  for i,n in self._dims do dimret[i] = n end
+  for i,n in ipairs(self._dims) do dimret[i] = n end
   return dimret
 end
 
---[[
-function L.NewRelation(size, name)
-    -- error check
-  if not name or type(name) ~= "string" then
-    error("NewRelation() expects a string as the 2nd argument", 2)
+-- generator func for looping over the relation's fields
+function L.LRelation:_INTERNAL_iter_gen()
+  local dims = self:Dims()
+  if #dims == 1 then
+    local iter = iterate1d(dims[1])
+    return function()
+      local i = iter()
+      if i == nil then return nil end
+      return i, {i}
+    end
+  elseif #dims == 2 then
+    local iter = iterate2d(dims[1], dims[2])
+    return function()
+      local xi, yi = iter()
+      if xi == nil then return nil end
+      return linid({xi,yi},dims), {xi,yi}
+    end
+  elseif #dims == 3 then
+    local iter = iterate3d(dims[1], dims[2], dims[3])
+    return function()
+      local xi, yi, zi = iter()
+      if xi == nil then return nil end
+      return linid({xi,yi,zi},dims), {xi,yi,zi}
+    end
+  else
+    error('INTERNAL > 3 dims')
   end
-  if not L.is_valid_lua_identifier(name) then
-    error(L.valid_name_err_msg.relation, 2)
-  end
-
-  -- construct and return the relation
-  local rel = setmetatable( {
-    _concrete_size = size,
-    _logical_size  = size,
-
-    _fields    = terralib.newlist(),
-    _subsets   = terralib.newlist(),
-    _macros    = terralib.newlist(),
-    _functions = terralib.newlist(),
-
-    _incoming_refs = {}, -- used for walking reference graph
-    _name      = name,
-    _typestate = {
-      --groupedby   = false, -- use _grouping entry's presence instead
-      fragmented  = false,
-      --has_subsets = false, -- use #_subsets
-      grid        = false,
-    },
-  },
-  L.LRelation)
-
-  if use_single then
-    -- create a mask to track which rows are live.
-    rawset(rel, '_is_live_mask', L.LField.New(rel, '_is_live_mask', L.bool))
-    rel._is_live_mask:Load(true)
-  elseif use_legion then
-    -- create a logical region.
-    local dom_params =
-    {
-      relation = rel,
-      n_rows   = size,
-    }
-    local logical_region_wrapper = LW.NewLogicalRegion(dom_params)
-    rawset(rel, '_logical_region_wrapper', logical_region_wrapper)
-  end
-
-  return rel
 end
 
--- Create a relation that has an underlying grid data layout
-function L.NewGridRelation(name, params)
-    -- error check
-  if not name or type(name) ~= "string" then
-    error("NewRelation() expects a string as the 2nd argument", 2)
-  end
-  if not L.is_valid_lua_identifier(name) then
-    error(L.valid_name_err_msg.relation, 2)
-  end
-
-  local dim = #params.bounds
-  local bounds = params.bounds
-  if not (dim == 1 or dim == 2 or dim == 3) then
-    error("Invalid dimension size " .. tostring(dim), 3)
-  end
-  local size = 1
-  for d = 1, dim do
-    size = size * bounds[d]
-  end
-
-  -- construct and return the relation
-  local rel = setmetatable( {
-    _concrete_size = size,
-    _logical_size  = size,
-
-    _fields    = terralib.newlist(),
-    _subsets   = terralib.newlist(),
-    _macros    = terralib.newlist(),
-    _functions = terralib.newlist(),
-
-    _incoming_refs = {}, -- used for walking reference graph
-    _name      = name,
-    _typestate = {
-      --groupedby   = false, -- use _grouping entry's presence instead
-      fragmented  = false,
-      --has_subsets = false, -- use #_subsets
-      grid        = true,
-      dimensions  = dim,
-    },
-  },
-  L.LRelation)
-
-  if use_single then
-    -- create a mask to track which rows are live.
-    rawset(rel, '_is_live_mask', L.LField.New(rel, '_is_live_mask', L.bool))
-    rel._is_live_mask:Load(true)
-  elseif use_legion then
-    -- create a logical region.
-    local dom_params =
-    {
-      relation = rel,
-      dimensions = dim,
-      bounds = bounds
-    }
-    local logical_region_wrapper = LW.NewGridLogicalRegion(dom_params)
-    rawset(rel, '_logical_region_wrapper', logical_region_wrapper)
-  end
-  return rel
-end
-
-function L.LRelation:Size()
-  return self._logical_size
-end
-function L.LRelation:ConcreteSize()
-  return self._concrete_size
-end
-function L.LRelation:Name()
-  return self._name
-end
-]]
-
-function L.LRelation:ResizeConcrete(new_size)
-  if not self:isElastic() then
-    error('Can only resize ELASTIC relations', 2)
-  end
-  if use_legion then error("Can't resize while using Legion", 2) end
-
-  self._is_live_mask.array:resize(new_size)
-  for _,field in ipairs(self._fields) do
-    field.array:resize(new_size)
-  end
-  self._concrete_size = new_size
-end
-
---function L.LRelation:isFragmented()
---  return self._typestate.fragmented
---end
---function L.LRelation:isCompact()
---  return not self._typestate.fragmented
---end
 function L.LRelation:hasSubsets()
   return #self._subsets ~= 0
 end
---function L.LRelation:isGrouped()
---  return self._grouping ~= nil
---end
 
 -- returns a record type
 function L.LRelation:StructuralType()
@@ -380,36 +299,25 @@ function L.LRelation:NewFieldFunction (name, userfunc)
 end
 
 function L.LRelation:GroupBy(name)
-  if not self:isPlain() then
+  if self:isGrouped() then
+    error("GroupBy(): Relation is already grouped", 2)
+  elseif not self:isPlain() then
     error("GroupBy(): Cannot group a relation "..
           "unless it's a PLAIN relation", 2)
   end
 
   local key_field = self[name]
   local live_mask = self._is_live_mask
-  if self:isGrouped() then
-    error("GroupBy(): Relation is already grouped", 2)
-  elseif not L.is_field(key_field) then
+  if not L.is_field(key_field) then
     error("GroupBy(): Could not find a field named '"..name.."'", 2)
   elseif not key_field.type:isScalarKey() then
     error("GroupBy(): Grouping by non-scalar-key fields is "..
           "prohibited.", 2)
-  elseif key_field.type.ndims > 1 then
-    error("GroupBy(): Grouping by a grid relation "..
-          "is currently unsupported", 2)
   end
 
   if use_legion then
     error('GroupBy(): Grouping unimplemented for Legion currently', 2)
   end
-
-  -- WARNING: The sizing policy will break with dead rows
-  --if self:isFragmented() then
-  --  error("GroupBy(): Cannot group a fragmented relation", 2)
-  --end
-  --if key_field.type.relation:isFragmented() then
-  --  error("GroupBy(): Cannot group by a fragmented relation", 2)
-  --end
 
   local num_keys = key_field.type.relation:ConcreteSize() -- # possible keys
   local num_rows = key_field:ConcreteSize()
@@ -424,23 +332,28 @@ function L.LRelation:GroupBy(name)
     },
   })
 
+  -- NOTE: THIS IMPLEMENTATION HEAVILY ASSUMES THAT A GRID IS LINEARIZED
+  -- IN ROW-MAJOR ORDER
   self._grouping.index._array:write_ptr(function(indexdata)
+  key_field.array:read_ptr(function(keyptr)
+    local dims = key_field.type.relation:Dims()
     local prev,pos = 0,0
-    key_field.array:read_ptr(function(keyptr)
-      for i = 0, num_keys - 1 do
-        indexdata[i].a[0] = pos
-        while keyptr[pos].a[0] == i and pos < num_rows do
-          if keyptr[pos].a[0] < prev then
-            self._grouping.index:Release()
-            self._grouping = nil
-            error("GroupBy(): Key field '"..name.."' is not sorted.")
-          end
-          prev,pos = keyptr[pos].a[0], pos+1
+    for i = 0, num_keys-1 do
+      indexdata[i].a[0] = pos
+      local lin_key = T.linAddrLua(keyptr[pos], dims)
+      while lin_key == i and pos < num_rows do
+        if lin_key < prev then
+          self._grouping.index:Release()
+          self._grouping = nil
+          error("GroupBy(): Key field '"..name.."' is not sorted.")
         end
+        prev,pos = lin_key, pos+1
+        lin_key  = T.linAddrLua(keyptr[pos], dims)
       end
-    end) -- key_field read
+    end
     assert(pos == num_rows)
-    indexdata[num_keys].a[0] = pos
+    indexdata[num_keys].a[0] = pos 
+  end) -- key_field read
   end) -- indexdata write
 
   -- record reference from this relation to the relation it's grouped by
@@ -471,36 +384,6 @@ function L.LRelation:print()
   end
 end
 
-
--------------------------------------------------------------------------------
--------------------------------------------------------------------------------
---[[ Insert / Delete                                                       ]]--
--------------------------------------------------------------------------------
--------------------------------------------------------------------------------
-
--- returns a useful error message 
-function L.LRelation:UnsafeToDelete()
-  if not self:isElastic() then
-    return "Cannot delete from relation "..self:Name()..
-           " because it's not ELASTIC"
-  end
-  if self:hasSubsets() then
-    return 'Cannot delete from relation '..self:Name()..
-           ' because it has subsets'
-  end
-end
-
-function L.LRelation:UnsafeToInsert(record_type)
-  -- duplicate above checks
-  local msg = self:UnsafeToDelete()
-  if msg then
-    return msg:gsub('delete from','insert into')
-  end
-
-  if record_type ~= self:StructuralType() then
-    return 'inserted record type does not match relation'
-  end
-end
 
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
@@ -749,10 +632,17 @@ end
 function L.LField:Allocate()
   if use_legion then error('No Allocate() using legion') end
   if not self.array then
-    self.array = DynamicArray.New{
-      size = self:ConcreteSize(),
-      type = self:Type():terraType()
-    }
+    --if self.owner:isElastic() then
+      self.array = DynamicArray.New{
+        size = self:ConcreteSize(),
+        type = self:Type():terraType()
+      }
+    --else
+    --  self.array = DataArray.New {
+    --    size = self:ConcreteSize(),
+    --    type = self:Type():terraType()
+    --  }
+    --end
   end
 end
 
@@ -825,48 +715,6 @@ function L.LRelation:Copy( p )
 end
 
 
---[[ convert lua tables or numbers to
--- Terra structs used to represent key values
-local function convert_key(key_val, typ)
-  if 1 == typ.ndims then
-    return terralib.new(typ:terraType(), { { key_val } })
-  elseif type(key_val) == 'table' and #key_val == typ.ndim then
-    return terralib.new(typ:terraType(), {key_val})
-  else
-    error('Loaded Value was not recognizable as '..
-          'Key of dimension '..tostring(typ.ndims), 3)
-  end
-end
-
--- convert lua tables or LVectors to
--- Terra structs used to represent vectors
-local function convert_vec(vec_val, typ)
-  if type(vec_val) == 'table' and #vec_val == typ.N then
-    return terralib.new(typ:terraType(), {vec_val})
-  else
-    error('Loaded Value was not recognizable as compatible Vector', 3)
-    --return nil
-  end
-end
-
--- convert lua tables to Terra structs used to represent matrices
-local function convert_mat(mat_val, typ)
-  if type(mat_val) == 'table' and #mat_val == typ.Nrow then
-    local terraval = terralib.new(typ:terraType())
-    for r=1,#mat_val do
-      local row = mat_val[r]
-      if type(row) ~= 'table' or #row ~= typ.Ncol then
-        error('Loaded Value was not recognizable as compatible Matrix', 3)
-      end
-      for c=1,#row do terraval.d[r][c] = row[c] end
-    end
-    return terraval
-  else
-    error('Loaded Value was not recognizable as compatible Matrix', 3)
-  end
-end
-]]
-
 function L.LField:LoadFunction(lua_callback)
   if self.owner:isFragmented() then
     error('cannot load into fragmented relation', 2)
@@ -876,48 +724,32 @@ function L.LField:LoadFunction(lua_callback)
     -- Ok, we need to map some stuff down here
     local scanner = LW.NewControlScanner {
       logical_region = self.owner._logical_region_wrapper.handle,
-      n_rows         = self:Size(),
+      dimensions     = self.owner:Dims(),
       privilege      = LW.WRITE_ONLY,
       fields         = {self.fid},
     }
-    scanner:scan(function(i, dataptr)
-      local lval = lua_callback(i)
-      local tval = T.luaToLisztVal(lval)
-      terralib.cast(&(self.type:terraType()), dataptr)[0] = tval
-    end)
-    scanner:close()
+    for ids, ptrs in scanner:ScanThenClose() do
+      local lval = lua_callback(unpack(ids))
+      if not T.luaValConformsToType(lval, self.type) then
+        error("lua value does not conform to field type "..
+              tostring(self.type), 3)
+      end
+      local tval = T.luaToLisztVal(lval, self.type)
+      terralib.cast(&(self.type:terraType()), ptrs[0])[0] = tval
+    end
   elseif use_single then
     self:Allocate()
 
+    local dims = self.owner:Dims()
     self.array:write_ptr(function(dataptr)
-      for i = 0, self:Size() - 1 do
-        local val  = lua_callback(i)
+      for lin,ids in self.owner:_INTERNAL_iter_gen() do
+        local val = lua_callback(unpack(ids))
         if not T.luaValConformsToType(val, self.type) then
           error("lua value does not conform to field type "..
                 tostring(self.type), 3)
         end
-        dataptr[i] = T.luaToLisztVal(val, self.type)
+        dataptr[lin] = T.luaToLisztVal(val, self.type)
       end
-      --if self.type:isSmallMatrix() then
-      --  for i = 0, self:Size() - 1 do
-      --    local val = lua_callback(i)
-      --    dataptr[i] = convert_mat(val, self.type)
-      --  end
-      --elseif self.type:isVector() then
-      --  for i = 0, self:Size() - 1 do
-      --    local val = lua_callback(i)
-      --    dataptr[i] = convert_vec(val, self.type)
-      --  end
-      --elseif self.type:isScalarKey() then
-      --  for i = 0, self:Size() - 1 do
-      --    local val = lua_callback(i)
-      --    dataptr[i] = convert_key(val, self.type)
-      --  end
-      --else
-      --  for i = 0, self:Size() - 1 do
-      --    dataptr[i] = lua_callback(i)
-      --  end
-      --end
     end) -- write_ptr
   end
 end
@@ -929,14 +761,44 @@ function L.LField:LoadList(tbl)
   if type(tbl) ~= 'table' then
     error('bad type passed to LoadList().  Expecting a table', 2)
   end
-  if #tbl ~= self:Size() then
-    error('argument array has the wrong number of elements: '..
-          tostring(#tbl)..
-          ' (was expecting '..tostring(self:Size())..')', 2)
+  if self.owner:isGrid() then
+    local dims = self.owner:Dims()
+    local dimstr = '{'..tostring(dims[1])..','..tostring(dims[2])
+    if dims[3] then dimstr = dimstr..','..tostring(dims[3]) end
+    dimstr = dimstr..'}'
+    local errmsg = 'argument list should have dimensions '..dimstr
+
+    if dims[3] then
+      if dims[3] ~= #tbl then error(errmsg, 2) end
+      for zi=1,dims[3] do
+        if dims[2] ~= #tbl[zi] then error(errmsg,2) end
+        for yi=1,dims[2] do
+          if dims[1] ~= #tbl[zi][yi] then error(errmsg,2) end
+        end
+      end
+    else
+      if dims[2] ~= #tbl then error(errmsg,2) end
+      for yi=1,dims[2] do
+        if dims[1] ~= #tbl[yi] then error(errmsg,2) end
+      end
+    end
+  else
+    if #tbl ~= self:Size() then
+      error('argument list has the wrong number of elements: '..
+            tostring(#tbl)..
+            ' (was expecting '..tostring(self:Size())..')', 2)
+    end
   end
-  self:LoadFunction(function(i)
-    return tbl[i+1]
-  end)
+
+  if self.owner:nDims() == 1 then
+    self:LoadFunction(function(i) return tbl[i+1] end)
+  elseif self.owner:nDims() == 2 then
+    self:LoadFunction(function(xi,yi) return tbl[yi+1][xi+1] end)
+  elseif self.owner:nDims() == 3 then
+    self:LoadFunction(function(xi,yi,zi) return tbl[zi+1][yi+1][xi+1] end)
+  else
+    error('INTERNAL > 3 dimensions')
+  end
 end
 
 -- TODO: DEPRECATED FORM.  (USE DLD?)
@@ -985,11 +847,6 @@ function L.LField:Load(arg)
     if typ and typ:ispointer() then
       return self:LoadFromMemory(arg)
     end
-  elseif  type(arg) == 'string' or PN.is_pathname(arg) then
-    if use_legion then
-      error('Load from file while using Legion is unimplemented', 2)
-    end
-    return self:LoadFromFile(arg)
   elseif  type(arg) == 'table' then
     if (self.type:isScalarKey() and #arg == self.type.ndims) or
        (self.type:isVector() and #arg == self.type.N) or
@@ -1006,80 +863,68 @@ end
 
 
 
--- convert lua tables or LVectors to
--- Terra structs used to represent vectors
---local function terraval_to_lua(val, typ)
---  if typ:isSmallMatrix() then
---    local mat = {}
---    local btyp = typ:baseType()
---    for i=1,typ.Nrow do
---      mat[i] = {}
---      for j=1,typ.Ncol do
---        mat[i][j] = terraval_to_lua(val.d[i-1][j-1], btyp) end
---    end
---    return mat
---  elseif typ:isVector() then
---    local vec = {}
---    for i = 1, typ.N do
---      vec[i] = terraval_to_lua(val.d[i-1], typ:baseType())
---    end
---    return vec
---  elseif typ:isNumeric() then
---    return tonumber(val)
---  elseif typ:isLogical() then
---    if tonumber(val) == 0 then return false else return true end
---  elseif typ:isScalarKey() then
---    if typ.ndims == 1 then
---      return tonumber(val.a[0])
---    elseif typ.ndims == 2 then
---      return { tonumber(val.a[0]), tonumber(val.a[1]) }
---    elseif typ.ndims == 3 then
---      return { tonumber(val.a[0]), tonumber(val.a[1]), tonumber(val.a[2]) }
---    else
---      error('INTERNAL: Cannot have > 3 dimensional keys')
---    end
---  else
---    error('unhandled terra_to_lua conversion')
---  end
---end
-
-
 -- helper to dump multiple fields jointly
 function L.LRelation:JointDump(fields, lua_callback)
   if self:isFragmented() then
     error('cannot dump from fragmented relation', 2)
   end
-  local size = self:ConcreteSize()
-  local nfields = #fields
-  local typs = {}
-  local ptrs = {}
 
-  -- main loop part
-  local loop = function()
-    for i=0,size-1 do
+  if use_legion then
+    local fids = {}
+    local typs = {}
+    for k=1,#fields do
+      local f = self[fields[k]]
+      fids[k] = f.fid
+      typs[k] = f.type
+    end
+
+    local scanner = LW.NewControlScanner {
+      logical_region = self.owner._logical_region_wrapper.handle,
+      dimensions     = self.owner:Dims(),
+      privilege      = LW.READ_ONLY,
+      fields         = fids,
+    }
+    for ids, ptrs in scanner:ScanThenClose() do
       local vals = {}
-      for k=1,nfields do
-        vals[k] = T.lisztToLuaVal(ptrs[k][i], typs[k])
+      for k=1,#fields do
+        local tval = terralib.cast(&(typs[k]:terraType()), ptrs[k])[0]
+        vals[k] = T.lisztToLuaVal(tval, typs[k])
       end
-      lua_callback(i, unpack(vals))
+      lua_callback(ids, unpack(vals))
     end
-  end
+  else
+    local dims = self:Dims()
+    local nfields = #fields
+    local typs = {}
+    local ptrs = {}
 
-  for k=1,nfields do
-    local fname = fields[k]
-    local f     = self[fname]
-    typs[k]     = f.type
-    local loopcapture = loop -- THIS IS NEEDED TO STOP INF. RECURSION
-    local outerloop = function()
-      f.array:read_ptr(function(dataptr)
-        ptrs[k] = dataptr
-        loopcapture()
-      end)
+    -- main loop part
+    local loop = function()
+      for lin,ids in self:_INTERNAL_iter_gen() do
+        local vals = {}
+        for k=1,nfields do
+          vals[k] = T.lisztToLuaVal(ptrs[k][lin], typs[k])
+        end
+        lua_callback(ids, unpack(vals))
+      end
     end
-    loop = outerloop
-  end
 
-  loop()
+    for k=1,nfields do
+      local fname = fields[k]
+      local f     = self[fname]
+      typs[k]     = f.type
+      local loopcapture = loop -- THIS IS NEEDED TO STOP INF. RECURSION
+      local outerloop = function()
+        f.array:read_ptr(function(dataptr)
+          ptrs[k] = dataptr
+          loopcapture()
+        end)
+      end
+      loop = outerloop
+    end
+
+    loop()
+  end
 end
 
 -- callback(i, val)
@@ -1089,15 +934,9 @@ function L.LField:DumpFunction(lua_callback)
   if self.owner:isFragmented() then
     error('cannot dump from fragmented relation', 2)
   end
-  -- TODO: replace with the below call?
-  self.array:read_ptr(function(dataptr)
-    for i = 0, self:ConcreteSize()-1 do
-      --local val = terraval_to_lua(dataptr[i], self.type)
-      local val = T.lisztToLuaVal(dataptr[i], self.type)
-      lua_callback(i, val)
-    end
-  end) -- read_ptr
-  --self.owner:JointDump({self:Name()}, lua_callback)
+  self.owner:JointDump({self:Name()}, function(ids, val)
+    lua_callback(val, unpack(ids))
+  end)
 end
 
 function L.LField:DumpToList()
@@ -1105,35 +944,29 @@ function L.LField:DumpToList()
     error('cannot dump from fragmented relation', 2)
   end
   local arr = {}
-  self:DumpFunction(function(i,val)
-    arr[i+1] = val
-  end)
+  local dims = self.owner:Dims()
+  if #dims == 1 then
+    self:DumpFunction(function(val, i)
+      arr[i+1] = val
+    end)
+  elseif #dims == 2 then
+    for yi=1,dims[2] do arr[yi] = {} end
+    self:DumpFunction(function(val, xi,yi)
+      arr[yi+1][xi+1] = val
+    end)
+  elseif #dims == 3 then
+    for zi=1,dims[3] do
+      arr[zi] = {}
+      for yi=1,dims[2] do arr[zi][yi] = {} end
+    end
+    self:DumpFunction(function(val, xi,yi,zi)
+      arr[zi+1][yi+1][xi+1] = val
+    end)
+  else
+    error('INTERNAL: > 3 dims')
+  end
   return arr
 end
-
-
---local function valtostring(val, typ)
---  if not typ:isScalarKey() then
---    local str = tostring(val):gsub('ULL','')
---    return str
---  else
---    local str = tostring(val.a[0]):gsub('ULL','')
---    if typ.ndims == 1 then
---      return str
---    else
---      local t2 = tostring(val.a[1]):gsub('ULL','')
---      str = '{ ' .. str .. ', ' .. t2
---      if typ.ndims == 2 then
---        return str .. ' }'
---      elseif typ.ndims == 3 then
---        local t3 = tostring(val.a[2]):gsub('ULL','')
---        return str .. ', ' .. t3 .. ' }'
---      else
---        error("INTERNAL: keys cannot be >3 dimensional")
---      end
---    end
---  end
---end
 
 function L.LField:print()
   if use_legion then
@@ -1163,14 +996,17 @@ function L.LField:print()
 
   self.owner:JointDump(
   {'_is_live_mask', self:Name()},
-  function (i, islive, datum)
+  function (ids, islive, datum)
     local alive = ' .'
     if not islive then alive = ' x' end
+    local idstr = tostring(ids[1])
+    if ids[2] then idstr = idstr..' '..tostring(ids[2]) end
+    if ids[3] then idstr = idstr..' '..tostring(ids[3]) end
 
     if self.type:isSmallMatrix() then
       local s = ''
       for c=1,self.type.Ncol do s = s .. flattenkey(datum[1][c]) .. ' ' end
-      print("", tostring(i) .. alive, s)
+      print("", idstr .. alive, s)
 
       for r=2,self.type.Nrow do
         local s = ''
@@ -1181,56 +1017,12 @@ function L.LField:print()
     elseif self.type:isVector() then
       local s = ''
       for k=1,self.type.N do s = s .. flattenkey(datum[k]) .. ' ' end
-      print("", tostring(i) .. alive, s)
+      print("", idstr .. alive, s)
 
     else
-      print("", tostring(i) .. alive, flattenkey(datum))
+      print("", idstr .. alive, flattenkey(datum))
     end
   end)
-
---  local N = self.owner:ConcreteSize()
---  local livemask = self.owner._is_live_mask
---
---  livemask.array:read_ptr(function(liveptr)
---  self.array:read_ptr(function(dataptr)
---    local alive
---    if self.type:isSmallMatrix() then
---      for i = 0, N-1 do
---        if liveptr[i] then alive = ' .'
---        else                alive = ' x' end
---        local s = ''
---        for c = 0, self.type.Ncol-1 do
---          s = s .. valtostring(dataptr[i].d[0][c], self.type) .. ' '
---        end
---        print("", tostring(i) .. alive, s)
---        for r = 1, self.type.Nrow-1 do
---          local s = ''
---          for c = 0, self.type.Ncol-1 do
---            s = s .. valtostring(dataptr[i].d[r][c], self.type) .. ' '
---          end
---          print("", "", s)
---        end
---      end
---    elseif self.type:isVector() then
---      for i = 0, N-1 do
---        if liveptr[i] then alive = ' .'
---        else                alive = ' x' end
---        local s = ''
---        for j = 0, self.type.N-1 do
---          s = s .. valtostring(dataptr[i].d[j], self.type) .. ' '
---        end
---        print("", tostring(i) .. alive, s)
---      end
---    else
---      for i = 0, N-1 do
---        if liveptr[i] then alive = ' .'
---        else                alive = ' x' end
---        local t = valtostring(dataptr[i], self.type)
---        print("", tostring(i) .. alive, t)
---      end
---    end
---  end) -- dataptr
---  end) -- liveptr
 end
 
 
@@ -1271,7 +1063,57 @@ end
 
 
 
--- Defrag
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+--[[                          ELASTIC RELATIONS                            ]]--
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+
+function L.LRelation:ResizeConcrete(new_size)
+  if not self:isElastic() then
+    error('Can only resize ELASTIC relations', 2)
+  end
+  if use_legion then error("Can't resize while using Legion", 2) end
+
+  self._is_live_mask.array:resize(new_size)
+  for _,field in ipairs(self._fields) do
+    field.array:resize(new_size)
+  end
+  self._concrete_size = new_size
+end
+
+-------------------------------------------------------------------------------
+--[[ Insert / Delete                                                       ]]--
+-------------------------------------------------------------------------------
+
+-- returns a useful error message 
+function L.LRelation:UnsafeToDelete()
+  if not self:isElastic() then
+    return "Cannot delete from relation "..self:Name()..
+           " because it's not ELASTIC"
+  end
+  if self:hasSubsets() then
+    return 'Cannot delete from relation '..self:Name()..
+           ' because it has subsets'
+  end
+end
+
+function L.LRelation:UnsafeToInsert(record_type)
+  -- duplicate above checks
+  local msg = self:UnsafeToDelete()
+  if msg then
+    return msg:gsub('delete from','insert into')
+  end
+
+  if record_type ~= self:StructuralType() then
+    return 'inserted record type does not match relation'
+  end
+end
+
+
+-------------------------------------------------------------------------------
+--[[ Defrag                                                                ]]--
+-------------------------------------------------------------------------------
 
 function L.LRelation:_INTERNAL_MarkFragmented()
   if not self:isElastic() then

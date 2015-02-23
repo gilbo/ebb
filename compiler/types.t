@@ -249,6 +249,13 @@ for i=1,3 do
     return struct_name
   end
 end
+function T.linAddrLua(addr, dims)
+      if #dims == 1 then return addr.a[0]
+  elseif #dims == 2 then return addr.a[1]*dims[1] + addr.a[0]
+  elseif #dims == 3 then return addr.a[2]*dims[2] + addr.a[1]*dims[1]
+                                                  + addr.a[0]
+  else error('INTERNAL > 3 dimensional address???') end
+end
 local keyType = cached(function(relation)
     checkrelation(relation)
     local rt = Type:new("key")

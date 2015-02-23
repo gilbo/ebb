@@ -33,6 +33,25 @@ function test.aeq(a, b)
 	end
 end
 
+function test.rec_aeq(a, b, idxstr)
+	idxstr = idxstr or ''
+	if type(a) ~= 'table' or type(b) ~= 'table' then
+		if a ~= b then error("Element (index"..idxstr.." ) "..
+												 "of arrays does not match "..
+												 "( "..tostring(a).." vs. "..tostring(b).." )",
+												 2) end
+	else
+		if #a ~= #b then error("(Sub-)arrays (index "..idxstr.." ) "..
+													 "do not have matching length "..
+													 "( "..tostring(#a).." vs. "..tostring(#b).." )",
+													 2) end
+		-- recurse
+		for i=1,#a do
+			test.rec_aeq(a[i],b[i], idxstr..' '..tostring(i))
+		end
+	end
+end
+
 local zero_diff = .0000005
 function test.fuzzy_aeq (a, b)
 	if #a ~= #b then error("Arrays are not of equal length", 2) end
