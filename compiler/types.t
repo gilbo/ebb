@@ -251,9 +251,25 @@ for i=1,3 do
 end
 function T.linAddrLua(addr, dims)
       if #dims == 1 then return addr.a[0]
-  elseif #dims == 2 then return addr.a[1]*dims[1] + addr.a[0]
-  elseif #dims == 3 then return addr.a[2]*dims[2] + addr.a[1]*dims[1]
-                                                  + addr.a[0]
+  elseif #dims == 2 then return addr.a[0] + dims[1] * addr.a[1]
+  elseif #dims == 3 then return addr.a[0] + dims[1] * (addr.a[1] +
+                                                       dims[2]*addr.a[2])
+  else error('INTERNAL > 3 dimensional address???') end
+end
+function T.linAddrTerraGen(dims)
+  if #dims == 1 then
+    return macro(function(addr)
+      return `addr.a[0]
+    end)
+  elseif #dims == 2 then
+    return macro(function(addr)
+      return quote var a = addr.a in a[0] + [dims[1]] * a[1] end
+    end)
+  elseif #dims == 3 then
+    return macro(function(addr)
+      return quote var a = addr.a in a[0] + [dims[1]] * (a[1] +
+                                                         [dims[2]]*a[2]) end
+    end)
   else error('INTERNAL > 3 dimensional address???') end
 end
 local keyType = cached(function(relation)
