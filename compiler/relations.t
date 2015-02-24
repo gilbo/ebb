@@ -878,8 +878,8 @@ function L.LRelation:JointDump(fields, lua_callback)
     end
 
     local scanner = LW.NewControlScanner {
-      logical_region = self.owner._logical_region_wrapper.handle,
-      dimensions     = self.owner:Dims(),
+      logical_region = self._logical_region_wrapper.handle,
+      dimensions     = self:Dims(),
       privilege      = LW.READ_ONLY,
       fields         = fids,
     }
@@ -968,14 +968,13 @@ function L.LField:DumpToList()
 end
 
 function L.LField:print()
-  if use_legion then
-    error('BROKEN; rewrite using single DUMP choke point')
-  end
   print(self.name..": <" .. tostring(self.type:terraType()) .. '>')
-  if not self.array then
+  if use_single and not self.array then
     print("...not initialized")
     return
-  else
+  end
+  local is_elastic = self.owner:isElastic()
+  if is_elastic then
     print("  . == live  x == dead")
   end
 
@@ -993,11 +992,16 @@ function L.LField:print()
     end
   end
 
-  self.owner:JointDump(
-  {'_is_live_mask', self:Name()},
-  function (ids, islive, datum)
-    local alive = ' .'
-    if not islive then alive = ' x' end
+  local fields     = { self:Name() }
+  if is_elastic then fields[2] = '_is_live_mask' end
+  self.owner:JointDump(fields,
+  function (ids, datum, islive)
+    local alive = ''
+    if is_elastic then
+      if islive then alive = ' .'
+                else alive = ' x' end
+    end
+
     local idstr = tostring(ids[1])
     if ids[2] then idstr = idstr..' '..tostring(ids[2]) end
     if ids[3] then idstr = idstr..' '..tostring(ids[3]) end

@@ -482,9 +482,9 @@ function LW.ControlScanner:ScanThenClose()
     rect               = global(LW.legion_rect_2d_t)
     get_raw_rect_ptr   = LW.legion_accessor_generic_raw_rect_ptr_2d
   elseif #dims == 3 then
-    subrect            = global(LW.legion_rect_2d_t)
-    rect               = global(LW.legion_rect_2d_t)
-    get_raw_rect_ptr   = LW.legion_accessor_generic_raw_rect_ptr_2d
+    subrect            = global(LW.legion_rect_3d_t)
+    rect               = global(LW.legion_rect_3d_t)
+    get_raw_rect_ptr   = LW.legion_accessor_generic_raw_rect_ptr_3d
   else
     error('INTERNAL n_dimensions > 3')
   end

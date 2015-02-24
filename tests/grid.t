@@ -36,7 +36,7 @@ end, "Cannot group a relation unless it's a PLAIN relation")
 rel1:NewField('r2', rel2):Load(function(i)
   return { i%3, math.floor(i/3) }
 end)
-rel1:GroupBy('r2')
+--rel1:GroupBy('r2')
 
 -- test loading
 rel1:NewField('v1',L.double):Load(function(i)    return i         end)
@@ -56,8 +56,6 @@ rel3:NewField('f3',L.double):Load(tbl3)
 -- test that dumping preserves list/structure
 test.rec_aeq(rel2.f2:DumpToList(),tbl2)
 test.rec_aeq(rel3.f3:DumpToList(),tbl3)
-
-
 
 
 
