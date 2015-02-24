@@ -7,17 +7,13 @@ import "compiler.liszt"
 local g_scal = L.NewGlobal(L.int, 4)
 
 -- Create relations and fields
--- TODO: uncomment these after refactoring/fixing
 -- local points = L.NewRelation(4, 'points')
--- local points = L.NewRelation { name = 'points', dim = {3,4} }
--- 
--- points:NewField('x', L.int)
--- points:NewField('y', L.int)
--- points:NewField('z', L.int)
--- points:NewField('t', L.int)
--- local edges = L.NewRelation { size = 4, name = 'edges')
--- edges:NewField('head', points)
--- edges:NewField('tail', points)
+local points = L.NewRelation { name = 'points', dim = {3,2} }
+
+points:NewField('x', L.int)
+points:NewField('y', L.int)
+points:NewField('z', L.int)
+points:NewField('t', L.int)
 
 -- Globals
 local g_scal = L.NewGlobal(L.int, 4)
@@ -28,30 +24,38 @@ local g_vec  = L.NewGlobal(L.vec2d, {0, 0})
 print(g_scal:get())
 terralib.tree.printraw(g_vec:get())
 
--- TODO: uncomment these after refactoring/fixing
---local liszt kernel CenteredWrite(p : points)
---  p.x = 1
---end
---
---local liszt kernel CenteredAdd(p : points)
---  p.y = 2
---  p.z = p.x + p.y
---  p.z = p.z + 1
---  p.z
---end
---
---local liszt kernel ReduceField(p : points)
---  p.y += 7
---  p.z *= 2
---  p.y
---  p.z
---end
+local liszt kernel CenteredWrite(p : points)
+  p.x = 1
+end
 
---CenteredWrite(points)
---CenteredWrite(points)
---CenteredAdd(points)
---CenteredAdd(points)
---ReduceField(points)
+local liszt kernel CenteredAdd(p : points)
+  p.y = 2
+  p.z = p.x + p.y
+  p.z = p.z + 1
+  p.z
+end
+
+local liszt kernel ReduceField(p : points)
+  p.y += 7
+  p.z *= 2
+  p.y
+  p.z
+end
+
+local liszt kernel ReduceGlobalVec(p : points)
+  p.z = 3
+  g_vec += L.vec2d({0.2, 0.1})
+end
+
+CenteredWrite(points)
+CenteredWrite(points)
+CenteredAdd(points)
+CenteredAdd(points)
+ReduceField(points)
+
+ReduceGlobalVec(points)
+
+terralib.tree.printraw(g_vec:get())
 
 local verts = L.NewRelation { name = 'verts', size = 8 }
 verts:NewField('t', L.float):Load(0)
