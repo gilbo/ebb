@@ -333,7 +333,6 @@ function Bran:CreateTaskLauncher()
     for _, field in ipairs(region:Fields()) do
       local f = arg_layout:FieldIdx(field, region)
       local rel = field.owner
-      print("In create task launcher, adding field " .. field.fid .. " to region req " .. r)
       LW.legion_task_launcher_add_field(
         task_launcher, reg_req, field.fid, true )
     end
@@ -350,7 +349,6 @@ end
 
 -- Launches Legion task and returns.
 function Bran:LaunchTask(leg_args)
-  print("Launching legion task")
   if self:LegionTaskType() == LW.TaskTypes.simple then
     LW.legion_task_launcher_execute(leg_args.runtime, leg_args.ctx,
                                     self.task_launcher)
@@ -371,5 +369,4 @@ function Bran:LaunchTask(leg_args)
                                                res.value, res.value_size)
     LW.legion_task_result_destroy(res)
   end
-  print("Launched task")
 end

@@ -7,13 +7,20 @@ import "compiler.liszt"
 local g_scal = L.NewGlobal(L.int, 4)
 
 -- Create relations and fields
--- local points = L.NewRelation(4, 'points')
-local points = L.NewRelation { name = 'points', dim = {3,2} }
 
-points:NewField('x', L.int)
-points:NewField('y', L.int)
-points:NewField('z', L.int)
-points:NewField('t', L.int)
+local cells = L.NewRelation { name = 'cells', size = 3 }
+-- local cells = L.NewRelation { name = 'cells', dim = {2,1} }
+
+local dual_cells = L.NewRelation { name = 'dual_cells', size = 4 }
+-- local dual_cells = L.NewRelation { name = 'dual_cells', dim = {3,1} }
+
+cells:NewField('dual_left', cells):Load({0, 1, 2})
+cells:NewField('dual_right', cells):Load({1, 2, 3})
+
+cells:NewField('x', L.int)
+cells:NewField('y', L.double)
+
+dual_cells:NewField('z', L.double)
 
 -- Globals
 local g_scal = L.NewGlobal(L.int, 4)
@@ -24,38 +31,58 @@ local g_vec  = L.NewGlobal(L.vec2d, {0, 0})
 print(g_scal:get())
 terralib.tree.printraw(g_vec:get())
 
-local liszt kernel CenteredWrite(p : points)
-  p.x = 1
+local liszt kernel CenteredReads(c : cells)
+  c.x
+  c.y
 end
 
-local liszt kernel CenteredAdd(p : points)
-  p.y = 2
-  p.z = p.x + p.y
-  p.z = p.z + 1
-  p.z
+local liszt kernel CenteredWrite(c : cells)
+  c.x = 1
 end
 
-local liszt kernel ReduceField(p : points)
-  p.y += 7
-  p.z *= 2
-  p.y
-  p.z
+local liszt kernel CenteredMul(c : cells)
+  c.y = 0.2 * c.x
 end
 
-local liszt kernel ReduceGlobalVec(p : points)
-  p.z = 3
+local liszt kernel ReduceField(c : cells)
+  c.y += 0.1
+end
+
+local liszt kernel ReduceGlobalVec(c : cells)
+  c.y += 0.3
   g_vec += L.vec2d({0.2, 0.1})
 end
 
-CenteredWrite(points)
-CenteredWrite(points)
-CenteredAdd(points)
-CenteredAdd(points)
-ReduceField(points)
-
-ReduceGlobalVec(points)
+-- CenteredWrite(cells)
+-- CenteredMul(cells)
+-- ReduceField(cells)
+-- ReduceGlobalVec(cells)
+-- CenteredReads(cells)
 
 terralib.tree.printraw(g_vec:get())
+
+local liszt kernel InitDual(d : dual_cells)
+  d.z = 0.1
+end
+
+local liszt kernel InitCells(c : cells)
+  c.x = 3
+  c.y = 0.45
+end
+
+local liszt kernel CollectDual(c : cells)
+  -- c.y += c.dual_left.z
+  -- c.y += c.dual_right.z
+  -- c.dual_right
+  c.dual_left
+  c.dual_left.z
+end
+
+InitDual(dual_cells)
+InitCells(cells)
+-- CenteredReads(cells)
+CollectDual(cells)
+-- CenteredReads(cells)
 
 local verts = L.NewRelation { name = 'verts', size = 8 }
 verts:NewField('t', L.float):Load(0)

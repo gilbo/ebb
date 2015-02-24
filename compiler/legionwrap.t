@@ -150,7 +150,6 @@ terra LW.simple_task(
 )
   C.printf("Executing simple task\n")
   var arglen = LW.legion_task_get_arglen(task)
-  C.printf("Arglen in task is %i\n", arglen)
   assert(arglen == LW.SimpleKernelLauncherSize)
   var kernel_launcher =
     [&LW.SimpleKernelLauncherTemplate](LW.legion_task_get_args(task))
