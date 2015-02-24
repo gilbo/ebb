@@ -92,24 +92,15 @@ L.LKernel.__call  = function (kobj, relset, params)
   local proc = L.default_processor
 
   -- retreive the correct bran or create a new one
-  local bran = {}
-  if proc == L.CPU then
-    bran = Bran.BuildOrFetch({
-        kernel=kobj,
-        relset=relset,
-        proc=proc,
-    })
-  else
-    if proc == L.GPU then
-      local blocksize = (params and params.blocksize) or 64
-      bran = Bran.BuildOrFetch({
-          kernel=kobj,
-          relset=relset,
-          proc=proc,
-          blocksize=blocksize,
-      })
-    end
+  local sig  = {
+    kernel=kobj,
+    relset=relset,
+    proc=proc,
+  }
+  if proc == L.GPU then
+    sig.blocksize = (params and params.blocksize) or 64
   end
+  local bran = Bran.BuildOrFetch(sig)
 
   -- determine whether or not this kernel invocation is
   -- safe to run or not.
@@ -139,14 +130,19 @@ end
 -------------------------------------------------------------------------------
 
 function Bran.BuildOrFetch(sig)
+  -- expand sig a bit based on dynamic state and convenience
+  if L.is_relation(sig.relset) then
+    sig.relation  = sig.relset
+  else
+    sig.relation  = sig.relset:Relation()
+    sig.subset    = sig.relset
+  end
+  sig.relset = nil
+  sig.is_elastic  = sig.relation:isElastic()
+
   local bran = seedbank_lookup(sig)
   if not bran.executable then
-    bran.relset = sig.relset
-    bran.kernel = sig.kernel
-    bran.location = sig.proc
-    if bran.location == L.GPU then
-      bran.blocksize = sig.blocksize
-    end
+    for k,v in pairs(sig) do bran[k] = v end
     bran:generate()
   end
   return bran
@@ -157,13 +153,6 @@ function Bran:generate()
   local kernel    = bran.kernel
   local typed_ast = bran.kernel.typed_ast
 
-  -- break out the arguments
-  if L.is_relation(bran.relset) then
-    bran.relation = bran.relset
-  else
-    bran.relation = bran.relset:Relation()
-    bran.subset   = bran.relset
-  end
 
   -- type checking the kernel signature against the invocation
   if typed_ast.relation ~= bran.relation then
@@ -278,19 +267,19 @@ function Bran:dynamicChecks()
   -- Check that the fields are resident on the correct processor
   local underscore_field_fail = nil
   for field, _ in pairs(self.field_ids) do
-    if field.array:location() ~= self.location then
+    if field.array:location() ~= self.proc then
       if field:Name():sub(1,1) == '_' then
         underscore_field_fail = field
       else
         error("cannot execute kernel because field "..field:FullName()..
-              " is not currently located on "..tostring(self.location), 3)
+              " is not currently located on "..tostring(self.proc), 3)
       end
     end
   end
   if underscore_field_fail then
     error("cannot execute kernel because hidden field "..
           underscore_field_fail:FullName()..
-          " is not currently located on "..tostring(self.location), 3)
+          " is not currently located on "..tostring(self.proc), 3)
   end
 
   if self.insert_data or self.delete_data then
@@ -333,7 +322,7 @@ end
 function Bran:dynamicInsertDeleteChecks()
   -- Check if we can safely perform an INSERTION
   if self.insert_data then 
-    if self.location ~= L.CPU then
+    if self.proc ~= L.CPU then
       error("insert statement is currently only supported in CPU-mode.", 4)
     end
     local rel = self.insert_data.relation
@@ -342,7 +331,7 @@ function Bran:dynamicInsertDeleteChecks()
   end
   -- Check if we can safetly perform a DELETION
   if self.delete_data then
-    if self.location ~= L.CPU then
+    if self.proc ~= L.CPU then
       error("delete statement is currently only supported in CPU-mode.", 4)
     end
     local unsafe_msg = self.delete_data.relation:UnsafeToDelete()
@@ -354,7 +343,7 @@ end
 
 function Bran:setupInserts()
   local bran = self
-  assert(bran.location == L.CPU)
+  assert(bran.proc == L.CPU)
 
   local rel, ast_nodes = next(bran.kernel.inserts)
   bran.insert_data = {
@@ -409,7 +398,7 @@ end
 
 function Bran:setupDeletes()
   local bran = self
-  assert(bran.location == L.CPU)
+  assert(bran.proc == L.CPU)
 
   local rel = next(bran.kernel.deletes)
   bran.delete_data = {

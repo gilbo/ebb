@@ -2,6 +2,7 @@ local Codegen = {}
 package.loaded["compiler.codegen_single"] = Codegen
 
 local ast = require "compiler.ast"
+local T   = require "compiler.types"
 
 local C = require 'compiler.c'
 local L = require 'compiler.lisztlib'
@@ -142,6 +143,21 @@ end
 --[[                         CPU Codegen                                ]]--
 --[[--------------------------------------------------------------------]]--
 
+function terraIterNd(dims, func)
+  local atyp = L.addr_terra_types[#dims]
+  local addr = symbol(atyp)
+  local iters = {}
+  for d=1,#dims do iters[d] = symbol(uint64) end
+  local loop = quote
+    var [addr] = [atyp]({ a = array( iters ) })
+    [func(addr)]
+  end
+  for drev=1,#dims do
+    local d = #dims-drev + 1
+    loop = quote for [iters[d]] = 0, [dims[d]] do [loop] end end
+  end
+  return loop
+end
 
 function cpu_codegen (kernel_ast, ctxt)
   ctxt:enterblock()
@@ -158,31 +174,50 @@ function cpu_codegen (kernel_ast, ctxt)
     end
 
     -- by default on CPU just iterate over all the possible rows
-    local kernel_body = quote
-      for i = 0, [ctxt:runtimeSignature()].n_rows do
-        var [param] = [L.addr_terra_types[1]]({ a = array(i) })
+    local dims = ctxt:dims()
+    if ctxt:isElastic() then dims = { `[ctxt:runtimeSignature()].n_rows } end
+    local kernel_body = terraIterNd(dims, function(iter)
+      return quote
+        var [param] = iter
         [body]
       end
-    end
+    end)
 
     -- special iteration logic for subset-mapped kernels
     if ctxt.bran.subset then
-      kernel_body = quote
-        if [ctxt:runtimeSignature()].use_boolmask then
-          var boolmask = [ctxt:runtimeSignature()].boolmask
-          for i = 0, [ctxt:runtimeSignature()].n_rows do
-            if boolmask[i] then -- subset guard
-              var [param] = [L.addr_terra_types[1]]({ a = array(i) })
-              [body]
-            end
-          end
-        else
-          var index = [ctxt:runtimeSignature()].index
-          var size = [ctxt:runtimeSignature()].index_size
-          for itr = 0,size do
-            var [param] = index[itr]
+      local boolmask = symbol('boolmask')
+      local boolloop = terraIterNd(dims, function(iter)
+        return quote
+          if [boolmask][ [T.linAddrTerraGen(dims)](iter) ] then
+            var [param] = iter
             [body]
           end
+        end
+      end)
+      boolloop = quote
+        var [boolmask] = [ctxt:runtimeSignature()].boolmask
+        [boolloop]
+      end
+
+      local indexsym  = symbol('index')
+      local sizesym   = symbol('index_size')
+      local indexloop = terraIterNd({ sizesym }, function(iter)
+        return quote
+          var [param] = [indexsym][iter.a[0]]
+          [body]
+        end
+      end)
+      indexloop = quote
+        var [indexsym] = [ctxt:runtimeSignature()].index
+        var [sizesym]  = [ctxt:runtimeSignature()].index_size
+        [indexloop]
+      end
+
+      kernel_body = quote
+        if [ctxt:runtimeSignature()].use_boolmask then
+          [boolloop]
+        else
+          [indexloop]
         end
       end
     end
@@ -448,6 +483,37 @@ function compute_nblocks (ctxt)
 end
 
 
+function terraGPUId_to_Nd(dims, size, id, func)
+  local atyp = L.addr_terra_types[#dims]
+  local addr = symbol(atyp)
+  local translate
+  if #dims == 1 then
+    translate = quote var [addr] = [atyp]({ a = array(id) }) end
+  elseif #dims == 2 then
+    translate = quote
+      var xid : uint64 = [uint64](id) % [dims[1]]
+      var yid : uint64 = [uint64](id) / [dims[1]]
+      var [addr] = [atyp]({ a = array(xid,yid) })
+    end
+  elseif #dims == 3 then
+    translate = quote
+      var xid : uint64 = [uint64](id) % [dims[1]]
+      var yid : uint64 = ([uint64](id) / [dims[1]]) % [dims[2]]
+      var zid : uint64 = [uint64](id) / [dims[1]*dims[2]]
+      var [addr] = [atyp]({ a = array(xid,yid,zid) })
+    end
+  else
+    error('INTERNAL: #dims > 3')
+  end
+
+  return quote
+    if id < size then
+      [translate]
+      [func(addr)]
+    end
+  end
+end
+
 function gpu_codegen (kernel_ast, ctxt)
   local BLOCK_SIZE   = ctxt.bran.blocksize
   local MAX_GRID_DIM = 65536
@@ -462,36 +528,58 @@ function gpu_codegen (kernel_ast, ctxt)
     ctxt:localenv()[kernel_ast.name] = param
     local id  = symbol(uint32)
 
-    local body = quote
-      if [ctxt:isLiveCheck(param)] then
-        [kernel_ast.body:codegen(ctxt)]
-      end
-    end
+    if ctxt:isElastic() then error("INTERNAL: ELASTIC ON GPU UNSUPPORTED") end
+    local dims = ctxt:dims()
+
+    local body = kernel_ast.body:codegen(ctxt)
 
     if ctxt.bran.subset then
-      body = quote
-        if [ctxt:runtimeSignature()].use_boolmask then
-          if id < [ctxt:runtimeSignature()].n_rows and
-             [ctxt:runtimeSignature()].boolmask[id]
-          then
-            var [param] = [L.addr_terra_types[1]]({ a = array(id) })
-            [body]
+      --body = quote
+      --  if [ctxt:runtimeSignature()].use_boolmask then
+      --    if id < [ctxt:runtimeSignature()].n_rows and
+      --       [ctxt:runtimeSignature()].boolmask[id]
+      --    then
+      --      var [param] = [L.addr_terra_types[1]]({ a = array(id) })
+      --      [body]
+      --    end
+      --  else
+      --    if id < [ctxt:runtimeSignature()].index_size then
+      --      var i = [ctxt:runtimeSignature()].index[id]
+      --      var [param] = [L.addr_terra_types[1]]({ a = array(i) })
+      --      [body]
+      --    end
+      --  end
+      --end
+
+      body = terraGPUId_to_Nd(dims,
+      `[ctxt:runtimeSignature()].n_rows, id, function(addr)
+        return quote
+          -- set param
+          var [param]
+          if [ctxt:runtimeSignature()].use_boolmask then
+            param = addr
+          else
+            if id < [ctxt:runtimeSignature()].index_size then
+              param = [ctxt:runtimeSignature()].index[id]
+            end
           end
-        else
-          if id < [ctxt:runtimeSignature()].index_size then
-            var i = [ctxt:runtimeSignature()].index[id]
-            var [param] = [L.addr_terra_types[1]]({ a = array(i) })
+
+          -- conditionally execute
+          if    not [ctxt:runtimeSignature()].use_boolmask
+             or [ctxt:runtimeSignature()].boolmask[id]
+          then
             [body]
           end
         end
-      end
+      end)
     else
-      body = quote
-        if id < [ctxt:runtimeSignature()].n_rows then
-          var [param] = [L.addr_terra_types[1]]({ a = array(id) })
+      body = terraGPUId_to_Nd(dims,
+      `[ctxt:runtimeSignature()].n_rows, id, function(addr)
+        return quote
+          var [param] = [addr]
           [body]
         end
-      end
+      end)
     end
 
     local kernel_body = quote
@@ -671,15 +759,18 @@ function ast.Where:codegen(ctxt)
         var k   = [key]
         var idx = [indexdata]
     in 
+        -- TODO: GROUPBY GRIDS
         sType { idx[k.a[0]].a[0], idx[k.a[0]+1].a[0] }
     end
     return v
 end
 
-function doProjection(obj,field,ctxt)
+function doProjection(key,field,ctxt)
     assert(L.is_field(field))
-    local dataptr = ctxt:FieldPtr(field)
-    return `dataptr[obj.a[0]]
+    local dataptr     = ctxt:FieldPtr(field)
+    local keydims     = field:Relation():Dims()
+    local indexarith  = T.linAddrTerraGen(keydims)
+    return `dataptr[ indexarith(key) ]
 end
 
 
@@ -720,9 +811,11 @@ function ast.FieldWrite:codegen (ctxt)
 end
 
 function ast.FieldAccess:codegen (ctxt)
-  local index = self.key:codegen(ctxt)
-  local dataptr = ctxt:FieldPtr(self.field)
-  return `@(dataptr + [index].a[0])
+  local key         = self.key:codegen(ctxt)
+  local dataptr     = ctxt:FieldPtr(self.field)
+  local keydims     = self.field:Relation():Dims()
+  local indexarith  = T.linAddrTerraGen(keydims)
+  return `dataptr[ indexarith(key) ]
 end
 
 

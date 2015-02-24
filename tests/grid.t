@@ -57,7 +57,14 @@ rel3:NewField('f3',L.double):Load(tbl3)
 test.rec_aeq(rel2.f2:DumpToList(),tbl2)
 test.rec_aeq(rel3.f3:DumpToList(),tbl3)
 
-
+-- test indexing consistency
+rel3:NewField('f3func',L.double):Load(function(x,y,z)
+  return 6*z + 3*y + x + 1
+end)
+local liszt kernel f3consistency( r : rel3 )
+  L.assert(r.f3 == r.f3func)
+end
+f3consistency(rel3)
 
 
 

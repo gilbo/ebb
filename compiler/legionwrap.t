@@ -45,10 +45,10 @@ local function iterate3d(nx,ny,nz)
   end
 end
 local function linid(ids,dims)
-  local i = ids[1]
-  if ids[2] then i = i + dims[1]*ids[2] end
-  if ids[3] then i = i + dims[2]*dims[1]*ids[3] end
-  return i
+      if #dims == 1 then return ids[1]
+  elseif #dims == 2 then return ids[1] + dims[1] * ids[2]
+  elseif #dims == 3 then return ids[1] + dims[1] * (ids[2] + dims[2]*ids[3])
+  else error('INTERNAL > 3 dimensional address???') end
 end
 
 -------------------------------------------------------------------------------

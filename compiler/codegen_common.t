@@ -59,7 +59,16 @@ function Context:leaveblock()
 end
 
 function Context:onGPU()
-  return self.bran.location == L.GPU
+  return self.bran.proc == L.GPU
+end
+
+function Context:isElastic()
+  return self.bran.is_elastic
+end
+
+function Context:dims()
+  if not self.bran.dims then self.bran.dims = self.bran.relation:Dims() end
+  return self.bran.dims
 end
 
 function Context:fieldPhase(field)
@@ -376,6 +385,8 @@ function ast.GenericFor:codegen (ctxt)
     local set       = self.set:codegen(ctxt)
     local iter      = symbol("iter")
     local rel       = self.set.node_type.relation
+    -- the key being used to drive the where query should
+    -- come from a grouped relation, which is necessarily 1d
     local projected = `[L.addr_terra_types[1]]({array([iter])})
 
     for i,p in ipairs(self.set.node_type.projections) do
