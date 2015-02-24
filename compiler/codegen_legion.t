@@ -12,22 +12,6 @@ local LW = require "compiler.legionwrap"
 
 
 -------------------------------------------------------------------------------
---[[                         Codegen Entrypoint                            ]]--
--------------------------------------------------------------------------------
-
-function Codegen.codegen (kernel_ast, bran)
-  local env  = terralib.newenvironment(nil)
-  local ctxt = Context.new(env, bran)
-
-  if ctxt:onGPU() then
-    error("INTERNAL ERROR: Unimplemented GPU codegen with Legion runtime")
-  else
-    return cpu_codegen_legion(kernel_ast, ctxt)
-  end
-end
-
-
--------------------------------------------------------------------------------
 --[[                Function/ types templated on dimension                 ]]--
 -------------------------------------------------------------------------------
 
@@ -67,11 +51,11 @@ LegionRawPtrFromAcc[3] = LW.legion_accessor_generic_raw_rect_ptr_3d
 local Context = Cc.Context
 
 function Context:IsGrid()
-  return self.bran.relset._typestate.grid
+  return self.bran.relset:isGrid()
 end
 
 function Context:GridDimensions()
-  return self.bran.relset._typestate.dimensions
+  return self.bran.relset:nDims()
 end
 
 function Context:NumRegions()
@@ -185,7 +169,7 @@ function cpu_codegen (kernel_ast, ctxt)
     -- code for one iteration inside Liszt kernel
     local kernel_body = quote
       [ kernel_ast.body:codegen(ctxt) ]
-      C.printf("Kernel body incomplete\n")
+      -- C.printf("Kernel body incomplete\n")
     end
 
     -- generate iteration code over domain
@@ -404,13 +388,13 @@ function ast.FieldWrite:codegen (ctxt)
 end
 
 function ast.FieldAccess:codegen (ctxt)
-  local index = self.row:codegen(ctxt)
+  local index = self.key:codegen(ctxt)
   local fdata = ctxt:FieldData(self.field)
   local fttype = self.field:Type().terratype
   local access = quote
     var strides = [fdata].strides
     var ptr = [&fttype]([fdata].ptr + [IndexToOffset(ctxt, index, strides)] )
-    C.printf("Data was %i\n", @ptr)
+    -- C.printf("Data was %i\n", @ptr)
   in
     @ptr
   end
