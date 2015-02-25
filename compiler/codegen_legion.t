@@ -256,7 +256,6 @@ function cpu_codegen (kernel_ast, ctxt)
     if dim == 1 then
       body = quote
         for i = [rect].lo.x[0], [rect].hi.x[0]+1 do
-          -- C.printf("Loop iteration %i\n", i)
           var [iter] = [ iterKey[1] ] { array(uint64(i)) }
           [kernel_body]
         end
@@ -266,7 +265,6 @@ function cpu_codegen (kernel_ast, ctxt)
       body = quote
         for i = [rect].lo.x[0], [rect].hi.x[0]+1 do
           for j  = [rect].lo.x[1], [rect].hi.x[1]+1 do
-            C.printf("Loop iteration %i, %i\n", i, j)
             var [iter] = [ iterKey[2] ] { array(uint64(i), uint64(j)) }
             [kernel_body]
           end
@@ -278,7 +276,6 @@ function cpu_codegen (kernel_ast, ctxt)
         for i = [rect].lo.x[0], [rect].hi.x[0]+1 do
           for j  = [rect].lo.x[1], [rect].hi.x[1]+1 do
             for k  = [rect].lo.x[2], [rect].hi.x[2]+1 do
-              C.printf("Loop iteration %i, %i\n", i, j)
               var [iter] = [ iterKey[3] ] { array(uint64(i), uint64(j), uint64(k)) }
               [kernel_body]
             end
@@ -365,17 +362,12 @@ function ast.FieldWrite:codegen (ctxt)
 end
 
 function ast.FieldAccess:codegen (ctxt)
-  -- print("Field access")
-  -- self:pretty_print()
   local index = self.key:codegen(ctxt)
   local fdata = ctxt:FieldData(self.field)
   local fttype = self.field:Type().terratype
   local access = quote
     var strides = [fdata].strides
-    -- C.printf("Offset = %u\n", [IndexToOffset(ctxt, index, strides)])
     var ptr = [&fttype]([fdata].ptr + [IndexToOffset(ctxt, index, strides)] )
-    -- C.printf("Pointer = %p\n", ptr)
-    C.printf("Data was %i or %f\n", @ptr, @ptr)
   in
     @ptr
   end
