@@ -8,11 +8,11 @@ local g_scal = L.NewGlobal(L.int, 4)
 
 -- Create relations and fields
 
-local cells = L.NewRelation { name = 'cells', size = 3 }
--- local cells = L.NewRelation { name = 'cells', dim = {2,1} }
+local cells = L.NewRelation { name = 'cells_1d', size = 3 }
+-- local cells = L.NewRelation { name = 'cells_2d', dim = {2,1} }
 
-local dual_cells = L.NewRelation { name = 'dual_cells', size = 4 }
--- local dual_cells = L.NewRelation { name = 'dual_cells', dim = {3,1} }
+local dual_cells = L.NewRelation { name = 'dual_cells_1d', size = 4 }
+-- local dual_cells = L.NewRelation { name = 'dual_cells_2d', dim = {3,1} }
 
 cells:NewField('dual_left', dual_cells):Load({0, 1, 2})
 cells:NewField('dual_right', dual_cells):Load({1, 2, 3})
@@ -54,13 +54,13 @@ local liszt kernel ReduceGlobalVec(c : cells)
 end
 
 CenteredWrite(cells)
--- CenteredMul(cells)
--- CenteredReads(cells)
--- ReduceField(cells)
--- ReduceGlobalVec(cells)
--- CenteredReads(cells)
+CenteredMul(cells)
+CenteredReads(cells)
+ReduceField(cells)
+ReduceGlobalVec(cells)
+CenteredReads(cells)
 
--- terralib.tree.printraw(g_vec:get())
+terralib.tree.printraw(g_vec:get())
 
 local liszt kernel InitDual(d : dual_cells)
   d.a = 0.1
@@ -73,14 +73,15 @@ end
 
 local liszt kernel CollectDual(c : cells)
   L.print(c.dual_left)
-  L.print(c.dual_left.a)
+  c.y += c.dual_left.a
+  c.y += c.dual_right.a
 end
 
--- InitDual(dual_cells)
--- InitCells(cells)
--- CenteredReads(cells)
--- CollectDual(cells)
--- CenteredReads(cells)
+InitDual(dual_cells)
+InitCells(cells)
+CenteredReads(cells)
+CollectDual(cells)
+CenteredReads(cells)
 
 local verts = L.NewRelation { name = 'verts', size = 8 }
 verts:NewField('t', L.float):Load(0)
