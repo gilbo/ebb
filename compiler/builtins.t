@@ -616,10 +616,13 @@ function B.length.codegen(ast, ctxt)
         len2 = `len2 + vec.d[i] * vec.d[i]
     end
 
+    local sqrt = C.sqrt
+    if ctxt:onGPU() then sqrt = G.sqrt end
+
     return quote
         var [vec] = [exp]
     in
-        C.sqrt( len2 )
+        sqrt( len2 )
     end
 end
 

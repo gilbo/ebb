@@ -497,15 +497,15 @@ function terraGPUId_to_Nd(dims, size, id, func)
     translate = quote var [addr] = [atyp]({ a = array(id) }) end
   elseif #dims == 2 then
     translate = quote
-      var xid : uint64 = [uint64](id) % [dims[1]]
-      var yid : uint64 = [uint64](id) / [dims[1]]
+      var xid : uint64 = id % [dims[1]]
+      var yid : uint64 = id / [dims[1]]
       var [addr] = [atyp]({ a = array(xid,yid) })
     end
   elseif #dims == 3 then
     translate = quote
-      var xid : uint64 = [uint64](id) % [dims[1]]
-      var yid : uint64 = ([uint64](id) / [dims[1]]) % [dims[2]]
-      var zid : uint64 = [uint64](id) / [dims[1]*dims[2]]
+      var xid : uint64 = id % [dims[1]]
+      var yid : uint64 = (id / [dims[1]]) % [dims[2]]
+      var zid : uint64 = id / [dims[1]*dims[2]]
       var [addr] = [atyp]({ a = array(xid,yid,zid) })
     end
   else
@@ -532,7 +532,7 @@ function gpu_codegen (kernel_ast, ctxt)
     -- declare the symbol for iteration
     local param = symbol(L.key(ctxt.bran.relation):terraType())
     ctxt:localenv()[kernel_ast.name] = param
-    local id  = symbol(uint32)
+    local id  = symbol(uint64)
 
     if ctxt:isElastic() then error("INTERNAL: ELASTIC ON GPU UNSUPPORTED") end
     local dims = ctxt:dims()
@@ -591,7 +591,7 @@ function gpu_codegen (kernel_ast, ctxt)
     local kernel_body = quote
       var [ctxt.gpu:tid()] = G.thread_id()
       var [ctxt.gpu:bid()] = G.block_id()
-      var [id] : uint = [ctxt.gpu:bid()] * BLOCK_SIZE + [ctxt.gpu:tid()]
+      var [id] = [ctxt.gpu:bid()] * BLOCK_SIZE + [ctxt.gpu:tid()]
 
       -- Initialize shared memory for global reductions for kernels that require it
       escape if ctxt.reduce:reduceRequired() then emit quote

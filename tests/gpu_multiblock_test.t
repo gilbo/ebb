@@ -24,10 +24,12 @@ function main ()
 	end
 	sum_pos(grid.cells)
 
-	local center = com:get() / grid.cells:Size()
+	local center = com:get()
+  center[1] = center[1] / grid.cells:Size()
+  center[2] = center[2] / grid.cells:Size()
 
 	-- output
-	print("center is: (" .. center.data[1] .. ", " .. center.data[2] .. ')')
+	print("center is: (" .. center[1] .. ", " .. center[2] .. ')')
 end
 
 main()
