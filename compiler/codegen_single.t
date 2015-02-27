@@ -203,10 +203,10 @@ function cpu_codegen (kernel_ast, ctxt)
       local indexloop = quote assert(false) end
       -- the following code will not typecheck for grids, so don't
       -- try to build the code in that case
-      if ctxt:dims() == 1 then
+      if #ctxt:dims() == 1 then
         local indexsym  = symbol('index')
         local sizesym   = symbol('index_size')
-        local indexloop = terraIterNd({ sizesym }, function(iter)
+        indexloop = terraIterNd({ sizesym }, function(iter)
           return quote
             var [param] = [indexsym][iter.a[0]]
             [body]
