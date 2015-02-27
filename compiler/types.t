@@ -253,6 +253,9 @@ for i=1,3 do
     for k=2,i do exp = `exp and lhs.a[k] == rhs.a[k] end
     return exp
   end)
+  L.addr_terra_types[i].metamethods.__ne = macro(function(lhs,rhs)
+    return `not lhs == rhs
+  end)
 end
 function T.linAddrLua(addr, dims)
       if #dims == 1 then return addr.a[0]
