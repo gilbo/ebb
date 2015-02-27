@@ -199,18 +199,24 @@ function cpu_codegen (kernel_ast, ctxt)
         [boolloop]
       end
 
-      local indexsym  = symbol('index')
-      local sizesym   = symbol('index_size')
-      local indexloop = terraIterNd({ sizesym }, function(iter)
-        return quote
-          var [param] = [indexsym][iter.a[0]]
-          [body]
+      -- should never execute this stub
+      local indexloop = quote assert(false) end
+      -- the following code will not typecheck for grids, so don't
+      -- try to build the code in that case
+      if ctxt:dims() == 1 then
+        local indexsym  = symbol('index')
+        local sizesym   = symbol('index_size')
+        local indexloop = terraIterNd({ sizesym }, function(iter)
+          return quote
+            var [param] = [indexsym][iter.a[0]]
+            [body]
+          end
+        end)
+        indexloop = quote
+          var [indexsym] = [ctxt:runtimeSignature()].index
+          var [sizesym]  = [ctxt:runtimeSignature()].index_size
+          [indexloop]
         end
-      end)
-      indexloop = quote
-        var [indexsym] = [ctxt:runtimeSignature()].index
-        var [sizesym]  = [ctxt:runtimeSignature()].index_size
-        [indexloop]
       end
 
       kernel_body = quote

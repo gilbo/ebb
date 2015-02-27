@@ -117,6 +117,15 @@ function L.NewRelation(params)
       error("NewRelation(): Grids must specify 'dim' argument; "..
             "a table of 2 to 3 numbers specifying grid size", 2)
     end
+    if params.periodic then
+      if type(params.periodic) ~= 'table' then
+        error("NewRelation(): 'periodic' argument must be a list", 2)
+      elseif #params.periodic ~= #params.dim then
+        error("NewRelation(): periodicity is specified for "..
+              tostring(#params.periodic).." dimensions; does not match "..
+              tostring(#params.dim).." dimensions specified", 2)
+      end
+    end
   else
     if type(params.size) ~= 'number' then
       error("NewRelation() expects 'size' numeric argument", 2)
@@ -142,9 +151,12 @@ function L.NewRelation(params)
   if mode == 'GRID' then
     size = 1
     rawset(rel, '_dims', {})
+    rawset(rel, '_periodic', {})
     for i,n in ipairs(params.dim) do
       rel._dims[i] = n
       size = size * n
+      if params.periodic and params.periodic[i] then rel._periodic = true
+                                                else rel._periodic = false end
     end
   end
   rawset(rel, '_concrete_size', size)
@@ -203,6 +215,12 @@ function L.LRelation:Dims()
   local dimret = {}
   for i,n in ipairs(self._dims) do dimret[i] = n end
   return dimret
+end
+function L.LRelation:Periodicity()
+  if not self:isGrid() then return { false } end
+  local wraps = {}
+  for i,p in ipairs(self._dims) do wraps[i] = p end
+  return wraps
 end
 
 -- generator func for looping over the relation's fields
@@ -324,7 +342,7 @@ function L.LRelation:GroupBy(name)
     key_field = key_field,
     index = L.LIndex.New{
       owner=self,
-      terra_type = L.addr_terra_types[key_field.type.ndims],
+      terra_type = key_field.type:terraType(),
       processor = L.default_processor,
       name='groupby_'..key_field:Name(),
       size=num_keys+1
@@ -509,8 +527,10 @@ function L.LRelation:NewSubsetFromFunction (name, predicate)
   local boolmask  = L.LField.New(self, name..'_subset_boolmask', L.bool)
   local index_tbl = {}
   local subset_size = 0
-  boolmask:LoadFunction(function(i)
-    local val = predicate(i)
+  local dims = self:Dims()
+  boolmask:LoadFunction(function(xi,yi,zi)
+    local val = predicate(xi,yi,zi)
+    local i   = linid({xi,yi,zi},dims)
     if val then
       table.insert(index_tbl, i)
       subset_size = subset_size + 1
@@ -518,7 +538,7 @@ function L.LRelation:NewSubsetFromFunction (name, predicate)
     return val
   end)
 
-  if subset_size > SUBSET_CUTOFF then
+  if subset_size > SUBSET_CUTOFF or self:isGrid() then
   -- USE MASK
     subset._boolmask = boolmask
   else
@@ -745,7 +765,7 @@ function L.LField:LoadFunction(lua_callback)
         local val = lua_callback(unpack(ids))
         if not T.luaValConformsToType(val, self.type) then
           error("lua value does not conform to field type "..
-                tostring(self.type), 3)
+                tostring(self.type), 5)
         end
         dataptr[lin] = T.luaToLisztVal(val, self.type)
       end

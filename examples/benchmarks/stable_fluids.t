@@ -22,7 +22,7 @@ local vdb   = L.require 'lib.vdb'
 
 local N = 150
 local PERIODIC = true
-local INSERT_DELETE = true -- exercise these features in periodic mode...
+local INSERT_DELETE = false -- exercise these features in periodic mode...
 local period = {false,false}
 local origin = {-N/2.0, -1.0}
 if PERIODIC then
@@ -135,7 +135,7 @@ local cell_h = grid:yCellWidth()
 
 local advect_dt = L.NewGlobal(L.float, 0.0)
 grid.cells:NewField('lookup_pos', L.vec2f):Load({0,0})
-grid.cells:NewField('lookup_from', grid.dual_cells):Load(0)
+grid.cells:NewField('lookup_from', grid.dual_cells):Load({0,0})
 
 local epsilon = 1.0e-5 * math.max(cell_w, cell_h)
 local min_x = grid:xOrigin() + cell_w/2 + epsilon
@@ -323,8 +323,10 @@ end
 
 local PARTICLE_LEN = N - (PERIODIC and 0 or 1)
 local N_particles = PARTICLE_LEN * PARTICLE_LEN
+local mode = 'PLAIN'
+if INSERT_DELETE then mode = 'ELASTIC' end
 local particles = L.NewRelation {
-    mode = 'ELASTIC',
+    mode = mode,
     size = N_particles,
     name = 'particles',
 }
@@ -332,8 +334,8 @@ local particles = L.NewRelation {
 particles:NewField('dual_cell', grid.dual_cells):Load(function(i)
     local xid = math.floor(i%PARTICLE_LEN)
     local yid = math.floor(i/PARTICLE_LEN)
-    if PERIODIC then    return xid + N*yid
-    else                return (xid+1) + (N+1)*(yid+1)
+    if PERIODIC then    return {xid,yid}
+    else                return {(xid+1),(yid+1)}
     end
 end)
 
@@ -461,7 +463,7 @@ local draw_particles = liszt kernel (p : particles)
 end
 
 local STEPS = 500 -- use 500 on my local machine
-for i = 1, STEPS do
+for i = 0, STEPS-1 do
     if math.floor(i / 70) % 2 == 0 then
         source_velocity(grid.cells)
     end

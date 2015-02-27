@@ -21,7 +21,7 @@ cmath.srand(cmath.time(nil));
 local vdb   = L.require 'lib.vdb'
 
 local N = 32
-local PERIODIC = true
+local PERIODIC = false
 local period = {false,false,false}
 local origin = {-N/2.0, -1.0, -N/2.0}
 if PERIODIC then
@@ -133,7 +133,7 @@ local zcwidth = grid:zCellWidth()
 
 local advect_dt = L.NewGlobal(L.float, 0.0)
 grid.cells:NewField('lookup_pos', L.vec3f):Load({0,0,0})
-grid.cells:NewField('lookup_from', grid.dual_cells):Load(0)
+grid.cells:NewField('lookup_from', grid.dual_cells):Load({0,0,0})
 
 local epsilon = 1.0e-5 * math.max(xcwidth, math.max(ycwidth, zcwidth))
 local min_x = grid:xOrigin() + xcwidth/2 + epsilon
@@ -358,8 +358,8 @@ particles:NewField('dual_cell', grid.dual_cells):Load(function(i)
     zid = zid + PARTICLE_OFF
     yid = yid + 2
 
-    if PERIODIC then return xid + N*yid + N*N*zid
-    else             return (xid+1) + (N+1)*(yid+1) + (N+1)*(N+1)*(zid+1)
+    if PERIODIC then return {xid, yid, zid}
+    else             return {xid+1, yid+1, zid+1}
     end
 end)
 

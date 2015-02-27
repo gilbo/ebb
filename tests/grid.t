@@ -66,13 +66,48 @@ local liszt kernel f3consistency( r : rel3 )
 end
 f3consistency(rel3)
 
+-- test some simple affine relationships
+rel2:NewField('a2',L.double):Load(function(x,y)
+  return 5*x + 3*y
+end)
+rel3:NewField('a3',L.double):Load(function(x,y,z)
+  return 3*x + 5*y
+end)
+local liszt kernel affinetest3to2 ( r3 : rel3 )
+  var r2 = L.Affine(rel2, {{0,1,0,0},
+                           {1,0,0,0}}, r3)
+  L.assert(r3.a3 == r2.a2)
+end
+affinetest3to2(rel3)
+local liszt kernel affinetest2to3 ( r2 : rel2 )
+  var r3 = L.Affine(rel3, {{0,1,0},
+                           {1,0,0},
+                           {0,0,0}}, r2)
+  L.assert(r3.a3 == r2.a2)
+end
+affinetest2to3(rel2)
+-- this one shouldn't match almost at all
+local liszt kernel scramble2to3 ( r2 : rel2 )
+  var r3 = L.Affine(rel3, {{1,0,0},
+                           {0,0,0},
+                           {0,1,0}}, r2)
+  L.assert(r3.a3 == 0 or r3.a3 ~= r2.a2)
+end
+scramble2to3(rel2)
 
 
+-- Test Periodicity
+local prel2 = L.NewRelation {
+  name = "prel2",
+  dim  = {3,4},
+  periodic={true,true}
+}
+prel2:NewField('cid', L.vec2i):Load(function(x,y) return {x,y} end)
+local liszt kernel test_wrap ( r : prel2 )
+  var off = L.Affine(prel2, {{1,0,1},
+                             {0,1,1}}, r)
+  L.assert( (off.cid[0] % 3) == r.cid[0] and
+            (off.cid[1] % 4) == r.cid[1] )
+end
 
--------------------------------------------------------------------
 
--------------------------------------------------------------------
-
--------------------------------------------------------------------
-
--------------------------------------------------------------------

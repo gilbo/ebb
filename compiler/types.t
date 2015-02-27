@@ -248,6 +248,11 @@ for i=1,3 do
   L.addr_terra_types[i].metamethods.__typename = function(self)
     return struct_name
   end
+  L.addr_terra_types[i].metamethods.__eq = macro(function(lhs,rhs)
+    local exp = `lhs.a[0] == rhs.a[0]
+    for k=2,i do exp = `exp and lhs.a[k] == rhs.a[k] end
+    return exp
+  end)
 end
 function T.linAddrLua(addr, dims)
       if #dims == 1 then return addr.a[0]

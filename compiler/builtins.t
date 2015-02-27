@@ -139,40 +139,176 @@ function B.zid.codegen(ast, ctxt)
 end
 
 
+B.Affine = Builtin.new()
+function B.Affine.check(ast, ctxt)
+    local args = ast.params
+
+    if #args ~= 3 then
+        ctxt:error(ast,'Affine expects 3 arguments')
+        return L.error
+    end
+    local dst_rel_arg   = args[1]
+    local matrix        = args[2]
+    local key_arg       = args[3]
+    local ret_type      = nil
+
+    -- check that the first and last arg are actually relations
+    if not dst_rel_arg.node_type:isInternal() or
+       not L.is_relation(dst_rel_arg.node_type.value)
+    then
+        ctxt:error(ast[1], "Affine expects a relation as the 1st argument")
+        return L.error
+    end
+    if not key_arg.node_type:isScalarKey() then
+        ctxt:error(ast[3], "Affine expects a key as the 3rd argument")
+        return L.error
+    end
+
+    -- get the source and destination relations and check that they're grids
+    local dst_rel = dst_rel_arg.node_type.value
+    local src_rel = key_arg.node_type.relation
+    if not dst_rel:isGrid() then
+        ctxt:error(ast[1],
+            "Affine expects a grid relation as the 1st argument")
+        return L.error
+    end
+    if not src_rel:isGrid() then
+        ctxt:error(ast[3], "Affine expects a grid key as the 3rd argument")
+        return L.error
+    end
+
+    -- get dimensions out
+    local dst_dims = dst_rel:Dims()
+    local src_dims = src_rel:Dims()
+
+    -- now check the matrix argument type
+    if not matrix.node_type:isSmallMatrix() or
+       matrix.node_type.Nrow ~= #dst_dims or
+       matrix.node_type.Ncol ~= #src_dims + 1
+    then
+        ctxt:error(ast[2], "Affine expects a matrix as the 2nd argument "..
+            "with matching dimensions (needs to be "..
+            tostring(#dst_dims).."-by-"..tostring(#src_dims + 1))
+        return L.error
+    end
+    if not matrix.node_type:isIntegral() then
+        ctxt:error(ast[2], "Affine expects a matrix of integral values")
+        return L.error
+    end
+    -- WE NEED TO CHECK CONST-NESS, but this seems to be
+    -- the wrong time to do it
+    --if not matrix:is(AST.MatrixLiteral) then
+    --    ctxt:error(ast[2], "Compiler could not verify that "..
+    --        "the matrix argument (2nd) to Affine is constant")
+    --    return L.error
+    --end
+    --for yi = 0,matrix.n-1 do for xi = 0,matrix.m-1 do
+    --    if not matrix.elems[yi*matrix.m + xi + 1]:is(AST.Number) then
+    --        ctxt:error(ast[2], "Compiler could not verify that "..
+    --            "the matrix argument (2nd) to Affine is constant")
+    --    end
+    --end end
+
+    return L.key(dst_rel)
+end
+local terra full_mod(val : int64, modulus : int64) : uint64
+    return ((val % modulus) + modulus) % modulus
+end
+function B.Affine.codegen(ast, ctxt)
+    local args      = ast.params
+    local dst_rel   = args[1].node_type.value
+    local src_rel   = args[3].node_type.relation
+    local dst_dims  = dst_rel:Dims()
+    local src_dims  = src_rel:Dims()
+    local dst_wrap  = dst_rel:Periodicity()
+    local nrow      = args[2].node_type.Nrow
+    local ncol      = args[2].node_type.Ncol
+
+    local srckey    = symbol(args[3].node_type:terraType())
+    local mat       = symbol(args[2].node_type:terraType())
+    local dsttype   = L.key(dst_rel):terraType()
+    local results   = {}
+
+    -- matrix multiply build
+    for yi = 0,nrow-1 do
+        -- read out the constant offset
+        local sum = `mat.d[yi][ncol-1]
+        for xi = 0,ncol-2 do
+            sum = `[sum] + mat.d[yi][xi] * srckey.a[xi]
+        end
+        -- add periodicity wrapping if specified
+        if dst_wrap[yi+1] then
+            results[yi+1] = `full_mod(sum, [ dst_dims[yi+1] ])
+        else
+            results[yi+1] = sum
+        end
+    end
+
+    -- capture the arguments safely
+    local wrapped = quote
+        var [srckey] = [ args[3]:codegen(ctxt) ]
+        var [mat]    = [ args[2]:codegen(ctxt) ]
+    in
+        [dsttype]({ a = array( [results] ) })
+    end
+    return wrapped
+end
+
 B.UNSAFE_ROW = Builtin.new()
 function B.UNSAFE_ROW.check(ast, ctxt)
     local args = ast.params
     if #args ~= 2 then
         ctxt:error(ast, "UNSAFE_ROW expects exactly 2 arguments "..
                         "(instead got " .. #args .. ")")
-        return
+        return L.error
     end
 
     local ret_type = nil
 
     local addr_type = args[1].node_type
     local rel_type = args[2].node_type
-    if addr_type ~= L.uint64 then
-        ctxt:error(ast, "UNSAFE_ROW expected a uint64 as the first arg")
-        ret_type = L.error
-    end
     if not rel_type:isInternal() or not L.is_relation(rel_type.value) then
         ctxt:error(ast, "UNSAFE_ROW expected a relation as the second arg")
         ret_type = L.error
     end
-    if rel_type.value:isGrid() then
-        ctxt:error(ast, "UNSAFE_ROW cannot generate keys into a grid")
+    local rel = rel_type.value
+    local ndim = rel:nDims()
+    --if rel:isGrid() then
+    --    ctxt:error(ast, "UNSAFE_ROW cannot generate keys into a grid")
+    --    ret_type = L.error
+    --end
+    if ndim == 1 and addr_type ~= L.uint64 then
+        ctxt:error(ast, "UNSAFE_ROW expected a uint64 as the first arg")
+        ret_type = L.error
+    elseif ndim > 1  and addr_type ~= L.vector(L.uint64,ndim) then
+        ctxt:error(ast, "UNSAFE_ROW expected a vector of "..ndim..
+                        " uint64 values")
     end
 
     -- actual typing
     if not ret_type then
         ret_type = L.key(rel_type.value)
     end
-
     return ret_type
 end
 function B.UNSAFE_ROW.codegen(ast, ctxt)
-    return `[L.addr_terra_types[1]]({array([ast.params[1]:codegen(ctxt)])})
+    local rel = ast.params[2].node_type.value
+    local ndim = rel:nDims()
+    local addrtype = L.key(rel):terraType()
+    if ndim == 1 then
+        return `[addrtype]({ array( [ast.params[1]:codegen(ctxt)] ) })
+    else
+        local vecui = ast.params[1]:codegen(ctxt)
+        if ndim == 2 then
+            return quote var v = vecui in
+                [addrtype]({ array( v.d[0], v.d[1] )})
+            end
+        else
+            return quote var v = vecui in
+                [addrtype]({ array( v.d[0], v.d[1], v.d[2] )})
+            end
+        end
+    end
 end
 
 
@@ -304,10 +440,10 @@ local function buildPrintSpec(ctxt, output, printSpec, elemQuotes, definitions)
             local sym = symbol(L.addr_terra_types[lt.ndims])
             definitions = quote
                 [definitions]
-                var sym = [code]
+                var [sym] = [code]
             end
             printSpec = printSpec .. '{'
-            for i = 0, bt.ndims-1 do
+            for i = 0, lt.ndims-1 do
                 printSpec = printSpec .. ' ' ..
                             printSingle(L.uint64, `sym.a[i], elemQuotes)
             end
@@ -767,12 +903,16 @@ function B.terra_to_func(terrafn)
 end
 
 L.Where  = B.Where
+L.Affine = B.Affine
 L.print  = B.print
 L.assert = B.assert
 L.dot    = B.dot
 L.cross  = B.cross
 L.length = B.length
 L.id     = B.id
+L.xid    = B.xid
+L.yid    = B.yid
+L.zid    = B.zid
 L.UNSAFE_ROW = B.UNSAFE_ROW
 L.any    = B.any
 L.all    = B.all
