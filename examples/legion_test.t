@@ -9,13 +9,14 @@ local g_scal = L.NewGlobal(L.int, 4)
 -- Create relations and fields
 
 local cells = L.NewRelation { name = 'cells_1d', size = 3 }
--- local cells = L.NewRelation { name = 'cells_2d', dim = {2,1} }
-
 local dual_cells = L.NewRelation { name = 'dual_cells_1d', size = 4 }
--- local dual_cells = L.NewRelation { name = 'dual_cells_2d', dim = {3,1} }
-
 cells:NewField('dual_left', dual_cells):Load({0, 1, 2})
 cells:NewField('dual_right', dual_cells):Load({1, 2, 3})
+
+-- local cells = L.NewRelation { name = 'cells_2d', dim = {3,1} }
+-- local dual_cells = L.NewRelation { name = 'dual_cells_2d', dim = {4,1} }
+-- cells:NewField('dual_left', dual_cells):Load({{{0, 0},  {1, 0}, {2, 0}}})
+-- cells:NewField('dual_right', dual_cells):Load({{{1, 0}, {2, 0}, {3, 0}}})
 
 cells:NewField('x', L.int)
 cells:NewField('y', L.double)

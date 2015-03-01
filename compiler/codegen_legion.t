@@ -15,16 +15,11 @@ local LW = require "compiler.legionwrap"
 --[[                Function/ types templated on dimension                 ]]--
 -------------------------------------------------------------------------------
 
-local iterKey = {}
-for dim = 1, 3 do
-  iterKey[dim] = struct { a : uint64[dim] ; }
-end
-
 local fieldData = {}
 for dim = 1, 3 do
   fieldData[dim] = struct {
     ptr : &int8,
-    strides : LW.legion_byte_offset_t[dim] ;
+    strides : LW.legion_byte_offset_t[dim]
   }
 end
 
@@ -133,6 +128,29 @@ end
 ----------------------------------------------------------------------------
 --[[                         CPU Codegen                                ]]--
 ----------------------------------------------------------------------------
+
+-- 1/ 2/ 3 dimensional iteration
+local function terraIterNd(ndims, rect, func)
+  local atyp = L.addr_terra_types[ndims]
+  local addr = symbol(atyp)
+  local iters = {}
+  for d=1,ndims do iters[d] = symbol(uint64) end
+  local loop = quote
+    var [addr] = [atyp]({ a = array( iters ) })
+    [func(addr)]
+  end
+  for d=1,ndims do
+    loop = quote
+      C.printf("Dimension = %i\n", d)
+      for [iters[d]] = [rect].lo.x[d-1], [rect].hi.x[d-1]+1 do
+        C.printf("i = %i\n", [iters[d]])
+        [loop]
+      end
+    end
+  end
+  return loop
+end
+
 --[[ Codegen uses arg_layout to get base pointers for every region-field pair.
 --   This computation is in the setup phase, before the loop. Storing these 
 --   field pointers (along with their offsets) makes field accesses easier
@@ -149,7 +167,7 @@ function cpu_codegen (kernel_ast, ctxt)
 
     -- symbols for iteration and global/ field data
     local iter, rect, field_ptrs, global_ptrs
-    iter = symbol(iterKey[ctxt:Dimensions()])
+    iter = symbol(L.addr_terra_types[ctxt:Dimensions()])
     ctxt:localenv()[kernel_ast.name] = iter
     rect = symbol(LegionRect[ctxt:Dimensions()])
     ctxt:localenv()['_rect'] = rect
@@ -162,9 +180,6 @@ function cpu_codegen (kernel_ast, ctxt)
     local kernel_body = quote
       [ kernel_ast.body:codegen(ctxt) ]
     end
-
-    -- generate iteration code over domain
-    local body = quote end
 
     assert(ctxt:NumRegions() > 0, "Liszt kernel" .. tostring(kernel_ast.id) ..
           " should have at least 1 physical region")
@@ -219,7 +234,8 @@ function cpu_codegen (kernel_ast, ctxt)
       end
     end
 
-    -- Return reduced task result and destroy other future task results
+    -- Return reduced task result and destroy other task results
+    -- (corresponding to futures)
     local cleanup_and_ret = quote end
     local global_to_reduce = ctxt:GlobalToReduce()
     for _, global in ipairs(ctxt:Globals()) do
@@ -253,41 +269,17 @@ function cpu_codegen (kernel_ast, ctxt)
     end
 
     -- loop over domain
-    if dim == 1 then
-      body = quote
-        for i = [rect].lo.x[0], [rect].hi.x[0]+1 do
-          var [iter] = [ iterKey[1] ] { array(uint64(i)) }
-          [kernel_body]
-        end
+    local body_loop = terraIterNd(dim, rect, function(param)
+      return quote
+        var [iter] = param
+        [kernel_body]
       end
-    end
-    if dim == 2 then
-      body = quote
-        for i = [rect].lo.x[0], [rect].hi.x[0]+1 do
-          for j  = [rect].lo.x[1], [rect].hi.x[1]+1 do
-            var [iter] = [ iterKey[2] ] { array(uint64(i), uint64(j)) }
-            [kernel_body]
-          end
-        end
-      end
-    end
-    if dim == 3 then
-      body = quote
-        for i = [rect].lo.x[0], [rect].hi.x[0]+1 do
-          for j  = [rect].lo.x[1], [rect].hi.x[1]+1 do
-            for k  = [rect].lo.x[2], [rect].hi.x[2]+1 do
-              var [iter] = [ iterKey[3] ] { array(uint64(i), uint64(j), uint64(k)) }
-              [kernel_body]
-            end
-          end
-        end
-      end
-    end
+    end)
 
     -- assemble everything
-    body = quote
+    local body = quote
       [setup]
-      [body]
+      [body_loop]
       [cleanup_and_ret]
     end
 
