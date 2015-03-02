@@ -25,7 +25,7 @@ legion:
 	ln -s $(DEFAULT_LEGION_INSTALL_DIR) $@
 
 # this is a target to build only those parts of legion we need
-liblegion_terra: $(LIBLEGION_TERRA) terra legion
+liblegion_terra: terra legion
 	LUAJIT_DIR=$(LUAJIT_DIR) TERRA_DIR=$(TERRA_DIR) make -C $(LEGION_BIND_DIR) 
 
 # undo anything that this makefile might have done
