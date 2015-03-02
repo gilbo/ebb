@@ -185,23 +185,7 @@ L.LKernel.__call  = function (kobj, relset)
       error("A kernel must be called on a relation or subset.", 2)
   end
 
-  local proc = L.default_processor
-
-  -- retreive the correct bran or create a new one
-  local bran = seedbank_lookup({ kernel = kobj,
-                                 relset = relset,
-                                 proc   = proc
-                               })
-
-  -- GENERATE CODE (USING BRAN?) FOR LEGION TASK
-  if not bran.kernel_launcher then
-    bran.relset = relset
-    bran.kernel = kobj
-    bran.location = proc
-    bran:SetUpArgLayout()
-    bran:generate()
-    bran:CreateTaskLauncher()
-  end
+  local bran = Bran.BuildOrFetch(kobj, relset)
 
   -- Launch task
   bran:LaunchTask({ ctx = legion_env.ctx, runtime = legion_env.runtime })
@@ -212,6 +196,31 @@ end
 -------------------------------------------------------------------------------
 --[[                                 Brans                                 ]]--
 -------------------------------------------------------------------------------
+
+function Bran.BuildOrFetch(kobj, relset)
+  local proc = L.default_processor
+  -- retreive the correct bran or create a new one
+  local bran = seedbank_lookup({ kernel = kobj,
+                                 relset = relset,
+                                 proc   = proc
+                               })
+  if L.is_relation(relset) then
+    bran.relation  = relset
+  else
+    bran.relation  = relset:Relation()
+    bran.subset    = relset
+  end
+  -- generate code
+  if not bran.kernel_launcher then
+    bran.relset = relset
+    bran.kernel = kobj
+    bran.location = proc
+    bran:SetUpArgLayout()
+    bran:generate()
+    bran:CreateTaskLauncher()
+  end
+  return bran
+end
 
 -- Computes a layout for region requirements and futures.
 -- implementation details:
@@ -231,6 +240,11 @@ function Bran:SetUpArgLayout()
     local reg = arg_layout:GetRegion(field.owner)
     arg_layout:AddFieldToRegion(field, reg)
   end
+  -- add boolmask if subset
+  if self.subset then
+    local reg = arg_layout:GetRegion(self.relation)
+    arg_layout:AddFieldToRegion(self.subset._boolmask, reg)
+  end
 
   -- globals/ futures
   for global, access in pairs(global_use) do
@@ -249,12 +263,6 @@ function Bran:generate()
   local bran      = self
   local kernel    = bran.kernel
   local typed_ast = bran.kernel.typed_ast
-
-  if L.is_relation(bran.relset) then
-    bran.relation = bran.relset
-  else
-    error("Subsets not implemented with Legion runtime")
-  end
 
   -- type checking the kernel signature against the invocation
   if typed_ast.relation ~= bran.relation then

@@ -506,10 +506,6 @@ function L.LRelation:NewSubsetFromFunction (name, predicate)
     error("NewSubsetFromFunction(): "..
           "Subsets of elastic relations are currently unsupported", 2)
   end
-  if use_legion then
-    error("NewSubsetFromFunction(): subsets are currently unsupported "..
-          "using legion", 2)
-  end
 
   -- setup and install the subset object
   local subset = setmetatable({
@@ -538,7 +534,7 @@ function L.LRelation:NewSubsetFromFunction (name, predicate)
     return val
   end)
 
-  if subset_size > SUBSET_CUTOFF or self:isGrid() then
+  if use_legion or subset_size > SUBSET_CUTOFF or self:isGrid() then
   -- USE MASK
     subset._boolmask = boolmask
   else

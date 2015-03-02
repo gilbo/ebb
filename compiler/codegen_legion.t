@@ -46,7 +46,7 @@ LegionRawPtrFromAcc[3] = LW.legion_accessor_generic_raw_rect_ptr_3d
 local Context = Cc.Context
 
 function Context:Dimensions()
-  return self.bran.relset:nDims()
+  return self.bran.relation:nDims()
 end
 
 function Context:NumRegions()
@@ -141,9 +141,7 @@ local function terraIterNd(ndims, rect, func)
   end
   for d=1,ndims do
     loop = quote
-      C.printf("Dimension = %i\n", d)
       for [iters[d]] = [rect].lo.x[d-1], [rect].hi.x[d-1]+1 do
-        C.printf("i = %i\n", [iters[d]])
         [loop]
       end
     end
@@ -258,7 +256,7 @@ function cpu_codegen (kernel_ast, ctxt)
     end
 
     -- setup loop bounds
-    local it_idx = (ctxt:RegIdx(ctxt:GetRegion(ctxt.bran.relset)) - 1)
+    local it_idx = (ctxt:RegIdx(ctxt:GetRegion(ctxt.bran.relation)) - 1)
     local setup = quote
       [field_init]
       [global_init]
@@ -269,12 +267,28 @@ function cpu_codegen (kernel_ast, ctxt)
     end
 
     -- loop over domain
-    local body_loop = terraIterNd(dim, rect, function(param)
-      return quote
-        var [iter] = param
-        [kernel_body]
-      end
-    end)
+    local body_loop = quote end
+    if ctxt.bran.subset then
+      body_loop = terraIterNd(dim, rect, function(param)
+        local boolmask_data = ctxt:FieldData(ctxt.bran.subset._boolmask)
+        return quote
+          var [iter] = param
+          var boolmask_stride = [boolmask_data].strides
+          var boolmask_ptr = [&bool]([boolmask_data].ptr +
+                             [IndexToOffset(ctxt, param, boolmask_stride)])
+          if @boolmask_ptr then
+            [kernel_body]
+          end
+        end
+      end)
+    else
+      body_loop = terraIterNd(dim, rect, function(param)
+        return quote
+          var [iter] = param
+          [kernel_body]
+        end
+      end)
+    end
 
     -- assemble everything
     local body = quote
@@ -318,7 +332,7 @@ function ast.GlobalReduce:codegen(ctxt)
   end
 end
 
-local function IndexToOffset(ctxt, index, strides)
+function IndexToOffset(ctxt, index, strides)
   if ctxt:Dimensions() == 1 then
     return `([index].a[0] * [strides][0].offset)
   end
