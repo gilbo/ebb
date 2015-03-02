@@ -109,7 +109,7 @@ function LGlobal:set(val)
     end)
 
   elseif use_legion then
-    if self.data then Lw.DestroyFuture(self.data) end
+    if self.data then LW.DestroyFuture(self.data) end
     local cdata = T.luaToLisztVal(val, self.type)
     self.data = LW.CreateFuture(self.type, cdata)
   end

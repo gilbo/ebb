@@ -53,8 +53,8 @@ function Context:NumRegions()
   return self.bran.arg_layout:NumRegions()
 end
 
-function Context:NumFields()
-  return self.bran.arg_layout:NumFields()
+function Context:NumFields(dim)
+  return self.bran.arg_layout:NumFields(dim)
 end
 
 function Context:NumGlobals()
@@ -83,7 +83,8 @@ end
 
 function Context:FieldData(field)
   local fidx   = self.bran.arg_layout:FieldIdx(field)
-  local fd     = self:localenv()['_field_ptrs']
+  local rdim   = field:Relation():nDims()
+  local fd     = self:localenv()['_field_ptrs_'..tostring(rdim)]
   assert(terralib.issymbol(fd))
   return `([fd][ fidx - 1 ])
 end
@@ -163,14 +164,18 @@ function cpu_codegen (kernel_ast, ctxt)
     local Largs = symbol(LW.TaskArgs)
     ctxt:localenv()['_legion_args'] = Largs
 
+    local dim = ctxt:Dimensions()
     -- symbols for iteration and global/ field data
     local iter, rect, field_ptrs, global_ptrs
-    iter = symbol(L.addr_terra_types[ctxt:Dimensions()])
+    iter = symbol(L.addr_terra_types[dim])
     ctxt:localenv()[kernel_ast.name] = iter
-    rect = symbol(LegionRect[ctxt:Dimensions()])
+    rect = symbol(LegionRect[dim])
     ctxt:localenv()['_rect'] = rect
-    field_ptrs = symbol(fieldData[ctxt:Dimensions()][ctxt:NumFields()])
-    ctxt:localenv()['_field_ptrs'] = field_ptrs
+    field_ptrs = {}
+    for d = 1, 3 do
+      field_ptrs[d] = symbol(fieldData[d][ctxt:NumFields(d)])
+      ctxt:localenv()['_field_ptrs_'..tostring(d)] = field_ptrs[d]
+    end
     global_ptrs = symbol(LW.legion_task_result_t[ctxt:NumGlobals()])
     ctxt:localenv()['_global_ptrs'] = global_ptrs
 
@@ -182,14 +187,17 @@ function cpu_codegen (kernel_ast, ctxt)
     assert(ctxt:NumRegions() > 0, "Liszt kernel" .. tostring(kernel_ast.id) ..
           " should have at least 1 physical region")
 
-    local dim =  ctxt:Dimensions()
-
     -- add ptrs to field data and corresponding offsets
-    local field_init = quote
-      var [field_ptrs]
+    local field_init = quote end
+    for d = 1, 3 do
+      field_init = quote 
+        [field_init]
+        var [field_ptrs[d]]
+      end
     end
     for _, reg in ipairs(ctxt:Regions()) do
       local r = ctxt:RegIdx(reg)
+      local rdim = reg:Relation():nDims()
       for _, field in ipairs(ctxt:Fields(reg)) do
         local f = ctxt:FieldIdx(field, reg)
         field_init = quote
@@ -198,17 +206,17 @@ function cpu_codegen (kernel_ast, ctxt)
             var preg = [Largs].regions[r-1]
             var is   = LW.legion_physical_region_get_logical_region(preg).index_space
             var dom  = LW.legion_index_space_get_domain([Largs].lg_runtime, [Largs].lg_ctx, is)
-            var rect = [ LegionGetRectFromDom[dim] ](dom)
+            var rect = [ LegionGetRectFromDom[rdim] ](dom)
             do
               var acc =
                 LW.legion_physical_region_get_field_accessor_generic(
                   preg, [field.fid] )
-              var subrect : LegionRect[dim]
-              var strides : LW.legion_byte_offset_t[dim]
-              var base = [&int8]([ LegionRawPtrFromAcc[dim] ](
+              var subrect : LegionRect[rdim]
+              var strides : LW.legion_byte_offset_t[rdim]
+              var base = [&int8]([ LegionRawPtrFromAcc[rdim] ](
                 acc, rect, &subrect, strides))
-              -- C.printf("In legion task - setup, adding field id %i from region %i\n", [ctxt:FieldIdx(field, reg)], r-1)
-              [field_ptrs][f-1] = [ fieldData[dim] ] { base, strides }
+              -- C.qrintf("In legion task - setup, adding field id %i from region %i\n", [ctxt:FieldIdx(field, reg)], r-1)
+              [field_ptrs[rdim]][f-1] = [ fieldData[rdim] ] { base, strides }
             end
           end
         end

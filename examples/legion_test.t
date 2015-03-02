@@ -93,7 +93,7 @@ local function test_keyfields()
 end
 test_keyfields()
 
--- Subset functionality
+-- subset functionality
 local function test_subsets()
   InitCells(cells.interior)
   CenteredReads(cells.interior)

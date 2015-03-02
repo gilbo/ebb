@@ -52,12 +52,16 @@ function ArgRegion:Relation()
   return self.relation
 end
 
+function ArgRegion:nDims()
+  return self.relation:nDims()
+end
+
 function ArgRegion:Fields()
   return self.fields
 end
 
-function ArgRegion:NumFields()
-  return self.num_fields
+function ArgRegion:NumFields(dim)
+  return self.num_fields(dim)
 end
 
 function ArgRegion:AddField(field)
@@ -76,8 +80,9 @@ local function NewArgLayout()
     region_idx  = {},
     regions     = {}, -- there may not be a one-to-many map from relations to regions
     -- fields
-    num_fields  = 0,
+    num_fields  = {0, 0, 0},
     field_idx   = {},
+    fields      = {},
     -- gloabls (futures)
     num_globals = 0,
     global_idx  = {},
@@ -105,8 +110,8 @@ function ArgLayout:GlobalToReduce()
   return self.global_red
 end
 
-function ArgLayout:NumFields()
-  return self.num_fields
+function ArgLayout:NumFields(dim)
+  return self.num_fields[dim]
 end
 
 function ArgLayout:NumGlobals()
@@ -134,8 +139,9 @@ function ArgLayout:GetRegion(relation)
 end
 
 function ArgLayout:AddFieldToRegion(field, reg)
-  self.num_fields = self.num_fields + 1
-  self.field_idx[field] = self.num_fields
+  local dim = reg:nDims()
+  self.num_fields[dim] = self.num_fields[dim] + 1
+  self.field_idx[field] = self.num_fields[dim]
   reg:AddField(field)
 end
 
@@ -235,9 +241,11 @@ function Bran:SetUpArgLayout()
   self.arg_layout = NewArgLayout()
   local arg_layout = self.arg_layout
 
+  -- add primary region
+  arg_layout:AddRegion(NewArgRegion(self.relation))
   -- regions
   for field, access in pairs(field_use) do
-    local reg = arg_layout:GetRegion(field.owner)
+    local reg = arg_layout:GetRegion(field:Relation())
     arg_layout:AddFieldToRegion(field, reg)
   end
   -- add boolmask if subset
@@ -339,8 +347,7 @@ function Bran:CreateTaskLauncher()
     -- add all fields that should belong to this region req (computed in
     -- SetupArgLayout)
     for _, field in ipairs(region:Fields()) do
-      local f = arg_layout:FieldIdx(field, region)
-      local rel = field.owner
+      local rel = field:Relation()
       LW.legion_task_launcher_add_field(
         task_launcher, reg_req, field.fid, true )
     end
