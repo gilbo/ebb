@@ -148,7 +148,6 @@ terra LW.simple_task(
   ctx         : LW.legion_context_t,
   runtime     : LW.legion_runtime_t
 )
-  C.printf("Executing simple task\n")
   var arglen = LW.legion_task_get_arglen(task)
   assert(arglen == LW.SimpleKernelLauncherSize)
   var kernel_launcher =
@@ -156,7 +155,6 @@ terra LW.simple_task(
   kernel_launcher.Launch( LW.TaskArgs {
     task, regions, num_regions, ctx, runtime
   } )
-  C.printf("Completed executing simple task\n")
 end
 
 LW.TID_SIMPLE = 200
@@ -168,7 +166,6 @@ terra LW.future_task(
   ctx         : LW.legion_context_t,
   runtime     : LW.legion_runtime_t
 ) : LW.legion_task_result_t
-  C.printf("Executing future task\n")
   var arglen = LW.legion_task_get_arglen(task)
   assert(arglen == LW.FutureKernelLauncherSize)
   var kernel_launcher =
@@ -177,7 +174,6 @@ terra LW.future_task(
     task, regions, num_regions, ctx, runtime
   } )
   -- TODO: dummy seems likely broken.  It should refer to this task?
-  C.printf("Completed executing future task task\n")
   return result
 end
 

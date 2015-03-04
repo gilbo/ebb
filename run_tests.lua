@@ -1,6 +1,29 @@
 #!./terra/terra
 local ffi = require "ffi"
 
+local USE_LEGION = false
+local NO_GPU     = true
+local ONE_LINE_ERR = false
+
+if #arg > 0 then
+  for i=1,#arg do
+    if arg[i] == '-legion' or arg[i] == '--legion' then
+      USE_LEGION = true
+    end
+    if arg[i] == '-nogpu' or arg[i] == '--nogpu' then
+      NO_GPU = false
+    end
+    if arg[i] == '-h' or arg[i] == '--help' then
+      print("Usage : run_tests.lua [options]")
+      print("Options:")
+      print("  -h, --help : show this help message and exit")
+      print("  -legion, --legion : run tests with legion")
+      print("  -nogpu, --nogpu : do not run gpu tests")
+      os.exit(0)
+    end
+  end
+end
+
 local lscmd
 if ffi.os == "Windows" then
     lscmd = "cmd /c dir /b /s"
@@ -25,7 +48,7 @@ local function is_disabled (filename)
     return line and string.sub(line,1,#disable_str) == disable_str
 end
 
-local GPU_disabled = not terralib.cudacompile
+local GPU_disabled = (not terralib.cudacompile) or NO_GPU
 
 local GPU_test_str = '--GPU-TEST'
 local function is_gpu_test (filename)
@@ -67,10 +90,14 @@ for line in io.popen(lscmd):lines() do
         else
             print(file)
             local should_fail = (file:match("fails/") ~= nil)
-            local execstring = "./liszt " .. file
+            local execstring = "./liszt "
+            if USE_LEGION then
+                execstring = execstring .. " --legion "
+            end
+            execstring = execstring .. file
             -- If we expect output from this test, log stdout
             if out_file then
-                execstring = execstring .. " > .test_out"
+                execstring = execstring .. " | grep -v INFO > .test_out"
             elseif should_fail then
                 execstring = execstring .. " > /dev/null 2>&1"
             end
@@ -81,14 +108,16 @@ for line in io.popen(lscmd):lines() do
             -- if we expect output, modulate the success appropriately
             if out_file and success == 0 then
                 -- compare .test_out to out_file
-                diff_string = 'diff .test_out ' .. out_file
+                local diff_string = 'diff .test_out ' .. out_file
                 success = os.execute(diff_string)
             end
             -- record/report failure/success appropriately
             if success ~= 0 and not should_fail then
                 table.insert(failed,file)
+                print(file .. " \27[31mFAILED\27[0m")
             elseif success == 0 and should_fail then
                 table.insert(bad_passed,file)
+                print(file .. " \27[31mFAILED\27[0m")
             else
                 table.insert(passed,file)
             end
@@ -115,6 +144,7 @@ local function printtests(nm,lst)
     end
 end
 --printtests("passing tests",passed)
+printtests("passing tests", passed)
 printtests("FAILING tests",failed)
 printtests("passed but should have failed",bad_passed)
 printtests("disabled tests",disabled)

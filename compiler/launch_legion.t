@@ -35,8 +35,7 @@ function load_liszt()
   local success = xpcall( function ()
     assert(terralib.loadfile(script_filename))()
   end, top_level_err_handler)
-  print("Loaded Liszt with success " .. tostring(success))
-  print("Legion tasks may still be executing in the background ...")
+  print("LISZT INFO: tasks may still be executing in the background ...")
 end
 
 -- Run Liszt compiler/ Lua-Terra interpreter as a top level task
@@ -48,12 +47,9 @@ local terra top_level_task(
   ctx         : LW.legion_context_t,
   runtime     : LW.legion_runtime_t
 )
-  C.printf("Setting up Legion ...\n")
   LE.legion_env.ctx = ctx
   LE.legion_env.runtime = runtime
-  C.printf("Loading Liszt application ...\n")
   load_liszt()
-  C.printf("Finished Liszt application\n")
 end
 
 -- Main function that launches Legion runtime
