@@ -258,7 +258,7 @@ function ast.Cast:codegen(ctxt)
     return quote var [vec] = valuecode in
       [ vec_mapgen(typ, function(i) return `[bt](vec.d[i]) end) ] end
 
-  elseif typ:isSmallMatrix() then
+  elseif typ:isMatrix() then
     local mat = symbol(self.value.node_type:terraType())
     return quote var [mat] = valuecode in
       [ mat_mapgen(typ, function(i,j) return `[bt](mat.d[i][j]) end) ] end
@@ -352,7 +352,7 @@ function ast.UnaryOp:codegen (ctxt)
       return quote var [vec] = expr in
         [ vec_mapgen(typ, function(i) return `not vec.d[i] end) ] end
     end
-  elseif typ:isSmallMatrix() then
+  elseif typ:isMatrix() then
     local mat = symbol(typ:terraType())
 
     if self.op == '-' then
@@ -539,7 +539,7 @@ function let_mat_binding(typ, N, M, exp)
   for i = 1, N do
     coords[i] = {}
     for j = 1, M do
-      if typ:isSmallMatrix() then
+      if typ:isMatrix() then
         coords[i][j] = `val.d[i-1][j-1]
       else
         coords[i][j] = `val
@@ -589,7 +589,7 @@ function mat_bin_exp(op, result_typ, lhe, rhe, lhtyp, rhtyp)
                         else return `acc or  lvec.d[i] ~= rvec.d[i] end
         end) end)
 
-    elseif lhtyp:isSmallMatrix() then -- rhtyp:isSmallMatrix()
+    elseif lhtyp:isMatrix() then -- rhtyp:isMatrix()
       return symgen_bind2(lhtyp, rhtyp, lhe, rhe, function(lmat,rmat)
         return mat_foldgen(lhtyp.Nrow, lhtyp.Ncol, eqinitval[op],
           function(i,j, acc)
@@ -613,7 +613,7 @@ function mat_bin_exp(op, result_typ, lhe, rhe, lhtyp, rhtyp)
         return vec_mapgen(result_typ, function(i)
           return bin_exp( op, `(lvec.d[i]), `(rvec.d[i]) ) end) end)
 
-    elseif lhtyp:isSmallMatrix() then
+    elseif lhtyp:isMatrix() then
       return symgen_bind2(lhtyp, rhtyp, lhe, rhe, function(lmat,rmat)
         return mat_mapgen(result_typ, function(i,j)
           return bin_exp( op, (`lmat.d[i][j]), `(rmat.d[i][j]) ) end) end)
@@ -641,12 +641,12 @@ function mat_bin_exp(op, result_typ, lhe, rhe, lhtyp, rhtyp)
         return vec_mapgen(result_typ, function(i)
           return bin_exp( op, l, `(rvec.d[i]) ) end) end)
 
-    elseif lhtyp:isSmallMatrix() then -- rhtyp:isPrimitive()
+    elseif lhtyp:isMatrix() then -- rhtyp:isPrimitive()
       return symgen_bind2(lhtyp, rhtyp, lhe, rhe, function(lmat,r)
         return mat_mapgen(result_typ, function(i,j)
           return bin_exp( op, (`lmat.d[i][j]), r ) end) end)
 
-    elseif rhtyp:isSmallMatrix() then -- rhtyp:isPrimitive()
+    elseif rhtyp:isMatrix() then -- rhtyp:isPrimitive()
       return symgen_bind2(lhtyp, rhtyp, lhe, rhe, function(l,rmat)
         return mat_mapgen(result_typ, function(i,j)
           return bin_exp( op, l, `(rmat.d[i][j]) ) end) end)
@@ -660,19 +660,19 @@ function mat_bin_exp(op, result_typ, lhe, rhe, lhtyp, rhtyp)
     -- DIM: Matrix(_,m) Matrix(m,_)
       -- vector-matrix, matrix-vector, or matrix-matrix products
 --  if op == '*' then
---    if lhtyp:isVector() and rhtyp:isSmallMatrix() then
+--    if lhtyp:isVector() and rhtyp:isMatrix() then
 --      return symgen_bind2(lhtyp, rhtyp, lhe, rhe, function(lvec,rmat)
 --        return vec_mapgen(result_typ, function(j)
 --          return vec_foldgen(rmat.Ncol, `0, function(i, acc)
 --            return `acc + lvec.d[i] * rmat.d[i][j] end) end) end)
 --
---    elseif lhtyp:isSmallMatrix() and rhtyp:isVector() then
+--    elseif lhtyp:isMatrix() and rhtyp:isVector() then
 --      return symgen_bind2(lhtyp, rhtyp, lhe, rhe, function(lmat,rvec)
 --        return vec_mapgen(result_typ, function(i)
 --          return vec_foldgen(lmat.Nrow, `0, function(j, acc)
 --            return `acc + lmat.d[i][j] * rvec.d[j] end) end) end)
 --
---    elseif lhtyp:isSmallMatrix() and rhtyp:isSmallMatrix() then
+--    elseif lhtyp:isMatrix() and rhtyp:isMatrix() then
 --      return symgen_bind2(lhtyp, rhtyp, lhe, rhe, function(lmat,rmat)
 --        return mat_mapgen(result_typ, function(i,j)
 --          return vec_foldgen(rmat.Ncol, `0, function(k, acc)

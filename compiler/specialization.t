@@ -344,7 +344,7 @@ local function luav_to_ast(luav, src_node)
 
   elseif L.is_constant(luav) then
     local bt = luav.type:baseType()
-    if luav.type:isSmallMatrix() then
+    if luav.type:isMatrix() then
       node = mat_to_AST(src_node, luav.value, bt)
     elseif luav.type:isVector() then
       node = vec_to_AST(src_node, luav.value, bt)

@@ -17,15 +17,15 @@ local DynamicArray = use_single and rawdata.DynamicArray
 local DataArray    = use_single and rawdata.DataArray
 local LW = use_legion and require "compiler.legionwrap"
 
-local valid_name_err_msg =
+local valid_name_err_msg_base =
   "must be valid Lua Identifiers: a letter or underscore,"..
   " followed by zero or more underscores, letters, and/or numbers"
-L.valid_name_err_msg = {
-  relation = "Relation names " .. valid_name_err_msg,
-  field    = "Field names " .. valid_name_err_msg,
-  subset   = "Subset names " .. valid_name_err_msg
+local valid_name_err_msg = {
+  relation = "Relation names "  .. valid_name_err_msg_base,
+  field    = "Field names "     .. valid_name_err_msg_base,
+  subset   = "Subset names "    .. valid_name_err_msg_base
 }
-function L.is_valid_lua_identifier(name)
+local function is_valid_lua_identifier(name)
   if type(name) ~= 'string' then return false end
 
   -- regex for valid LUA identifiers
@@ -101,8 +101,8 @@ function L.NewRelation(params)
   elseif type(params.name) ~= 'string' then
     error("NewRelation() expects 'name' string argument", 2)
   end
-  if not L.is_valid_lua_identifier(params.name) then
-    error(L.valid_name_err_msg.relation, 2)
+  if not is_valid_lua_identifier(params.name) then
+    error(valid_name_err_msg.relation, 2)
   end
   local mode = params.mode or 'PLAIN'
   if not params.mode and params.dim then mode = 'GRID' end
@@ -289,8 +289,8 @@ function L.LRelation:NewFieldMacro (name, macro)
   if not name or type(name) ~= "string" then
     error("NewFieldMacro() expects a string as the first argument", 2)
   end
-  if not L.is_valid_lua_identifier(name) then
-    error(L.valid_name_err_msg.field, 2)
+  if not is_valid_lua_identifier(name) then
+    error(valid_name_err_msg.field, 2)
   end
   if self[name] then
     error("Cannot create a new field-macro with name '"..name.."'  "..
@@ -310,8 +310,8 @@ function L.LRelation:NewFieldFunction (name, userfunc)
   if not name or type(name) ~= "string" then
     error("NewFieldFunction() expects a string as the first argument", 2)
   end
-  if not L.is_valid_lua_identifier(name) then
-    error(L.valid_name_err_msg.field, 2)
+  if not is_valid_lua_identifier(name) then
+    error(valid_name_err_msg.field, 2)
   end
   if self[name] then
     error("Cannot create a new field-function with name '"..name.."'  "..
@@ -586,8 +586,8 @@ function L.LRelation:NewSubsetFromFunction (name, predicate)
     error("NewSubsetFromFunction() "..
           "expects a string as the first argument", 2)
   end
-  if not L.is_valid_lua_identifier(name) then
-    error(L.valid_name_err_msg.subset, 2)
+  if not is_valid_lua_identifier(name) then
+    error(valid_name_err_msg.subset, 2)
   end
   if self[name] then
     error("Cannot create a new subset with name '"..name.."'  "..
@@ -700,8 +700,8 @@ function L.LRelation:NewField (name, typ)
   if not name or type(name) ~= "string" then
     error("NewField() expects a string as the first argument", 2)
   end
-  if not L.is_valid_lua_identifier(name) then
-    error(L.valid_name_err_msg.field, 2)
+  if not is_valid_lua_identifier(name) then
+    error(valid_name_err_msg.field, 2)
   end
   if self[name] then
     error("Cannot create a new field with name '"..name.."'  "..
@@ -962,7 +962,7 @@ function L.LField:Load(arg)
   elseif  type(arg) == 'table' then
     if (self.type:isScalarKey() and #arg == self.type.ndims) or
        (self.type:isVector() and #arg == self.type.N) or
-       (self.type:isSmallMatrix() and #arg == self.type.Nrow) 
+       (self.type:isMatrix() and #arg == self.type.Nrow) 
     then
       return self:LoadConstant(arg)
     else
@@ -1118,7 +1118,7 @@ function L.LField:print()
     if ids[2] then idstr = idstr..' '..tostring(ids[2]) end
     if ids[3] then idstr = idstr..' '..tostring(ids[3]) end
 
-    if self.type:isSmallMatrix() then
+    if self.type:isMatrix() then
       local s = ''
       for c=1,self.type.Ncol do s = s .. flattenkey(datum[1][c]) .. ' ' end
       print("", idstr .. alive, s)
@@ -1161,7 +1161,7 @@ function L.LField:getDLD()
   local dims = {}
   if self.type:isVector() then
     dims = {self.type.N}
-  elseif self.type:isSmallMatrix() then
+  elseif self.type:isMatrix() then
     dims = {self.type.Nrow, self.type.Ncol}
   end
 

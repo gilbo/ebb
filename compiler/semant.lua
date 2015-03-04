@@ -513,7 +513,7 @@ local function matching_type_dims(t1, t2)
   if t1:isScalar() and t2:isScalar() then return true end
   if t1:isVector() and t2:isVector() then
     return t1.N == t2.N
-  elseif t1:isSmallMatrix() and t2:isSmallMatrix() then
+  elseif t1:isMatrix() and t2:isMatrix() then
     return t1.Nrow == t2.Nrow and t1.Ncol == t2.Ncol
   end
   return false
@@ -535,8 +535,8 @@ local function coerce_base(btyp, node)
   local cast = ast.Cast:DeriveFrom(node)
   if ntyp:isScalar()   then  cast.node_type = btyp end
   if ntyp:isVector()      then  cast.node_type = L.vector(btyp, ntyp.N) end
-  if ntyp:isSmallMatrix() then
-    cast.node_type = L.smallmatrix(btyp, ntyp.Nrow, ntyp.Ncol)
+  if ntyp:isMatrix() then
+    cast.node_type = L.matrix(btyp, ntyp.Nrow, ntyp.Ncol)
   end
   cast.value = node
   return cast
@@ -566,7 +566,7 @@ local function try_mat_prod_coerce(binop, errf, N, M)
   binop.lhs = coerce_base(join, binop.lhs)
   binop.rhs = coerce_base(join, binop.rhs)
   if M == nil then binop.node_type = L.vector(join, N)
-              else binop.node_type = L.smallmatrix(join, N, M) end
+              else binop.node_type = L.matrix(join, N, M) end
   return binop
 end
 
@@ -614,7 +614,7 @@ function ast.BinaryOp:check(ctxt)
   -- should type check:
   --    1. OP:       (below)
   --    2. BASETYPE: bool, int, float, double, uint64
-  --    3. DIM:      scalar, vector(n), smallmatrix(n,m)
+  --    3. DIM:      scalar, vector(n), matrix(n,m)
   -- OPS:
   --    logical(and,or),
   --    Eq(==,~=),
@@ -689,13 +689,13 @@ function ast.BinaryOp:check(ctxt)
     if lt:isPrimitive() or rt:isPrimitive() then
       return try_bin_coerce(binop, type_err)
 
---    elseif lt:isVector() and rt:isSmallMatrix() and lt.N == rt.Nrow then
+--    elseif lt:isVector() and rt:isMatrix() and lt.N == rt.Nrow then
 --      return try_mat_prod_coerce(binop, type_err, rt.Ncol, nil)
 --
---    elseif lt:isSmallMatrix() and rt:isVector() and lt.Ncol == rt.N then
+--    elseif lt:isMatrix() and rt:isVector() and lt.Ncol == rt.N then
 --      return try_mat_prod_coerce(binop, type_err, lt.Nrow, nil)
 --
---    elseif lt:isSmallMatrix() and rt:isSmallMatrix() and lt.Ncol == rt.Nrow
+--    elseif lt:isMatrix() and rt:isMatrix() and lt.Ncol == rt.Nrow
 --    then
 --      return try_mat_prod_coerce(binop, type_err, lt.Nrow, rt.Ncol)
 
@@ -840,7 +840,7 @@ function convert_to_matrix_literal(literal, ctxt)
         end
     end
 
-    matlit.node_type = L.smallmatrix(max_type, matlit.n, matlit.m)
+    matlit.node_type = L.matrix(max_type, matlit.n, matlit.m)
     return matlit
 end
 
@@ -1211,7 +1211,7 @@ function ast.SquareIndex:check(ctxt)
 
         if not ityp:isIntegral() then return err(idx2, ctxt, 'expected an '..
             'integer index, but found '..i2typ:toString()) end
-        if not btyp:isSmallMatrix() then return err(base, ctxt, 'expected '..
+        if not btyp:isMatrix() then return err(base, ctxt, 'expected '..
             'small matrix to index into, not '.. btyp:toString()) end
     -- vector case
     else

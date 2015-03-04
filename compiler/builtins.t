@@ -182,7 +182,7 @@ function B.Affine.check(ast, ctxt)
     local src_dims = src_rel:Dims()
 
     -- now check the matrix argument type
-    if not matrix.node_type:isSmallMatrix() or
+    if not matrix.node_type:isMatrix() or
        matrix.node_type.Nrow ~= #dst_dims or
        matrix.node_type.Ncol ~= #src_dims + 1
     then
@@ -415,7 +415,7 @@ local function buildPrintSpec(ctxt, output, printSpec, elemQuotes, definitions)
         end
         printSpec = printSpec .. " }"
 
-    elseif lt:isSmallMatrix() then
+    elseif lt:isMatrix() then
         printSpec = printSpec .. '{'
         local sym = symbol()
         local bt = lt:baseType()

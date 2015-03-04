@@ -34,6 +34,7 @@ end
 function T.isLisztType (obj)
   return getmetatable(obj) == Type
 end
+L.is_type = T.isLisztType
 
 -------------------------------------------------------------------------------
 --[[ Basic Type Methods                                                    ]]--
@@ -51,8 +52,8 @@ end
 function Type:isVector()
   return self.kind == "vector"
 end
-function Type:isSmallMatrix()
-  return self.kind == "smallmatrix"
+function Type:isMatrix()
+  return self.kind == "matrix"
 end
 function Type:isInternal()
   return self.kind == "internal"
@@ -69,7 +70,7 @@ end
 
 -- These types represent Liszt values (not keys though)
 function Type:isValueType()
-  if self:isVector() or self:isSmallMatrix() then
+  if self:isVector() or self:isMatrix() then
     return self.type:isPrimitive()
   else
     return self:isPrimitive()
@@ -78,7 +79,7 @@ end
 
 -- These are types that are valid to use for a field
 function Type:isFieldType()
-  return self:isScalar() or self:isVector() or self:isSmallMatrix()
+  return self:isScalar() or self:isVector() or self:isMatrix()
 end
 
 
@@ -110,7 +111,7 @@ end
  
 function Type:baseType()
   if self:isVector()      then return self.type end
-  if self:isSmallMatrix() then return self.type end
+  if self:isMatrix()      then return self.type end
   if self:isScalar()      then return self end
   error("baseType not implemented for " .. self:toString(),2)
 end
@@ -123,7 +124,7 @@ local struct  QueryType {
 function Type:terraType()
   if     self:isPrimitive()   then return self.terratype
   elseif self:isVector()      then return self.terratype
-  elseif self:isSmallMatrix() then return self.terratype
+  elseif self:isMatrix()      then return self.terratype
   elseif self:isKey()         then return self.terratype
   elseif self:isQuery()       then return QueryType
   elseif self:isInternal()    then return emptyStruct
@@ -165,7 +166,7 @@ local function vectorType (typ, len)
 end
 
 local smatrix_types = {}
-local function smallMatrixType (typ, nrow, ncol)
+local function matrixType (typ, nrow, ncol)
   -- Liszt may not be fully loaded yet, so...
   if L.is_relation and L.is_relation(typ) then typ = L.key(typ) end
   if not T.isLisztType(typ) or not typ:isScalar() then
@@ -175,12 +176,12 @@ local function smallMatrixType (typ, nrow, ncol)
   if not smatrix_types[typ]       then smatrix_types[typ] = {} end
   if not smatrix_types[typ][nrow] then smatrix_types[typ][nrow] = {} end
   if not smatrix_types[typ][nrow][ncol] then
-    local smt = Type:new("smallmatrix")
+    local smt = Type:new("matrix")
     smt.Nrow = nrow
     smt.Ncol = ncol
     smt.type = typ
     local ttype = typ:terraType()
-    local struct_name = "smallmatrix_" .. tostring(ttype) .. "_" ..
+    local struct_name = "matrix_" .. tostring(ttype) .. "_" ..
                         tostring(smt.Nrow) .. '_' .. tostring(smt.Ncol)
     smt.terratype = struct { d : ttype[smt.Ncol][smt.Nrow] }
     smt.terratype.metamethods.__typename = function(self)
@@ -321,7 +322,7 @@ end
 
 -- Complex type constructors
 L.vector        = vectorType
-L.smallmatrix   = smallMatrixType
+L.matrix        = matrixType
 L.key           = keyType
 L.record        = recordType
 L.internal      = internalType
@@ -338,7 +339,7 @@ function Type:toString()
   if     self:isPrimitive()   then return self.name
   elseif self:isVector()      then return 'Vector('..self.type:toString()..
                                           ','..tostring(self.N)..')'
-  elseif self:isSmallMatrix() then return 'SmallMatrix('..
+  elseif self:isMatrix()      then return 'Matrix('..
                                           self.type:toString()..','..
                                           tostring(self.Nrow)..','..
                                           tostring(self.Ncol)..')'
@@ -425,7 +426,7 @@ function Type:isCoercableTo(target)
     end
 
     -- similarly, we can unpack matching dimension smallmatrices
-    if source:isSmallMatrix() and target:isSmallMatrix() and
+    if source:isMatrix() and target:isMatrix() and
        source.Nrow == target.Nrow and source.Ncol == target.Ncol
     then
       source = source:baseType()
@@ -453,7 +454,7 @@ end
 local function mat_join(ltype, rtype, N, M)
   local btype = prim_join[ltype:baseType()][rtype:baseType()]
   if btype == L.error then return L.error
-                      else return L.smallmatrix(btype,N,M) end
+                      else return L.matrix(btype,N,M) end
 end
 
 local function type_join(ltype, rtype)
@@ -485,16 +486,16 @@ local function type_join(ltype, rtype)
     elseif ltype:isPrimitive() and rtype:isVector() then
       return L.vector(base_join, rtype.N)
 
-    -- smallmatrix joins
-    elseif ltype:isSmallMatrix() and rtype:isSmallMatrix() then
+    -- matrix joins
+    elseif ltype:isMatrix() and rtype:isMatrix() then
       if ltype.Nrow == rtype.Nrow or ltype.Ncol == rtype.Ncol then
-        return L.smallmatrix(base_join, ltype.Nrow, ltype.Ncol) end
+        return L.matrix(base_join, ltype.Nrow, ltype.Ncol) end
 
-    elseif ltype:isSmallMatrix() and rtype:isPrimitive() then
-      return L.smallmatrix(base_join, ltype.Nrow, ltype.Ncol)
+    elseif ltype:isMatrix() and rtype:isPrimitive() then
+      return L.matrix(base_join, ltype.Nrow, ltype.Ncol)
 
-    elseif ltype:isPrimitive() and rtype:isSmallMatrix() then
-      return L.smallmatrix(base_join, rtype.Nrow, rtype.Ncol)
+    elseif ltype:isPrimitive() and rtype:isMatrix() then
+      return L.matrix(base_join, rtype.Nrow, rtype.Ncol)
 
     end
   end
@@ -538,7 +539,7 @@ local function luaValConformsToType (luaval, tp)
     -- if we made it here, everything checked out
     return true
 
-  elseif tp:isSmallMatrix() then
+  elseif tp:isMatrix() then
     if type(luaval) ~= 'table' or #luaval ~= tp.Nrow then return false end
     -- check each row / matrix value
     for r = 1, #luaval do
@@ -574,7 +575,7 @@ local function luaToLisztVal (luaval, typ)
     for i=1,typ.N do terraval.d[i-1] = luaToLisztVal(luaval[i], btyp) end
     return terraval
 
-  elseif typ:isSmallMatrix() then
+  elseif typ:isMatrix() then
     local btyp      = typ:baseType()
     local terraval = terralib.new(typ:terraType())
     for r=1,typ.Nrow do for c=1,typ.Ncol do
@@ -615,7 +616,7 @@ local function lisztToLuaVal(lzval, typ)
     end
     return vec
 
-  elseif typ:isSmallMatrix() then
+  elseif typ:isMatrix() then
     local mat = {}
     for r=1,typ.Nrow do
       mat[r] = {}
@@ -674,10 +675,10 @@ for n=2,4 do
 
   for m=2,4 do
     local matname = 'mat'..tostring(n)..'x'..tostring(m)
-    L[matname..'i'] = L.smallmatrix(L.int, n, m)
-    L[matname..'f'] = L.smallmatrix(L.float, n, m)
-    L[matname..'d'] = L.smallmatrix(L.double, n, m)
-    L[matname..'b'] = L.smallmatrix(L.bool, n, m)
+    L[matname..'i'] = L.matrix(L.int, n, m)
+    L[matname..'f'] = L.matrix(L.float, n, m)
+    L[matname..'d'] = L.matrix(L.double, n, m)
+    L[matname..'b'] = L.matrix(L.bool, n, m)
   end
 
   -- alias square matrices

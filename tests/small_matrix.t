@@ -92,7 +92,7 @@ test.fail_function(function()
   liszt kernel t(v : mesh.vertices)
       v.tensor_pos[0] = 5
   end
-end, "expected vector to index into, not SmallMatrix")
+end, "expected vector to index into, not Matrix")
 
 -- Parse error, so not safe to test this way
 --test.fail_function(function()
