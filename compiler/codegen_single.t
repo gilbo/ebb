@@ -758,15 +758,23 @@ function ast.Global:codegen (ctxt)
 end
 
 function ast.Where:codegen(ctxt)
-    local key   = self.key:codegen(ctxt)
-    local sType = self.node_type:terraType()
-    local indexdata = self.relation._grouping.index:DataPtr()
+    local key         = self.key:codegen(ctxt)
+    local sType       = self.node_type:terraType()
+    local keydims     = self.key.node_type.relation:Dims()
+    local indexarith  = T.linAddrTerraGen(keydims)
+
+    local dstrel  = self.relation
+    local offptr  = ctxt:FieldPtr(dstrel:_INTERNAL_GroupedOffset())
+    local lenptr  = ctxt:FieldPtr(dstrel:_INTERNAL_GroupedLength())
+    --local indexdata = self.relation._grouping.index:DataPtr()
     local v = quote
         var k   = [key]
-        var idx = [indexdata]
+        var off = offptr[ indexarith(k) ]
+        var len = lenptr[ indexarith(k) ]
+        --var idx = [indexdata]
     in 
-        -- TODO: GROUPBY GRIDS
-        sType { idx[k.a[0]].a[0], idx[k.a[0]+1].a[0] }
+        sType { off, off+len }
+        --sType { idx[k.a[0]].a[0], idx[k.a[0]+1].a[0] }
     end
     return v
 end

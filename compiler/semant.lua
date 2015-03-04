@@ -1352,11 +1352,11 @@ function ast.Where:check(ctxt)
         ctxt:error(self,"Key of where is type ",keytype,
                    " but expected type ",field.type)
     end
-    if not field.owner._grouping or
-       field.owner._grouping.key_field ~= field
+    if not field.owner:isGrouped() or
+       field.owner:GroupedKeyField() ~= field
     then
         ctxt:error(self,"Relation '"..field.owner:Name().."' is not "..
-                        "grouped by Field '"..field.name.."'")
+                        "grouped by Field '"..field:Name().."'")
     end
     local w     = self:clone()
     w.relation  = field.owner

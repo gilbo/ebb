@@ -26,18 +26,6 @@ test.fail_function(function()
   local relbad = L.NewRelation { name="relbad", dim={5} }
 end, "a table of 2 to 3 numbers")
 
--- try to group a 2d grid; we know this will fail
-rel2:NewField('r1', rel1):Load(0)
-test.fail_function(function()
-  rel2:GroupBy('r1')
-end, "Cannot group a relation unless it's a PLAIN relation")
-
--- try to group the 1d relation by the 2d one
-rel1:NewField('r2', rel2):Load(function(i)
-  return { i%3, math.floor(i/3) }
-end)
---rel1:GroupBy('r2')
-
 -- test loading
 rel1:NewField('v1',L.double):Load(function(i)    return i         end)
 rel2:NewField('v2',L.vec2d):Load(function(x,y)   return {2*x,y}   end)
@@ -65,6 +53,29 @@ local liszt kernel f3consistency( r : rel3 )
   L.assert(r.f3 == r.f3func)
 end
 f3consistency(rel3)
+
+
+-- try to group a 2d grid; we know this will fail
+rel2:NewField('r1', rel1):Load(0)
+test.fail_function(function()
+  rel2:GroupBy('r1')
+end, "Cannot group a relation unless it's a PLAIN relation")
+
+-- try to group the 1d relation by the 2d one
+rel1:NewField('r2', rel2):Load(function(i)
+  return { i%2, math.floor(i/2) }
+end)
+rel1:GroupBy('r2')
+
+-- and test that we can use the grouping in a kernel
+local liszt kernel group_k ( r2 : rel2 )
+  for r1 in L.Where(rel1.r2, r2) do
+    L.assert(2*L.double(L.int(r1.v1) % 2) == r2.v2[0])
+    L.assert(  L.double(L.int(r1.v1) / 2) == r2.v2[1])
+  end
+end
+group_k(rel2)
+
 
 -- test some simple affine relationships
 rel2:NewField('a2',L.double):Load(function(x,y)

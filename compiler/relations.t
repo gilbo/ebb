@@ -216,6 +216,18 @@ function L.LRelation:Dims()
   for i,n in ipairs(self._dims) do dimret[i] = n end
   return dimret
 end
+function L.LRelation:GroupedKeyField()
+  if not self:isGrouped() then return nil
+                          else return self._grouped_field end
+end
+function L.LRelation:_INTERNAL_GroupedOffset()
+  if not self:isGrouped() then return nil
+                          else return self._grouped_offset end
+end
+function L.LRelation:_INTERNAL_GroupedLength()
+  if not self:isGrouped() then return nil
+                          else return self._grouped_length end
+end
 function L.LRelation:Periodicity()
   if not self:isGrid() then return { false } end
   local wraps = {}
@@ -316,7 +328,7 @@ function L.LRelation:NewFieldFunction (name, userfunc)
   return userfunc
 end
 
-function L.LRelation:GroupBy(name)
+function L.LRelation:GroupBy(keyf_name)
   if self:isGrouped() then
     error("GroupBy(): Relation is already grouped", 2)
   elseif not self:isPlain() then
@@ -324,57 +336,140 @@ function L.LRelation:GroupBy(name)
           "unless it's a PLAIN relation", 2)
   end
 
-  local key_field = self[name]
+  local key_field = self[keyf_name]
   if not L.is_field(key_field) then
-    error("GroupBy(): Could not find a field named '"..name.."'", 2)
+    error("GroupBy(): Could not find a field named '"..keyf_name.."'", 2)
   elseif not key_field.type:isScalarKey() then
     error("GroupBy(): Grouping by non-scalar-key fields is "..
           "prohibited.", 2)
   end
 
-  if use_legion then
-    error('GroupBy(): Grouping unimplemented for Legion currently', 2)
+  --if use_legion then
+  --  error('GroupBy(): Grouping unimplemented for Legion currently', 2)
+  --end
+
+  -- In the below, we use the following convention
+  --  SRC is the relation referred to by the key field
+  --  DST is 'self' here, the relation which is actively being grouped
+  --    In a Where query, a key into the SRC relation is translated
+  --    into a sequence of keys into the DST relation
+  local srcrel = key_field.type.relation
+  local dstrel = self
+  local n_src  = srcrel:Size()
+  local n_dst  = dstrel:Size()
+  local dstname = dstrel:Name()
+  local offset_f = L.LField.New(srcrel, dstname..'_grouped_offset', L.uint64)
+  local length_f = L.LField.New(srcrel, dstname..'_grouped_length', L.uint64)
+
+  --local num_keys = key_field.type.relation:ConcreteSize() -- # possible keys
+  --local num_rows = key_field:ConcreteSize()
+  --rawset(self,'_grouping', {
+  --  key_field = key_field,
+  --  index = L.LIndex.New{
+  --    owner=self,
+  --    terra_type = key_field.type:terraType(),
+  --    processor = L.default_processor,
+  --    name='groupby_'..key_field:Name(),
+  --    size=num_keys+1
+  --  },
+  --})
+  rawset(self,'_grouped_field', key_field)
+  rawset(self,'_grouped_offset', offset_f)
+  rawset(self,'_grouped_length', length_f)
+
+  if use_single then
+    -- NOTE: THIS IMPLEMENTATION HEAVILY ASSUMES THAT A GRID IS LINEARIZED
+    -- IN ROW-MAJOR ORDER
+    offset_f.array:write_ptr(function(offptr)
+    length_f.array:write_ptr(function(lenptr)
+    key_field.array:read_ptr(function(keyptr)
+      local dims = srcrel:Dims()
+
+      local dst_i, prev_src = 0,0
+      for src_i=0,n_src-1 do -- linear scan assumption here
+        offptr[src_i] = dst_i -- where to find the first row
+        local count = 0
+        while dst_i < n_dst do
+          local lin_src = T.linAddrLua(keyptr[dst_i],dims)
+          if lin_src ~= src_i then break end
+          if lin_src < prev_src then
+            error("GroupBy(): Key field '"..key_field:Name().."' "..
+                  "is not sorted.")
+          end
+          count     = count + 1
+          dst_i     = dst_i + 1
+          prev_src  = lin_src
+        end
+        lenptr[src_i] = count -- # of rows
+      end
+      assert(dst_i == n_dst)
+    end) -- key_field read
+    end) -- length_f write
+    end) -- offset_f write
+  elseif use_legion then
+    --error("GROUPING UNSUPPORTED")
+
+    local keyf_list = key_field:DumpToList()
+    local dims      = srcrel:Dims()
+
+    local src_scanner = LW.NewControlScanner {
+      logical_region = srcrel._logical_region_wrapper.handle,
+      dimensions     = srcrel:Dims(),
+      privilege      = LW.WRITE_ONLY,
+      fields         = {offset_f.fid, length_f.fid},
+    }
+    local dst_i, prev_src = 0,0
+    for ids, ptrs in src_scanner:ScanThenClose() do
+      print(ids,dst_i)
+      local src_i   = linid(ids,dims)
+      local offptr  = terralib.cast(&uint64,ptrs[1])
+      local lenptr  = terralib.cast(&uint64,ptrs[2])
+
+      offptr[0] = dst_i
+      local count   = 0
+      while dst_i < n_dst do
+        local lin_src = linid(keyf_list[dst_i+1],dims)
+        if lin_src ~= src_i then break end
+        if lin_src < prev_src then
+          error("GroupBy(): Key field '"..key_field:Name().."' "..
+                "is not sorted.")
+        end
+        count     = count + 1
+        dst_i     = dst_i + 1
+        prev_src  = lin_src
+      end
+      lenptr[0] = count
+    end
+    assert(dst_i == n_dst)
+  else
+    error("INTERNAL: must use either single or legion...")
   end
 
-  local num_keys = key_field.type.relation:ConcreteSize() -- # possible keys
-  local num_rows = key_field:ConcreteSize()
-  rawset(self,'_grouping', {
-    key_field = key_field,
-    index = L.LIndex.New{
-      owner=self,
-      terra_type = key_field.type:terraType(),
-      processor = L.default_processor,
-      name='groupby_'..key_field:Name(),
-      size=num_keys+1
-    },
-  })
-
-  -- NOTE: THIS IMPLEMENTATION HEAVILY ASSUMES THAT A GRID IS LINEARIZED
-  -- IN ROW-MAJOR ORDER
-  self._grouping.index._array:write_ptr(function(indexdata)
-  key_field.array:read_ptr(function(keyptr)
-    local dims = key_field.type.relation:Dims()
-    local prev,pos = 0,0
-    for i = 0, num_keys-1 do
-      indexdata[i].a[0] = pos
-      local lin_key = T.linAddrLua(keyptr[pos], dims)
-      while lin_key == i and pos < num_rows do
-        if lin_key < prev then
-          self._grouping.index:Release()
-          self._grouping = nil
-          error("GroupBy(): Key field '"..name.."' is not sorted.")
-        end
-        prev,pos = lin_key, pos+1
-        lin_key  = T.linAddrLua(keyptr[pos], dims)
-      end
-    end
-    assert(pos == num_rows)
-    indexdata[num_keys].a[0] = pos 
-  end) -- key_field read
-  end) -- indexdata write
-
+  --self._grouping.index._array:write_ptr(function(indexdata)
+  --key_field.array:read_ptr(function(keyptr)
+  --  local dims = key_field.type.relation:Dims()
+  --  local prev,pos = 0,0
+  --  for i = 0, num_keys-1 do
+  --    indexdata[i].a[0] = pos
+  --    local lin_key = T.linAddrLua(keyptr[pos], dims)
+  --    while lin_key == i and pos < num_rows do
+  --      if lin_key < prev then
+  --        self._grouping.index:Release()
+  --        self._grouping = nil
+  --        error("GroupBy(): Key field '"..key_field:Name().."' is not sorted.")
+  --      end
+  --      prev,pos = lin_key, pos+1
+  --      lin_key  = T.linAddrLua(keyptr[pos], dims)
+  --    end
+  --  end
+  --  assert(pos == num_rows)
+  --  indexdata[num_keys].a[0] = pos 
+  --end) -- key_field read
+  --end) -- indexdata write
+  
+  self._mode = 'GROUPED'
   -- record reference from this relation to the relation it's grouped by
-  key_field.type.relation._incoming_refs[self] = 'group'
+  srcrel._incoming_refs[self] = 'group'
 end
 
 function L.LRelation:MoveTo( proc )
@@ -386,7 +481,10 @@ function L.LRelation:MoveTo( proc )
   self._is_live_mask:MoveTo(proc)
   for _,f in ipairs(self._fields) do f:MoveTo(proc) end
   for _,s in ipairs(self._subsets) do s:MoveTo(proc) end
-  if self._grouping then self._grouping.index:MoveTo(proc) end
+  if self:isGrouped() then
+    self._grouped_offset:MoveTo(proc)
+    self._grouped_length:MoveTo(proc)
+  end
 end
 
 
@@ -670,11 +768,10 @@ function L.LField:ClearData ()
     self.array = nil
   end
   -- clear grouping data if set on this field
-  if self.owner._grouping and
-     self.owner._grouping.key_field == self
+  if self.owner:isGrouped() and
+     self.owner:GroupedKeyField() == self
   then
-    self.owner._grouping.index:Release()
-    self.owner._grouping = nil
+    error('UNGROUPING CURRENTLY UNIMPLEMENTED')
   end
 end
 
@@ -888,7 +985,7 @@ function L.LRelation:JointDump(fields, lua_callback)
     local fids = {}
     local typs = {}
     for k=1,#fields do
-      local f = self[fields[k]]
+      local f = fields[k]
       fids[k] = f.fid
       typs[k] = f.type
     end
@@ -925,8 +1022,7 @@ function L.LRelation:JointDump(fields, lua_callback)
     end
 
     for k=1,nfields do
-      local fname = fields[k]
-      local f     = self[fname]
+      local f     = fields[k]
       typs[k]     = f.type
       local loopcapture = loop -- THIS IS NEEDED TO STOP INF. RECURSION
       local outerloop = function()
@@ -949,7 +1045,7 @@ function L.LField:DumpFunction(lua_callback)
   if self.owner:isFragmented() then
     error('cannot dump from fragmented relation', 2)
   end
-  self.owner:JointDump({self:Name()}, function(ids, val)
+  self.owner:JointDump({self}, function(ids, val)
     lua_callback(val, unpack(ids))
   end)
 end
@@ -1008,8 +1104,8 @@ function L.LField:print()
     end
   end
 
-  local fields     = { self:Name() }
-  if is_elastic then fields[2] = '_is_live_mask' end
+  local fields     = { self }
+  if is_elastic then fields[2] = self.owner._is_live_mask end
   self.owner:JointDump(fields,
   function (ids, datum, islive)
     local alive = ''
