@@ -39,7 +39,7 @@ local XORIGIN       = origin[1]
 local YORIGIN       = origin[2]
 local ZORIGIN       = origin[3]
 local viscosity     = 0.08
-local dt            = L.NewGlobal(L.float, 0.01)
+local dt            = L.Global(L.float, 0.01)
 
 grid.cells:NewField('velocity', L.vec3f):Load({0,0,0})
 grid.cells:NewField('velocity_prev', L.vec3f):Load({0,0,0})
@@ -85,8 +85,8 @@ end
 --[[                             DIFFUSE                                 ]]--
 -----------------------------------------------------------------------------
 
-local diffuse_diagonal = L.NewGlobal(L.float, 0.0)
-local diffuse_edge     = L.NewGlobal(L.float, 0.0)
+local diffuse_diagonal = L.Global(L.float, 0.0)
+local diffuse_edge     = L.Global(L.float, 0.0)
 
 -- One Jacobi-Iteration
 local diffuse_lin_solve_jacobi_step = liszt kernel (c : grid.cells)
@@ -131,7 +131,7 @@ local xcwidth = grid:xCellWidth()
 local ycwidth = grid:yCellWidth()
 local zcwidth = grid:zCellWidth()
 
-local advect_dt = L.NewGlobal(L.float, 0.0)
+local advect_dt = L.Global(L.float, 0.0)
 grid.cells:NewField('lookup_pos', L.vec3f):Load({0,0,0})
 grid.cells:NewField('lookup_from', grid.dual_cells):Load({0,0,0})
 
@@ -239,8 +239,8 @@ end
 --[[                             PROJECT                                 ]]--
 -----------------------------------------------------------------------------
 
-local project_diagonal = L.NewGlobal(L.float, 0.0)
-local project_edge     = L.NewGlobal(L.float, 0.0)
+local project_diagonal = L.Global(L.float, 0.0)
+local project_edge     = L.Global(L.float, 0.0)
 grid.cells:NewField('divergence', L.float):Load(0)
 grid.cells:NewField('p', L.float):Load(0)
 grid.cells:NewField('p_temp', L.float):Load(0)

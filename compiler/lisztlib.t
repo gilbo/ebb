@@ -67,9 +67,9 @@ local is_vector = L.is_vector --cache lookup for efficiency
 --[[ LGlobals:                                                             ]]--
 -------------------------------------------------------------------------------
 
-function L.NewGlobal (typ, init)
-    if not T.isLisztType(typ) or not typ:isValueType() then error("First argument to L.NewGlobal must be a Liszt expression type", 2) end
-    if not T.luaValConformsToType(init, typ) then error("Second argument to L.NewGlobal must be an instance of type " .. typ:toString(), 2) end
+function L.Global (typ, init)
+    if not T.isLisztType(typ) or not typ:isValueType() then error("First argument to L.Global must be a Liszt expression type", 2) end
+    if not T.luaValConformsToType(init, typ) then error("Second argument to L.Global must be an instance of type " .. typ:toString(), 2) end
 
     local s  = setmetatable({type=typ}, LGlobal)
     local tt = typ:terraType()
@@ -141,6 +141,15 @@ end
 --[[ LConstants:                                                           ]]--
 -------------------------------------------------------------------------------
 
+local function deep_copy(tbl)
+    if type(tbl) ~= 'table' then return tbl
+    else
+        local cpy = {}
+        for i=1,#tbl do cpy[i] = deep_copy(tbl[i]) end
+        return cpy
+    end
+end
+
 function L.Constant (typ, init)
     if not T.isLisztType(typ) or not typ:isValueType() then
         error("First argument to L.Constant must be a "..
@@ -151,17 +160,13 @@ function L.Constant (typ, init)
               "value of type " .. typ:toString(), 2)
     end
 
-    local function deep_copy(tbl)
-        if type(tbl) ~= 'table' then return tbl
-        else
-            local cpy = {}
-            for i=1,#tbl do cpy[i] = deep_copy(tbl[i]) end
-            return cpy
-        end
-    end
 
     local c = setmetatable({type=typ, value=deep_copy(init)}, LConstant)
     return c
+end
+
+function L.LConstant:get()
+  return deep_copy(self.value)
 end
 
 -------------------------------------------------------------------------------

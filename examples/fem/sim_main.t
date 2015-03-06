@@ -630,11 +630,11 @@ function ImplicitBackwardEulerIntegrator:setupFieldsKernels(mesh)
 
   mesh.edges:NewField('raydamp', L.mat3d)
 
-  self.err = L.NewGlobal(L.double, 0)
-  self.normRes = L.NewGlobal(L.double, 0)
-  self.alphaDenom = L.NewGlobal(L.double, 0)
-  self.alpha = L.NewGlobal(L.double, 0)
-  self.beta = L.NewGlobal(L.double, 0)
+  self.err = L.Global(L.double, 0)
+  self.normRes = L.Global(L.double, 0)
+  self.alphaDenom = L.Global(L.double, 0)
+  self.alpha = L.Global(L.double, 0)
+  self.beta = L.Global(L.double, 0)
 
   local liszt kernel initializeQFields (v : mesh.vertices)
     v.q_1 = v.q

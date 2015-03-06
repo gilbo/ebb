@@ -7,8 +7,8 @@ local M = LMesh.Load("examples/mesh.lmesh")
 local V = M.vertices
 local P = V.position
 
-local max_pos = L.NewGlobal(L.vec3i, {-10, -10, -10})
-local min_pos = L.NewGlobal(L.vec3i, { 10,  10,  10})
+local max_pos = L.Global(L.vec3i, {-10, -10, -10})
+local min_pos = L.Global(L.vec3i, { 10,  10,  10})
 
 -- Test max reduction operator
 local max_kernel = liszt kernel (v : M.vertices)

@@ -18,7 +18,7 @@ end)
 -- load a constant
 grid.cells:NewField('d_temperature', L.double):Load(0)
 
-local K = L.NewGlobal(L.double, 1.0)
+local K = L.Global(L.double, 1.0)
 
 local compute_diffuse = liszt kernel ( c : grid.cells )
   if not c.in_boundary then

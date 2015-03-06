@@ -18,7 +18,7 @@ function run_liszt_saxpy (tests)
 	R:NewField("y", L.float):Load(function(i) return i*i end)
 	R:NewField("z", L.float)
 
-	local a = L.NewGlobal(L.float, 3.49230)
+	local a = L.Global(L.float, 3.49230)
 
 	local liszt kernel liszt_saxpy (r : R)
 		r.z = a * r.x + r.y

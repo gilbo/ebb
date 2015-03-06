@@ -108,7 +108,7 @@ local m = {}
 
 m.dtfixed             = -1.0e-7    -- fixed time increment
 m.time                = 0          -- current time
-m.deltatime           = L.NewGlobal(L.float, 0.0)        -- variable time increment
+m.deltatime           = L.Global(L.float, 0.0)        -- variable time increment
 m.deltatimemultlb     = 1.1
 m.deltatimemultub     = 1.2
 m.stoptime            = 1.0e-2     -- end time for simulation
@@ -157,8 +157,8 @@ local end_time   = 0
 local TimeType = double
 
 -- Global reduction variables for computing time constraints
-local dtcourant_tmp = L.NewGlobal(L.double, 0.0)
-local dthydro_tmp   = L.NewGlobal(L.double, 0.0)
+local dtcourant_tmp = L.Global(L.double, 0.0)
+local dthydro_tmp   = L.Global(L.double, 0.0)
 
 
 ------------------------------------------------------------------------------------------

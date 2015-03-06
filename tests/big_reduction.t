@@ -7,7 +7,7 @@ L.default_processor = L.GPU
 local N = 1000000
 
 local vertices = L.NewRelation { size = N, name = 'vertices' }
-local gerr = L.NewGlobal(L.int, 0)
+local gerr = L.Global(L.int, 0)
 
 local liszt kernel RunRed(v : vertices)
   gerr += 1

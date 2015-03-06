@@ -11,7 +11,7 @@ local init_height = 3.5
 local width = 10.0
 
 local sphere_radius = 3
-local sphere_center = L.NewGlobal(L.vec3d, {0,0,0})
+local sphere_center = L.Global(L.vec3d, {0,0,0})
 local collision_spring_k = 100
 
 ------------------------------------------------------------------------------
@@ -63,7 +63,7 @@ local IDEAL_LEN = width / N
 local SPRING_K = 1000.0
 local FRICTION = 2.0
 
-local dt = L.NewGlobal(L.double, 0.00005)
+local dt = L.Global(L.double, 0.00005)
 
 local spring_dvel = liszt function(dir)
   var dir_len = L.length(dir)

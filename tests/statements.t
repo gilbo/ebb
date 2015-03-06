@@ -5,7 +5,7 @@ local LMesh = L.require "domains.lmesh"
 local mesh = LMesh.Load("examples/mesh.lmesh")
 mesh.vertices:NewField('val', L.float)
 mesh.vertices.val:LoadConstant(1)
-red = L.NewGlobal(L.float, 0.0)
+red = L.Global(L.float, 0.0)
 
 -- checking decl statement, if statement, proper scoping
 local l = liszt kernel (v : mesh.vertices)

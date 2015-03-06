@@ -69,7 +69,7 @@ test.fail_function(function()
 end, 'Cannot insert into relation grouped_rel because it\'s not ELASTIC')
 
 -- Inserting into something that isn't a relation
-local sum = L.NewGlobal(L.uint64, 0)
+local sum = L.Global(L.uint64, 0)
 test.fail_function(function()
   liszt kernel t( c : cells )
     insert { cell = c } into sum

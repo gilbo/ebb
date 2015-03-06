@@ -238,7 +238,7 @@ end
 
 -- Liszt Mumbo Jumbo
 
-local time_global = L.NewGlobal(L.float, 0)
+local time_global = L.Global(L.float, 0)
 vertices:NewField('pos_temp', L.vector(L.float, 4)):Load({0,0,0,0})
 local update_pos1 = liszt kernel (v : vertices)
     var y = v.pos[1]

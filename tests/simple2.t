@@ -3,7 +3,7 @@ require "tests/test"
 
 local LMesh = L.require "domains.lmesh"
 local mesh = LMesh.Load("examples/mesh.lmesh")
-local com = L.NewGlobal(L.vector(L.float, 3), {0, 0, 0})
+local com = L.Global(L.vector(L.float, 3), {0, 0, 0})
 
 function center_of_mass ()
 	com:set({0,0,0})

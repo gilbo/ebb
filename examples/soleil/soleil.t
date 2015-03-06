@@ -62,42 +62,42 @@ local Visualization = {};
 -----------------------------------------------------------------------------
 
 -- Flow type
-Flow.Uniform             = L.NewGlobal(L.int, 0)
-Flow.TaylorGreen2DVortex = L.NewGlobal(L.int, 1)
-Flow.TaylorGreen3DVortex = L.NewGlobal(L.int, 2)
-Flow.Restart             = L.NewGlobal(L.int, 3)
+Flow.Uniform             = L.Global(L.int, 0)
+Flow.TaylorGreen2DVortex = L.Global(L.int, 1)
+Flow.TaylorGreen3DVortex = L.Global(L.int, 2)
+Flow.Restart             = L.Global(L.int, 3)
 
 -- Viscosity Model
-Viscosity.Constant   = L.NewGlobal(L.int, 0)
-Viscosity.PowerLaw   = L.NewGlobal(L.int, 1)
-Viscosity.Sutherland = L.NewGlobal(L.int, 2)
+Viscosity.Constant   = L.Global(L.int, 0)
+Viscosity.PowerLaw   = L.Global(L.int, 1)
+Viscosity.Sutherland = L.Global(L.int, 2)
 
 -- Particles feeder
-Particles.FeederAtStartTimeInRandomBox = L.NewGlobal(L.int, 0)
-Particles.FeederOverTimeInRandomBox    = L.NewGlobal(L.int, 1)
-Particles.FeederUQCase                 = L.NewGlobal(L.int, 2)
-Particles.Random                       = L.NewGlobal(L.int, 3)
-Particles.Restart                      = L.NewGlobal(L.int, 4)
+Particles.FeederAtStartTimeInRandomBox = L.Global(L.int, 0)
+Particles.FeederOverTimeInRandomBox    = L.Global(L.int, 1)
+Particles.FeederUQCase                 = L.Global(L.int, 2)
+Particles.Random                       = L.Global(L.int, 3)
+Particles.Restart                      = L.Global(L.int, 4)
 
 -- Particles collector
-Particles.CollectorNone     = L.NewGlobal(L.int, 0)
-Particles.CollectorOutOfBox = L.NewGlobal(L.int, 1)
+Particles.CollectorNone     = L.Global(L.int, 0)
+Particles.CollectorOutOfBox = L.Global(L.int, 1)
 
 -- Particle Type (Fixed or Free)
-Particles.Fixed = L.NewGlobal(L.int, 0)
-Particles.Free  = L.NewGlobal(L.int, 1)
+Particles.Fixed = L.Global(L.int, 0)
+Particles.Free  = L.Global(L.int, 1)
 
 -- Particle Boundary
-Particles.Permeable = L.NewGlobal(L.int, 0)
-Particles.Solid     = L.NewGlobal(L.int, 1)
+Particles.Permeable = L.Global(L.int, 0)
+Particles.Solid     = L.Global(L.int, 1)
 
 -- Output formats
-IO.Python  = L.NewGlobal(L.int, 0)
-IO.Tecplot = L.NewGlobal(L.int, 1)
+IO.Python  = L.Global(L.int, 0)
+IO.Tecplot = L.Global(L.int, 1)
 
 -- General ON/OFF Flags
-OFF = L.NewGlobal(L.bool, false)
-ON  = L.NewGlobal(L.bool, true)
+OFF = L.Global(L.bool, false)
+ON  = L.Global(L.bool, true)
 
 -----------------------------------------------------------------------------
 --[[                       COLORS FOR VISUALIZATION                      ]]--
@@ -363,16 +363,16 @@ end
 -- Time integrator options
 TimeIntegrator.coeff_function        = {1/6, 1/3, 1/3, 1/6}
 TimeIntegrator.coeff_time            = {0.5, 0.5, 1, 1}
-TimeIntegrator.simTime               = L.NewGlobal(L.double,0)
+TimeIntegrator.simTime               = L.Global(L.double,0)
 TimeIntegrator.final_time            = config.final_time
 TimeIntegrator.max_iter              = config.max_iter
-TimeIntegrator.timeStep              = L.NewGlobal(L.int,0)
+TimeIntegrator.timeStep              = L.Global(L.int,0)
 TimeIntegrator.cfl                   = config.cfl
 TimeIntegrator.delta_time            = config.delta_time
 TimeIntegrator.outputEveryTimeSteps  = config.outputEveryTimeSteps
 TimeIntegrator.restartEveryTimeSteps = config.restartEveryTimeSteps
 TimeIntegrator.headerFrequency       = config.headerFrequency
-TimeIntegrator.deltaTime             = L.NewGlobal(L.double, 0.01)
+TimeIntegrator.deltaTime             = L.Global(L.double, 0.01)
 
 local fluid_options = {}
 if config.viscosity_model == 'Constant' then
@@ -403,8 +403,8 @@ elseif config.initCase == 'TaylorGreen3DVortex' then
 else
   error("Flow initialization type not defined")
 end
-flow_options.initParams = L.NewGlobal(L.vector(L.double,5), config.initParams)
-flow_options.bodyForce = L.NewGlobal(L.vec3d, config.bodyForce)
+flow_options.initParams = L.Global(L.vector(L.double,5), config.initParams)
+flow_options.bodyForce = L.Global(L.vec3d, config.bodyForce)
 
 
 local particles_options = {
@@ -416,9 +416,9 @@ local particles_options = {
     -- Feed all particles at start randomly
     -- distributed on a box defined by its center and sides
     feederType = Particles.FeederAtStartTimeInRandomBox,
-    --feederParams = L.NewGlobal(L.vector(L.double,6),
+    --feederParams = L.Global(L.vector(L.double,6),
     --                           {pi,pi,pi,2*pi,2*pi,2*pi}), -- TGV problem
-    feederParams = L.NewGlobal(L.vector(L.double,6),  -- Default is entire box
+    feederParams = L.Global(L.vector(L.double,6),  -- Default is entire box
                                {(grid_options.origin[1]+grid_options.xWidth)/2.,
                                (grid_options.origin[2]+grid_options.yWidth)/2.,
                                (grid_options.origin[3]+grid_options.zWidth)/2.,
@@ -429,7 +429,7 @@ local particles_options = {
     -- Feeding a given number of particles every timestep randomly
     -- distributed on a box defined by its center and sides
     --feederType = Particles.FeederOverTimeInRandomBox,
-    --feederParams = L.NewGlobal(L.vector(L.double,10),
+    --feederParams = L.Global(L.vector(L.double,10),
     --                           {pi,pi,pi, -- centerCoor
     --                            2*pi,2*pi,2*pi, -- widthCoor
     --                            2.0,2.0,0, -- velocity
@@ -438,7 +438,7 @@ local particles_options = {
     --
     ---- UQCase
     --feederType = Particles.FeederUQCase,
-    --feederParams = L.NewGlobal(L.vector(L.double,20),
+    --feederParams = L.Global(L.vector(L.double,20),
     --                   {pi/4,  pi/2,pi,0.1*pi,0.1*pi,pi/2,4, 4,0,0.3,
     --                    pi/4,3*pi/2,pi,0.1*pi,0.1*pi,pi/2,4,-4,0,0.8}),
     
@@ -449,24 +449,24 @@ local particles_options = {
     --
     -- Do not collect particles (freely move within the domain)
     collectorType   = Particles.CollectorNone,
-    collectorParams = L.NewGlobal(L.vector(L.double,1),{0}),
+    collectorParams = L.Global(L.vector(L.double,1),{0}),
     
     -- Collect all particles that exit a box defined by its Cartesian 
     -- min/max coordinates
     --collectorType = Particles.CollectorOutOfBox,
-    --collectorParams = L.NewGlobal(L.vector(L.double,6),{0.5,0.5,0.5,12,6,6}),
+    --collectorParams = L.Global(L.vector(L.double,6),{0.5,0.5,0.5,12,6,6}),
 
     num = config.num,
-    restitution_coefficient = L.NewGlobal(L.double,
+    restitution_coefficient = L.Global(L.double,
                                           config.restitutionCoefficient),
-    convective_coefficient = L.NewGlobal(L.double,
+    convective_coefficient = L.Global(L.double,
                                          config.convectiveCoefficient),
-    heat_capacity = L.NewGlobal(L.double, config.heatCapacity),
+    heat_capacity = L.Global(L.double, config.heatCapacity),
     initialTemperature = config.initialTemperature,
     density = config.density,
     diameter_mean = config.diameter_mean,
     diameter_maxDeviation = config.diameter_maxDeviation,
-    bodyForce = L.NewGlobal(L.vec3d, config.bodyForceParticles),
+    bodyForce = L.Global(L.vec3d, config.bodyForceParticles),
     emissivity = config.emissivity,
     absorptivity = config.absorptivity,
     restartParticleIter = config.restartParticleIter,
@@ -786,12 +786,12 @@ local grid = Grid.NewGrid3d{
 -- Define uniform grid spacing
 -- WARNING: These are used for uniform grids and should be replaced by different
 -- metrics for non-uniform ones (see other WARNINGS throughout the code)
-local grid_originX = L.NewGlobal(L.double, grid:xOrigin())
-local grid_originY = L.NewGlobal(L.double, grid:yOrigin())
-local grid_originZ = L.NewGlobal(L.double, grid:zOrigin())
-local grid_dx = L.NewGlobal(L.double, grid:xCellWidth())
-local grid_dy = L.NewGlobal(L.double, grid:yCellWidth())
-local grid_dz = L.NewGlobal(L.double, grid:zCellWidth())
+local grid_originX = L.Constant(L.double, grid:xOrigin())
+local grid_originY = L.Constant(L.double, grid:yOrigin())
+local grid_originZ = L.Constant(L.double, grid:zOrigin())
+local grid_dx      = L.Constant(L.double, grid:xCellWidth())
+local grid_dy      = L.Constant(L.double, grid:yCellWidth())
+local grid_dz      = L.Constant(L.double, grid:zCellWidth())
 
 -- Create a field for the center coords of the dual cells (i.e., vertices)
 grid.vertices:NewField('centerCoordinates', L.vec3d)          :Load({0, 0, 0})
@@ -869,8 +869,8 @@ local particles = L.NewRelation {
   name = 'particles'
 }
 
-particles:NewField('dual_cell', grid.dual_cells)              :Load(0)
-particles:NewField('cell', grid.cells)                        :Load(0)
+particles:NewField('dual_cell', grid.dual_cells)              :Load({0,0,0})
+particles:NewField('cell', grid.cells)                        :Load({0,0,0})
 
 particles:NewField('position', L.vec3d)
 particles:NewField('velocity', L.vec3d)
@@ -938,14 +938,14 @@ particles:NewField('temperature_t', L.double)                 :Load(0)
 -- Note: - numberOfInteriorCells and areaInterior could be defined as variables
 -- from grid instead of Flow. Here Flow is used to avoid adding things to grid
 -- externally
-Flow.numberOfInteriorCells   = L.NewGlobal(L.int, 0)
-Flow.areaInterior            = L.NewGlobal(L.double, 0)
-Flow.averagePressure         = L.NewGlobal(L.double, 0.0)
-Flow.averageTemperature      = L.NewGlobal(L.double, 0.0)
-Flow.averageKineticEnergy    = L.NewGlobal(L.double, 0.0)
-Flow.minTemperature          = L.NewGlobal(L.double, 0)
-Flow.maxTemperature          = L.NewGlobal(L.double, 0)
-Particles.averageTemperature = L.NewGlobal(L.double, 0.0)
+Flow.numberOfInteriorCells   = L.Global(L.int, 0)
+Flow.areaInterior            = L.Global(L.double, 0)
+Flow.averagePressure         = L.Global(L.double, 0.0)
+Flow.averageTemperature      = L.Global(L.double, 0.0)
+Flow.averageKineticEnergy    = L.Global(L.double, 0.0)
+Flow.minTemperature          = L.Global(L.double, 0)
+Flow.maxTemperature          = L.Global(L.double, 0)
+Particles.averageTemperature = L.Global(L.double, 0.0)
 
 -----------------------------------------------------------------------------
 --[[                 CONSOLE OUTPUT AFTER PREPROCESSING                  ]]--
@@ -1177,9 +1177,9 @@ end
 -- Hard coding the vertices until we have access in grid.t
 -- WARNING: Here, I am using the id numbers, but this is unsafe!
 Flow.InitializeVertexCoordinates = liszt kernel(v : grid.vertices)
-    var x = grid_originX + grid_dx * (L.double(v.xid))
-    var y = grid_originY + grid_dy * (L.double(v.yid))
-    var z = grid_originZ + grid_dz * (L.double(v.zid))
+    var x = grid_originX + grid_dx * (L.double(L.xid(v)))
+    var y = grid_originY + grid_dy * (L.double(L.yid(v)))
+    var z = grid_originZ + grid_dz * (L.double(L.zid(v)))
     v.centerCoordinates = L.vec3d({x, y, z})
 end
 
@@ -2260,66 +2260,153 @@ Flow.UpdateGhostVelocityGradientStep2 = liszt kernel(c : grid.cells)
 end
 
 -- Calculation of spectral radii for clf-based delta time
-local maxConvectiveSpectralRadius = L.NewGlobal(L.double, 0)
-local maxViscousSpectralRadius  = L.NewGlobal(L.double, 0)
-local maxHeatConductionSpectralRadius  = L.NewGlobal(L.double, 0)
-Flow.CalculateSpectralRadii = liszt kernel(c : grid.cells)
-    var dXYZInverseSquare = 1.0/grid_dx * 1.0/grid_dx +
-                            1.0/grid_dy * 1.0/grid_dy +
-                            1.0/grid_dz * 1.0/grid_dz
-    -- Convective spectral radii
-    c.convectiveSpectralRadius = 
-       (L.fabs(c.velocity[0])/grid_dx  +
-        L.fabs(c.velocity[1])/grid_dy  +
-        L.fabs(c.velocity[2])/grid_dz  +
-        GetSoundSpeed(c.temperature) * L.sqrt(dXYZInverseSquare)) *
-       spatial_stencil.firstDerivativeModifiedWaveNumber
-    
-    -- Viscous spectral radii (including sgs model component)
-    var dynamicViscosity = GetDynamicViscosity(c.temperature)
-    var eddyViscosity = c.sgsEddyViscosity
-    c.viscousSpectralRadius = 
-       (2.0 * ( dynamicViscosity + eddyViscosity ) /
-        c.rho * dXYZInverseSquare) *
-       spatial_stencil.secondDerivativeModifiedWaveNumber
-    
-    -- Heat conduction spectral radii (including sgs model 
-    -- component)
-    var cv = fluid_options.gasConstant / 
-             (fluid_options.gamma - 1.0)
-    var cp = fluid_options.gamma * cv
-    var kappa = cp / fluid_options.prandtl *  dynamicViscosity
-    
-    c.heatConductionSpectralRadius = 
-       ((kappa + c.sgsEddyKappa) / (cv * c.rho) * dXYZInverseSquare) *
-       spatial_stencil.secondDerivativeModifiedWaveNumber
+local maxConvectiveSpectralRadius = L.Global(L.double, 0)
+local maxViscousSpectralRadius  = L.Global(L.double, 0)
+local maxHeatConductionSpectralRadius  = L.Global(L.double, 0)
+local dXYZInverseSquare = L.Constant(L.double,
+                                     1.0/grid_dx:get() * 1.0/grid_dx:get() +
+                                     1.0/grid_dy:get() * 1.0/grid_dy:get() +
+                                     1.0/grid_dz:get() * 1.0/grid_dz:get())
+local liszt kernel calculateConvectiveSpectralRadius     ( c : grid.cells )
+  -- Convective spectral radii
+  c.convectiveSpectralRadius = 
+   (L.fabs(c.velocity[0])/grid_dx  +
+    L.fabs(c.velocity[1])/grid_dy  +
+    L.fabs(c.velocity[2])/grid_dz  +
+    GetSoundSpeed(c.temperature) * L.sqrt(dXYZInverseSquare)) *
+   spatial_stencil.firstDerivativeModifiedWaveNumber
 
-    maxConvectiveSpectralRadius     max= c.convectiveSpectralRadius
-    maxViscousSpectralRadius        max= c.viscousSpectralRadius
-    maxHeatConductionSpectralRadius max= c.heatConductionSpectralRadius
-
+  maxConvectiveSpectralRadius max= c.convectiveSpectralRadius    
 end
+local liszt kernel calculateViscousSpectralRadius        ( c : grid.cells )
+  -- Viscous spectral radii (including sgs model component)
+  var dynamicViscosity = GetDynamicViscosity(c.temperature)
+  var eddyViscosity = c.sgsEddyViscosity
+  c.viscousSpectralRadius = 
+   (2.0 * ( dynamicViscosity + eddyViscosity ) /
+    c.rho * dXYZInverseSquare) *
+   spatial_stencil.secondDerivativeModifiedWaveNumber
+
+  maxViscousSpectralRadius max= c.viscousSpectralRadius       
+end
+local liszt kernel calculateHeatConductionSpectralRadius ( c : grid.cells )
+  var dynamicViscosity  = GetDynamicViscosity(c.temperature)
+
+  -- Heat conduction spectral radii (including sgs model 
+  -- component)
+  var cv = fluid_options.gasConstant / 
+           (fluid_options.gamma - 1.0)
+  var cp = fluid_options.gamma * cv
+  var kappa = cp / fluid_options.prandtl *  dynamicViscosity
+  
+  c.heatConductionSpectralRadius = 
+     ((kappa + c.sgsEddyKappa) / (cv * c.rho) * dXYZInverseSquare) *
+     spatial_stencil.secondDerivativeModifiedWaveNumber
+  maxHeatConductionSpectralRadius max= c.heatConductionSpectralRadius
+end
+function Flow.CalculateSpectralRadii(cells)
+  calculateConvectiveSpectralRadius(cells)
+  calculateViscousSpectralRadius(cells)
+  calculateHeatConductionSpectralRadius(cells)
+end
+--Flow.CalculateSpectralRadii = liszt kernel(c : grid.cells)
+--    var dXYZInverseSquare = 1.0/grid_dx * 1.0/grid_dx +
+--                            1.0/grid_dy * 1.0/grid_dy +
+--                            1.0/grid_dz * 1.0/grid_dz
+--    -- Convective spectral radii
+--    c.convectiveSpectralRadius = 
+--       (L.fabs(c.velocity[0])/grid_dx  +
+--        L.fabs(c.velocity[1])/grid_dy  +
+--        L.fabs(c.velocity[2])/grid_dz  +
+--        GetSoundSpeed(c.temperature) * L.sqrt(dXYZInverseSquare)) *
+--       spatial_stencil.firstDerivativeModifiedWaveNumber
+--    
+--    -- Viscous spectral radii (including sgs model component)
+--    var dynamicViscosity = GetDynamicViscosity(c.temperature)
+--    var eddyViscosity = c.sgsEddyViscosity
+--    c.viscousSpectralRadius = 
+--       (2.0 * ( dynamicViscosity + eddyViscosity ) /
+--        c.rho * dXYZInverseSquare) *
+--       spatial_stencil.secondDerivativeModifiedWaveNumber
+--    
+--    -- Heat conduction spectral radii (including sgs model 
+--    -- component)
+--    var cv = fluid_options.gasConstant / 
+--             (fluid_options.gamma - 1.0)
+--    var cp = fluid_options.gamma * cv
+--    var kappa = cp / fluid_options.prandtl *  dynamicViscosity
+--    
+--    c.heatConductionSpectralRadius = 
+--       ((kappa + c.sgsEddyKappa) / (cv * c.rho) * dXYZInverseSquare) *
+--       spatial_stencil.secondDerivativeModifiedWaveNumber
+--
+--    maxConvectiveSpectralRadius     max= c.convectiveSpectralRadius
+--    maxViscousSpectralRadius        max= c.viscousSpectralRadius
+--    maxHeatConductionSpectralRadius max= c.heatConductionSpectralRadius
+--
+--end
 
 -------------
 -- Statistics
 -------------
 
-Flow.IntegrateQuantities = liszt kernel(c : grid.cells)
-    -- WARNING: update cellVolume computation for non-uniform grids
-    --var cellVolume = c.xCellWidth() * c.yCellWidth() * c.zCellWidth()
-    var cellVolume = grid_dx * grid_dy * grid_dz
-    Flow.numberOfInteriorCells += 1
-    Flow.areaInterior          += cellVolume
-    Flow.averagePressure       += c.pressure * cellVolume
-    Flow.averageTemperature    += c.temperature * cellVolume
-    Flow.averageKineticEnergy  += c.kineticEnergy * cellVolume
-    Flow.minTemperature      min= c.temperature
-    Flow.maxTemperature      max= c.temperature
+local cellVolume = L.Constant(L.double,
+                              grid_dx:get() * grid_dy:get() * grid_dz:get())
+local liszt kernel numberOfInteriorCells ( c : grid.cells )
+  Flow.numberOfInteriorCells    += 1
 end
+local liszt kernel areaInterior          ( c : grid.cells )
+  Flow.areaInterior             += cellVolume
+end
+local liszt kernel averagePressure       ( c : grid.cells )
+  Flow.averagePressure          += c.pressure * cellVolume
+end
+local liszt kernel averageTemperature    ( c : grid.cells )
+  Flow.averageTemperature       += c.temperature * cellVolume
+end
+local liszt kernel averageKineticEnergy  ( c : grid.cells )
+  Flow.averageKineticEnergy     += c.kineticEnergy * cellVolume
+end
+local liszt kernel minTemperature        ( c : grid.cells )
+  Flow.minTemperature         min= c.temperature
+end
+local liszt kernel maxTemperature        ( c : grid.cells )
+  Flow.maxTemperature         max= c.temperature
+end
+function Flow.IntegrateQuantities(cells)
+  numberOfInteriorCells(cells)
+  areaInterior         (cells)
+  averagePressure      (cells)
+  averageTemperature   (cells)
+  averageKineticEnergy (cells)
+  minTemperature       (cells)
+  maxTemperature       (cells)
+end
+--Flow.IntegrateQuantities = liszt kernel(c : grid.cells)
+--    -- WARNING: update cellVolume computation for non-uniform grids
+--    --var cellVolume = c.xCellWidth() * c.yCellWidth() * c.zCellWidth()
+--    var cellVolume = grid_dx * grid_dy * grid_dz
+--    Flow.numberOfInteriorCells += 1
+--    Flow.areaInterior          += cellVolume
+--    Flow.averagePressure       += c.pressure * cellVolume
+--    Flow.averageTemperature    += c.temperature * cellVolume
+--    Flow.averageKineticEnergy  += c.kineticEnergy * cellVolume
+--    Flow.minTemperature      min= c.temperature
+--    Flow.maxTemperature      max= c.temperature
+--end
 
 ---------
 -- Output
 ---------
+
+local function value_tostring(val)
+  if type(val) == 'table' then
+    local s = tostring(val[1])
+    for i=2,#val do s = ' '..tostring(val[i]) end
+    return s
+  end
+  return tostring(val)
+end
 
 -- Write cells field to output file
 Flow.WriteField = function (outputFileNamePrefix,xSize,ySize,zSize,field)
@@ -2329,29 +2416,41 @@ Flow.WriteField = function (outputFileNamePrefix,xSize,ySize,zSize,field)
     -- Open file
     local outputFile = io.output(outputFileName)
     -- Write data
-    local values = field:DumpToList()
-    local N      = field:Size()
-
     if field:Type():isVector() then
         local veclen = field:Type().N
         io.write("# ", xSize, " ", ySize, " ", zSize, " ", N, " ", veclen, "\n")
-        for i=1,N do
-            local s = ''
-            for j=1,veclen do
-                local t = tostring(values[i][j]):gsub('ULL',' ')
-                s = s .. ' ' .. t .. ''
-            end
-            -- i-1 to return to 0 indexing
-            io.write("", i-1, s, "\n")
-        end
     else
         io.write("# ", xSize, " ", ySize, " ", zSize, " ", N, " ", 1, "\n")
-        for i=1,N do
-            local t = tostring(values[i]):gsub('ULL', ' ')
-            -- i-1 to return to 0 indexing
-            io.write("", i-1, ' ', t,"\n")
-        end
     end
+
+    field:DumpFunction(function(val, ix, iy, iz)
+        io.write("", ix,iy,iz, ' ', value_tostring(val), "\n")
+        --io.write("", i-1, ' ', value_tostring(val),"\n")
+    end)
+
+    --local values = field:DumpToList()
+    --local N      = field:Size()
+
+    --if field:Type():isVector() then
+    --    local veclen = field:Type().N
+    --    io.write("# ", xSize, " ", ySize, " ", zSize, " ", N, " ", veclen, "\n")
+    --    for i=1,N do
+    --        local s = ''
+    --        for j=1,veclen do
+    --            local t = tostring(values[i][j]):gsub('ULL',' ')
+    --            s = s .. ' ' .. t .. ''
+    --        end
+    --        -- i-1 to return to 0 indexing
+    --        io.write("", i-1, s, "\n")
+    --    end
+    --else
+    --    io.write("# ", xSize, " ", ySize, " ", zSize, " ", N, " ", 1, "\n")
+    --    for i=1,N do
+    --        local t = tostring(values[i]):gsub('ULL', ' ')
+    --        -- i-1 to return to 0 indexing
+    --        io.write("", i-1, ' ', t,"\n")
+    --    end
+    --end
     io.close()
 end
 
@@ -3013,29 +3112,41 @@ Particles.WriteField = function (outputFileNamePrefix,field)
   -- Open file
   local outputFile = io.output(outputFileName)
   -- Write data
-  local values = field:DumpToList()
-  local N      = field:Size()
-
   if field:Type():isVector() then
-    local veclen = field:Type().N
-    io.write("# ", N, " ", veclen, "\n")
-    for i=1,N do
-      local s = ''
-      for j=1,veclen do
-        local t = tostring(values[i][j]):gsub('ULL',' ')
-        s = s .. ' ' .. t .. ''
-      end
-      -- i-1 to return to 0 indexing
-      io.write("", i-1, s, "\n")
-    end
-    else
-    io.write("# ", N, " ", 1, "\n")
-    for i=1,N do
-      local t = tostring(values[i]):gsub('ULL', ' ')
-      -- i-1 to return to 0 indexing
-      io.write("", i-1, ' ', t,"\n")
-    end
+      local veclen = field:Type().N
+      io.write("# ", N, " ", veclen, "\n")
+  else
+      io.write("# ", N, " ", 1, "\n")
   end
+
+  field:DumpFunction(function(val, i)
+      io.write("", i, ' ', value_tostring(val),"\n")
+      -- io.write("", i-1, ' ', t,"\n")
+  end)
+
+--  local values = field:DumpToList()
+--  local N      = field:Size()
+--
+--  if field:Type():isVector() then
+--    local veclen = field:Type().N
+--    io.write("# ", N, " ", veclen, "\n")
+--    for i=1,N do
+--      local s = ''
+--      for j=1,veclen do
+--        local t = tostring(values[i][j]):gsub('ULL',' ')
+--        s = s .. ' ' .. t .. ''
+--      end
+--      -- i-1 to return to 0 indexing
+--      io.write("", i-1, s, "\n")
+--    end
+--    else
+--    io.write("# ", N, " ", 1, "\n")
+--    for i=1,N do
+--      local t = tostring(values[i]):gsub('ULL', ' ')
+--      -- i-1 to return to 0 indexing
+--      io.write("", i-1, ' ', t,"\n")
+--    end
+--  end
   io.close()
 end
 
@@ -3343,12 +3454,12 @@ end
     
     -- Dump the fields to lists for writing
     
-    local rho      = grid.cells.rho:DumpToList()
-    local pressure = grid.cells.pressure:DumpToList()
-    local velocity = grid.cells.velocity:DumpToList()
+    --local rho      = grid.cells.rho:DumpToList()
+    --local pressure = grid.cells.pressure:DumpToList()
+    --local velocity = grid.cells.velocity:DumpToList()
     
     local nCells = grid.cells.velocity:Size()
-    local nDim   = grid.cells.velocity:Type().N
+    --local nDim   = grid.cells.velocity:Type().N
     
     -- Write header: number of cells, iteration, physical time
     
@@ -3360,20 +3471,26 @@ end
     
     -- Write the primitve variables: density, pressure, u, v, w. 
     -- One row per cell, in the order it was dumped to the list.
+
+    grid.cells:DumpJoint({ 'rho', 'pressure', 'velocity' },
+    function(ids, dens, pres, vel)
+      io.write(value_tostring(dens)..' '..value_tostring(pres)..
+                                     ' '..value_tostring(vel)..'\n')
+    end)
     
-    for i=1,nCells do
-      s = ''
-      local dens = tostring(rho[i]):gsub('ULL',' ')
-      s = s .. dens .. ' '
-      local pres = tostring(pressure[i]):gsub('ULL',' ')
-      s = s .. pres .. ' '
-      for j=1,nDim do
-        local vel = tostring(velocity[i][j]):gsub('ULL',' ')
-        s = s .. vel .. ' '
-      end
-      s = s .. '\n'
-      io.write(s)
-    end
+    --for i=1,nCells do
+    --  s = ''
+    --  local dens = tostring(rho[i]):gsub('ULL',' ')
+    --  s = s .. dens .. ' '
+    --  local pres = tostring(pressure[i]):gsub('ULL',' ')
+    --  s = s .. pres .. ' '
+    --  for j=1,nDim do
+    --    local vel = tostring(velocity[i][j]):gsub('ULL',' ')
+    --    s = s .. vel .. ' '
+    --  end
+    --  s = s .. '\n'
+    --  io.write(s)
+    --end
     
     -- Close the restart file
     io.close()
@@ -3425,8 +3542,8 @@ tostring(timeStep) .. ".dat"
 local outputFile = io.output(outputFileName)
 
 -- Get the bool fields for the rind layer so we can avoid writing
-local cell_rind = grid.cells.cellRindLayer:DumpToList()
-local vert_rind = grid.vertices.vertexRindLayer:DumpToList()
+--local cell_rind = grid.cells.cellRindLayer:DumpToList()
+--local vert_rind = grid.vertices.vertexRindLayer:DumpToList()
 
 -- Compute the number of vertices to be written
 
@@ -3511,88 +3628,135 @@ io.write("", s)
 
 -- Now write density, velocity, pressure, temperature
 
-local values = grid.cells.rho:DumpToList()
-local N      = grid.cells.rho:Size()
---for j=1,veclen do
-s = ''
-k = 1
-for i=1,N do
-  local t = tostring(values[i]):gsub('ULL',' ')
-  if cell_rind[i] == 0 then
-    s = s .. ' ' .. t .. ''
-    k = k+1
-  end
-  if k % 5 == 0 then
-    s = s .. '\n'
-    io.write("", s)
-    s = ''
-  end
-end
--- i-1 to return to 0 indexing
-io.write("", s)
---end
-
-values = grid.cells.velocity:DumpToList()
-N      = grid.cells.velocity:Size()
-local veclen = grid.cells.velocity:Type().N
-for j=1,veclen do
+local function dump_with_cell_rind(field_name)
   s = ''
   k = 1
-  for i=1,N do
-    local t = tostring(values[i][j]):gsub('ULL',' ')
-    if cell_rind[i]== 0 then
-      s = s .. ' ' .. t .. ''
-      k = k+1
+  grid.cells:DumpJoint({'cellRindLayer', field_name},
+  function(ids, cell_rind, field_val)
+    if cell_rind == 0 then
+      s = s .. ' ' .. value_tostring(field_val) .. ''
+      k = k + 1
     end
     if k % 5 == 0 then
       s = s .. '\n'
       io.write("", s)
       s = ''
     end
-  end
+  end)
+  io.write("", s)
+end
+local function dump_vec_component_with_cell_rind(field_name, dim_idx)
+  s = ''
+  k = 1
+  grid.cells:DumpJoint({'cellRindLayer', field_name},
+  function(ids, cell_rind, field_val)
+    if cell_rind == 0 then
+      s = s .. ' ' .. value_tostring(field_val[dim_idx]) .. ''
+      k = k + 1
+    end
+    if k % 5 == 0 then
+      s = s .. '\n'
+      io.write("", s)
+      s = ''
+    end
+  end)
   io.write("", s)
 end
 
-values = grid.cells.pressure:DumpToList()
-N      = grid.cells.pressure:Size()
-s = ''
-k = 1
-for i=1,N do
-  local t = tostring(values[i]):gsub('ULL',' ')
-  if cell_rind[i]== 0 then
-    s = s .. ' ' .. t .. ''
-    k = k+1
-  end
-  if k % 5 == 0 then
-    s = s .. '\n'
-    io.write("", s)
-    s = ''
-  end
+dump_with_cell_rind('rho')
+
+--local values = grid.cells.rho:DumpToList()
+--local N      = grid.cells.rho:Size()
+----for j=1,veclen do
+--s = ''
+--k = 1
+--for i=1,N do
+--  local t = tostring(values[i]):gsub('ULL',' ')
+--  if cell_rind[i] == 0 then
+--    s = s .. ' ' .. t .. ''
+--    k = k+1
+--  end
+--  if k % 5 == 0 then
+--    s = s .. '\n'
+--    io.write("", s)
+--    s = ''
+--  end
+--end
+---- i-1 to return to 0 indexing
+--io.write("", s)
+----end
+
+local veclen = grid.cells.velocity:Type().N
+for j = 1,veclen do
+  dump_vec_component_with_cell_rind('velocity', j)
 end
--- i-1 to return to 0 indexing
-io.write("", s)
+
+--values = grid.cells.velocity:DumpToList()
+--N      = grid.cells.velocity:Size()
+--local veclen = grid.cells.velocity:Type().N
+--for j=1,veclen do
+--  s = ''
+--  k = 1
+--  for i=1,N do
+--    local t = tostring(values[i][j]):gsub('ULL',' ')
+--    if cell_rind[i]== 0 then
+--      s = s .. ' ' .. t .. ''
+--      k = k+1
+--    end
+--    if k % 5 == 0 then
+--      s = s .. '\n'
+--      io.write("", s)
+--      s = ''
+--    end
+--  end
+--  io.write("", s)
 --end
 
-values = grid.cells.temperature:DumpToList()
-N      = grid.cells.temperature:Size()
---for j=1,veclen do
-s = ''
-k = 1
-for i=1,N do
-  local t = tostring(values[i]):gsub('ULL',' ')
-  if cell_rind[i]== 0 then
-    s = s .. ' ' .. t .. ''
-    k = k+1
-  end
-  if k % 5 == 0 then
-    s = s .. '\n'
-    io.write("", s)
-    s = ''
-  end
-end
--- i-1 to return to 0 indexing
-io.write("", s)
+
+dump_with_cell_rind('pressure')
+
+--values = grid.cells.pressure:DumpToList()
+--N      = grid.cells.pressure:Size()
+--s = ''
+--k = 1
+--for i=1,N do
+--  local t = tostring(values[i]):gsub('ULL',' ')
+--  if cell_rind[i]== 0 then
+--    s = s .. ' ' .. t .. ''
+--    k = k+1
+--  end
+--  if k % 5 == 0 then
+--    s = s .. '\n'
+--    io.write("", s)
+--    s = ''
+--  end
 --end
+---- i-1 to return to 0 indexing
+--io.write("", s)
+----end
+
+dump_with_cell_rind('temperature')
+
+--values = grid.cells.temperature:DumpToList()
+--N      = grid.cells.temperature:Size()
+----for j=1,veclen do
+--s = ''
+--k = 1
+--for i=1,N do
+--  local t = tostring(values[i]):gsub('ULL',' ')
+--  if cell_rind[i]== 0 then
+--    s = s .. ' ' .. t .. ''
+--    k = k+1
+--  end
+--  if k % 5 == 0 then
+--    s = s .. '\n'
+--    io.write("", s)
+--    s = ''
+--  end
+--end
+---- i-1 to return to 0 indexing
+--io.write("", s)
+----end
 
 io.close()
 
@@ -3611,27 +3775,40 @@ local particleFile = io.output(particleFileName)
 io.write('VARIABLES = "X", "Y", "Z", "X-Velocity", "Y-Velocity", "Z-Velocity", "Temperature", "Diameter"\n')
 io.write('ZONE SOLUTIONTIME=', TimeIntegrator.simTime:get(), '\n')
 
-values = particles.position:DumpToList()
-N      = particles.position:Size()
+
 veclen = particles.position:Type().N
-local p_velocity = particles.velocity:DumpToList()
-local diameter  = particles.diameter:DumpToList()
-local particleT = particles.temperature:DumpToList()
-for i=1,N do
+particles:DumpJoint({'position', 'velocity', 'temperature', 'diameter'},
+function(ids, pos, vel, temp, diam)
   s = ''
-  for j=1,veclen do
-    local t = tostring(values[i][j]):gsub('ULL',' ')
-    s = s .. ' ' .. t .. ''
-  end
-  for j=1,veclen do
-    local t = tostring(p_velocity[i][j]):gsub('ULL',' ')
-    s = s .. ' ' .. t .. ''
-  end
-  local temp = tostring(particleT[i]):gsub('ULL',' ')
-  local diam = tostring(diameter[i]):gsub('ULL',' ')
-  s = s .. ' ' .. temp .. ' ' .. diam .. '\n'
+  s = s .. ' ' .. value_tostring(pos) .. ''
+  s = s .. ' ' .. value_tostring(vel) .. ''
+  s = s .. ' ' .. value_tostring(temp) ..
+           ' ' .. value_tostring(diam) .. '\n'
   io.write("", s)
-end
+end)
+
+
+--values = particles.position:DumpToList()
+--N      = particles.position:Size()
+--veclen = particles.position:Type().N
+--local p_velocity = particles.velocity:DumpToList()
+--local diameter  = particles.diameter:DumpToList()
+--local particleT = particles.temperature:DumpToList()
+--for i=1,N do
+--  s = ''
+--  for j=1,veclen do
+--    local t = tostring(values[i][j]):gsub('ULL',' ')
+--    s = s .. ' ' .. t .. ''
+--  end
+--  for j=1,veclen do
+--    local t = tostring(p_velocity[i][j]):gsub('ULL',' ')
+--    s = s .. ' ' .. t .. ''
+--  end
+--  local temp = tostring(particleT[i]):gsub('ULL',' ')
+--  local diam = tostring(diameter[i]):gsub('ULL',' ')
+--  s = s .. ' ' .. temp .. ' ' .. diam .. '\n'
+--  io.write("", s)
+--end
 
 io.close()
 
@@ -3654,31 +3831,62 @@ if (timeStep % TimeIntegrator.outputEveryTimeSteps == 0 and
   -- CSV header
   io.write('"Y", "X_Vel"\n')
   
-  -- Dump the fields to lists for writing
-  
-  local cellCenter = grid.cells.centerCoordinates:DumpToList()
-  local velocity   = grid.cells.velocity:DumpToList()
-  
-  local nCells = grid.cells.velocity:Size()
-  local nDim   = grid.cells.velocity:Type().N
-  
   -- Check for the vertical center of the domain and write the x-vel
-  
-  for i=1,nCells do
+  grid.cells:DumpJoint({ 'centerCoordinates', 'velocity' },
+  function(ids, cellCenter, velocity)
     local s = ''
-    local x = cellCenter[i][1]
-    local y = cellCenter[i][2]
-    local z = cellCenter[i][3]
-    local ycor = tostring(cellCenter[i][2]):gsub('ULL',' ')
-    local xvel = velocity[i][1]
-    if x < (gridOriginInteriorX + grid_options.xWidth/2.0 + grid_options.xWidth /
-            (2.0*grid_options.xnum)) and x > (gridOriginInteriorX + grid_options.xWidth/2.0 - grid_options.xWidth / (2.0*grid_options.xnum)) and
-            y < (gridOriginInteriorY + grid_options.yWidth) and y > (gridOriginInteriorY) and z < (gridOriginInteriorZ + grid_options.zWidth) and z > (gridOriginInteriorZ) then
-            s = ycor .. ', ' .. tostring(xvel) .. '\n'
-            io.write(s)
+    local x = cellCenter[1]
+    local y = cellCenter[2]
+    local z = cellCenter[3]
+    local xvel = velocity[1]
+    if    x < (gridOriginInteriorX
+               + grid_options.xWidth/2.0
+               + grid_options.xWidth / (2.0*grid_options.xnum))
+      and x > (gridOriginInteriorX
+               + grid_options.xWidth/2.0
+               - grid_options.xWidth / (2.0*grid_options.xnum))
+      and y < (gridOriginInteriorY + grid_options.yWidth)
+      and y > (gridOriginInteriorY)
+      and z < (gridOriginInteriorZ + grid_options.zWidth)
+      and z > (gridOriginInteriorZ)
+    then
+      s = tostring(y) .. ', ' .. tostring(xvel) .. '\n'
+      io.write(s)
     end
-    
-  end
+  end)
+
+--  -- Dump the fields to lists for writing
+--
+--  local cellCenter = grid.cells.centerCoordinates:DumpToList()
+--  local velocity   = grid.cells.velocity:DumpToList()
+--  
+--  local nCells = grid.cells.velocity:Size()
+--  local nDim   = grid.cells.velocity:Type().N
+--  
+--  -- Check for the vertical center of the domain and write the x-vel
+--  
+--  for i=1,nCells do
+--    local s = ''
+--    local x = cellCenter[i][1]
+--    local y = cellCenter[i][2]
+--    local z = cellCenter[i][3]
+--    local ycor = tostring(cellCenter[i][2]):gsub('ULL',' ')
+--    local xvel = velocity[i][1]
+--    if    x < (gridOriginInteriorX
+--               + grid_options.xWidth/2.0
+--               + grid_options.xWidth / (2.0*grid_options.xnum))
+--      and x > (gridOriginInteriorX
+--               + grid_options.xWidth/2.0
+--               - grid_options.xWidth / (2.0*grid_options.xnum))
+--      and y < (gridOriginInteriorY + grid_options.yWidth)
+--      and y > (gridOriginInteriorY)
+--      and z < (gridOriginInteriorZ + grid_options.zWidth)
+--      and z > (gridOriginInteriorZ)
+--    then
+--      s = ycor .. ', ' .. tostring(xvel) .. '\n'
+--      io.write(s)
+--    end
+--  end
   
   -- Close the file
   io.close()
@@ -3693,32 +3901,65 @@ if (timeStep % TimeIntegrator.outputEveryTimeSteps == 0 and
   
   -- CSV header
   io.write('"X", "Y_Vel"\n')
-  
-  -- Dump the fields to lists for writing
-  
-  local cellCenter = grid.cells.centerCoordinates:DumpToList()
-  local velocity   = grid.cells.velocity:DumpToList()
-  
-  local nCells = grid.cells.velocity:Size()
-  local nDim   = grid.cells.velocity:Type().N
-  
+
+
   -- Check for the vertical center of the domain and write the x-vel
-  
-  for i=1,nCells do
+  grid.cells:DumpJoint({ 'centerCoordinates', 'velocity' },
+  function(ids, cellCenter, velocity)
     local s = ''
-    local x = cellCenter[i][1]
-    local y = cellCenter[i][2]
-    local z = cellCenter[i][3]
-    local xcor = tostring(cellCenter[i][1]):gsub('ULL',' ')
-    local yvel = velocity[i][2]
-    if y < (gridOriginInteriorY + grid_options.yWidth/2.0 + grid_options.yWidth /
-            (2.0*grid_options.ynum)) and y > (gridOriginInteriorY + grid_options.yWidth/2.0 - grid_options.yWidth / (2.0*grid_options.ynum)) and
-            x < (gridOriginInteriorX + grid_options.xWidth) and x > (gridOriginInteriorX) and z < (gridOriginInteriorZ + grid_options.zWidth) and z > (gridOriginInteriorZ) then
-            s = xcor .. ', ' .. tostring(yvel) .. '\n'
-            io.write(s)
+    local x = cellCenter[1]
+    local y = cellCenter[2]
+    local z = cellCenter[3]
+    local yvel = velocity[2]
+    if    y < (gridOriginInteriorY
+               + grid_options.yWidth/2.0
+               + grid_options.yWidth / (2.0*grid_options.ynum))
+      and x > (gridOriginInteriorY
+               + grid_options.yWidth/2.0
+               - grid_options.yWidth / (2.0*grid_options.ynum))
+      and x < (gridOriginInteriorX + grid_options.xWidth)
+      and x > (gridOriginInteriorX)
+      and z < (gridOriginInteriorZ + grid_options.zWidth)
+      and z > (gridOriginInteriorZ)
+    then
+      s = tostring(x) .. ', ' .. tostring(yvel) .. '\n'
+      io.write(s)
     end
-    
-  end
+  end)
+  
+--  -- Dump the fields to lists for writing
+--  
+--  local cellCenter = grid.cells.centerCoordinates:DumpToList()
+--  local velocity   = grid.cells.velocity:DumpToList()
+--  
+--  local nCells = grid.cells.velocity:Size()
+--  local nDim   = grid.cells.velocity:Type().N
+--  
+--  -- Check for the vertical center of the domain and write the x-vel
+--  
+--  for i=1,nCells do
+--    local s = ''
+--    local x = cellCenter[i][1]
+--    local y = cellCenter[i][2]
+--    local z = cellCenter[i][3]
+--    local xcor = tostring(cellCenter[i][1]):gsub('ULL',' ')
+--    local yvel = velocity[i][2]
+--    if    y < (gridOriginInteriorY
+--               + grid_options.yWidth/2.0
+--               + grid_options.yWidth / (2.0*grid_options.ynum))
+--      and y > (gridOriginInteriorY
+--                 + grid_options.yWidth/2.0
+--                 - grid_options.yWidth / (2.0*grid_options.ynum))
+--      and x < (gridOriginInteriorX + grid_options.xWidth)
+--      and x > (gridOriginInteriorX)
+--      and z < (gridOriginInteriorZ + grid_options.zWidth)
+--      and z > (gridOriginInteriorZ)
+--    then
+--      s = xcor .. ', ' .. tostring(yvel) .. '\n'
+--      io.write(s)
+--    end
+--    
+--  end
   
   -- Close the file
   io.close()
@@ -3740,10 +3981,10 @@ if (timeStep % TimeIntegrator.restartEveryTimeSteps == 0 and
     
     -- Dump the fields to lists for writing
     
-    local p_position = particles.position:DumpToList()
-    local p_velocity = particles.velocity:DumpToList()
-    local diameter   = particles.diameter:DumpToList()
-    local particleT  = particles.temperature:DumpToList()
+--    local p_position = particles.position:DumpToList()
+--    local p_velocity = particles.velocity:DumpToList()
+--    local diameter   = particles.diameter:DumpToList()
+--    local particleT  = particles.temperature:DumpToList()
     
     local nParticles = particles.position:Size()
     local nDim       = particles.position:Type().N
@@ -3758,21 +3999,31 @@ if (timeStep % TimeIntegrator.restartEveryTimeSteps == 0 and
     
     -- Write the primitve variables for the particles
 
-    for i=1,nParticles do
+    particles:DumpJoint({'position','velocity','temperature','diameter'},
+    function(ids, pos, vel, temp, diam)
       s = ''
-      for j=1,nDim do
-        local t = tostring(p_position[i][j]):gsub('ULL',' ')
-        s = s .. ' ' .. t .. ''
-      end
-      for j=1,nDim do
-        local t = tostring(p_velocity[i][j]):gsub('ULL',' ')
-        s = s .. ' ' .. t .. ''
-      end
-      local temp = tostring(particleT[i]):gsub('ULL',' ')
-      local diam = tostring(diameter[i]):gsub('ULL',' ')
-      s = s .. ' ' .. temp .. ' ' .. diam .. '\n'
+      s = s .. ' ' .. value_tostring(pos) .. ''
+      s = s .. ' ' .. value_tostring(vel) .. ''
+      s = s .. ' ' .. value_tostring(temp) ..
+               ' ' .. value_tostring(diam) .. '\n'
       io.write("", s)
-    end
+    end)
+
+    --for i=1,nParticles do
+    --  s = ''
+    --  for j=1,nDim do
+    --    local t = tostring(p_position[i][j]):gsub('ULL',' ')
+    --    s = s .. ' ' .. t .. ''
+    --  end
+    --  for j=1,nDim do
+    --    local t = tostring(p_velocity[i][j]):gsub('ULL',' ')
+    --    s = s .. ' ' .. t .. ''
+    --  end
+    --  local temp = tostring(particleT[i]):gsub('ULL',' ')
+    --  local diam = tostring(diameter[i]):gsub('ULL',' ')
+    --  s = s .. ' ' .. temp .. ' ' .. diam .. '\n'
+    --  io.write("", s)
+    --end
     
     -- Close the restart file
     io.close()

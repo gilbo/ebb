@@ -73,7 +73,7 @@ end
 ------------------------------------------------------------------------------
 
 -- define globals
-local timestep = L.NewGlobal(L.double, 0.1)
+local timestep = L.Global(L.double, 0.1)
 
 bunny.vertices:NewField('d_pos', L.vec3d):Load({0,0,0})
 local zero_d_pos = liszt kernel( v : bunny.vertices )

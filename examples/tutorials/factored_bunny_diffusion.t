@@ -33,8 +33,8 @@ bunny:ComputeVertexDegree()
 ------------------------------------------------------------------------------
 
 -- define globals
-local timestep = L.NewGlobal(L.double, 0.45)
-local avg_temp_change = L.NewGlobal(L.double, 0.0)
+local timestep = L.Global(L.double, 0.45)
+local avg_temp_change = L.Global(L.double, 0.0)
 
 -- define constants
 local conduction = 1.0

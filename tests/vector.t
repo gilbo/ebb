@@ -37,7 +37,7 @@ k(mesh.vertices)
 
 --[[
 -- Additive reduction over doubles currently unsupported
-local s = L.NewGlobal(L.vector(L.double, 3), {0.0, 0.0, 0.0})
+local s = L.Global(L.vector(L.double, 3), {0.0, 0.0, 0.0})
 local sum_position = liszt kernel(v : mesh.vertices)
 	s += v.position
 end

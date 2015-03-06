@@ -9,7 +9,7 @@ mesh.faces.field:LoadConstant(0)
 local lassert, lprint, length = L.assert, L.print, L.length
 
 local a     = 43
-local com   = L.NewGlobal(L.vector(L.float, 3), {0, 0, 0})--Vector.new(float, {0.0, 0.0, 0.0})
+local com   = L.Global(L.vector(L.float, 3), {0, 0, 0})--Vector.new(float, {0.0, 0.0, 0.0})
 local upval = 5
 local vv = L.Constant(L.vec3i, {1,2,3})
 

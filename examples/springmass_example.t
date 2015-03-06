@@ -8,7 +8,7 @@ local bunny   = Trimesh.Load('bunny.off')
 
 local K  = L.NewConstant(L.float, 1.0)
 local dt = L.NewConstant(L.float, 0.0001)
-local E  = L.NewGlobal(L.float, 0.0)
+local E  = L.Global(L.float, 0.0)
 bunny.edges:NewField('rest_len', L.float):Load(0)
 bunny.vertices:NewField('mass', L.float):Load(...)
 bunny.vertices:NewField('q', L.vec3f):Load(bunny.vertices.pos)

@@ -179,7 +179,7 @@ vertices.nTriangles:Load(0)
 -- Unlike Fields, which have a different value for each entry/row in the
 -- relation, Globals have exactly one value visible to all rows.
 
-local timestep = L.NewGlobal(L.double, 1.0)
+local timestep = L.Global(L.double, 1.0)
 -- The preceding line set up a Global named timestep of type L.double
 -- and gave it initial value 1.0
 
@@ -191,7 +191,7 @@ print( 'the timestep is ' .. tostring(timestep:get()) )
 
 -- NOTE: Globals have to be explicitly written and read from Lua code.
 
-local avg_temp_change = L.NewGlobal(L.double, 0.0)
+local avg_temp_change = L.Global(L.double, 0.0)
 -- We'll use this second global to measure the average change in
 -- temperature as we run our simulation.
 

@@ -135,16 +135,6 @@ local function log_helper(ctxt, is_field, f_or_g, phase_type, node)
     end
   end
 
-  -- check if more than one globals need to be reduced
-  if not is_field then
-    local g = ctxt.global_reduce
-    if phase_type:isReduce() and g and g ~= f_or_g then
-      ctxt:error(node, 'Cannot reduce more than one global in a kernel\n')
-    else
-      ctxt.global_reduce = f_or_g
-    end
-  end
-
   -- first access
   if not lookup then
     lookup = {
@@ -170,6 +160,19 @@ local function log_helper(ctxt, is_field, f_or_g, phase_type, node)
     end
     lookup.phase_type  = join_type
     lookup.last_access = node
+  end
+
+  -- check if more than one globals need to be reduced
+  if not is_field and phase_type:isReduce() then
+    local reduce_entry = ctxt.global_reduce
+    if reduce_entry and lookup ~= reduce_entry then
+      ctxt:error(node, 'Cannot reduce more than one global in a kernel.  '..
+                       'Previously tried to reduce at '..
+                       lookup.last_access.filename..':'..
+                       lookup.last_access.linenumber..'\n')
+    else
+      ctxt.global_reduce = lookup
+    end
   end
 end
 

@@ -16,7 +16,7 @@ local grid = Grid.NewGrid2d{size           = {N, N},
 
 function main ()
 	-- declare a global to store the computed centroid of the grid
-	local com = L.NewGlobal(L.vector(L.float, 2), {0, 0})
+	local com = L.Global(L.vector(L.float, 2), {0, 0})
 
 	-- compute centroid
 	local sum_pos = liszt kernel(c : grid.cells)

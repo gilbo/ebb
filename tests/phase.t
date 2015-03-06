@@ -60,7 +60,7 @@ end
 
 
 
-local g1 = L.NewGlobal(L.float, 32)
+local g1 = L.Global(L.float, 32)
 
 test.fail_function(function()
   local kernel = liszt kernel (v : M.vertices)

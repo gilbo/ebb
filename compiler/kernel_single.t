@@ -349,7 +349,7 @@ function Bran:setupInserts()
   bran.insert_data = {
     relation = rel,
     record_type = ast_nodes[1].record_type,
-    n_inserted  = L.NewGlobal(L.uint64, 0),
+    n_inserted  = L.Global(L.uint64, 0),
   }
   -- register the global variable
   bran:getGlobalId(bran.insert_data.n_inserted)
@@ -403,7 +403,7 @@ function Bran:setupDeletes()
   local rel = next(bran.kernel.deletes)
   bran.delete_data = {
     relation = rel,
-    updated_size = L.NewGlobal(L.uint64, 0)
+    updated_size = L.Global(L.uint64, 0)
   }
   -- register global variable
   bran:getGlobalId(bran.delete_data.updated_size)

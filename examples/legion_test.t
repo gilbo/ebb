@@ -4,7 +4,7 @@
 print("* This is a Liszt application *")
 
 import "compiler.liszt"
-local g_scal = L.NewGlobal(L.int, 4)
+local g_scal = L.Global(L.int, 4)
 
 -- Create relations and fields
 
@@ -27,10 +27,10 @@ cells:NewField('y', L.double)
 dual_cells:NewField('a', L.double)
 
 -- Globals
-local g_scal = L.NewGlobal(L.int, 4)
-local g_vec  = L.NewGlobal(L.vec2d, {0, 0})
+local g_scal = L.Global(L.int, 4)
+local g_vec  = L.Global(L.vec2d, {0, 0})
 -- THIS FAILS RIGHT NOW BECAUSE OF TYPE CHECKING ERRORS
--- local g_mat  = L.NewGlobal(L.mat3i, { {10, 2, 3}, {4, 50, 6}, {7, 8, 100} })
+-- local g_mat  = L.Global(L.mat3i, { {10, 2, 3}, {4, 50, 6}, {7, 8, 100} })
 
 local liszt kernel CenteredReads(c : cells)
   L.print(c.x)

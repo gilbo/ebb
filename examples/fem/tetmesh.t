@@ -133,7 +133,7 @@ local function build_element_edges(mesh, elements)
   end))
 
   -- set up pointers from tetrahedra to edges
-  mesh.tetrahedra:NewField('e', L.smallmatrix(mesh.edges, 4, 4))
+  mesh.tetrahedra:NewField('e', L.matrix(mesh.edges, 4, 4))
   local compute_tet_edges = liszt kernel (t : mesh.tetrahedra)
     for i = 0,4 do
       for e in t.v[i].edges do

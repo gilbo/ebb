@@ -11,7 +11,7 @@ local LMesh = L.require "domains.lmesh"
 local mesh = LMesh.Load("examples/mesh.lmesh")
 mesh.cells:NewField('f1', L.float)
 mesh.cells:NewField('f2', L.vector(L.float, 3))
-s1 = L.NewGlobal(L.int, 0)
+s1 = L.Global(L.int, 0)
 
 
 ------------------------

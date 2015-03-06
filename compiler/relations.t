@@ -976,9 +976,26 @@ end
 
 
 -- helper to dump multiple fields jointly
-function L.LRelation:JointDump(fields, lua_callback)
+function L.LRelation:DumpJoint(fields_arg, lua_callback)
   if self:isFragmented() then
     error('cannot dump from fragmented relation', 2)
+  end
+  if type(fields_arg) ~= 'table' or #fields_arg == 0 then
+    error('DumpJoint(): Expects a list of fields as its first argument', 2)
+  end
+  local fields = {}
+  for i,f in ipairs(fields_arg) do
+    if type(f) == 'string' then f = self[f] end
+    if not L.is_field(f) then
+      error('DumpJoint(): list entry '..tostring(i)..' was either '..
+            'not a field or not the name of a field in '..
+            'relation '..self:Name(),2)
+    end
+    if f.owner ~= self then
+      error('DumpJoint(): list entry '..tostring(i)..', field '..
+            f:FullName()..' is not a field of relation '..self:Name(), 2)
+    end
+    fields[i] = f
   end
 
   if use_legion then
@@ -1045,7 +1062,7 @@ function L.LField:DumpFunction(lua_callback)
   if self.owner:isFragmented() then
     error('cannot dump from fragmented relation', 2)
   end
-  self.owner:JointDump({self}, function(ids, val)
+  self.owner:DumpJoint({self}, function(ids, val)
     lua_callback(val, unpack(ids))
   end)
 end
@@ -1106,7 +1123,7 @@ function L.LField:print()
 
   local fields     = { self }
   if is_elastic then fields[2] = self.owner._is_live_mask end
-  self.owner:JointDump(fields,
+  self.owner:DumpJoint(fields,
   function (ids, datum, islive)
     local alive = ''
     if is_elastic then
