@@ -235,6 +235,18 @@ function L.LRelation:Periodicity()
   return wraps
 end
 
+function L.LRelation:map(user_func, params)
+  if not L.is_user_func(user_func) then
+    error('map(): expects a liszt function as the argument', 2)
+  end
+  params = params or {}
+  if type(params) ~= 'table' then
+    error('map(): if supplied with a second argument, map expects '..
+          'a table of options', 2)
+  end
+  user_func:MapOver(self, params)
+end
+
 -- generator func for looping over the relation's fields
 function L.LRelation:_INTERNAL_iter_gen()
   local dims = self:Dims()
@@ -567,6 +579,13 @@ end
 --[[ Subsets:                                                              ]]--
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
+
+function L.LSubset:map(user_func)
+  if not L.is_user_func(user_func) then
+    error('map(): expects a liszt function as the argument', 2)
+  end
+  user_func:MapOver(self)
+end
 
 function L.LSubset:Relation()
   return self._owner

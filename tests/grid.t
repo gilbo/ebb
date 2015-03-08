@@ -49,10 +49,10 @@ test.rec_aeq(rel3.f3:DumpToList(),tbl3)
 rel3:NewField('f3func',L.double):Load(function(x,y,z)
   return 6*z + 3*y + x + 1
 end)
-local liszt kernel f3consistency( r : rel3 )
+local liszt f3consistency( r : rel3 )
   L.assert(r.f3 == r.f3func)
 end
-f3consistency(rel3)
+rel3:map(f3consistency)
 
 
 -- try to group a 2d grid; we know this will fail
@@ -67,14 +67,14 @@ rel1:NewField('r2', rel2):Load(function(i)
 end)
 rel1:GroupBy('r2')
 
--- and test that we can use the grouping in a kernel
-local liszt kernel group_k ( r2 : rel2 )
+-- and test that we can use the grouping in a function
+local liszt group_k ( r2 : rel2 )
   for r1 in L.Where(rel1.r2, r2) do
     L.assert(2*L.double(L.int(r1.v1) % 2) == r2.v2[0])
     L.assert(  L.double(L.int(r1.v1) / 2) == r2.v2[1])
   end
 end
-group_k(rel2)
+rel2:map(group_k)
 
 
 -- test some simple affine relationships
@@ -84,27 +84,27 @@ end)
 rel3:NewField('a3',L.double):Load(function(x,y,z)
   return 3*x + 5*y
 end)
-local liszt kernel affinetest3to2 ( r3 : rel3 )
+local liszt affinetest3to2 ( r3 : rel3 )
   var r2 = L.Affine(rel2, {{0,1,0,0},
                            {1,0,0,0}}, r3)
   L.assert(r3.a3 == r2.a2)
 end
-affinetest3to2(rel3)
-local liszt kernel affinetest2to3 ( r2 : rel2 )
+rel3:map(affinetest3to2)
+local liszt affinetest2to3 ( r2 : rel2 )
   var r3 = L.Affine(rel3, {{0,1,0},
                            {1,0,0},
                            {0,0,0}}, r2)
   L.assert(r3.a3 == r2.a2)
 end
-affinetest2to3(rel2)
+rel2:map(affinetest2to3)
 -- this one shouldn't match almost at all
-local liszt kernel scramble2to3 ( r2 : rel2 )
+local liszt scramble2to3 ( r2 : rel2 )
   var r3 = L.Affine(rel3, {{1,0,0},
                            {0,0,0},
                            {0,1,0}}, r2)
   L.assert(r3.a3 == 0 or r3.a3 ~= r2.a2)
 end
-scramble2to3(rel2)
+rel2:map(scramble2to3)
 
 
 -- Test Periodicity
@@ -114,11 +114,12 @@ local prel2 = L.NewRelation {
   periodic={true,true}
 }
 prel2:NewField('cid', L.vec2i):Load(function(x,y) return {x,y} end)
-local liszt kernel test_wrap ( r : prel2 )
+local liszt test_wrap ( r : prel2 )
   var off = L.Affine(prel2, {{1,0,1},
                              {0,1,1}}, r)
-  L.assert( (off.cid[0] % 3) == r.cid[0] and
-            (off.cid[1] % 4) == r.cid[1] )
+  L.assert( (r.cid[0]+1) % 3 == off.cid[0] and
+            (r.cid[1]+1) % 4 == off.cid[1] )
 end
+prel2:map(test_wrap)
 
 

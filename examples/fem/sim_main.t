@@ -1,6 +1,6 @@
 import 'compiler.liszt'
 local vdb = L.require 'lib.vdb'
-L.default_processor = L.GPU
+--L.default_processor = L.GPU
 
 local Tetmesh = L.require 'examples.fem.tetmesh'
 local VEGFileIO = L.require 'examples.fem.vegfileio'
@@ -12,13 +12,13 @@ local mesh_files = {
     [3] = '/home/liszt/vega-models/hose_small.veg', -- use on lightroast
     [4] = '/home/liszt/vega-models/hose_medium.veg', -- use on lightroast
 }
-local volumetricMeshFileName = mesh_files[4]
+local volumetricMeshFileName = mesh_files[1]
 print("Loading " .. volumetricMeshFileName)
 local mesh = VEGFileIO.LoadTetmesh(volumetricMeshFileName)
 
-local I = terralib.includecstring([[
-#include "cuda_profiler_api.h"
-]])
+--local I = terralib.includecstring([[
+--#include "cuda_profiler_api.h"
+--]])
 
 local gravity = 9.81
 
@@ -85,17 +85,17 @@ function Timer:GetTime()
 end
 
 ------------------------------------------------------------------------------
--- Helper functions, kernels, variables etc
+-- Helper functions, mapped functions, variables etc
 
 -- Compute absolute value for a given variable
-local liszt function fabs(num)
+local liszt fabs(num)
   var result = num
   if num < 0 then result = -num end
   return result
 end
 
 -- Compute determinant for matrix formed by vertex positions
-local liszt function getElementDet(t)
+local liszt getElementDet(t)
   var a = t.v[0].pos
   var b = t.v[1].pos
   var c = t.v[2].pos
@@ -104,22 +104,22 @@ local liszt function getElementDet(t)
 end
 
 -- Get element density for a mesh element (tetreahedron)
-local liszt function getElementDensity(a)
+local liszt getElementDensity(a)
   return L.double(mesh.density)
 end
 
 -- Identity matrix
-local liszt function getId3()
+local liszt getId3()
   return { { 1, 0, 0 }, { 0, 1, 0 }, { 0, 0, 1 } }
 end
 
 -- Matrix with all entries equal to value v
-local liszt function constantMatrix3(v)
+local liszt constantMatrix3(v)
   return { { v, v, v }, { v, v, v }, { v, v, v } }
 end
 
 -- Tensor product of 2 vectors
-local liszt function tensor3(a, b)
+local liszt tensor3(a, b)
   var result = { { a[0] * b[0], a[0] * b[1], a[0] * b[2] },
                  { a[1] * b[0], a[1] * b[1], a[1] * b[2] },
                  { a[2] * b[0], a[2] * b[1], a[2] * b[2] } }
@@ -127,17 +127,17 @@ local liszt function tensor3(a, b)
 end
 
 -- Matrix vector product
-local liszt function multiplyMatVec3(M, x)
+local liszt multiplyMatVec3(M, x)
   return  { M[0, 0]*x[0] + M[0, 1]*x[1] + M[0, 2]*x[2],
             M[1, 0]*x[0] + M[1, 1]*x[1] + M[1, 2]*x[2],
             M[2, 0]*x[0] + M[2, 1]*x[1] + M[2, 2]*x[2] }
 end
-local liszt function multiplyVectors(x, y)
+local liszt multiplyVectors(x, y)
   return { x[0]*y[0], x[1]*y[1], x[2]*y[2]  }
 end
 
 -- Diagonals
-local liszt function diagonalMatrix(a)
+local liszt diagonalMatrix(a)
     return { { a, 0, 0 }, { 0, a, 0 }, { 0, 0, a } }
 end
 
@@ -221,7 +221,7 @@ function computeMassMatrix(mesh)
   -- A: Yes.  This means we want the full mass matrix,
   --    not just a uniform scalar per-vertex
   mesh.edges:NewField('mass', L.double):Load(0)
-  local liszt kernel buildMassMatrix (t : mesh.tetrahedra)
+  local liszt buildMassMatrix (t : mesh.tetrahedra)
     var tet_vol = fabs(getElementDet(t))/6
     var factor = tet_vol * getElementDensity(t) / 20
     for i = 0,4 do
@@ -234,7 +234,7 @@ function computeMassMatrix(mesh)
       end
     end
   end
-  buildMassMatrix(mesh.tetrahedra)
+  mesh.tetrahedra:map(buildMassMatrix)
 end
 
 ------------------------------------------------------------------------------
@@ -244,19 +244,19 @@ end
 -- This code is used to initialize Lame constants when stiffnexx matrix/ internal_forces
 -- are initialized.
 
-local liszt function getLambda(t)
+local liszt getLambda(t)
   var E : L.double = mesh.E
   var Nu : L.double = mesh.Nu
   return ( (Nu * E) / ( ( 1 + Nu ) * ( 1 - 2 * Nu ) ) )
 end
 
-local liszt function getMu(t)
+local liszt getMu(t)
   var E : L.double = mesh.E
   var Nu : L.double = mesh.Nu
   return ( ( E / ( 2 * ( 1 + Nu) ) ) )
 end
 
-local liszt kernel initializeLameConstants (t : mesh.tetrahedra)
+local liszt initializeLameConstants (t : mesh.tetrahedra)
   t.lambdaLame = getLambda(t)
   t.muLame = getMu(t)
 end
@@ -271,7 +271,7 @@ mesh.tetrahedra:NewField('Phig', L.mat4x3d)
 
 -- Here, we precompute PhiG which is used to compute and cache dots, and
 -- compute A, b, C, and D as required, on a per element basis.
-local liszt kernel precomputeStVKIntegrals (t : mesh.tetrahedra)
+local liszt precomputeStVKIntegrals (t : mesh.tetrahedra)
   var det = getElementDet(t)
   for i = 0,4 do
     for j = 0,3 do
@@ -310,7 +310,7 @@ end
 -- The VEGA Code seems to compute the dots matrix once, and then
 -- cache it for the duration of a per-tet computation rather than
 -- allocate disk space
-local liszt function tetDots(Phig)
+local liszt tetDots(Phig)
   var dots : L.mat4d
   for i=0,4 do
     var Phigi : L.vec3d = { Phig[i, 0], Phig[i, 1], Phig[i, 2] }
@@ -322,22 +322,22 @@ local liszt function tetDots(Phig)
   return dots
 end
 
-local liszt function tetCoefA(volume, phi, i, j)
+local liszt tetCoefA(volume, phi, i, j)
   return ( volume * tensor3( { phi[i, 0], phi[i, 1], phi[i, 2] },
                              { phi[j, 0], phi[j, 1], phi[j, 2] } ) )
 end
 
-local liszt function tetCoefB(volume, dots, i, j)
+local liszt tetCoefB(volume, dots, i, j)
   return volume * dots[i, j]
 end
 
-local liszt function tetCoefC(volume, phi, dots, i, j, k)
+local liszt tetCoefC(volume, phi, dots, i, j, k)
   var res : L.vec3d = volume * dots[j, k] * 
                       { phi[i, 0], phi[i, 1], phi[i, 2] }
   return res
 end
 
-local liszt function tetCoefD(volume, dots, i, j, k, l)
+local liszt tetCoefD(volume, dots, i, j, k, l)
   return ( volume * dots[i, j] * dots[k, l] )
 end
 
@@ -353,7 +353,7 @@ mesh.vertices:NewField('internal_forces', L.vec3d):Load({0, 0, 0})
 -- Result is stored as a 3D vector field over all the vertices.
 
 -- Linear contributions to internal internal_forces
-local liszt kernel addIFLinearTerms (t : mesh.tetrahedra)
+local liszt addIFLinearTerms (t : mesh.tetrahedra)
   var phi = t.Phig
   var dots = tetDots(phi)
   var lambda = t.lambdaLame
@@ -378,7 +378,7 @@ local liszt kernel addIFLinearTerms (t : mesh.tetrahedra)
 end
 
 -- Quadratic contributions to internal internal_forces
-local liszt kernel addIFQuadraticTerms (t : mesh.tetrahedra)
+local liszt addIFQuadraticTerms (t : mesh.tetrahedra)
   var phi = t.Phig
   var dots = tetDots(phi)
   var lambda = t.lambdaLame
@@ -408,7 +408,7 @@ local liszt kernel addIFQuadraticTerms (t : mesh.tetrahedra)
 end
 
 -- Cubic contributions to internal internal_forces
-local liszt kernel addIFCubicTerms (t : mesh.tetrahedra)
+local liszt addIFCubicTerms (t : mesh.tetrahedra)
   var phi = t.Phig
   var dots = tetDots(phi)
   var lambda = t.lambdaLame
@@ -437,7 +437,7 @@ local liszt kernel addIFCubicTerms (t : mesh.tetrahedra)
   end
 end
 
-local liszt kernel resetInternalForces (v : mesh.vertices)
+local liszt resetInternalForces (v : mesh.vertices)
   v.internal_forces = {0, 0, 0}
 end
 
@@ -445,21 +445,21 @@ local computeInternalForcesHelper = function(tetrahedra)
   local timer = Timer.New()
   -- print("Computing linear contributions to internal_forces ...")
   timer:Start()
-  addIFLinearTerms(tetrahedra)
+  tetrahedra:map(addIFLinearTerms)
   print("Time for internal forces linear terms is "..(timer:Stop()*1E6).." us")
   -- print("Computing quadratic contributions to internal_forces ...")
   timer:Start()
-  addIFQuadraticTerms(tetrahedra)
+  tetrahedra:map(addIFQuadraticTerms)
   print("Time for internal forces quadratic terms is "..(timer:Stop()*1E6).." us")
   -- print("Computing cubic contributions to internal_forces ...")
   timer:Start()
-  addIFCubicTerms(tetrahedra)
+  tetrahedra:map(addIFCubicTerms)
   print("Time for internal forces cubic terms is "..(timer:Stop()*1E6).." us")
 end
 
 function computeInternalForces(mesh)
   -- print("Computing internal_forces ...")
-  resetInternalForces(mesh.vertices)
+  mesh.vertices:map(resetInternalForces)
   computeInternalForcesHelper(mesh.tetrahedra)
   -- print("Completed computing internal_forces.")
 end
@@ -484,7 +484,7 @@ mesh.edges:NewField('stiffness', L.mat3d)
 -- against scatter from tetrahedra.
 
 -- Linear contributions to stiffness matrix
-local liszt kernel addStiffLinearTerms (t : mesh.tetrahedra)
+local liszt addStiffLinearTerms (t : mesh.tetrahedra)
   var phi = t.Phig
   var dots = tetDots(phi)
   var lambda = t.lambdaLame
@@ -503,7 +503,7 @@ local liszt kernel addStiffLinearTerms (t : mesh.tetrahedra)
 end
 
 -- Quadratic contributions to stiffness matrix
-local liszt kernel addStiffQuadraticTerms (t : mesh.tetrahedra)
+local liszt addStiffQuadraticTerms (t : mesh.tetrahedra)
   var phi = t.Phig
   var dots = tetDots(phi)
   var lambda = t.lambdaLame
@@ -535,7 +535,7 @@ local liszt kernel addStiffQuadraticTerms (t : mesh.tetrahedra)
 end
 
 -- Cubic contributions to stiffness matrix
-local liszt kernel addStiffCubicTerms (t : mesh.tetrahedra)
+local liszt addStiffCubicTerms (t : mesh.tetrahedra)
   var phi = t.Phig
   var dots = tetDots(phi)
   var lambda = t.lambdaLame
@@ -564,7 +564,7 @@ local liszt kernel addStiffCubicTerms (t : mesh.tetrahedra)
   end
 end
 
-local liszt kernel resetStiffnessMatrix (e : mesh.edges)
+local liszt resetStiffnessMatrix (e : mesh.edges)
   e.stiffness = constantMatrix3(0)
 end
 
@@ -572,21 +572,21 @@ local computeStiffnessMatrixHelper = function(tetrahedra)
   local timer = Timer.New()
   -- print("Computing linear contributions to stiffness matrix ...")
   timer:Start()
-  addStiffLinearTerms(tetrahedra)
+  tetrahedra:map(addStiffLinearTerms)
   print("Time for stiffness linear terms is "..(timer:Stop()*1E6).." us")
   -- print("Computing quadratic contributions to stiffness matrix ...")
   timer:Start()
-  addStiffQuadraticTerms(tetrahedra)
+  tetrahedra:map(addStiffQuadraticTerms)
   print("Time for stiffness quadratic terms is "..(timer:Stop()*1E6).." us")
   -- print("Computing cubic contributions to stiffness matrix ...")
   timer:Start()
-  addStiffCubicTerms(tetrahedra)
+  tetrahedra:map(addStiffCubicTerms)
   print("Time for stiffness cubic terms is "..(timer:Stop()*1E6).." us")
 end
 
 function computeStiffnessMatrix(mesh)
   -- print("Computing stiffness matrix ...")
-  resetStiffnessMatrix(mesh.edges)
+  mesh.edges:map(resetStiffnessMatrix)
   computeStiffnessMatrixHelper(mesh.tetrahedra)
   -- print("Completed computing stiffness matrix.")
 end
@@ -613,7 +613,7 @@ function ImplicitBackwardEulerIntegrator.New(opts)
   return stepper
 end
 
-function ImplicitBackwardEulerIntegrator:setupFieldsKernels(mesh)
+function ImplicitBackwardEulerIntegrator:setupFieldsFunctions(mesh)
 
   mesh.vertices:NewField('q_1', L.vec3d):Load({ 0, 0, 0 })
   mesh.vertices:NewField('qvel_1', L.vec3d):Load({ 0, 0, 0 })
@@ -636,120 +636,102 @@ function ImplicitBackwardEulerIntegrator:setupFieldsKernels(mesh)
   self.alpha = L.Global(L.double, 0)
   self.beta = L.Global(L.double, 0)
 
-  local liszt kernel initializeQFields (v : mesh.vertices)
+  liszt self.initializeQFields (v : mesh.vertices)
     v.q_1 = v.q
     v.qvel_1 = v.qvel
     v.qaccel = { 0, 0, 0 }
     v.qaccel_1 = { 0, 0, 0 }
   end
-  self.initializeQFields = initializeQFields
 
-  local liszt kernel initializeqdelta (v : mesh.vertices)
+  liszt self.initializeqdelta (v : mesh.vertices)
     v.qdelta = v.qresidual
   end
-  self.initializeqdelta = initializeqdelta
 
-  local liszt kernel scaleInternalForces (v : mesh.vertices)
+  liszt self.scaleInternalForces (v : mesh.vertices)
     v.internal_forces = self.internalForcesScalingFactor * v.internal_forces
   end
-  self.scaleInternalForces = scaleInternalForces
 
-  local liszt kernel scaleStiffnessMatrix (e : mesh.edges)
+  liszt self.scaleStiffnessMatrix (e : mesh.edges)
     e.stiffness = self.internalForcesScalingFactor * e.stiffness
   end
-  self.scaleStiffnessMatrix = scaleStiffnessMatrix
 
-  local liszt kernel createRayleighDampMatrix (e : mesh.edges)
+  liszt self.createRayleighDampMatrix (e : mesh.edges)
     e.raydamp = self.dampingStiffnessCoef * e.stiffness +
                 diagonalMatrix(self.dampingMassCoef * e.mass)
   end
-  self.createRayleighDampMatrix = createRayleighDampMatrix
 
-  local liszt kernel updateqresidual1 (v : mesh.vertices)
+  liszt self.updateqresidual1 (v : mesh.vertices)
     for e in v.edges do
       v.qresidual += multiplyMatVec3(e.stiffness, (e.head.q_1 - e.head.q))
     end
   end
-  self.updateqresidual1 = updateqresidual1
 
-  local liszt kernel updateqresidual2 (v : mesh.vertices)
+  liszt self.updateqresidual2 (v : mesh.vertices)
     for e in v.edges do
       v.qresidual += multiplyMatVec3(e.stiffness, e.head.qvel)
     end
   end
-  self.updateqresidual2 = updateqresidual2
 
-  local liszt kernel updateqresidual3 (v : mesh.vertices)
+  liszt self.updateqresidual3 (v : mesh.vertices)
     v.qresidual += (v.internal_forces - v.external_forces)
     v.qresidual = - ( self.timestep * v.qresidual )
   end
-  self.updateqresidual3 = updateqresidual3
 
-  local liszt kernel updateqresidual4 (v : mesh.vertices)
+  liszt self.updateqresidual4 (v : mesh.vertices)
     for e in v.edges do
       v.qresidual += e.mass * (e.head.qvel_1 - e.head.qvel)
     end
   end
-  self.updateqresidual4 = updateqresidual4
 
-  local liszt kernel updateStiffness1 (e : mesh.edges)
+  liszt self.updateStiffness1 (e : mesh.edges)
     e.stiffness = self.timestep * e.stiffness
     e.stiffness += e.raydamp
     -- TODO: This damping matrix seems to be zero unless set otherwise.
     -- e.stiffness = e.stiffness + e.dampingmatrix
   end
-  self.updateStiffness1 = updateStiffness1
 
-  local liszt kernel updateStiffness11 (e : mesh.edges)
+  liszt self.updateStiffness11 (e : mesh.edges)
     e.stiffness = self.timestep * e.stiffness
   end
-  self.updateStiffness11 = updateStiffness11
 
-  local liszt kernel updateStiffness12 (e : mesh.edges)
+  liszt self.updateStiffness12 (e : mesh.edges)
     e.stiffness += e.raydamp
   end
-  self.updateStiffness12 = updateStiffness12
 
-  local liszt kernel updateStiffness2 (e : mesh.edges)
+  liszt self.updateStiffness2 (e : mesh.edges)
     e.stiffness = self.timestep * e.stiffness
     e.stiffness += diagonalMatrix(e.mass)
   end
-  self.updateStiffness2 = updateStiffness2
 
-  local liszt kernel getError (v : mesh.vertices)
+  liszt self.getError (v : mesh.vertices)
     var qd = v.qdelta
     var err = L.dot(qd, qd)
     self.err += err
   end
-  self.getError = getError
 
-  local liszt kernel pcgCalculatePreconditioner (v : mesh.vertices)
+  liszt self.pcgCalculatePreconditioner (v : mesh.vertices)
     var stiff = v.diag.stiffness
     var diag = { stiff[0,0], stiff[1,1], stiff[2,2] }
     v.precond = { 1.0/diag[0], 1.0/diag[1], 1.0/diag[2] }
   end
-  self.pcgCalculatePreconditioner = pcgCalculatePreconditioner
 
-  local liszt kernel pcgCalculateExactResidual (v : mesh.vertices)
+  liszt self.pcgCalculateExactResidual (v : mesh.vertices)
     v.r = { 0, 0, 0 }
     for e in v.edges do
       v.r += multiplyMatVec3(e.stiffness, e.head.x)
     end
     v.r = v.qdelta - v.r
   end
-  self.pcgCalculateExactResidual = pcgCalculateExactResidual
 
-  local liszt kernel pcgCalculateNormResidual (v : mesh.vertices)
+  liszt self.pcgCalculateNormResidual (v : mesh.vertices)
     self.normRes += L.dot(multiplyVectors(v.r, v.precond), v.r)
   end
-  self.pcgCalculateNormResidual = pcgCalculateNormResidual
 
-  local liszt kernel pcgInitialize (v : mesh.vertices)
+  liszt self.pcgInitialize (v : mesh.vertices)
     v.p = multiplyVectors(v.r, v.precond)
   end
-  self.pcgInitialize = pcgInitialize
 
-  local liszt kernel pcgComputeAp (v : mesh.vertices)
+  liszt self.pcgComputeAp (v : mesh.vertices)
     var Ap : L.vec3d = { 0, 0, 0 }
     for e in v.edges do
       var A = e.stiffness
@@ -758,36 +740,30 @@ function ImplicitBackwardEulerIntegrator:setupFieldsKernels(mesh)
     end
     v.Ap = Ap
   end
-  self.pcgComputeAp = pcgComputeAp
 
-  local liszt kernel pcgComputeAlphaDenom (v : mesh.vertices)
+  liszt self.pcgComputeAlphaDenom (v : mesh.vertices)
     self.alphaDenom += L.dot(v.p, v.Ap)
   end
-  self.pcgComputeAlphaDenom = pcgComputeAlphaDenom
 
-  local liszt kernel pcgUpdateX (v : mesh.vertices)
+  liszt self.pcgUpdateX (v : mesh.vertices)
     v.x += self.alpha * v.p
   end
-  self.pcgUpdateX = pcgUpdateX
 
-  local liszt kernel pcgUpdateResidual (v : mesh.vertices)
+  liszt self.pcgUpdateResidual (v : mesh.vertices)
     v.r -= self.alpha * v.Ap
   end
-  self.pcgUpdateResidual = pcgUpdateResidual
 
-  local liszt kernel pcgUpdateP (v : mesh.vertices)
+  liszt self.pcgUpdateP (v : mesh.vertices)
     v.p = self.beta * v.p + multiplyVectors(v.precond, v.r)
   end
-  self.pcgUpdateP = pcgUpdateP
 
-  local liszt kernel updateAfterSolve (v : mesh.vertices)
+  liszt self.updateAfterSolve (v : mesh.vertices)
     v.qdelta = v.x
     v.qvel += v.qdelta
     -- TODO: subtracting q from q?
     -- q += q_1-q + self.timestep * qvel
     v.q = v.q_1 + self.timestep * v.qvel
   end
-  self.updateAfterSolve = updateAfterSolve
 
 end
 
@@ -806,43 +782,43 @@ function ImplicitBackwardEulerIntegrator:solvePCG(mesh)
   local timer_total = Timer.New()
   timer_total:Start()
   mesh.vertices.x:Load({ 0, 0, 0 })
-  self.pcgCalculatePreconditioner(mesh.vertices, {blocksize=16})
+  mesh.vertices:map(self.pcgCalculatePreconditioner, {blocksize=16})
   local iter = 1
-  self.pcgCalculateExactResidual(mesh.vertices, {blocksize=16})
+  mesh.vertices:map(self.pcgCalculateExactResidual, {blocksize=16})
   self.normRes:set(0)
-  self.pcgInitialize(mesh.vertices, {blocksize=16})
+  mesh.vertices:map(self.pcgInitialize, {blocksize=16})
   t_normres:Start()
-  self.pcgCalculateNormResidual(mesh.vertices, {blocksize=16})
+  mesh.vertices:map(self.pcgCalculateNormResidual, {blocksize=16})
   t_normres:Pause()
   local normRes = self.normRes:get()
   local thresh = self.cgEpsilon * self.cgEpsilon * normRes
   while normRes > thresh and
         iter <= self.cgMaxIterations do
     t_computeap:Start()
-    self.pcgComputeAp(mesh.vertices, {blocksize=16})
+    mesh.vertices:map(self.pcgComputeAp, {blocksize=16})
     t_computeap:Pause()
     self.alphaDenom:set(0)
     t_alphadenom:Start()
-    self.pcgComputeAlphaDenom(mesh.vertices, {blocksize=64})
+    mesh.vertices:map(self.pcgComputeAlphaDenom, {blocksize=64})
     t_alphadenom:Pause()
     self.alpha:set( normRes / self.alphaDenom:get() )
     t_updatex:Start()
-    self.pcgUpdateX(mesh.vertices, {blocksize=64})
+    mesh.vertices:map(self.pcgUpdateX, {blocksize=64})
     t_updatex:Pause()
     if iter % 30 == 0 then
-      self.pcgCalculateExactResidual(mesh.vertices, {blocksize=16})
+      mesh.vertices:map(self.pcgCalculateExactResidual, {blocksize=16})
     else
-      self.pcgUpdateResidual(mesh.vertices, {blocksize=64})
+      mesh.vertices:map(self.pcgUpdateResidual, {blocksize=64})
     end
     local normResOld = normRes
     self.normRes:set(0)
     t_normres:Start()
-    self.pcgCalculateNormResidual(mesh.vertices, {blocksize=64})
+    mesh.vertices:map(self.pcgCalculateNormResidual, {blocksize=64})
     t_normres:Pause()
     normRes = self.normRes:get()
     self.beta:set( normRes / normResOld )
     t_updatep:Start()
-    self.pcgUpdateP(mesh.vertices, {blocksize=64})
+    mesh.vertices:map(self.pcgUpdateP, {blocksize=64})
     t_updatep:Pause()
     iter = iter + 1
   end
@@ -866,7 +842,7 @@ function ImplicitBackwardEulerIntegrator:doTimestep(mesh)
   -- store current amplitudes and set initial gues for qaccel, qvel
   -- AHHHHH, THE BELOW CAN BE IMPLEMENTED USING COPIES
   -- LOOP OVER THE STATE VECTOR (vertices for now)
-  self.initializeQFields(mesh.vertices)
+  mesh.vertices:map(self.initializeQFields)
 
   -- Limit our total number of iterations allowed per timestep
   for numIter = 1, self.maxIterations do
@@ -880,15 +856,15 @@ function ImplicitBackwardEulerIntegrator:doTimestep(mesh)
     computeStiffnessMatrix(mesh)
     print("Time to assemble stiffness matrix is "..(timer_inner:Stop()*1E6).." us")
 
-    self.scaleInternalForces(mesh.vertices)
-    self.scaleStiffnessMatrix(mesh.edges)
+    mesh.vertices:map(self.scaleInternalForces)
+    mesh.edges:map(self.scaleStiffnessMatrix)
 
     -- ZERO out the residual field
     mesh.vertices.qresidual:Load({ 0, 0, 0 })
 
     -- NOTE: useStaticSolver == FALSE
     --    We just assume this everywhere
-    self.createRayleighDampMatrix(mesh.edges)
+    mesh.edges:map(self.createRayleighDampMatrix)
 
     -- Build effective stiffness:
     --    Keff = M + h D + h^2 * K
@@ -901,30 +877,30 @@ function ImplicitBackwardEulerIntegrator:doTimestep(mesh)
 
     -- superfluous on iteration 1, but safe to run
     if numIter ~= 1 then
-      self.updateqresidual1(mesh.vertices)
+      mesh.vertices:map(self.updateqresidual1)
     end
 
     -- some magic incantations corresponding to the above
-    self.updateStiffness11(mesh.edges)
-    self.updateStiffness12(mesh.edges)
-    self.updateqresidual2(mesh.vertices)
-    self.updateStiffness2(mesh.edges)
+    mesh.edges:map(self.updateStiffness11)
+    mesh.edges:map(self.updateStiffness12)
+    mesh.vertices:map(self.updateqresidual2)
+    mesh.edges:map(self.updateStiffness2)
 
     -- Add external/ internal internal_forces
-    self.updateqresidual3(mesh.vertices)
+    mesh.vertices:map(self.updateqresidual3)
 
     -- superfluous on iteration 1, but safe to run
     if numIter ~= 1 then
-      self.updateqresidual4(mesh.vertices)
+      mesh.vertices:map(self.updateqresidual4)
     end
 
-    -- TODO: this should be a copy and not a separate kernel in the end
-    self.initializeqdelta(mesh.vertices)
+    -- TODO: this should be a copy and not a separate function in the end
+    mesh.vertices:map(self.initializeqdelta)
 
     -- TODO: This code doesn't have any way of handling fixed vertices
     -- at the moment.  Should enforce that here somehow
     self.err:set(0)
-    self.getError(mesh.vertices)
+    mesh.vertices:map(self.getError)
 
     -- compute initial error on the 1st iteration
     if numIter == 1 then
@@ -952,7 +928,7 @@ function ImplicitBackwardEulerIntegrator:doTimestep(mesh)
 
     -- Reinsert the rows?
 
-    self.updateAfterSolve(mesh.vertices)
+    mesh.vertices:map(self.updateAfterSolve)
 
     -- Constrain (zero) fields for the subset of constrained vertices
   end
@@ -966,14 +942,14 @@ function clearExternalForces(mesh)
   mesh.vertices.external_forces:Load({ 0, 0, 0 })
 end
 
-local liszt kernel setExternalForces (v : mesh.vertices)
+local liszt setExternalForces (v : mesh.vertices)
   var pos = v.pos
   v.external_forces = { 10000, -80*(50-pos[1]), 0 }
 end
 
 function setExternalConditions(mesh, iter)
   if iter == 1 then
-    setExternalForces(mesh.vertices)
+    mesh.vertices:map(setExternalForces)
   end
 end
 
@@ -994,11 +970,11 @@ function main()
   computeMassMatrix(volumetric_mesh)
 
   -- print("Computing integrals ...")
-  precomputeStVKIntegrals(mesh.tetrahedra) -- called StVKElementABCDLoader:load() in ref
+  mesh.tetrahedra:map(precomputeStVKIntegrals)
   -- print("Precomputed integrals")
 
   -- print("Initializing Lame constants ...")
-  initializeLameConstants(mesh.tetrahedra)
+  mesh.tetrahedra:map(initializeLameConstants)
 
   local integrator = ImplicitBackwardEulerIntegrator.New{
     n_vars                = 3*nvertices,
@@ -1013,7 +989,7 @@ function main()
     cgMaxIterations       = options.cgMaxIterations,
     internalForcesScalingFactor  = options.deformableObjectCompliance
   }
-  integrator:setupFieldsKernels(mesh)
+  integrator:setupFieldsFunctions(mesh)
 
   -- print("Performing time steps ...")
   DumpDeformationToFile(volumetric_mesh, "out/mesh_liszt_"..tostring(0))

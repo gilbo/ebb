@@ -34,7 +34,7 @@ end
 
 local sqrt3 = math.sqrt(3)
 
-local tet_volume = liszt function(p0,p1,p2,p3)
+local liszt tet_volume(p0,p1,p2,p3)
   var d1 = p0-p3
   var d2 = p1-p3
   var d3 = p2-p3
@@ -42,7 +42,7 @@ local tet_volume = liszt function(p0,p1,p2,p3)
   -- triple product
   return L.dot(L.cross(d1,d2),d3)
 end
-local trinorm = liszt function(p0,p1,p2)
+local liszt trinorm(p0,p1,p2)
   var d1 = p1-p0
   var d2 = p2-p0
   var n  = L.cross(d1,d2)
@@ -50,7 +50,7 @@ local trinorm = liszt function(p0,p1,p2)
   if len < 1e-10 then len = L.float(1e-10) end
   return n/len
 end
-local dot_to_color = liszt function(d)
+local liszt dot_to_color(d)
   var val = d * 0.5 + 0.5
   var col = L.vec3f({val,val,val})
   return col
@@ -58,7 +58,7 @@ end
 
 local lightdir = L.Constant(L.vec3f,{sqrt3,sqrt3,sqrt3})
 
-local visualizeDeformation = liszt kernel ( t : mesh.tetrahedra )
+local liszt visualizeDeformation ( t : mesh.tetrahedra )
   var p0 = L.vec3f(t.v[0].pos)
   var p1 = L.vec3f(t.v[1].pos)
   var p2 = L.vec3f(t.v[2].pos)
@@ -85,7 +85,7 @@ end
 function visualize(mesh)
   vdb.vbegin()
   vdb.frame() -- this call clears the canvas for a new frame
-  visualizeDeformation(mesh.tetrahedra)
+  mesh.tetrahedra:map(visualizeDeformation)
   vdb.vend()
   print('Hit enter for next frame')
   io.read()

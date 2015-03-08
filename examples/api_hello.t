@@ -20,7 +20,7 @@ grid.cells:NewField('d_temperature', L.double):Load(0)
 
 local K = L.Global(L.double, 1.0)
 
-local compute_diffuse = liszt kernel ( c : grid.cells )
+local liszt compute_diffuse ( c : grid.cells )
   if not c.in_boundary then
     var sum_diff = c( 1,0).temperature - c.temperature
                  + c(-1,0).temperature - c.temperature
@@ -31,11 +31,11 @@ local compute_diffuse = liszt kernel ( c : grid.cells )
   end
 end
 
-local apply_diffuse = liszt kernel ( c : grid.cells )
+local liszt apply_diffuse ( c : grid.cells )
   c.temperature += c.d_temperature
 end
 
 for i = 1, 1000 do
-  compute_diffuse(grid.cells)
-  apply_diffuse(grid.cells)
+  grid.cells:map(compute_diffuse)
+  grid.cells:map(apply_diffuse)
 end

@@ -5,6 +5,7 @@ local L = require "compiler.lisztlib"
 local specialization = require "compiler.specialization"
 local semant         = require "compiler.semant"
 local phase          = require "compiler.phase"
+local AST            = require "compiler.ast"
 
 -- Use the following to produce
 -- deterministic order of table entries
@@ -85,16 +86,43 @@ function L.NewKernel(kernel_ast, env)
     local new_kernel = setmetatable({}, L.LKernel)
 
     -- All declaration time processing here
-    local specialized    = specialization.specialize(env, kernel_ast)
-    new_kernel.typed_ast = semant.check(env, specialized)
+    new_kernel.specialized_ast = specialization.specialize(env, kernel_ast)
 
-    -- TODO: throw an error if more than one global is being reduced
-
-    local phase_results   = phase.phasePass(new_kernel.typed_ast)
-    new_kernel.field_use  = phase_results.field_use
-    new_kernel.global_use = phase_results.global_use
-    new_kernel.inserts    = phase_results.inserts
-    new_kernel.deletes    = phase_results.deletes
+    --new_kernel:TypeCheck()
 
     return new_kernel
 end
+
+function L.NewKernelFromFunction(user_func, relation)
+  local new_kernel = setmetatable({}, L.LKernel)
+
+  --user_func.ast:pretty_print()
+  local func_ast  = user_func.ast:alpha_rename() -- ensure this is a safe copy
+  --func_ast:pretty_print()
+  local ast_root  = AST.LisztKernel:DeriveFrom(func_ast)
+  ast_root.id     = func_ast.id
+  ast_root.name   = func_ast.params[1]
+  ast_root.body   = func_ast.body
+
+  ast_root.set    = AST.LuaObject:DeriveFrom(func_ast)
+  ast_root.set.node_type = L.internal(relation)
+
+  new_kernel.specialized_ast = ast_root
+
+  return new_kernel
+end
+
+function L.LKernel:TypeCheck()
+  self.typed_ast = semant.check(self.specialized_ast)
+
+  -- TODO: throw an error if more than one global is being reduced
+
+  local phase_results   = phase.phasePass(self.typed_ast)
+  self.field_use  = phase_results.field_use
+  self.global_use = phase_results.global_use
+  self.inserts    = phase_results.inserts
+  self.deletes    = phase_results.deletes
+end
+
+
+

@@ -16,10 +16,10 @@ local test_macro = L.NewMacro(function (y)
 	return liszt `L.id(y)+ L.id(y)
 end)
 
-local liszt kernel test (r : R)
+local liszt test (r : R)
 	--side effect should only be evaluated once!
 	r.result = test_macro(side_effect(r))
 
 end
 
-test(R)
+R:map(test)

@@ -6,17 +6,17 @@ import 'compiler.liszt'
 	-- representation of the matrices, where M(i,j) = M[n*i+j]
 	]]--
 
---------------------------------------------------------------------------------
---[[ Libraries                                                              ]]--
---------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+--[[ Libraries                                                             ]]--
+-------------------------------------------------------------------------------
 local m      = terralib.includec("math.h")
 local sqrt   = m.sqrt
 local printf = terralib.includec("stdio.h").printf
 local PN     = L.require('lib.pathname')
 
---------------------------------------------------------------------------------
---[[ Load mesh relations, boundary sets                                     ]]--
---------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+--[[ Load mesh relations, boundary sets                                    ]]--
+-------------------------------------------------------------------------------
 local LMesh = L.require "domains.lmesh"
 local M  = LMesh.Load(PN.scriptdir():concat("fem_mesh.lmesh"):tostring())
 M.left   = M.inlet
@@ -24,9 +24,9 @@ M.right  = M.outlet
 local C, V, F, E = M.cells, M.vertices, M.faces, M.edges
 
 
---------------------------------------------------------------------------------
---[[ Allocate/initialize vertex fields                                      ]]--
---------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+--[[ Allocate/initialize vertex fields                                     ]]--
+-------------------------------------------------------------------------------
 
 local zero = {0,0,0}
 M.vertices:NewField('initialPos', L.vector(L.double, 3)):LoadConstant(zero)
@@ -44,9 +44,9 @@ V:NewField('inlet', L.bool):LoadConstant(false)
 V:NewField('outlet', L.bool):LoadConstant(false)
 
 
---------------------------------------------------------------------------------
---[[ Create structured topology relations                                   ]]--
---------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+--[[ Create structured topology relations                                  ]]--
+-------------------------------------------------------------------------------
 local Clib = terralib.includec("stdlib.h")
 
 -- Since domain is a cube mesh, want to access vertices of face as 
@@ -109,24 +109,24 @@ build_structured_face()
 build_structured_cell()
 
 
---------------------------------------------------------------------------------
---[[ Build inlet/outlet vertex sets                                         ]]--
---------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+--[[ Build inlet/outlet vertex sets                                        ]]--
+-------------------------------------------------------------------------------
 function buildVertexInletOutletSets ()
-	local mark_inlet_vertices = liszt kernel (f : M.left)
+	local liszt mark_inlet_vertices (f : M.left)
 		f.value.v0.inlet or= true	
 		f.value.v1.inlet or= true
 		f.value.v2.inlet or= true
 		f.value.v3.inlet or= true
 	end
-	local mark_outlet_vertices = liszt kernel (f : M.right)
+	local liszt mark_outlet_vertices (f : M.right)
 		f.value.v0.outlet or= true
 		f.value.v1.outlet or= true
 		f.value.v2.outlet or= true
 		f.value.v3.outlet or= true
 	end
-	mark_inlet_vertices(M.left)
-	mark_outlet_vertices(M.right)
+	M.left:map(mark_inlet_vertices)
+	M.right:map(mark_outlet_vertices)
 
 	local is_inlet   = V.inlet:DataPtr()
 	local is_outlet  = V.outlet:DataPtr()
@@ -136,9 +136,9 @@ end
 buildVertexInletOutletSets()
 
 
---------------------------------------------------------------------------------
---[[ Constants                                                              ]]--
---------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+--[[ Constants                                                             ]]--
+-------------------------------------------------------------------------------
 -- Initialize time index (n) and time (t^n)
 local dt_n_h = .000005
 local tmax   = .002
@@ -150,11 +150,11 @@ local mu        = youngsMod / (2 * (1 + poisson))
 local lambda    = (youngsMod * poisson) / ((1 + poisson) * (1 - 2 * poisson))
 
 
---------------------------------------------------------------------------------
---[[ Interior force calculation: kernel and terra helper functions          ]]--
---------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+--[[ Interior force calculation: function and helper functions            ]]--
+-------------------------------------------------------------------------------
 -- return vec8f; xi, eta, zeta are doubles
-local shapeFunction = liszt function(xi, eta, zeta)
+local liszt shapeFunction(xi, eta, zeta)
 	return 1.0f/8.0f * {
 		(1-xi) * (1-eta) * (1-zeta),
 	    (1+xi) * (1-eta) * (1-zeta),
@@ -168,7 +168,7 @@ local shapeFunction = liszt function(xi, eta, zeta)
 end
 
 -- returns vec24f; eta, xi, zeta are doubles
-local derivative = liszt function(eta, xi, zeta)
+local liszt derivative(eta, xi, zeta)
 	return 1.0f/8.0f * {
 		-(eta - 1)*(zeta - 1), -(xi - 1)*(zeta - 1), -(eta - 1)*(xi - 1),
 		 (eta - 1)*(zeta - 1),  (xi + 1)*(zeta - 1),  (eta - 1)*(xi + 1),
@@ -180,23 +180,23 @@ local derivative = liszt function(eta, xi, zeta)
 		-(eta + 1)*(zeta + 1), -(xi - 1)*(zeta + 1), -(eta + 1)*(xi - 1) }
 end
 
-local dot3 = liszt function (a, b)
+local liszt dot3 (a, b)
 	return a[0]*b[0] + a[1]*b[1] + a[2]*b[2]
 end
 
-local dot6 = liszt function (a, b)
+local liszt dot6 (a, b)
 	return  a[0]*b[0] + a[1]*b[1] + a[2]*b[2] 
 	      + a[3]*b[3] + a[4]*b[4] + a[5]*b[5]
 end
 
-local dot8 = liszt function (a, b)
+local liszt dot8 (a, b)
 	return  a[0]*b[0] + a[1]*b[1] + a[2]*b[2] + a[3]*b[3]
 	      + a[4]*b[4] + a[5]*b[5] + a[6]*b[6] + a[7]*b[7]
 end
 
 -- M is an 8x3 matrix, and cols 1, 2 and 3 are the columns of a 3x3 matrix
 -- returns another 8x3 matrix
-local mult_8x3_3x3 = liszt function(M, col1, col2, col3)
+local liszt mult_8x3_3x3 (M, col1, col2, col3)
 		var MR1 = {M[0],  M[1],  M[2]}
 	    var MR2 = {M[3],  M[4],  M[5]}
 	    var MR3 = {M[6],  M[7],  M[8]}
@@ -218,7 +218,7 @@ local mult_8x3_3x3 = liszt function(M, col1, col2, col3)
 end
 
 -- F is a 3x3 matrix, returning a 3x3 matrix
-local calculate_stress_tensor = liszt function (F)
+local liszt calculate_stress_tensor (F)
 	var FT1 = {F[0], F[3], F[6]}
 	var FT2 = {F[1], F[4], F[7]}
 	var FT3 = {F[2], F[5], F[8]}
@@ -258,7 +258,7 @@ local calculate_stress_tensor = liszt function (F)
 end
 
 local F = L.double
-local calculate_internal_force = liszt kernel (c : M.cells)
+local liszt calculate_internal_force (c : M.cells)
 	-- ignore outside cell
 	if L.id(c) ~= 0	then
 		-- col1, col2, col3 are the columns of a matrix X, where the rows of X are
@@ -395,42 +395,42 @@ local calculate_internal_force = liszt kernel (c : M.cells)
 end
 
 
---------------------------------------------------------------------------------
---[[ Global micro-kernels                                                   ]]--
---------------------------------------------------------------------------------
-local reset_internal_forces = liszt kernel (v : M.vertices) v.fint = {0,0,0} end
+-------------------------------------------------------------------------------
+--[[ Global micro-functions                                                ]]--
+-------------------------------------------------------------------------------
+local liszt reset_internal_forces (v : M.vertices) v.fint = {0,0,0} end
 
-local update_position = liszt kernel (v : M.vertices)
+local liszt update_position (v : M.vertices)
 	v.position += dt_n_h * v.v_n_h
 end
 
-local compute_acceleration = liszt kernel (v : M.vertices)
+local liszt compute_acceleration (v : M.vertices)
 	v.a_n = (v.fext - v.fint) / v.mass
 end
 
-local update_velocity = liszt kernel (v : M.vertices)
+local liszt update_velocity (v : M.vertices)
 	v.v_n = v.v_n_h + L.vec3f(.5f * dt_n_h * v.a_n)
 end
 
 
---------------------------------------------------------------------------------
---[[ Main                                                                   ]]--
---------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+--[[ Main                                                                  ]]--
+-------------------------------------------------------------------------------
 local function main ()
 	-- Initialize position
-	(liszt kernel (v : M.vertices)
+	M.vertices:map(liszt (v : M.vertices)
 		v.initialPos = L.vec3f(v.position)
-	end)(M.vertices)
+	end)
 
 
 	--[[ Initialize external forces: ]]--
-	(liszt kernel (v : M.vertices)
+	V.inlet_vertices:map(liszt (v : M.vertices)
 		v.fext = L.vec3f({10000000, 0, 0})
-	end)(V.inlet_vertices)
+	end)
 
-	(liszt kernel (v : M.vertices)
+	V.outlet_vertices:map(liszt (v : M.vertices)
 		v.fext = L.vec3f({-10000000, 0, 0})
-	end)(V.outlet_vertices)
+	end)
 
 	-- Initialize acceleration based on initial forces
 	compute_acceleration(M.vertices)
@@ -442,25 +442,25 @@ local function main ()
 		-- Update half time:  t^{n+1/2} = t^n + 1/2*deltat^{n+1/2}
 		t_n_h = t_n + dt_n_h/2
 
-		reset_internal_forces(M.vertices)
-		-- Update nodal velocities (requires inline kernel to escape current t values)
-		(liszt kernel (v : M.vertices)
+		M.vertices:map(reset_internal_forces)
+		-- Update nodal velocities (inline function to escape current t values)
+		M.vertices:map(liszt (v : M.vertices)
 			v.v_n_h = v.v_n + L.vec3f((t_n_h - t_n) * v.a_n)
-		end)(M.vertices)
+		end)
 
-		update_position(M.vertices)
-		calculate_internal_force(M.cells)
-		compute_acceleration(M.vertices)
-		update_velocity(M.vertices)
+		M.vertices:map(update_position)
+		M.cells:map(calculate_internal_force)
+		M.vertices:map(compute_acceleration)
+		M.vertices:map(update_velocity)
 
 		-- Time update: t^n = t^{n-1} + deltat^{n-1/2}
 		t_n = t_n + dt_n_h
 	end
 
 	-- DEBUG
-	(liszt kernel (v : M.vertices)
+	M.vertices:map(liszt (v : M.vertices)
 		L.print(v.position)
-	end)(M.vertices)
+	end)
 end
 
 main()

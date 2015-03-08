@@ -16,7 +16,7 @@ M.vertices:NewField('flux',        L.float):Load(0)
 M.vertices:NewField('jacobistep',  L.float):Load(0)
 M.vertices:NewField('temperature', L.float):Load(init_temp)
 
-local compute_step = liszt kernel(e : M.edges)
+local liszt compute_step (e : M.edges)
 	var v1   = e.head
 	var v2   = e.tail
 	var dp   = v1.position - v2.position
@@ -30,19 +30,19 @@ local compute_step = liszt kernel(e : M.edges)
 	v2.jacobistep += step
 end
 
-local propagate_temp = liszt kernel (p : M.vertices)
+local liszt propagate_temp (p : M.vertices)
 	p.temperature += L.float(.01) * p.flux / p.jacobistep
 end
 
-local clear = liszt kernel (p : M.vertices)
+local liszt clear (p : M.vertices)
 	p.flux       = 0
 	p.jacobistep = 0
 end
 
 for i = 1, 1000 do
-	compute_step(M.edges)
-	propagate_temp(M.vertices)
-	clear(M.vertices)
+	M.vertices:map(compute_step)
+	M.vertices:map(propagate_temp)
+	M.vertices:map(clear)
 end
 
 M.vertices.temperature:print()

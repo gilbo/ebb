@@ -22,7 +22,7 @@ local terra square(val : int)
     return val * val
 end
 
-local test_terra = liszt kernel(f : mesh.faces)
+local test_terra = liszt(f : mesh.faces)
     assert(square(5) == 25) -- call a user-defined Terra function
     assert(sqrt(5) == ans) -- call a built-in C function
 
@@ -33,4 +33,4 @@ local test_terra = liszt kernel(f : mesh.faces)
     say_hi() -- correctly handle a Terra function with no parameters
     srand(2) -- correctly handle a built-in C function with void return type
 end
-test_terra(mesh.faces)
+mesh.faces:map(test_terra)

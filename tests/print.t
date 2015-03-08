@@ -5,7 +5,7 @@ local mesh = LMesh.Load("examples/mesh.lmesh")
 
 local v = L.Constant(L.vec3f, {1, 2, 3}) 
 
-local print_stuff = liszt kernel(f : mesh.faces)
+local print_stuff = liszt(f : mesh.faces)
     var m = { { 1.2, 0 }, { 0.4, 1 } }
     L.print(true)
     L.print(m)
@@ -19,4 +19,4 @@ local print_stuff = liszt kernel(f : mesh.faces)
     L.print(L.id(f))
 end
 
-print_stuff(mesh.faces)
+mesh.faces:map(print_stuff)

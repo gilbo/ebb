@@ -150,13 +150,13 @@ function Trimesh:ComputeVertexDegree()
   self.vertices:NewField('degree', L.int)
   self.vertices.degree:Load(0)
 
-  local degree_kernel = liszt kernel( tri : self.triangles )
+  local liszt compute_degrees ( tri : self.triangles )
     tri.v1.degree += 1
     tri.v2.degree += 1
     tri.v3.degree += 1
   end
 
-  degree_kernel(self.triangles)
+  self.triangles:map(compute_degrees)
 end
 
 

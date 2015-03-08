@@ -3,7 +3,8 @@ if not terralib.cudacompile then return end
 import 'compiler.liszt'
 L.default_processor = L.GPU
 
--- A 17x17 grid will, at current settings, force liszt to run the generated kernel
+-- A 17x17 grid will, at current settings,
+-- will force liszt to run the generated kernel
 -- on multiple blocks
 local N=17
 
@@ -19,10 +20,10 @@ function main ()
 	local com = L.Global(L.vector(L.float, 2), {0, 0})
 
 	-- compute centroid
-	local sum_pos = liszt kernel(c : grid.cells)
+	local sum_pos = liszt(c : grid.cells)
 		com += c.center
 	end
-	sum_pos(grid.cells)
+	grid.cells:map(sum_pos)
 
 	local center = com:get()
   center[1] = center[1] / grid.cells:Size()

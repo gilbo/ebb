@@ -1,12 +1,12 @@
 import 'compiler.liszt'
 
-L.default_processor = L.GPU
+--L.default_processor = L.GPU
 
 local PN    = L.require 'lib.pathname'
 local Grid  = L.require "domains.grid"
 
 
-local N = 150
+local N = 45
 local sz = 1.125
 local grid = Grid.NewGrid3d({
   size   = {  N,  N,  N },
@@ -83,7 +83,7 @@ grid.cells:NewField("force_temp", L.vector(L.double, 3*8))
 -- This is also needed to maintain the code style which allows
 -- extensibility to less structured Hex-Mesh topologies
 grid.cells:NewField('v', L.vector(grid.vertices, 8))
-(liszt kernel( c : grid.cells )
+grid.cells:map(liszt( c : grid.cells )
   c.v[0] = c.vertex(0,1,1)
   c.v[1] = c.vertex(1,1,1)
   c.v[2] = c.vertex(1,0,1)
@@ -92,7 +92,7 @@ grid.cells:NewField('v', L.vector(grid.vertices, 8))
   c.v[5] = c.vertex(1,1,0)
   c.v[6] = c.vertex(1,0,0)
   c.v[7] = c.vertex(0,0,0)
-end)(grid.cells)
+end)
 
 -- Energy is concentrated in the origin node at the beginning of the simulation
 grid.cells.e:Load(function(index)
@@ -161,10 +161,10 @@ local dtcourant_tmp = L.Global(L.double, 0.0)
 local dthydro_tmp   = L.Global(L.double, 0.0)
 
 
-------------------------------------------------------------------------------------------
---[[ Helper functions and kernels                                                     ]]--
-------------------------------------------------------------------------------------------
-local fabs = liszt function (num)
+-------------------------------------------------------------------------------
+--[[ Helper functions and mapped functions                                 ]]--
+-------------------------------------------------------------------------------
+local liszt fabs (num)
   var result = num
   if num < 0 then result = -num end
   return result
@@ -172,7 +172,7 @@ end
 
 -- called over individual cells, returns a 24-vector representing an 8x3 matrix in row-major
 -- form
-local getLocalNodeCoordVectors = liszt function(c)
+local liszt getLocalNodeCoordVectors (c)
   return {
     c.v[0].px, c.v[0].py, c.v[0].pz,
     c.v[1].px, c.v[1].py, c.v[1].pz,
@@ -185,7 +185,7 @@ local getLocalNodeCoordVectors = liszt function(c)
     }
 end
 
-local getLocalNodeVelocityVectors = liszt function(c)
+local liszt getLocalNodeVelocityVectors (c)
   return {
     c.v[0].vx, c.v[0].vy, c.v[0].vz,
     c.v[1].vx, c.v[1].vy, c.v[1].vz,
@@ -197,14 +197,14 @@ local getLocalNodeVelocityVectors = liszt function(c)
     c.v[7].vx, c.v[7].vy, c.v[7].vz
     }
 end
-local row = liszt function(localCoords, i)
+local liszt row (localCoords, i)
   return {localCoords[3*i], localCoords[3*i+1], localCoords[3*i+2]}
 end
 
-local TRIPLE_PRODUCT = liszt function (a,b,c)
+local liszt TRIPLE_PRODUCT (a,b,c)
   return L.dot(a, L.cross(b,c))
 end
-local calcElemVolume = liszt function (c)
+local liszt calcElemVolume (c)
   var d61 = c.v[6].position - c.v[1].position
   var d70 = c.v[7].position - c.v[0].position
   var d63 = c.v[6].position - c.v[3].position
@@ -225,7 +225,7 @@ local calcElemVolume = liszt function (c)
                TRIPLE_PRODUCT( d14+d25, d61, d50 )
   return volume * twelfth
 end
---local calcElemVolume = liszt function (localCoords)
+--local liszt calcElemVolume (localCoords)
 --  var d61 = row(localCoords,6) - row(localCoords,1)
 --  var d70 = row(localCoords,7) - row(localCoords,0)
 --  var d63 = row(localCoords,6) - row(localCoords,3)
@@ -244,7 +244,7 @@ end
 --  return volume / 12.0
 --end
 
-local calcElemShapeFunctionDerivatives1 = liszt function(localCoords)
+local liszt calcElemShapeFunctionDerivatives1 (localCoords)
   var r0 = row(localCoords, 0)
   var r1 = row(localCoords, 1)
   var r2 = row(localCoords, 2)
@@ -269,7 +269,7 @@ local calcElemShapeFunctionDerivatives1 = liszt function(localCoords)
   return 8.0 * 0.125 * 0.125 * 0.125 * L.dot(fjet,cjet)
 end
 
-local calcElemShapeFunctionDerivatives2 = liszt function (localCoords)
+local liszt calcElemShapeFunctionDerivatives2 (localCoords)
   var r0 = row(localCoords, 0)
   var r1 = row(localCoords, 1)
   var r2 = row(localCoords, 2)
@@ -327,7 +327,7 @@ local calcElemShapeFunctionDerivatives2 = liszt function (localCoords)
   }
 end
 
-local sumElemFaceNormal = liszt function (coords20, coords31, stress)
+local liszt sumElemFaceNormal (coords20, coords31, stress)
   var bisect0 = coords20 + coords31
   var bisect1 = coords20 - coords31
   var area = -.0625 * L.cross(bisect0, bisect1)
@@ -338,7 +338,7 @@ local sumElemFaceNormal = liszt function (coords20, coords31, stress)
   return area
 end
 
-local calcElemNodeNormals = liszt function(c, stress)
+local liszt calcElemNodeNormals (c, stress)
     var x = {c.v[0].px, c.v[1].px, c.v[2].px, c.v[3].px,
              c.v[4].px, c.v[5].px, c.v[6].px, c.v[7].px }
     var y = {c.v[0].py, c.v[1].py, c.v[2].py, c.v[3].py,
@@ -390,7 +390,7 @@ local calcElemNodeNormals = liszt function(c, stress)
       r6[0], r6[1], r6[2], r7[0], r7[1], r7[2]
     }
 end
-local voluDer = liszt function(p0,p1,p2,p3,p4,p5)
+local liszt voluDer (p0,p1,p2,p3,p4,p5)
   var m01 = p0.position + p1.position
   var m12 = p1.position + p2.position
   var m04 = p0.position + p4.position
@@ -413,7 +413,7 @@ local voluDer = liszt function(p0,p1,p2,p3,p4,p5)
   return { dvdx*twelfth, dvdy*twelfth, dvdz*twelfth }
 end
 
-local calcElemVolumeDerivative = liszt function (c)
+local liszt calcElemVolumeDerivative (c)
   var p0 = c.v[0]
   var p1 = c.v[1]
   var p2 = c.v[2]
@@ -437,7 +437,7 @@ local calcElemVolumeDerivative = liszt function (c)
            v0[2], v1[2], v2[2], v3[2], v4[2], v5[2], v6[2], v7[2] }
 end
 
-local liszt kernel initialVolumeCalc(c : grid.cells)
+local liszt initialVolumeCalc(c : grid.cells)
 
   --var localCoords = getLocalNodeCoordVectors(c)
   var volume = calcElemVolume(c)
@@ -461,10 +461,10 @@ end
 
 local Nth = 1.0 / N
 
-local liszt kernel initVectorPosition(v : grid.vertices)
-  v.px = L.double(v.xid) * sz * Nth
-  v.py = L.double(v.yid) * sz * Nth
-  v.pz = L.double(v.zid) * sz * Nth
+local liszt initVectorPosition(v : grid.vertices)
+  v.px = L.double(L.xid(v)) * sz * Nth
+  v.py = L.double(L.yid(v)) * sz * Nth
+  v.pz = L.double(L.zid(v)) * sz * Nth
 end
 
 function m.initMeshParameters ()
@@ -475,8 +475,8 @@ function m.initMeshParameters ()
   m.dtcourant = 1e20
   m.dthydro   = 1e20
 
-  initVectorPosition(grid.vertices)
-  initialVolumeCalc(grid.cells)
+  grid.vertices:map(initVectorPosition)
+  grid.cells:map(initialVolumeCalc)
 end
 
 function timeIncrement( )
@@ -514,7 +514,7 @@ function timeIncrement( )
   m.cycle = m.cycle + 1
 end
 
-local liszt function accumulateForces(c, f)
+local liszt accumulateForces(c, f)
   c.v[0].fx += row(f,0)[0]
   c.v[0].fy += row(f,0)[1]
   c.v[0].fz += row(f,0)[2]
@@ -542,7 +542,7 @@ local liszt function accumulateForces(c, f)
 end
 
 
-local liszt function mmult_4x8x3(ma, mb)
+local liszt mmult_4x8x3(ma, mb)
   var result : L.vector(L.double, 12)
   result[0]  = ma[0]*mb[0]  + ma[1]*mb[3]  + ma[2]*mb[6]  + ma[3]*mb[9]   + ma[4]*mb[12]  + ma[5]*mb[15]  + ma[6]*mb[18]  + ma[7]*mb[21]
   result[1]  = ma[0]*mb[1]  + ma[1]*mb[4]  + ma[2]*mb[7]  + ma[3]*mb[10]  + ma[4]*mb[13]  + ma[5]*mb[16]  + ma[6]*mb[19]  + ma[7]*mb[22]
@@ -559,7 +559,7 @@ local liszt function mmult_4x8x3(ma, mb)
   return result
 end
 
-local liszt function mmult_4x3x8 (ma, mb)
+local liszt mmult_4x3x8 (ma, mb)
   var result : L.vector(L.double, 32)
   result[0]  = ma[0]*mb[0] + ma[1]*mb[8]   + ma[2]*mb[16]
   result[1]  = ma[0]*mb[1] + ma[1]*mb[9]   + ma[2]*mb[17]
@@ -596,7 +596,7 @@ local liszt function mmult_4x3x8 (ma, mb)
   return result
 end
 
-local liszt function mmult_8x4x3 (ma, mb)
+local liszt mmult_8x4x3 (ma, mb)
   var result : L.vector(L.double, 24)
   result[0]  = ma[0]*mb[0]  + ma[1]*mb[3]  + ma[2]*mb[6]  + ma[3]*mb[9]
   result[1]  = ma[0]*mb[1]  + ma[1]*mb[4]  + ma[2]*mb[7]  + ma[3]*mb[10]
@@ -640,7 +640,7 @@ end)
 
 
 
-local liszt kernel calcVolumeForceForElems (c : grid.cells)
+local liszt calcVolumeForceForElems (c : grid.cells)
   var determ = c.volo * c.vol
   var volinv = 1.0 / determ
   var volume13 = L.cbrt(determ)
@@ -676,12 +676,12 @@ local liszt kernel calcVolumeForceForElems (c : grid.cells)
   --c.force_temp = hgf
 end
 
-local liszt kernel calcPositionForNodes(v : grid.vertices)
+local liszt calcPositionForNodes(v : grid.vertices)
   var accel = v.forces / v.mass
   -- Enforce boundary conditions of symmetry planes
-  if v.xid == 0 then accel[0] = 0 end
-  if v.yid == 0 then accel[1] = 0 end
-  if v.zid == 0 then accel[2] = 0 end
+  if L.xid(v) == 0 then accel[0] = 0 end
+  if L.yid(v) == 0 then accel[1] = 0 end
+  if L.zid(v) == 0 then accel[2] = 0 end
 
   var vtmp = v.velocity + accel * m.deltatime
 
@@ -703,11 +703,11 @@ local liszt kernel calcPositionForNodes(v : grid.vertices)
 end
 
 function lagrangeNodal ()
-  calcVolumeForceForElems(grid.cells)
-  calcPositionForNodes(grid.vertices)
+  grid.cells:map(calcVolumeForceForElems)
+  grid.vertices:map(calcPositionForNodes)
 end
 
-local liszt function calcElemCharacteristicLength(localCoords, volume)
+local liszt calcElemCharacteristicLength(localCoords, volume)
   var r0 = row(localCoords, 0)
   var r1 = row(localCoords, 1)
   var r2 = row(localCoords, 2)
@@ -764,7 +764,7 @@ local liszt function calcElemCharacteristicLength(localCoords, volume)
   return charlength
 end
 
-local liszt function calcElemVelocityGradient(localVelocities, pf, detJ)
+local liszt calcElemVelocityGradient(localVelocities, pf, detJ)
   var inv_detJ = 1.0 / detJ
   var r06 = row(localVelocities,0) - row(localVelocities,6)
   var r17 = row(localVelocities,1) - row(localVelocities,7)
@@ -820,7 +820,7 @@ end
 -- This function uses the scratchpade01-03 fields to temporarily store 2nd derivatives
 -- of position (?) in x, y, z
 local third = 1.0/3.0
-local liszt function calcKinematicsForElem(c, localCoords, localVelocities)
+local liszt calcKinematicsForElem(c, localCoords, localVelocities)
   var volume = calcElemVolume(c)
   var relativeVolume = volume / c.volo
   c.vnew = relativeVolume
@@ -851,7 +851,7 @@ local liszt function calcKinematicsForElem(c, localCoords, localVelocities)
 end
 
 -- TODO
-local liszt function calcMonotonicQGradientsForElem(c, localCoords, localVelocities)
+local liszt calcMonotonicQGradientsForElem(c, localCoords, localVelocities)
   var ptiny = 1.e-36
 
   var rc0 = row(localCoords,7)
@@ -911,19 +911,19 @@ local liszt function calcMonotonicQGradientsForElem(c, localCoords, localVelocit
 end
 
 -- fused Kinematics and Monotonic Q Gradient calculations
-local liszt kernel calcKinemAndMQGradientsForElems1(c : grid.cells)
+local liszt calcKinemAndMQGradientsForElems1(c : grid.cells)
   var localCoords     = getLocalNodeCoordVectors(c)
   var localVelocities = getLocalNodeVelocityVectors(c)
   calcKinematicsForElem(c, localCoords, localVelocities)
   end
-local liszt kernel calcKinemAndMQGradientsForElems2(c : grid.cells)
+local liszt calcKinemAndMQGradientsForElems2(c : grid.cells)
   var localCoords     = getLocalNodeCoordVectors(c)
   var localVelocities = getLocalNodeVelocityVectors(c)
   calcMonotonicQGradientsForElem(c, localCoords, localVelocities)
 end
 
 -- TODO
-local liszt function calcMonotonicQRegionForElem(c)
+local liszt calcMonotonicQRegionForElem(c)
     --[[
       velocity gradient:
         delv_xi    => scratchpade01
@@ -960,13 +960,13 @@ local liszt function calcMonotonicQRegionForElem(c)
   --[[ ** phixi ** ]]--
   norm = 1.0 / (delv_xi_tmp + ptiny)
 
-  if c.xid == 0 then -- On X-symmetry plane
+  if L.xid(c) == 0 then -- On X-symmetry plane
     delvm = delv_xi_tmp
   else
     delvm = c(-1,0,0).scratchpade01
   end
 
-  if c.xid == (N-1) then -- On X-free plane
+  if L.xid(c) == (N-1) then -- On X-free plane
     delvp = 0.0
   else
     delvp = c(1,0,0).scratchpade01
@@ -987,13 +987,13 @@ local liszt function calcMonotonicQRegionForElem(c)
   --[[ ** phieta ** ]]--
   norm = 1.0 / (delv_eta_tmp + ptiny)
 
-  if c.yid == 0 then -- On Y-symmetry plane
+  if L.yid(c) == 0 then -- On Y-symmetry plane
     delvm = delv_eta_tmp
   else
     delvm = c(0,-1,0).scratchpade02
   end
 
-  if c.yid == N - 1 then -- On Y-free plane
+  if L.yid(c) == N - 1 then -- On Y-free plane
     delvp = 0.0
   else
     delvp = c(0,1,0).scratchpade02
@@ -1014,13 +1014,13 @@ local liszt function calcMonotonicQRegionForElem(c)
   --[[ ** phizeta ** ]]--
   norm = 1.0 / (delv_zeta_tmp + ptiny)
 
-  if c.zid == 0 then
+  if L.zid(c) == 0 then
     delvm = delv_zeta_tmp
   else
     delvm = c(0,0,-1).scratchpade03
   end
 
-  if c.zid == N - 1 then
+  if L.zid(c) == N - 1 then
     delvp = 0.0
   else
     delvp = c(0,0,1).scratchpade03
@@ -1062,7 +1062,7 @@ local liszt function calcMonotonicQRegionForElem(c)
 end
 
 -- TODO
-local liszt function calcSoundSpeedForElem(vnewc, rho0, enewc, pnewc, pbvc, bvc)
+local liszt calcSoundSpeedForElem(vnewc, rho0, enewc, pnewc, pbvc, bvc)
   var ss = (pbvc * enewc + vnewc * vnewc * bvc * pnewc) / rho0
   if ss <= 0.111111e-36 then
     ss = 0.3333333e-18
@@ -1073,7 +1073,7 @@ local liszt function calcSoundSpeedForElem(vnewc, rho0, enewc, pnewc, pbvc, bvc)
 end
 
 local two_thirds = 2./3.
-local liszt function calcPressureForElems(e_old, compression, vnewc, pmin, p_cut, eosvmax)
+local liszt calcPressureForElems(e_old, compression, vnewc, pmin, p_cut, eosvmax)
   var c1s   : L.double = two_thirds
   var bvc   : L.double = c1s * (compression + 1)
   var pbvc  : L.double = c1s
@@ -1087,7 +1087,7 @@ local liszt function calcPressureForElems(e_old, compression, vnewc, pmin, p_cut
 end
 
 local sixth = 1./6.
-local liszt function calcEnergyForElems (p_old, e_old, q_old, compression, compHalfStep, vnewc, 
+local liszt calcEnergyForElems (p_old, e_old, q_old, compression, compHalfStep, vnewc, 
                                          work, delvc, qq_old, ql_old, eosvmax, rho0)
   var emin_tmp = m.emin
   var e_new : L.double = m.emin
@@ -1136,13 +1136,13 @@ local liszt function calcEnergyForElems (p_old, e_old, q_old, compression, compH
   return { p_new, e_new, q_new, bvc, pbvc }
 end
 
-local liszt function updateVolumesForElem (c)
+local liszt updateVolumesForElem (c)
   var tmpV = c.vnew
   if fabs(tmpV - 1.0) < m.v_cut then tmpV = 1.0 end
   c.vol = tmpV
 end
 
-local liszt function evalEOSForElem (c)
+local liszt evalEOSForElem (c)
   var rho0         = m.refdens
   var vnewc        = c.vnew
   var delvc        = c.delv
@@ -1186,26 +1186,27 @@ local liszt function evalEOSForElem (c)
   c.ss = ssc
 end
 
-local liszt kernel applyMaterialPropertiesAndUpdateVolume(c : grid.cells)
+local liszt applyMaterialPropertiesAndUpdateVolume(c : grid.cells)
   calcMonotonicQRegionForElem(c)
   evalEOSForElem(c)
   updateVolumesForElem(c)
 end
 
-local liszt kernel updateVolumeForElements(c : grid.cells)
+local liszt updateVolumeForElements(c : grid.cells)
   var tmpV = c.vnew
   if fabs(tmpV - 1.0) < m.v_cut then tmpV = 1.0 end
   c.vol = tmpV
 end
 
 function lagrangeElements ()
-  calcKinemAndMQGradientsForElems1(grid.cells)
-  calcKinemAndMQGradientsForElems2(grid.cells)
-  applyMaterialPropertiesAndUpdateVolume(grid.cells)
+  grid.cells:map(calcKinemAndMQGradientsForElems1)
+  grid.cells:map(calcKinemAndMQGradientsForElems2)
+  grid.cells:map(applyMaterialPropertiesAndUpdateVolume)
 end
 
 
-local liszt kernel timeConstraintKernel (c : grid.cells)
+-- used to be called timeConstraintKernel
+local liszt reduceDtCourant (c : grid.cells)
   -- courant constraint calculation
   var qqc_tmp : L.double = m.qqc
   var qqc2    = 64.0 * qqc_tmp * qqc_tmp
@@ -1223,20 +1224,27 @@ local liszt kernel timeConstraintKernel (c : grid.cells)
     dtcourant_tmp min= dtf
   end
 
-  vdovtmp = c.vdov
+  --vdovtmp = c.vdov
+  --if vdovtmp ~= 0.0 then
+  --  var dtdvov = m.dvovmax / (fabs(vdovtmp) + 1.e-20)
+  --  dthydro_tmp min= dtdvov
+  --end
+end
+
+local liszt reduceDtHydro (c : grid.cells)
+  var vdovtmp = c.vdov
   if vdovtmp ~= 0.0 then
     var dtdvov = m.dvovmax / (fabs(vdovtmp) + 1.e-20)
     dthydro_tmp min= dtdvov
   end
-
-
 end
 
 function calcTimeConstraintsForElems ()
   dthydro_tmp:set(1e20)
   dtcourant_tmp:set(1e20)
 
-  timeConstraintKernel(grid.cells)
+  grid.cells:map(reduceDtCourant)
+  grid.cells:map(reduceDtHydro)
 
   local courant_result = dtcourant_tmp:get()
   if courant_result ~= 1e20 then

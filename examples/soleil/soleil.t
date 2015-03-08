@@ -58,7 +58,7 @@ local IO = {};
 local Visualization = {};
 
 -----------------------------------------------------------------------------
---[[       Global variables used for specialization within kernels       ]]--
+--[[      Global variables used for specialization within functions      ]]--
 -----------------------------------------------------------------------------
 
 -- Flow type
@@ -152,13 +152,13 @@ local xSignX, xSignY, xSignZ
 local xBCLeftVelX, xBCLeftVelY, xBCLeftVelZ
 local xBCRightVelX, xBCRightVelY, xBCRightVelZ
 -- Offset liszt functions
-local XOffsetPeriodic = liszt function(boundaryPointDepth)
+local liszt XOffsetPeriodic(boundaryPointDepth)
   return 0
 end
-local XOffsetDummyPeriodic = liszt function(boundaryPointDepth)
+local liszt XOffsetDummyPeriodic(boundaryPointDepth)
   return grid_options.xnum
 end
-local XOffsetSymmetry = liszt function(boundaryPointDepth)
+local liszt XOffsetSymmetry(boundaryPointDepth)
   return 2*boundaryPointDepth-1
 end
 if grid_options.xBCLeft  == "periodic" and 
@@ -212,10 +212,10 @@ end
 local ySignX, ySignY, ySignZ
 local yBCLeftVelX, yBCLeftVelY, yBCLeftVelZ
 local yBCRightVelX, yBCRightVelY, yBCRightVelZ
-local YOffsetDummyPeriodic = liszt function(boundaryPointDepth)
+local liszt YOffsetDummyPeriodic(boundaryPointDepth)
   return 0
 end
-local YOffsetSymmetry = liszt function(boundaryPointDepth)
+local liszt YOffsetSymmetry(boundaryPointDepth)
   return 2*boundaryPointDepth-1
 end
 if grid_options.yBCLeft  == "periodic" and 
@@ -270,13 +270,13 @@ local zSignX, zSignY, zSignZ
 local zBCLeftVelX, zBCLeftVelY, zBCLeftVelZ
 local zBCRightVelX, zBCRightVelY, zBCRightVelZ
 -- Offset liszt functions
-local ZOffsetPeriodic = liszt function(boundaryPointDepth)
+local liszt ZOffsetPeriodic(boundaryPointDepth)
   return 0
 end
-local ZOffsetDummyPeriodic = liszt function(boundaryPointDepth)
+local liszt ZOffsetDummyPeriodic(boundaryPointDepth)
   return 0
 end
-local ZOffsetSymmetry = liszt function(boundaryPointDepth)
+local liszt ZOffsetSymmetry(boundaryPointDepth)
   return 2*boundaryPointDepth-1
 end
 if grid_options.zBCLeft  == "periodic" and 
@@ -411,7 +411,7 @@ local particles_options = {
     -- Feeder is defined by a type and a set of parameters
     -- feedeerParams is a vector of double values whose meaning
     -- differs for each feederType. Please refer to the 
-    -- Particles.Feed kernel where it is specialized
+    -- Particles.Feed function where it is specialized
     --
     -- Feed all particles at start randomly
     -- distributed on a box defined by its center and sides
@@ -445,7 +445,7 @@ local particles_options = {
     -- Collector is defined by a type and a set of parameters
     -- collectorParams is a vector of double values whose meaning
     -- differs for each collectorType. Please refer to the 
-    -- Particles.Collect kernel where it is specialized
+    -- Particles.Collect function where it is specialized
     --
     -- Do not collect particles (freely move within the domain)
     collectorType   = Particles.CollectorNone,
@@ -992,12 +992,12 @@ print("--------------------------- Start Solver ----------------------------")
 -----------------------------------------------------------------------------
 
 -- Norm of a vector
-local norm = liszt function(v)
+local liszt norm (v)
     return L.sqrt(L.dot(v, v))
 end
 
 -- Compute fluid dynamic viscosity from fluid temperature
-local GetDynamicViscosity = liszt function(temperature)
+local liszt GetDynamicViscosity (temperature)
   var viscosity = fluid_options.dynamic_viscosity_ref
   if fluid_options.viscosity_model == Viscosity.Constant then
     -- Constant
@@ -1018,19 +1018,19 @@ local GetDynamicViscosity = liszt function(temperature)
 end
 
 -- Compute fluid flow sound speed based on temperature
-local GetSoundSpeed = liszt function(temperature)
+local liszt GetSoundSpeed (temperature)
     return L.sqrt(fluid_options.gamma * fluid_options.gasConstant * temperature)
 end
 
 -- Function to retrieve particle area, volume and mass
 -- These are Liszt user-defined function that behave like a field
-particles:NewFieldFunction('area', liszt function(p)
+particles:NewFieldFunction('area', liszt(p)
     return pi * L.pow(p.diameter, 2)
 end)
-particles:NewFieldFunction('volume', liszt function(p)
+particles:NewFieldFunction('volume', liszt(p)
     return pi * L.pow(p.diameter, 3) / 6.0
 end)
-particles:NewFieldFunction('mass', liszt function(p)
+particles:NewFieldFunction('mass', liszt(p)
     return p.volume * p.density
 end)
 
@@ -1039,25 +1039,8 @@ end)
 -----------------------------------------------------------------------------
 
 
--- Functions for calling inside liszt kernel
-
---local Rho = L.NewMacro(function(r)
---    return liszt `r.rho
---end)
---local Rho = liszt function(r)
---    return r.rho
---end
---
---local Velocity = L.NewMacro(function(r)
---    return liszt `r.velocity
---end)
---
---local Temperature = L.NewMacro(function(r)
---    return liszt `r.temperature
---end)
-
 local function GenerateTrilinearInterpolation(field_name)
-  return liszt function(dc, xyz)
+  return liszt(dc, xyz)
     var c000 = dc.vertex.cell(-1, -1, -1)
     var c100 = dc.vertex.cell( 0, -1, -1)
     var c010 = dc.vertex.cell(-1,  0, -1)
@@ -1106,54 +1089,8 @@ local InterpolateTriRho = GenerateTrilinearInterpolation('rho')
 local InterpolateTriVelocity = GenerateTrilinearInterpolation('velocity')
 local InterpolateTriTemperature = GenerateTrilinearInterpolation('temperature')
 
---local InterpolateTrilinear = L.NewMacro(function(dc, xyz, Field)
---  return liszt quote
---    var c000 = dc.vertex.cell(-1, -1, -1)
---    var c100 = dc.vertex.cell( 0, -1, -1)
---    var c010 = dc.vertex.cell(-1,  0, -1)
---    var c110 = dc.vertex.cell( 0,  0, -1)
---    var c001 = dc.vertex.cell(-1, -1,  0)
---    var c101 = dc.vertex.cell( 0, -1,  0)
---    var c011 = dc.vertex.cell(-1,  0,  0)
---    var c111 = dc.vertex.cell( 0,  0,  0)
---    -- The following approach is valid for non-uniform grids, as it relies
---    -- on the cell centers of the neighboring cells of the given dual cell
---    -- (dc).
---    -- WARNING: However, it poses a problem when periodicity is applied, as
---    -- the built-in wrapping currently returns a cell which is on the
---    -- opposite end of the grid, if the dual cell is in the periodic 
---    -- boundary. Note that the field values are correctly retrieved through
---    -- the wrapping, but not the positions used to define the weights of the
---    -- interpolation
---    --var dX = (xyz[0] - c000.center[0])/(c100.center[0] - c000.center[0])
---    --var dY = (xyz[1] - c000.center[1])/(c010.center[1] - c000.center[1])
---    --var dZ = (xyz[2] - c000.center[2])/(c001.center[2] - c000.center[2])
---    -- WARNING: This assumes uniform mesh, and retrieves the position of the
---    -- particle relative to the neighboring cells without resorting to the
---    -- dual-cell itself, but purely based on grid origin and spacing
---    -- See the other approch above (commented) for the generalization to
---    -- non-uniform grids (with the current problem of not being usable if
---    -- periodicity is enforced)
---    var dX   = L.fmod((xyz[0] - grid_originX)/grid_dx + 0.5, 1.0)
---    var dY   = L.fmod((xyz[1] - grid_originY)/grid_dy + 0.5, 1.0)
---    var dZ   = L.fmod((xyz[2] - grid_originZ)/grid_dz + 0.5, 1.0)
---
---    var oneMinusdX = 1.0 - dX
---    var oneMinusdY = 1.0 - dY
---    var oneMinusdZ = 1.0 - dZ
---    var weight00 = Field(c000) * oneMinusdX + Field(c100) * dX 
---    var weight10 = Field(c010) * oneMinusdX + Field(c110) * dX
---    var weight01 = Field(c001) * oneMinusdX + Field(c101) * dX
---    var weight11 = Field(c011) * oneMinusdX + Field(c111) * dX
---    var weight0  = weight00 * oneMinusdY + weight10 * dY
---    var weight1  = weight01 * oneMinusdY + weight11 * dY
---  in
---    weight0 * oneMinusdZ + weight1 * dZ
---  end
---end)
-
 -----------------------------------------------------------------------------
---[[                            LISZT KERNELS                            ]]--
+--[[                           LISZT FUNCTIONS                           ]]--
 -----------------------------------------------------------------------------
 
 -------
@@ -1165,30 +1102,30 @@ local InterpolateTriTemperature = GenerateTrilinearInterpolation('temperature')
 -- Here, we use a field for convenience when outputting to file, but this is
 -- to be removed after grid outputing is well defined from within the grid.t 
 -- module. Similar story with the vertex coordinates (output only).
-Flow.InitializeCenterCoordinates = liszt kernel(c : grid.cells)
+liszt Flow.InitializeCenterCoordinates (c : grid.cells)
     var xy = c.center
     c.centerCoordinates = L.vec3d({xy[0], xy[1], xy[2]})
 end
 
-Flow.InitializeCellRindLayer = liszt kernel(c : grid.cells)
+liszt Flow.InitializeCellRindLayer (c : grid.cells)
     c.cellRindLayer = 0
 end
 
 -- Hard coding the vertices until we have access in grid.t
 -- WARNING: Here, I am using the id numbers, but this is unsafe!
-Flow.InitializeVertexCoordinates = liszt kernel(v : grid.vertices)
+liszt Flow.InitializeVertexCoordinates (v : grid.vertices)
     var x = grid_originX + grid_dx * (L.double(L.xid(v)))
     var y = grid_originY + grid_dy * (L.double(L.yid(v)))
     var z = grid_originZ + grid_dz * (L.double(L.zid(v)))
     v.centerCoordinates = L.vec3d({x, y, z})
 end
 
-Flow.InitializeVertexRindLayer = liszt kernel(v : grid.vertices)
+liszt Flow.InitializeVertexRindLayer (v : grid.vertices)
     v.vertexRindLayer = 0
 end
 
 
-Flow.InitializePrimitives = liszt kernel(c : grid.cells)
+liszt Flow.InitializePrimitives (c : grid.cells)
     if flow_options.initCase == Flow.TaylorGreen2DVortex then
       -- Define Taylor Green Vortex
       var taylorGreenDensity  = flow_options.initParams[0]
@@ -1249,7 +1186,7 @@ Flow.InitializePrimitives = liszt kernel(c : grid.cells)
     end
 end
 
-Flow.UpdateConservedFromPrimitive = liszt kernel(c : grid.cells)
+liszt Flow.UpdateConservedFromPrimitive (c : grid.cells)
 
     -- Equation of state: T = p / ( R * rho )
     var tmpTemperature = c.pressure /(fluid_options.gasConstant * c.rho)
@@ -1268,7 +1205,7 @@ Flow.UpdateConservedFromPrimitive = liszt kernel(c : grid.cells)
 end
 
 -- Initialize temporaries
-Flow.InitializeTemporaries = liszt kernel(c : grid.cells)
+liszt Flow.InitializeTemporaries (c : grid.cells)
     c.rho_old         = c.rho
     c.rhoVelocity_old = c.rhoVelocity
     c.rhoEnergy_old   = c.rhoEnergy
@@ -1278,7 +1215,7 @@ Flow.InitializeTemporaries = liszt kernel(c : grid.cells)
 end
 
 -- Initialize derivatives
-Flow.InitializeTimeDerivatives = liszt kernel(c : grid.cells)
+liszt Flow.InitializeTimeDerivatives (c : grid.cells)
     c.rho_t = L.double(0)
     c.rhoVelocity_t = L.vec3d({0, 0, 0})
     c.rhoEnergy_t = L.double(0)
@@ -1289,13 +1226,13 @@ end
 -----------
 
 -- Initialize enthalpy and derivatives
-Flow.AddInviscidInitialize = liszt kernel(c : grid.cells)
+liszt Flow.AddInviscidInitialize (c : grid.cells)
     c.rhoEnthalpy = c.rhoEnergy + c.pressure
     --L.print(c.rho, c.rhoEnergy, c.pressure, c.rhoEnthalpy)
 end
 
 -- Compute inviscid fluxes in X direction
-Flow.AddInviscidGetFluxX =  liszt kernel(c : grid.cells)
+liszt Flow.AddInviscidGetFluxX (c : grid.cells)
     -- Consider first boundary element (c.xneg_depth == 1) to define left flux
     -- on first interior cell
     if c.in_interior or c.xneg_depth == 1 then
@@ -1372,7 +1309,7 @@ Flow.AddInviscidGetFluxX =  liszt kernel(c : grid.cells)
 end
 
 -- Compute inviscid fluxes in Y direction
-Flow.AddInviscidGetFluxY =  liszt kernel(c : grid.cells)
+liszt Flow.AddInviscidGetFluxY (c : grid.cells)
     -- Consider first boundary element (c.yneg_depth == 1) to define down flux
     -- on first interior cell
     if c.in_interior or c.yneg_depth == 1 then
@@ -1449,7 +1386,7 @@ Flow.AddInviscidGetFluxY =  liszt kernel(c : grid.cells)
 end
 
 -- Compute inviscid fluxes in Z direction
-Flow.AddInviscidGetFluxZ =  liszt kernel(c : grid.cells)
+liszt Flow.AddInviscidGetFluxZ (c : grid.cells)
     -- Consider first boundary element (c.zneg_depth == 1) to define down flux
     -- on first interior cell
     if c.in_interior or c.zneg_depth == 1 then
@@ -1531,7 +1468,7 @@ end
 -- (grid_dx, grid_dy, grid_dz) are not  appropriate and should be changed 
 -- to reflect those expressed in the Python prototype code
 -- WARNING_END
-Flow.AddInviscidUpdateUsingFluxX = liszt kernel(c : grid.cells)
+liszt Flow.AddInviscidUpdateUsingFluxX (c : grid.cells)
     c.rho_t -= (c( 0,0,0).rhoFlux -
                 c(-1,0,0).rhoFlux)/grid_dx
     c.rhoVelocity_t -= (c( 0,0,0).rhoVelocityFlux -
@@ -1539,7 +1476,7 @@ Flow.AddInviscidUpdateUsingFluxX = liszt kernel(c : grid.cells)
     c.rhoEnergy_t -= (c( 0,0,0).rhoEnergyFlux -
                       c(-1,0,0).rhoEnergyFlux)/grid_dx
 end
-Flow.AddInviscidUpdateUsingFluxY = liszt kernel(c : grid.cells)
+liszt Flow.AddInviscidUpdateUsingFluxY (c : grid.cells)
     c.rho_t -= (c(0, 0,0).rhoFlux -
                 c(0,-1,0).rhoFlux)/grid_dy
     c.rhoVelocity_t -= (c(0, 0,0).rhoVelocityFlux -
@@ -1547,7 +1484,7 @@ Flow.AddInviscidUpdateUsingFluxY = liszt kernel(c : grid.cells)
     c.rhoEnergy_t -= (c(0, 0,0).rhoEnergyFlux -
                       c(0,-1,0).rhoEnergyFlux)/grid_dy
 end
-Flow.AddInviscidUpdateUsingFluxZ = liszt kernel(c : grid.cells)
+liszt Flow.AddInviscidUpdateUsingFluxZ (c : grid.cells)
     c.rho_t -= (c(0,0, 0).rhoFlux -
                 c(0,0,-1).rhoFlux)/grid_dz
     c.rhoVelocity_t -= (c(0,0, 0).rhoVelocityFlux -
@@ -1561,7 +1498,7 @@ end
 ----------
 
 -- Compute viscous fluxes in X direction
-Flow.AddViscousGetFluxX =  liszt kernel(c : grid.cells)
+liszt Flow.AddViscousGetFluxX (c : grid.cells)
     -- Consider first boundary element (c.xneg_depth == 1) to define left flux
     -- on first interior cell
     if c.in_interior or c.xneg_depth == 1 then
@@ -1641,7 +1578,7 @@ Flow.AddViscousGetFluxX =  liszt kernel(c : grid.cells)
 end
 
 -- Compute viscous fluxes in Y direction
-Flow.AddViscousGetFluxY =  liszt kernel(c : grid.cells)
+liszt Flow.AddViscousGetFluxY (c : grid.cells)
     -- Consider first boundary element (c.yneg_depth == 1) to define down flux
     -- on first interior cell
     if c.in_interior or c.yneg_depth == 1 then
@@ -1721,7 +1658,7 @@ Flow.AddViscousGetFluxY =  liszt kernel(c : grid.cells)
 end
 
 -- Compute viscous fluxes in Z direction
-Flow.AddViscousGetFluxZ =  liszt kernel(c : grid.cells)
+liszt Flow.AddViscousGetFluxZ (c : grid.cells)
     -- Consider first boundary element (c.zneg_depth == 1) to define down flux
     -- on first interior cell
     if c.in_interior or c.zneg_depth == 1 then
@@ -1800,21 +1737,21 @@ Flow.AddViscousGetFluxZ =  liszt kernel(c : grid.cells)
     end
 end
 
-Flow.AddViscousUpdateUsingFluxX = liszt kernel(c : grid.cells)
+liszt Flow.AddViscousUpdateUsingFluxX (c : grid.cells)
     c.rhoVelocity_t += (c(0,0,0).rhoVelocityFlux -
                         c(-1,0,0).rhoVelocityFlux)/grid_dx
     c.rhoEnergy_t   += (c(0,0,0).rhoEnergyFlux -
                         c(-1,0,0).rhoEnergyFlux)/grid_dx
 end
 
-Flow.AddViscousUpdateUsingFluxY = liszt kernel(c : grid.cells)
+liszt Flow.AddViscousUpdateUsingFluxY (c : grid.cells)
     c.rhoVelocity_t += (c(0,0,0).rhoVelocityFlux -
                         c(0,-1,0).rhoVelocityFlux)/grid_dy
     c.rhoEnergy_t   += (c(0,0,0).rhoEnergyFlux -
                         c(0,-1,0).rhoEnergyFlux)/grid_dy
 end
 
-Flow.AddViscousUpdateUsingFluxZ = liszt kernel(c : grid.cells)
+liszt Flow.AddViscousUpdateUsingFluxZ (c : grid.cells)
     c.rhoVelocity_t += (c(0,0, 0).rhoVelocityFlux -
                         c(0,0,-1).rhoVelocityFlux)/grid_dz
     c.rhoEnergy_t   += (c(0,0, 0).rhoEnergyFlux -
@@ -1825,7 +1762,7 @@ end
 -- Particles coupling
 ---------------------
 
-Flow.AddParticlesCoupling = liszt kernel(p : particles)
+liszt Flow.AddParticlesCoupling (p : particles)
     if p.state == 1  and particles_options.twoWayCoupling == ON then
         -- WARNING: Assumes that deltaVelocityOverRelaxationTime and 
         -- deltaTemperatureTerm have been computed previously 
@@ -1845,24 +1782,24 @@ end
 -- Body Forces
 --------------
 
-Flow.AddBodyForces = liszt kernel(c : grid.cells)
+liszt Flow.AddBodyForces (c : grid.cells)
     -- Add body forces to momentum equation
     c.rhoVelocity_t += c.rho * flow_options.bodyForce
 end
 
------------------
--- Update kernels
------------------
+-------------------
+-- Update functions
+-------------------
 
 -- Update flow variables using derivatives
-Flow.UpdateKernels = {}
-function Flow.GenerateUpdateKernels(relation, stage)
+Flow.UpdateFunctions = {}
+function Flow.GenerateUpdateFunctions(relation, stage)
     -- Assumes 4th-order Runge-Kutta 
     local coeff_fun  = TimeIntegrator.coeff_function[stage]
     local coeff_time = TimeIntegrator.coeff_time[stage]
     local deltaTime  = TimeIntegrator.deltaTime
     if stage <= 3 then
-        return liszt kernel(r : relation)
+        return liszt(r : relation)
             r.rho_new  += coeff_fun * deltaTime * r.rho_t
             r.rho       = r.rho_old +
               coeff_time * deltaTime * r.rho_t
@@ -1876,7 +1813,7 @@ function Flow.GenerateUpdateKernels(relation, stage)
               coeff_time * deltaTime * r.rhoEnergy_t
         end
     elseif stage == 4 then
-        return liszt kernel(r : relation)
+        return liszt(r : relation)
             r.rho = r.rho_new +
                coeff_fun * deltaTime * r.rho_t
             r.rhoVelocity = r.rhoVelocity_new +
@@ -1887,19 +1824,19 @@ function Flow.GenerateUpdateKernels(relation, stage)
     end
 end
 for sdx = 1, 4 do
-    Flow.UpdateKernels[sdx] = Flow.GenerateUpdateKernels(grid.cells, sdx)
+    Flow.UpdateFunctions[sdx] = Flow.GenerateUpdateFunctions(grid.cells, sdx)
 end
 
-Flow.UpdateAuxiliaryVelocity = liszt kernel(c : grid.cells)
+liszt Flow.UpdateAuxiliaryVelocity (c : grid.cells)
     var velocity = c.rhoVelocity / c.rho
     c.velocity = velocity
     c.kineticEnergy = 0.5 *  L.dot(velocity,velocity)
 end
 
 -- Helper function for updating the ghost fields to minimize repeated code
-local UpdateGhostFieldsHelper = liszt function(c_bnd, c_int,
-                                               SignX, SignY, SignZ,
-                                               BCVelX, BCVelY, BCVelZ)
+local liszt UpdateGhostFieldsHelper(c_bnd, c_int,
+                                    SignX, SignY, SignZ,
+                                    BCVelX, BCVelY, BCVelZ)
 
   -- Compute the Cv for updating the Energy equation
   var cv = fluid_options.gasConstant / (fluid_options.gamma - 1.0)
@@ -1924,7 +1861,7 @@ local UpdateGhostFieldsHelper = liszt function(c_bnd, c_int,
   c_bnd.temperatureBoundary    =  c_int.temperature
 
 end
-Flow.UpdateGhostFieldsStep1 = liszt kernel(c : grid.cells)
+liszt Flow.UpdateGhostFieldsStep1 (c : grid.cells)
     if c.xneg_depth > 0 then
         UpdateGhostFieldsHelper(c, c(XOffset(c.xneg_depth),0,0),
                                 xSignX, xSignY, xSignZ,
@@ -1956,7 +1893,7 @@ Flow.UpdateGhostFieldsStep1 = liszt kernel(c : grid.cells)
                                 zBCRightVelX, zBCRightVelY, zBCRightVelZ)
     end
 end
-Flow.UpdateGhostFieldsStep2 = liszt kernel(c : grid.cells)
+liszt Flow.UpdateGhostFieldsStep2 (c : grid.cells)
     c.rho         = c.rhoBoundary
     c.rhoVelocity = c.rhoVelocityBoundary
     c.rhoEnergy   = c.rhoEnergyBoundary
@@ -1964,19 +1901,19 @@ Flow.UpdateGhostFieldsStep2 = liszt kernel(c : grid.cells)
     c.temperature = c.temperatureBoundary
 end
 function Flow.UpdateGhost()
-    Flow.UpdateGhostFieldsStep1(grid.cells.boundary)
-    Flow.UpdateGhostFieldsStep2(grid.cells.boundary)
+    grid.cells.boundary:map(Flow.UpdateGhostFieldsStep1)
+    grid.cells.boundary:map(Flow.UpdateGhostFieldsStep2)
 end
 
 -- Helper function for updating the ghost fields to minimize repeated code
-local UpdateGhostThermodynamicsHelper = liszt function(c_bnd, c_int)
+local liszt UpdateGhostThermodynamicsHelper (c_bnd, c_int)
 
   -- Update the boundary cell based on the values in the matching interior cell
   c_bnd.pressureBoundary    = c_int.pressure
   c_bnd.temperatureBoundary = c_int.temperature
 
 end
-Flow.UpdateGhostThermodynamicsStep1 = liszt kernel(c : grid.cells)
+liszt Flow.UpdateGhostThermodynamicsStep1 (c : grid.cells)
   if c.xneg_depth > 0 then
     UpdateGhostThermodynamicsHelper(c, c(XOffset(c.xneg_depth),0,0))
   end
@@ -1996,19 +1933,19 @@ Flow.UpdateGhostThermodynamicsStep1 = liszt kernel(c : grid.cells)
     UpdateGhostThermodynamicsHelper(c, c(0,0,-ZOffset(c.zpos_depth)))
   end
 end
-Flow.UpdateGhostThermodynamicsStep2 = liszt kernel(c : grid.cells)
+liszt Flow.UpdateGhostThermodynamicsStep2 (c : grid.cells)
     if c.in_boundary then
         c.pressure    = c.pressureBoundary
         c.temperature = c.temperatureBoundary
     end
 end
 function Flow.UpdateGhostThermodynamics()
-    Flow.UpdateGhostThermodynamicsStep1(grid.cells.boundary)
-    Flow.UpdateGhostThermodynamicsStep2(grid.cells.boundary)
+    grid.cells.boundary:map(Flow.UpdateGhostThermodynamicsStep1)
+    grid.cells.boundary:map(Flow.UpdateGhostThermodynamicsStep2)
 end
 
 -- Helper function for updating the ghost fields to minimize repeated code
-local UpdateGhostVelocityHelper = liszt function(c_bnd, c_int,
+local liszt UpdateGhostVelocityHelper (c_bnd, c_int,
                                                  SignX, SignY, SignZ,
                                                  BCVelX, BCVelY, BCVelZ)
 
@@ -2018,7 +1955,7 @@ local UpdateGhostVelocityHelper = liszt function(c_bnd, c_int,
   c_bnd.velocityBoundary[2] =   c_int.velocity[2] * SignZ + BCVelZ
 
 end
-Flow.UpdateGhostVelocityStep1 = liszt kernel(c : grid.cells)
+liszt Flow.UpdateGhostVelocityStep1 (c : grid.cells)
   if c.xneg_depth > 0 then
     UpdateGhostVelocityHelper(c, c(XOffset(c.xneg_depth),0,0),
                               xSignX, xSignY, xSignZ,
@@ -2050,18 +1987,18 @@ Flow.UpdateGhostVelocityStep1 = liszt kernel(c : grid.cells)
                               zBCRightVelX, zBCRightVelY, zBCRightVelZ)
   end
 end
-Flow.UpdateGhostVelocityStep2 = liszt kernel(c : grid.cells)
+liszt Flow.UpdateGhostVelocityStep2 (c : grid.cells)
     c.velocity = c.velocityBoundary
 end
 function Flow.UpdateGhostVelocity()
-    Flow.UpdateGhostVelocityStep1(grid.cells.boundary)
-    Flow.UpdateGhostVelocityStep2(grid.cells.boundary)
+    grid.cells.boundary:map(Flow.UpdateGhostVelocityStep1)
+    grid.cells.boundary:map(Flow.UpdateGhostVelocityStep2)
 end
 
 -- Helper function for updating the conservatives to minimize repeated code
-local UpdateGhostConservedHelper = liszt function(c_bnd, c_int,
-                                                  SignX, SignY, SignZ,
-                                                  BCVelX, BCVelY, BCVelZ)
+local liszt UpdateGhostConservedHelper (c_bnd, c_int,
+                                        SignX, SignY, SignZ,
+                                        BCVelX, BCVelY, BCVelZ)
 
   -- Compute the Cv for updating the Energy equation
   var cv = fluid_options.gasConstant / (fluid_options.gamma - 1.0)
@@ -2081,7 +2018,7 @@ local UpdateGhostConservedHelper = liszt function(c_bnd, c_int,
                                                 0.5*L.dot(velocity,velocity))
 
 end
-Flow.UpdateGhostConservedStep1 = liszt kernel(c : grid.cells)
+liszt Flow.UpdateGhostConservedStep1 (c : grid.cells)
   if c.xneg_depth > 0 then
     UpdateGhostConservedHelper(c, c(XOffset(c.xneg_depth),0,0),
                                xSignX, xSignY, xSignZ,
@@ -2113,17 +2050,17 @@ Flow.UpdateGhostConservedStep1 = liszt kernel(c : grid.cells)
                                zBCRightVelX, zBCRightVelY, zBCRightVelZ)
   end
 end
-Flow.UpdateGhostConservedStep2 = liszt kernel(c : grid.cells)
+liszt Flow.UpdateGhostConservedStep2 (c : grid.cells)
     c.rho         = c.rhoBoundary
     c.rhoVelocity = c.rhoVelocityBoundary
     c.rhoEnergy   = c.rhoEnergyBoundary
 end
 function Flow.UpdateGhostConserved()
-    Flow.UpdateGhostConservedStep1(grid.cells.boundary)
-    Flow.UpdateGhostConservedStep2(grid.cells.boundary)
+    grid.cells.boundary:map(Flow.UpdateGhostConservedStep1)
+    grid.cells.boundary:map(Flow.UpdateGhostConservedStep2)
 end
 
-Flow.UpdateAuxiliaryThermodynamics = liszt kernel(c : grid.cells)
+liszt Flow.UpdateAuxiliaryThermodynamics (c : grid.cells)
   var kineticEnergy =
     0.5 * c.rho * L.dot(c.velocity,c.velocity)
 --Define temporary pressure variable to avoid error like this:
@@ -2141,7 +2078,7 @@ end
 -- Velocity gradients
 ---------------------
 
-Flow.ComputeVelocityGradientX = liszt kernel(c : grid.cells)
+liszt Flow.ComputeVelocityGradientX (c : grid.cells)
     var numFirstDerivativeCoeffs = spatial_stencil.numFirstDerivativeCoeffs
     var firstDerivativeCoeffs    = spatial_stencil.firstDerivativeCoeffs
     var tmp = L.vec3d({0.0, 0.0, 0.0})
@@ -2153,7 +2090,7 @@ Flow.ComputeVelocityGradientX = liszt kernel(c : grid.cells)
     c.velocityGradientX = tmp / grid_dx
 end
 
-Flow.ComputeVelocityGradientY = liszt kernel(c : grid.cells)
+liszt Flow.ComputeVelocityGradientY (c : grid.cells)
     var numFirstDerivativeCoeffs = spatial_stencil.numFirstDerivativeCoeffs
     var firstDerivativeCoeffs    = spatial_stencil.firstDerivativeCoeffs
     var tmp = L.vec3d({0.0, 0.0, 0.0})
@@ -2165,7 +2102,7 @@ Flow.ComputeVelocityGradientY = liszt kernel(c : grid.cells)
     c.velocityGradientY = tmp / grid_dy
 end
 
-Flow.ComputeVelocityGradientZ = liszt kernel(c : grid.cells)
+liszt Flow.ComputeVelocityGradientZ (c : grid.cells)
     var numFirstDerivativeCoeffs = spatial_stencil.numFirstDerivativeCoeffs
     var firstDerivativeCoeffs    = spatial_stencil.firstDerivativeCoeffs
     var tmp = L.vec3d({0.0, 0.0, 0.0})
@@ -2177,7 +2114,7 @@ Flow.ComputeVelocityGradientZ = liszt kernel(c : grid.cells)
     c.velocityGradientZ = tmp / grid_dz
 end
 
-Flow.UpdateGhostVelocityGradientStep1 = liszt kernel(c : grid.cells)
+liszt Flow.UpdateGhostVelocityGradientStep1 (c : grid.cells)
     if c.xneg_depth > 0 then
         var xoffset = XOffset(c.xneg_depth)
         c.velocityGradientXBoundary[0] = xSignX * c(xoffset,0,0).velocityGradientX[0]
@@ -2251,7 +2188,7 @@ Flow.UpdateGhostVelocityGradientStep1 = liszt kernel(c : grid.cells)
         c.velocityGradientZBoundary[2] = zSignZ * c(0,0,-zoffset).velocityGradientZ[2]
     end
 end
-Flow.UpdateGhostVelocityGradientStep2 = liszt kernel(c : grid.cells)
+liszt Flow.UpdateGhostVelocityGradientStep2 (c : grid.cells)
     if c.in_boundary then
         c.velocityGradientX = c.velocityGradientXBoundary
         c.velocityGradientY = c.velocityGradientYBoundary
@@ -2267,7 +2204,7 @@ local dXYZInverseSquare = L.Constant(L.double,
                                      1.0/grid_dx:get() * 1.0/grid_dx:get() +
                                      1.0/grid_dy:get() * 1.0/grid_dy:get() +
                                      1.0/grid_dz:get() * 1.0/grid_dz:get())
-local liszt kernel calculateConvectiveSpectralRadius     ( c : grid.cells )
+local liszt calculateConvectiveSpectralRadius     ( c : grid.cells )
   -- Convective spectral radii
   c.convectiveSpectralRadius = 
    (L.fabs(c.velocity[0])/grid_dx  +
@@ -2278,7 +2215,7 @@ local liszt kernel calculateConvectiveSpectralRadius     ( c : grid.cells )
 
   maxConvectiveSpectralRadius max= c.convectiveSpectralRadius    
 end
-local liszt kernel calculateViscousSpectralRadius        ( c : grid.cells )
+local liszt calculateViscousSpectralRadius        ( c : grid.cells )
   -- Viscous spectral radii (including sgs model component)
   var dynamicViscosity = GetDynamicViscosity(c.temperature)
   var eddyViscosity = c.sgsEddyViscosity
@@ -2289,7 +2226,7 @@ local liszt kernel calculateViscousSpectralRadius        ( c : grid.cells )
 
   maxViscousSpectralRadius max= c.viscousSpectralRadius       
 end
-local liszt kernel calculateHeatConductionSpectralRadius ( c : grid.cells )
+local liszt calculateHeatConductionSpectralRadius ( c : grid.cells )
   var dynamicViscosity  = GetDynamicViscosity(c.temperature)
 
   -- Heat conduction spectral radii (including sgs model 
@@ -2305,11 +2242,11 @@ local liszt kernel calculateHeatConductionSpectralRadius ( c : grid.cells )
   maxHeatConductionSpectralRadius max= c.heatConductionSpectralRadius
 end
 function Flow.CalculateSpectralRadii(cells)
-  calculateConvectiveSpectralRadius(cells)
-  calculateViscousSpectralRadius(cells)
-  calculateHeatConductionSpectralRadius(cells)
+  cells:map(calculateConvectiveSpectralRadius)
+  cells:map(calculateViscousSpectralRadius)
+  cells:map(calculateHeatConductionSpectralRadius)
 end
---Flow.CalculateSpectralRadii = liszt kernel(c : grid.cells)
+--Flow.CalculateSpectralRadii = liszt(c : grid.cells)
 --    var dXYZInverseSquare = 1.0/grid_dx * 1.0/grid_dx +
 --                            1.0/grid_dy * 1.0/grid_dy +
 --                            1.0/grid_dz * 1.0/grid_dz
@@ -2352,37 +2289,37 @@ end
 
 local cellVolume = L.Constant(L.double,
                               grid_dx:get() * grid_dy:get() * grid_dz:get())
-local liszt kernel numberOfInteriorCells ( c : grid.cells )
+local liszt numberOfInteriorCells ( c : grid.cells )
   Flow.numberOfInteriorCells    += 1
 end
-local liszt kernel areaInterior          ( c : grid.cells )
+local liszt areaInterior          ( c : grid.cells )
   Flow.areaInterior             += cellVolume
 end
-local liszt kernel averagePressure       ( c : grid.cells )
+local liszt averagePressure       ( c : grid.cells )
   Flow.averagePressure          += c.pressure * cellVolume
 end
-local liszt kernel averageTemperature    ( c : grid.cells )
+local liszt averageTemperature    ( c : grid.cells )
   Flow.averageTemperature       += c.temperature * cellVolume
 end
-local liszt kernel averageKineticEnergy  ( c : grid.cells )
+local liszt averageKineticEnergy  ( c : grid.cells )
   Flow.averageKineticEnergy     += c.kineticEnergy * cellVolume
 end
-local liszt kernel minTemperature        ( c : grid.cells )
+local liszt minTemperature        ( c : grid.cells )
   Flow.minTemperature         min= c.temperature
 end
-local liszt kernel maxTemperature        ( c : grid.cells )
+local liszt maxTemperature        ( c : grid.cells )
   Flow.maxTemperature         max= c.temperature
 end
 function Flow.IntegrateQuantities(cells)
-  numberOfInteriorCells(cells)
-  areaInterior         (cells)
-  averagePressure      (cells)
-  averageTemperature   (cells)
-  averageKineticEnergy (cells)
-  minTemperature       (cells)
-  maxTemperature       (cells)
+  cells:map(numberOfInteriorCells)
+  cells:map(areaInterior         )
+  cells:map(averagePressure      )
+  cells:map(averageTemperature   )
+  cells:map(averageKineticEnergy )
+  cells:map(minTemperature       )
+  cells:map(maxTemperature       )
 end
---Flow.IntegrateQuantities = liszt kernel(c : grid.cells)
+--Flow.IntegrateQuantities = liszt(c : grid.cells)
 --    -- WARNING: update cellVolume computation for non-uniform grids
 --    --var cellVolume = c.xCellWidth() * c.yCellWidth() * c.zCellWidth()
 --    var cellVolume = grid_dx * grid_dy * grid_dz
@@ -2402,7 +2339,7 @@ end
 local function value_tostring(val)
   if type(val) == 'table' then
     local s = tostring(val[1])
-    for i=2,#val do s = ' '..tostring(val[i]) end
+    for i=2,#val do s = s..' '..tostring(val[i]) end
     return s
   end
   return tostring(val)
@@ -2458,8 +2395,8 @@ end
 -- Visualization
 ----------------
 
--- kernels to draw particles and velocity for debugging purpose
-Flow.DrawKernel = liszt kernel (c : grid.cells)
+-- functions to draw particles and velocity for debugging purpose
+liszt Flow.DrawFunction (c : grid.cells)
     --var xMax = L.double(grid_options.xWidth)
     --var yMax = L.double(grid_options.yWidth)
     --var zMax = L.double(grid_options.zWidth)
@@ -2549,12 +2486,12 @@ end
 ------------
 
 -- Locate particles in dual cells
-Particles.Locate = liszt kernel(p : particles)
+liszt Particles.Locate (p : particles)
     p.dual_cell = grid.dual_locate(p.position)
 end
 
 -- Initialize temporaries for time stepper
-Particles.InitializeTemporaries = liszt kernel(p : particles)
+liszt Particles.InitializeTemporaries (p : particles)
     if p.state == 1 then
         p.position_old    = p.position
         p.velocity_old    = p.velocity
@@ -2570,7 +2507,7 @@ end
 ----------------
 
 -- Initialize time derivative for each stage of time stepper
-Particles.InitializeTimeDerivatives = liszt kernel(p : particles)
+liszt Particles.InitializeTimeDerivatives (p : particles)
     if p.state == 1 then
         p.position_t = L.vec3d({0, 0, 0})
         p.velocity_t = L.vec3d({0, 0, 0})
@@ -2579,7 +2516,7 @@ Particles.InitializeTimeDerivatives = liszt kernel(p : particles)
 end
 
 -- Update particle fields based on flow fields
-Particles.AddFlowCoupling = liszt kernel(p: particles)
+liszt Particles.AddFlowCoupling (p: particles)
   if p.state == 1 then
     p.dual_cell = grid.dual_locate(p.position)
     var flowDensity     = L.double(0)
@@ -2631,7 +2568,7 @@ end
 -- Body forces
 --------------
 
-Particles.AddBodyForces= liszt kernel(p : particles)
+liszt Particles.AddBodyForces (p : particles)
     if p.state == 1 and particles_options.particleType == Particles.Free then
         p.velocity_t += particles_options.bodyForce
     end
@@ -2641,7 +2578,7 @@ end
 -- Radiation
 ------------
 
-Particles.AddRadiation = liszt kernel(p : particles)
+liszt Particles.AddRadiation (p : particles)
     if p.state == 1 and radiation_options.radiationType == ON then
         -- Calculate absorbed radiation intensity considering optically thin
         -- particles, for a collimated radiation source with negligible 
@@ -2658,7 +2595,7 @@ Particles.AddRadiation = liszt kernel(p : particles)
 end
 
 -- Set particle velocities to underlying flow velocity for initialization
-Particles.SetVelocitiesToFlow = liszt kernel(p: particles)
+liszt Particles.SetVelocitiesToFlow (p: particles)
     p.dual_cell = grid.dual_locate(p.position)
     var flowDensity     = L.double(0)
     var flowVelocity    = L.vec3d({0, 0, 0})
@@ -2684,13 +2621,13 @@ if (particles_options.particleType == Particles.Fixed) then
 end
 
 -- Update particle variables using derivatives
-Particles.UpdateKernels = {}
-function Particles.GenerateUpdateKernels(relation, stage)
+Particles.UpdateFunctions = {}
+function Particles.GenerateUpdateFunctions(relation, stage)
     local coeff_fun  = TimeIntegrator.coeff_function[stage]
     local coeff_time = TimeIntegrator.coeff_time[stage]
     local deltaTime  = TimeIntegrator.deltaTime
     if stage <= 3 then
-        return liszt kernel(r : relation)
+        return liszt(r : relation)
             if r.state == 1 then
               r.position_new += 
                  coeff_fun * deltaTime * r.position_t
@@ -2707,7 +2644,7 @@ function Particles.GenerateUpdateKernels(relation, stage)
             end
         end
     elseif stage == 4 then
-        return liszt kernel(r : relation)
+        return liszt(r : relation)
             if r.state == 1 then
               r.position = r.position_new +
                  coeff_fun * deltaTime * r.position_t
@@ -2720,10 +2657,11 @@ function Particles.GenerateUpdateKernels(relation, stage)
     end
 end
 for i = 1, 4 do
-    Particles.UpdateKernels[i] = Particles.GenerateUpdateKernels(particles, i)
+    Particles.UpdateFunctions[i] =
+        Particles.GenerateUpdateFunctions(particles, i)
 end
 
-Particles.UpdateAuxiliaryStep1 = liszt kernel(p : particles)
+liszt Particles.UpdateAuxiliaryStep1 (p : particles)
     if p.state == 1 then
 
         -- Initialize position and velocity before we check for wall collisions
@@ -2908,7 +2846,7 @@ Particles.UpdateAuxiliaryStep1 = liszt kernel(p : particles)
         
     end
 end
-Particles.UpdateAuxiliaryStep2 = liszt kernel(p : particles)
+liszt Particles.UpdateAuxiliaryStep2 (p : particles)
     if p.state == 1 then
         p.position   = p.position_ghost
         p.velocity   = p.velocity_ghost
@@ -2921,7 +2859,7 @@ end
 ---------
 
 -- Particles feeder
-liszt kernel Particles.Feed(p: particles)
+liszt Particles.Feed(p: particles)
 
     if p.state == 0 then
 
@@ -3060,7 +2998,7 @@ end
 ------------
 
 -- Particles collector 
-Particles.Collect = liszt kernel(p: particles)
+liszt Particles.Collect (p: particles)
 
     if p.state == 1 then
 
@@ -3094,7 +3032,7 @@ end
 -- Statistics
 -------------
 
-Particles.IntegrateQuantities = liszt kernel(p : particles)
+liszt Particles.IntegrateQuantities (p : particles)
     if p.state == 1 then
         Particles.averageTemperature += p.temperature
     end
@@ -3154,7 +3092,7 @@ end
 -- Visualization
 ----------------
 
-Particles.DrawKernel = liszt kernel (p : particles)
+liszt Particles.DrawFunction (p : particles)
     --var xMax = L.double(grid_options.xWidth)
     --var yMax = L.double(grid_options.yWidth)
     --var zMax = L.double(grid_options.zWidth)
@@ -3190,41 +3128,41 @@ end
 -------
 
 function Flow.AddInviscid()
-    Flow.AddInviscidInitialize(grid.cells)
-    Flow.AddInviscidGetFluxX(grid.cells)
-    Flow.AddInviscidUpdateUsingFluxX(grid.cells.interior)
-    Flow.AddInviscidGetFluxY(grid.cells)
-    Flow.AddInviscidUpdateUsingFluxY(grid.cells.interior)
-    Flow.AddInviscidGetFluxZ(grid.cells)
-    Flow.AddInviscidUpdateUsingFluxZ(grid.cells.interior)
+    grid.cells:map(Flow.AddInviscidInitialize)
+    grid.cells:map(Flow.AddInviscidGetFluxX)
+    grid.cells.interior:map(Flow.AddInviscidUpdateUsingFluxX)
+    grid.cells:map(Flow.AddInviscidGetFluxY)
+    grid.cells.interior:map(Flow.AddInviscidUpdateUsingFluxY)
+    grid.cells:map(Flow.AddInviscidGetFluxZ)
+    grid.cells.interior:map(Flow.AddInviscidUpdateUsingFluxZ)
 end
 
 function Flow.UpdateGhostVelocityGradient()
-    Flow.UpdateGhostVelocityGradientStep1(grid.cells)
-    Flow.UpdateGhostVelocityGradientStep2(grid.cells)
+    grid.cells:map(Flow.UpdateGhostVelocityGradientStep1)
+    grid.cells:map(Flow.UpdateGhostVelocityGradientStep2)
 end
 
 function Flow.AddViscous()
-    Flow.AddViscousGetFluxX(grid.cells)
-    Flow.AddViscousUpdateUsingFluxX(grid.cells.interior)
-    Flow.AddViscousGetFluxY(grid.cells)
-    Flow.AddViscousUpdateUsingFluxY(grid.cells.interior)
-    Flow.AddViscousGetFluxZ(grid.cells)
-    Flow.AddViscousUpdateUsingFluxZ(grid.cells.interior)
+    grid.cells:map(Flow.AddViscousGetFluxX)
+    grid.cells.interior:map(Flow.AddViscousUpdateUsingFluxX)
+    grid.cells:map(Flow.AddViscousGetFluxY)
+    grid.cells.interior:map(Flow.AddViscousUpdateUsingFluxY)
+    grid.cells:map(Flow.AddViscousGetFluxZ)
+    grid.cells.interior:map(Flow.AddViscousUpdateUsingFluxZ)
 end
 
 function Flow.Update(stage)
-    Flow.UpdateKernels[stage](grid.cells)
+    grid.cells:map(Flow.UpdateFunctions[stage])
 end
 
 function Flow.ComputeVelocityGradients()
-    Flow.ComputeVelocityGradientX(grid.cells.interior)
-    Flow.ComputeVelocityGradientY(grid.cells.interior)
-    Flow.ComputeVelocityGradientZ(grid.cells.interior)
+    grid.cells.interior:map(Flow.ComputeVelocityGradientX)
+    grid.cells.interior:map(Flow.ComputeVelocityGradientY)
+    grid.cells.interior:map(Flow.ComputeVelocityGradientZ)
 end
 
 function Flow.UpdateAuxiliaryVelocityConservedAndGradients()
-    Flow.UpdateAuxiliaryVelocity(grid.cells.interior)
+    grid.cells.interior:map(Flow.UpdateAuxiliaryVelocity)
     Flow.UpdateGhostConserved()
     Flow.UpdateGhostVelocity()
     Flow.ComputeVelocityGradients()
@@ -3232,7 +3170,7 @@ end
 
 function Flow.UpdateAuxiliary()
     Flow.UpdateAuxiliaryVelocityConservedAndGradients()
-    Flow.UpdateAuxiliaryThermodynamics(grid.cells.interior)
+    grid.cells.interior:map(Flow.UpdateAuxiliaryThermodynamics)
     Flow.UpdateGhostThermodynamics()
 end
 
@@ -3241,12 +3179,12 @@ end
 ------------
 
 function Particles.Update(stage)
-    Particles.UpdateKernels[stage](particles)
+    particles:map(Particles.UpdateFunctions[stage])
 end
 
 function Particles.UpdateAuxiliary()
-    Particles.UpdateAuxiliaryStep1(particles)
-    Particles.UpdateAuxiliaryStep2(particles)
+    particles:map(Particles.UpdateAuxiliaryStep1)
+    particles:map(Particles.UpdateAuxiliaryStep2)
 end
 
 ------------------
@@ -3254,18 +3192,18 @@ end
 ------------------
 
 function TimeIntegrator.SetupTimeStep()
-    Particles.Feed(particles)
-    Flow.InitializeTemporaries(grid.cells)
-    Particles.InitializeTemporaries(particles)
+    particles:map(Particles.Feed)
+    grid.cells:map(Flow.InitializeTemporaries)
+    particles:map(Particles.InitializeTemporaries)
 end
 
 function TimeIntegrator.ConcludeTimeStep()
-    Particles.Collect(particles)
+    particles:map(Particles.Collect)
 end
 
 function TimeIntegrator.InitializeTimeDerivatives()
-    Flow.InitializeTimeDerivatives(grid.cells)
-    Particles.InitializeTimeDerivatives(particles)
+    grid.cells:map(Flow.InitializeTimeDerivatives)
+    particles:map(Particles.InitializeTimeDerivatives)
 end
 
 function TimeIntegrator.UpdateAuxiliary()
@@ -3280,29 +3218,29 @@ function TimeIntegrator.UpdateTime(timeOld, stage)
 end
 
 function TimeIntegrator.InitializeVariables()
-    Flow.InitializeCenterCoordinates(grid.cells)
-    Flow.InitializeCellRindLayer(grid.cells.interior)
-    Flow.InitializeVertexCoordinates(grid.vertices)
-    Flow.InitializeVertexRindLayer(grid.vertices.interior)
-    Flow.InitializePrimitives(grid.cells.interior)
-    Flow.UpdateConservedFromPrimitive(grid.cells.interior)
+    grid.cells:map(Flow.InitializeCenterCoordinates)
+    grid.cells.interior:map(Flow.InitializeCellRindLayer)
+    grid.vertices:map(Flow.InitializeVertexCoordinates)
+    grid.vertices.interior:map(Flow.InitializeVertexRindLayer)
+    grid.cells.interior:map(Flow.InitializePrimitives)
+    grid.cells.interior:map(Flow.UpdateConservedFromPrimitive)
     Flow.UpdateGhost()
     Flow.UpdateAuxiliary()
 
-    Particles.Feed(particles)
-    Particles.Locate(particles)
-    Particles.SetVelocitiesToFlow(particles)
+    particles:map(Particles.Feed)
+    particles:map(Particles.Locate)
+    particles:map(Particles.SetVelocitiesToFlow)
 end
 
 function TimeIntegrator.ComputeDFunctionDt()
     Flow.AddInviscid()
     Flow.UpdateGhostVelocityGradient()
     Flow.AddViscous()
-    Flow.AddBodyForces(grid.cells.interior)
-    Particles.AddFlowCoupling(particles)
-    Flow.AddParticlesCoupling(particles)
-    Particles.AddBodyForces(particles)
-    Particles.AddRadiation(particles)
+    grid.cells.interior:map(Flow.AddBodyForces)
+    particles:map(Particles.AddFlowCoupling)
+    particles:map(Flow.AddParticlesCoupling)
+    particles:map(Particles.AddBodyForces)
+    particles:map(Particles.AddRadiation)
 end
 
 function TimeIntegrator.UpdateSolution(stage)
@@ -3397,7 +3335,7 @@ end
 function Statistics.ComputeSpatialAverages()
     Statistics.ResetSpatialAverages()
     Flow.IntegrateQuantities(grid.cells.interior)
-    Particles.IntegrateQuantities(particles)
+    particles:map(Particles.IntegrateQuantities)
     Statistics.UpdateSpatialAverages(grid, particles)
 end
 
@@ -4040,8 +3978,8 @@ end
 function Visualization.Draw()
     vdb.vbegin()
     vdb.frame()
-    Flow.DrawKernel(grid.cells)
-    Particles.DrawKernel(particles)
+    grid.cells:map(Flow.DrawFunction)
+    particles:map(Particles.DrawFunction)
     vdb.vend()
 end
 

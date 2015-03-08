@@ -6,26 +6,26 @@ local cells = L.NewRelation { size = 10, name = 'cells' }
 cells:NewField('f1', L.double):Load(0)
 cells:NewField('f2', L.double):Load(0)
 
-local setup = liszt kernel ( c : cells )
+local setup = liszt ( c : cells )
   c.f1 = 5
 end
-setup(cells)
+cells:map(setup)
 
 cells:Swap('f1','f2')
 
-local check1 = liszt kernel ( c : cells )
+local check1 = liszt ( c : cells )
   L.assert(c.f2 == 5)
   L.assert(c.f1 == 0)
 end
-check1(cells)
+cells:map(check1)
 
 cells:Copy{to='f1',from='f2'}
 
-local check2 = liszt kernel ( c : cells )
+local check2 = liszt ( c : cells )
   L.assert(c.f2 == 5)
   L.assert(c.f1 == 5)
 end
-check2(cells)
+cells:map(check2)
 
 -- Check for errors
 cells:NewField('ftype', L.float):Load(0)

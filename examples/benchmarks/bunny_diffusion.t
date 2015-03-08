@@ -42,24 +42,24 @@ bunny.vertices.d_temperature:Load(0.0)
 
 ------------------------------------------------------------------------------
 
--- we define the basic computation kernels here:
+-- we define the basic computation functions here:
 
--- This could also be written as a kernel over the edges...
-local compute_diffusion = liszt kernel ( v : bunny.vertices )
+-- This could also be written as a function over the edges...
+local liszt compute_diffusion ( v : bunny.vertices )
   for nv in v.neighbors do
     v.d_temperature += timestep * conduction *
       (nv.temperature - v.temperature)
   end
 end
 
-local apply_diffusion = liszt kernel ( v : bunny.vertices )
+local liszt apply_diffusion ( v : bunny.vertices )
   var d_temp = v.d_temperature / v.degree
   v.temperature += d_temp
 
   avg_temp_change += cmath.fabs(d_temp)
 end
 
-local clear_temporary = liszt kernel ( v : bunny.vertices )
+local liszt clear_temporary ( v : bunny.vertices )
   v.d_temperature = 0.0
 end
 
@@ -68,7 +68,7 @@ end
 local vdb  = L.require('lib.vdb')
 local cold = L.Constant(L.vec3f,{0.5,0.5,0.5})
 local hot  = L.Constant(L.vec3f,{1.0,0.0,0.0})
-local debug_tri_draw = liszt kernel ( t : bunny.triangles )
+local liszt debug_tri_draw ( t : bunny.triangles )
   -- color a triangle with the average temperature of its vertices
   var avg_temp =
     (t.v[0].temperature + t.v[1].temperature + t.v[2].temperature) / 3.0
@@ -90,18 +90,22 @@ end
 -- Execute 300 iterations of the diffusion
 
 for i = 1,300 do
-  compute_diffusion(bunny.vertices)
+  --compute_diffusion(bunny.vertices)
+  bunny.vertices:map(compute_diffusion)
 
   avg_temp_change:set(0.0)
-  apply_diffusion(bunny.vertices)
+  --apply_diffusion(bunny.vertices)
+  bunny.vertices:map(apply_diffusion)
   avg_temp_change:set( avg_temp_change:get() / bunny:nVerts())
 
-  clear_temporary(bunny.vertices)
+  --clear_temporary(bunny.vertices)
+  bunny.vertices:map(clear_temporary)
 
   -- EXTRA: VDB
   vdb.vbegin()
     vdb.frame() -- this call clears the canvas for a new frame
-    debug_tri_draw(bunny.triangles)
+    --debug_tri_draw(bunny.triangles)
+    bunny.triangles:map(debug_tri_draw)
   vdb.vend()
   -- END EXTRA
 end

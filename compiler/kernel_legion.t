@@ -185,7 +185,11 @@ end
 
 -- Setup and Launch Legion task when a Liszt kernel is invoked from an
 -- application.
-L.LKernel.__call  = function (kobj, relset)
+function L.LKernel.__call (kobj, relset)
+  if not kobj.typed_ast then
+    kobj:TypeCheck()
+  end
+
   if not (relset and (L.is_relation(relset) or L.is_subset(relset)))
   then
       error("A kernel must be called on a relation or subset.", 2)

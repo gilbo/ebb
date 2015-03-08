@@ -22,28 +22,31 @@ particles:NewField('pos', L.vec3d):Load({0, 1, 2})
 -- another relation
 test.fail_function(function()
   -- try to delete each cell
-  liszt kernel test( c : cells )
+  local liszt test( c : cells )
     delete c
   end
+  cells:map(test)
 end, "Cannot delete from relation cells because it\'s not ELASTIC")
 
 -- cannot delete indirectly
 test.fail_function(function()
-  liszt kernel test( p : particles )
+  local liszt test( p : particles )
     delete p.cell
   end
+  particles:map(test)
 end, "Only centered keys may be deleted")
 
--- CANNOT HAVE 2 DELETE STATEMENTS in the same kernel
+-- CANNOT HAVE 2 DELETE STATEMENTS in the same function
 test.fail_function(function()
-  liszt kernel test( p : particles )
+  local liszt test( p : particles )
     if L.id(p) % 2 == 0 then
       delete p
     else
       delete p
     end
   end
-end, "Temporary: can only have one delete statement per kernel")
+  particles:map(test)
+end, "Temporary: can only have one delete statement per function")
 
 
 -----------------------------------
@@ -53,7 +56,7 @@ end, "Temporary: can only have one delete statement per kernel")
 -- delete half the particles
 test.eq(particles:Size(), 10)
 
-local liszt kernel delete_even ( p : particles )
+local liszt delete_even ( p : particles )
   if L.id(p) % 2 == 0 then
     delete p
   else
@@ -61,13 +64,13 @@ local liszt kernel delete_even ( p : particles )
   end
 end
 
-local liszt kernel post_delete_trivial( p : particles )
+local liszt post_delete_trivial( p : particles )
   L.assert(p.pos[0] == 3)
 end
 
-delete_even(particles)
+particles:map(delete_even)
 
 test.eq(particles:Size(), 5)
 
--- trivial kernel should not blow up
-post_delete_trivial(particles)
+-- trivial function should not blow up
+particles:map(post_delete_trivial)

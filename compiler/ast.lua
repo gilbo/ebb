@@ -21,6 +21,20 @@ end
 function A.Symbol:__tostring()
   return self.namestr
 end
+function A.Symbol:uniquestr()
+  setmetatable(self,{})
+  local str = self.namestr .. ' ' .. tostring(self)
+  setmetatable(self,A.Symbol)
+  return str
+end
+-- for pretty printing...
+local function symtostr(sym)
+  if getmetatable(sym) == A.Symbol then
+    return sym:uniquestr()
+  else
+    return tostring(sym)
+  end
+end
 
 
 ---------------------------
@@ -100,7 +114,7 @@ A.Expression:NewKind('Where',            {'field', 'key'})
 A.Statement :NewKind('IfStatement',      {'else_block'}, {'if_blocks'})
 A.Statement :NewKind('WhileStatement',   {'cond','body'})
 A.Statement :NewKind('DoStatement',      {'body'})
-A.Statement :NewKind('RepeatStatement',  {'cond','body'})
+A.Statement :NewKind('RepeatStatement',  {'body','cond'})
 A.Statement :NewKind('ExprStatement',    {'exp'})
 A.Statement :NewKind('Assignment',       {'lvalue','exp'})
 A.Statement :NewKind('DeclStatement',    {'typeexpression','initializer'})
@@ -291,7 +305,7 @@ function A.LisztKernel:pretty_print (indent)
   indent = indent or ''
   print(indent .. self.kind .. ": (name, set, body)")
   indent = indent .. indent_delta
-  print(indent .. tostring(self.name))
+  print(indent .. symtostr(self.name))
   if self.set then
     self.set:pretty_print(indent)
   else
@@ -351,7 +365,7 @@ end
 function A.Global:pretty_print(indent)
   indent = indent or ''
   local name = self.name or ""
-  print(indent .. self.kind .. ": " .. tostring(name) ..maybe_type(self))
+  print(indent .. self.kind .. ": " .. symtostr(name) ..maybe_type(self))
 end
 
 function A.Cast:pretty_print(indent)
@@ -385,7 +399,7 @@ function A.FieldAccess:pretty_print(indent)
   indent = indent or ''
   print(indent .. self.kind .. ': ' .. tostring(self.field)..maybe_type(self))
   self.key:pretty_print(indent..indent_delta)
-  print(indent..indent_delta..self.name)
+  print(indent..indent_delta..symtostr(self.name))
 end
 
 function A.Call:pretty_print (indent)
@@ -403,7 +417,8 @@ end
 
 function A.LuaObject:pretty_print (indent)
   indent = indent or ''
-  print(indent .. self.kind .. ": " .. tostring(self.value))
+  local val = self.node_type and self.node_type.value
+  print(indent .. self.kind .. ": " .. tostring(val))
 end
 
 function A.TableLookup:pretty_print (indent)
@@ -426,7 +441,7 @@ end
 
 function A.Name:pretty_print (indent)
   indent = indent or ''
-  print(indent .. self.kind .. ": " .. tostring(self.name)..maybe_type(self))
+  print(indent .. self.kind .. ": " .. symtostr(self.name)..maybe_type(self))
 end
 
 function A.Number:pretty_print (indent)
@@ -480,7 +495,7 @@ function A.DeclStatement:pretty_print (indent)
   local typexpstr = ''
   if self.typeexpression then typexpstr = "typeexpression," end
   print(indent .. self.kind.. ":(name,"..typexpstr.."initializer)")
-  print(indent .. indent_delta .. tostring(self.name))
+  print(indent .. indent_delta .. symtostr(self.name))
   if self.typeexpression then
       print(indent .. indent_delta ..self.typeexpression)
   end
@@ -545,7 +560,7 @@ function A.NumericFor:pretty_print (indent)
   else
     print(indent .. self.kind .. ": (name, lower, upper, body)")
   end
-  print(indent .. indent_delta .. tostring(self.name))
+  print(indent .. indent_delta .. symtostr(self.name))
   self.lower:pretty_print(indent .. indent_delta)
   self.upper:pretty_print(indent .. indent_delta)
   if self.step then self.step:pretty_print(indent .. indent_delta) end
@@ -555,7 +570,7 @@ end
 function A.GenericFor:pretty_print (indent)
   indent = indent or ''
   print(indent .. self.kind .. ": (name, set, body)")
-  print(indent .. indent_delta .. tostring(self.name))
+  print(indent .. indent_delta .. symtostr(self.name))
   self.set:pretty_print(indent  .. indent_delta)
   self.body:pretty_print(indent .. indent_delta)
 end
@@ -582,7 +597,7 @@ function A.RecordLiteral:pretty_print (indent)
   indent = indent or ''
   print(indent .. self.kind .. ": (names,exprs)"..maybe_type(self))
   for i,name in ipairs(self.names) do
-    print(indent .. indent_delta .. name)
+    print(indent .. indent_delta .. symtostr(name))
     self.exprs[i]:pretty_print(indent .. indent_delta)
   end
 end

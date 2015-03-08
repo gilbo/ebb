@@ -37,54 +37,60 @@ a.b.c.d = 4
 -------------------------------
 -- Should fail b/c checkthis1 is not a global
 test.fail_function(function()
- 	local liszt kernel t(cell : mesh.cells)
+ 	local liszt t(cell : mesh.cells)
 		checkthis1 = cell.f1
 	end
+	mesh.cells:map(t)
 end, "Illegal assignment: left hand side cannot be assigned")
 
 -- Should fail when we re-assign a new value to x, since it originally
 -- refers to a topological element
 test.fail_function(function()
-	local liszt kernel t(cell : mesh.cells)
+	local liszt t(cell : mesh.cells)
 		var x = cell
   	  	x = cell
 	end
+	mesh.cells:map(t)
 end, "Illegal assignment: variables of key type cannot be re%-assigned")
 
 -- Should fail because we do not allow assignments to fields
 -- (only to indexed fields, globals, and local vars)
 test.fail_function(function()
-	fail3 = liszt kernel(cell : mesh.cells)
+	local fail3 = liszt(cell : mesh.cells)
 		mesh.cells.f1 = 5
 	end
+	mesh.cells:map(fail3)
 end, "Illegal assignment: left hand side cannot be assigned")
 
 -- Should fail because we do not allow the user to alias fields,
--- or any other entity that would confuse stencil generation, in the kernel
+-- or any other entity that would confuse stencil generation, in the function
 test.fail_function(function()
-	local liszt kernel t(cell : mesh.cells)
+	local liszt t(cell : mesh.cells)
 		var z = mesh.cells.f1
 	end
+	mesh.cells:map(t)
 end, "can only assign")
 
 test.fail_function(function()
- 	local liszt kernel t(cell : mesh.cells)
+ 	local liszt t(cell : mesh.cells)
 		undefined = 3
 	end
+	mesh.cells:map(t)
 end, "variable 'undefined' is not defined")
 
 -- Can't assign a value of a different type to a variable that has already
 -- been initialized
 test.fail_function(function()
-	local liszt kernel t(cell : mesh.cells)
+	local liszt t(cell : mesh.cells)
 		var floatvar = 2 + 3.3
 		floatvar = true
 	end
+	mesh.cells:map(t)
 end, "Could not coerce expression of type 'bool' into type 'double'")
 
 -- local8 is not in scope in the while loop
 test.fail_function(function()
-	local liszt kernel t(cell : mesh.cells)
+	local liszt t(cell : mesh.cells)
 		var local7 = 2.0
 		do
 			var local8 = 2
@@ -96,10 +102,11 @@ test.fail_function(function()
 			local7 = 4.5
 		end
 	end
+	mesh.cells:map(t)
 end, "variable 'local8' is not defined")
 
 test.fail_function(function()
-	local liszt kernel t(cell : mesh.cells)
+	local liszt t(cell : mesh.cells)
 		if 4 < 2 then
 			var local8 = true
 		-- Should fail here, since local8 is not defined in this scope
@@ -111,93 +118,105 @@ test.fail_function(function()
 			var local10 = local7
 		end
 	end
+	mesh.cells:map(t)
 end, "variable 'local8' is not defined")
 
 test.fail_function(function()
-	local liszt kernel t(cell : mesh.cells)
+	local liszt t(cell : mesh.cells)
 		var local1 = 3.4
 		do
 			var local1 = true
 			local1 = 2.0 -- should fail, local1 is of type bool
 		end
 	end
+	mesh.cells:map(t)
 end, "Could not coerce expression of type 'int' into type 'bool'")
 
 test.fail_function(function()
-	local liszt kernel t(cell : mesh.cells)
+	local liszt t(cell : mesh.cells)
 		lassert(4 == true) -- binary op will fail here, type mismatch
 	end
+	mesh.cells:map(t)
 end, "incompatible types: int and bool")
 
 local v = L.Constant(L.vec3f, {1, 1, 1})
 test.fail_function(function()
-	local liszt kernel t(cell : mesh.cells)
+	local liszt t(cell : mesh.cells)
 		lassert(v) -- assert fail, comparison returns a vector of bools
 	end
+	mesh.cells:map(t)
 end, "expected a boolean")
 
 test.fail_function(function()
-	local liszt kernel t(cell : mesh.cells)
+	local liszt t(cell : mesh.cells)
 		a.b = 12
 	end
+	mesh.cells:map(t)
 end, "Illegal assignment: left hand side cannot be assigned")
 
 test.fail_function(function()
-	local liszt kernel t(cell : mesh.cells)
+	local liszt t(cell : mesh.cells)
 		var v : L.bool
 		if false then
 			v = true
 		end
 		v = 5
 	end
+	mesh.cells:map(t)
 end, "Could not coerce expression of type 'int' into type 'bool'")
 
 local tbl = {}
 test.fail_function(function()
-	local liszt kernel t(cell : mesh.cells)
+	local liszt t(cell : mesh.cells)
 		var x = 3 + tbl
 	end
+	mesh.cells:map(t)
 end, "invalid types")
 
 test.fail_function(function()
-	local liszt kernel t(cell : mesh.cells)
+	local liszt t(cell : mesh.cells)
 		var x = tbl
 	end
+	mesh.cells:map(t)
 end, "can only assign")
 
 test.fail_function(function()
-	local liszt kernel t(cell : mesh.cells)
+	local liszt t(cell : mesh.cells)
 		tbl.x = 4
 	end
+	mesh.cells:map(t)
 end, "lua table does not have member 'x'")
 
 local tbl = {x={}}
 test.fail_function(function()
-	local liszt kernel t(cell : mesh.cells)
+	local liszt t(cell : mesh.cells)
 		tbl.x.y = 4
 	end
+	mesh.cells:map(t)
 end, "lua table does not have member 'y'")
 
 tbl.x.z = 4
 test.fail_function(function()
-	local liszt kernel t(cell : mesh.cells)
+	local liszt t(cell : mesh.cells)
 		var x = tbl.x
 	end
+	mesh.cells:map(t)
 end, "can only assign")
 
 test.fail_function(function()
-	local liszt kernel t(cell : mesh.cells)
+	local liszt t(cell : mesh.cells)
 		for i = 1, 4, 1 do
 			var x = 3
 		end
 		var g = i
 	end
+	mesh.cells:map(t)
 end, "variable 'i' is not defined")
 
 
 
--- Nothing should fail in this kernel:
-local good = liszt kernel (cell : mesh.cells)
+-- Nothing should fail in this function:
+local good = liszt (cell : mesh.cells)
     cell.f1 = 3.0
     var lc = 4.0
 
@@ -222,5 +241,4 @@ local good = liszt kernel (cell : mesh.cells)
 	end
 	lassert(local9 == 14)
 end
-
-good(mesh.cells)
+mesh.cells:map(good)

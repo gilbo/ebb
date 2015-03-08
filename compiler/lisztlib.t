@@ -178,6 +178,10 @@ end
 
 local specialization = require('compiler.specialization')
 
+-------------------------------------------------------------------------------
+--[[ LUserFunc:                                                            ]]--
+-------------------------------------------------------------------------------
+
 function L.NewUserFunc(func_ast, luaenv)
     local new_user_func = setmetatable({}, L.LUserFunc)
 
@@ -185,6 +189,26 @@ function L.NewUserFunc(func_ast, luaenv)
     new_user_func.ast = special
 
     return new_user_func
+end
+
+function L.LUserFunc:MapOver(relset, params)
+  if #self.ast.params ~= 1 or self.ast.exp then
+    error('In order to map a function over a relation or subset, '..
+          'the function must have exactly 1 argument and no return value', 3)
+  end
+
+  local relation = relset
+  if L.is_subset(relset) then relation = relset:Relation() end
+
+  -- otherwise, try caching a kernel based on the relation
+  if not self.kernel_cache then self.kernel_cache = {} end
+  local cached_kernel = self.kernel_cache[relation]
+  if not cached_kernel then
+    cached_kernel = L.NewKernelFromFunction(self, relation)
+    self.kernel_cache[relation] = cached_kernel
+  end
+
+  cached_kernel(relset, params)
 end
 
 

@@ -102,11 +102,6 @@ function test.fail_function(fn, match)
 	end
 end
 
-function test.fail_kernel(kernel, relation, match)
-	test.fail_function(function()
-		kernel(relation)
-	end, match)
-end
 
 
 -- And this function is based off of a similar fn found in tests/twolang.t in the terra project

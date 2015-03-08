@@ -55,7 +55,7 @@ local treedata = cudalib.sharedmemory(rtype, BLOCK_SIZE)
 
 
 -------------------------------------------------------------------------------
--- GPU Functions/Kernels                                                     -- 
+-- GPU Functions                                                             --
 -------------------------------------------------------------------------------
 -- generates an unrolled loop of cascading reductions in shared memory. See
 -- NVIDIA white paper on reductions for an idea of what this is trying to do:

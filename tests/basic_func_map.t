@@ -5,6 +5,6 @@ local mesh = LMesh.Load("examples/mesh.lmesh")
 
 local faces = mesh.faces
 
--- The identity kernel:
-local pass_kernel = liszt kernel(f : faces) end
-pass_kernel(faces)
+-- The identity function:
+local pass_func = liszt(f : faces) end
+faces:map(pass_func)

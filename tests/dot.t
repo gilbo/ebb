@@ -15,7 +15,7 @@ local v4 = L.Constant(L.vector(L.int, 1), {0})
 local v5 = L.Constant(L.vec3i, {1, 2, 3})
 local v6 = L.Constant(L.vec3i, {5, 7, 11})
 
-local test_dot = liszt kernel(f : mesh.faces)
+local test_dot = liszt(f : mesh.faces)
     assert(dot(v1, v2) == 52) -- simple test
     assert(dot(v3, v4) == 0) -- type conversion, length-1
     assert(dot(v1, v1) == 14) -- vector with itself
@@ -25,19 +25,21 @@ local test_dot = liszt kernel(f : mesh.faces)
     assert(dot(v1, sum) == 6 + 18 + 42) -- test working with local variables
     assert(dot(v1, v1 + v2) == 6 + 18 + 42) -- test working with expressions
 end
-test_dot(mesh.faces)
+mesh.faces:map(test_dot)
 
 
 
 test.fail_function(function()
-  liszt kernel t(f : mesh.faces)
+  local liszt t(f : mesh.faces)
     assert(dot(v1, v3) == 7)
   end
+  mesh.faces:map(t)
 end, "must have equal dimensions")
 
 local vb = L.Constant(L.vec3b, {true, true, false})
 test.fail_function(function()
-  liszt kernel t(f : mesh.faces)
+  local liszt t(f : mesh.faces)
     assert(dot(v1, vb) == 52)
   end
+  mesh.faces:map(t)
 end, "must be numeric vectors")

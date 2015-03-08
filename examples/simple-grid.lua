@@ -17,10 +17,10 @@ function main ()
 	local com = L.NewGlobal(L.vector(L.float, 2), {0, 0})
 
 	-- compute centroid
-	local sum_pos = liszt kernel(c : grid.cells)
+	local liszt sum_pos (c : grid.cells)
 		com += c.center
 	end
-	sum_pos(grid.cells)
+	grid.cells:map(sum_pos)
 
 	local center = com:get() / grid.cells:Size()
 

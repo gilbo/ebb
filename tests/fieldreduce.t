@@ -18,10 +18,10 @@ end
 init_loc_data(loc_data)
 
 function shift(x,y,z)
-	local shift_kernel = liszt kernel(v : M.vertices)
+	local liszt shift_func (v : M.vertices)
 	    v.position += {x,y,z}
 	end
-	shift_kernel(M.vertices)
+	M.vertices:map(shift_func)
 
 	P:MoveTo(L.CPU)
 	local Pdata = P:DataPtr()
@@ -54,14 +54,14 @@ local F = M.faces
 
 F:NewField("mat", L.mat3d)
 
-local liszt kernel m_set(f : F)
+local liszt m_set(f : F)
 	var d = L.double(L.id(f))
 	f.mat = {{d, 0.0, 0.0},
              {0.0, d, 0.0},
              {0.0, 0.0, d}}
 end
 
-local liszt kernel m_reduce_centered (f : F)
+local liszt m_reduce_centered (f : F)
 	f.mat += {
 		{.11, .11, .11},
 		{.22, .22, .22},
@@ -69,26 +69,27 @@ local liszt kernel m_reduce_centered (f : F)
 	}
 end
 
-m_set(F)
-m_reduce_centered(F)
+F:map(m_set)
+F:map(m_reduce_centered)
 
 F.mat:print()
 
 -----------------------------------
 --  Uncentered Matrix reduction: --
 -----------------------------------
--- This will require the invocation of a second reduction kernel on the GPU runtime
+-- This will produce the invocation
+-- of a second reduction kernel on the GPU runtime
 local E = M.edges
 
 V:NewField("mat", L.mat3d)
 
-local liszt kernel m_set_v(v : V)
+local liszt m_set_v(v : V)
 	var d = L.double(L.id(v))
 	v.mat = {{d, 0.0, 0.0},
              {0.0, d, 0.0},
              {0.0, 0.0, d}}
 end
-local liszt kernel m_reduce_uncentered (e : E)
+local liszt m_reduce_uncentered (e : E)
 	e.head.mat += .5*{
 		{.11, .11, .11},
 		{.22, .22, .22},
@@ -101,7 +102,7 @@ local liszt kernel m_reduce_uncentered (e : E)
 	}
 end
 
-m_set_v(V)
-m_reduce_uncentered(E)
+V:map(m_set_v)
+E:map(m_reduce_uncentered)
 
 V.mat:print()

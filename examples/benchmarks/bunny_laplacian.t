@@ -26,7 +26,7 @@ local bunny = Trimesh.LoadFromOFF(tri_mesh_filename)
 
 
 bunny.triangles:NewField('area_normal', L.vec3d):Load({0,0,0})
-local compute_area_normals = liszt kernel( t : bunny.triangles )
+local liszt compute_area_normals( t : bunny.triangles )
   var p0 = t.v[0].pos
   var p1 = t.v[1].pos
   var p2 = t.v[2].pos
@@ -37,11 +37,11 @@ end
 
 bunny.edges:NewField('laplacian', L.double):Load(0)
 bunny.vertices:NewField('laplacian_diag', L.double):Load(0)
-local zero_laplacian_edge = liszt kernel(e : bunny.edges)
+local liszt zero_laplacian_edge(e : bunny.edges)
   e.laplacian = 0 end
-local zero_laplacian_vert = liszt kernel(v : bunny.vertices)
+local liszt zero_laplacian_vert(v : bunny.vertices)
   v.laplacian_diag = 0 end
-local build_laplacian = liszt kernel(t : bunny.triangles)
+local liszt build_laplacian(t : bunny.triangles)
   var area : L.double = L.length(t.area_normal) / 2
   if area < 0.00001 then area = 0.00001 end
 
@@ -63,10 +63,10 @@ local build_laplacian = liszt kernel(t : bunny.triangles)
 end
 
 local function compute_laplacian(mesh)
-  zero_laplacian_edge(mesh.edges)
-  zero_laplacian_vert(mesh.vertices)
-  compute_area_normals(mesh.triangles)
-  build_laplacian(mesh.triangles)
+  mesh.edges:map(zero_laplacian_edge)
+  mesh.vertices:map(zero_laplacian_vert)
+  mesh.triangles:map(compute_area_normals)
+  mesh.triangles:map(build_laplacian)
 end
 
 
@@ -76,11 +76,11 @@ end
 local timestep = L.Global(L.double, 0.1)
 
 bunny.vertices:NewField('d_pos', L.vec3d):Load({0,0,0})
-local zero_d_pos = liszt kernel( v : bunny.vertices )
+local liszt zero_d_pos ( v : bunny.vertices )
   v.d_pos = {0,0,0}
 end
 
-local compute_diffusion = liszt kernel ( v : bunny.vertices )
+local liszt compute_diffusion ( v : bunny.vertices )
   var acc : L.vec3d = {0,0,0}
   for e in v.edges do
     acc += e.laplacian * (e.head.pos - v.pos)
@@ -89,7 +89,7 @@ local compute_diffusion = liszt kernel ( v : bunny.vertices )
   v.d_pos = timestep * acc / v.laplacian_diag
 end
 
-local apply_diffusion = liszt kernel ( v : bunny.vertices )
+local liszt apply_diffusion ( v : bunny.vertices )
   v.pos += v.d_pos
 end
 
@@ -102,7 +102,7 @@ local sqrt3 = math.sqrt(3)
 
 -- EXTRA: (optional.  It demonstrates the use of VDB, a visual debugger)
 local vdb = L.require('lib.vdb')
-local debug_tri_draw = liszt kernel ( t : bunny.triangles )
+local liszt debug_tri_draw ( t : bunny.triangles )
   -- Spoof a really simple directional light
   -- with a cos diffuse term determining the triangle gray scale
   var d = L.dot({1/sqrt3, 1/sqrt3, 1/sqrt3},
@@ -124,15 +124,15 @@ end
 
 for i = 1,400 do
   compute_laplacian(bunny)
-  zero_d_pos(bunny.vertices)
+  bunny.vertices:map(zero_d_pos)
 
-  compute_diffusion(bunny.vertices)
-  apply_diffusion(bunny.vertices)
+  bunny.vertices:map(compute_diffusion)
+  bunny.vertices:map(apply_diffusion)
 
   -- EXTRA: VDB
   vdb.vbegin()
     vdb.frame() -- this call clears the canvas for a new frame
-    debug_tri_draw(bunny.triangles)
+    bunny.triangles:map(debug_tri_draw)
   vdb.vend()
   -- END EXTRA
 end

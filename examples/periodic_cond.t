@@ -13,11 +13,11 @@ local grid = Grid.NewGrid2d{size           = {xn, yn},
 
 grid.cells:NewField('field', L.uint64):LoadConstant(0)
 
-local Init = liszt kernel(c : grid.cells)
+local liszt Init (c : grid.cells)
     c.field = xn * c.yid + c.xid
 end
 
-local Check = liszt kernel(c : grid.cells)
+local liszt Check (c : grid.cells)
     L.assert( c.field == c(-xn,0).field)
     L.assert( c.field == c(0,-yn).field)
     L.assert( c.field == c(-xn,-yn).field)
@@ -28,8 +28,8 @@ local Check = liszt kernel(c : grid.cells)
     L.assert( c.field == c(xn,-yn).field)
 end
 
-Init(grid.cells)
-Check(grid.cells)
+grid.cells:map(Init)
+grid.cells:map(Check)
 
 print(grid:xBoundaryDepth())
 print(grid:yBoundaryDepth())

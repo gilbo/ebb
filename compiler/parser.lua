@@ -182,7 +182,8 @@ lang.liszt_kernel = function (P, id)
   local block = P:block()
   P:expect("end")
 
-  kernel_node.id, kernel_node.name, kernel_node.set, kernel_node.body = id, iter, set, block
+  kernel_node.id = id
+  kernel_node.name, kernel_node.set, kernel_node.body = iter, set, block
   return kernel_node
 end
 
@@ -210,15 +211,19 @@ lang.generate_name_from_entry = function (P)
 	end
 end
 
-lang.user_function = function (P)
+lang.user_function = function (P, id)
   local function_node = ast.UserFunction:New(P)
 
   -- parse params
   local params  = {}
+  local type_annotations = {}
   local open    = P:expect("(")
   if not P:matches(')') then
     repeat
-      table.insert(params,P:expect(P.name).value)
+      table.insert(params, P:expect(P.name).value)
+      if P:nextif(':') then
+        table.insert(type_annotations, P:exp())
+      end
     until not P:nextif(',')
   end
   P:expectmatch(')', '(', open.linenumber)
@@ -232,7 +237,9 @@ lang.user_function = function (P)
   end
   P:expect("end")
 
+  function_node.id      = id
   function_node.params  = params
+  function_node.type_annotations = type_annotations
   function_node.body    = block
   function_node.exp     = exp
   return function_node
@@ -241,23 +248,26 @@ end
 lang.lisztExpression = function (P)
     local code_type
     local anon_name = P:generate_name_from_entry()
-    if P:nextif("kernel") then
-        code_type = 'kernel'
-    elseif P:nextif('`') then
+    --if P:nextif("kernel") then
+    --    code_type = 'kernel'
+    --else
+    if P:nextif('`') then
         code_type = 'simp_quote'
     elseif P:nextif('quote') then
         code_type = 'let_quote'
     elseif P:nextif('function') then
         code_type = 'function'
     else
-        P:errorexpected("'kernel' or '`' or 'quote' or 'function'")
+        code_type = 'function'
+        --P:errorexpected("'kernel' or '`' or 'quote' or 'function'")
     end
 
-    if code_type == 'kernel' then
-      return P:liszt_kernel(anon_name)
-
-    elseif code_type == 'function' then
-      return P:user_function()
+--    if code_type == 'kernel' then
+--      return P:liszt_kernel(anon_name)
+--
+--    else
+    if code_type == 'function' then
+      return P:user_function(anon_name)
 
     elseif code_type == 'let_quote' then
       local let_exp = ast.LetExpr:New(P)
@@ -284,10 +294,10 @@ end
 lang.lisztStatement = function (P)
 	local code_type
 	if P:nextif("liszt") then
-		if     P:nextif("kernel")   then code_type = 'kernel'
-		elseif P:nextif('function') then code_type = 'function'
-		else   P:errorexpected("'kernel' or 'function'")
-		end
+		--if     P:nextif("kernel")   then code_type = 'kernel'
+		--else
+    if P:nextif('function') then code_type = 'function'
+		                            else code_type = 'function' end
 	--elseif P:nextif("liszt_kernel") then
 	--	code_type = 'kernel'
 	else
@@ -295,13 +305,14 @@ lang.lisztStatement = function (P)
 	end
 
 	local assign_tuple, name = P:func_name()
-	if code_type == 'kernel' then
-		return P:liszt_kernel(name), assign_tuple
-
-	-- code_type == 'function'
-	else
-		return P:user_function(), assign_tuple
-	end
+  return P:user_function(name), assign_tuple
+--	if code_type == 'kernel' then
+--		return P:liszt_kernel(name), assign_tuple
+--
+--	-- code_type == 'function'
+--	else
+--		return P:user_function(name), assign_tuple
+--	end
 end
 
 --[[ Statement Parsing ]]--

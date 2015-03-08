@@ -20,12 +20,12 @@ function run_liszt_saxpy (tests)
 
 	local a = L.Global(L.float, 3.49230)
 
-	local liszt kernel liszt_saxpy (r : R)
+	local liszt liszt_saxpy (r : R)
 		r.z = a * r.x + r.y
 	end
 	
 	for i = 1, tests do
-		liszt_saxpy(R)
+		R:map(liszt_saxpy)
 	end
 end
 

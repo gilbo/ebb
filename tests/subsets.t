@@ -23,16 +23,16 @@ cells:NewSubsetFromFunction('interior', function(i)
 end)
 
 
-local test_boundary = liszt kernel ( c : cells )
+local test_boundary = liszt ( c : cells )
   L.assert(c.value == 0)
 end
 
-local test_interior = liszt kernel ( c : cells )
+local test_interior = liszt ( c : cells )
   L.assert(c.value == 1)
 end
 
-test_boundary(cells.boundary)
-test_interior(cells.interior)
+cells.boundary:map(test_boundary)
+cells.interior:map(test_interior)
 
 
 

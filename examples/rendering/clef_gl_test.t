@@ -240,14 +240,14 @@ end
 
 local time_global = L.Global(L.float, 0)
 vertices:NewField('pos_temp', L.vector(L.float, 4)):Load({0,0,0,0})
-local update_pos1 = liszt kernel (v : vertices)
+local liszt update_pos1 (v : vertices)
     var y = v.pos[1]
     if y > 0 then
         y = L.float(0.5 + 0.4 * C.cos(3*time_global))
     end
     v.pos_temp = { v.pos[0], y, v.pos[2], v.pos[3] }
 end
-local update_pos2 = liszt kernel (v : vertices)
+local liszt update_pos2 (v : vertices)
     var pos = v.pos_temp
     v.pos = pos
     vdb.color(v.color)
@@ -280,8 +280,8 @@ while gl.glfwWindowShouldClose(window) == 0 do
 
 
     time_global:set(time)
-    update_pos1(vertices)
-    update_pos2(vertices)
+    vertices:map(update_pos1)
+    vertices:map(update_pos2)
     triangles:UpdateGClef()
 
     -- Issue the actual draw call

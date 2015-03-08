@@ -32,38 +32,38 @@ local g_vec  = L.Global(L.vec2d, {0, 0})
 -- THIS FAILS RIGHT NOW BECAUSE OF TYPE CHECKING ERRORS
 -- local g_mat  = L.Global(L.mat3i, { {10, 2, 3}, {4, 50, 6}, {7, 8, 100} })
 
-local liszt kernel CenteredReads(c : cells)
+local liszt CenteredReads(c : cells)
   L.print(c.x)
   L.print(c.y)
 end
 
-local liszt kernel CenteredWrite(c : cells)
+local liszt CenteredWrite(c : cells)
   c.x = 1
 end
 
-local liszt kernel CenteredMul(c : cells)
+local liszt CenteredMul(c : cells)
   c.y = 0.2 * c.x
 end
 
-local liszt kernel ReduceField(c : cells)
+local liszt ReduceField(c : cells)
   c.y += 0.1
 end
 
-local liszt kernel ReduceGlobalVec(c : cells)
+local liszt ReduceGlobalVec(c : cells)
   c.y += 0.3
   g_vec += L.vec2d({0.2, 0.1})
 end
 
-local liszt kernel InitDual(d : dual_cells)
+local liszt InitDual(d : dual_cells)
   d.a = 0.1
 end
 
-local liszt kernel InitCells(c : cells)
+local liszt InitCells(c : cells)
   c.x = 3
   c.y = 0.45
 end
 
-local liszt kernel CollectDual(c : cells)
+local liszt CollectDual(c : cells)
   L.print(c.dual_left)
   c.y += c.dual_left.a
   c.y += c.dual_right.a
@@ -73,31 +73,31 @@ end
 local function test_accesses()
   print(g_scal:get())
   terralib.tree.printraw(g_vec:get())
-  CenteredWrite(cells)
-  CenteredMul(cells)
-  CenteredReads(cells)
-  ReduceField(cells)
-  ReduceGlobalVec(cells)
-  CenteredReads(cells)
+  cells:map(CenteredWrite)
+  cells:map(CenteredMul)
+  cells:map(CenteredReads)
+  cells:map(ReduceField)
+  cells:map(ReduceGlobalVec)
+  cells:map(CenteredReads)
   terralib.tree.printraw(g_vec:get())
 end
 test_accesses()
 
 -- keyfield functionality
 local function test_keyfields()
-  InitDual(dual_cells)
-  InitCells(cells)
-  CenteredReads(cells)
-  CollectDual(cells)
-  CenteredReads(cells)
+  dual_cells:map(InitDual)
+  cells:map(InitCells)
+  cells:map(CenteredReads)
+  cells:map(CollectDual)
+  cells:map(CenteredReads)
 end
 test_keyfields()
 
 -- subset functionality
 local function test_subsets()
-  InitCells(cells.interior)
-  CenteredReads(cells.interior)
-  CenteredReads(cells)
+  cells.interior(InitCells)
+  cells.interior(CenteredReads)
+  cells:map(CenteredReads)
 end
 test_subsets()
 

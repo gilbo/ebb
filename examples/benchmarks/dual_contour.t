@@ -46,7 +46,7 @@ quads:NewField('v2', grid.cells):Load(0)
 quads:NewField('v3', grid.cells):Load(0)
 
 
-local clamp = liszt function(val,minval,maxval)
+local liszt clamp (val,minval,maxval)
   if val > maxval then val = maxval end
   if val < minval then val = minval end
   return val
@@ -85,7 +85,7 @@ grid.cells:NewField('dual_pos', L.vec3f):Load({0,0,0})
 -------------------------------
 -- Scalar Field Options
 -------------------------------
-local set_sphere_field = liszt kernel( v : grid.vertices )
+local liszt set_sphere_field( v : grid.vertices )
   var origin = L.vec3f({0,0,0})
   var r = v.pos - origin
   var radius = L.float(width * 0.75)
@@ -95,7 +95,7 @@ local set_sphere_field = liszt kernel( v : grid.vertices )
   v.gradient = 2 * r -- gradient
 end
 
-local set_hyperboloid = liszt kernel( v : grid.vertices )
+local liszt set_hyperboloid( v : grid.vertices )
   var origin = L.vec3f({0,0,0})
   var p = v.pos - origin
 
@@ -106,7 +106,7 @@ local set_hyperboloid = liszt kernel( v : grid.vertices )
   v.gradient[1] = -v.gradient[1]
 end
 
-local set_sins = liszt kernel( v : grid.vertices)
+local liszt set_sins( v : grid.vertices)
   var origin = L.vec3f({0,0,0})
   var p = v.pos - origin
 
@@ -141,7 +141,7 @@ end
 -------------------------------
 -- Compute the contouring
 -------------------------------
-local cut_edges = liszt kernel( e : grid.edges )
+local liszt cut_edges( e : grid.edges )
   -- guard against boundary cases?
 
   var head = e.head
@@ -227,7 +227,7 @@ end
 
 
 -- I'm concerned about the stability of this routine...
-local cholesky3x3 = liszt function(diag, offdiag, rhs)
+local liszt cholesky3x3(diag, offdiag, rhs)
   -- compute LDL decomposition with 1s along diagonal of L
   var D0  = diag[0]
   var L10 = (1/D0) * offdiag[0]
@@ -250,7 +250,7 @@ local cholesky3x3 = liszt function(diag, offdiag, rhs)
   return L.vec3f({ X0, X1, X2 })
 end
 
-local householder3x3 = liszt function(diag, offdiag, rhs)
+local liszt householder3x3(diag, offdiag, rhs)
   -- write out A explicitly (columns here)
   var A0 = {diag[0], offdiag[0], offdiag[1]}
   var A1 = {offdiag[0], diag[1], offdiag[2]}
@@ -304,7 +304,7 @@ local householder3x3 = liszt function(diag, offdiag, rhs)
   return {X0, X1, X2}
 end
 
-local cubeclamp = liszt function(vec,minvec,maxvec)
+local liszt cubeclamp(vec,minvec,maxvec)
   for i=0,3 do
     vec[i] = clamp(vec[i], minvec[i], maxvec[i])
   end
@@ -321,7 +321,7 @@ end
 -- which is a symmetric SPD linear system.  To ensure non-singularity,
 -- we can add a small regularization term with an epsilon scale factor
 
-local gather_dual_pos = liszt kernel( c : grid.cells )
+local liszt gather_dual_pos( c : grid.cells )
   var v = c.vertex
 
   var n_cut = 0
@@ -412,7 +412,7 @@ end
 -------------------------------
 local sqrt3 = math.sqrt(3)
 local lightdir = L.Constant(L.vec3f, {1/sqrt3, 1/sqrt3, 1/sqrt3})
-local trinorm = liszt function(p0,p1,p2)
+local liszt trinorm(p0,p1,p2)
   var n = L.vec3f(L.cross(p1-p0, p2-p0))
   var len = L.length(n)
   --if n < 0.00000001 then  n = {0,0,0}
@@ -421,7 +421,7 @@ local trinorm = liszt function(p0,p1,p2)
   return n / len
 end
 
-local debug_draw_quads = liszt kernel( q : quads )
+local liszt debug_draw_quads( q : quads )
   var p0 = q.v0.dual_pos
   var p1 = q.v1.dual_pos
   var p2 = q.v2.dual_pos
@@ -447,15 +447,15 @@ end
 
 
 -- set implicit function
---set_sphere_field(grid.vertices)
---set_hyperboloid(grid.vertices)
-set_sins(grid.vertices)
+--grid.vertices:map(set_sphere_field)
+--grid.vertices:map(set_hyperboloid)
+grid.vertices:map(set_sins)
 
 -- gen quads
-cut_edges(grid.edges)
-gather_dual_pos(grid.cells)
+grid.edges:map(cut_edges)
+grid.cells:map(gather_dual_pos)
 -- draw quads
-debug_draw_quads(quads)
+quads:map(debug_draw_quads)
 
 
 

@@ -10,11 +10,11 @@ function main ()
 	local com = L.NewGlobal(L.vector(L.float, 3), {0, 0, 0})
 
 	-- compute centroid
-	local sum_pos = liszt kernel(v : mesh.vertices)
+	local liszt sum_pos (v : mesh.vertices)
 		com += L.vec3f(v.position)
 	end
 	--mesh.vertices:map(sum_pos)
-	sum_pos(mesh.vertices)
+	mesh.vertices:map(sum_pos)
 
 	local center = com:get() / mesh.vertices:Size()
 

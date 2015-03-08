@@ -8,7 +8,7 @@ mesh.vertices.val:LoadConstant(1)
 red = L.Global(L.float, 0.0)
 
 -- checking decl statement, if statement, proper scoping
-local l = liszt kernel (v : mesh.vertices)
+local l = liszt (v : mesh.vertices)
   var y : L.float
   if v.val == 1.0 then
     y = 1.0
@@ -18,6 +18,6 @@ local l = liszt kernel (v : mesh.vertices)
 
   red += y
 end
-l(mesh.vertices)
+mesh.vertices:map(l)
 
 test.eq(red:get(), mesh.vertices:Size())

@@ -2,32 +2,29 @@ import "compiler.liszt"
 local test = require "tests/test"
 
 
---------------------------
--- Kernel vector tests: --
---------------------------
 local LMesh = L.require "domains.lmesh"
 local mesh = LMesh.Load("examples/mesh.lmesh")
 
 ------------------
 -- Should pass: --
 ------------------
-local vk = liszt kernel (v : mesh.vertices)
+local vk = liszt (v : mesh.vertices)
     var x = {5, 4, 3}
     v.position += x
 end
-vk(mesh.vertices)
+mesh.vertices:map(vk)
 
 local x_out = L.Global(L.float, 0.0)
 local y_out = L.Global(L.float, 0.0)
 local y_idx = L.Global(L.int, 1)
-local read_out_const = liszt kernel(v : mesh.vertices)
+local read_out_const = liszt(v : mesh.vertices)
     x_out += L.float(v.position[0])
 end
-local read_out_var = liszt kernel(v : mesh.vertices)
+local read_out_var = liszt(v : mesh.vertices)
     y_out += L.float(v.position[y_idx])
 end
-read_out_const(mesh.vertices)
-read_out_var(mesh.vertices)
+mesh.vertices:map(read_out_const)
+mesh.vertices:map(read_out_var)
 
 local avgx = x_out:get() / mesh.vertices:Size()
 local avgy = y_out:get() / mesh.vertices:Size()
@@ -39,8 +36,9 @@ test.fuzzy_eq(avgy, 4)
 ------------------
 idx = 3.5
 test.fail_function(function()
-  liszt kernel t(v : mesh.vertices)
+  local liszt t(v : mesh.vertices)
       v.position[idx] = 5
   end
+  mesh.vertices:map(t)
 end, "expected an integer")
 

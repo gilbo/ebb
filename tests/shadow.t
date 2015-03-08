@@ -9,14 +9,14 @@ cells:NewField('val', L.double):Load(5)
 -- a problem but some tricky ordering details in how envirnoments
 -- are managed in the compiler can cause errors
 
-local center_shadow = liszt kernel ( c : cells )
+local center_shadow = liszt ( c : cells )
   var c = c
   L.assert(c.val == 5)
 end
-center_shadow(cells)
+cells:map(center_shadow)
 
-local center_other = liszt kernel ( c : cells )
+local center_other = liszt ( c : cells )
   var v = 25
   var v = 2
 end
-center_other(cells)
+cells:map(center_other)

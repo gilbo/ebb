@@ -6,20 +6,20 @@ R:NewField('cbrt', L.double):Load(0.0)
 R:NewField('sin',  L.double):Load(0.0)
 R:NewField('cos',  L.double):Load(0.0)
 
-local root_test = liszt kernel (r : R)
+local root_test = liszt (r : R)
 	r.cbrt = L.cbrt(L.id(r))
 	r.sqrt = L.sqrt(L.id(r))
 end
-root_test(R)
+R:map(root_test)
 
 R.cbrt:print()
 R.sqrt:print()
 
-local trig_test = liszt kernel (r : R)
+local trig_test = liszt (r : R)
 	r.sin = L.sin(L.id(r))
 	r.cos = L.cos(L.id(r))
 end
-trig_test(R)
+R:map(trig_test)
 
 R.sin:print()
 R.cos:print()

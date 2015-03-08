@@ -20,7 +20,7 @@ grid.cells:NewField('new_t', L.double):Load(0)
 
 -- 4 neighbors
 local dirs = {'left', 'right', 'up', 'down'}
-local diffuse_names = liszt kernel ( c : grid.cells )
+local diffuse_names = liszt ( c : grid.cells )
   if not c.in_boundary then
     c.new_t = 0
     for dir in dirs do
@@ -30,7 +30,7 @@ local diffuse_names = liszt kernel ( c : grid.cells )
 end
 
 -- 8 neighbors
-local diffuse_nums = liszt kernel ( c : grid.cells )
+local diffuse_nums = liszt ( c : grid.cells )
   if not c.in_boundary then
     c.new_t = 0
     for i=-1,2 do
@@ -41,15 +41,15 @@ local diffuse_nums = liszt kernel ( c : grid.cells )
   end
 end
 
-diffuse_names(grid.cells)
-diffuse_nums(grid.cells)
+grid.cells:map(diffuse_names)
+grid.cells:map(diffuse_nums)
 
 ------------------------------------------------------------------------------
 
 local cutoff = L.NewGlobal(L.int, 2)
 
 test.fail_function(function()
-  liszt kernel (c : grid.cells)
+  local liszt nonconst(c : grid.cells)
     if not c.in_boundary then
       c.new_t = 0
       for i=-1,cutoff do
@@ -59,6 +59,7 @@ test.fail_function(function()
       end
     end
   end
+  grid.cells:map(nonconst)
 end, "cannot index using non-constant mapping")
 
 

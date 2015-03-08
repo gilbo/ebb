@@ -1,4 +1,4 @@
---------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
 --[[
    ... CENTRAL DIFFERENCE TIME LOOP
 
@@ -13,13 +13,13 @@
                 2. Velocity and/or acceleration controls (ACTUATORS) are not strictly correct since we
                    use v^n and a^n to compute fext^{n+1}
 ]]--
---------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
 
 import 'compiler.liszt'
 
---------------------------------------------------------------------------------
---[[ Load relations from lmesh                                              ]]--
---------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+--[[ Load relations from lmesh                                             ]]--
+-------------------------------------------------------------------------------
 local PN     = L.require('lib.pathname')
 local LMesh  = L.require "domains.lmesh"
 local M  = LMesh.Load(PN.scriptdir():concat("fem_mesh.lmesh"):tostring())
@@ -29,9 +29,9 @@ local C, V, F, E = M.cells, M.vertices, M.faces, M.edges
 
 
 
---------------------------------------------------------------------------------
---[[ FEM field allocation                                                   ]]--
---------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+--[[ FEM field allocation                                                  ]]--
+-------------------------------------------------------------------------------
 V:NewField('v_n',   L.vector(L.float, 3)):LoadConstant( {0, 0, 0} )
 V:NewField('v_p',   L.vector(L.float, 3)):LoadConstant( {0, 0, 0} )
 V:NewField('d_n',   L.vector(L.float, 3)):LoadConstant( {0, 0, 0} )
@@ -51,9 +51,9 @@ V:NewField('inlet', L.bool):LoadConstant(false)
 V:NewField('outlet', L.bool):LoadConstant(false)
 
 
---------------------------------------------------------------------------------
---[[ Create structured topology relations                                   ]]--
---------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+--[[ Create structured topology relations                                  ]]--
+-------------------------------------------------------------------------------
 -- Since domain is a cube mesh, want to access vertices of face as 
 -- f.v0, f.v1, f.v2, f.v3
 local vd = M.verticesofface.vertex:DataPtr()
@@ -114,24 +114,24 @@ end
 E:NewField('c1', C):LoadFunction(ccall(1))
 
 
---------------------------------------------------------------------------------
---[[ Build inlet/outlet vertex sets                                         ]]--
---------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+--[[ Build inlet/outlet vertex sets                                        ]]--
+-------------------------------------------------------------------------------
 function buildVertexInletOutletSets ()
-	local mark_inlet_vertices = liszt kernel (f : M.left)
+	local liszt mark_inlet_vertices (f : M.left)
 		f.value.v0.inlet or= true	
 		f.value.v1.inlet or= true
 		f.value.v2.inlet or= true
 		f.value.v3.inlet or= true
 	end
-	local mark_outlet_vertices = liszt kernel (f : M.right)
+	local liszt mark_outlet_vertices (f : M.right)
 		f.value.v0.outlet or= true
 		f.value.v1.outlet or= true
 		f.value.v2.outlet or= true
 		f.value.v3.outlet or= true
 	end
-	mark_inlet_vertices(M.left)
-	mark_outlet_vertices(M.right)
+	M.right:map(mark_inlet_vertices)
+	M.right:map(mark_outlet_vertices)
 
 	local is_inlet   = V.inlet:DataPtr()
 	local is_outlet  = V.outlet:DataPtr()
@@ -141,29 +141,29 @@ end
 buildVertexInletOutletSets()
 
 
---------------------------------------------------------------------------------
---[[ Constants                                                              ]]--
---------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+--[[ Constants                                                             ]]--
+-------------------------------------------------------------------------------
 local t_n_h  = 0
 local dt_n_h = 1
 local tmax   = 1000
 
 
---------------------------------------------------------------------------------
---[[ Global kernels                                                         ]]--
---------------------------------------------------------------------------------
-local reset_internal_forces = liszt kernel (v : M.vertices)
+-------------------------------------------------------------------------------
+--[[ Global Functions                                                      ]]--
+-------------------------------------------------------------------------------
+local liszt reset_internal_forces (v : M.vertices)
    	v.fint = {0, 0, 0} 
 end
 
 -- Update the displacement at t^(n+1): d^{n+1} = d^n + dt^{n+1/2}*v^{n+1/2}
-local update_pos_and_disp = liszt kernel (v : M.vertices)
+local liszt update_pos_and_disp (v : M.vertices)
 	v.d_n      += dt_n_h * v.v_n_h
 	v.position += dt_n_h * v.v_n_h
 end
 
 -- calculate edge length displacement
-local calc_edge_disp = liszt kernel (e : M.edges)
+local liszt calc_edge_disp (e : M.edges)
 	var v1 = e.head
 	var v2 = e.tail
 
@@ -171,7 +171,7 @@ local calc_edge_disp = liszt kernel (e : M.edges)
 	e.currEdgeLength = L.length(dist)
 end
 
-local calc_internal_force = liszt kernel (e : M.edges)
+local liszt calc_internal_force (e : M.edges)
 	var edgeLengthDisplacement = e.currEdgeLength - e.initialEdgeLength
 		
 	var v1 = e.head
@@ -186,21 +186,21 @@ local calc_internal_force = liszt kernel (e : M.edges)
 end
 
 -- Compute the acceleration at t^{n+1}: a^{n+1} = M^{-1}(fext^{n+1}-fint^{n+1}-C*v^{n+1/2})
-local compute_accel = liszt kernel (v : M.vertices)
+local liszt compute_accel (v : M.vertices)
 	v.a_n = v.fext + v.fint / v.mass
 end
 
-local update_previous_velocity = liszt kernel (v : M.vertices) v.v_p = v.v_n end
+local liszt update_previous_velocity (v : M.vertices) v.v_p = v.v_n end
 
 -- Update the velocity at t^{n+1}: v^{n+1} = v^{n+1/2}+dt^{n+1/2}/2*a^n
-local update_velocity = liszt kernel (v : M.vertices)
+local liszt update_velocity (v : M.vertices)
 	v.v_n = v.v_n_h + L.float(.5f) * dt_n_h * v.a_n
 end
 
 
---------------------------------------------------------------------------------
---[[ Choose Architecture                                                    ]]--
---------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+--[[ Choose Architecture                                                   ]]--
+-------------------------------------------------------------------------------
 function moveToArch (l_arch)
 	L.default_processor = l_arch
 	M.vertices:MoveTo(l_arch)
@@ -210,27 +210,27 @@ end
 moveToArch(L.GPU)
 
 
---------------------------------------------------------------------------------
---[[ Main                                                                   ]]--
---------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+--[[ Main                                                                  ]]--
+-------------------------------------------------------------------------------
 local function main()
 
 	--[[ Initialize external forces: ]]--
-	(liszt kernel (v : M.vertices)
+	V.inlet_vertices:map(liszt (v : M.vertices)
 		v.fext = L.vec3f({.01, 0, 0})
-	end)(V.inlet_vertices)
+	end)
 
-	(liszt kernel (v : M.vertices)
+	V.outlet_vertices:map(liszt (v : M.vertices)
 		v.fext = L.vec3f({-.01, 0, 0})
-	end)(V.outlet_vertices)
+	end)
 
 	--[[ Initialize acceleration based on initial forces ]]--
-	(liszt kernel (v : M.vertices)
+	M.vertices:map(liszt (v : M.vertices)
 		v.a_n = (v.fext - v.fint) / v.mass
-	end)(M.vertices)
+	end)
 
 	--[[ Initialize edge lengths]]--
-	(liszt kernel (e : M.edges)
+	M.edges:map(liszt (e : M.edges)
 		var v1 = e.head
 		var v2 = e.tail
 
@@ -239,7 +239,7 @@ local function main()
 
 		e.initialEdgeLength = length
 		e.currEdgeLength    = length
-	end)(M.edges)
+	end)
 
 	--[[ MAIN LOOP: ]]--
 	local t_n = 0
@@ -249,23 +249,23 @@ local function main()
 		--Update half time:  t^{n+1/2} = t^n + 1/2*deltat^{n+1/2}
 	  	t_n_h = t_n + dt_n_h/2 
 
-		-- nodal velocity kernel depends on changing t_n
-		local update_nodal_velocities = liszt kernel (v : M.vertices)
+		-- nodal velocity update function depends on changing t_n
+		local liszt update_nodal_velocities (v : M.vertices)
 			v.v_n_h = v.v_n + L.float(t_n_h - t_n) * v.a_n
 		end
 
 		--[[ Execute! ]]--
-		reset_internal_forces(M.vertices)
+		M.vertices:map(reset_internal_forces)
 
-		update_nodal_velocities(M.vertices)
-		update_pos_and_disp(M.vertices)
+		M.vertices:map(update_nodal_velocities)
+		M.vertices:map(update_pos_and_disp)
 
-		calc_edge_disp(M.edges)
-		calc_internal_force(M.edges)
+		M.edges:map(calc_edge_disp)
+		M.edges:map(calc_internal_force)
 
-		compute_accel(M.vertices)
-		update_previous_velocity(M.vertices)
-		update_velocity(M.vertices)
+		M.vertices:map(compute_accel)
+		M.vertices:map(update_previous_velocity)
+		M.vertices:map(update_velocity)
 
 		-- Time update: t^n = t^{n-1} + deltat^{n-1/2}
 		t_n = t_n + dt_n_h

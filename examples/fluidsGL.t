@@ -117,7 +117,7 @@ grid.cells:NewField('advectFrom', grid.dual_cells):Load(0)
 -- Helper functions
 --
 
-local wrapFunc = liszt function(val, lower, upper)
+local liszt wrapFunc(val, lower, upper)
     var diff    = upper - lower
     var temp    = val - lower
     --temp        = L.float(C.fmod(temp, diff))
@@ -128,7 +128,7 @@ local wrapFunc = liszt function(val, lower, upper)
     return temp + lower
 end
 
-local snapToGrid = liszt function(p)
+local liszt snapToGrid(p)
     var pxy : L.vec2f
     pxy[0] = L.float(wrapFunc(p[0], min_x, max_x))
     pxy[1] = L.float(wrapFunc(p[1], min_y, max_y))
@@ -136,18 +136,18 @@ local snapToGrid = liszt function(p)
 end
 
 --
--- Advection kernels
+-- Advection Functions
 --
 
-local advectWhereFrom = liszt kernel(c : grid.cells)
+local liszt advectWhereFrom (c : grid.cells)
     c.advectPos = snapToGrid(c.center + dt * N * -c.dv)
 end
 
-local advectPointLocate = liszt kernel(c : grid.cells)
+local liszt advectPointLocate (c : grid.cells)
     c.advectFrom = grid.dual_locate(c.advectPos)
 end
 
-local advectInterpolateVelocity = liszt kernel(c : grid.cells)
+local liszt advectInterpolateVelocity (c : grid.cells)
     -- lookup cell (this is the bottom left corner)
     var dc      = c.advectFrom
 
@@ -173,16 +173,16 @@ local advectInterpolateVelocity = liszt kernel(c : grid.cells)
 end
 
 local function advectVelocity(grid)
-	advectWhereFrom(grid.cells)
-    advectPointLocate(grid.cells)
-    advectInterpolateVelocity(grid.cells)
+	grid.cells:map(advectWhereFrom)
+    grid.cells:map(advectPointLocate)
+    grid.cells:map(advectInterpolateVelocity)
 end
 
 --
--- Diffusion kernel
+-- Diffusion Function
 --
 
-local diffuseProjectFFT = liszt kernel(c : gridFFT.cells)
+local liszt diffuseProjectFFT (c : gridFFT.cells)
 	var xIndex = L.float(c.xid)
 	var yIndex = L.float(c.yid)
 	var xFFT = c.vx
@@ -221,11 +221,11 @@ local diffuseProjectFFT = liszt kernel(c : gridFFT.cells)
     c.vy = yFFT
 end
 
---local updateVelocity = liszt kernel(c : grid.cells)
---    var scale = 1.0f / (N * N)
---    c.dv[0] = c.vx[0] * scale
---	c.dv[1] = c.vy[0] * scale
---end
+local liszt updateVelocity (c : grid.cells)
+    var scale = 1.0f / (N * N)
+    c.dv[0] = c.vx[0] * scale
+    c.dv[1] = c.vy[0] * scale
+end
 
 local function diffuseProjectGPU(grid, gridFFT)
 	local xGPUPtr = grid.cells.vx:getDLD().address
@@ -238,7 +238,7 @@ local function diffuseProjectGPU(grid, gridFFT)
 	C.cufftExecR2C(fftplan.r2c, xGPUPtr, terralib.cast(&C.cufftComplex,xFFTGPUPtr))
 	C.cufftExecR2C(fftplan.r2c, yGPUPtr, terralib.cast(&C.cufftComplex,yFFTGPUPtr))
 
-	diffuseProjectFFT(gridFFT.cells)
+	gridFFT.cells:map(diffuseProjectFFT)
 
 	-- FFT C2R
 	C.cufftExecC2R(fftplan.c2r, terralib.cast(&C.cufftComplex,xFFTGPUPtr), xGPUPtr)
@@ -262,7 +262,7 @@ local function diffuseProjectCPU(grid, gridFFT)
 	C.cudaMemcpy(xFFTCPUPtr,fftplan.xGPU,terralib.sizeof(float)*N*N,cudaMemcpyDeviceToHost)
 	C.cudaMemcpy(yFFTCPUPtr,fftplan.yGPU,terralib.sizeof(float)*N*N,cudaMemcpyDeviceToHost)
 
-	diffuseProjectFFT(gridFFT.cells)
+	gridFFT.cells:map(diffuseProjectFFT)
 
 	C.cudaMemcpy(fftplan.xGPU,xFFTCPUPtr,terralib.sizeof(float)*N*N,cudaMemcpyHostToDevice)
 	C.cudaMemcpy(fftplan.yGPU,yFFTCPUPtr,terralib.sizeof(float)*N*N,cudaMemcpyHostToDevice)
@@ -307,16 +307,16 @@ end)
 
 particles:NewField('nextPos', L.vec2f):Load({0,0})
 particles:NewField('pos', L.vec2f):Load({0,0})
-(liszt kernel (p : particles) -- init...
+particles:map(liszt (p : particles) -- init...
     p.pos = p.dual_cell.vertex.cell(-1,-1).center +
             L.vec2f({cell_w/2.0, cell_h/2.0})
-end)(particles)
+end)
 
-local locateParticles = liszt kernel (p : particles)
+local liszt locateParticles (p : particles)
     p.dual_cell = grid.dual_locate(p.pos)
 end
 
-local computeParticleVelocity = liszt kernel (p : particles)
+local liszt computeParticleVelocity (p : particles)
     -- lookup cell (this is the bottom left corner)
     var dc      = p.dual_cell
 
@@ -339,7 +339,7 @@ local computeParticleVelocity = liszt kernel (p : particles)
         + x1 * y1 * lc(1,1).dv )
 end
 
-local updateParticlePos = liszt kernel (p : particles)
+local liszt updateParticlePos (p : particles)
     --var r = L.vec2f({ C.randFloat() - 0.5, C.randFloat() - 0.5 })
 	var r = L.vec2f({ 0.0, 0.0 })
     var pos = p.nextPos + L.float(dt) * r
@@ -348,11 +348,11 @@ end
 for i = 1, 1 do
 	advectVelocity(grid)
     diffuseProject(grid, gridFFT)
-    --updateVelocity(grid.cells)
+    --grid.cells:map(updateVelocity)
     
-	computeParticleVelocity(particles)
-    updateParticlePos(particles)
-    locateParticles(particles)
+	particles:map(computeParticleVelocity)
+    particles:map(updateParticlePos)
+    particles:map(locateParticles)
 end
 
 grid.cells:print()

@@ -9,77 +9,6 @@ package.loaded["examples.fem.tetmesh"] = Tetmesh
 
 ------------------------------------------------------------------------------
 
---[[ edges are duplicated, one way for each direction
-local function build_edges(mesh, v1s, v2s, v3s)
-  local neighbors = {} -- vertex to vertex graph
-  for k = 1,(mesh:nVerts()) do neighbors[k] = {} end
-
-  -- construct an edge for each triangle
-  for i = 1,(mesh:nTris()) do
-    neighbors[v1s[i]+1][v2s[i]+1] = true
-    neighbors[v1s[i]+1][v3s[i]+1] = true
-
-    neighbors[v2s[i]+1][v1s[i]+1] = true
-    neighbors[v2s[i]+1][v3s[i]+1] = true
-
-    neighbors[v3s[i]+1][v1s[i]+1] = true
-    neighbors[v3s[i]+1][v2s[i]+1] = true
-  end
-
-  local n_edges = 0
-  local degrees = {}
-  local e_tail = {}
-  local e_head = {}
-  for i = 1,(mesh:nVerts()) do
-    degrees[i] = 0
-    for j,_ in pairs(neighbors[i]) do
-      table.insert(e_tail, i-1)
-      table.insert(e_head, j-1)
-      degrees[i] = degrees[i] + 1
-    end
-    n_edges = n_edges + degrees[i]
-  end
-
-  -- basic data
-  mesh.edges = L.NewRelation(n_edges, 'edges')
-  mesh.edges:NewField('tail', mesh.vertices):Load(e_tail)
-  mesh.edges:NewField('head', mesh.vertices):Load(e_head)
-
-  mesh.vertices:NewField('degree', L.int):Load(degrees)
-
-  -- index the edges
-  mesh.edges:GroupBy('tail')
-  mesh.vertices:NewFieldMacro('edges', L.NewMacro(function(v)
-    return liszt ` L.Where(mesh.edges.tail, v)
-  end))
-  mesh.vertices:NewFieldMacro('neighbors', L.NewMacro(function(v)
-    return liszt ` L.Where(mesh.edges.tail, v).head
-  end))
-
-  -- set up the pointers from triangles to edges
-  mesh.triangles:NewField('e12', mesh.edges):Load(0)
-  mesh.triangles:NewField('e21', mesh.edges):Load(0)
-  mesh.triangles:NewField('e13', mesh.edges):Load(0)
-  mesh.triangles:NewField('e31', mesh.edges):Load(0)
-  mesh.triangles:NewField('e23', mesh.edges):Load(0)
-  mesh.triangles:NewField('e32', mesh.edges):Load(0)
-  local compute_tri_pointers = liszt kernel ( t : mesh.triangles )
-    for e in t.v1.edges do
-      if e.head == t.v2 then t.e12 = e end
-      if e.head == t.v3 then t.e13 = e end
-    end
-    for e in t.v2.edges do
-      if e.head == t.v1 then t.e21 = e end
-      if e.head == t.v3 then t.e23 = e end
-    end
-    for e in t.v3.edges do
-      if e.head == t.v1 then t.e31 = e end
-      if e.head == t.v2 then t.e32 = e end
-    end
-  end
-  compute_tri_pointers(mesh.triangles)
-end]]
-
 
 -- Includes all vertices directly connected to a vertex, through an element,
 -- including the indexing vertex itself.
@@ -134,7 +63,7 @@ local function build_element_edges(mesh, elements)
 
   -- set up pointers from tetrahedra to edges
   mesh.tetrahedra:NewField('e', L.matrix(mesh.edges, 4, 4))
-  local compute_tet_edges = liszt kernel (t : mesh.tetrahedra)
+  local liszt compute_tet_edges (t : mesh.tetrahedra)
     for i = 0,4 do
       for e in t.v[i].edges do
         for j = 0,4 do
@@ -143,18 +72,18 @@ local function build_element_edges(mesh, elements)
       end
     end
   end
-  compute_tet_edges(mesh.tetrahedra)
+  mesh.tetrahedra:map(compute_tet_edges)
 
   -- set up pointers from vertices to self edges
   mesh.vertices:NewField('diag', mesh.edges)
-  local compute_self_edges = liszt kernel (v : mesh.vertices)
+  local liszt compute_self_edges (v : mesh.vertices)
     for e in v.edges do
       if e.head == v then
         v.diag = e
       end
     end
   end
-  compute_self_edges(mesh.vertices)
+  mesh.vertices:map(compute_self_edges)
 
 end
 

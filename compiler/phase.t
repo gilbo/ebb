@@ -166,7 +166,7 @@ local function log_helper(ctxt, is_field, f_or_g, phase_type, node)
   if not is_field and phase_type:isReduce() then
     local reduce_entry = ctxt.global_reduce
     if reduce_entry and lookup ~= reduce_entry then
-      ctxt:error(node, 'Cannot reduce more than one global in a kernel.  '..
+      ctxt:error(node, 'Cannot reduce more than one global in a function.  '..
                        'Previously tried to reduce at '..
                        lookup.last_access.filename..':'..
                        lookup.last_access.linenumber..'\n')
@@ -231,7 +231,7 @@ function Context:logdelete(relation, node)
   -- this check suffices
   if self.deletes[relation] then
     self:error(node,
-      'Temporary: can only have one delete statement per kernel')
+      'Temporary: can only have one delete statement per function')
   end
 
   -- register the deletion

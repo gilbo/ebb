@@ -241,7 +241,7 @@ function ast.Assignment:check(ctxt)
 
     -- Promote global lhs to lvalue if there was a reduction
     if node.lvalue:is(ast.Global) and not self.reduceop then
-        ctxt:error(self.lvalue, "Cannot write to globals in kernels")
+        ctxt:error(self.lvalue, "Cannot write to globals in functions")
         node.lvalue.is_lvalue = true
     end
 
@@ -775,7 +775,7 @@ function ast.Name:check(ctxt)
     -- during specialization
 
     -- failed to find this name anywhere
-    ctxt:error(self, "variable '" .. self.name .. "' is not defined")
+    ctxt:error(self, "variable '" .. tostring(self.name) .. "' is not defined")
     local err_node     = self:clone()
     err_node.name      = self.name
     err_node.node_type = L.error
@@ -982,6 +982,13 @@ end
 
         r.body  = self.body:alpha_rename(remap)
 
+        return r
+    end
+
+    function ast.RepeatStatement:alpha_rename(remap)
+        local r = self:clone()
+        r.body = self.body:alpha_rename(remap)
+        r.cond = self.cond:alpha_rename(remap)
         return r
     end
 
@@ -1390,7 +1397,7 @@ function ast.LisztKernel:check(ctxt)
     return kernel
 end
 
-function S.check(luaenv, kernel_ast)
+function S.check(kernel_ast)
     -- environment for checking variables and scopes
     local env  = terralib.newenvironment(nil)
     local diag = terralib.newdiagnostics()

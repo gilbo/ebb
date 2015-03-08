@@ -60,7 +60,7 @@ local turtle = VEGFileIO.LoadTetmesh
 
 local sqrt3 = math.sqrt(3)
 
-local tet_volume = liszt function(p0,p1,p2,p3)
+local liszt tet_volume(p0,p1,p2,p3)
   var d1 = p1-p0
   var d2 = p2-p0
   var d3 = p3-p0
@@ -68,7 +68,7 @@ local tet_volume = liszt function(p0,p1,p2,p3)
   -- triple product
   return L.dot(L.cross(d1,d2),d3)
 end
-local trinorm = liszt function(p0,p1,p2)
+local liszt trinorm(p0,p1,p2)
   var d1 = p1-p0
   var d2 = p2-p0
   var n  = L.cross(d1,d2)
@@ -76,7 +76,7 @@ local trinorm = liszt function(p0,p1,p2)
   if len < 1e-10 then len = L.float(1e-10) end
   return n/len
 end
-local dot_to_color = liszt function(d)
+local liszt dot_to_color(d)
   var val = d * 0.5 + 0.5
   var col = L.vec3f({val,val,val})
   return col
@@ -86,7 +86,7 @@ local lightdir = L.Constant(L.vec3f,{sqrt3,sqrt3,sqrt3})
 
 -- EXTRA: (optional.  It demonstrates the use of VDB, a visual debugger)
 local vdb = L.require('lib.vdb')
-local visualize = liszt kernel ( t : turtle.tetrahedra )
+local visualize = liszt ( t : turtle.tetrahedra )
   var p0 = L.vec3f(t.v0.pos)
   var p1 = L.vec3f(t.v1.pos)
   var p2 = L.vec3f(t.v2.pos)
@@ -112,7 +112,7 @@ end
 
 vdb.vbegin()
   vdb.frame() -- this call clears the canvas for a new frame
-  visualize(turtle.tetrahedra)
+  turtle.tetrahedra:map(visualize)
 vdb.vend()
 
 -- pause before exit

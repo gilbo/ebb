@@ -50,73 +50,73 @@ local a = 6
 local b = L.Constant(L.vec4f, {1, 3, 4, 5})
 
 
--------------------
--- Test kernels: --
--------------------
-local reduce1 = liszt kernel (f : F)
+---------------------
+-- Test functions: --
+---------------------
+local reduce1 = liszt (f : F)
 	f.field1 -= 3 - 1/6 * a
 end
 
-local reduce2 = liszt kernel (f : F)
+local reduce2 = liszt (f : F)
 	f.field2 *= 3 * 7 / 3
 end
 
-local read1 = liszt kernel (f : F)
+local read1 = liszt (f : F)
 	var tmp = f.field3 + 5
 	assert(tmp == 11)
 end
 
-local write1 = liszt kernel(f : F)
+local write1 = liszt(f : F)
 	f.field3 = 0.0
 end
 
-local write2 = liszt kernel (f : F)
+local write2 = liszt (f : F)
 	f.field5 = b
 end
 
-local reduce3 = liszt kernel (f : F)
+local reduce3 = liszt (f : F)
 	f.field5 += {1.0,1.0,1.0,1.0}
 end
 
-local check2 = liszt kernel (f : F)
+local check2 = liszt (f : F)
 	assert(f.field5[0] == 2)
 	assert(f.field5[1] == 4)
 	assert(f.field5[2] == 5)
 	assert(f.field5[3] == 6)
 end
 
-local write3 = liszt kernel (f : F)
+local write3 = liszt (f : F)
 	f.field4 = true
 end
 
-local check3 = liszt kernel (f : F)
+local check3 = liszt (f : F)
 	assert(f.field4)
 end
 
-local write4 = liszt kernel (f : F)
+local write4 = liszt (f : F)
 	f.field4 = false
 end
 
-local check4 = liszt kernel(f : F)
+local check4 = liszt(f : F)
 	assert(not f.field4)
 end
 
 
 -- execute!
-reduce1(F)
-reduce2(F)
+F:map(reduce1)
+F:map(reduce2)
 
-read1(F)
-write1(F)
-write2(F)
-reduce3(F)
-check2(F)
+F:map(read1)
+F:map(write1)
+F:map(write2)
+F:map(reduce3)
+F:map(check2)
 
-write3(F)
-check3(F)
+F:map(write3)
+F:map(check3)
 
-write4(F)
-check4(F)
+F:map(write4)
+F:map(check4)
 
 
 
@@ -129,14 +129,14 @@ local f4 = L.Global(L.vector(L.float, 4), {0, 0, 0, 0})
 
 local function check_write ()
 	-- should initialize each field element to {2, 4, 5, 6}
-	write2(F)
-	reduce3(F)
+	F:map(write2)
+	F:map(reduce3)
 
 	f4:set({0, 0, 0, 0})
-	local sum_positions = liszt kernel (f : F)
+	local sum_positions = liszt (f : F)
 		f4 += f.field5
 	end
-	sum_positions(F)
+	F:map(sum_positions)
 
 	local f4t = f4:get()
 	local fs  = F:Size()

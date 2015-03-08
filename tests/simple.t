@@ -15,7 +15,7 @@ local vv = L.Constant(L.vec3i, {1,2,3})
 
 local luavalue_true = true
 
-local liszt kernel test_bool (v : mesh.vertices)
+local liszt test_bool (v : mesh.vertices)
     var q = true
     var x = q  -- Also, test re-declaring variables (symbols for 'x' should now be different)
     var z = not q
@@ -30,9 +30,9 @@ local liszt kernel test_bool (v : mesh.vertices)
     -- had to hunt down this bug once already
     lassert(luavalue_true)
 end
-test_bool(mesh.vertices)
+mesh.vertices:map(test_bool)
 
-local liszt kernel test_decls (v : mesh.vertices)
+local liszt test_decls (v : mesh.vertices)
     -- DeclStatement tests --
     var c : L.int
     c = 12
@@ -61,10 +61,10 @@ local liszt kernel test_decls (v : mesh.vertices)
     var x = doo == dah
     lassert(doo == dah)
 end
-test_decls(mesh.vertices)
+mesh.vertices:map(test_decls)
 
 
-local liszt kernel test_conditionals (v : mesh.vertices)
+local liszt test_conditionals (v : mesh.vertices)
     -- IfStatement tests
     var q = true
     var x = 3
@@ -111,9 +111,9 @@ local liszt kernel test_conditionals (v : mesh.vertices)
     lassert(a == 3)
 end
 
-test_conditionals(mesh.vertices)
+mesh.vertices:map(test_conditionals)
 
-local liszt kernel test_arith(v : mesh.vertices)
+local liszt test_arith(v : mesh.vertices)
     -- BinaryOp, UnaryOp, InitStatement, Number, Bool, and RValue codegen tests
     var x = 9
     lassert(x == 9)
@@ -156,9 +156,9 @@ local liszt kernel test_arith(v : mesh.vertices)
     f = a * vv
     lassert(f == e)
 end
-test_arith(mesh.vertices)
+mesh.vertices:map(test_arith)
 
-local liszt kernel test_while (v : mesh.vertices)
+local liszt test_while (v : mesh.vertices)
     -- While Statement tests --
     -- if either of these while statements doesn't terminate, then our codegen scoping is wrong!
     var a = true
@@ -172,10 +172,10 @@ local liszt kernel test_while (v : mesh.vertices)
         var b = false
     end
 end
-test_while(mesh.vertices)
+mesh.vertices:map(test_while)
 
 
-local liszt kernel test_do (v : mesh.vertices)
+local liszt test_do (v : mesh.vertices)
     var b = false
     var x = true
     var y = 3
@@ -193,10 +193,10 @@ local liszt kernel test_do (v : mesh.vertices)
     lassert(x == true)
     lassert(y == 4)
 end
-test_do(mesh.vertices)
+mesh.vertices:map(test_do)
 
 
-local liszt kernel test_repeat (v : mesh.vertices)
+local liszt test_repeat (v : mesh.vertices)
     -- RepeatStatement tests -- 
     var x = 0
     var y = 0
@@ -213,10 +213,10 @@ local liszt kernel test_repeat (v : mesh.vertices)
     until y == 5
     lassert(y == 5)
 end
-test_repeat(mesh.vertices)
+mesh.vertices:map(test_repeat)
 
 
-local liszt kernel test_for (v : mesh.vertices)
+local liszt test_for (v : mesh.vertices)
     -- Numeric for tests: --
     var x = true
     for i = 1, 5 do
@@ -225,4 +225,4 @@ local liszt kernel test_for (v : mesh.vertices)
     end
     lassert(x == true)
 end
-test_for(mesh.vertices)
+mesh.vertices:map(test_for)

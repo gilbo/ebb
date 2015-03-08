@@ -7,7 +7,8 @@ local mesh = LMesh.Load("examples/mesh.lmesh")
 sf   = L.Global(L.float, 0.0)
 
 test.fail_function(function()
-  liszt kernel test (c : mesh.cells)
+  local liszt test (c : mesh.cells)
     sf.a = 1
   end
+  mesh.cells:map(test)
 end, "select operator not supported")

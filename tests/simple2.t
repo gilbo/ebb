@@ -7,10 +7,10 @@ local com = L.Global(L.vector(L.float, 3), {0, 0, 0})
 
 function center_of_mass ()
 	com:set({0,0,0})
-	local sum_pos = liszt kernel (v : mesh.vertices)
+	local sum_pos = liszt (v : mesh.vertices)
 		com += L.vec3f(v.position)
 	end
-	sum_pos(mesh.vertices)
+	mesh.vertices:map(sum_pos)
 	local sz = mesh.vertices:Size()
 	local c  = com:get()
 	return { c[1]/sz, c[2]/sz, c[3]/sz }
@@ -18,10 +18,10 @@ end
 
 local function displace_mesh (delta_x, delta_y, delta_z)
 	local d = L.Constant(L.vec3d, {delta_x, delta_y, delta_z})
-	local dk = liszt kernel (v : mesh.vertices)
+	local dk = liszt (v : mesh.vertices)
 		v.position += d
 	end
-	dk(mesh.vertices)
+	mesh.vertices:map(dk)
 end
 
 test.aeq(center_of_mass(), {0, 0, 0})

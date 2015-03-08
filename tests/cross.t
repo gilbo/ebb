@@ -12,7 +12,7 @@ local v2 = L.Constant(L.vec3f, {5, 7, 11})
 local v3 = L.Constant(L.vec3i, {1, 2, 3})
 local v4 = L.Constant(L.vec3i, {5, 7, 11})
 
-local test_cross = liszt kernel(f : mesh.faces)
+local test_cross = liszt(f : mesh.faces)
     assert(cross(v1, v2) == {1, 4, -3}) -- simple test
     assert(cross(v3, v4) == {1, 4, -3}) -- int only
     assert(cross(v1, v4) == {1, 4, -3}) -- cross types
@@ -21,4 +21,4 @@ local test_cross = liszt kernel(f : mesh.faces)
     assert(cross(v1, expr) == {2, 8, -6}) -- test working with local variables
     assert(cross(v1, v1 + 2 * v2) == {2, 8, -6}) -- test working with expressions
 end
-test_cross(mesh.faces)
+mesh.faces:map(test_cross)

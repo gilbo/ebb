@@ -4,10 +4,10 @@ local M = LMesh.Load("examples/mesh.lmesh")
 
 
 function shift(x,y,z)
-	local pass_kernel = liszt kernel(v : M.vertices)
+	local liszt pass_func (v : M.vertices)
 	    v.position = {x,y,z}
 	end
-	pass_kernel(M.vertices)
+	M.vertices:map(pass_func)
 end
 
 function check(x,y,z)
