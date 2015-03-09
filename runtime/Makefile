@@ -21,12 +21,6 @@ CUDA_HOME ?= /usr/local/cuda
 
 LIBRARIES = libsingle_runtime.so
 
-# Make libdevice math symbols available if the GPU runtime is supported by terra
--include ../terra/Makefile.inc
-ifeq ($(ENABLE_CUDA),1)
-LIBRARIES += libdevice.bc
-endif
-
 all: $(LIBRARIES)
 
 lib%.so:   build/%.o $(COMMON_OBJ)
@@ -34,9 +28,6 @@ lib%.so:   build/%.o $(COMMON_OBJ)
 
 build/%.o:	src/%.cpp 
 	$(CXX) $(FLAGS) $< -c -o $@
-	
-libdevice.bc: $(CUDA_HOME)/nvvm/libdevice/libdevice.compute_20.10.bc
-	$(OPT) -nvvm-reflect $< -o $@
 
 clean:
 	rm -rf $(LIBRARIES) build/*
