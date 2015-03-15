@@ -328,13 +328,13 @@ Grid.NewGrid2d{
         _periodic   = wrap_bnd,
         -- relations
         cells           = L.NewRelation { name = 'cells',
-                            dim = params.size,  periodic = wrap_bnd },
+                            dims = params.size,  periodic = wrap_bnd },
         dual_vertices   = L.NewRelation { name = 'dual_vertices',
-                            dim = params.size,  periodic = wrap_bnd },
+                            dims = params.size,  periodic = wrap_bnd },
         vertices        = L.NewRelation { name = 'vertices',
-                            dim = vsize,        periodic = wrap_bnd },
+                            dims = vsize,        periodic = wrap_bnd },
         dual_cells      = L.NewRelation { name = 'dual_cells',
-                            dim = vsize,        periodic = wrap_bnd },
+                            dims = vsize,        periodic = wrap_bnd },
     }, Grid2d)
 
     setup2dCells(grid)
@@ -729,13 +729,13 @@ Grid.NewGrid3d{
         _periodic   = wrap_bnd,
         -- relations
         cells           = L.NewRelation { name = 'cells',
-                            dim = params.size,  periodic = wrap_bnd },
+                            dims = params.size,  periodic = wrap_bnd },
         dual_vertices   = L.NewRelation { name = 'dual_vertices',
-                            dim = params.size,  periodic = wrap_bnd },
+                            dims = params.size,  periodic = wrap_bnd },
         vertices        = L.NewRelation { name = 'vertices',
-                            dim = vsize,        periodic = wrap_bnd },
+                            dims = vsize,        periodic = wrap_bnd },
         dual_cells      = L.NewRelation { name = 'dual_cells',
-                            dim = vsize,        periodic = wrap_bnd },
+                            dims = vsize,        periodic = wrap_bnd },
     }, Grid3d)
 
     setup3dCells(grid)

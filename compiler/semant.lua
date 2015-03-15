@@ -1161,7 +1161,7 @@ function ast.TableLookup:check(ctxt)
         elseif L.is_macro(luaval) then
             return RunMacro(ctxt,self,luaval,{tab})
         -- desugar function-fields from key.func to func(key)
-        elseif L.is_user_func(luaval) then
+        elseif L.is_function(luaval) then
             return InlineUserFunc(ctxt,self,luaval,{tab})
         else
             return err(self, ctxt, "Key from "..ttype.relation:Name()..
@@ -1259,7 +1259,7 @@ function ast.Call:check(ctxt)
     elseif v and L.is_macro(v) then
         -- replace the call node with the inlined AST
         call = RunMacro(ctxt, self, v, call.params)
-    elseif v and L.is_user_func(v) then
+    elseif v and L.is_function(v) then
         call = InlineUserFunc(ctxt, self, v, call.params)
     elseif v and T.isLisztType(v) and v:isValueType() then
         local params = call.params
@@ -1285,10 +1285,15 @@ function ast.Call:check(ctxt)
     -- __apply_macro  i.e.  c(1,0)  for offsetting in a grid
     elseif func.node_type:isScalarKey() then
         local apply_macro = func.node_type.relation.__apply_macro
-        local params = {func}
-        for _,v in ipairs(call.params) do table.insert(params, v) end
-        call = RunMacro(ctxt, self, apply_macro, params)
-
+        if L.is_macro(apply_macro) then
+            local params = {func}
+            for _,v in ipairs(call.params) do table.insert(params, v) end
+            call = RunMacro(ctxt, self, apply_macro, params)
+        else
+            ctxt:error(self, "Relation "..tostring(func.node_type.relation)..
+                             " does not have an __apply_macro"..
+                             " macro defined; cannot call key.")
+        end
     elseif func.node_type:isError() then
         -- fall through
         -- (do not print error messages for errors already reported)

@@ -4,8 +4,8 @@ require "tests/test"
 --error('NEED TO WRITE GRID TESTS; DO WHILE REWRITING GRID DOMAIN')
 
 local rel1 = L.NewRelation { name="rel1", size = 5 }
-local rel2 = L.NewRelation { name="rel2", dim = {2,3} }
-local rel3 = L.NewRelation { name="rel3", dim = {3,2,2} }
+local rel2 = L.NewRelation { name="rel2", dims = {2,3} }
+local rel3 = L.NewRelation { name="rel3", dims = {3,2,2} }
 
 test.eq(rel1:isGrid(), false)
 test.eq(rel2:isGrid(), true)
@@ -23,7 +23,7 @@ test.fail_function(function()
   local relbad = L.NewRelation { name="relbad", mode="GRID" }
 end, "Grids must specify 'dim' argument")
 test.fail_function(function()
-  local relbad = L.NewRelation { name="relbad", dim={5} }
+  local relbad = L.NewRelation { name="relbad", dims={5} }
 end, "a table of 2 to 3 numbers")
 
 -- test loading
@@ -110,7 +110,7 @@ rel2:map(scramble2to3)
 -- Test Periodicity
 local prel2 = L.NewRelation {
   name = "prel2",
-  dim  = {3,4},
+  dims = {3,4},
   periodic={true,true}
 }
 prel2:NewField('cid', L.vec2i):Load(function(x,y) return {x,y} end)

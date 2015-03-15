@@ -1,7 +1,8 @@
 /* from: https://gist.github.com/2554919 */
 body {
-  font-family: Georgia, serif;
-  font-size: 16px;
+  font-family: Helvetica, sans-serif;
+  font-size: 14px;
+  font-weight:lighter;
   line-height: 1.6;
   padding-top: 10px;
   padding-bottom: 10px;
@@ -64,11 +65,12 @@ h6 tt, h6 code {
 
 h1 {
   font-size: 28px;
+  font-family: Georgia;
   color: black; }
 
 h2 {
-  font-size: 20px;
-  font-weight: normal;
+  font-size: 24px;
+  font-weight: bold;
   font-family: Georgia;
   letter-spacing:2px;
   font-variant: small-caps;
@@ -79,7 +81,7 @@ h3 {
   font-size: 16px;
   font-family: Georgia;
   font-style:italic;
-  font-weight: normal; }
+  font-weight: bold; }
 
 h4 {
   font-size: 16px; }
@@ -96,8 +98,8 @@ p, blockquote, ul, ol, dl, li, table, pre {
 
 hr {
   border: 0 none;
-  color: #cccccc;
-  height: 4px;
+  background-color: #eeeeee;
+  height: 1px;
   padding: 0; }
 
 body > h2:first-child {
@@ -255,12 +257,17 @@ span.float-right {
 
 code, tt {
   font-size: 14px;
+  font-weight:lighter;
   margin: 0 2px;
   padding: 0 5px;
   white-space: nowrap;
-  border: 1px solid #eaeaea;
+  border: 1px solid #f0f0f0;
   background-color: #f8f8f8;
   border-radius: 3px; }
+
+h1 code, h2 code, h3 code {
+  font-weight:bold;
+}
 
 code.code-block {
   display: block;

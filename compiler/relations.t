@@ -92,7 +92,7 @@ function L.LRelation:isFragmented() return self._is_fragmented end
 --   name = 'myrel',
 --   mode = 'PLAIN',
 --  [size = 35,]        -- IF mode ~= 'GRID'
---  [dim  = {45,90}, ]  -- IF mode == 'GRID'
+--  [dims = {45,90}, ]  -- IF mode == 'GRID'
 -- }
 function L.NewRelation(params)
   -- CHECK the parameters coming in
@@ -105,14 +105,14 @@ function L.NewRelation(params)
     error(valid_name_err_msg.relation, 2)
   end
   local mode = params.mode or 'PLAIN'
-  if not params.mode and params.dim then mode = 'GRID' end
+  if not params.mode and params.dims then mode = 'GRID' end
   if mode ~= 'PLAIN' and mode ~= 'GRID'  and mode ~= 'ELASTIC' then
     error("NewRelation(): Bad 'mode' argument.  Was expecting\n"..
           "  PLAIN, GRID, or ELASTIC", 2)
   end
   if mode == 'GRID' then
-    if type(params.dim) ~= 'table' or
-       (#params.dim ~= 2 and #params.dim ~= 3)
+    if type(params.dims) ~= 'table' or
+       (#params.dims ~= 2 and #params.dims ~= 3)
     then
       error("NewRelation(): Grids must specify 'dim' argument; "..
             "a table of 2 to 3 numbers specifying grid size", 2)
@@ -120,10 +120,10 @@ function L.NewRelation(params)
     if params.periodic then
       if type(params.periodic) ~= 'table' then
         error("NewRelation(): 'periodic' argument must be a list", 2)
-      elseif #params.periodic ~= #params.dim then
+      elseif #params.periodic ~= #params.dims then
         error("NewRelation(): periodicity is specified for "..
               tostring(#params.periodic).." dimensions; does not match "..
-              tostring(#params.dim).." dimensions specified", 2)
+              tostring(#params.dims).." dimensions specified", 2)
       end
     end
   else
@@ -152,7 +152,7 @@ function L.NewRelation(params)
     size = 1
     rawset(rel, '_dims', {})
     rawset(rel, '_periodic', {})
-    for i,n in ipairs(params.dim) do
+    for i,n in ipairs(params.dims) do
       rel._dims[i] = n
       size = size * n
       if params.periodic and params.periodic[i] then rel._periodic = true
@@ -236,7 +236,7 @@ function L.LRelation:Periodicity()
 end
 
 function L.LRelation:map(user_func, params)
-  if not L.is_user_func(user_func) then
+  if not L.is_function(user_func) then
     error('map(): expects a liszt function as the argument', 2)
   end
   params = params or {}
@@ -330,7 +330,7 @@ function L.LRelation:NewFieldFunction (name, userfunc)
           "That name is already being used.", 2)
   end
 
-  if not L.is_user_func(userfunc) then
+  if not L.is_function(userfunc) then
     error("NewFieldFunction() expects a Liszt Function "..
           "as the 2nd argument", 2)
   end
@@ -348,7 +348,8 @@ function L.LRelation:GroupBy(keyf_name)
           "unless it's a PLAIN relation", 2)
   end
 
-  local key_field = self[keyf_name]
+  local key_field = keyf_name
+  if type(key_field) == 'string' then key_field = self[key_field] end
   if not L.is_field(key_field) then
     error("GroupBy(): Could not find a field named '"..keyf_name.."'", 2)
   elseif not key_field.type:isScalarKey() then
@@ -581,7 +582,7 @@ end
 -------------------------------------------------------------------------------
 
 function L.LSubset:map(user_func)
-  if not L.is_user_func(user_func) then
+  if not L.is_function(user_func) then
     error('map(): expects a liszt function as the argument', 2)
   end
   user_func:MapOver(self)
@@ -589,6 +590,14 @@ end
 
 function L.LSubset:Relation()
   return self._owner
+end
+
+function L.LSubset:Name()
+  return self._name
+end
+
+function L.LSubset:FullName()
+  return self._owner._name .. '.' .. self._name
 end
 
 function L.LSubset:MoveTo( proc )
@@ -826,12 +835,20 @@ function L.LRelation:Copy( p )
     error("relation:Copy() should be called using the form\n"..
           "  relation:Copy{from='f1',to='f2'}", 2)
   end
-  local from = self[p.from]
-  local to   = self[p.to]
+  local from = p.from
+  local to   = p.to
+  if type(from) == 'string' then from = self[from] end
+  if type(to)   == 'string' then to   = self[to]   end
   if not L.is_field(from) then
     error('Could not find a field named "'..p.from..'"', 2) end
   if not L.is_field(to) then
     error('Could not find a field named "'..p.to..'"', 2) end
+  if not from:Relation() == self then
+    error('Field '..from:FullName()..' is not a field of '..
+          'Relation '..self:Name(), 2) end
+  if not to:Relation() == self then
+    error('Field '..to:FullName()..' is not a field of '..
+          'Relation '..self:Name(), 2) end
   if from.type ~= to.type then
     error('Cannot Copy() fields of different type', 2)
   end

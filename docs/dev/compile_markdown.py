@@ -40,5 +40,5 @@ if __name__ == "__main__":
   html_file = html_file + '.html'
 
   os.system("echo '"+TEMPLATE_0+"' >"+html_file)
-  os.system("markdown_py "+md_file+" >>"+html_file)
+  os.system("pandoc "+md_file+" >>"+html_file)
   os.system("echo '"+TEMPLATE_1+"' >>"+html_file)

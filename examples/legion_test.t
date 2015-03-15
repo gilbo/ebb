@@ -16,8 +16,8 @@ cells:NewSubsetFromFunction('interior',
                             function(x)
                               return (x > 0 and x < 3) end)
 
--- local cells = L.NewRelation { name = 'cells_2d', dim = {4,1} }
--- local dual_cells = L.NewRelation { name = 'dual_cells_2d', dim = {5,1} }
+-- local cells = L.NewRelation { name = 'cells_2d', dims = {4,1} }
+-- local dual_cells = L.NewRelation { name = 'dual_cells_2d', dims = {5,1} }
 -- cells:NewField('dual_left', dual_cells):Load({{{0, 0},  {1, 0}, {2, 0}, {0, 0}}})
 -- cells:NewField('dual_right', dual_cells):Load({{{1, 0}, {2, 0}, {3, 0}, {4, 0}}})
 
@@ -105,5 +105,5 @@ local verts = L.NewRelation { name = 'verts', size = 8 }
 verts:NewField('t', L.float):Load(0)
 verts:NewField('pos', L.vec3d):Load({1,2,3})
 
-local grid = L.NewRelation { name = 'cells', dim = {4,3,2} }
+local grid = L.NewRelation { name = 'cells', dims = {4,3,2} }
 grid:NewField('p', L.double):Load(0)

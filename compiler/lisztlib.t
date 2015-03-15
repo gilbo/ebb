@@ -49,7 +49,7 @@ local LGlobal    = make_prototype("LGlobal","global")
 local LConstant  = make_prototype("LConstant","constant")
 --local LVector    = make_prototype("LVector","vector")
 local LMacro     = make_prototype("LMacro","macro")
-local LUserFunc  = make_prototype("LUserFunc", "user_func")
+local LUserFunc  = make_prototype("LUserFunc", "function")
 local Kernel     = make_prototype("LKernel","kernel")
 
 local C = require "compiler.c"

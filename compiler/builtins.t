@@ -674,29 +674,31 @@ L.ceil  = Builtin.newDoubleFunction('ceil')
 L.fabs  = Builtin.newDoubleFunction('fabs')
 
 
-terra b_and (a : int, b : int)
-    return a and b
-end
-L.band = Builtin.new(b_and)
-function L.band.check (ast, ctxt)
-    local args = ast.params
-    if #args ~= 2 then ctxt:error(ast, "binary_and expects 2 arguments (instead got " .. #args .. ")")
-        return L.error
-    end
-    for i = 1, #args do
-        local lt = args[i].node_type
-        if lt ~= L.int then
-            ctxt:error(args[i], "argument "..i.."to binary_and must be numeric")
-            return L.error
-        end
-    end
-    return L.int
-end
-function L.band.codegen(ast, ctxt)
-    local exp1 = ast.params[1]:codegen(ctxt)
-    local exp2 = ast.params[2]:codegen(ctxt)
-    return `b_and([exp1], [exp2])
-end
+--terra b_and (a : int, b : int)
+--    return a and b
+--end
+--L.band = Builtin.new(b_and)
+--function L.band.check (ast, ctxt)
+--    local args = ast.params
+--    if #args ~= 2 then ctxt:error(ast, "binary_and expects 2 arguments "..
+--                                       "(instead got " .. #args .. ")")
+--        return L.error
+--    end
+--    for i = 1, #args do
+--        local lt = args[i].node_type
+--        if lt ~= L.int then
+--            ctxt:error(args[i], "argument "..i..
+--                                "to binary_and must be numeric")
+--            return L.error
+--        end
+--    end
+--    return L.int
+--end
+--function L.band.codegen(ast, ctxt)
+--    local exp1 = ast.params[1]:codegen(ctxt)
+--    local exp2 = ast.params[2]:codegen(ctxt)
+--    return `b_and([exp1], [exp2])
+--end
 
 L.pow = Builtin.new(C.pow)
 function L.pow.check (ast, ctxt)

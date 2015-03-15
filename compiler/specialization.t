@@ -356,7 +356,7 @@ local function luav_to_ast(luav, src_node)
     node = NewLuaObject(src_node,luav)
   elseif L.is_relation(luav) then
     node = NewLuaObject(src_node,luav)
-  elseif L.is_user_func(luav) then
+  elseif L.is_function(luav) then
     node = NewLuaObject(src_node,luav)
   elseif L.is_macro(luav) then
     node = NewLuaObject(src_node,luav)
