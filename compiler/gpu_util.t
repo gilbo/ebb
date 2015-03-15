@@ -89,7 +89,11 @@ end)
 -- link the bitcode for libdevice so that we can access device math functions
 -- CUDA libdevice has all the math functions:
 -- http://docs.nvidia.com/cuda/libdevice-users-guide/#axzz3CND85k3B
-terralib.linklibrary("runtime/libdevice.bc")
+local cuda_success, cuda_version = pcall(function() return cudalib.localversion() end)
+cuda_version = cuda_success and cuda_version or 30
+
+local libdevice = terralib.cudahome..string.format("/nvvm/libdevice/libdevice.compute_%d.10.bc",cuda_version)
+terralib.linklibrary(libdevice)
 
 local cbrt = terralib.externfunction("__nv_cbrt", double -> double)
 local cos  = terralib.externfunction("__nv_cos",  double -> double)
