@@ -3,17 +3,17 @@
 #   installations; set them to the appropriate values please.
 # If Legion isn't available, don't worry,
 #   this Makefile won't try to build Legion support.
-DEFAULT_TERRA_INSTALL_DIR:=../terra
-DEFAULT_LEGION_INSTALL_DIR:=../legion
+TERRA_DIR?=../terra
+LEGION_DIR?=../legion
 
-FOUND_TERRA:=$(wildcard $(DEFAULT_TERRA_INSTALL_DIR))
-FOUND_LEGION:=$(wildcard $(DEFAULT_LEGION_INSTALL_DIR))
+FOUND_TERRA:=$(wildcard $(TERRA_DIR))
+FOUND_LEGION:=$(wildcard $(LEGION_DIR))
 
 # report an error to the user if we can't find Terra
 ifndef FOUND_TERRA
 define TERRA_NOT_FOUND_ERROR
 Could not find Terra in the default location:
-  $(DEFAULT_TERRA_INSTALL_DIR)
+  $(TERRA_DIR)
 Please edit the Makefile to specify where Terra is located
 endef
 $(error $(TERRA_NOT_FOUND_ERROR))
@@ -21,25 +21,24 @@ endif
 # Do not report an error if we can't find Legion.  That's ok.
 
 
-
-# These variables define the location of various resources
-TERRA_DIR:=$(realpath ./terra)
-LEGION_DIR:=$(realpath ./legion)
+REAL_TERRA_DIR:=$(realpath ./terra)
+REAL_LEGION_DIR:=$(realpath ./legion)
 #ifdef here protects against case that symlinks do not exist yet
 ifdef FOUND_LEGION
-ifndef LEGION_DIR
-LEGION_DIR:=$(realpath $(DEFAULT_LEGION_INSTALL_DIR))
+ifndef REAL_LEGION_DIR
+REAL_LEGION_DIR:=$(realpath $(LEGION_DIR))
 endif
 endif
-ifdef FOUND_TERRA
-ifndef TERRA_DIR
-TERRA_DIR:=$(realpath $(DEFAULT_TERRA_INSTALL_DIR))
-endif
+ifndef REAL_TERRA_DIR
+REAL_TERRA_DIR:=$(realpath $(TERRA_DIR))
 endif
 
-LUAJIT_DIR:=$(TERRA_DIR)/build/LuaJIT-2.0.3
-LEGION_BIND_DIR:=$(LEGION_DIR)/bindings/terra
+# Locations of various directories needed for the Legion build
+LUAJIT_DIR:=$(REAL_TERRA_DIR)/build/LuaJIT-2.0.3
+LEGION_BIND_DIR:=$(REAL_LEGION_DIR)/bindings/terra
 LIBLEGION_TERRA:=$(LEGION_BIND_DIR)/liblegion_terra.so
+# environment variables to be set for recursive call to Legion build
+SET_ENV_VAR:=LUAJIT_DIR=$(LUAJIT_DIR) TERRA_DIR=$(REAL_TERRA_DIR)
 
 
 # # ----------------------------------------------------------------------- # #
@@ -56,27 +55,25 @@ all: $(ALL_DEP)
 
 # these are targets to setup symlinks, not build things
 terra:
-	ln -s $(DEFAULT_TERRA_INSTALL_DIR) $@
+	ln -s $(TERRA_DIR) $@
 
 legion:
-	ln -s $(DEFAULT_LEGION_INSTALL_DIR) $@
+	ln -s $(LEGION_DIR) $@
 
 
 # this is a target to build only those parts of legion we need
 liblegion_terra: terra legion
-	LUAJIT_DIR=$(LUAJIT_DIR) TERRA_DIR=$(TERRA_DIR) make -C $(LEGION_BIND_DIR) 
+	$(SET_ENV_VAR) make -C $(LEGION_BIND_DIR) 
 
 
 # undo anything that this makefile might have done
 clean:
 	make -C runtime clean
-ifdef LEGION_DIR
-	LUAJIT_DIR=$(LUAJIT_DIR) TERRA_DIR=$(TERRA_DIR) make -C $(LEGION_BIND_DIR) clean
-	rm legion
+ifdef REAL_LEGION_DIR # don't try to recursively call something not there
+	$(SET_ENV_VAR) make -C $(LEGION_BIND_DIR) clean
 endif
-ifdef TERRA_DIR
-	rm terra
-endif
+	-rm legion
+	-rm terra
 
 
 test: all
