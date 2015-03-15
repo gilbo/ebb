@@ -1,8 +1,8 @@
 
 # These variables describe the location of your Terra and Legion
-# installations; set them to the appropriate values please.
-# If Legion isn't available, don't worry.
-# This Makefile will not try to build Legion support.
+#   installations; set them to the appropriate values please.
+# If Legion isn't available, don't worry,
+#   this Makefile won't try to build Legion support.
 DEFAULT_TERRA_INSTALL_DIR:=../terra
 DEFAULT_LEGION_INSTALL_DIR:=../legion
 
