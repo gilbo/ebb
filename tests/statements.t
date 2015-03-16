@@ -10,10 +10,10 @@ red = L.Global(L.float, 0.0)
 -- checking decl statement, if statement, proper scoping
 local l = liszt (v : mesh.vertices)
   var y : L.float
-  if v.val == 1.0 then
-    y = 1.0
+  if v.val == 1.0f then
+    y = 1.0f
   else
-    y = 0.0
+    y = 0.0f
   end
 
   red += y

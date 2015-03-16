@@ -67,7 +67,7 @@ local read1 = liszt (f : F)
 end
 
 local write1 = liszt(f : F)
-	f.field3 = 0.0
+	f.field3 = 0.0f
 end
 
 local write2 = liszt (f : F)
@@ -75,7 +75,7 @@ local write2 = liszt (f : F)
 end
 
 local reduce3 = liszt (f : F)
-	f.field5 += {1.0,1.0,1.0,1.0}
+	f.field5 += {1.0f,1.0f,1.0f,1.0f}
 end
 
 local check2 = liszt (f : F)

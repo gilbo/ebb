@@ -22,7 +22,7 @@ local liszt compute_step (e : M.edges)
 	var v2   = e.tail
 	var dp   = v1.position - v2.position
 	var dt   = v1.temperature - v2.temperature
-	var step = 1.0 / L.length(dp)
+	var step = 1.0f / L.length(dp)
 
 	v1.flux += -dt * step
 	v2.flux +=  dt * step

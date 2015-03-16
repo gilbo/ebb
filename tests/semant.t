@@ -130,7 +130,7 @@ test.fail_function(function()
 		end
 	end
 	mesh.cells:map(t)
-end, "Could not coerce expression of type 'int' into type 'bool'")
+end, "Could not coerce expression of type 'double' into type 'bool'")
 
 test.fail_function(function()
 	local liszt t(cell : mesh.cells)
@@ -217,7 +217,7 @@ end, "variable 'i' is not defined")
 
 -- Nothing should fail in this function:
 local good = liszt (cell : mesh.cells)
-    cell.f1 = 3.0
+    cell.f1 = 3
     var lc = 4.0
 
 	var local1 = a.b.c.d
@@ -232,7 +232,7 @@ local good = liszt (cell : mesh.cells)
 	do
 		var local1 = true
 	end
-	local1 = 3.0
+	local1 = 3
 	var local1 = false
 
 	var local9 = 0

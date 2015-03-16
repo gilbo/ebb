@@ -787,6 +787,19 @@ function ast.Number:check(ctxt)
     number.value = self.value
     if self.node_type then
         number.node_type = self.node_type
+    elseif self.valuetype then
+        if     self.valuetype == int then
+            number.node_type = L.int
+        elseif self.valuetype == double then
+            number.node_type = L.double
+        elseif self.valuetype == float then
+            number.node_type = L.float
+        elseif self.valuetype == uint64 then
+            number.node_type = L.uint64
+        else
+            ctxt:error(self, "numeric literal type unsupported by Liszt")
+            number.node_type = L.error
+        end
     elseif tonumber(self.value) % 1 == 0 then
         number.node_type = L.int
     else

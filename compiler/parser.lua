@@ -144,8 +144,10 @@ lang.simpleexp = function(P)
     P:ref(node.name)
     return node
   elseif P:matches(P.number) then
-    local node = ast.Number:New(P)
-    node.value = P:next().value
+    local node     = ast.Number:New(P)
+    local token    = P:next()
+    node.value     = token.value
+    node.valuetype = token.valuetype
     return node
   elseif P:matches('true') or P:matches('false') then
     local node = ast.Bool:New(P)
