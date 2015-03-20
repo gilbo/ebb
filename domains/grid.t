@@ -3,8 +3,6 @@ import "compiler.liszt"
 local Grid = {}
 package.loaded["domains.grid"] = Grid
 
-local L = require "compiler.lisztlib"
-
 local Grid2d = {}
 local Grid3d = {}
 Grid2d.__index = Grid2d

@@ -191,8 +191,12 @@ function B.Affine.check(ast, ctxt)
             tostring(#dst_dims).."-by-"..tostring(#src_dims + 1))
         return L.error
     end
-    if not matrix.node_type:isIntegral() then
-        ctxt:error(ast[2], "Affine expects a matrix of integral values")
+    --if not matrix.node_type:isIntegral() then
+    --    ctxt:error(ast[2], "Affine expects a matrix of integral values")
+    --    return L.error
+    --end
+    if not matrix.node_type:isNumeric() then
+        ctxt:error(ast[2], "Affine expects a matrix of numeric values")
         return L.error
     end
     -- WE NEED TO CHECK CONST-NESS, but this seems to be
@@ -236,6 +240,8 @@ function B.Affine.codegen(ast, ctxt)
         for xi = 0,ncol-2 do
             sum = `[sum] + mat.d[yi][xi] * srckey.a[xi]
         end
+        -- make sure to clamp back down into address values
+        sum = `[uint64](sum)
         -- add periodicity wrapping if specified
         if dst_wrap[yi+1] then
             results[yi+1] = `full_mod(sum, [ dst_dims[yi+1] ])
@@ -599,7 +605,8 @@ function B.length.check(ast, ctxt)
     if not lt:baseType():isNumeric() then
         ctxt:error(args[1], "length expects vectors of numeric type")
     end
-    return L.float
+    if lt:baseType() == L.float then return L.float
+                                else return L.double end
 end
 
 function B.length.codegen(ast, ctxt)

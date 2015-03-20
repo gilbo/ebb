@@ -2,8 +2,9 @@ import "compiler.liszt" -- Every Liszt File should start with this command
 
 -- The first thing we do in most Liszt simulations is to load
 -- a geometric domain library.  The standard library comes with a
--- couple of basic options, so we'll just use one of those.
-local Trimesh = L.require 'domains.trimesh'
+-- couple of basic domains and code for loading from some simple file
+-- formats.  Here we load a Trimesh from an OFF file.
+local ioOff = L.require 'domains.ioOff'
 
 -- As we move into more advanced tutorials, we'll learn how to build our
 -- own geometric domain libraries or modify existing ones,
@@ -34,7 +35,7 @@ local tri_mesh_filename = PN.scriptdir() .. 'bunny.off'
 
 -- Our Trimesh library supports creating a new Trimesh domain by
 -- loading in initial data from an OFF file, so we'll go ahead and do that
-local bunny = Trimesh.LoadFromOFF(tri_mesh_filename)
+local bunny = ioOff.LoadTrimesh(tri_mesh_filename)
 
 ------------------------------------------------------------------------------
 
