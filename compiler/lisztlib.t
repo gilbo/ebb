@@ -30,6 +30,10 @@ ProcConstant.__tostring = function(proc) return proc.str end
 L.CPU = setmetatable({ str = 'CPU' }, ProcConstant)
 L.GPU = setmetatable({ str = 'GPU' }, ProcConstant)
 L.default_processor = L.CPU
+-- global signal from the launch script
+if LISZT_USE_GPU_SIGNAL then
+  L.default_processor = L.GPU
+end
 
 -------------------------------------------------------------------------------
 --[[ Liszt object prototypes:                                              ]]--

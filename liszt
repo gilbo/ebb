@@ -9,6 +9,7 @@
 
 
 local USE_LEGION = false
+local USE_GPU    = false
 local RUN_SCRIPT = false
 
 -- Pre-Process arguments
@@ -17,6 +18,8 @@ if #arg > 0 then
   for i=1,#arg do
     if arg[i] == '-legion' or arg[i] == '--legion' then
       USE_LEGION = true
+    elseif arg[i] == '-gpu' or arg[i] == '--gpu' then
+      USE_GPU = true
     else
       arg[write_i] = arg[i]
       write_i = write_i + 1
@@ -43,6 +46,9 @@ if USE_LEGION then
   package.path = package.path .. ';'..bindings_dir..'/?.t'
 end
 
+if USE_GPU then
+  rawset(_G, 'LISZT_USE_GPU_SIGNAL', true)
+end
 
 
 if RUN_SCRIPT then
