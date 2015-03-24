@@ -1,3 +1,4 @@
+--DISABLE-TEST
 import "compiler.liszt"
 require "tests/test"
 

@@ -2,35 +2,34 @@ import "compiler.liszt"
 require "tests.test"
 
 
-local LMesh = L.require "domains.lmesh"
-mesh = LMesh.Load("examples/mesh.lmesh")
+local R = L.NewRelation { name="R", size=5 }
 
 test.fail_function(function()
-  local liszt t(v : mesh.vertices)
+  local liszt t(r : R)
     var x = {1, 2, 3} + 4
   end
-  mesh.vertices:map(t)
+  R:map(t)
 end, "incompatible types")
 
 test.fail_function(function()
-  local liszt t(v : mesh.vertices)
+  local liszt t(r : R)
     var x = {1, 2, 3} / {4, 5, 6}
   end
-  mesh.vertices:map(t)
+  R:map(t)
 end, "invalid types")
 
 test.fail_function(function()
-  local liszt t(v : mesh.vertices)
+  local liszt t(r : R)
     var x = 5 < true
   end
-  mesh.vertices:map(t)
+  R:map(t)
 end, "invalid types")
 
 local t = {}
-local r = {}
+local s = {}
 test.fail_function(function()
-  local liszt t(v : mesh.vertices)
-    var x = r < t
+  local liszt t(r : R)
+    var x = s < t
   end
-  mesh.vertices:map(t)
+  R:map(t)
 end, "invalid types")

@@ -1,14 +1,14 @@
 import "compiler.liszt"
 require "tests/test"
 
-local LMesh = L.require "domains.lmesh"
-local mesh = LMesh.Load("examples/mesh.lmesh")
-local com = L.Global(L.vector(L.float, 3), {0, 0, 0})
+local ioOff = L.require 'domains.ioOff'
+local mesh  = ioOff.LoadTrimesh('tests/octa.off')
+local com   = L.Global(L.vector(L.float, 3), {0, 0, 0})
 
 function center_of_mass ()
 	com:set({0,0,0})
 	local sum_pos = liszt (v : mesh.vertices)
-		com += L.vec3f(v.position)
+		com += L.vec3f(v.pos)
 	end
 	mesh.vertices:map(sum_pos)
 	local sz = mesh.vertices:Size()
@@ -19,7 +19,7 @@ end
 local function displace_mesh (delta_x, delta_y, delta_z)
 	local d = L.Constant(L.vec3d, {delta_x, delta_y, delta_z})
 	local dk = liszt (v : mesh.vertices)
-		v.position += d
+		v.pos += d
 	end
 	mesh.vertices:map(dk)
 end

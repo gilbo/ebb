@@ -342,7 +342,12 @@ local terra lisztAssert(test : bool, file : rawstring, line : int)
 end
 
 -- NADA FOR NOW
-local terra gpuAssert(test : bool, file : rawstring, line : int) end
+local terra gpuAssert(test : bool, file : rawstring, line : int)
+    if not test then
+        G.printf("%s:%d: assertion failed!\n", file, line)
+        @([&uint8](0)) = 0 -- Should replace with a CUDA trap..../li
+    end
+end
 
 function B.assert.codegen(ast, ctxt)
     local test = ast.params[1]

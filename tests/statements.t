@@ -1,14 +1,14 @@
 import "compiler.liszt"
 require "tests/test"
 
-local LMesh = L.require "domains.lmesh"
-local mesh = LMesh.Load("examples/mesh.lmesh")
-mesh.vertices:NewField('val', L.float)
-mesh.vertices.val:LoadConstant(1)
+local R = L.NewRelation { name="R", size=6 }
+
+R:NewField('val', L.float)
+R.val:LoadConstant(1)
 red = L.Global(L.float, 0.0)
 
 -- checking decl statement, if statement, proper scoping
-local l = liszt (v : mesh.vertices)
+local l = liszt (v : R)
   var y : L.float
   if v.val == 1.0f then
     y = 1.0f
@@ -18,6 +18,6 @@ local l = liszt (v : mesh.vertices)
 
   red += y
 end
-mesh.vertices:map(l)
+R:map(l)
 
-test.eq(red:get(), mesh.vertices:Size())
+test.eq(red:get(), R:Size())

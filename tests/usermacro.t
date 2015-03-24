@@ -1,6 +1,7 @@
 import "compiler.liszt"
-local LMesh = L.require "domains.lmesh"
-local mesh = LMesh.Load("examples/mesh.lmesh")
+
+local ioOff = L.require 'domains.ioOff'
+local mesh  = ioOff.LoadTrimesh('tests/octa.off')
 
 local assert, length, print, dot = L.assert, L.length, L.print, L.dot
 
@@ -28,11 +29,11 @@ end)
 ----------------------------------------
 --Test macro that behaves like a field--
 ----------------------------------------
-mesh.vertices:NewFieldMacro('scaledposition', L.NewMacro(function(v)
-    return liszt `2*v.position 
+mesh.vertices:NewFieldMacro('scaledpos', L.NewMacro(function(v)
+    return liszt `2*v.pos 
 end))
 mesh.vertices:map(liszt(v : mesh.vertices)
-    assert(v.scaledposition == 2 * v.position)
+    assert(v.scaledpos == 2 * v.pos)
 end)
 
 -----------------------------------
@@ -42,8 +43,8 @@ local norm = L.NewMacro(function(v)
     return liszt `dot(v, v)
 end)
 mesh.vertices:map(liszt(v : mesh.vertices)
-    var lensq = norm(v.scaledposition)
-    var expected = 4.0 * length(v.position) * length(v.position)
+    var lensq = norm(v.scaledpos)
+    var expected = 4.0 * length(v.pos) * length(v.pos)
     assert(square(lensq - expected) < 0.00005)
 end)
 

@@ -1,9 +1,8 @@
 import "compiler.liszt"
-local LMesh = L.require "domains.lmesh"
-local mesh = LMesh.Load("examples/mesh.lmesh")
+local R = L.NewRelation { name="R", size=5 }
 
-local liszt fail_assert (f : mesh.faces)
+local liszt fail_assert (r : R)
     L.assert(2 + 2 == 5)
 end
-mesh.faces:map(fail_assert)
+R:map(fail_assert)
 

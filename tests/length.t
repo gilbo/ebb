@@ -3,8 +3,7 @@ import "compiler.liszt"
 local assert = L.assert
 local dot = L.dot
 local length = L.length
-local LMesh = L.require "domains.lmesh"
-local M = LMesh.Load("examples/mesh.lmesh")
+local R = L.NewRelation { name="R", size=5 }
 
 
 local v1 = L.Constant(L.vec3f, {1, 2, 3})
@@ -16,7 +15,7 @@ local sqrt = terralib.includec('math.h').sqrt
 local ans1 = sqrt(1 + 4 + 9)
 local ans2 = sqrt(4 + 16 + 36)
 
-local liszt test_dot (f : M.faces)
+local liszt test_dot (r : R)
     assert(length(v1) == ans1) -- float(3)
     assert(length(v2) == ans1) -- int(3)
     assert(length(v3) == 7) -- float(1)
@@ -26,4 +25,4 @@ local liszt test_dot (f : M.faces)
     assert(length(sum) == ans2) -- test working with local variables
     assert(length(v1 + v2) == ans2) -- test working with expressions
 end
-M.faces:map(test_dot)
+R:map(test_dot)

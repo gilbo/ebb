@@ -1,10 +1,9 @@
 import "compiler.liszt"
 require "tests/test"
 
-local LMesh = L.require "domains.lmesh"
-local mesh = LMesh.Load("examples/mesh.lmesh")
+local R = L.NewRelation { name="R", size=5 }
 
-local liszt pass(f : mesh.faces)
+local liszt pass(r : R)
     L.assert(L.any({true}))
     L.assert(not L.any({false}))
     L.assert(L.any({true, true, true}))
@@ -14,14 +13,4 @@ local liszt pass(f : mesh.faces)
     L.assert(L.all({true, true, true}))
     L.assert(not L.all({true, false}))
 end
-mesh.faces:map(pass)
-
---assert(L.any(L.NewVector(L.bool, {true})))
---assert(not L.any(L.NewVector(L.bool, {false})))
---assert(L.any(L.NewVector(L.bool, {true, true, true})))
---assert(L.any(L.NewVector(L.bool, {false, true, false, false})))
---assert(not L.any(L.NewVector(L.bool, {false, false, false, false})))
---assert(L.all(L.NewVector(L.bool, {true})))
---assert(L.all(L.NewVector(L.bool, {true, true, true})))
---assert(not L.all(L.NewVector(L.bool, {true, false, true})))
-
+R:map(pass)

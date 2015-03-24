@@ -1,18 +1,18 @@
 import "compiler.liszt"
 
-local LMesh = L.require "domains.lmesh"
-local mesh = LMesh.Load("examples/mesh.lmesh")
+local ioOff = L.require 'domains.ioOff'
+local mesh  = ioOff.LoadTrimesh('tests/octa.off')
 
-mesh.faces:NewField('field', L.float)
-mesh.faces.field:LoadConstant(1)
+mesh.vertices:NewField('field', L.float)
+mesh.vertices.field:Load(1)
 local count = L.Global(L.float, 0)
 
-local test_for = liszt (f : mesh.faces)
-	for v in f.vertices do
+local test_for = liszt (v : mesh.vertices)
+	for e in v.edges do
 	  count += 1
 	end
 end
 
-mesh.faces:map(test_for)
+mesh.vertices:map(test_for)
 
 assert(count:get() == 24)

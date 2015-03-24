@@ -1,10 +1,9 @@
 import "compiler.liszt"
 require "tests/test"
 
-local LMesh = L.require "domains.lmesh"
-local mesh = LMesh.Load("examples/mesh.lmesh")
+local R = L.NewRelation { name="R", size=5 }
 
-nf = mesh.faces:Size()
+nr = R:Size()
 sf = L.Global(L.float, 0.0)
 si = L.Global(L.int,     0)
 sb = L.Global(L.bool, true)
@@ -21,31 +20,31 @@ vb  = L.Constant(L.vector(L.bool, 5),  {true, false, true, false, true})
 local two = 2
 
 -- test vector codegen:
-local f1 = liszt (f : mesh.faces) sf3 +=   vf    end
-local f2 = liszt (f : mesh.faces) si4 -=   vi    end
-local f3 = liszt (f : mesh.faces) sb5 and= vb    end
-local f4 = liszt (f : mesh.faces) sf  +=   1     end
-local f5 = liszt (f : mesh.faces) si  -=   two   end
-local f6 = liszt (f : mesh.faces) sb  and= false end
---local f7 = liszt (f : mesh.faces) sd  /=   2.0   end
+local f1 = liszt (r : R) sf3 +=   vf    end
+local f2 = liszt (r : R) si4 -=   vi    end
+local f3 = liszt (r : R) sb5 and= vb    end
+local f4 = liszt (r : R) sf  +=   1     end
+local f5 = liszt (r : R) si  -=   two   end
+local f6 = liszt (r : R) sb  and= false end
+--local f7 = liszt (r : R) sd  /=   2.0   end
 
-mesh.faces:map(f1)
-test.fuzzy_aeq(sf3:get(), {nf, 2*nf, 3*nf})
+R:map(f1)
+test.fuzzy_aeq(sf3:get(), {nr, 2*nr, 3*nr})
 
-mesh.faces:map(f2)
-test.fuzzy_aeq(si4:get(), {1-2*nf,2-2*nf,3-2*nf,4-2*nf})
+R:map(f2)
+test.fuzzy_aeq(si4:get(), {1-2*nr,2-2*nr,3-2*nr,4-2*nr})
 
-mesh.faces:map(f3)
+R:map(f3)
 test.aeq(sb5:get(), {true, false, true, false, true})
 
-mesh.faces:map(f4)
-test.eq(sf:get(), mesh.faces:Size())
+R:map(f4)
+test.eq(sf:get(), nr)
 
-mesh.faces:map(f5)
-test.eq(si:get(), -2*nf)
+R:map(f5)
+test.eq(si:get(), -2*nr)
 
-mesh.faces:map(f6)
+R:map(f6)
 test.eq(sb:get(), false)
 
---mesh.faces:map(f7)
---test.eq(sd:get(), math.pow(2,-nf))
+--R:map(f7)
+--test.eq(sd:get(), math.pow(2,-nr))

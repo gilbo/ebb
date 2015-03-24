@@ -1,8 +1,7 @@
 import "compiler.liszt"
-local LMesh = L.require "domains.lmesh"
-local mesh = LMesh.Load("examples/mesh.lmesh")
+local R = L.NewRelation { name="R", size=5 }
 
-local liszt vk (v : mesh.vertices)
+local liszt vk (v : R)
     var v = { }
 end
-mesh.vertices:map(vk)
+R:map(vk)

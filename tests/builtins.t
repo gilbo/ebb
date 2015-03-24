@@ -1,8 +1,9 @@
 import "compiler.liszt"
 require "tests/test"
 
-local LMesh = L.require "domains.lmesh"
-local mesh = LMesh.Load("examples/mesh.lmesh")
+
+local ioOff = L.require 'domains.ioOff'
+local mesh  = ioOff.LoadTrimesh('tests/octa.off')
 
 test.fail_function(function()
   local liszt bad_id (e : mesh.edges)

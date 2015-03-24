@@ -1,13 +1,13 @@
 import "compiler.liszt"
-local LMesh = L.require "domains.lmesh"
 
-local mesh = LMesh.Load("examples/mesh.lmesh")
+local ioOff = L.require 'domains.ioOff'
+local mesh  = ioOff.LoadTrimesh('tests/octa.off')
+
 mesh.vertices:NewField('count', L.float)
 mesh.vertices.count:LoadConstant(0)
 
 
 local sum_count = liszt (e : mesh.edges)
-	e.head.count += 1
 	e.tail.count += 1
 end
 

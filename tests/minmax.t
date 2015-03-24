@@ -1,25 +1,25 @@
 import "compiler.liszt"
 require 'tests.test'
 
-local LMesh = L.require "domains.lmesh"
-local M = LMesh.Load("examples/mesh.lmesh")
+local ioOff = L.require 'domains.ioOff'
+local M     = ioOff.LoadTrimesh('tests/octa.off')
 
 local V = M.vertices
-local P = V.position
+local P = V.pos
 
-local max_pos = L.Global(L.vec3i, {-10, -10, -10})
-local min_pos = L.Global(L.vec3i, { 10,  10,  10})
+local max_pos = L.Global(L.vec3d, {-10, -10, -10})
+local min_pos = L.Global(L.vec3d, { 10,  10,  10})
 
 -- Test max reduction operator
 local max_func = liszt (v : M.vertices)
-	max_pos max= L.vec3i(v.position)
+	max_pos max= v.pos
 end
 M.vertices:map(max_func)
-test.aeq(max_pos:get(), {1,1,1})
+test.aeq(max_pos:get(), {0.5,0.5,0.5})
 
 -- Test min reduction operator
 local min_func = liszt (v : M.vertices)
-	min_pos min= L.vec3i(v.position)
+	min_pos min= v.pos
 end
 M.vertices:map(min_func)
-test.aeq(min_pos:get(), {-1, -1, -1})
+test.aeq(min_pos:get(), {-0.5, -0.5, -0.5})

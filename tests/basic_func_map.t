@@ -1,10 +1,8 @@
 import "compiler.liszt"
 
-local LMesh = L.require "domains.lmesh"
-local mesh = LMesh.Load("examples/mesh.lmesh")
 
-local faces = mesh.faces
+local R = L.NewRelation { name="R", size=5 }
 
 -- The identity function:
-local pass_func = liszt(f : faces) end
-faces:map(pass_func)
+local pass_func = liszt(r : R) end
+R:map(pass_func)

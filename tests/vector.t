@@ -11,25 +11,25 @@ local a4 = L.Constant(L.vec4f, {3.4, 4.3, 5, 6.153})
 local ai = L.Constant(L.vec3i, {2, 3, 4})
 local ab = L.Constant(L.vec3b, {true, false, true})
 
-local LMesh = L.require "domains.lmesh"
-local mesh = LMesh.Load("examples/mesh.lmesh")
+local ioOff = L.require 'domains.ioOff'
+local mesh  = ioOff.LoadTrimesh('tests/octa.off')
 
 ------------------
 -- Should pass: --
 ------------------
 local k = liszt (v : mesh.vertices)
 	var x       = {5, 5, 5}
-	v.position += x + {0, 1, 1}
+	v.pos += x + {0, 1, 1}
 end
 mesh.vertices:map(k)
 
 --[[
 -- Additive reduction over doubles currently unsupported
 local s = L.Global(L.vector(L.double, 3), {0.0, 0.0, 0.0})
-local sum_position = liszt(v : mesh.vertices)
-	s += v.position
+local sum_pos = liszt(v : mesh.vertices)
+	s += v.pos
 end
-mesh.vertices:map(sum_position)
+mesh.vertices:map(sum_pos)
 
 local f = s:get() / mesh.vertices:Size()
 test.fuzzy_aeq(f.data, {5, 6, 6})

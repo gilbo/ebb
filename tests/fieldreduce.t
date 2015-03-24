@@ -1,10 +1,10 @@
 import "compiler.liszt"
 
-local LMesh = L.require "domains.lmesh"
-local M = LMesh.Load("examples/mesh.lmesh")
+local ioOff = L.require 'domains.ioOff'
+local M = ioOff.LoadTrimesh('tests/octa.off')
 
 local V = M.vertices
-local P = V.position
+local P = V.pos
 
 local loc_data = {}
 function init_loc_data (loc_data)
@@ -19,7 +19,7 @@ init_loc_data(loc_data)
 
 function shift(x,y,z)
 	local liszt shift_func (v : M.vertices)
-	    v.position += {x,y,z}
+	    v.pos += {x,y,z}
 	end
 	M.vertices:map(shift_func)
 
@@ -50,29 +50,29 @@ shift(-1,6,3)
 ---------------------------------
 --  Centered Matrix reduction: --
 ---------------------------------
-local F = M.faces
+local T = M.triangles
 
-F:NewField("mat", L.mat3d)
+T:NewField("mat", L.mat3d)
 
-local liszt m_set(f : F)
-	var d = L.double(L.id(f))
-	f.mat = {{d, 0.0, 0.0},
+local liszt m_set(t : T)
+	var d = L.double(L.id(t))
+	t.mat = {{d, 0.0, 0.0},
              {0.0, d, 0.0},
              {0.0, 0.0, d}}
 end
 
-local liszt m_reduce_centered (f : F)
-	f.mat += {
+local liszt m_reduce_centered (t : T)
+	t.mat += {
 		{.11, .11, .11},
 		{.22, .22, .22},
 		{.33, .33, .33}
 	}
 end
 
-F:map(m_set)
-F:map(m_reduce_centered)
+T:map(m_set)
+T:map(m_reduce_centered)
 
-F.mat:print()
+T.mat:print()
 
 -----------------------------------
 --  Uncentered Matrix reduction: --

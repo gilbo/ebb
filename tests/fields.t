@@ -7,11 +7,11 @@ import "compiler.liszt"
 require "tests.test"
 
 local assert = L.assert
-local LMesh = L.require "domains.lmesh"
-local mesh = LMesh.Load("examples/mesh.lmesh")
+local ioOff = L.require 'domains.ioOff'
+local mesh  = ioOff.LoadTrimesh('tests/octa.off')
 
 local V      = mesh.vertices
-local F      = mesh.faces
+local T      = mesh.triangles
 
 ----------------
 -- check args --
@@ -30,17 +30,17 @@ test.fail_function(fail_type2, "type")
 -------------------------------
 -- Create/initialize fields: --
 -------------------------------
-F:NewField('field1', L.float)
-F:NewField('field2', L.float)
-F:NewField('field3', L.float)
-F:NewField('field4', L.bool)
-F:NewField('field5', L.vector(L.float, 4))
+T:NewField('field1', L.float)
+T:NewField('field2', L.float)
+T:NewField('field3', L.float)
+T:NewField('field4', L.bool)
+T:NewField('field5', L.vector(L.float, 4))
 
-F.field1:LoadConstant(1)
-F.field2:LoadConstant(2.5)
-F.field3:LoadConstant(6)
-F.field4:LoadConstant(false)
-F.field5:LoadConstant({ 0, 0, 0, 0 })
+T.field1:LoadConstant(1)
+T.field2:LoadConstant(2.5)
+T.field3:LoadConstant(6)
+T.field4:LoadConstant(false)
+T.field5:LoadConstant({ 0, 0, 0, 0 })
 
 
 -----------------
@@ -53,70 +53,70 @@ local b = L.Constant(L.vec4f, {1, 3, 4, 5})
 ---------------------
 -- Test functions: --
 ---------------------
-local reduce1 = liszt (f : F)
-	f.field1 -= 3 - 1/6 * a
+local reduce1 = liszt (t : T)
+	t.field1 -= 3 - 1/6 * a
 end
 
-local reduce2 = liszt (f : F)
-	f.field2 *= 3 * 7 / 3
+local reduce2 = liszt (t : T)
+	t.field2 *= 3 * 7 / 3
 end
 
-local read1 = liszt (f : F)
-	var tmp = f.field3 + 5
+local read1 = liszt (t : T)
+	var tmp = t.field3 + 5
 	assert(tmp == 11)
 end
 
-local write1 = liszt(f : F)
-	f.field3 = 0.0f
+local write1 = liszt(t : T)
+	t.field3 = 0.0f
 end
 
-local write2 = liszt (f : F)
-	f.field5 = b
+local write2 = liszt (t : T)
+	t.field5 = b
 end
 
-local reduce3 = liszt (f : F)
-	f.field5 += {1.0f,1.0f,1.0f,1.0f}
+local reduce3 = liszt (t : T)
+	t.field5 += {1.0f,1.0f,1.0f,1.0f}
 end
 
-local check2 = liszt (f : F)
-	assert(f.field5[0] == 2)
-	assert(f.field5[1] == 4)
-	assert(f.field5[2] == 5)
-	assert(f.field5[3] == 6)
+local check2 = liszt (t : T)
+	assert(t.field5[0] == 2)
+	assert(t.field5[1] == 4)
+	assert(t.field5[2] == 5)
+	assert(t.field5[3] == 6)
 end
 
-local write3 = liszt (f : F)
-	f.field4 = true
+local write3 = liszt (t : T)
+	t.field4 = true
 end
 
-local check3 = liszt (f : F)
-	assert(f.field4)
+local check3 = liszt (t : T)
+	assert(t.field4)
 end
 
-local write4 = liszt (f : F)
-	f.field4 = false
+local write4 = liszt (t : T)
+	t.field4 = false
 end
 
-local check4 = liszt(f : F)
-	assert(not f.field4)
+local check4 = liszt(t : T)
+	assert(not t.field4)
 end
 
 
 -- execute!
-F:map(reduce1)
-F:map(reduce2)
+T:map(reduce1)
+T:map(reduce2)
 
-F:map(read1)
-F:map(write1)
-F:map(write2)
-F:map(reduce3)
-F:map(check2)
+T:map(read1)
+T:map(write1)
+T:map(write2)
+T:map(reduce3)
+T:map(check2)
 
-F:map(write3)
-F:map(check3)
+T:map(write3)
+T:map(check3)
 
-F:map(write4)
-F:map(check4)
+T:map(write4)
+T:map(check4)
 
 
 
@@ -129,17 +129,17 @@ local f4 = L.Global(L.vector(L.float, 4), {0, 0, 0, 0})
 
 local function check_write ()
 	-- should initialize each field element to {2, 4, 5, 6}
-	F:map(write2)
-	F:map(reduce3)
+	T:map(write2)
+	T:map(reduce3)
 
 	f4:set({0, 0, 0, 0})
-	local sum_positions = liszt (f : F)
-		f4 += f.field5
+	local sum_positions = liszt (t : T)
+		f4 += t.field5
 	end
-	F:map(sum_positions)
+	T:map(sum_positions)
 
 	local f4t = f4:get()
-	local fs  = F:Size()
+	local fs  = T:Size()
 	local avg = { f4t[1]/fs, f4t[2]/fs, f4t[3]/fs, f4t[4]/fs }
 	test.fuzzy_aeq(avg, {2, 4, 5, 6})
 end

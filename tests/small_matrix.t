@@ -3,8 +3,8 @@ require 'tests/test'
 --local types = require "compiler.types"
 
 
-local LMesh = L.require "domains.lmesh"
-local mesh = LMesh.Load("examples/mesh.lmesh")
+local ioOff = L.require 'domains.ioOff'
+local mesh  = ioOff.LoadTrimesh('tests/octa.off')
 
 mesh.vertices:NewField('tensor_pos', L.mat3d)
 mesh.vertices:NewField('posmag', L.double)
@@ -13,7 +13,7 @@ mesh.vertices:NewField('posmag', L.double)
 -- Should pass: --
 ------------------
 local populate_tensor = liszt (v : mesh.vertices)
-  var p = v.position
+  var p = v.pos
   var tensor = {
     { p[0]*p[0], p[0]*p[1], p[0]*p[2] },
     { p[1]*p[0], p[1]*p[1], p[1]*p[2] },

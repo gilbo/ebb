@@ -1,14 +1,15 @@
 import "compiler.liszt"
-local LMesh = L.require "domains.lmesh"
-local M     = LMesh.Load("examples/mesh.lmesh")
 local test  = require "tests/test"
+
+local ioOff = L.require 'domains.ioOff'
+local M     = ioOff.LoadTrimesh('tests/octa.off')
 
 M.vertices:NewField('field1', L.float):LoadConstant(0)
 M.vertices:NewField('field2', L.float):LoadConstant(0)
 
 test.fail_function(function()
   local liszt write_neighbor (v : M.vertices)
-    for nv in v.vertices do
+    for nv in v.neighbors do
       nv.field1 = 3
     end
   end
@@ -19,7 +20,7 @@ test.fail_function(function()
   local liszt read_write_conflict (v : M.vertices)
     v.field1 = 3
     var sum : L.float = 0
-    for nv in v.vertices do
+    for nv in v.neighbors do
       sum += nv.field1
     end
   end
@@ -29,7 +30,7 @@ end, 'READ Phase is incompatible with.* EXCLUSIVE Phase')
 test.fail_function(function()
   local liszt read_reduce_conflict (v : M.vertices)
     var sum : L.float = 0
-    for nv in v.vertices do
+    for nv in v.neighbors do
       nv.field1 += 1
       sum += nv.field1
     end
@@ -40,7 +41,7 @@ end, 'READ Phase is incompatible with.* REDUCE%(%+%) Phase')
 test.fail_function(function()
   local liszt reduce_reduce_conflict (v : M.vertices)
     var sum : L.float = 0
-    for nv in v.vertices do
+    for nv in v.neighbors do
       nv.field1 += 1
       nv.field1 *= 2
     end

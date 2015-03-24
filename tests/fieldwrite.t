@@ -1,24 +1,21 @@
 import "compiler.liszt"
-local LMesh = L.require "domains.lmesh"
-local M = LMesh.Load("examples/mesh.lmesh")
 
+local R = L.NewRelation { name="R", size=5 }
+R:NewField('position', L.vec3d):Load({0,0,0})
 
 function shift(x,y,z)
-	local liszt pass_func (v : M.vertices)
-	    v.position = {x,y,z}
-	end
-	M.vertices:map(pass_func)
+  local liszt pass_func (r : R)
+      r.position = {x,y,z}
+  end
+  R:map(pass_func)
 end
 
 function check(x,y,z)
-	M.vertices.position:MoveTo(L.CPU)
-	for i = 0, M.vertices:Size() - 1 do
-		local v = M.vertices.position:DataPtr()[i]
-		assert(v.d[0] == x)
-		assert(v.d[1] == y)
-		assert(v.d[2] == z)
-	end
-	M.vertices.position:MoveTo(L.default_processor)
+  R.position:DumpFunction(function(pos, i)
+    assert(pos[1] == x)
+    assert(pos[2] == y)
+    assert(pos[3] == z)
+  end)
 end
 
 shift(0,0,0)
