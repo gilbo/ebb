@@ -1,11 +1,11 @@
---GPU-TEST
-if not terralib.cudacompile then return end
+
+-- This test actually doesn't need to run on the GPU,
+-- it's just designed to stress test GPU execution in particular
 import 'compiler.liszt'
-L.default_processor = L.GPU
 
 -- A 17x17 grid will, at current settings,
 -- will force liszt to run the generated kernel
--- on multiple blocks
+-- on multiple GPU blocks
 local N=17
 
 local Grid  = L.require 'domains.grid'
@@ -29,8 +29,9 @@ function main ()
   center[1] = center[1] / grid.cells:Size()
   center[2] = center[2] / grid.cells:Size()
 
-	-- output
-	print("center is: (" .. center[1] .. ", " .. center[2] .. ')')
+  -- test with a fudge factor
+  assert( math.abs(center[1]-0.5) < 1e-5 and
+          math.abs(center[2]-0.5) < 1e-5 )
 end
 
 main()

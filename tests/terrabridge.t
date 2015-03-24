@@ -1,3 +1,4 @@
+--DISABLE-ON-GPU  (b/c standard lib functions can't be embedded in CUDA code)
 import "compiler.liszt"
 
 local assert = L.assert
@@ -11,26 +12,28 @@ local printf = terralib.includec('stdio.h').printf
 local ans    = sqrt(5)
 
 local terra print_int(val : int)
-    printf('%d\n', val)
+  printf('%d\n', val)
 end
 
 local terra say_hi()
-    printf('Hi!\n')
+  printf('Hi!\n')
 end
 
 local terra square(val : int)
-    return val * val
+  return val * val
 end
 
 local test_terra = liszt(f : mesh.faces)
-    assert(square(5) == 25) -- call a user-defined Terra function
-    assert(sqrt(5) == ans) -- call a built-in C function
+  assert(square(5) == 25) -- call a user-defined Terra function
+  assert(sqrt(5) == ans) -- call a built-in C function
 
-    var sq5 = square(5) -- participate in assignment
-    assert(sq5 == 25)
+  var sq5 = square(5) -- participate in assignment
+  assert(sq5 == 25)
 
-    print_int(3) -- correctly handle a user-defined Terra function with no return value
-    say_hi() -- correctly handle a Terra function with no parameters
-    srand(2) -- correctly handle a built-in C function with void return type
+  print_int(3) -- correctly handle a user-defined Terra function
+               -- with no return value
+  say_hi() -- correctly handle a Terra function with no parameters
+
+  srand(2) -- correctly handle a built-in C function with void return type
 end
 mesh.faces:map(test_terra)

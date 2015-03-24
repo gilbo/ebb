@@ -1,3 +1,4 @@
+--DISABLE-ON-GPU  (TODO: Make this test pass on GPU)
 
 import "compiler.liszt"
 require "tests/test"

@@ -20,7 +20,7 @@ M.vertices:NewField('temperature', L.float):Load(init_temp)
 local liszt compute_step (e : M.edges)
 	var v1   = e.head
 	var v2   = e.tail
-	var dp   = v1.position - v2.position
+	var dp   = L.vec3f(v1.position - v2.position)
 	var dt   = v1.temperature - v2.temperature
 	var step = 1.0f / L.length(dp)
 
