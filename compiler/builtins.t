@@ -345,7 +345,9 @@ end
 local terra gpuAssert(test : bool, file : rawstring, line : int)
     if not test then
         G.printf("%s:%d: assertion failed!\n", file, line)
-        @([&uint8](0)) = 0 -- Should replace with a CUDA trap..../li
+        cudalib.nvvm_membar_gl()
+        terralib.asm(terralib.types.unit,"trap;","",true)
+        --@([&uint8](0)) = 0 -- Should replace with a CUDA trap..../li
     end
 end
 

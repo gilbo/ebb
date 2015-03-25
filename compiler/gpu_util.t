@@ -230,6 +230,7 @@ GPU.num_blocks = num_blocks
 
 GPU.barrier    = macro(function() return quote cudalib.nvvm_barrier0() end end)
 GPU.sync       = terralib.externfunction("cudaThreadSynchronize", {} -> int)
+GPU.device_sync = terralib.externfunction("cudaDeviceSynchronize", {} -> int)
 
 GPU.get_grid_dimensions = get_grid_dimensions
 
