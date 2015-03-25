@@ -15,7 +15,7 @@ if #arg > 0 then
       USE_GPU = true
     end
     if arg[i] == '-h' or arg[i] == '--help' then
-      print("Usage : run_tests.lua [options]")
+      print("Usage : run_tests [options]")
       print("Options:")
       print("  -h, --help             show this help message and exit")
       print("  -legion, --legion      run tests with legion")

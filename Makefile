@@ -6,6 +6,8 @@
 TERRA_DIR?=../terra
 LEGION_DIR?=../legion
 
+# Check whether or not the directory specified
+# exists or not
 FOUND_TERRA:=$(wildcard $(TERRA_DIR))
 FOUND_LEGION:=$(wildcard $(LEGION_DIR))
 
@@ -21,6 +23,10 @@ endif
 # Do not report an error if we can't find Legion.  That's ok.
 
 
+# Using the above info, we want to create a variable containing
+# the full path string to Terra and Legion respectively
+# because we may not have a Legion directory, and
+# because we may not have installed symlinks, this is a little bit long
 REAL_TERRA_DIR:=$(realpath ./terra)
 REAL_LEGION_DIR:=$(realpath ./legion)
 #ifdef here protects against case that symlinks do not exist yet
@@ -43,7 +49,8 @@ SET_ENV_VAR:=LUAJIT_DIR=$(LUAJIT_DIR) TERRA_DIR=$(REAL_TERRA_DIR)
 
 # # ----------------------------------------------------------------------- # #
 
-
+# Depending on whether we're building legion, modify the
+# set of build dependencies
 ALL_DEP:= terra
 ifdef FOUND_LEGION
 ALL_DEP:=$(ALL_DEP) legion liblegion_terra
@@ -69,7 +76,7 @@ liblegion_terra: terra legion
 # undo anything that this makefile might have done
 clean:
 	make -C runtime clean
-ifdef REAL_LEGION_DIR # don't try to recursively call something not there
+ifdef REAL_LEGION_DIR # don't try to recursively call into nowhere
 	$(SET_ENV_VAR) make -C $(LEGION_BIND_DIR) clean
 endif
 	-rm legion
@@ -77,5 +84,7 @@ endif
 
 
 test: all
-	terra/terra run_tests.lua
+	@echo "\n"
+	./run_tests --help
+	@echo "\n** Please call the test script directly **\n"
 
