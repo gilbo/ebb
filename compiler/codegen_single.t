@@ -4,10 +4,10 @@ package.loaded["compiler.codegen_single"] = Codegen
 local ast = require "compiler.ast"
 local T   = require "compiler.types"
 
-local C = require 'compiler.c'
-local L = require 'compiler.lisztlib'
-local G = require 'compiler.gpu_util'
-local Cc = require 'compiler.codegen_common'
+local C   = require 'compiler.c'
+local L   = require 'compiler.lisztlib'
+local G   = require 'compiler.gpu_util'
+local Cc  = require 'compiler.codegen_common'
 
 L._INTERNAL_DEV_OUTPUT_PTX = false
 
@@ -77,8 +77,8 @@ end
 -- state should be stored in ctxt.gpu and ctxt.reduce
 local Context = Cc.Context
 
-function Context:signatureType()
-  return self.bran:signatureType()
+function Context:argsType()
+  return self.bran:argsType()
 end
 function Context:FieldPtr(field)
   return self.bran:getFieldPtr(self:runtimeSignature(), field)
@@ -90,7 +90,7 @@ end
 
 function Context:runtimeSignature()
   if not self.signature_ptr then
-    self.signature_ptr = symbol(self:signatureType())
+    self.signature_ptr = symbol(self:argsType())
   end
   return self.signature_ptr
 end
@@ -229,7 +229,7 @@ function cpu_codegen (kernel_ast, ctxt)
     end
   ctxt:leaveblock()
 
-  local k = terra (signature_ptr : &ctxt:signatureType())
+  local k = terra (signature_ptr : &ctxt:argsType())
     var [ctxt:runtimeSignature()] = @signature_ptr
     [kernel_body]
   end
@@ -627,7 +627,7 @@ function gpu_codegen (kernel_ast, ctxt)
   -- signature type will have a use_boolmask field only if it
   -- was generated for a subset kernel
   local n_blocks, compute_blocks = compute_nblocks(ctxt)
-  local launcher = terra (signature_ptr : &ctxt:signatureType())
+  local launcher = terra (signature_ptr : &ctxt:argsType())
     [compute_blocks]
     var [ctxt:runtimeSignature()] = @signature_ptr
     var grid_x : uint, grid_y : uint, grid_z : uint = G.get_grid_dimensions(n_blocks, MAX_GRID_DIM)
