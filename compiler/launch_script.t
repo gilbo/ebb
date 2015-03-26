@@ -22,12 +22,14 @@ end
 
 script_filename = arg[1]
 
-success = xpcall( function ()
+exit_code = xpcall( function ()
   assert(terralib.loadfile(script_filename))()
-end, top_level_err_handler)
 
-if success then
-  os.exit(0)
-else
-  os.exit(1)
-end
+  if terralib.cudacompile then
+    local errcode = require('compiler.gpu_util').device_sync()
+    if errcode ~= 0 then
+      error('saw CUDA error code when exiting: '..errcode)
+    end
+  end
+
+end, top_level_err_handler)
