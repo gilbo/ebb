@@ -1,11 +1,12 @@
 local GPU = {}
 package.loaded['compiler.gpu_util'] = GPU
+local C   = require 'compiler.c'
 
 if not terralib.cudacompile then return end
 
---[[------------------------------------------------------------------------]]--
---[[ Thread/Grid/Block                                                      ]]--
---[[------------------------------------------------------------------------]]--
+--[[-----------------------------------------------------------------------]]--
+--[[ Thread/Grid/Block                                                     ]]--
+--[[-----------------------------------------------------------------------]]--
 local tid_x   = cudalib.nvvm_read_ptx_sreg_tid_x
 local tid_y   = cudalib.nvvm_read_ptx_sreg_tid_y
 local tid_z   = cudalib.nvvm_read_ptx_sreg_tid_z
@@ -53,9 +54,9 @@ local terra get_grid_dimensions (num_blocks : uint64, max_grid_dim : uint64) : {
 end
 
 
---[[------------------------------------------------------------------------]]--
---[[ Print                                                                  ]]--
---[[------------------------------------------------------------------------]]--
+--[[-----------------------------------------------------------------------]]--
+--[[ Print                                                                 ]]--
+--[[-----------------------------------------------------------------------]]--
 local vprintf = terralib.externfunction("cudart:vprintf", {&int8,&int8} -> int)
 local function createbuffer(args)
     local Buf = terralib.types.newstruct()
@@ -83,9 +84,9 @@ local printf = macro(function(fmt,...)
 end)
 
 
---[[------------------------------------------------------------------------]]--
---[[ Math                                                                   ]]--
---[[------------------------------------------------------------------------]]--
+--[[-----------------------------------------------------------------------]]--
+--[[ Math                                                                  ]]--
+--[[-----------------------------------------------------------------------]]--
 -- link the bitcode for libdevice so that we can access device math functions
 -- CUDA libdevice has all the math functions:
 -- http://docs.nvidia.com/cuda/libdevice-users-guide/#axzz3CND85k3B
@@ -106,9 +107,9 @@ local pow  = terralib.externfunction("__nv_pow",  {double, double} -> double)
 local fmod = terralib.externfunction("__nv_fmod", {double, double} -> double)
 
 
---[[------------------------------------------------------------------------]]--
---[[ Atomic reductions                                                      ]]--
---[[------------------------------------------------------------------------]]--
+--[[-----------------------------------------------------------------------]]--
+--[[ Atomic reductions                                                     ]]--
+--[[-----------------------------------------------------------------------]]--
 local reduce_max_int32 = macro(function(result_ptr, val)
     return terralib.asm(terralib.types.unit,"red.global.max.u32 [$0], $1;","l,r",true,result_ptr,val)
 end)
@@ -132,9 +133,9 @@ end)
 local atomic_add_float = terralib.intrinsic("llvm.nvvm.atomic.load.add.f32.p0f32", {&float,float} -> {float})
 
 
---[[------------------------------------------------------------------------]]--
---[[ Implementation of slow atomics                                         ]]--
---[[------------------------------------------------------------------------]]--
+--[[-----------------------------------------------------------------------]]--
+--[[ Implementation of slow atomics                                        ]]--
+--[[-----------------------------------------------------------------------]]--
 local cas_uint64 = terra(address : &uint64, compare : uint64, value : uint64)
     return terralib.asm(terralib.types.uint64, "atom.global.cas.b64 $0, [$1], $2, $3;","=l,l,l,l",true,address,compare,value)
 end
@@ -216,10 +217,37 @@ local min = macro(function(a, b) return
     end
 end)
 
+--[[-----------------------------------------------------------------------]]--
+--[[ Convenience Functions                                                 ]]--
+--[[-----------------------------------------------------------------------]]--
+local cuda_error_checking = macro(function(code)
+    return quote
+        if code ~= 0 then
+            C.printf("CUDA ERROR: %s\n", C.cudaGetErrorString(code))
+            error("Cuda error")
+        end
+    end
+end)
 
---[[------------------------------------------------------------------------]]--
---[[ gpu_util Interface                                                     ]]--
---[[------------------------------------------------------------------------]]--
+local terra cuda_terra_malloc(size : uint64)
+    var r : &opaque
+    cuda_error_checking(C.cudaMalloc(&r, size))
+    return r
+end
+local function cuda_malloc_wrapper(typ, N)
+    return terralib.cast(&typ, cuda_terra_malloc(N * terralib.sizeof(typ)))
+end
+
+local terra cuda_terra_free(ptr : &opaque)
+    cuda_error_checking(C.cudaFree(ptr))
+end
+local function cuda_free_wrapper(ptr)
+    cuda_terra_free(ptr)
+end
+
+--[[-----------------------------------------------------------------------]]--
+--[[ gpu_util Interface                                                    ]]--
+--[[-----------------------------------------------------------------------]]--
 GPU.kernelwrap = require 'compiler.cukernelwrap'
 
 GPU.printf     = printf
@@ -227,6 +255,10 @@ GPU.block_id   = block_id
 GPU.thread_id  = thread_id
 GPU.global_tid = global_tid
 GPU.num_blocks = num_blocks
+
+GPU.check      = cuda_error_checking
+GPU.malloc     = cuda_malloc_wrapper
+GPU.free       = cuda_free_wrapper
 
 GPU.barrier    = macro(function() return quote cudalib.nvvm_barrier0() end end)
 GPU.sync       = terralib.externfunction("cudaThreadSynchronize", {} -> int)

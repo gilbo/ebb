@@ -36,41 +36,33 @@ end
 -- on GPUs
 local ReductionCtx = Cc.ReductionCtx
 
-function ReductionCtx:computeGlobalReductionData (block_size)
-  local shared_mem_size = 0
-  local global_shared_ptrs = { }
-  local kernel = self.ctxt.bran.kernel
-  local codegen_reduce = false
-  for g, phase in pairs(kernel.global_use) do
-    if phase.reduceop then
-      codegen_reduce = true
-      global_shared_ptrs[g] = cudalib.sharedmemory(g.type:terraType(), block_size)
-      shared_mem_size = shared_mem_size + sizeof(g.type:terraType()) * block_size
-    end
-  end
-  self.reduce_required = codegen_reduce
-  self.global_shared_ptrs = global_shared_ptrs
-  self.shared_mem_size = shared_mem_size
-end
-
 function ReductionCtx:reduceRequired()
-  return self.reduce_required
+  return self.ctxt.bran:UsesGPUReduce()
 end
 function ReductionCtx:sharedMemPtr(globl)
   local tid = self.ctxt.gpu:tid()
-  return `[self.global_shared_ptrs[globl]][tid]
+  local shared_ptr = self.ctxt.bran:getTerraReduceSharedMemPtr(globl)
+  return `[shared_ptr][tid]
 end
 
 function ReductionCtx:globalSharedIter()
-  return pairs(self.global_shared_ptrs)
+  -- HACK HACK HACK
+  local globl_iter = nil
+  return function()
+    local data
+    globl_iter, data = next(self.ctxt.bran.gpu_reductions, globl_iter)
+    if globl_iter then return globl_iter, data.sharedmem
+                  else return nil end
+  end
 end
 
 function ReductionCtx:sharedMemSize()
-  return self.shared_mem_size
+  return self.ctxt.bran:nBytesSharedMem() --.shared_mem_size
 end
 
 function ReductionCtx:GlobalScratchPtr(global)
-  return self.ctxt.bran:getGlobalScratchPtr(self.ctxt:runtimeSignature(), global)
+  return self.ctxt.bran:getTerraReduceGlobalMemPtr(
+                                self.ctxt:runtimeSignature(), global)
 end
 
 -- The Context class manages state common to the GPU and CPU runtimes.  GPU-specific
@@ -81,11 +73,11 @@ function Context:argsType()
   return self.bran:argsType()
 end
 function Context:FieldPtr(field)
-  return self.bran:getFieldPtr(self:runtimeSignature(), field)
+  return self.bran:getTerraFieldPtr(self:runtimeSignature(), field)
 end
 
 function Context:GlobalPtr(global)
-  return self.bran:getGlobalPtr(self:runtimeSignature(), global)
+  return self.bran:getTerraGlobalPtr(self:runtimeSignature(), global)
 end
 
 function Context:runtimeSignature()
@@ -242,252 +234,8 @@ end
 --[[                         GPU Codegen                                ]]--
 --[[--------------------------------------------------------------------]]--
 
-
-local checkCudaError = macro(function(code)
-    return quote
-        if code ~= 0 then
-            C.printf("CUDA ERROR: %s\n", C.cudaGetErrorString(code))
-            error("Cuda error")
-        end
-    end
-end)
-
-function scalar_reduce_identity (ltype, reduceop)
-  if ltype == L.int then
-    if reduceop == '+' or reduceop == '-' then
-      return `0
-    elseif reduceop == '*' or reduceop == '/' then
-      return `1
-    elseif reduceop == 'min' then
-      return `[C.INT_MAX]
-    elseif reduceop == 'max' then
-      return `[C.INT_MIN]
-    end
-  elseif ltype == L.uint64 then
-    if reduceop == '+' or reduceop == '-' then
-      return `0
-    elseif reduceop == '*' or reduceop == '/' then
-      return `1
-    elseif reduceop == 'min' then
-      return `[C.ULONG_MAX]
-    elseif reduceop == 'max' then
-      return `0
-    end
-  elseif ltype == L.float then
-    if reduceop == '+' or reduceop == '-' then
-      return `0.0f
-    elseif reduceop == '*' or reduceop == '/' then
-      return `1.0f
-    elseif reduceop == 'min' then
-      return `[C.FLT_MAX]
-    elseif reduceop == 'max' then
-      return `[C.FLT_MIN]
-    end
-  elseif ltype == L.double then
-    if reduceop == '+' or reduceop == '-' then
-      return `0.0
-    elseif reduceop == '*' or reduceop == '/' then
-      return `1.0
-    elseif reduceop == 'min' then
-      return `[C.DBL_MAX]
-    elseif reduceop == 'max' then
-      return `[C.DBL_MIN]
-    end
-  elseif ltype == L.bool then
-    if reduceop == 'and' then
-      return `true
-    elseif reduceop == 'or' then
-      return `false
-    end
-  end
-  -- we should never reach this
-  error("scalar identity for reduction operator " .. reduceop .. 'on type '
-        .. tostring(ltype) ' not implemented')
-end
-
-function tree_reduce_op (reduceop)
-  if reduceop == '-' then return '+' end
-  if reduceop == '/' then return '*' end
-  return reduceop
-end
-
-function reduce_identity(ltype, reduceop)
-  if not ltype:isVector() then
-    return scalar_reduce_identity(ltype, reduceop)
-  end
-  local scalar_id = scalar_reduce_identity(ltype:baseType(), reduceop)
-  return quote
-    var rid : ltype:terraType()
-    var tmp : &ltype:terraBaseType() = [&ltype:terraBaseType()](&rid)
-    for i = 0, [ltype.N] do
-      tmp[i] = [scalar_id]
-    end
-  in
-    [rid]
-  end
-end
-
-function initialize_global_shared_memory (ctxt)
-  local init_code = quote end
-  local tid = ctxt.gpu:tid()
-
-  for g, shared in ctxt.reduce:globalSharedIter() do
-    local gtype = g.type
-    local reduceop = ctxt:globalPhase(g).reduceop
-
-    init_code = quote
-      [init_code]
-      [shared][tid] = [reduce_identity(gtype,reduceop)]
-    end
-  end
-  return init_code
-end
-
-function unrolled_block_reduce (op, typ, ptr, tid, block_size)
-    local expr = quote end
-    local step = block_size
-
-    op = tree_reduce_op(op)
-    while (step > 1) do
-        step = step/2
-        expr = quote
-            [expr]
-            if tid < step then
-              var exp = [mat_bin_exp(op, typ, `[ptr][tid], `[ptr][tid + step], typ, typ)]
-              terralib.attrstore(&[ptr][tid], exp, {isvolatile=true})
-            end
-            G.barrier()
-        end
-    end
-    return expr
-end
-
-function reduce_global_shared_memory (ctxt, commit_final_value)
-  local reduce_code = quote end
-
-  for g, shared in ctxt.reduce:globalSharedIter() do
-    local gtype = g.type
-    local reduceop = ctxt:globalPhase(g).reduceop
-    local scratch_ptr = ctxt.reduce:GlobalScratchPtr(g)
-
-    local tid = ctxt.gpu:tid()
-    local bid = ctxt.gpu:bid()
-
-    reduce_code = quote
-      [reduce_code]
-      [unrolled_block_reduce(reduceop, gtype, shared, tid, ctxt.gpu:blockSize())]
-      if [tid] == 0 then
-        escape
-          if commit_final_value then
-            local finalptr = ctxt:GlobalPtr(g)
-            emit quote
-              @[finalptr] = [mat_bin_exp(reduceop, gtype,`@[finalptr],`[shared][0],gtype,gtype)]
-            end
-          else
-            emit quote
-              [scratch_ptr][bid] = shared[0]
-            end
-          end
-        end
-      end
-    end
-  end
-
-  return reduce_code
-end
-
-function generate_final_reduce (ctxt, fn_name)
-  local array_len  = symbol(uint64)
-
-  -- read in all global reduction values corresponding to this (global) thread
-
-  local tid = ctxt.gpu:tid()
-  local bid = ctxt.gpu:bid()
-
-  local final_reduce = quote
-    var [tid]  = G.thread_id()
-    var [bid]  = G.block_id()
-    var gt = tid + [ctxt.gpu:blockSize()] * bid
-    var num_blocks : uint32 = G.num_blocks()
-
-    [initialize_global_shared_memory(ctxt)]
-
-    for global_index = gt, [array_len], num_blocks*[ctxt.gpu:blockSize()] do
-      escape
-        for g, shared in ctxt.reduce:globalSharedIter() do
-          local op = ctxt:globalPhase(g).reduceop
-          local typ = g.type
-          local gptr = ctxt.reduce:GlobalScratchPtr(g)
-          emit quote
-            [shared][tid] = [mat_bin_exp(op, typ, `[shared][tid], `[gptr][global_index], typ, typ)]
-          end
-        end
-      end
-    end
-    G.barrier()
-    [reduce_global_shared_memory(ctxt, true)]
-  end
-
-
-  final_reduce = terra ([ctxt:runtimeSignature()], [array_len])
-    [final_reduce] 
-  end
-  final_reduce:setname(fn_name)
-  -- using id here to set debug name of kernel for tuning/debugging
-  return G.kernelwrap(final_reduce, L._INTERNAL_DEV_OUTPUT_PTX)
-end
-
-function allocate_reduction_space (n_blocks, ctxt)
-  local alloc_code = quote end
-
-  for g, _ in ctxt.reduce:globalSharedIter() do
-    local ptr = `[ctxt.reduce:GlobalScratchPtr(g)]
-    alloc_code = quote
-      [alloc_code]
-      var sz = [sizeof(g.type:terraType())]*n_blocks
-      checkCudaError(C.cudaMalloc([&&opaque](&ptr), sz))
-    end
-  end
-
-  -- after initializing global scratch pointers in CPU memory,
-  -- copy pointers to GPU to be accessed during kernel invocation
-  return alloc_code
-end
-
-function free_reduction_space (ctxt)
-  local free_code = quote end
-
-  for g, _ in ctxt.reduce:globalSharedIter() do
-    free_code = quote
-      [free_code]
-      C.cudaFree([ctxt.reduce:GlobalScratchPtr(g)])
-    end
-  end
-
-  return free_code
-end
-
-function compute_nblocks (ctxt)
-  local n_blocks = symbol(uint)
-  local code
-  if ctxt.bran.subset then
-    code = quote
-      var [n_blocks]
-      if [ctxt:cpuSignature()].use_boolmask then
-        [n_blocks] = [uint](C.ceil([ctxt:cpuSignature()].n_rows     / float([ctxt.gpu:blockSize()])))
-      else
-        [n_blocks] = [uint](C.ceil([ctxt:cpuSignature()].index_size / float([ctxt.gpu:blockSize()])))
-      end
-    end
-  else
-    code = quote
-      var [n_blocks] = [uint](C.ceil([ctxt:cpuSignature()].n_rows / float([ctxt.gpu:blockSize()])))
-    end
-  end
-
-  return n_blocks, code
-end
-
+Codegen.reduction_identity = Cc.reduction_identity
+Codegen.reduction_binop    = Cc.reduction_binop
 
 function terraGPUId_to_Nd(dims, size, id, func)
   local atyp = L.addr_terra_types[#dims]
@@ -593,9 +341,10 @@ function gpu_codegen (kernel_ast, ctxt)
       var [ctxt.gpu:bid()] = G.block_id()
       var [id] = [ctxt.gpu:bid()] * BLOCK_SIZE + [ctxt.gpu:tid()]
 
-      -- Initialize shared memory for global reductions for kernels that require it
+      -- Initialize shared memory for global reductions
+      --  for kernels that require it
       escape if ctxt.reduce:reduceRequired() then emit quote
-        [initialize_global_shared_memory(ctxt)]
+        [ctxt.bran:GenerateSharedMemInitialization(ctxt.gpu:tid())]
         G.barrier()
       end end end
       
@@ -605,7 +354,9 @@ function gpu_codegen (kernel_ast, ctxt)
       -- global memory for kernels that require it
       escape if ctxt.reduce:reduceRequired() then emit quote
         G.barrier()
-        [reduce_global_shared_memory(ctxt)]
+        [ctxt.bran:GenerateSharedMemReduceTree(ctxt:runtimeSignature(),
+                                               ctxt.gpu:tid(),
+                                               ctxt.gpu:bid())]
       end end end
     end
 
@@ -626,36 +377,30 @@ function gpu_codegen (kernel_ast, ctxt)
   --------------------------
   -- signature type will have a use_boolmask field only if it
   -- was generated for a subset kernel
-  local n_blocks, compute_blocks = compute_nblocks(ctxt)
-  local launcher = terra (signature_ptr : &ctxt:argsType())
-    [compute_blocks]
+  local launcher = terra (n_blocks : uint, signature_ptr : &ctxt:argsType())
     var [ctxt:runtimeSignature()] = @signature_ptr
-    var grid_x : uint, grid_y : uint, grid_z : uint = G.get_grid_dimensions(n_blocks, MAX_GRID_DIM)
-    var params = terralib.CUDAParams { grid_x, grid_y, grid_z, BLOCK_SIZE, 1, 1, [ctxt.reduce:sharedMemSize()], nil }
-
-    escape if ctxt.reduce:reduceRequired() then emit quote
-      -- Allocate temporary space on the GPU for global reductions
-      [allocate_reduction_space(n_blocks,ctxt)]
-    end end end
+    var grid_x : uint,
+        grid_y : uint,
+        grid_z : uint   = G.get_grid_dimensions(n_blocks, MAX_GRID_DIM)
+    var params = terralib.CUDAParams {
+      grid_x, grid_y, grid_z,
+      BLOCK_SIZE, 1, 1,
+      [ctxt.reduce:sharedMemSize()], nil
+    }
 
     cuda_kernel(&params, [ctxt:runtimeSignature()])
     G.sync() -- flush print streams
-
-    escape
-      if ctxt.reduce:reduceRequired() then
-        local reduce_global_scratch_values = generate_final_reduce(ctxt, kernel_ast.id .. '_reduce')
-        emit quote
-          -- Launch 2nd reduction kernel and free temporary space
-          var reduce_params = terralib.CUDAParams { 1,1,1, BLOCK_SIZE,1,1, [ctxt.reduce:sharedMemSize()], nil }
-          reduce_global_scratch_values(&reduce_params, [ctxt:runtimeSignature()], n_blocks)
-          [free_reduction_space(ctxt)]
-        end
-      end
-    end
   end
 
   return launcher
 end
+
+
+
+
+
+
+
 
 
 function atomic_gpu_red_exp (op, typ, lvalptr, update)

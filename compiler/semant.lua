@@ -170,20 +170,23 @@ function ast.ExprStatement:check(ctxt)
     return copy
 end
 
+-- Do not allow subtractions and divsions, b/c
+-- 1) simplification
+-- 2) divisions of integers are not even approximately associative
 local reductions_by_type = {
     [L.float] = {
         ['+']   = true,
-        ['-']   = true,
+        --['-']   = true,
         ['*']   = true,
-        ['/']   = true,
+        --['/']   = true,
         ['min'] = true,
         ['max'] = true,
     },
     [L.double] = {
         ['+']   = true,
-        ['-']   = true,
+        --['-']   = true,
         ['*']   = true,
-        ['/']   = true,
+        --['/']   = true,
         ['min'] = true,
         ['max'] = true,
     },
@@ -191,17 +194,17 @@ local reductions_by_type = {
         ['min'] = true,
         ['max'] = true,
         ['+']   = true,
-        ['-']   = true,
+        --['-']   = true,
         ['*']   = true,
-        ['/']   = true,
+        --['/']   = true,
     },
     [L.uint64] = {
         ['min'] = true,
         ['max'] = true,
         ['+']   = true,
-        ['-']   = true,
+        --['-']   = true,
         ['*']   = true,
-        ['/']   = true,
+        --['/']   = true,
     },
     [L.bool] = {
         ['and'] = true,

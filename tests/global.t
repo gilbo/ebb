@@ -21,10 +21,10 @@ local two = 2
 
 -- test vector codegen:
 local f1 = liszt (r : R) sf3 +=   vf    end
-local f2 = liszt (r : R) si4 -=   vi    end
+local f2 = liszt (r : R) si4 +=   -vi   end
 local f3 = liszt (r : R) sb5 and= vb    end
 local f4 = liszt (r : R) sf  +=   1     end
-local f5 = liszt (r : R) si  -=   two   end
+local f5 = liszt (r : R) si  +=   -two  end
 local f6 = liszt (r : R) sb  and= false end
 --local f7 = liszt (r : R) sd  /=   2.0   end
 

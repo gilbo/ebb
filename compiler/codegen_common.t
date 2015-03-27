@@ -3,6 +3,8 @@ package.loaded["compiler.codegen_common"] = Codegen
 
 local ast = require "compiler.ast"
 
+local C = require 'compiler.c'
+
 
 --[[--------------------------------------------------------------------]]--
 --[[                 Context Object for Compiler Pass                   ]]--
@@ -27,7 +29,6 @@ function ReductionCtx.New (ctxt, block_size)
       ctxt=ctxt,
     },
     ReductionCtx)
-    rc:computeGlobalReductionData(block_size)
     return rc
 end
 
@@ -686,3 +687,85 @@ function mat_bin_exp(op, result_typ, lhe, rhe, lhtyp, rhtyp)
         'binary operator '..op..' with opeands of type '..lhtyp:toString()..
         ' and '..rhtyp:toString())
 end
+
+
+local function scalar_reduce_identity (ltype, reduceop)
+  if ltype == L.int then
+    if reduceop == '+' or reduceop == '-' then
+      return `0
+    elseif reduceop == '*' or reduceop == '/' then
+      return `1
+    elseif reduceop == 'min' then
+      return `[C.INT_MAX]
+    elseif reduceop == 'max' then
+      return `[C.INT_MIN]
+    end
+  elseif ltype == L.uint64 then
+    if reduceop == '+' or reduceop == '-' then
+      return `0
+    elseif reduceop == '*' or reduceop == '/' then
+      return `1
+    elseif reduceop == 'min' then
+      return `[C.ULONG_MAX]
+    elseif reduceop == 'max' then
+      return `0
+    end
+  elseif ltype == L.float then
+    if reduceop == '+' or reduceop == '-' then
+      return `0.0f
+    elseif reduceop == '*' or reduceop == '/' then
+      return `1.0f
+    elseif reduceop == 'min' then
+      return `[C.FLT_MAX]
+    elseif reduceop == 'max' then
+      return `[C.FLT_MIN]
+    end
+  elseif ltype == L.double then
+    if reduceop == '+' or reduceop == '-' then
+      return `0.0
+    elseif reduceop == '*' or reduceop == '/' then
+      return `1.0
+    elseif reduceop == 'min' then
+      return `[C.DBL_MAX]
+    elseif reduceop == 'max' then
+      return `[C.DBL_MIN]
+    end
+  elseif ltype == L.bool then
+    if reduceop == 'and' then
+      return `true
+    elseif reduceop == 'or' then
+      return `false
+    end
+  end
+  -- we should never reach this
+  error("scalar identity for reduction operator " .. reduceop .. 'on type '
+        .. tostring(ltype) ' not implemented')
+end
+
+function Codegen.reduction_identity(lz_type, reduceop)
+  if not lz_type:isVector() then
+    return scalar_reduce_identity(lz_type, reduceop)
+  end
+  local scalar_id = scalar_reduce_identity(lz_type:baseType(), reduceop)
+  return quote
+    var rid : lz_type:terraType()
+    var tmp : &lz_type:terraBaseType() = [&lz_type:terraBaseType()](&rid)
+    for i = 0, [lz_type.N] do
+      tmp[i] = [scalar_id]
+    end
+  in
+    [rid]
+  end
+end
+
+-- expose useful snippet of codegeneration to module-external code
+function Codegen.reduction_binop(lz_type, op, lhe, rhe)
+  return mat_bin_exp(op, lz_type, lhe, rhe, lz_type, lz_type)
+end
+
+
+
+
+
+
+

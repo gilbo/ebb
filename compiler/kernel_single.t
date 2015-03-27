@@ -1,7 +1,9 @@
-local K = {}
+local K   = {}
 package.loaded["compiler.kernel_single"] = K
-local Kc = require "compiler.kernel_common"
-local L = require "compiler.lisztlib"
+local Kc  = require "compiler.kernel_common"
+local L   = require "compiler.lisztlib"
+local C   = require "compiler.c"
+local G   = require "compiler.gpu_util"
 
 local codegen         = require "compiler.codegen_single"
 local DataArray       = require('compiler.rawdata').DataArray
@@ -104,7 +106,12 @@ end
 function Bran:UsesDelete()
   return nil ~= self.delete_data
 end
-
+function Bran:isOnGPU()
+  return self.proc == L.GPU
+end
+function Bran:isOverSubset()
+  return nil ~= self.subset
+end
 
 function Bran.CompileOrFetch(sig)
   -- expand the cache signature
@@ -133,34 +140,40 @@ function Bran.CompileOrFetch(sig)
 end
 
 function Bran:Compile()
-  local bran      = self
-  local kernel    = bran.kernel
-  local typed_ast = bran.kernel.typed_ast
+  local kernel    = self.kernel
+  local typed_ast = self.kernel.typed_ast
 
 
   -- type checking the kernel signature against the invocation
-  if typed_ast.relation ~= bran.relation then
+  if typed_ast.relation ~= self.relation then
       error('Kernels may only be called on a relation they were typed with', 3)
   end
 
-  bran.arg_layout = ArgLayout.New()
+  self.arg_layout = ArgLayout.New()
 
   -- compile various kinds of data into the arg layout
-  bran:CompileFieldsGlobalsSubsets()
+  self:CompileFieldsGlobalsSubsets()
+
   -- also compile insertion and/or deletion if used
-  if kernel.inserts then    bran:CompileInserts()   end
-  if kernel.deletes then    bran:CompileDeletes()   end
+  if kernel.inserts then    self:CompileInserts()   end
+  if kernel.deletes then    self:CompileDeletes()   end
+
+  -- handle GPU specific compilation
+  if self:isOnGPU() then
+    self.sharedmem_size = 0
+    self:CompileGPUReduction()
+  end
 
   -- allocate memory for the arguments struct on the CPU.  It will be used
   -- to hold the parameter values that will be passed to the Liszt kernel.
-  bran.args = DataArray.New{
+  self.args = DataArray.New{
     size = 1,
-    type = bran.arg_layout:TerraStruct(),
+    type = self.arg_layout:TerraStruct(),
     processor = L.CPU -- DON'T MOVE
   }
 
   -- compile an executable
-  bran.executable = codegen.codegen(typed_ast, bran)
+  self.executable = codegen.codegen(typed_ast, self)
 end
 
 function Bran:CompileFieldsGlobalsSubsets()
@@ -176,7 +189,7 @@ function Bran:CompileFieldsGlobalsSubsets()
     self:getFieldId(field)
   end
   self:getFieldId(self.relation._is_live_mask)
-  for globl, _ in pairs(self.kernel.global_use) do
+  for globl, phase in pairs(self.kernel.global_use) do
     self:getGlobalId(globl)
   end
 
@@ -187,6 +200,10 @@ function Bran:CompileFieldsGlobalsSubsets()
 end
 
 --                  ---------------------------------------                  --
+
+function Bran:argsType ()
+  return self.arg_layout:TerraStruct()
+end
 
 function Bran:getFieldId(field)
   local id = self.field_ids[field]
@@ -222,21 +239,14 @@ function Bran:setGlobalPtr(global)
   local dataptr = global:DataPtr()
   self.args:ptr()[id] = dataptr
 end
-function Bran:argsType ()
-  return self.arg_layout:TerraStruct()
-end
-function Bran:getFieldPtr(signature_ptr, field)
+
+function Bran:getTerraFieldPtr(signature_ptr, field)
   local id = self:getFieldId(field)
   return `[signature_ptr].[id]
 end
-function Bran:getGlobalPtr(signature_ptr, global)
+function Bran:getTerraGlobalPtr(signature_ptr, global)
   local id = self:getGlobalId(global)
   return `[signature_ptr].[id]
-end
-function Bran:getGlobalScratchPtr(signature_ptr, global)
-    local id = self:getGlobalId(global)
-    id = "reduce_" .. id
-    return `[signature_ptr].[id]
 end
 
 --                  ---------------------------------------                  --
@@ -270,11 +280,14 @@ function Bran:BindData()
   -- Bind inserts and deletions before anything else, because
   -- the binding may trigger computations to re-size/re-allocate
   -- data in some cases, invalidating previous data pointers
-  if self:UsesInsert() then   self:bindInsertData()   end
-  if self:UsesDelete() then   self:bindDeleteData()   end
+  if self:UsesInsert()    then   self:bindInsertData()        end
+  if self:UsesDelete()    then   self:bindDeleteData()        end
 
   -- Bind the rest of the data
   self:bindFieldGlobalSubsetArgs()
+
+  -- Bind/Initialize any reduction data as needed
+  if self:UsesGPUReduce() then   self:bindGPUReductionData()  end
 end
 
 function Bran:bindFieldGlobalSubsetArgs()
@@ -306,15 +319,22 @@ end
 --                  ---------------------------------------                  --
 
 function Bran:Launch()
-  self.executable(self.args:ptr())
+  if self:isOnGPU() then
+    self.executable(self:numGPUBlocks(), self.args:ptr())
+  else
+    self.executable(self.args:ptr())
+  end
 end
 
 --                  ---------------------------------------                  --
 
 function Bran:PostLaunchCleanup()
+  -- GPU Reduction finishing and cleanup
+  if self:UsesGPUReduce()   then   self:postprocessGPUReduction()  end
+
   -- Handle post execution Insertion and Deletion Behaviors
-  if self:UsesInsert() then   self:postprocessInsertions()  end
-  if self:UsesDelete() then   self:postprocessDeletions()   end
+  if self:UsesInsert()      then   self:postprocessInsertions()    end
+  if self:UsesDelete()      then   self:postprocessDeletions()     end
 end
 
 
@@ -430,6 +450,276 @@ end
 
 
 
+
+-------------------------------------------------------------------------------
+--[[ GPU Extensions                                                        ]]--
+-------------------------------------------------------------------------------
+
+function Bran:UsesGPUReduce()
+  return self.uses_gpu_reduce
+end
+
+function Bran:numGPUBlocks()
+  if self:isOverSubset() then
+    if self.subset._boolmask then
+      return math.ceil(self.relation:ConcreteSize() / self.blocksize)
+    elseif self.subset._index then
+      return math.ceil(self.subset._index:Size() / self.blocksize)
+    end
+  else
+    return math.ceil(self.relation:ConcreteSize() / self.blocksize)
+  end
+end
+
+function Bran:nBytesSharedMem()
+  return self.sharedmem_size
+end
+
+function Bran:getBlockSize()
+  return self.blocksize
+end
+
+function Bran:getReduceData(global)
+  local data = self.gpu_reductions[global]
+  if not data then
+    local gid = self:getGlobalId(global)
+    local id  = 'reduce_globalmem_'..gid:sub(#'global_' + 1)
+         data = { id = id }
+
+    self.gpu_reductions[global] = data
+    self.arg_layout:addReduce(id, global.type:terraType())
+  end
+  return data
+end
+
+function Bran:setReduceGlobalMemPtr(global, dataptr)
+  local data = self:getReduceData(global)
+  self.args:ptr()[data.id] = dataptr
+end
+
+function Bran:getTerraReduceGlobalMemPtr(signature_ptr, global)
+  local data = self:getReduceData(global)
+  return `[signature_ptr].[data.id]
+end
+
+function Bran:freeReduceGlobalMemPtr(global)
+  local data = self:getReduceData(global)
+  local aptr = self.args:ptr()
+  G.free( aptr[data.id] )
+  aptr[data.id] = nil
+end
+
+function Bran:getTerraReduceSharedMemPtr(global)
+  local data = self:getReduceData(global)
+  return data.sharedmem
+end
+
+--                  ---------------------------------------                  --
+
+-- The following are exclusively for GPU reduction
+
+function Bran:CompileGPUReduction()
+  self.uses_gpu_reduce        = false -- until we see otherwise...
+  self.gpu_reductions         = {}
+  self.sharedmem_size         = self.sharedmem_size or 0
+
+  -- NOTE: because GPU memory is idiosyncratic, we need to handle
+  --    GPU global memory and
+  --    GPU shared memory differently.
+  --  Specifically,
+  --    * we handle the global memory in the same way we handle
+  --      field and global data; by adding an entry into
+  --      the argument structure, binding appropriate allocated data, etc.
+  --    * we handle the shared memory via a mechanism that looks more
+  --      like Terra globals.  As such, these "shared memory pointers"
+  --      get inlined directly into the Terra code.  This is safe because
+  --      the CUDA kernel launch, not the client CPU code, is responsible
+  --      for allocating and deallocating shared memory on kernel launch/exit
+
+  -- Find all the global variables in this kernel that are being reduced
+  for globl, phase in pairs(self.kernel.global_use) do
+    if phase.reduceop then
+      self.uses_gpu_reduce  = true
+      local ttype           = globl.type:terraType()
+
+      local reduce_data     = self:getReduceData(globl)
+      reduce_data.phase     = phase
+      reduce_data.sharedmem = cudalib.sharedmemory(ttype, self.blocksize)
+
+      self.sharedmem_size   = self.sharedmem_size +
+                                sizeof(ttype) * self.blocksize
+    end
+  end
+
+  self:CompileGlobalMemReductionKernel()
+end
+
+
+function Bran:GenerateSharedMemInitialization(tid_sym)
+  local code = quote end
+  for globl, data in pairs(self.gpu_reductions) do
+    local op        = data.phase.reduceop
+    local lz_type   = globl.type
+    local sharedmem = data.sharedmem
+
+    code = quote
+      [code]
+      [sharedmem][tid_sym] = [codegen.reduction_identity(lz_type, op)]
+    end
+  end
+  return code
+end
+
+function Bran:GenerateSharedMemReduceTree(args_sym, tid_sym, bid_sym, is_final)
+  is_final = is_final or false
+  local code = quote end
+  for globl, data in pairs(self.gpu_reductions) do
+    local op          = data.phase.reduceop
+    local lz_type     = globl.type
+    local sharedmem   = data.sharedmem
+    local finalptr    = self:getTerraGlobalPtr(args_sym, globl)
+    local globalmem   = self:getTerraReduceGlobalMemPtr(args_sym, globl)
+
+    -- Insert an unrolled reduction tree here
+    local step = self.blocksize
+    while step > 1 do
+      step = step/2
+      code = quote
+        [code]
+        if tid_sym < step then
+          var exp = [codegen.reduction_binop(lz_type, op,
+                                              `[sharedmem][tid_sym],
+                                              `[sharedmem][tid_sym + step])]
+          terralib.attrstore(&[sharedmem][tid_sym], exp, {isvolatile=true})
+        end
+        G.barrier()
+      end
+    end
+
+    -- Finally, reduce into the actual global value
+    code = quote
+      [code]
+      if [tid_sym] == 0 then
+        if is_final then
+          @[finalptr] = [codegen.reduction_binop(lz_type, op,
+                                                  `@[finalptr],
+                                                  `[sharedmem][0])]
+        else
+          [globalmem][bid_sym] = [sharedmem][0]
+        end
+      end
+    end
+  end
+  return code
+end
+
+function Bran:CompileGlobalMemReductionKernel()
+  local bran      = self
+  local fn_name   = bran.kernel.typed_ast.id .. '_globalmem_reduction'
+
+  -- Let N be the number of rows in the original relation
+  -- and B be the block size for both the primary and this (the secondary)
+  --          cuda kernels
+  -- Let M = CEIL(N/B) be the number of blocks launched in the primary
+  --          cuda kernel
+  -- Then note that there are M entries in the globalmem array that
+  --  need to be reduced.  We assume that the primary cuda kernel filled
+  --  in a correct value for each of these.
+  -- The secondary kernel will launch exactly one block with B threads.
+  --  First we'll reduce all of the M entries in the globalmem array in
+  --  chunks of B values into a sharedmem buffer.  Then we'll do a local
+  --  tree reduction on those B values.
+  -- NOTE EDGE CASE: What if M < B?  Then we'll initialize the shared
+  --  buffer to an identity value and fail to execute the loop iteration
+  --  for the trailing B-M threads of the block.  (This is memory safe)
+  --  We will get the correct values b/c reducing identities has no effect.
+  local args      = symbol(bran:argsType())
+  local array_len = symbol(uint64)
+  local tid       = symbol(uint32)
+  local bid       = symbol(uint32)
+
+  local cuda_kernel =
+  terra([array_len], [args])
+    var [tid]    : uint32 = G.thread_id()
+    var [bid]    : uint32 = G.block_id()
+    var n_blocks : uint32 = G.num_blocks()
+    var gt                = tid + [bran.blocksize] * bid
+    
+    -- INITIALIZE the shared memory
+    [bran:GenerateSharedMemInitialization(tid)]
+    
+    -- REDUCE the global memory into the provided shared memory
+    -- count from (gt) till (array_len) by step sizes of (blocksize)
+    for gi = gt, array_len, n_blocks * [bran.blocksize] do
+      escape for globl, data in pairs(bran.gpu_reductions) do
+        local op          = data.phase.reduceop
+        local lz_type     = globl.type
+        local sharedmem   = data.sharedmem
+        local globalmem   = bran:getTerraReduceGlobalMemPtr(args, globl)
+
+        emit quote
+          [sharedmem][tid]  = [codegen.reduction_binop(lz_type, op,
+                                                       `[sharedmem][tid],
+                                                       `[globalmem][gi])]
+        end
+      end end
+    end
+
+    G.barrier()
+  
+    -- REDUCE the shared memory using a tree
+    [bran:GenerateSharedMemReduceTree(args, tid, bid, true)]
+  end
+  cuda_kernel:setname(fn_name)
+  cuda_kernel = G.kernelwrap(cuda_kernel, L._INTERNAL_DEV_OUTPUT_PTX)
+
+  -- the globalmem array has an entry for every block in the primary kernel
+  local globalmem_array_len = bran:numGPUBlocks() 
+  local terra launcher( argptr : &(bran:argsType()) )
+    var launch_params = terralib.CUDAParams {
+      1,1,1, [bran.blocksize],1,1, [bran.sharedmem_size], nil
+    }
+    cuda_kernel(&launch_params, globalmem_array_len, @argptr )
+  end
+  launcher:setname(fn_name..'_launcher')
+
+  bran.global_reduction_pass = launcher
+end
+
+function Bran:DynamicGPUReductionChecks()
+  if self.proc ~= L.GPU then
+    error("INTERNAL ERROR: Should only try to run GPUReduction on the GPU...")
+  end
+end
+
+function Bran:bindGPUReductionData()
+  local n_blocks = self:numGPUBlocks()
+
+  -- allocate GPU global memory for the reduction
+  for globl, _ in pairs(self.gpu_reductions) do
+    local ttype = globl.type:terraType()
+    self:setReduceGlobalMemPtr(globl, G.malloc(ttype, n_blocks))
+  end
+end
+
+function Bran:postprocessGPUReduction()
+  -- perform inter-block reduction step (secondary kernel launch)
+  self.global_reduction_pass(self.args:ptr())
+
+  -- free GPU global memory allocated for the reduction
+  for globl, _ in pairs(self.gpu_reductions) do
+    self:freeReduceGlobalMemPtr(globl)
+  end
+end
+
+
+
+
+
+
+
+
+
 -------------------------------------------------------------------------------
 --[[ ArgLayout                                                            ]]--
 -------------------------------------------------------------------------------
@@ -437,9 +727,9 @@ end
 
 function ArgLayout.New()
   return setmetatable({
-    fields    = terralib.newlist(),
-    globals   = terralib.newlist(),
-    reduce    = terralib.newlist()
+    fields            = terralib.newlist(),
+    globals           = terralib.newlist(),
+    reduce            = terralib.newlist()
   }, ArgLayout)
 end
 
@@ -455,7 +745,13 @@ function ArgLayout:addGlobal(name, typ)
     error('INTERNAL ERROR: cannot add new globals to compiled layout')
   end
   table.insert(self.globals, { field=name, type=&typ })
-  table.insert(self.globals, { field='reduce_'..name,type=&typ})
+end
+
+function ArgLayout:addReduce(name, typ)
+  if self:isCompiled() then
+    error('INTERNAL ERROR: cannot add new globals to compiled layout')
+  end
+  table.insert(self.reduce, { field=name, type=&typ})
 end
 
 function ArgLayout:turnSubsetOn()
