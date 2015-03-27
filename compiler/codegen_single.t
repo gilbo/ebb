@@ -15,93 +15,151 @@ L._INTERNAL_DEV_OUTPUT_PTX = false
 --[[                 Context Object for Compiler Pass                   ]]--
 --[[--------------------------------------------------------------------]]--
 
--- container class for context attributes specific to the GPU runtime: --
-local GPUContext = Cc.GPUContext
+local Context = {}
+Context.__index = Context
 
-function GPUContext:tid()
-  if not self._tid then self._tid = symbol(uint32) end
-  return self._tid
+function Context.New(env, bran)
+    local ctxt = setmetatable({
+        env  = env,
+        bran = bran,
+    }, Context)
+    return ctxt
 end
 
-function GPUContext:bid()
-  if not self._bid then self._bid = symbol(uint32) end
-  return self._bid
+function Context:localenv()
+  return self.env:localenv()
+end
+function Context:enterblock()
+  self.env:enterblock()
+end
+function Context:leaveblock()
+  self.env:leaveblock()
 end
 
-function GPUContext:blockSize()
-  return self.block_size
+-- -- -- -- -- -- -- -- -- -- -- -- -- --
+-- Info about the relation mapped over
+
+function Context:dims()
+  if not self.bran.dims then self.bran.dims = self.bran.relation:Dims() end
+  return self.bran.dims
 end
 
--- container class that manages extra state needed to support reductions
--- on GPUs
-local ReductionCtx = Cc.ReductionCtx
-
-function ReductionCtx:reduceRequired()
-  return self.ctxt.bran:UsesGPUReduce()
-end
-function ReductionCtx:sharedMemPtr(globl)
-  local tid = self.ctxt.gpu:tid()
-  local shared_ptr = self.ctxt.bran:getTerraReduceSharedMemPtr(globl)
-  return `[shared_ptr][tid]
+function Context:argKeyTerraType()
+  return L.key(self.bran.relation):terraType()
 end
 
-function ReductionCtx:globalSharedIter()
-  -- HACK HACK HACK
-  local globl_iter = nil
-  return function()
-    local data
-    globl_iter, data = next(self.ctxt.bran.gpu_reductions, globl_iter)
-    if globl_iter then return globl_iter, data.sharedmem
-                  else return nil end
-  end
+-- This one is the odd one out, generates some code
+function Context:isLiveCheck(param_var)
+  assert(self:isOverElastic())
+  local ptr = self:FieldPtr(self.bran.relation._is_live_mask)
+  -- Assuming 1D address is ok, b/c elastic relations must be 1D
+  return `ptr[param_var.a[0]]
 end
 
-function ReductionCtx:sharedMemSize()
-  return self.ctxt.bran:nBytesSharedMem() --.shared_mem_size
-end
-
-function ReductionCtx:GlobalScratchPtr(global)
-  return self.ctxt.bran:getTerraReduceGlobalMemPtr(
-                                self.ctxt:runtimeSignature(), global)
-end
-
--- The Context class manages state common to the GPU and CPU runtimes.  GPU-specific
--- state should be stored in ctxt.gpu and ctxt.reduce
-local Context = Cc.Context
+-- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
+-- Argument Struct related context functions
 
 function Context:argsType()
   return self.bran:argsType()
 end
+
+function Context:argsym()
+  if not self.arg_symbol then
+    self.arg_symbol = symbol(self:argsType())
+  end
+  return self.arg_symbol
+end
+
+-- -- -- -- -- -- -- -- -- -- -- --
+-- Modal Data
+
+function Context:onGPU()
+  return self.bran:isOnGPU()
+end
+function Context:hasGPUReduce()
+  return self.bran:UsesGPUReduce()
+end
+function Context:isOverElastic() -- meaning the relation mapped over
+  return self.bran:overElasticRelation()
+end
+function Context:isOverSubset() -- meaning a subset of the relation mapped over
+  return self.bran:isOverSubset()
+end
+
+-- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
+-- Generic Field / Global context functions
+
+function Context:hasExclusivePhase(field)
+  return self.bran.kernel.field_use[field]:isCentered()
+end
+
 function Context:FieldPtr(field)
-  return self.bran:getTerraFieldPtr(self:runtimeSignature(), field)
+  return self.bran:getTerraFieldPtr(self:argsym(), field)
 end
 
 function Context:GlobalPtr(global)
-  return self.bran:getTerraGlobalPtr(self:runtimeSignature(), global)
+  return self.bran:getTerraGlobalPtr(self:argsym(), global)
 end
 
-function Context:runtimeSignature()
-  if not self.signature_ptr then
-    self.signature_ptr = symbol(self:argsType())
-  end
-  return self.signature_ptr
+-- -- -- -- -- -- -- -- -- -- -- --
+-- GPU related context functions
+
+function Context:gpuBlockSize()
+  return self.bran:getBlockSize()
 end
-function Context:cpuSignature()
-  return self.bran.args:ptr()
+function Context:gpuSharedMemBytes()
+  return self.bran:nBytesSharedMem()
 end
-function Context:isLiveCheck(param_var)
-  local ptr = self:FieldPtr(self.bran.relation._is_live_mask)
-  return `ptr[param_var.a[0]]
+
+function Context:tid()
+  if not self._tid then self._tid = symbol(uint32) end
+  return self._tid
 end
+
+function Context:bid()
+  if not self._bid then self._bid = symbol(uint32) end
+  return self._bid
+end
+
+-- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
+-- GPU reduction related context functions
+
+function Context:gpuReduceSharedMemPtr(globl)
+  local tid = self:tid()
+  local shared_ptr = self.bran:getTerraReduceSharedMemPtr(globl)
+  return `[shared_ptr][tid]
+end
+
+-- Two odd functions to ask the bran to generate a bit of code
+-- TODO: Should we refactor the actual codegen functions in the Bran
+-- into a "codegen support" file, also containing the arithmetic
+-- expression dispatching.
+--    RULE FOR REFACTOR: take all codegen that does not depend on
+--      The AST structure, and factor that into one file apart
+--      from this AST driven codegeneration file
+function Context:codegenSharedMemInit()
+  return self.bran:GenerateSharedMemInitialization(self:tid())
+end
+function Context:codegenSharedMemTreeReduction()
+  return self.bran:GenerateSharedMemReduceTree(self:argsym(),
+                                               self:tid(),
+                                               self:bid())
+end
+
+-- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
+-- Insertion / Deletion related context functions
+
 function Context:deleteSizeVar()
   local dd = self.bran.delete_data
   if dd then
     return `@[self:GlobalPtr(dd.updated_size)]
   end
 end
+
 function Context:getInsertIndex()
-  return `[self:runtimeSignature()].insert_write
+  return `[self:argsym()].insert_write
 end
+
 function Context:incrementInsertIndex()
   local insert_index = self:getInsertIndex()
   local counter = self:GlobalPtr(self.bran.insert_data.n_inserted)
@@ -120,7 +178,7 @@ end
 
 function Codegen.codegen (kernel_ast, bran)
   local env  = terralib.newenvironment(nil)
-  local ctxt = Context.new(env, bran)
+  local ctxt = Context.New(env, bran)
 
   if ctxt:onGPU() then
     return gpu_codegen(kernel_ast, ctxt)
@@ -152,31 +210,32 @@ function terraIterNd(dims, func)
 end
 
 function cpu_codegen (kernel_ast, ctxt)
+
   ctxt:enterblock()
-    -- declare the symbol for iteration
-    local param = symbol(L.key(ctxt.bran.relation):terraType())
+    -- declare the symbol for the parameter key
+    local param = symbol(ctxt:argKeyTerraType())
     ctxt:localenv()[kernel_ast.name] = param
 
-    -- insert a check for the live row mask
+    local dims = ctxt:dims()
+    -- local id   = symbol(uint64)
 
-    local body  = quote
-      if [ctxt:isLiveCheck(param)] then
-        [kernel_ast.body:codegen(ctxt)]
+    local body = kernel_ast.body:codegen(ctxt)
+
+    -- Handle Masking of dead rows when mapping
+    -- Over an Elastic Relation
+    if ctxt:isOverElastic() then
+      if ctxt:isOnGPU() then
+        error("INTERNAL: ELASTIC ON GPU CURRENTLY UNSUPPORTED")
+      else
+        body = quote
+          if [ctxt:isLiveCheck(param)] then [body] end
+        end
       end
     end
 
-    -- by default on CPU just iterate over all the possible rows
-    local dims = ctxt:dims()
-    if ctxt:isElastic() then dims = { `[ctxt:runtimeSignature()].n_rows } end
-    local kernel_body = terraIterNd(dims, function(iter)
-      return quote
-        var [param] = iter
-        [body]
-      end
-    end)
-
-    -- special iteration logic for subset-mapped kernels
-    if ctxt.bran.subset then
+    -- determine the right way to iterate, launch in parallel, etc.
+    -- as a wrapper around the basic per-row code body
+    if ctxt:isOverSubset() then
       local boolmask = symbol('boolmask')
       local boolloop = terraIterNd(dims, function(iter)
         return quote
@@ -187,7 +246,7 @@ function cpu_codegen (kernel_ast, ctxt)
         end
       end)
       boolloop = quote
-        var [boolmask] = [ctxt:runtimeSignature()].boolmask
+        var [boolmask] = [ctxt:argsym()].boolmask
         [boolloop]
       end
 
@@ -205,24 +264,36 @@ function cpu_codegen (kernel_ast, ctxt)
           end
         end)
         indexloop = quote
-          var [indexsym] = [ctxt:runtimeSignature()].index
-          var [sizesym]  = [ctxt:runtimeSignature()].index_size
+          var [indexsym] = [ctxt:argsym()].index
+          var [sizesym]  = [ctxt:argsym()].index_size
           [indexloop]
         end
       end
 
       kernel_body = quote
-        if [ctxt:runtimeSignature()].use_boolmask then
+        if [ctxt:argsym()].use_boolmask then
           [boolloop]
         else
           [indexloop]
         end
       end
+    else
+      -- Elastic relations need to specify the loop size dynamically
+      if ctxt:isOverElastic() then dims = { `[ctxt:argsym()].n_rows } end
+      
+      local kernel_body = terraIterNd(dims, function(iter)
+        return quote
+          var [param] = iter
+          [body]
+        end
+      end)
+
     end
+
   ctxt:leaveblock()
 
-  local k = terra (signature_ptr : &ctxt:argsType())
-    var [ctxt:runtimeSignature()] = @signature_ptr
+  local k = terra (args_ptr : &ctxt:argsType())
+    var [ctxt:argsym()] = @args_ptr
     [kernel_body]
   end
   k:setname(kernel_ast.id)
@@ -269,58 +340,41 @@ function terraGPUId_to_Nd(dims, size, id, func)
 end
 
 function gpu_codegen (kernel_ast, ctxt)
-  local BLOCK_SIZE   = ctxt.bran.blocksize
-  local MAX_GRID_DIM = 65536
 
   -----------------------------
   --[[ Codegen CUDA kernel ]]--
   -----------------------------
-  ctxt:initializeGPUState(BLOCK_SIZE)
   ctxt:enterblock()
     -- declare the symbol for iteration
-    local param = symbol(L.key(ctxt.bran.relation):terraType())
+    local param = symbol(ctxt:argKeyTerraType())
     ctxt:localenv()[kernel_ast.name] = param
     local id  = symbol(uint64)
 
-    if ctxt:isElastic() then error("INTERNAL: ELASTIC ON GPU UNSUPPORTED") end
+    if ctxt:isOverElastic() then
+      error("INTERNAL: ELASTIC ON GPU CURRENTLY UNSUPPORTED")
+    end
     local dims = ctxt:dims()
 
     local body = kernel_ast.body:codegen(ctxt)
 
-    if ctxt.bran.subset then
-      --body = quote
-      --  if [ctxt:runtimeSignature()].use_boolmask then
-      --    if id < [ctxt:runtimeSignature()].n_rows and
-      --       [ctxt:runtimeSignature()].boolmask[id]
-      --    then
-      --      var [param] = [L.addr_terra_types[1]]({ a = array(id) })
-      --      [body]
-      --    end
-      --  else
-      --    if id < [ctxt:runtimeSignature()].index_size then
-      --      var i = [ctxt:runtimeSignature()].index[id]
-      --      var [param] = [L.addr_terra_types[1]]({ a = array(i) })
-      --      [body]
-      --    end
-      --  end
-      --end
+    if ctxt:isOverSubset() then
 
       body = terraGPUId_to_Nd(dims,
-      `[ctxt:runtimeSignature()].n_rows, id, function(addr)
+      `[ctxt:argsym()].n_rows, id, function(addr)
         return quote
           -- set param
           var [param]
-          if [ctxt:runtimeSignature()].use_boolmask then
+          if [ctxt:argsym()].use_boolmask then
             param = addr
           else
-            if id < [ctxt:runtimeSignature()].index_size then
-              param = [ctxt:runtimeSignature()].index[id]
+            if id < [ctxt:argsym()].index_size then
+              param = [ctxt:argsym()].index[id]
             end
           end
 
           -- conditionally execute
-          if    not [ctxt:runtimeSignature()].use_boolmask
-             or [ctxt:runtimeSignature()].boolmask[id]
+          if    not [ctxt:argsym()].use_boolmask
+             or [ctxt:argsym()].boolmask[id]
           then
             [body]
           end
@@ -328,7 +382,7 @@ function gpu_codegen (kernel_ast, ctxt)
       end)
     else
       body = terraGPUId_to_Nd(dims,
-      `[ctxt:runtimeSignature()].n_rows, id, function(addr)
+      `[ctxt:argsym()].n_rows, id, function(addr)
         return quote
           var [param] = [addr]
           [body]
@@ -337,14 +391,14 @@ function gpu_codegen (kernel_ast, ctxt)
     end
 
     local kernel_body = quote
-      var [ctxt.gpu:tid()] = G.thread_id()
-      var [ctxt.gpu:bid()] = G.block_id()
-      var [id] = [ctxt.gpu:bid()] * BLOCK_SIZE + [ctxt.gpu:tid()]
+      var [ctxt:tid()] = G.thread_id()
+      var [ctxt:bid()] = G.block_id()
+      var [id] = [ctxt:bid()] * [ctxt:gpuBlockSize()] + [ctxt:tid()]
 
       -- Initialize shared memory for global reductions
       --  for kernels that require it
-      escape if ctxt.reduce:reduceRequired() then emit quote
-        [ctxt.bran:GenerateSharedMemInitialization(ctxt.gpu:tid())]
+      escape if ctxt:hasGPUReduce() then emit quote
+        [ctxt:codegenSharedMemInit()]
         G.barrier()
       end end end
       
@@ -352,17 +406,15 @@ function gpu_codegen (kernel_ast, ctxt)
 
       -- reduce block reduction temporaries to one value and copy back to GPU
       -- global memory for kernels that require it
-      escape if ctxt.reduce:reduceRequired() then emit quote
+      escape if ctxt:hasGPUReduce() then emit quote
         G.barrier()
-        [ctxt.bran:GenerateSharedMemReduceTree(ctxt:runtimeSignature(),
-                                               ctxt.gpu:tid(),
-                                               ctxt.gpu:bid())]
+        [ctxt:codegenSharedMemTreeReduction()]
       end end end
     end
 
   ctxt:leaveblock()
 
-  local cuda_kernel = terra ([ctxt:runtimeSignature()])
+  local cuda_kernel = terra ([ctxt:argsym()])
     [kernel_body]
   end
   cuda_kernel:setname(kernel_ast.id)
@@ -375,20 +427,19 @@ function gpu_codegen (kernel_ast, ctxt)
   --------------------------
   --[[ Codegen launcher ]]--
   --------------------------
-  -- signature type will have a use_boolmask field only if it
-  -- was generated for a subset kernel
-  local launcher = terra (n_blocks : uint, signature_ptr : &ctxt:argsType())
-    var [ctxt:runtimeSignature()] = @signature_ptr
+  local MAX_GRID_DIM = 65536
+  local launcher = terra (n_blocks : uint, args_ptr : &ctxt:argsType())
+    var [ctxt:argsym()] = @args_ptr
     var grid_x : uint,
         grid_y : uint,
         grid_z : uint   = G.get_grid_dimensions(n_blocks, MAX_GRID_DIM)
     var params = terralib.CUDAParams {
       grid_x, grid_y, grid_z,
-      BLOCK_SIZE, 1, 1,
-      [ctxt.reduce:sharedMemSize()], nil
+      [ctxt:gpuBlockSize()], 1, 1,
+      [ctxt:gpuSharedMemBytes()], nil
     }
 
-    cuda_kernel(&params, [ctxt:runtimeSignature()])
+    cuda_kernel(&params, [ctxt:argsym()])
     G.sync() -- flush print streams
   end
 
@@ -536,28 +587,36 @@ end
 function ast.GlobalReduce:codegen(ctxt)
   -- GPU impl:
   if ctxt:onGPU() then
-    local lval = ctxt.reduce:sharedMemPtr(self.global.global)
+    local lval = ctxt:gpuReduceSharedMemPtr(self.global.global)
     local rexp = self.exp:codegen(ctxt)
-    local rhs = mat_bin_exp(self.reduceop, self.global.node_type, lval, rexp, self.global.node_type, self.exp.node_type)
+    local rhs = mat_bin_exp(self.reduceop, self.global.node_type,
+                            lval, rexp,
+                            self.global.node_type, self.exp.node_type)
     return quote [lval] = [rhs] end
+
+  -- CPU impl: forwards to assignment codegen
+  else
+    local assign = ast.Assignment:DeriveFrom(self)
+    assign.lvalue = self.global
+    assign.exp    = self.exp
+    assign.reduceop = self.reduceop
+
+    return assign:codegen(ctxt)
   end
-
-  -- CPU impl forwards to assignment codegen
-  local assign = ast.Assignment:DeriveFrom(self)
-  assign.lvalue = self.global
-  assign.exp    = self.exp
-  assign.reduceop = self.reduceop
-
-  return assign:codegen(ctxt)
 end
 
 
 function ast.FieldWrite:codegen (ctxt)
-  local phase = ctxt:fieldPhase(self.fieldaccess.field)
-  if ctxt:onGPU() and self.reduceop and not phase:isCentered() then
+  -- If this is a field-reduction on the GPU
+  if ctxt:onGPU() and
+     self.reduceop and
+     not ctxt:hasExclusivePhase(self.fieldaccess.field)
+  then
     local lval = self.fieldaccess:codegen(ctxt)
     local rexp = self.exp:codegen(ctxt)
-    return atomic_gpu_mat_red_exp(self.reduceop, self.fieldaccess.node_type, lval, rexp, self.exp.node_type)
+    return atomic_gpu_mat_red_exp(self.reduceop,
+                                  self.fieldaccess.node_type,
+                                  lval, rexp, self.exp.node_type)
   else
     -- just re-direct to an assignment statement otherwise
     local assign = ast.Assignment:DeriveFrom(self)

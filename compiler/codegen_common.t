@@ -10,29 +10,6 @@ local C = require 'compiler.c'
 --[[                 Context Object for Compiler Pass                   ]]--
 --[[--------------------------------------------------------------------]]--
 
--- container class for context attributes specific to the GPU runtime: --
-local GPUContext = {}
-Codegen.GPUContext = GPUContext
-GPUContext.__index = GPUContext
-
-function GPUContext.New (ctxt, block_size)
-  return setmetatable({ctxt=ctxt, block_size=block_size}, GPUContext)
-end
-
--- container class that manages extra state needed to support reductions
--- on GPUs
-local ReductionCtx = {}
-Codegen.ReductionCtx = ReductionCtx
-ReductionCtx.__index = ReductionCtx
-function ReductionCtx.New (ctxt, block_size)
-  local rc = setmetatable({
-      ctxt=ctxt,
-    },
-    ReductionCtx)
-    return rc
-end
-
--- state should be stored in ctxt.gpu and ctxt.reduce
 local Context = {}
 Codegen.Context = Context
 Context.__index = Context
@@ -43,10 +20,6 @@ function Context.new(env, bran)
         bran = bran,
     }, Context)
     return ctxt
-end
-function Context:initializeGPUState(block_size)
-  self.gpu = GPUContext.New(self, block_size)
-  self.reduce = ReductionCtx.New(self, self.gpu:blockSize())
 end
 
 function Context:localenv()
@@ -60,11 +33,13 @@ function Context:leaveblock()
 end
 
 function Context:onGPU()
-  return self.bran.proc == L.GPU
+  return self.bran:isOnGPU()
 end
-
 function Context:isElastic()
-  return self.bran.is_elastic
+  return self.bran:overElasticRelation()
+end
+function Context:isOverSubset()
+  return self.bran:isOverSubset()
 end
 
 function Context:dims()
@@ -72,12 +47,8 @@ function Context:dims()
   return self.bran.dims
 end
 
-function Context:fieldPhase(field)
-  return self.bran.kernel.field_use[field]
-end
-
-function Context:globalPhase(global)
-  return self.bran.kernel.global_use[global]
+function Context:hasExclusivePhase(field)
+  return self.bran.kernel.field_use[field]:isCentered()
 end
 
 

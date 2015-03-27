@@ -21,7 +21,9 @@ ArgLayout.__index = ArgLayout
 
 
 -------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
 --[[ Kernels                                                               ]]--
+-------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
 
 -- THIS IS THE BEGINNING OF CODE FOR INVOCATION OF A FUNCTION
@@ -92,7 +94,9 @@ end
 
 
 -------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
 --[[ Brans                                                                 ]]--
+-------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
 
 
@@ -109,9 +113,16 @@ end
 function Bran:isOnGPU()
   return self.proc == L.GPU
 end
+function Bran:overElasticRelation()
+  return self.is_elastic
+end
 function Bran:isOverSubset()
   return nil ~= self.subset
 end
+
+--                  ---------------------------------------                  --
+--[[ Bran Compilation                                                      ]]--
+--                  ---------------------------------------                  --
 
 function Bran.CompileOrFetch(sig)
   -- expand the cache signature
@@ -200,6 +211,8 @@ function Bran:CompileFieldsGlobalsSubsets()
 end
 
 --                  ---------------------------------------                  --
+--[[ Bran Interface for Codegen / Compilation                              ]]--
+--                  ---------------------------------------                  --
 
 function Bran:argsType ()
   return self.arg_layout:TerraStruct()
@@ -240,15 +253,17 @@ function Bran:setGlobalPtr(global)
   self.args:ptr()[id] = dataptr
 end
 
-function Bran:getTerraFieldPtr(signature_ptr, field)
+function Bran:getTerraFieldPtr(args_sym, field)
   local id = self:getFieldId(field)
-  return `[signature_ptr].[id]
+  return `[args_sym].[id]
 end
-function Bran:getTerraGlobalPtr(signature_ptr, global)
+function Bran:getTerraGlobalPtr(args_sym, global)
   local id = self:getGlobalId(global)
-  return `[signature_ptr].[id]
+  return `[args_sym].[id]
 end
 
+--                  ---------------------------------------                  --
+--[[ Bran Dynamic Checks                                                   ]]--
 --                  ---------------------------------------                  --
 
 function Bran:DynamicChecks()
@@ -274,6 +289,8 @@ function Bran:DynamicChecks()
   if self:UsesDelete() then   self:DynamicDeleteChecks()   end
 end
 
+--                  ---------------------------------------                  --
+--[[ Bran Data Binding                                                     ]]--
 --                  ---------------------------------------                  --
 
 function Bran:BindData()
@@ -317,6 +334,8 @@ function Bran:bindFieldGlobalSubsetArgs()
 end
 
 --                  ---------------------------------------                  --
+--[[ Bran Launch                                                           ]]--
+--                  ---------------------------------------                  --
 
 function Bran:Launch()
   if self:isOnGPU() then
@@ -326,6 +345,8 @@ function Bran:Launch()
   end
 end
 
+--                  ---------------------------------------                  --
+--[[ Bran Postprocess / Cleanup                                            ]]--
 --                  ---------------------------------------                  --
 
 function Bran:PostLaunchCleanup()
@@ -340,8 +361,14 @@ end
 
 
 -------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
 --[[ Insert / Delete Extensions                                            ]]--
 -------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+
+--                  ---------------------------------------                  --
+--[[ Insert Processing ; all 4 stages (-launch)                            ]]--
+--                  ---------------------------------------                  --
 
 function Bran:CompileInserts()
   local bran = self
@@ -406,6 +433,8 @@ function Bran:postprocessInsertions()
 end
 
 --                  ---------------------------------------                  --
+--[[ Delete Processing ; all 4 stages (-launch)                            ]]--
+--                  ---------------------------------------                  --
 
 function Bran:CompileDeletes()
   local bran = self
@@ -452,8 +481,16 @@ end
 
 
 -------------------------------------------------------------------------------
---[[ GPU Extensions                                                        ]]--
 -------------------------------------------------------------------------------
+--[[ GPU Extensions     (Mainly Global Reductions)                         ]]--
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+
+-- The following are mainly support routines related to the GPU
+-- A lot of them (identified in their names) are
+-- strictly related to reductions, and may be used both
+-- within the codegen compilation and the compilation of a secondary
+-- CUDA Kernel (below)
 
 function Bran:UsesGPUReduce()
   return self.uses_gpu_reduce
@@ -497,9 +534,9 @@ function Bran:setReduceGlobalMemPtr(global, dataptr)
   self.args:ptr()[data.id] = dataptr
 end
 
-function Bran:getTerraReduceGlobalMemPtr(signature_ptr, global)
+function Bran:getTerraReduceGlobalMemPtr(args_sym, global)
   local data = self:getReduceData(global)
-  return `[signature_ptr].[data.id]
+  return `[args_sym].[data.id]
 end
 
 function Bran:freeReduceGlobalMemPtr(global)
@@ -515,8 +552,8 @@ function Bran:getTerraReduceSharedMemPtr(global)
 end
 
 --                  ---------------------------------------                  --
-
--- The following are exclusively for GPU reduction
+--[[ GPU Reduction Compilation                                             ]]--
+--                  ---------------------------------------                  --
 
 function Bran:CompileGPUReduction()
   self.uses_gpu_reduce        = false -- until we see otherwise...
@@ -554,7 +591,7 @@ function Bran:CompileGPUReduction()
   self:CompileGlobalMemReductionKernel()
 end
 
-
+-- The following routine is also used inside the primary compile CUDA kernel
 function Bran:GenerateSharedMemInitialization(tid_sym)
   local code = quote end
   for globl, data in pairs(self.gpu_reductions) do
@@ -570,6 +607,7 @@ function Bran:GenerateSharedMemInitialization(tid_sym)
   return code
 end
 
+-- The following routine is also used inside the primary compile CUDA kernel
 function Bran:GenerateSharedMemReduceTree(args_sym, tid_sym, bid_sym, is_final)
   is_final = is_final or false
   local code = quote end
@@ -613,6 +651,8 @@ function Bran:GenerateSharedMemReduceTree(args_sym, tid_sym, bid_sym, is_final)
   return code
 end
 
+-- The full secondary CUDA kernel to reduce the contents of the
+-- global mem array.  See comment inside function for sketch of algorithm
 function Bran:CompileGlobalMemReductionKernel()
   local bran      = self
   local fn_name   = bran.kernel.typed_ast.id .. '_globalmem_reduction'
@@ -686,11 +726,19 @@ function Bran:CompileGlobalMemReductionKernel()
   bran.global_reduction_pass = launcher
 end
 
+--                  ---------------------------------------                  --
+--[[ GPU Reduction Dynamic Checks                                          ]]--
+--                  ---------------------------------------                  --
+
 function Bran:DynamicGPUReductionChecks()
   if self.proc ~= L.GPU then
     error("INTERNAL ERROR: Should only try to run GPUReduction on the GPU...")
   end
 end
+
+--                  ---------------------------------------                  --
+--[[ GPU Reduction Data Binding                                            ]]--
+--                  ---------------------------------------                  --
 
 function Bran:bindGPUReductionData()
   local n_blocks = self:numGPUBlocks()
@@ -701,6 +749,10 @@ function Bran:bindGPUReductionData()
     self:setReduceGlobalMemPtr(globl, G.malloc(ttype, n_blocks))
   end
 end
+
+--                  ---------------------------------------                  --
+--[[ GPU Reduction Postprocessing                                          ]]--
+--                  ---------------------------------------                  --
 
 function Bran:postprocessGPUReduction()
   -- perform inter-block reduction step (secondary kernel launch)
@@ -721,7 +773,9 @@ end
 
 
 -------------------------------------------------------------------------------
---[[ ArgLayout                                                            ]]--
+-------------------------------------------------------------------------------
+--[[ ArgLayout                                                             ]]--
+-------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
 
 
