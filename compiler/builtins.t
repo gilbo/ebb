@@ -342,12 +342,16 @@ local terra lisztAssert(test : bool, file : rawstring, line : int)
 end
 
 -- NADA FOR NOW
-local terra gpuAssert(test : bool, file : rawstring, line : int)
-    if not test then
-        G.printf("%s:%d: assertion failed!\n", file, line)
-        cudalib.nvvm_membar_gl()
-        terralib.asm(terralib.types.unit,"trap;","",true)
-        --@([&uint8](0)) = 0 -- Should replace with a CUDA trap..../li
+local gpuAssert = terra(test : bool, file : rawstring, line : int) end
+
+if terralib.cudacompile then
+    gpuAssert = terra(test : bool, file : rawstring, line : int)
+        if not test then
+            G.printf("%s:%d: assertion failed!\n", file, line)
+            cudalib.nvvm_membar_gl()
+            terralib.asm(terralib.types.unit,"trap;","",true)
+            --@([&uint8](0)) = 0 -- Should replace with a CUDA trap..../li
+        end
     end
 end
 
