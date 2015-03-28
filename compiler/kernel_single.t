@@ -6,6 +6,7 @@ local C   = require "compiler.c"
 local G   = require "compiler.gpu_util"
 
 local codegen         = require "compiler.codegen_single"
+local codesupport     = require "compiler.codegen_support"
 local DataArray       = require('compiler.rawdata').DataArray
 
 
@@ -601,7 +602,7 @@ function Bran:GenerateSharedMemInitialization(tid_sym)
 
     code = quote
       [code]
-      [sharedmem][tid_sym] = [codegen.reduction_identity(lz_type, op)]
+      [sharedmem][tid_sym] = [codesupport.reduction_identity(lz_type, op)]
     end
   end
   return code
@@ -625,9 +626,9 @@ function Bran:GenerateSharedMemReduceTree(args_sym, tid_sym, bid_sym, is_final)
       code = quote
         [code]
         if tid_sym < step then
-          var exp = [codegen.reduction_binop(lz_type, op,
-                                              `[sharedmem][tid_sym],
-                                              `[sharedmem][tid_sym + step])]
+          var exp = [codesupport.reduction_binop(
+                      lz_type, op, `[sharedmem][tid_sym],
+                                   `[sharedmem][tid_sym + step])]
           terralib.attrstore(&[sharedmem][tid_sym], exp, {isvolatile=true})
         end
         G.barrier()
@@ -639,9 +640,9 @@ function Bran:GenerateSharedMemReduceTree(args_sym, tid_sym, bid_sym, is_final)
       [code]
       if [tid_sym] == 0 then
         if is_final then
-          @[finalptr] = [codegen.reduction_binop(lz_type, op,
-                                                  `@[finalptr],
-                                                  `[sharedmem][0])]
+          @[finalptr] = [codesupport.reduction_binop(lz_type, op,
+                                                     `@[finalptr],
+                                                     `[sharedmem][0])]
         else
           [globalmem][bid_sym] = [sharedmem][0]
         end
@@ -698,9 +699,9 @@ function Bran:CompileGlobalMemReductionKernel()
         local globalmem   = bran:getTerraReduceGlobalMemPtr(args, globl)
 
         emit quote
-          [sharedmem][tid]  = [codegen.reduction_binop(lz_type, op,
-                                                       `[sharedmem][tid],
-                                                       `[globalmem][gi])]
+          [sharedmem][tid]  = [codesupport.reduction_binop(lz_type, op,
+                                                           `[sharedmem][tid],
+                                                           `[globalmem][gi])]
         end
       end end
     end

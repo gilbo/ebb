@@ -399,15 +399,12 @@ end
 --[[--------------------------------------------------------------------]]--
 --[[                         GPU Codegen                                ]]--
 --[[--------------------------------------------------------------------]]--
-
-Codegen.reduction_identity = Support.reduction_identity
-Codegen.reduction_binop    = Support.reduction_binop
-
+--[[
 
 local function gpu_codegen (kernel_ast, ctxt)
 
   -----------------------------
-  --[[ Codegen CUDA kernel ]]--
+  -- Codegen CUDA kernel --
   -----------------------------
   ctxt:enterblock()
     -- declare the symbol for iteration
@@ -490,7 +487,7 @@ local function gpu_codegen (kernel_ast, ctxt)
   cuda_kernel = G.kernelwrap(cuda_kernel, L._INTERNAL_DEV_OUTPUT_PTX, annotations)
 
   --------------------------
-  --[[ Codegen launcher ]]--
+  -- Codegen launcher --
   --------------------------
   local MAX_GRID_DIM = 65536
   local launcher = terra (n_blocks : uint, args_ptr : &ctxt:argsType())
