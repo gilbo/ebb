@@ -174,7 +174,7 @@ end
 
 
 --[[--------------------------------------------------------------------]]--
---[[                         CPU Codegen                                ]]--
+--[[            Iteration / Dimension Abstraction Helpers               ]]--
 --[[--------------------------------------------------------------------]]--
 
 -- We use the separate size parameter to pass in a symbol
@@ -231,7 +231,14 @@ local function terraGPUId_to_Nd(dims, size, id, func)
   end
 end
 
-local function cpu_codegen (kernel_ast, ctxt)
+
+--[[--------------------------------------------------------------------]]--
+--[[                        Codegen Entrypoint                          ]]--
+--[[--------------------------------------------------------------------]]--
+
+function Codegen.codegen (kernel_ast, bran)
+  local env  = terralib.newenvironment(nil)
+  local ctxt = Context.New(env, bran)
 
   ctxt:enterblock()
     -- declare the symbol for the parameter key
@@ -268,15 +275,15 @@ local function cpu_codegen (kernel_ast, ctxt)
             var [param]
             var use_index = not [ctxt:argsym()].use_boolmask
             if use_index then
-              if id < [ctxt:argsym()].index_size then
-                param = [ctxt:argsym()].index[id]
+              if linid < [ctxt:argsym()].index_size then
+                param = [ctxt:argsym()].index[linid]
               end
             else -- use_boolmask
               param = addr
             end
 
             -- conditionally execute
-            if use_index or [ctxt:argsym()].boolmask[id] then
+            if use_index or [ctxt:argsym()].boolmask[linid] then
               [body]
             end
           end
@@ -508,11 +515,6 @@ local function gpu_codegen (kernel_ast, ctxt)
   return launcher
 end
 
-
-
---[[--------------------------------------------------------------------]]--
---[[                        Codegen Entrypoint                          ]]--
---[[--------------------------------------------------------------------]]--
 
 
 function Codegen.codegen (kernel_ast, bran)
@@ -817,16 +819,6 @@ function ast.Assignment:codegen (ctxt)
   end
   return quote [lhs] = rhs end
 end
-
-
-
-
-
-
-
-
-
-
 
 
 

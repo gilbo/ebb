@@ -5,6 +5,7 @@ package.loaded["compiler.codegen_support"] = Support
 --local ast = require "compiler.ast"
 
 local C = require 'compiler.c'
+local G = require 'compiler.gpu_util'
 
 
 -- **** ******** ******** ******** ******** ****
