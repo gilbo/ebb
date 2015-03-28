@@ -803,7 +803,7 @@ end
 
 function ArgLayout:addReduce(name, typ)
   if self:isCompiled() then
-    error('INTERNAL ERROR: cannot add new globals to compiled layout')
+    error('INTERNAL ERROR: cannot add new reductions to compiled layout')
   end
   table.insert(self.reduce, { field=name, type=&typ})
 end

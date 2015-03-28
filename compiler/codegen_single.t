@@ -224,7 +224,7 @@ function cpu_codegen (kernel_ast, ctxt)
     -- Handle Masking of dead rows when mapping
     -- Over an Elastic Relation
     if ctxt:isOverElastic() then
-      if ctxt:isOnGPU() then
+      if ctxt:onGPU() then
         error("INTERNAL: ELASTIC ON GPU CURRENTLY UNSUPPORTED")
       else
         body = quote
@@ -270,7 +270,7 @@ function cpu_codegen (kernel_ast, ctxt)
         end
       end
 
-      kernel_body = quote
+      body = quote
         if [ctxt:argsym()].use_boolmask then
           [boolloop]
         else
@@ -281,7 +281,7 @@ function cpu_codegen (kernel_ast, ctxt)
       -- Elastic relations need to specify the loop size dynamically
       if ctxt:isOverElastic() then dims = { `[ctxt:argsym()].n_rows } end
       
-      local kernel_body = terraIterNd(dims, function(iter)
+      body = terraIterNd(dims, function(iter)
         return quote
           var [param] = iter
           [body]
@@ -294,7 +294,7 @@ function cpu_codegen (kernel_ast, ctxt)
 
   local k = terra (args_ptr : &ctxt:argsType())
     var [ctxt:argsym()] = @args_ptr
-    [kernel_body]
+    [body]
   end
   k:setname(kernel_ast.id)
   return k
