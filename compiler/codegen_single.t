@@ -275,9 +275,7 @@ function Codegen.codegen (kernel_ast, bran)
             var [param]
             var use_index = not [ctxt:argsym()].use_boolmask
             if use_index then
-              if linid < [ctxt:argsym()].index_size then
-                param = [ctxt:argsym()].index[linid]
-              end
+              param = [ctxt:argsym()].index[linid]
             else -- use_boolmask
               param = addr
             end
@@ -304,18 +302,12 @@ function Codegen.codegen (kernel_ast, bran)
           else
           -- INDEX SUBSET BRANCH
             -- ONLY GENERATE FOR NON-GRID RELATIONS
-            escape if #ctxt:dims() > 1 then
-              local size_sym    = symbol('index_size')
-              emit quote
-                var [size_sym]  = [ctxt:argsym()].index_size
-                [terraIterNd({ size_sym }, nrow_sym, function(iter)
-                  return quote
-                    var [param] = [ctxt:argsym()].index[iter.a[0]]
-                    [body]
-                  end
-                end)]
-              end
-            end end
+            escape if #ctxt:dims() > 1 then emit quote
+              [terraIterNd({ nrow_sym }, nrow_sym, function(iter) return quote
+                var [param] = [ctxt:argsym()].index[iter.a[0]]
+                [body]
+              end end)]
+            end end end
           end
         end
       end

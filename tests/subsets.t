@@ -36,4 +36,35 @@ cells.interior:map(test_interior)
 
 
 
+-- Now run the same test, but with a truly grid structured relation
+
+local gridcells  = L.NewRelation { dims = {N,N}, name = 'gridcells' }
+
+gridcells:NewField('value', L.double):Load(function(xi,yi)
+  if xi == 0 or xi == N-1 or yi == 0 or yi == N-1 then
+    return 0
+  else
+    return 1
+  end
+end)
+
+gridcells:NewSubsetFromFunction('boundary', function(xi,yi)
+  return xi == 0 or xi == N-1 or yi == 0 or yi == N-1
+end)
+gridcells:NewSubsetFromFunction('interior', function(xi,yi)
+  return not(xi == 0 or xi == N-1 or yi == 0 or yi == N-1)
+end)
+
+local liszt grid_test_boundary ( c : gridcells )
+  L.assert(c.value == 0)
+end
+local liszt grid_test_interior ( c : gridcells )
+  L.assert(c.value == 1)
+end
+
+gridcells.boundary:map(grid_test_boundary)
+gridcells.interior:map(grid_test_interior)
+
+
+
 

@@ -162,6 +162,7 @@ function Bran:Compile()
   end
 
   self.arg_layout = ArgLayout.New()
+  self.arg_layout:setNDims(self.relation:nDims())
 
   -- compile various kinds of data into the arg layout
   self:CompileFieldsGlobalsSubsets()
@@ -319,7 +320,9 @@ function Bran:bindFieldGlobalSubsetArgs()
       argptr.boolmask     = self.subset._boolmask:DataPtr()
     elseif self.subset._index then
       argptr.index        = self.subset._index:DataPtr()
-      argptr.index_size   = self.subset._index:Size()
+      -- Spoof the number of entries in the index, which is what
+      -- we actually want to iterate over
+      argptr.n_rows       = self.subset._index:Size()
     else
       error('INTERNAL ERROR: trying to bind subset, '..
             'must have boolmask or index')
@@ -788,6 +791,10 @@ function ArgLayout.New()
   }, ArgLayout)
 end
 
+function ArgLayout:setNDims(n)
+  self.n_dims = n
+end
+
 function ArgLayout:addField(name, typ)
   if self:isCompiled() then
     error('INTERNAL ERROR: cannot add new fields to compiled layout')
@@ -834,7 +841,7 @@ function ArgLayout:Compile()
   -- add counter
   table.insert(terrastruct.entries, {field='n_rows', type=uint64})
   -- add subset data
-  local taddr = L.addr_terra_types[1]
+  local taddr = L.addr_terra_types[self.n_dims]
   if self.subset_on then
     table.insert(terrastruct.entries, {field='use_boolmask', type=bool})
     table.insert(terrastruct.entries, {field='boolmask',     type=&bool})

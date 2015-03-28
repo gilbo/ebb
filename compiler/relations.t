@@ -374,18 +374,6 @@ function L.LRelation:GroupBy(keyf_name)
   local offset_f = L.LField.New(srcrel, dstname..'_grouped_offset', L.uint64)
   local length_f = L.LField.New(srcrel, dstname..'_grouped_length', L.uint64)
 
-  --local num_keys = key_field.type.relation:ConcreteSize() -- # possible keys
-  --local num_rows = key_field:ConcreteSize()
-  --rawset(self,'_grouping', {
-  --  key_field = key_field,
-  --  index = L.LIndex.New{
-  --    owner=self,
-  --    terra_type = key_field.type:terraType(),
-  --    processor = L.default_processor,
-  --    name='groupby_'..key_field:Name(),
-  --    size=num_keys+1
-  --  },
-  --})
   rawset(self,'_grouped_field', key_field)
   rawset(self,'_grouped_offset', offset_f)
   rawset(self,'_grouped_length', length_f)
@@ -541,7 +529,9 @@ function L.LIndex.New(params)
   if params.data then
     index._array:write_ptr(function(ptr)
       for i=1,#params.data do
-        ptr[i-1].a[0] = params.data[i]
+        for k=1,params.ndims do
+          ptr[i-1].a[k-1] = params.data[i][k]
+        end
       end
     end) -- write_ptr
   end
@@ -652,9 +642,9 @@ function L.LRelation:NewSubsetFromFunction (name, predicate)
   local dims = self:Dims()
   boolmask:LoadFunction(function(xi,yi,zi)
     local val = predicate(xi,yi,zi)
-    local i   = linid({xi,yi,zi},dims)
+    local ids = {xi,yi,zi}
     if val then
-      table.insert(index_tbl, i)
+      table.insert(index_tbl, ids)
       subset_size = subset_size + 1
     end
     return val
@@ -668,6 +658,7 @@ function L.LRelation:NewSubsetFromFunction (name, predicate)
     subset._index = L.LIndex.New{
       owner=self,
       terra_type = L.key(self):terraType(),
+      ndims=self:nDims(),
       name=name..'_subset_index',
       data=index_tbl
     }
