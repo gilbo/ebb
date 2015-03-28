@@ -7,7 +7,7 @@ local T   = require "compiler.types"
 local C   = require 'compiler.c'
 local L   = require 'compiler.lisztlib'
 local G   = require 'compiler.gpu_util'
-local Cc  = require 'compiler.codegen_common'
+local Support = require 'compiler.codegen_support'
 
 L._INTERNAL_DEV_OUTPUT_PTX = false
 
@@ -400,8 +400,8 @@ end
 --[[                         GPU Codegen                                ]]--
 --[[--------------------------------------------------------------------]]--
 
-Codegen.reduction_identity = Cc.reduction_identity
-Codegen.reduction_binop    = Cc.reduction_binop
+Codegen.reduction_identity = Support.reduction_identity
+Codegen.reduction_binop    = Support.reduction_binop
 
 
 local function gpu_codegen (kernel_ast, ctxt)
@@ -523,7 +523,7 @@ function Codegen.codegen (kernel_ast, bran)
   local ctxt = Context.New(env, bran)
 
   if ctxt:onGPU() then
-    return gpu_codegen(kernel_ast, ctxt)
+    return cpu_codegen(kernel_ast, ctxt)
   else
     return cpu_codegen(kernel_ast, ctxt)
   end
@@ -532,99 +532,304 @@ end
 
 
 
+
+
+
+
 --[[--------------------------------------------------------------------]]--
---[[                             GPU Atomics                            ]]--
+--[[                       Codegen Pass Cases                           ]]--
 --[[--------------------------------------------------------------------]]--
 
+function ast.AST:codegen (ctxt)
+  error("Codegen not implemented for AST node " .. self.kind)
+end
 
+function ast.ExprStatement:codegen (ctxt)
+  return self.exp:codegen(ctxt)
+end
 
+-- complete no-op
+function ast.Quote:codegen (ctxt)
+  return self.code:codegen(ctxt)
+end
 
-local function atomic_gpu_red_exp (op, typ, lvalptr, update)
-  local internal_error = 'unsupported reduction, internal error; '..
-                         'this should be guarded against in the typechecker'
-  if typ == L.float then
-    if     op == '+'   then return `G.atomic_add_float(lvalptr,  update)
-    elseif op == '-'   then return `G.atomic_add_float(lvalptr, -update)
-    elseif op == '*'   then return `G.atomic_mul_float_SLOW(lvalptr, update)
-    elseif op == '/'   then return `G.atomic_div_float_SLOW(lvalptr, update)
-    elseif op == 'min' then return `G.atomic_min_float_SLOW(lvalptr, update)
-    elseif op == 'max' then return `G.atomic_max_float_SLOW(lvalptr, update)
-    end
+function ast.LetExpr:codegen (ctxt)
+  ctxt:enterblock()
+  local block = self.block:codegen(ctxt)
+  local exp   = self.exp:codegen(ctxt)
+  ctxt:leaveblock()
 
-  elseif typ == L.double then
-    if     op == '+'   then return `G.atomic_add_double_SLOW(lvalptr,  update)
-    elseif op == '-'   then return `G.atomic_add_double_SLOW(lvalptr, -update)
-    elseif op == '*'   then return `G.atomic_mul_double_SLOW(lvalptr, update)
-    elseif op == '/'   then return `G.atomic_div_double_SLOW(lvalptr, update)
-    elseif op == 'min' then return `G.atomic_min_double_SLOW(lvalptr, update)
-    elseif op == 'max' then return `G.atomic_max_double_SLOW(lvalptr, update)
-    end
+  return quote [block] in [exp] end
+end
 
-  elseif typ == L.int then
-    if     op == '+'   then return `G.reduce_add_int32(lvalptr,  update)
-    elseif op == '-'   then return `G.reduce_add_int32(lvalptr, -update)
-    elseif op == '*'   then return `G.atomic_mul_int32_SLOW(lvalptr, update)
-    elseif op == 'max' then return `G.reduce_max_int32(lvalptr, update)
-    elseif op == 'min' then return `G.reduce_min_int32(lvalptr, update)
-    end
+-- DON'T CODEGEN A KERNEL DIRECTLY; HANDLE IN Codegen.codegen()
+--function ast.LisztKernel:codegen (ctxt)
+--end
 
-  elseif typ == L.bool then
-    if     op == 'and' then return `G.reduce_and_b32(lvalptr, update)
-    elseif op == 'or'  then return `G.reduce_or_b32(lvalptr, update)
+function ast.Block:codegen (ctxt)
+  -- start with an empty ast node, or we'll get an error when appending new quotes below
+  local code = quote end
+  for i = 1, #self.statements do
+    local stmt = self.statements[i]:codegen(ctxt)
+    code = quote
+      [code]
+      [stmt]
     end
   end
-  error(internal_error)
+  return code
+end
+
+function ast.CondBlock:codegen(ctxt, cond_blocks, else_block, index)
+  index = index or 1
+
+  local cond  = self.cond:codegen(ctxt)
+  ctxt:enterblock()
+  local body = self.body:codegen(ctxt)
+  ctxt:leaveblock()
+
+  if index == #cond_blocks then
+    if else_block then
+      return quote if [cond] then [body] else [else_block:codegen(ctxt)] end end
+    else
+      return quote if [cond] then [body] end end
+    end
+  else
+    ctxt:enterblock()
+    local nested = cond_blocks[index + 1]:codegen(ctxt, cond_blocks, else_block, index + 1)
+    ctxt:leaveblock()
+    return quote if [cond] then [body] else [nested] end end
+  end
+end
+
+function ast.IfStatement:codegen (ctxt)
+  return self.if_blocks[1]:codegen(ctxt, self.if_blocks, self.else_block)
+end
+
+function ast.WhileStatement:codegen (ctxt)
+  local cond = self.cond:codegen(ctxt)
+  ctxt:enterblock()
+  local body = self.body:codegen(ctxt)
+  ctxt:leaveblock()
+  return quote while [cond] do [body] end end
+end
+
+function ast.DoStatement:codegen (ctxt)
+  ctxt:enterblock()
+  local body = self.body:codegen(ctxt)
+  ctxt:leaveblock()
+  return quote do [body] end end
+end
+
+function ast.RepeatStatement:codegen (ctxt)
+  ctxt:enterblock()
+  local body = self.body:codegen(ctxt)
+  local cond = self.cond:codegen(ctxt)
+  ctxt:leaveblock()
+
+  return quote repeat [body] until [cond] end
+end
+
+function ast.NumericFor:codegen (ctxt)
+  -- min and max expression should be evaluated in current scope,
+  -- iter expression should be in a nested scope, and for block
+  -- should be nested again -- that way the loop var is reset every
+  -- time the loop runs.
+  local minexp  = self.lower:codegen(ctxt)
+  local maxexp  = self.upper:codegen(ctxt)
+  local stepexp = self.step and self.step:codegen(ctxt) or nil
+
+  ctxt:enterblock()
+  local iterstr = self.name
+  local itersym = symbol()
+  ctxt:localenv()[iterstr] = itersym
+
+  ctxt:enterblock()
+  local body = self.body:codegen(ctxt)
+  ctxt:leaveblock()
+  ctxt:leaveblock()
+
+  if stepexp then
+    return quote for [itersym] = [minexp], [maxexp], [stepexp] do
+      [body]
+    end end
+  else
+    return quote for [itersym] = [minexp], [maxexp] do [body] end end
+  end
+end
+
+function ast.Break:codegen(ctxt)
+  return quote break end
+end
+
+function ast.Name:codegen(ctxt)
+  local s = ctxt:localenv()[self.name]
+  assert(terralib.issymbol(s))
+  return `[s]
+end
+
+function ast.Cast:codegen(ctxt)
+  local typ = self.node_type
+  local bt  = typ:terraBaseType()
+  local valuecode = self.value:codegen(ctxt)
+
+  if typ:isPrimitive() then
+    return `[typ:terraType()](valuecode)
+
+  elseif typ:isVector() then
+    local vec = symbol(self.value.node_type:terraType())
+    return quote var [vec] = valuecode in
+      [ Support.vec_mapgen(typ, function(i)
+          return `[bt](vec.d[i])
+      end) ] end
+
+  elseif typ:isMatrix() then
+    local mat = symbol(self.value.node_type:terraType())
+    return quote var [mat] = valuecode in
+      [ Support.mat_mapgen(typ, function(i,j)
+          return `[bt](mat.d[i][j])
+      end) ] end
+
+  else
+    error("Internal Error: Type unrecognized "..typ:toString())
+  end
+end
+
+-- By the time we make it to codegen, Call nodes are only used to represent builtin function calls.
+function ast.Call:codegen (ctxt)
+    return self.func.codegen(self, ctxt)
 end
 
 
-local function atomic_gpu_mat_red_exp(op, result_typ, lval, rhe, rhtyp)
-  if result_typ:isScalar() then
-    return atomic_gpu_red_exp(op, result_typ, `&lval, rhe)
-  elseif result_typ:isVector() then
+function ast.DeclStatement:codegen (ctxt)
+  local varname = self.name
+  local tp      = self.node_type:terraType()
+  local varsym  = symbol(tp)
 
-    local N = result_typ.N
-    local rhbind, rhcoords = let_vec_binding(rhtyp, N, rhe)
-
-    local v = symbol() -- pointer to vector location of reduction result
-
-    local result = quote end
-    for i = 0, N-1 do
-      result = quote
-        [result]
-        [atomic_gpu_red_exp(op, result_typ:baseType(), `v+i, rhcoords[i+1])]
-      end
+  if self.initializer then
+    local exp = self.initializer:codegen(ctxt)
+    ctxt:localenv()[varname] = varsym -- MUST happen after init codegen
+    return quote 
+      var [varsym] = [exp]
     end
-    return quote
-      var [v] : &result_typ:terraBaseType() = [&result_typ:terraBaseType()](&[lval])
-      [rhbind]
-    in
-      [result]
+  else
+    ctxt:localenv()[varname] = varsym -- MUST happen after init codegen
+    return quote var [varsym] end
+  end
+end
+
+function ast.MatrixLiteral:codegen (ctxt)
+  local typ = self.node_type
+
+  return Support.mat_mapgen(typ, function(i,j)
+    return self.elems[i*self.m + j + 1]:codegen(ctxt)
+  end)
+end
+
+function ast.VectorLiteral:codegen (ctxt)
+  local typ = self.node_type
+
+  return Support.vec_mapgen(typ, function(i)
+    return self.elems[i+1]:codegen(ctxt)
+  end)
+end
+
+function ast.SquareIndex:codegen (ctxt)
+  local base  = self.base:codegen(ctxt)
+  local index = self.index:codegen(ctxt)
+
+  -- Vector case
+  if self.index2 == nil then
+    return `base.d[index]
+  -- Matrix case
+  else
+    local index2 = self.index2:codegen(ctxt)
+
+    return `base.d[index][index2]
+  end
+end
+
+function ast.Number:codegen (ctxt)
+  return `[self.value]
+end
+
+function ast.Bool:codegen (ctxt)
+  if self.value == true then
+    return `true
+  else 
+    return `false
+  end
+end
+
+
+function ast.UnaryOp:codegen (ctxt)
+  local expr = self.exp:codegen(ctxt)
+  local typ  = self.node_type
+
+  return Support.unary_exp(self.op, typ, expr)
+end
+
+function ast.BinaryOp:codegen (ctxt)
+  local lhe = self.lhs:codegen(ctxt)
+  local rhe = self.rhs:codegen(ctxt)
+
+  return Support.bin_exp(self.op, self.node_type,
+      lhe, rhe, self.lhs.node_type, self.rhs.node_type)
+end
+
+function ast.LuaObject:codegen (ctxt)
+    return `{}
+end
+
+function ast.GenericFor:codegen (ctxt)
+    local set       = self.set:codegen(ctxt)
+    local iter      = symbol("iter")
+    local rel       = self.set.node_type.relation
+    -- the key being used to drive the where query should
+    -- come from a grouped relation, which is necessarily 1d
+    local projected = `[L.addr_terra_types[1]]({array([iter])})
+
+    for i,p in ipairs(self.set.node_type.projections) do
+        local field = rel[p]
+        projected   = doProjection(projected,field,ctxt)
+        rel         = field.type.relation
+        assert(rel)
     end
-  else -- small matrix
-
-    local N = result_typ.Nrow
-    local M = result_typ.Ncol
-    local rhbind, rhcoords = let_mat_binding(rhtyp, N, M, rhe)
-
-    local m = symbol()
-
-    local result = quote end
-    for i = 0, N-1 do
-      for j = 0, M-1 do
-        result = quote
-          [result]
-          [atomic_gpu_red_exp(op, result_typ:baseType(), `&([m].d[i][j]), rhcoords[i+1][j+1])]
+    local sym = symbol(L.key(rel):terraType())
+    ctxt:enterblock()
+        ctxt:localenv()[self.name] = sym
+        local body = self.body:codegen(ctxt)
+    ctxt:leaveblock()
+    local code = quote
+        var s = [set]
+        for [iter] = s.start,s.finish do
+            var [sym] = [projected]
+            [body]
         end
-      end
     end
-    return quote
-      var [m] : &result_typ:terraType() = [&result_typ:terraType()](&[lval])
-      [rhbind]
-      in
-      [result]
-    end
-  end
+    return code
 end
+
+function ast.Assignment:codegen (ctxt)
+  local lhs   = self.lvalue:codegen(ctxt)
+  local rhs   = self.exp:codegen(ctxt)
+
+  local ltype, rtype = self.lvalue.node_type, self.exp.node_type
+
+  if self.reduceop then
+    rhs = Support.bin_exp(self.reduceop, ltype, lhs, rhs, ltype, rtype)
+  end
+  return quote [lhs] = rhs end
+end
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -674,9 +879,9 @@ function ast.GlobalReduce:codegen(ctxt)
   if ctxt:onGPU() then
     local lval = ctxt:gpuReduceSharedMemPtr(self.global.global)
     local rexp = self.exp:codegen(ctxt)
-    local rhs = mat_bin_exp(self.reduceop, self.global.node_type,
-                            lval, rexp,
-                            self.global.node_type, self.exp.node_type)
+    local rhs  = Support.bin_exp(self.reduceop, self.global.node_type,
+                                 lval, rexp,
+                                 self.global.node_type, self.exp.node_type)
     return quote [lval] = [rhs] end
 
   -- CPU impl: forwards to assignment codegen
@@ -699,7 +904,7 @@ function ast.FieldWrite:codegen (ctxt)
   then
     local lval = self.fieldaccess:codegen(ctxt)
     local rexp = self.exp:codegen(ctxt)
-    return atomic_gpu_mat_red_exp(self.reduceop,
+    return Support.gpu_atomic_exp(self.reduceop,
                                   self.fieldaccess.node_type,
                                   lval, rexp, self.exp.node_type)
   else
