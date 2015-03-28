@@ -171,29 +171,16 @@ function Context:incrementInsertIndex()
 end
 
 
---[[--------------------------------------------------------------------]]--
---[[                        Codegen Entrypoint                          ]]--
---[[--------------------------------------------------------------------]]--
-
-
-function Codegen.codegen (kernel_ast, bran)
-  local env  = terralib.newenvironment(nil)
-  local ctxt = Context.New(env, bran)
-
-  if ctxt:onGPU() then
-    return gpu_codegen(kernel_ast, ctxt)
-  else
-    return cpu_codegen(kernel_ast, ctxt)
-  end
-
-end
 
 
 --[[--------------------------------------------------------------------]]--
 --[[                         CPU Codegen                                ]]--
 --[[--------------------------------------------------------------------]]--
 
-function terraIterNd(dims, func)
+-- We use the separate size parameter to pass in a symbol
+-- whose value may be dynamic, thus ensuring that elastic
+-- relations are properly iterated over as they change size
+local function terraIterNd(dims, size, func)
   local atyp = L.addr_terra_types[#dims]
   local addr = symbol(atyp)
   local iters = {}
@@ -202,113 +189,18 @@ function terraIterNd(dims, func)
     var [addr] = [atyp]({ a = array( iters ) })
     [func(addr)]
   end
-  for drev=1,#dims do
-    local d = #dims-drev + 1
-    loop = quote for [iters[d]] = 0, [dims[d]] do [loop] end end
+  if #dims == 1 then -- use potentially dynamic size for Non-Grids
+    loop = quote for [iters[1]] = 0, size do [loop] end end
+  else
+    for drev=1,#dims do
+      local d = #dims-drev + 1 -- flip loop order of dimensions
+      loop = quote for [iters[d]] = 0, [dims[d]] do [loop] end end
+    end
   end
   return loop
 end
 
-function cpu_codegen (kernel_ast, ctxt)
-
-  ctxt:enterblock()
-    -- declare the symbol for the parameter key
-    local param = symbol(ctxt:argKeyTerraType())
-    ctxt:localenv()[kernel_ast.name] = param
-
-    local dims = ctxt:dims()
-    -- local id   = symbol(uint64)
-
-    local body = kernel_ast.body:codegen(ctxt)
-
-    -- Handle Masking of dead rows when mapping
-    -- Over an Elastic Relation
-    if ctxt:isOverElastic() then
-      if ctxt:onGPU() then
-        error("INTERNAL: ELASTIC ON GPU CURRENTLY UNSUPPORTED")
-      else
-        body = quote
-          if [ctxt:isLiveCheck(param)] then [body] end
-        end
-      end
-    end
-
-    -- determine the right way to iterate, launch in parallel, etc.
-    -- as a wrapper around the basic per-row code body
-    if ctxt:isOverSubset() then
-      local boolmask = symbol('boolmask')
-      local boolloop = terraIterNd(dims, function(iter)
-        return quote
-          if [boolmask][ [T.linAddrTerraGen(dims)](iter) ] then
-            var [param] = iter
-            [body]
-          end
-        end
-      end)
-      boolloop = quote
-        var [boolmask] = [ctxt:argsym()].boolmask
-        [boolloop]
-      end
-
-      -- should never execute this stub
-      local indexloop = quote assert(false) end
-      -- the following code will not typecheck for grids, so don't
-      -- try to build the code in that case
-      if #ctxt:dims() == 1 then
-        local indexsym  = symbol('index')
-        local sizesym   = symbol('index_size')
-        indexloop = terraIterNd({ sizesym }, function(iter)
-          return quote
-            var [param] = [indexsym][iter.a[0]]
-            [body]
-          end
-        end)
-        indexloop = quote
-          var [indexsym] = [ctxt:argsym()].index
-          var [sizesym]  = [ctxt:argsym()].index_size
-          [indexloop]
-        end
-      end
-
-      body = quote
-        if [ctxt:argsym()].use_boolmask then
-          [boolloop]
-        else
-          [indexloop]
-        end
-      end
-    else
-      -- Elastic relations need to specify the loop size dynamically
-      if ctxt:isOverElastic() then dims = { `[ctxt:argsym()].n_rows } end
-      
-      body = terraIterNd(dims, function(iter)
-        return quote
-          var [param] = iter
-          [body]
-        end
-      end)
-
-    end
-
-  ctxt:leaveblock()
-
-  local k = terra (args_ptr : &ctxt:argsType())
-    var [ctxt:argsym()] = @args_ptr
-    [body]
-  end
-  k:setname(kernel_ast.id)
-  return k
-end
-
-
---[[--------------------------------------------------------------------]]--
---[[                         GPU Codegen                                ]]--
---[[--------------------------------------------------------------------]]--
-
-Codegen.reduction_identity = Cc.reduction_identity
-Codegen.reduction_binop    = Cc.reduction_binop
-
-function terraGPUId_to_Nd(dims, size, id, func)
+local function terraGPUId_to_Nd(dims, size, id, func)
   local atyp = L.addr_terra_types[#dims]
   local addr = symbol(atyp)
   local translate
@@ -339,7 +231,180 @@ function terraGPUId_to_Nd(dims, size, id, func)
   end
 end
 
-function gpu_codegen (kernel_ast, ctxt)
+local function cpu_codegen (kernel_ast, ctxt)
+
+  ctxt:enterblock()
+    -- declare the symbol for the parameter key
+    local param = symbol(ctxt:argKeyTerraType())
+    ctxt:localenv()[kernel_ast.name] = param
+
+    local dims                  = ctxt:dims()
+    local nrow_sym              = `[ctxt:argsym()].n_rows
+    local linid
+    if ctxt:onGPU() then linid  = symbol(uint64) end
+
+    local body = kernel_ast.body:codegen(ctxt)
+
+    -- Handle Masking of dead rows when mapping
+    -- Over an Elastic Relation
+    if ctxt:isOverElastic() then
+      if ctxt:onGPU() then
+        error("INTERNAL: ELASTIC ON GPU CURRENTLY UNSUPPORTED")
+      else
+        body = quote
+          if [ctxt:isLiveCheck(param)] then [body] end
+        end
+      end
+    end
+
+    -- GENERATE FOR SUBSETS
+    if ctxt:isOverSubset() then
+
+      -- GPU SUBSET VERSION
+      if ctxt:onGPU() then
+        body = terraGPUId_to_Nd(dims, nrow_sym, linid, function(addr)
+          return quote
+            -- set param
+            var [param]
+            var use_index = not [ctxt:argsym()].use_boolmask
+            if use_index then
+              if id < [ctxt:argsym()].index_size then
+                param = [ctxt:argsym()].index[id]
+              end
+            else -- use_boolmask
+              param = addr
+            end
+
+            -- conditionally execute
+            if use_index or [ctxt:argsym()].boolmask[id] then
+              [body]
+            end
+          end
+        end)
+
+      -- CPU SUBSET VERSION
+      else
+        body = quote
+          if [ctxt:argsym()].use_boolmask then
+          -- BOOLMASK SUBSET BRANCH
+            [terraIterNd(dims, nrow_sym, function(iter) return quote
+              if [ctxt:argsym()].boolmask[ [T.linAddrTerraGen(dims)](iter) ]
+              then
+                var [param] = iter
+                [body]
+              end
+            end end)]
+          else
+          -- INDEX SUBSET BRANCH
+            -- ONLY GENERATE FOR NON-GRID RELATIONS
+            escape if #ctxt:dims() > 1 then
+              local size_sym    = symbol('index_size')
+              emit quote
+                var [size_sym]  = [ctxt:argsym()].index_size
+                [terraIterNd({ size_sym }, nrow_sym, function(iter)
+                  return quote
+                    var [param] = [ctxt:argsym()].index[iter.a[0]]
+                    [body]
+                  end
+                end)]
+              end
+            end end
+          end
+        end
+      end
+
+    -- GENERATE FOR FULL RELATION
+    else
+
+      -- GPU FULL RELATION VERSION
+      if ctxt:onGPU() then
+        body = terraGPUId_to_Nd(dims, nrow_sym, linid, function(addr)
+          return quote
+            var [param] = [addr]
+            [body]
+          end
+        end)
+
+      -- CPU FULL RELATION VERSION
+      else
+        body = terraIterNd(dims, nrow_sym, function(iter) return quote
+          var [param] = iter
+          [body]
+        end end)
+      end
+
+    end
+
+    -- Extra GPU wrapper
+    if ctxt:onGPU() then
+
+      -- Extra GPU Reduction setup/post-process
+      if ctxt:hasGPUReduce() then
+        body = quote
+          [ctxt:codegenSharedMemInit()]
+          G.barrier()
+          [body]
+          G.barrier()
+          [ctxt:codegenSharedMemTreeReduction()]
+        end
+      end
+
+      body = quote
+        var [ctxt:tid()] = G.thread_id()
+        var [ctxt:bid()] = G.block_id()
+        var [linid]      = [ctxt:bid()] * [ctxt:gpuBlockSize()] + [ctxt:tid()]
+
+        [body]
+      end
+    end
+
+  ctxt:leaveblock()
+
+  -- BUILD GPU LAUNCHER
+  if ctxt:onGPU() then
+    local cuda_kernel = terra([ctxt:argsym()]) [body] end
+    cuda_kernel:setname(kernel_ast.id .. '_cudakernel')
+    cuda_kernel = G.kernelwrap(cuda_kernel, L._INTERNAL_DEV_OUTPUT_PTX,
+                               { {"maxntidx",64}, {"minctasm",6} })
+
+    local MAX_GRID_DIM = 65536
+    local launcher = terra (n_blocks : uint, args_ptr : &ctxt:argsType())
+      var [ctxt:argsym()] = @args_ptr
+      var grid_x : uint,    grid_y : uint,    grid_z : uint   =
+          G.get_grid_dimensions(n_blocks, MAX_GRID_DIM)
+      var params = terralib.CUDAParams {
+        grid_x, grid_y, grid_z,
+        [ctxt:gpuBlockSize()], 1, 1,
+        [ctxt:gpuSharedMemBytes()], nil
+      }
+      cuda_kernel(&params, [ctxt:argsym()])
+      G.sync() -- flush print streams
+      -- TODO: Does this sync cause any performance problems?
+    end
+    launcher:setname(kernel_ast.id)
+    return launcher
+
+  -- BUILD CPU LAUNCHER
+  else
+    local k = terra (args_ptr : &ctxt:argsType())
+      var [ctxt:argsym()] = @args_ptr
+      [body]
+    end
+    k:setname(kernel_ast.id)
+    return k
+  end
+end
+
+
+--[[--------------------------------------------------------------------]]--
+--[[                         GPU Codegen                                ]]--
+--[[--------------------------------------------------------------------]]--
+
+Codegen.reduction_identity = Cc.reduction_identity
+Codegen.reduction_binop    = Cc.reduction_binop
+
+
+local function gpu_codegen (kernel_ast, ctxt)
 
   -----------------------------
   --[[ Codegen CUDA kernel ]]--
@@ -448,13 +513,33 @@ end
 
 
 
+--[[--------------------------------------------------------------------]]--
+--[[                        Codegen Entrypoint                          ]]--
+--[[--------------------------------------------------------------------]]--
+
+
+function Codegen.codegen (kernel_ast, bran)
+  local env  = terralib.newenvironment(nil)
+  local ctxt = Context.New(env, bran)
+
+  if ctxt:onGPU() then
+    return gpu_codegen(kernel_ast, ctxt)
+  else
+    return cpu_codegen(kernel_ast, ctxt)
+  end
+
+end
+
+
+
+--[[--------------------------------------------------------------------]]--
+--[[                             GPU Atomics                            ]]--
+--[[--------------------------------------------------------------------]]--
 
 
 
 
-
-
-function atomic_gpu_red_exp (op, typ, lvalptr, update)
+local function atomic_gpu_red_exp (op, typ, lvalptr, update)
   local internal_error = 'unsupported reduction, internal error; '..
                          'this should be guarded against in the typechecker'
   if typ == L.float then
@@ -492,7 +577,7 @@ function atomic_gpu_red_exp (op, typ, lvalptr, update)
 end
 
 
-function atomic_gpu_mat_red_exp(op, result_typ, lval, rhe, rhtyp)
+local function atomic_gpu_mat_red_exp(op, result_typ, lval, rhe, rhtyp)
   if result_typ:isScalar() then
     return atomic_gpu_red_exp(op, result_typ, `&lval, rhe)
   elseif result_typ:isVector() then
@@ -575,7 +660,7 @@ function ast.Where:codegen(ctxt)
     return v
 end
 
-function doProjection(key,field,ctxt)
+local function doProjection(key,field,ctxt)
     assert(L.is_field(field))
     local dataptr     = ctxt:FieldPtr(field)
     local keydims     = field:Relation():Dims()
