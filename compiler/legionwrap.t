@@ -243,7 +243,7 @@ function LogicalRegion:AllocateRows(num)
   self.rows_live = self.rows_live + num
 end
 
--- NOTE: Assuming here that the compile time limit is never be hit.
+-- NOTE: Assuming here that the compile time limit is never hit.
 -- NOTE: Call from top level task only.
 function LogicalRegion:AllocateField(typ)
   local fid = LW.legion_field_allocator_allocate_field(

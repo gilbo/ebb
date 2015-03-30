@@ -1,5 +1,9 @@
 local K   = {}
 package.loaded["compiler.kernel_single"] = K
+
+local use_legion = not not rawget(_G, '_legion_env')
+local use_single = not use_legion
+
 local Kc  = require "compiler.kernel_common"
 local L   = require "compiler.lisztlib"
 local C   = require "compiler.c"
@@ -173,17 +177,20 @@ function Bran:Compile()
 
   -- handle GPU specific compilation
   if self:isOnGPU() then
+    if use_legion then error("LEGION UNSUPPORTED TODO") end
     self.sharedmem_size = 0
     self:CompileGPUReduction()
   end
 
-  -- allocate memory for the arguments struct on the CPU.  It will be used
-  -- to hold the parameter values that will be passed to the Liszt kernel.
-  self.args = DataArray.New{
-    size = 1,
-    type = self.arg_layout:TerraStruct(),
-    processor = L.CPU -- DON'T MOVE
-  }
+  if use_single then
+    -- allocate memory for the arguments struct on the CPU.  It will be used
+    -- to hold the parameter values that will be passed to the Liszt kernel.
+    self.args = DataArray.New{
+      size = 1,
+      type = self.arg_layout:TerraStruct(),
+      processor = L.CPU -- DON'T MOVE
+    }
+  end
 
   -- compile an executable
   self.executable = codegen.codegen(typed_ast, self)
@@ -197,17 +204,27 @@ function Bran:CompileFieldsGlobalsSubsets()
   self.global_ids   = {}
   self.n_global_ids = 0
 
+  if use_legion then
+    self.relation_ids   = {}
+    self.n_relation_ids = 0
+    self:getRelationRegionId(self.relation)
+  end
+
   -- reserve ids
   for field, _ in pairs(self.kernel.field_use) do
     self:getFieldId(field)
   end
-  self:getFieldId(self.relation._is_live_mask)
+    if self:overElasticRelation() then
+      if use_legion then error("LEGION UNSUPPORTED TODO") end
+      self:getFieldId(self.relation._is_live_mask)
+    end
   for globl, phase in pairs(self.kernel.global_use) do
     self:getGlobalId(globl)
   end
 
   -- compile subsets in if appropriate
   if self.subset then
+    if use_legion then error("LEGION UNSUPPORTED TODO") end
     self.arg_layout:turnSubsetOn()
   end
 end
@@ -220,28 +237,54 @@ function Bran:argsType ()
   return self.arg_layout:TerraStruct()
 end
 
+function Bran:getRelationRegionId(relation)
+  if not use_legion then
+    error('INTERNAL: Should only try to get Region Ids '..
+          'when running on the Legion Runtime')
+  end
+  local id = self.relation_ids[relation]
+  if id then return id
+  else
+    id = assert(false) -- TODO 
+    self.n_relation_ids = self.n_relation_ids+1
+
+    self.relation_ids[relation] = id
+    self.arg_layout:addRegion(id, assert(false))
+    return id
+
+    -- NOTE THE ACTUAL REGION ID CAN BE RETREIVED AS
+    --    relation._logical_region_wrapper
+    -- THE ACTUAL handle CAN BE RETREIVED AS 
+    --    relation._logical_region_wrapper.handle
+  end
+end
+
 function Bran:getFieldId(field)
+  if use_legion then error('TODO NOW') end
   local id = self.field_ids[field]
-  if not id then
+  if id then return id
+  else
     id = 'field_'..tostring(self.n_field_ids)..'_'..field:Name()
     self.n_field_ids = self.n_field_ids+1
 
     self.field_ids[field] = id
     self.arg_layout:addField(id, field:Type():terraType())
+    return id
   end
-  return id
 end
 
 function Bran:getGlobalId(global)
+  if use_legion then error('TODO NOW') end
   local id = self.global_ids[global]
-  if not id then
+  if id then return id
+  else
     id = 'global_'..tostring(self.n_global_ids) -- no global names
     self.n_global_ids = self.n_global_ids+1
 
     self.global_ids[global] = id
     self.arg_layout:addGlobal(id, global.type:terraType())
+    return id
   end
-  return id
 end
 
 function Bran:setFieldPtr(field)

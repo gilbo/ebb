@@ -50,8 +50,8 @@ end
 -- Info about the relation mapped over
 
 function Context:dims()
-  if not self.bran.dims then self.bran.dims = self.bran.relation:Dims() end
-  return self.bran.dims
+  if not self._dims_val then self._dims_val = self.bran.relation:Dims() end
+  return self._dims_val
 end
 
 function Context:argKeyTerraType()
@@ -227,9 +227,6 @@ LegionRawPtrFromAcc[3] = LW.legion_accessor_generic_raw_rect_ptr_3d
 
 
 
-function Context:Dimensions()
-  return self.bran.relation:nDims()
-end
 
 function Context:NumRegions()
   return self.bran.arg_layout:NumRegions()
@@ -263,6 +260,20 @@ function Context:GlobalToReduce()
   return self.bran.arg_layout:GlobalToReduce()
 end
 
+
+
+
+
+function Context:FieldPtr(field)
+  --return self.bran:getTerraFieldPtr(self:argsym(), field)
+end
+
+function Context:GlobalPtr(global)
+  --return self.bran:getTerraGlobalPtr(self:argsym(), global)
+end
+
+
+
 function Context:FieldData(field)
   local fidx   = self.bran.arg_layout:FieldIdx(field)
   local rdim   = field:Relation():nDims()
@@ -295,20 +306,119 @@ end
 
 
 
+-- Creates a task launcher with task region requirements.
+-- Implementation details:
+-- * Creates a separate region requirement for every region in arg_layout. 
+-- * Adds futures corresponding to globals to launcher.
+-- * NOTE: This is not combined with SetUpArgLayout because of a needed codegen
+--   phase in between : codegen can happen only after SetUpArgLayout, and the
+--   launcher can be created only after executable from codegen is available.
+function legion_CreateTaskLauncher(ctxt, arg_layout)
+
+  -- NOTE USED TO BE A BRAN MEMBER FUNCTION
+
+
+  local legion_task_type
+  if arg_layout.global_red then legion_task_type = LW.TaskTypes.future
+                           else legion_task_type = LW.TaskTypes.simple end
+
+  local args = self.kernel_launcher:PackToTaskArg()
+
+  local task_launcher
+  -- Simple task that does not return any values
+  if legion_task_type == LW.TaskTypes.simple then
+    task_launcher = LW.legion_task_launcher_create(
+                       LW.TID_SIMPLE, args,
+                       LW.legion_predicate_true(), 0, 0)
+  -- Tasks with futures, for handling global reductions
+  else
+    task_launcher = LW.legion_task_launcher_create(
+                       LW.TID_FUTURE, args,
+                       LW.legion_predicate_true(), 0, 0)
+  end
+
+  local arg_layout = self.arg_layout
+
+  -- region requirements
+  local regions = arg_layout:Regions()
+  for _, region in ipairs(regions) do
+    local r = arg_layout:RegIdx(region)
+    local rel = region:Relation()
+    -- Just use READ_WRITE and EXCLUSIVE for now.
+    -- Will need to update this when doing partitions.
+    local reg_req =
+      LW.legion_task_launcher_add_region_requirement_logical_region(
+        task_launcher, rel._logical_region_wrapper.handle,
+        LW.READ_WRITE, LW.EXCLUSIVE,
+        rel._logical_region_wrapper.handle, 0, false )
+    -- add all fields that should belong to this region req (computed in
+    -- SetupArgLayout)
+    for _, field in ipairs(region:Fields()) do
+      local rel = field:Relation()
+      LW.legion_task_launcher_add_field(
+        task_launcher, reg_req, field.fid, true )
+    end
+  end
+
+  -- futures
+  local globals = arg_layout:Globals()
+  for _, global in ipairs(globals) do
+    LW.legion_task_launcher_add_future(task_launcher, global.data)
+  end
+
+  --self.task_launcher = task_launcher
+  return task_launcher
+end
+
+-- Launches Legion task and returns.
+function legion_CreateLauncher(ctxt, arg_layout)
+  local task_launcher = legion_CreateTaskLauncher(ctxt, arg_layout)
+
+  local legion_task_type
+  if arg_layout.global_red then legion_task_type = LW.TaskTypes.future
+                           else legion_task_type = LW.TaskTypes.simple end
+
+  return function(leg_args)
+    if legion_task_type == LW.TaskTypes.simple then
+      LW.legion_task_launcher_execute(leg_args.runtime, leg_args.ctx,
+                                      task_launcher)
+    else
+      local global = arg_layout:GlobalToReduce()
+      local future = LW.legion_task_launcher_execute(leg_args.runtime,
+                                                     leg_args.ctx,
+                                                     task_launcher)
+      local res = LW.legion_future_get_result(future)
+      -- Wait till value is available. We can remove this once apply and
+      -- fold operations are implemented using legion API, and we figure out
+      -- how to safely delete old future : Is it safe to call DestroyFuture
+      -- immediately after launching the tasks that use the future?
+      -- TODO: We must apply this return value to old value - necessary for
+      -- multiple partitions. Work around right now applies reduction in the
+      -- task (Liszt kernel) itself, so we can simply replace the old future.
+      global.data = LW.legion_future_from_buffer(leg_args.runtime,
+                                                 res.value, res.value_size)
+      LW.legion_task_result_destroy(res)
+    end
+  end
+end
+
+
+
+
+
 
 
 
 function IndexToOffset(ctxt, index, strides)
-  if ctxt:Dimensions() == 1 then
+  local ndims = #ctxt:dims()
+  if ndims == 1 then
     return `([index].a[0] * [strides][0].offset)
-  end
-  if ctxt:Dimensions() == 2 then
+  elseif ndims == 2 then
     return  `(
       [index].a[0] * [strides][0].offset +
       [index].a[1] * [strides][1].offset
     )
-  end
-  if ctxt:Dimensions() == 3 then
+  else
     return `(
       [index].a[0] * [strides][0].offset +
       [index].a[1] * [strides][1].offset +
@@ -317,25 +427,44 @@ function IndexToOffset(ctxt, index, strides)
   end
 end
 
--- 1/ 2/ 3 dimensional iteration
-local function terraIterNd(ndims, rect, func)
-  local atyp = L.addr_terra_types[ndims]
+
+-- NOTE: the entries in dims may be symbols,
+--       allowing the loop bounds to be dynamically driven
+local function terraIterNd(dims, func)
+  local atyp = L.addr_terra_types[#dims]
   local addr = symbol(atyp)
   local iters = {}
-  for d=1,ndims do iters[d] = symbol(uint64) end
+  for d=1,#dims do iters[d] = symbol(uint64) end
   local loop = quote
     var [addr] = [atyp]({ a = array( iters ) })
     [func(addr)]
   end
-  for d=1,ndims do
-    loop = quote
-      for [iters[d]] = [rect].lo.x[d-1], [rect].hi.x[d-1]+1 do
-        [loop]
-      end
-    end
+  for drev=1,#dims do
+    local d = #dims-drev + 1 -- flip loop order of dimensions
+    loop = quote for [iters[d]] = [dims[d].lo], [dims[d].hi] do [loop] end end
   end
   return loop
 end
+
+-- 1/ 2/ 3 dimensional iteration
+--local function terraIterNd(ndims, rect, func)
+--  local atyp = L.addr_terra_types[ndims]
+--  local addr = symbol(atyp)
+--  local iters = {}
+--  for d=1,ndims do iters[d] = symbol(uint64) end
+--  local loop = quote
+--    var [addr] = [atyp]({ a = array( iters ) })
+--    [func(addr)]
+--  end
+--  for d=1,ndims do
+--    loop = quote
+--      for [iters[d]] = [rect].lo.x[d-1], [rect].hi.x[d-1]+1 do
+--        [loop]
+--      end
+--    end
+--  end
+--  return loop
+--end
 
 --[[ Codegen uses arg_layout to get base pointers for every region-field pair.
 --   This computation is in the setup phase, before the loop. Storing these 
@@ -355,25 +484,23 @@ function legion_codegen (kernel_ast, ctxt)
     local Largs = symbol(LW.TaskArgs)
     ctxt:localenv()['_legion_args'] = Largs
 
-    local dim = ctxt:Dimensions()
+    local dims = ctxt:dims()
     -- symbols for iteration and global/ field data
-    local iter, rect, field_ptrs, global_ptrs
-    iter = symbol(L.addr_terra_types[dim])
+    local param       = symbol(ctxt:argKeyTerraType())
+    local rect        = symbol(LegionRect[#dims])
+    local field_ptrs  = {}
+    local global_ptrs = symbol(LW.legion_task_result_t[ctxt:NumGlobals()])
+
     ctxt:localenv()[kernel_ast.name] = iter
-    rect = symbol(LegionRect[dim])
     ctxt:localenv()['_rect'] = rect
-    field_ptrs = {}
     for d = 1, 3 do
       field_ptrs[d] = symbol(fieldData[d][ctxt:NumFields(d)])
       ctxt:localenv()['_field_ptrs_'..tostring(d)] = field_ptrs[d]
     end
-    global_ptrs = symbol(LW.legion_task_result_t[ctxt:NumGlobals()])
     ctxt:localenv()['_global_ptrs'] = global_ptrs
 
     -- code for one iteration inside Liszt kernel
-    local kernel_body = quote
-      [ kernel_ast.body:codegen(ctxt) ]
-    end
+    local kernel_body = kernel_ast.body:codegen(ctxt)
 
     assert(ctxt:NumRegions() > 0, "Liszt kernel" .. tostring(kernel_ast.id) ..
           " should have at least 1 physical region")
@@ -462,13 +589,18 @@ function legion_codegen (kernel_ast, ctxt)
       var r   = LW.legion_physical_region_get_logical_region([Largs].regions[it_idx])
       var is  = r.index_space
       var dom = LW.legion_index_space_get_domain([Largs].lg_runtime, [Largs].lg_ctx, is)
-      var [rect] = [ LegionGetRectFromDom[dim] ](dom)
+      var [rect] = [ LegionGetRectFromDom[#dims] ](dom)
+    end
+
+    local rectdims = {}
+    for d=1,#dims do
+      rectdims[d] = { lo = `rect.lo.x[d-1], hi = `rect.hi.x[d-1] }
     end
 
     -- loop over domain
     local body_loop = quote end
     if ctxt.bran.subset then
-      body_loop = terraIterNd(dim, rect, function(param)
+      body_loop = terraIterNd(rectdims, function(param)
         local boolmask_data = ctxt:FieldData(ctxt.bran.subset._boolmask)
         return quote
           var [iter] = param
@@ -481,7 +613,7 @@ function legion_codegen (kernel_ast, ctxt)
         end
       end)
     else
-      body_loop = terraIterNd(dim, rect, function(param)
+      body_loop = terraIterNd(rectdims, function(param)
         return quote
           var [iter] = param
           [kernel_body]
@@ -502,11 +634,12 @@ function legion_codegen (kernel_ast, ctxt)
       var [Largs] = leg_args
       [body]
     end
+    k:setname(kernel_ast.id)
 
   ctxt:leaveblock()
 
-  k:setname(kernel_ast.id)
-  return k
+  return legion_CreateLauncher(ctxt, arg_layout)
+  --return k
 end
 
 
@@ -534,10 +667,9 @@ end
 --[[            Iteration / Dimension Abstraction Helpers               ]]--
 --[[--------------------------------------------------------------------]]--
 
--- We use the separate size parameter to pass in a symbol
--- whose value may be dynamic, thus ensuring that elastic
--- relations are properly iterated over as they change size
-local function terraIterNd(dims, size, func)
+-- NOTE: the entries in dims may be symbols,
+--       allowing the loop bounds to be dynamically driven
+local function terraIterNd(dims, func)
   local atyp = L.addr_terra_types[#dims]
   local addr = symbol(atyp)
   local iters = {}
@@ -546,13 +678,9 @@ local function terraIterNd(dims, size, func)
     var [addr] = [atyp]({ a = array( iters ) })
     [func(addr)]
   end
-  if #dims == 1 then -- use potentially dynamic size for Non-Grids
-    loop = quote for [iters[1]] = 0, size do [loop] end end
-  else
-    for drev=1,#dims do
-      local d = #dims-drev + 1 -- flip loop order of dimensions
-      loop = quote for [iters[d]] = 0, [dims[d]] do [loop] end end
-    end
+  for drev=1,#dims do
+    local d = #dims-drev + 1 -- flip loop order of dimensions
+    loop = quote for [iters[d]] = 0, [dims[d]] do [loop] end end
   end
   return loop
 end
@@ -607,6 +735,7 @@ function Codegen.codegen (kernel_ast, bran)
 
     local dims                  = ctxt:dims()
     local nrow_sym              = `[ctxt:argsym()].n_rows
+    if #dims == 1 then dims = { nrow_sym } end
     local linid
     if ctxt:onGPU() then linid  = symbol(uint64) end
 
@@ -652,7 +781,7 @@ function Codegen.codegen (kernel_ast, bran)
         body = quote
           if [ctxt:argsym()].use_boolmask then
           -- BOOLMASK SUBSET BRANCH
-            [terraIterNd(dims, nrow_sym, function(iter) return quote
+            [terraIterNd(dims, function(iter) return quote
               if [ctxt:argsym()].boolmask[ [T.linAddrTerraGen(dims)](iter) ]
               then
                 var [param] = iter
@@ -663,7 +792,7 @@ function Codegen.codegen (kernel_ast, bran)
           -- INDEX SUBSET BRANCH
             -- ONLY GENERATE FOR NON-GRID RELATIONS
             escape if #ctxt:dims() > 1 then emit quote
-              [terraIterNd({ nrow_sym }, nrow_sym, function(iter) return quote
+              [terraIterNd({ nrow_sym }, function(iter) return quote
                 var [param] = [ctxt:argsym()].index[iter.a[0]]
                 [body]
               end end)]
@@ -686,7 +815,7 @@ function Codegen.codegen (kernel_ast, bran)
 
       -- CPU FULL RELATION VERSION
       else
-        body = terraIterNd(dims, nrow_sym, function(iter) return quote
+        body = terraIterNd(dims, function(iter) return quote
           var [param] = iter
           [body]
         end end)
