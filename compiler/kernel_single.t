@@ -205,9 +205,10 @@ function Bran:CompileFieldsGlobalsSubsets()
   self.n_global_ids = 0
 
   if use_legion then
-    self.relation_ids   = {}
-    self.n_relation_ids = 0
-    self:getRelationRegionId(self.relation)
+    self.region_nums  = {}
+    self.n_regions    = 0
+
+    self:getPrimaryRegionNum()
   end
 
   -- reserve ids
@@ -237,38 +238,45 @@ function Bran:argsType ()
   return self.arg_layout:TerraStruct()
 end
 
-function Bran:getRelationRegionId(relation)
+local function get_region_num(relation)
   if not use_legion then
-    error('INTERNAL: Should only try to get Region Ids '..
+    error('INTERNAL: Should only try to record Regions '..
           'when running on the Legion Runtime')
   end
-  local id = self.relation_ids[relation]
-  if id then return id
+  local reg_wrapper = rel._logical_region_wrapper
+  local reg_num     = self.region_nums[reg_wrapper]
+  if reg_num then return reg_num
   else
-    id = assert(false) -- TODO 
-    self.n_relation_ids = self.n_relation_ids+1
+    local reg_num = self.n_regions
+    self.n_regions = self.n_regions + 1
 
-    self.relation_ids[relation] = id
-    self.arg_layout:addRegion(id, assert(false))
-    return id
-
-    -- NOTE THE ACTUAL REGION ID CAN BE RETREIVED AS
-    --    relation._logical_region_wrapper
-    -- THE ACTUAL handle CAN BE RETREIVED AS 
-    --    relation._logical_region_wrapper.handle
+    self.region_nums[reg_handle] = reg_num
+    return reg_num
   end
 end
 
+function Bran:getPrimaryRegionNum()
+  return get_region_num(self.relation)
+end
+
+function Bran:getRegionNum(field)
+  local rel         = field:Relation()
+  return get_region_num(rel)
+end
+
 function Bran:getFieldId(field)
-  if use_legion then error('TODO NOW') end
   local id = self.field_ids[field]
   if id then return id
   else
     id = 'field_'..tostring(self.n_field_ids)..'_'..field:Name()
     self.n_field_ids = self.n_field_ids+1
 
+    if use_legion then
+      self:recordRelation(field:Relation())
+    end
+
     self.field_ids[field] = id
-    self.arg_layout:addField(id, field:Type():terraType())
+    self.arg_layout:addField(id, field)
     return id
   end
 end
@@ -282,7 +290,7 @@ function Bran:getGlobalId(global)
     self.n_global_ids = self.n_global_ids+1
 
     self.global_ids[global] = id
-    self.arg_layout:addGlobal(id, global.type:terraType())
+    self.arg_layout:addGlobal(id, global)
     return id
   end
 end
@@ -838,18 +846,29 @@ function ArgLayout:setNDims(n)
   self.n_dims = n
 end
 
-function ArgLayout:addField(name, typ)
+function ArgLayout:addField(name, field)
   if self:isCompiled() then
     error('INTERNAL ERROR: cannot add new fields to compiled layout')
   end
-  table.insert(self.fields, { field=name, type=&typ })
+  if use_single then
+    local typ = field:Type():terraType()
+    table.insert(self.fields, { field=name, type=&typ })
+  elseif use_legion then
+    local ndims = field:Relation():nDims()
+    table.insert(self.fields, { field=name, type=LW.FieldAccessor[ndims] })
+  end
 end
 
-function ArgLayout:addGlobal(name, typ)
+function ArgLayout:addGlobal(name, global)
   if self:isCompiled() then
     error('INTERNAL ERROR: cannot add new globals to compiled layout')
   end
-  table.insert(self.globals, { field=name, type=&typ })
+  if use_single then
+    local typ = global.type:terraType()
+    table.insert(self.globals, { field=name, type=&typ })
+  elseif use_legion then
+    error('LEGION TODO')
+  end
 end
 
 function ArgLayout:addReduce(name, typ)
@@ -866,6 +885,13 @@ function ArgLayout:turnSubsetOn()
   self.subset_on = true
 end
 
+function ArgLayout:turnLegionOn()
+  if self:isCompiled() then
+    error('INTERNAL ERROR: cannot turn on Legion after compiling layout')
+  end
+  self.legion_on = true
+end
+
 function ArgLayout:addInsertion()
   if self:isCompiled() then
     error('INTERNAL ERROR: cannot add insertions to compiled layout')
@@ -878,11 +904,18 @@ function ArgLayout:TerraStruct()
   return self.terrastruct
 end
 
+local struct bounds_struct { lo : uint64, hi : uint64 }
+
 function ArgLayout:Compile()
   local terrastruct = terralib.types.newstruct(self.name)
 
   -- add counter
-  table.insert(terrastruct.entries, {field='n_rows', type=uint64})
+  if self.legion_on then
+    table.insert(terrastruct.entries,
+                 {field='bounds', type=(bounds_struct[self.n_dims])})
+  else
+    table.insert(terrastruct.entries, {field='n_rows', type=uint64})
+  end
   -- add subset data
   local taddr = L.addr_terra_types[self.n_dims]
   if self.subset_on then

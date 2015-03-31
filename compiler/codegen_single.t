@@ -188,7 +188,6 @@ end
 --[[                          LEGION CODE DUMP                          ]]--
 --[[--------------------------------------------------------------------]]--
 
-local fieldData = {}
 local LegionRect = {}
 local LegionGetRectFromDom = {}
 local LegionRawPtrFromAcc = {}
@@ -196,16 +195,7 @@ local LegionRawPtrFromAcc = {}
 local legion_codegen
 local IndexToOffset
 
-
-
 if use_legion then
-
-for dim = 1, 3 do
-  fieldData[dim] = struct {
-    ptr : &int8,
-    strides : LW.legion_byte_offset_t[dim]
-  }
-end
 
 LegionRect[1] = LW.legion_rect_1d_t
 LegionRect[2] = LW.legion_rect_2d_t
@@ -228,24 +218,9 @@ LegionRawPtrFromAcc[3] = LW.legion_accessor_generic_raw_rect_ptr_3d
 
 
 
-function Context:NumRegions()
-  return self.bran.arg_layout:NumRegions()
-end
-
-function Context:NumFields(dim)
-  return self.bran.arg_layout:NumFields(dim)
-end
-
-function Context:NumGlobals()
-  return self.bran.arg_layout:NumGlobals()
-end
 
 function Context:Regions()
   return self.bran.arg_layout:Regions()
-end
-
-function Context:GetRegion(relation)
-  return self.bran.arg_layout:GetRegion(relation)
 end
 
 function Context:Fields(reg)
@@ -297,9 +272,9 @@ function Context:FieldIdx(field, reg)
   return self.bran.arg_layout:FieldIdx(field, reg)
 end
 
-function Context:GlobalIdx(global)
-  return self.bran.arg_layout:GlobalIdx(global)
-end
+--function Context:GlobalIdx(global)
+--  return self.bran.arg_layout:GlobalIdx(global)
+--end
 
 
 
@@ -446,200 +421,167 @@ local function terraIterNd(dims, func)
   return loop
 end
 
--- 1/ 2/ 3 dimensional iteration
---local function terraIterNd(ndims, rect, func)
---  local atyp = L.addr_terra_types[ndims]
---  local addr = symbol(atyp)
---  local iters = {}
---  for d=1,ndims do iters[d] = symbol(uint64) end
---  local loop = quote
---    var [addr] = [atyp]({ a = array( iters ) })
---    [func(addr)]
---  end
---  for d=1,ndims do
---    loop = quote
---      for [iters[d]] = [rect].lo.x[d-1], [rect].hi.x[d-1]+1 do
---        [loop]
+
+-- Here we translate the Legion task arguments into our
+-- custom argument layout structure.  This allows us to write
+-- the body of generated code in a way that's agnostic to whether
+-- the code is being executed in a Legion task or not.
+local function generate_unpack_legion_task_args (argsym, task_args, ctxt)
+  -- temporary collection of symbols from unpacking the regions
+  local region_temporaries = {}
+
+  local code = quote
+    -- UNPACK REGIONS
+    escape for reg_wrapper, ri in pairs(ctxt.bran.region_nums) do
+      local reg_dim       = reg_wrapper.dimensions
+      local physical_reg  = symbol(LW.legion_physical_region_t)
+      local rect          = symbol(LegionRect[reg_dim])
+
+      region_temporaries[ri] = {
+        physical_reg  = physical_reg,
+        reg_dim       = reg_dim,
+        rect          = rect
+      }
+
+      emit quote
+        var [physical_reg]  = [LgTaskArgs].regions[ri]
+        var index_space     =
+          LW.legion_physical_region_get_logical_region(
+                                           physical_reg).index_space
+        var domain          =
+          LW.legion_index_space_get_domain([LgTaskArgs].lg_runtime,
+                                           [LgTaskArgs].lg_ctx,
+                                           index_space)
+        var [rect]          = 
+          [ LegionGetRectFromDom[reg_dim] ](domain)
+      end
+    end end
+
+    -- UNPACK PRIMARY REGION BOUNDS RECTANGLE
+    escape
+      local ri    = ctxt.bran:getPrimaryRegionNum()
+      local rect  = region_temporaries[ri].rect
+      local ndims = region_temporaries[ri].reg_dim
+      for i=1,ndims do emit quote
+        [argsym].bounds[i-1].lo = rect.lo.x[d-1]
+        [argsym].bounds[i-1].hi = rect.hi.x[d-1]
+      end end 
+    end
+    
+    -- UNPACK FIELDS
+    escape for field, farg_name in pairs(ctxt.bran.field_ids) do
+      local rtemp = region_temporaries[ctxt.bran:getRegionNum(field)]
+      local physical_reg = rtemp.physical_reg
+      local reg_dim      = rtemp.reg_dim
+      local rect         = rtemp.rect
+
+      emit quote
+        var field_accessor =
+          LW.legion_physical_region_get_field_accessor_generic(
+                                              physical_reg, [field.fid])
+        var subrect : LegionRect[reg_dim]
+        var strides : LW.legion_byte_offset_t[reg_dim]
+        var base = [&uint8](
+          [ LegionRawPtrFromAcc[reg_dim] ](
+                              field_accessor, rect, &subrect, strides))
+        [argsym].[farg_name] = LW.FieldAccessor[reg_dim] { base, strides }
+      end
+    end end
+  end
+
+    -- Read in global data from futures: assumption that the caller gets
+    -- ownership of returned legion_result_t. Need to do a deep-copy (copy
+    -- value from result) otherwise.
+--    local global_init = quote
+--      var [global_ptrs]
+--    end
+--    for _, global in ipairs(ctxt:Globals()) do
+--      local g = ctxt:GlobalIdx(global)
+--      global_init = quote
+--        [global_init]
+--        do
+--          var fut = LW.legion_task_get_future([Largs].task, g-1)
+--          [global_ptrs][g-1] = LW.legion_future_get_result(fut)
+--        end
 --      end
 --    end
---  end
---  return loop
---end
 
---[[ Codegen uses arg_layout to get base pointers for every region-field pair.
---   This computation is in the setup phase, before the loop. Storing these 
---   field pointers (along with their offsets) makes field accesses easier
---   (also potentially avoiding repeated function calls to get the base pointer
---   and offsets).
---]]--
+    -- Return reduced task result and destroy other task results
+    -- (corresponding to futures)
+--    local cleanup_and_ret = quote end
+--    local global_to_reduce = ctxt:GlobalToReduce()
+--    for _, global in ipairs(ctxt:Globals()) do
+--      if global ~= global_to_reduce then
+--        local g = ctxt:GlobalIdx(global)
+--        cleanup_and_ret = quote
+--          [cleanup_and_ret]
+--          do
+--            LW.legion_task_result_destroy([global_ptrs][g-1])
+--          end
+--        end
+--      end
+--    end
+--    local gred = ctxt:GlobalIdx(global_to_reduce)
+--    if gred then
+--      cleanup_and_ret = quote
+--        [cleanup_and_ret]
+--        return [global_ptrs][ gred-1 ]
+--      end
+--    end
+
+  return code
+end
 
 function legion_codegen (kernel_ast, ctxt)
   if ctxt:onGPU() then
     error('INTERNAL ERROR: Unimplemented GPU codegen with Legion runtime')
   end
 
+  -- HACK HACK HACK
+  if ctxt.bran.n_global_ids > 0 then
+    error("LEGION GLOBALS TODO")
+  end
+
   ctxt:enterblock()
+    -- declare the symbol for the parameter key
+    local param = symbol(ctxt:argKeyTerraType())
+    ctxt:localenv()[kernel_ast.name] = param
 
-    -- symbols for arguments to executable
-    local Largs = symbol(LW.TaskArgs)
-    ctxt:localenv()['_legion_args'] = Largs
-
-    local dims = ctxt:dims()
-    -- symbols for iteration and global/ field data
-    local param       = symbol(ctxt:argKeyTerraType())
-    local rect        = symbol(LegionRect[#dims])
-    local field_ptrs  = {}
-    local global_ptrs = symbol(LW.legion_task_result_t[ctxt:NumGlobals()])
-
-    ctxt:localenv()[kernel_ast.name] = iter
-    ctxt:localenv()['_rect'] = rect
-    for d = 1, 3 do
-      field_ptrs[d] = symbol(fieldData[d][ctxt:NumFields(d)])
-      ctxt:localenv()['_field_ptrs_'..tostring(d)] = field_ptrs[d]
-    end
-    ctxt:localenv()['_global_ptrs'] = global_ptrs
-
-    -- code for one iteration inside Liszt kernel
-    local kernel_body = kernel_ast.body:codegen(ctxt)
-
-    assert(ctxt:NumRegions() > 0, "Liszt kernel" .. tostring(kernel_ast.id) ..
-          " should have at least 1 physical region")
-
-    -- add ptrs to field data and corresponding offsets
-    local field_init = quote end
-    for d = 1, 3 do
-      field_init = quote 
-        [field_init]
-        var [field_ptrs[d]]
-      end
-    end
-    for _, reg in ipairs(ctxt:Regions()) do
-      local r = ctxt:RegIdx(reg)
-      local rdim = reg:Relation():nDims()
-      for _, field in ipairs(ctxt:Fields(reg)) do
-        local f = ctxt:FieldIdx(field, reg)
-        field_init = quote
-          [field_init]
-          do
-            var preg = [Largs].regions[r-1]
-            var is   = LW.legion_physical_region_get_logical_region(preg).index_space
-            var dom  = LW.legion_index_space_get_domain([Largs].lg_runtime, [Largs].lg_ctx, is)
-            var rect = [ LegionGetRectFromDom[rdim] ](dom)
-            do
-              var acc =
-                LW.legion_physical_region_get_field_accessor_generic(
-                  preg, [field.fid] )
-              var subrect : LegionRect[rdim]
-              var strides : LW.legion_byte_offset_t[rdim]
-              var base = [&int8]([ LegionRawPtrFromAcc[rdim] ](
-                acc, rect, &subrect, strides))
-              -- C.qrintf("In legion task - setup, adding field id %i from region %i\n", [ctxt:FieldIdx(field, reg)], r-1)
-              [field_ptrs[rdim]][f-1] = [ fieldData[rdim] ] { base, strides }
-            end
-          end
-        end
+    local dims                  = ctxt:dims()
+    if use_legion then
+      local bounds              = `[ctxt:argsym()].bounds
+      for d=1,#dims do
+        dims[d] = { lo = `bounds[d-1].lo, hi = `bounds[d-1].hi }
       end
     end
 
-    -- Read in global data from futures: assumption that the caller gets
-    -- ownership of returned legion_result_t. Need to do a deep-copy (copy
-    -- value from result) otherwise.
-    local global_init = quote
-      var [global_ptrs]
-    end
-    for _, global in ipairs(ctxt:Globals()) do
-      local g = ctxt:GlobalIdx(global)
-      global_init = quote
-        [global_init]
-        do
-          var fut = LW.legion_task_get_future([Largs].task, g-1)
-          [global_ptrs][g-1] = LW.legion_future_get_result(fut)
-        end
-      end
-    end
 
-    -- Return reduced task result and destroy other task results
-    -- (corresponding to futures)
-    local cleanup_and_ret = quote end
-    local global_to_reduce = ctxt:GlobalToReduce()
-    for _, global in ipairs(ctxt:Globals()) do
-      if global ~= global_to_reduce then
-        local g = ctxt:GlobalIdx(global)
-        cleanup_and_ret = quote
-          [cleanup_and_ret]
-          do
-            LW.legion_task_result_destroy([global_ptrs][g-1])
-          end
-        end
-      end
-    end
-    local gred = ctxt:GlobalIdx(global_to_reduce)
-    if gred then
-      cleanup_and_ret = quote
-        [cleanup_and_ret]
-        return [global_ptrs][ gred-1 ]
-      end
-    end
+    local body = kernel_ast.body:codegen(ctxt)
 
-    -- setup loop bounds
-    local it_idx = (ctxt:RegIdx(ctxt:GetRegion(ctxt.bran.relation)) - 1)
-    local setup = quote
-      [field_init]
-      [global_init]
-      var r   = LW.legion_physical_region_get_logical_region([Largs].regions[it_idx])
-      var is  = r.index_space
-      var dom = LW.legion_index_space_get_domain([Largs].lg_runtime, [Largs].lg_ctx, is)
-      var [rect] = [ LegionGetRectFromDom[#dims] ](dom)
-    end
-
-    local rectdims = {}
-    for d=1,#dims do
-      rectdims[d] = { lo = `rect.lo.x[d-1], hi = `rect.hi.x[d-1] }
-    end
-
-    -- loop over domain
-    local body_loop = quote end
-    if ctxt.bran.subset then
-      body_loop = terraIterNd(rectdims, function(param)
-        local boolmask_data = ctxt:FieldData(ctxt.bran.subset._boolmask)
-        return quote
-          var [iter] = param
-          var boolmask_stride = [boolmask_data].strides
-          var boolmask_ptr = [&bool]([boolmask_data].ptr +
-                             [IndexToOffset(ctxt, param, boolmask_stride)])
-          if @boolmask_ptr then
-            [kernel_body]
-          end
-        end
-      end)
+    if ctxt:isOverSubset() then
+      error("LEGION SUBSETS TODO")
     else
-      body_loop = terraIterNd(rectdims, function(param)
-        return quote
-          var [iter] = param
-          [kernel_body]
-        end
-      end)
+      body = terraIterNd(dims, function(iter) return quote
+        var [param] = iter
+        [body]
+      end end)
     end
 
-    -- assemble everything
-    local body = quote
-      [setup]
-      [body_loop]
-      [cleanup_and_ret]
-    end
+  ctxt:leaveblock()
 
-    local k = terra (leg_args : LW.TaskArgs)
-      -- Plain terra code, needs to be converted to code that uses symbols
-      -- and probably moved up to kernel body
-      var [Largs] = leg_args
+  -- BUILD THE LAUNCHER
+  if use_legion then
+
+    local k = terra (task_args : LW.TaskArgs)
+      var [ctxt:argsym()]
+      [ generate_unpack_legion_task_args(ctxt:argsym(), task_args, ctxt) ]
+
       [body]
     end
     k:setname(kernel_ast.id)
 
-  ctxt:leaveblock()
-
-  return legion_CreateLauncher(ctxt, arg_layout)
-  --return k
+    return legion_CreateLauncher(k, arg_layout, ctxt)
+  end
 end
 
 
@@ -680,7 +622,13 @@ local function terraIterNd(dims, func)
   end
   for drev=1,#dims do
     local d = #dims-drev + 1 -- flip loop order of dimensions
-    loop = quote for [iters[d]] = 0, [dims[d]] do [loop] end end
+    local lo = 0
+    local hi = dims[d]
+    if type(dims[d]) == 'table' and dims[d].lo then
+      lo = dims[d].lo
+      hi = dims[d].hi
+    end
+    loop = quote for [iters[d]] = lo, hi do [loop] end end
   end
   return loop
 end
@@ -744,6 +692,8 @@ function Codegen.codegen (kernel_ast, bran)
     -- Handle Masking of dead rows when mapping
     -- Over an Elastic Relation
     if ctxt:isOverElastic() then
+      if use_legion then
+        error('INTERNAL: ELASTIC ON LEGION CURRENTLY UNSUPPORTED') end
       if ctxt:onGPU() then
         error("INTERNAL: ELASTIC ON GPU CURRENTLY UNSUPPORTED")
       else
@@ -857,7 +807,6 @@ function Codegen.codegen (kernel_ast, bran)
 
     local MAX_GRID_DIM = 65536
     local launcher = terra (n_blocks : uint, args_ptr : &ctxt:argsType())
-      var [ctxt:argsym()] = @args_ptr
       var grid_x : uint,    grid_y : uint,    grid_z : uint   =
           G.get_grid_dimensions(n_blocks, MAX_GRID_DIM)
       var params = terralib.CUDAParams {
@@ -865,7 +814,7 @@ function Codegen.codegen (kernel_ast, bran)
         [ctxt:gpuBlockSize()], 1, 1,
         [ctxt:gpuSharedMemBytes()], nil
       }
-      cuda_kernel(&params, [ctxt:argsym()])
+      cuda_kernel(&params, @args_ptr)
       G.sync() -- flush print streams
       -- TODO: Does this sync cause any performance problems?
     end
