@@ -11,6 +11,11 @@ local G   = require "compiler.gpu_util"
 
 local codegen         = require "compiler.codegen_single"
 local codesupport     = require "compiler.codegen_support"
+local LE, legion_env
+if use_legion then
+  LE = rawget(_G, '_legion_env')
+  legion_env = LE.legion_env:get()
+end
 local DataArray       = require('compiler.rawdata').DataArray
 
 
@@ -238,30 +243,32 @@ function Bran:argsType ()
   return self.arg_layout:TerraStruct()
 end
 
-local function get_region_num(relation)
+local function get_region_num(bran, relation)
   if not use_legion then
     error('INTERNAL: Should only try to record Regions '..
           'when running on the Legion Runtime')
   end
-  local reg_wrapper = rel._logical_region_wrapper
-  local reg_num     = self.region_nums[reg_wrapper]
+  local reg_wrapper = relation._logical_region_wrapper
+  local reg_num     = bran.region_nums[reg_wrapper]
   if reg_num then return reg_num
   else
-    local reg_num = self.n_regions
-    self.n_regions = self.n_regions + 1
+    local reg_num = bran.n_regions
+    bran.n_regions = bran.n_regions + 1
 
-    self.region_nums[reg_handle] = reg_num
+    bran.region_nums[reg_wrapper] = reg_num
     return reg_num
   end
 end
 
 function Bran:getPrimaryRegionNum()
-  return get_region_num(self.relation)
+  if use_single then error("INTERNAL: Cannot use regions w/o Legion") end
+  return get_region_num(self, self.relation)
 end
 
 function Bran:getRegionNum(field)
+  if use_single then error("INTERNAL: Cannot use regions w/o Legion") end
   local rel         = field:Relation()
-  return get_region_num(rel)
+  return get_region_num(self, rel)
 end
 
 function Bran:getFieldId(field)
@@ -296,24 +303,25 @@ function Bran:getGlobalId(global)
 end
 
 function Bran:setFieldPtr(field)
+  if use_legion then
+    error('INTERNAL: Do not call setFieldPtr() when using Legion') end
   local id = self:getFieldId(field)
   local dataptr = field:DataPtr()
   self.args:ptr()[id] = dataptr
 end
 function Bran:setGlobalPtr(global)
+  if use_legion then
+    error('INTERNAL: Do not call setGlobalPtr() when using Legion') end
   local id = self:getGlobalId(global)
   local dataptr = global:DataPtr()
   self.args:ptr()[id] = dataptr
 end
 
-function Bran:getTerraFieldPtr(args_sym, field)
-  local id = self:getFieldId(field)
-  return `[args_sym].[id]
-end
 function Bran:getTerraGlobalPtr(args_sym, global)
   local id = self:getGlobalId(global)
   return `[args_sym].[id]
 end
+
 
 --                  ---------------------------------------                  --
 --[[ Bran Dynamic Checks                                                   ]]--
@@ -361,6 +369,10 @@ function Bran:BindData()
 end
 
 function Bran:bindFieldGlobalSubsetArgs()
+  -- Don't worry about binding on Legion, since we need
+  -- to handle that a different way anyways
+  if use_legion then return end
+
   local argptr    = self.args:ptr()
   argptr.n_rows   = self.relation:ConcreteSize()
 
@@ -396,7 +408,11 @@ function Bran:Launch()
   if self:isOnGPU() then
     self.executable(self:numGPUBlocks(), self.args:ptr())
   else
-    self.executable(self.args:ptr())
+    if use_legion then
+      self.executable({ ctx = legion_env.ctx, runtime = legion_env.runtime })
+    else
+      self.executable(self.args:ptr())
+    end
   end
 end
 
@@ -885,13 +901,6 @@ function ArgLayout:turnSubsetOn()
   self.subset_on = true
 end
 
-function ArgLayout:turnLegionOn()
-  if self:isCompiled() then
-    error('INTERNAL ERROR: cannot turn on Legion after compiling layout')
-  end
-  self.legion_on = true
-end
-
 function ArgLayout:addInsertion()
   if self:isCompiled() then
     error('INTERNAL ERROR: cannot add insertions to compiled layout')
@@ -910,7 +919,7 @@ function ArgLayout:Compile()
   local terrastruct = terralib.types.newstruct(self.name)
 
   -- add counter
-  if self.legion_on then
+  if use_legion then
     table.insert(terrastruct.entries,
                  {field='bounds', type=(bounds_struct[self.n_dims])})
   else

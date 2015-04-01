@@ -191,11 +191,11 @@ LW.TaskTypes = { simple = 'simple', future = 'future' }
 
 LW.FieldAccessor = {}
 for d = 1, 3 do
-  FieldAccessor[d] = struct {
+  LW.FieldAccessor[d] = struct {
     ptr     : &uint8,
     strides : LW.legion_byte_offset_t[d]
   }
-  FieldAccessor[d].__typename =
+  LW.FieldAccessor[d].__typename =
     function() return 'FieldAccessor_'..tostring(d) end
 end
 
