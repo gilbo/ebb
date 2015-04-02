@@ -258,12 +258,16 @@ function LogicalRegion:AllocateRows(num)
   self.rows_live = self.rows_live + num
 end
 
+local allocate_field_fid_counter = 0
 -- NOTE: Assuming here that the compile time limit is never hit.
 -- NOTE: Call from top level task only.
 function LogicalRegion:AllocateField(typ)
   local fid = LW.legion_field_allocator_allocate_field(
-                 self.fsa, terralib.sizeof(typ.terratype), self.field_ids)
-  self.field_ids = self.field_ids + 1
+                self.fsa,
+                terralib.sizeof(typ.terratype),
+                allocate_field_fid_counter
+              )
+  allocate_field_fid_counter = allocate_field_fid_counter + 1
   return fid
 end
 

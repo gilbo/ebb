@@ -65,7 +65,9 @@ local function iterate3d(nx,ny,nz)
   end
 end
 local function linid(ids,dims)
-      if #dims == 1 then return ids[1]
+  if #dims == 1 then
+    if type(ids) == 'number' then return ids
+                             else return ids[1] end
   elseif #dims == 2 then return ids[1] + dims[1] * ids[2]
   elseif #dims == 3 then return ids[1] + dims[1] * (ids[2] + dims[2]*ids[3])
   else error('INTERNAL > 3 dimensional address???') end
@@ -421,7 +423,6 @@ function L.LRelation:GroupBy(keyf_name)
     }
     local dst_i, prev_src = 0,0
     for ids, ptrs in src_scanner:ScanThenClose() do
-      print(ids,dst_i)
       local src_i   = linid(ids,dims)
       local offptr  = terralib.cast(&uint64,ptrs[1])
       local lenptr  = terralib.cast(&uint64,ptrs[2])

@@ -259,6 +259,20 @@ LegionRawPtrFromAcc[3] = LW.legion_accessor_generic_raw_rect_ptr_3d
 
 
 
+local function pairs_val_sorted(tbl)
+  local list = {}
+  for k,v in pairs(tbl) do table.insert(list, {k,v}) end
+  table.sort(list, function(p1,p2)
+    return p1[2] < p2[2]
+  end)
+
+  local i = 0
+  return function() -- iterator
+    i = i+1
+    if list[i] == nil then return nil
+                      else return list[i][1], list[i][2] end
+  end
+end
 
 -- Creates a task launcher with task region requirements.
 local function legion_CreateTaskLauncher(task_func, ctxt)
@@ -278,12 +292,10 @@ local function legion_CreateTaskLauncher(task_func, ctxt)
                             LW.legion_predicate_true(), 0, 0
                         )
 
-  local region_requirements = {}
-
   -- ADD EACH REGION to the launcher as a requirement
   -- WITH THE appropriate permissions set
-  for reg_wrapper, ri in pairs(ctxt.bran.region_nums) do
-    region_requirements[ri] = 
+  for reg_wrapper, ri in pairs_val_sorted(ctxt.bran.region_nums) do
+    local reg_req = 
       LW.legion_task_launcher_add_region_requirement_logical_region(
         task_launcher,
         reg_wrapper.handle,
@@ -293,6 +305,7 @@ local function legion_CreateTaskLauncher(task_func, ctxt)
         0,
         false
       )
+    assert(reg_req == ri)
   end
 
   -- ADD EACH FIELD to the launcher as a requirement
@@ -300,7 +313,7 @@ local function legion_CreateTaskLauncher(task_func, ctxt)
   for field, _ in pairs(ctxt.bran.field_ids) do
     LW.legion_task_launcher_add_field(
       task_launcher,
-      region_requirements[ctxt.bran:getRegionNum(field)],
+      ctxt.bran:getRegionNum(field),
       field.fid,
       true
     )
@@ -368,7 +381,6 @@ local function terraIterNd(dims, func)
   return loop
 end
 
-
 -- Here we translate the Legion task arguments into our
 -- custom argument layout structure.  This allows us to write
 -- the body of generated code in a way that's agnostic to whether
@@ -424,6 +436,7 @@ local function generate_unpack_legion_task_args (argsym, task_args, ctxt)
       local reg_dim      = rtemp.reg_dim
       local rect         = rtemp.rect
 
+
       emit quote
         var field_accessor =
           LW.legion_physical_region_get_field_accessor_generic(
@@ -433,7 +446,7 @@ local function generate_unpack_legion_task_args (argsym, task_args, ctxt)
         var base = [&uint8](
           [ LegionRawPtrFromAcc[reg_dim] ](
                               field_accessor, rect, &subrect, strides))
-        [argsym].[farg_name] = LW.FieldAccessor[reg_dim] { base, strides }
+        [argsym].[farg_name] = [ LW.FieldAccessor[reg_dim] ] { base, strides }
       end
     end end
   end
@@ -1037,7 +1050,8 @@ function ast.GenericFor:codegen (ctxt)
 
     for i,p in ipairs(self.set.node_type.projections) do
         local field = rel[p]
-        projected   = doProjection(projected,field,ctxt)
+        --projected   = doProjection(projected,field,ctxt)
+        projected   = `@[ ctxt:FieldElemPtr(field, projected) ]
         rel         = field.type.relation
         assert(rel)
     end
@@ -1081,37 +1095,28 @@ function ast.Global:codegen (ctxt)
 end
 
 function ast.Where:codegen(ctxt)
-  if use_legion then error("LEGION UNSUPPORTED TODO") end
-  local key         = self.key:codegen(ctxt)
-  local sType       = self.node_type:terraType()
-  local keydims     = self.key.node_type.relation:Dims()
-  local indexarith  = T.linAddrTerraGen(keydims)
+  --if use_legion then error("LEGION UNSUPPORTED TODO") end
+  local key       = self.key:codegen(ctxt)
+  local sType     = self.node_type:terraType()
 
   local dstrel    = self.relation
   local off_field = dstrel:_INTERNAL_GroupedOffset()
   local len_field = dstrel:_INTERNAL_GroupedLength()
-  --local offptr  = ctxt:FieldPtr(dstrel:_INTERNAL_GroupedOffset())
-  --local lenptr  = ctxt:FieldPtr(dstrel:_INTERNAL_GroupedLength())
-  --local indexdata = self.relation._grouping.index:DataPtr()
   local keysym    = symbol()
   local v = quote
     var [keysym]  = [key]
     var off       = @[ ctxt:FieldElemPtr(off_field, keysym) ]
     var len       = @[ ctxt:FieldElemPtr(len_field, keysym) ]
-  in 
+  in
     sType { off, off+len }
   end
   return v
 end
 
-local function doProjection(key,field,ctxt)
-  assert(L.is_field(field))
-  return `@[ ctxt:FieldElemPtr(field, key) ]
-  --local dataptr     = ctxt:FieldPtr(field)
-  --local keydims     = field:Relation():Dims()
-  --local indexarith  = T.linAddrTerraGen(keydims)
-  --return `dataptr[ indexarith(key) ]
-end
+--local function doProjection(key,field,ctxt)
+--  assert(L.is_field(field))
+--  return `@[ ctxt:FieldElemPtr(field, key) ]
+--end
 
 
 function ast.GlobalReduce:codegen(ctxt)
@@ -1161,26 +1166,8 @@ function ast.FieldWrite:codegen (ctxt)
 end
 
 function ast.FieldAccess:codegen (ctxt)
-  --if use_legion then
-  --  local key     = self.key:codegen(ctxt)
-  --  local fdata   = ctxt:FieldData(self.field)
-  --  local fttype  = self.field:Type().terratype
-  --  local access = quote
-  --    var strides = [fdata].strides
-  --    var ptr = [&fttype]([fdata].ptr + [IndexToOffset(ctxt, key, strides)] )
-  --  in
-  --    @ptr
-  --  end
-  --  return access
-  --end
-  --else
   local key = self.key:codegen(ctxt)
   return `@[ ctxt:FieldElemPtr(self.field, key) ]
-  --local key         = self.key:codegen(ctxt)
-  --local dataptr     = ctxt:FieldPtr(self.field)
-  --local keydims     = self.field:Relation():Dims()
-  --local indexarith  = T.linAddrTerraGen(keydims)
-  --return `dataptr[ indexarith(key) ]
 end
 
 

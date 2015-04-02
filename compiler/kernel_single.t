@@ -11,10 +11,11 @@ local G   = require "compiler.gpu_util"
 
 local codegen         = require "compiler.codegen_single"
 local codesupport     = require "compiler.codegen_support"
-local LE, legion_env
+local LE, legion_env, LW
 if use_legion then
   LE = rawget(_G, '_legion_env')
   legion_env = LE.legion_env:get()
+  LW = require 'compiler.legionwrap'
 end
 local DataArray       = require('compiler.rawdata').DataArray
 
@@ -252,6 +253,13 @@ local function get_region_num(bran, relation)
   local reg_num     = bran.region_nums[reg_wrapper]
   if reg_num then return reg_num
   else
+    if bran.arg_layout:isCompiled() then
+      for f,name in pairs(bran.field_ids) do print(f,name, f:FullName()) end
+      error('INTERNAL ERROR: cannot add region after compiling \n'..
+            '  argument layout.  (debug data follows)\n'..
+            '      violating relation: '..relation:Name())
+    end
+
     local reg_num = bran.n_regions
     bran.n_regions = bran.n_regions + 1
 
@@ -278,9 +286,7 @@ function Bran:getFieldId(field)
     id = 'field_'..tostring(self.n_field_ids)..'_'..field:Name()
     self.n_field_ids = self.n_field_ids+1
 
-    if use_legion then
-      self:recordRelation(field:Relation())
-    end
+    if use_legion then self:getRegionNum(field) end
 
     self.field_ids[field] = id
     self.arg_layout:addField(id, field)
@@ -328,22 +334,24 @@ end
 --                  ---------------------------------------                  --
 
 function Bran:DynamicChecks()
-  -- Check that the fields are resident on the correct processor
-  local underscore_field_fail = nil
-  for field, _ in pairs(self.field_ids) do
-    if field.array:location() ~= self.proc then
-      if field:Name():sub(1,1) == '_' then
-        underscore_field_fail = field
-      else
-        error("cannot execute kernel because field "..field:FullName()..
-              " is not currently located on "..tostring(self.proc), 3)
+  if use_single then
+    -- Check that the fields are resident on the correct processor
+    local underscore_field_fail = nil
+    for field, _ in pairs(self.field_ids) do
+      if field.array:location() ~= self.proc then
+        if field:Name():sub(1,1) == '_' then
+          underscore_field_fail = field
+        else
+          error("cannot execute kernel because field "..field:FullName()..
+                " is not currently located on "..tostring(self.proc), 3)
+        end
       end
     end
-  end
-  if underscore_field_fail then
-    error("cannot execute kernel because hidden field "..
-          underscore_field_fail:FullName()..
-          " is not currently located on "..tostring(self.proc), 3)
+    if underscore_field_fail then
+      error("cannot execute kernel because hidden field "..
+            underscore_field_fail:FullName()..
+            " is not currently located on "..tostring(self.proc), 3)
+    end
   end
 
   if self:UsesInsert() then   self:DynamicInsertChecks()   end
