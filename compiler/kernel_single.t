@@ -121,6 +121,9 @@ end
 function Bran:UsesDelete()
   return nil ~= self.delete_data
 end
+function Bran:UsesGlobalReduce()
+  return next(self.global_reductions) ~= nil
+end
 function Bran:isOnGPU()
   return self.proc == L.GPU
 end
@@ -210,9 +213,14 @@ function Bran:CompileFieldsGlobalsSubsets()
   self.global_ids   = {}
   self.n_global_ids = 0
 
+  self.global_reductions = {}
+
   if use_legion then
     self.region_nums  = {}
     self.n_regions    = 0
+
+    self.future_nums  = {}
+    self.n_futures    = 0
 
     self:getPrimaryRegionNum()
   end
@@ -226,7 +234,19 @@ function Bran:CompileFieldsGlobalsSubsets()
       self:getFieldId(self.relation._is_live_mask)
     end
   for globl, phase in pairs(self.kernel.global_use) do
-    self:getGlobalId(globl)
+    local gid = self:getGlobalId(globl)
+
+    -- record reductions
+    if phase.reduceop then
+      self.uses_global_reduce = true
+      local ttype             = globl.type:terraType()
+
+      local reduce_data       = self:getReduceData(globl)
+      reduce_data.phase       = phase
+
+      -- assign positions to futures on Legion
+      if use_legion then self:getFutureNum(globl) end
+    end
   end
 
   -- compile subsets in if appropriate
@@ -254,7 +274,6 @@ local function get_region_num(bran, relation)
   if reg_num then return reg_num
   else
     if bran.arg_layout:isCompiled() then
-      for f,name in pairs(bran.field_ids) do print(f,name, f:FullName()) end
       error('INTERNAL ERROR: cannot add region after compiling \n'..
             '  argument layout.  (debug data follows)\n'..
             '      violating relation: '..relation:Name())
@@ -279,6 +298,24 @@ function Bran:getRegionNum(field)
   return get_region_num(self, rel)
 end
 
+function Bran:getFutureNum(globl)
+  if use_single then error("INTERNAL: Cannot use futures w/o Legion") end
+  local fut_num     = self.future_nums[globl]
+  if fut_num then return fut_num
+  else
+    if self.arg_layout:isCompiled() then
+      error('INTERNAL ERROR: cannot add future after compiling '..
+            'argument layout.')
+    end
+
+    fut_num         = self.n_futures
+    self.n_futures  = self.n_futures + 1
+
+    self.future_nums[globl] = fut_num
+    return fut_num
+  end
+end
+
 function Bran:getFieldId(field)
   local id = self.field_ids[field]
   if id then return id
@@ -295,7 +332,6 @@ function Bran:getFieldId(field)
 end
 
 function Bran:getGlobalId(global)
-  if use_legion then error('TODO NOW') end
   local id = self.global_ids[global]
   if id then return id
   else
@@ -306,6 +342,21 @@ function Bran:getGlobalId(global)
     self.arg_layout:addGlobal(id, global)
     return id
   end
+end
+
+function Bran:getReduceData(global)
+  local data = self.global_reductions[global]
+  if not data then
+    local gid = self:getGlobalId(global)
+    local id  = 'reduce_globalmem_'..gid:sub(#'global_' + 1)
+         data = { id = id }
+
+    self.global_reductions[global] = data
+    if self:isOnGPU() then
+      self.arg_layout:addReduce(id, global.type:terraType())
+    end
+  end
+  return data
 end
 
 function Bran:setFieldPtr(field)
@@ -354,8 +405,8 @@ function Bran:DynamicChecks()
     end
   end
 
-  if self:UsesInsert() then   self:DynamicInsertChecks()   end
-  if self:UsesDelete() then   self:DynamicDeleteChecks()   end
+  if self:UsesInsert()  then  self:DynamicInsertChecks()  end
+  if self:UsesDelete()  then  self:DynamicDeleteChecks()  end
 end
 
 --                  ---------------------------------------                  --
@@ -366,14 +417,16 @@ function Bran:BindData()
   -- Bind inserts and deletions before anything else, because
   -- the binding may trigger computations to re-size/re-allocate
   -- data in some cases, invalidating previous data pointers
-  if self:UsesInsert()    then   self:bindInsertData()        end
-  if self:UsesDelete()    then   self:bindDeleteData()        end
+  if self:UsesInsert()  then  self:bindInsertData()       end
+  if self:UsesDelete()  then  self:bindDeleteData()       end
 
   -- Bind the rest of the data
   self:bindFieldGlobalSubsetArgs()
 
   -- Bind/Initialize any reduction data as needed
-  if self:UsesGPUReduce() then   self:bindGPUReductionData()  end
+  if self:isOnGPU() then
+    if self:UsesGlobalReduce()  then  self:bindGPUReductionData()   end
+  end
 end
 
 function Bran:bindFieldGlobalSubsetArgs()
@@ -430,11 +483,13 @@ end
 
 function Bran:PostLaunchCleanup()
   -- GPU Reduction finishing and cleanup
-  if self:UsesGPUReduce()   then   self:postprocessGPUReduction()  end
+  if self:isOnGPU() then
+    if self:UsesGPUReduce()   then  self:postprocessGPUReduction()  end
+  end
 
   -- Handle post execution Insertion and Deletion Behaviors
-  if self:UsesInsert()      then   self:postprocessInsertions()    end
-  if self:UsesDelete()      then   self:postprocessDeletions()     end
+  if self:UsesInsert()        then   self:postprocessInsertions()    end
+  if self:UsesDelete()        then   self:postprocessDeletions()     end
 end
 
 
@@ -571,10 +626,6 @@ end
 -- within the codegen compilation and the compilation of a secondary
 -- CUDA Kernel (below)
 
-function Bran:UsesGPUReduce()
-  return self.uses_gpu_reduce
-end
-
 function Bran:numGPUBlocks()
   if self:isOverSubset() then
     if self.subset._boolmask then
@@ -593,19 +644,6 @@ end
 
 function Bran:getBlockSize()
   return self.blocksize
-end
-
-function Bran:getReduceData(global)
-  local data = self.gpu_reductions[global]
-  if not data then
-    local gid = self:getGlobalId(global)
-    local id  = 'reduce_globalmem_'..gid:sub(#'global_' + 1)
-         data = { id = id }
-
-    self.gpu_reductions[global] = data
-    self.arg_layout:addReduce(id, global.type:terraType())
-  end
-  return data
 end
 
 function Bran:setReduceGlobalMemPtr(global, dataptr)
@@ -635,8 +673,6 @@ end
 --                  ---------------------------------------                  --
 
 function Bran:CompileGPUReduction()
-  self.uses_gpu_reduce        = false -- until we see otherwise...
-  self.gpu_reductions         = {}
   self.sharedmem_size         = self.sharedmem_size or 0
 
   -- NOTE: because GPU memory is idiosyncratic, we need to handle
@@ -653,19 +689,26 @@ function Bran:CompileGPUReduction()
   --      for allocating and deallocating shared memory on kernel launch/exit
 
   -- Find all the global variables in this kernel that are being reduced
-  for globl, phase in pairs(self.kernel.global_use) do
-    if phase.reduceop then
-      self.uses_gpu_reduce  = true
-      local ttype           = globl.type:terraType()
+  for globl, data in pairs(self.global_reductions) do
+    local ttype             = globl.type:terraType()
+    data.sharedmem          = cudalib.sharedmemory(ttype, self.blocksize)
 
-      local reduce_data     = self:getReduceData(globl)
-      reduce_data.phase     = phase
-      reduce_data.sharedmem = cudalib.sharedmemory(ttype, self.blocksize)
-
-      self.sharedmem_size   = self.sharedmem_size +
+    self.sharedmem_size     = self.sharedmem_size +
                                 sizeof(ttype) * self.blocksize
-    end
   end
+--  for globl, phase in pairs(self.kernel.global_use) do
+--    if phase.reduceop then
+--      self.uses_gpu_reduce  = true
+--      local ttype           = globl.type:terraType()
+--
+--      local reduce_data     = self:getReduceData(globl)
+--      reduce_data.phase     = phase
+--      reduce_data.sharedmem = cudalib.sharedmemory(ttype, self.blocksize)
+--
+--      self.sharedmem_size   = self.sharedmem_size +
+--                                sizeof(ttype) * self.blocksize
+--    end
+--  end
 
   self:CompileGlobalMemReductionKernel()
 end
@@ -673,7 +716,7 @@ end
 -- The following routine is also used inside the primary compile CUDA kernel
 function Bran:GenerateSharedMemInitialization(tid_sym)
   local code = quote end
-  for globl, data in pairs(self.gpu_reductions) do
+  for globl, data in pairs(self.global_reductions) do
     local op        = data.phase.reduceop
     local lz_type   = globl.type
     local sharedmem = data.sharedmem
@@ -690,7 +733,7 @@ end
 function Bran:GenerateSharedMemReduceTree(args_sym, tid_sym, bid_sym, is_final)
   is_final = is_final or false
   local code = quote end
-  for globl, data in pairs(self.gpu_reductions) do
+  for globl, data in pairs(self.global_reductions) do
     local op          = data.phase.reduceop
     local lz_type     = globl.type
     local sharedmem   = data.sharedmem
@@ -770,7 +813,7 @@ function Bran:CompileGlobalMemReductionKernel()
     -- REDUCE the global memory into the provided shared memory
     -- count from (gt) till (array_len) by step sizes of (blocksize)
     for gi = gt, array_len, n_blocks * [bran.blocksize] do
-      escape for globl, data in pairs(bran.gpu_reductions) do
+      escape for globl, data in pairs(bran.global_reductions) do
         local op          = data.phase.reduceop
         local lz_type     = globl.type
         local sharedmem   = data.sharedmem
@@ -823,7 +866,7 @@ function Bran:bindGPUReductionData()
   local n_blocks = self:numGPUBlocks()
 
   -- allocate GPU global memory for the reduction
-  for globl, _ in pairs(self.gpu_reductions) do
+  for globl, _ in pairs(self.global_reductions) do
     local ttype = globl.type:terraType()
     self:setReduceGlobalMemPtr(globl, G.malloc(ttype, n_blocks))
   end
@@ -838,7 +881,7 @@ function Bran:postprocessGPUReduction()
   self.global_reduction_pass(self.args:ptr())
 
   -- free GPU global memory allocated for the reduction
-  for globl, _ in pairs(self.gpu_reductions) do
+  for globl, _ in pairs(self.global_reductions) do
     self:freeReduceGlobalMemPtr(globl)
   end
 end
@@ -887,12 +930,8 @@ function ArgLayout:addGlobal(name, global)
   if self:isCompiled() then
     error('INTERNAL ERROR: cannot add new globals to compiled layout')
   end
-  if use_single then
-    local typ = global.type:terraType()
-    table.insert(self.globals, { field=name, type=&typ })
-  elseif use_legion then
-    error('LEGION TODO')
-  end
+  local typ = global.type:terraType()
+  table.insert(self.globals, { field=name, type=&typ })
 end
 
 function ArgLayout:addReduce(name, typ)

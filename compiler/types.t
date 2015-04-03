@@ -594,7 +594,11 @@ local function lisztToLuaVal(lzval, typ)
     if typ:isNumeric() then
       return tonumber(lzval)
     elseif typ:isLogical() then
-      return lzval
+      if type(lzval) == 'cdata' then
+        return not (lzval == 0)
+      else
+        return lzval
+      end
     end
 
   elseif typ:isScalarKey() then

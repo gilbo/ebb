@@ -280,20 +280,31 @@ local function legion_CreateTaskLauncher(task_func, ctxt)
   -- TODO: Cannot pass a terra function to another terra function.
   -- Doing so throws error "cannot convert 'table' to 'bool (*)()'".
   -- Should fix this, and remove the wrapper terra function defined below.
-  local terra task_func_wrapper()
-    return LW.NewSimpleKernelLauncher(task_func)
+  local task_func_wrapper
+  local task_TID
+  if ctxt.bran:UsesGlobalReduce() then
+    task_func_wrapper = terra()
+      return LW.NewFutureKernelLauncher(task_func)
+    end
+    task_TID = LW.TID_FUTURE
+  else
+    task_func_wrapper = terra()
+      return LW.NewSimpleKernelLauncher(task_func)
+    end
+    task_TID = LW.TID_SIMPLE
   end
   local task_as_arg = task_func_wrapper():PackToTaskArg()
 
 
   local task_launcher = LW.legion_task_launcher_create(
-                            LW.TID_SIMPLE,
+                            task_TID,
                             task_as_arg,
                             LW.legion_predicate_true(), 0, 0
                         )
 
   -- ADD EACH REGION to the launcher as a requirement
   -- WITH THE appropriate permissions set
+  -- NOTE: Need to make sure to do this in the right order
   for reg_wrapper, ri in pairs_val_sorted(ctxt.bran.region_nums) do
     local reg_req = 
       LW.legion_task_launcher_add_region_requirement_logical_region(
@@ -319,11 +330,11 @@ local function legion_CreateTaskLauncher(task_func, ctxt)
     )
   end
 
---  -- futures
---  local globals = arg_layout:Globals()
---  for _, global in ipairs(globals) do
---    LW.legion_task_launcher_add_future(task_launcher, global.data)
---  end
+  -- ADD EACH GLOBAL to the launcher as a future being passed to the task
+  -- NOTE: Need to make sure to do this in the right order
+  for globl, gi in pairs_val_sorted(ctxt.bran.future_nums) do
+    LW.legion_task_launcher_add_future(task_launcher, globl.data)
+  end
 
   return task_launcher
 end
@@ -331,29 +342,30 @@ end
 -- Launches Legion task and returns.
 local function legion_CreateLauncher(task_func, ctxt)
   local task_launcher = legion_CreateTaskLauncher(task_func, ctxt)
-
-  return function(leg_args)
-    LW.legion_task_launcher_execute(leg_args.runtime, leg_args.ctx,
-                                    task_launcher)
+  if ctxt.bran:UsesGlobalReduce() then
+    return function(leg_args)
+      local globl   = next(ctxt.bran.global_reductions)
+      local future  = LW.legion_task_launcher_execute(leg_args.runtime,
+                                                      leg_args.ctx,
+                                                      task_launcher)
+      local res = LW.legion_future_get_result(future)
+      -- Wait till value is available. We can remove this once apply and
+      -- fold operations are implemented using legion API, and we figure out
+      -- how to safely delete old future : Is it safe to call DestroyFuture
+      -- immediately after launching the tasks that use the future?
+      -- TODO: We must apply this return value to old value - necessary for
+      -- multiple partitions. Work around right now applies reduction in the
+      -- task (Liszt kernel) itself, so we can simply replace the old future.
+      globl.data = LW.legion_future_from_buffer(leg_args.runtime,
+                                                res.value, res.value_size)
+      LW.legion_task_result_destroy(res)
+    end
+  else
+    return function(leg_args)
+      LW.legion_task_launcher_execute(leg_args.runtime, leg_args.ctx,
+                                      task_launcher)
+    end
   end
-
---    if LW.TaskTypes.future
---      local global = arg_layout:GlobalToReduce()
---      local future = LW.legion_task_launcher_execute(leg_args.runtime,
---                                                     leg_args.ctx,
---                                                     task_launcher)
---      local res = LW.legion_future_get_result(future)
---      -- Wait till value is available. We can remove this once apply and
---      -- fold operations are implemented using legion API, and we figure out
---      -- how to safely delete old future : Is it safe to call DestroyFuture
---      -- immediately after launching the tasks that use the future?
---      -- TODO: We must apply this return value to old value - necessary for
---      -- multiple partitions. Work around right now applies reduction in the
---      -- task (Liszt kernel) itself, so we can simply replace the old future.
---      global.data = LW.legion_future_from_buffer(leg_args.runtime,
---                                                 res.value, res.value_size)
---      LW.legion_task_result_destroy(res)
---    end
 end
 
 
@@ -376,7 +388,9 @@ local function terraIterNd(dims, func)
   end
   for drev=1,#dims do
     local d = #dims-drev + 1 -- flip loop order of dimensions
-    loop = quote for [iters[d]] = [dims[d].lo], [dims[d].hi] do [loop] end end
+    loop = quote for [iters[d]] = [dims[d].lo], [dims[d].hi]+1 do
+      [loop]
+    end end
   end
   return loop
 end
@@ -390,6 +404,7 @@ local function generate_unpack_legion_task_args (argsym, task_args, ctxt)
   local region_temporaries = {}
 
   local code = quote
+    do -- close after unpacking the fields
     -- UNPACK REGIONS
     escape for reg_wrapper, ri in pairs(ctxt.bran.region_nums) do
       local reg_dim       = reg_wrapper.dimensions
@@ -426,7 +441,7 @@ local function generate_unpack_legion_task_args (argsym, task_args, ctxt)
       for i=1,ndims do emit quote
         [argsym].bounds[i-1].lo = rect.lo.x[i-1]
         [argsym].bounds[i-1].hi = rect.hi.x[i-1]
-      end end 
+      end end
     end
     
     -- UNPACK FIELDS
@@ -449,7 +464,27 @@ local function generate_unpack_legion_task_args (argsym, task_args, ctxt)
         [argsym].[farg_name] = [ LW.FieldAccessor[reg_dim] ] { base, strides }
       end
     end end
-  end
+    end -- closing do started before unpacking the regions
+
+    -- UNPACK FUTURES
+    -- DO NOT WRAP THIS IN A LOCAL SCOPE / DO BLOCK (SEE BELOW)
+    escape for globl, garg_name in pairs(ctxt.bran.global_ids) do
+      -- position in the Legion task arguments
+      local fut_i   = ctxt.bran:getFutureNum(globl) 
+      local gtyp    = globl.type:terraType()
+
+      emit quote
+        var fut     = LW.legion_task_get_future([task_args].task, fut_i)
+        var result  = LW.legion_future_get_result(fut)
+        var datum   = @[&gtyp](result.value)
+        -- note that we're going to rely on this variable
+        -- being stably allocated on the stack
+        -- for the remainder of this scope
+        [argsym].[garg_name] = &datum
+        LW.legion_task_result_destroy(result)
+      end
+    end end
+  end -- end quote
 
     -- Read in global data from futures: assumption that the caller gets
     -- ownership of returned legion_result_t. Need to do a deep-copy (copy
@@ -467,6 +502,7 @@ local function generate_unpack_legion_task_args (argsym, task_args, ctxt)
 --        end
 --      end
 --    end
+
 
     -- Return reduced task result and destroy other task results
     -- (corresponding to futures)
@@ -500,9 +536,9 @@ function legion_codegen (kernel_ast, ctxt)
   end
 
   -- HACK HACK HACK
-  if ctxt.bran.n_global_ids > 0 then
-    error("LEGION GLOBALS TODO")
-  end
+  --if ctxt.bran.n_global_ids > 0 then
+  --  error("LEGION GLOBALS TODO")
+  --end
 
   ctxt:enterblock()
     -- declare the symbol for the parameter key
@@ -531,6 +567,22 @@ function legion_codegen (kernel_ast, ctxt)
 
   ctxt:leaveblock()
 
+
+  local generate_output_future = quote end
+  if use_legion and ctxt.bran:UsesGlobalReduce() then
+    local globl             = next(ctxt.bran.global_reductions)
+    local gtyp              = globl.type:terraType()
+    local gptr              = ctxt:GlobalPtr(globl)
+    if next(ctxt.bran.global_reductions, globl) then
+      error("INTERNAL: More than 1 global reduction at a time unsupported")
+    end
+    --print('here do thing ', gtyp)
+    generate_output_future  = quote
+      --C.printf('foo %d\n', (@gptr).d[0])
+      return LW.legion_task_result_create( gptr, sizeof(gtyp) )
+    end
+  end
+
   -- BUILD THE LAUNCHER
   if use_legion then
 
@@ -539,6 +591,8 @@ function legion_codegen (kernel_ast, ctxt)
       [ generate_unpack_legion_task_args(ctxt:argsym(), task_args, ctxt) ]
 
       [body]
+
+      [generate_output_future]
     end
     k:setname(kernel_ast.id)
 
