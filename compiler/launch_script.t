@@ -26,6 +26,8 @@ exit_code = xpcall( function ()
   assert(terralib.loadfile(script_filename))()
 
   if terralib.cudacompile then
+    -- make sure all CUDA computations have finished
+    -- before we exit
     local errcode = require('compiler.gpu_util').device_sync()
     if errcode ~= 0 then
       error('saw CUDA error code when exiting: '..errcode)

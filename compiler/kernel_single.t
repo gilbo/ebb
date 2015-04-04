@@ -243,9 +243,6 @@ function Bran:CompileFieldsGlobalsSubsets()
 
       local reduce_data       = self:getReduceData(globl)
       reduce_data.phase       = phase
-
-      -- assign positions to futures on Legion
-      if use_legion then self:getFutureNum(globl) end
     end
   end
 
@@ -337,6 +334,8 @@ function Bran:getGlobalId(global)
   else
     id = 'global_'..tostring(self.n_global_ids) -- no global names
     self.n_global_ids = self.n_global_ids+1
+
+    if use_legion then self:getFutureNum(global) end
 
     self.global_ids[global] = id
     self.arg_layout:addGlobal(id, global)

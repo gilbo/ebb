@@ -2,6 +2,7 @@
 
 -- set up a global structure to stash legion variables into
 rawset(_G, '_legion_env', {})
+local LE = rawget(_G, '_legion_env')
 
 local C = require "compiler.c"
 
@@ -34,12 +35,12 @@ function load_liszt()
   local script_filename = arg[1]
   local success = xpcall( function ()
     assert(terralib.loadfile(script_filename))()
+    LW.legion_runtime_issue_execution_fence(LE.legion_env:get().runtime,
+                                            LE.legion_env:get().ctx)
   end, top_level_err_handler)
-  print("LISZT INFO: tasks may still be executing in the background ...")
 end
 
 -- Run Liszt compiler/ Lua-Terra interpreter as a top level task
-local LE = rawget(_G, '_legion_env')
 local terra top_level_task(
   task_args   : LW.legion_task_t,
   regions     : &LW.legion_physical_region_t,

@@ -267,6 +267,8 @@ function LogicalRegion:AllocateField(typ)
                 terralib.sizeof(typ.terratype),
                 allocate_field_fid_counter
               )
+  assert(fid == allocate_field_fid_counter)
+  print('alloc reg fid', self.handle, fid)
   allocate_field_fid_counter = allocate_field_fid_counter + 1
   return fid
 end
@@ -458,22 +460,31 @@ function LW.NewControlScanner(params)
     0,                      -- legion_mapper_id_t id /* = 0 */
     0                       -- legion_mapping_tag_id_t launcher_tag /* = 0 */
   )
+  --for i=0,300000000 do end
+  --print('logical region inline launcher created')
   local fields = {}
   for i,fid in ipairs(params.fields) do
+    print('add fid to reg inline ', params.logical_region, fid)
     LW.legion_inline_launcher_add_field(il, fid, true)
     fields[i] = fid
   end
 
+  --for i=0,300000000 do end
+  --print('easdfoinawfpoinpoinion')
+
   -- launch and create the physical region mapping
   local pr = LW.legion_inline_launcher_execute(legion_env.runtime,
                                                legion_env.ctx, il)
-
+  --for i=0,300000000 do end
+  --print('exec done; built physical region')
   local launchobj = setmetatable({
     inline_launcher = il,
     physical_region = pr,
     fields          = fields,
     dimensions      = params.dimensions,
   }, LW.ControlScanner)
+  --for i=0,300000000 do end
+  --print('asdflknaopenf;lsenfz;lsefa')
   return launchobj
 end
 

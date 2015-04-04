@@ -343,6 +343,7 @@ function L.LRelation:NewFieldFunction (name, userfunc)
 end
 
 function L.LRelation:GroupBy(keyf_name)
+  print("GROUPBY")
   if self:isGrouped() then
     error("GroupBy(): Relation is already grouped", 2)
   elseif not self:isPlain() then
@@ -414,6 +415,7 @@ function L.LRelation:GroupBy(keyf_name)
 
     local keyf_list = key_field:DumpToList()
     local dims      = srcrel:Dims()
+    print("LIST DUMPED")
 
     local src_scanner = LW.NewControlScanner {
       logical_region = srcrel._logical_region_wrapper.handle,
@@ -421,6 +423,7 @@ function L.LRelation:GroupBy(keyf_name)
       privilege      = LW.WRITE_ONLY,
       fields         = {offset_f.fid, length_f.fid},
     }
+    print("SCANNER BUILT")
     local dst_i, prev_src = 0,0
     for ids, ptrs in src_scanner:ScanThenClose() do
       local src_i   = linid(ids,dims)
@@ -447,27 +450,6 @@ function L.LRelation:GroupBy(keyf_name)
     error("INTERNAL: must use either single or legion...")
   end
 
-  --self._grouping.index._array:write_ptr(function(indexdata)
-  --key_field.array:read_ptr(function(keyptr)
-  --  local dims = key_field.type.relation:Dims()
-  --  local prev,pos = 0,0
-  --  for i = 0, num_keys-1 do
-  --    indexdata[i].a[0] = pos
-  --    local lin_key = T.linAddrLua(keyptr[pos], dims)
-  --    while lin_key == i and pos < num_rows do
-  --      if lin_key < prev then
-  --        self._grouping.index:Release()
-  --        self._grouping = nil
-  --        error("GroupBy(): Key field '"..key_field:Name().."' is not sorted.")
-  --      end
-  --      prev,pos = lin_key, pos+1
-  --      lin_key  = T.linAddrLua(keyptr[pos], dims)
-  --    end
-  --  end
-  --  assert(pos == num_rows)
-  --  indexdata[num_keys].a[0] = pos 
-  --end) -- key_field read
-  --end) -- indexdata write
   
   self._mode = 'GROUPED'
   -- record reference from this relation to the relation it's grouped by
