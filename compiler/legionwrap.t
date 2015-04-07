@@ -210,11 +210,6 @@ local LogicalRegion     = {}
 LogicalRegion.__index   = LogicalRegion
 LW.LogicalRegion        = LogicalRegion
 
-local PhysicalRegion    = {}
-PhysicalRegion.__index  = PhysicalRegion
-LW.PhysicalRegion       = PhysicalRegion
-
-
 -------------------------------------------------------------------------------
 --[[                            Future methods                             ]]--
 -------------------------------------------------------------------------------
@@ -388,40 +383,6 @@ LW.coherence = {
 }
 
 
--------------------------------------------------------------------------------
---[[                        Physical region methods                        ]]--
--------------------------------------------------------------------------------
-
-
--- Create inline physical region, useful when physical regions are needed in
--- the top level task.
--- NOTE: Call from top level task only.
--- TODO: This is broken
--- function LogicalRegion:CreatePhysicalRegion(params)
---   local lreg = self.handle
---   local privilege = params.privilege or LW.privilege.default
---   local coherence = params.coherence or LW.coherence.default
---   local input_launcher = LW.legion_inline_launcher_create_logical_region(
---                             lreg, privilege, coherence, lreg,
---                             0, false, 0, 0)
---   local fields = params.fields
---   for i = 1, #fields do
---     LW.legion_inline_launcher_add_field(input_launcher, fields[i].fid, true)
---   end
---   local p = {}
---   p.handle =
---     LW.legion_inline_launcher_execute(LE.runtime, LE.ctx, input_launcher)
---   setmetatable(p, PhysicalRegion)
---   return p
--- end
-
--- Wait till physical region is valid, to be called after creating an inline
--- physical region.
--- NOTE: Call from top level task only.
-function PhysicalRegion:WaitUntilValid()
-  LW.legion_physical_region_wait_until_valid(self.handle)
-end
-
 
 
 
@@ -449,6 +410,42 @@ function LW.NewControlScanner(params)
     error('Expects dimensions argument', 2)
   end
 
+  local ils   = {}
+  local prs   = {}
+  local fids  = {}
+
+  for i,fid in ipairs(params.fields) do
+    fids[i] = fid
+    -- create inline launcher
+    ils[i]  = LW.legion_inline_launcher_create_logical_region(
+      params.logical_region,  -- legion_logical_region_t handle
+      params.privilege,       -- legion_privilege_mode_t
+      LW.EXCLUSIVE,           -- legion_coherence_property_t
+      params.logical_region,  -- legion_logical_region_t parent
+      0,                      -- legion_mapping_tag_id_t region_tag /* = 0 */
+      false,                  -- bool verified /* = false*/
+      0,                      -- legion_mapper_id_t id /* = 0 */
+      0                       -- legion_mapping_tag_id_t launcher_tag /* = 0 */
+    )
+    -- add field to launcher
+    LW.legion_inline_launcher_add_field(ils[i], fids[i], true)
+    -- execute launcher to get physical region
+    prs[i]  = LW.legion_inline_launcher_execute(legion_env.runtime,
+                                                legion_env.ctx, ils[i])
+  end
+
+  local launchobj = setmetatable({
+    inline_launchers  = ils,
+    physical_regions  = prs,
+    fids              = fids,
+    dimensions        = params.dimensions,
+  }, LW.ControlScanner)
+
+  return launchobj
+
+  -- NOTE THE BELOW CODE WILL NOT WORK BECAUSE OF A LEGION BUG
+
+  --[[
   -- create the launcher and bind in the fields
   local il = LW.legion_inline_launcher_create_logical_region(
     params.logical_region,  -- legion_logical_region_t handle
@@ -460,32 +457,49 @@ function LW.NewControlScanner(params)
     0,                      -- legion_mapper_id_t id /* = 0 */
     0                       -- legion_mapping_tag_id_t launcher_tag /* = 0 */
   )
-  --for i=0,300000000 do end
-  --print('logical region inline launcher created')
+  for i=0,300000000 do end
+  print('logical region inline launcher created\n',
+        params.logical_region.tree_id)
   local fields = {}
-  for i,fid in ipairs(params.fields) do
-    print('add fid to reg inline ', params.logical_region, fid)
-    LW.legion_inline_launcher_add_field(il, fid, true)
-    fields[i] = fid
-  end
+--  if #params.fields > 1 then
+--    local fid = params.fields[2]
+--      print('add fid to reg inline ', '('..
+--            tostring(params.logical_region.index_space.id)..','..
+--            tostring(params.logical_region.field_space.id)..','..
+--            tostring(params.logical_region.tree_id)..')',
+--            fid)
+--    LW.legion_inline_launcher_add_field(il, fid, true)
+--    fields[1] = fid
+--  else
+    for i,fid in ipairs(params.fields) do
+      --if i > 1 then break end
+      print('add fid to reg inline ', '('..
+            tostring(params.logical_region.index_space.id)..','..
+            tostring(params.logical_region.field_space.id)..','..
+            tostring(params.logical_region.tree_id)..')',
+            fid)
+      LW.legion_inline_launcher_add_field(il, fid, true)
+      fields[i] = fid
+    end
+--  end
 
-  --for i=0,300000000 do end
-  --print('easdfoinawfpoinpoinion')
+  for i=0,300000000 do end
+  print('easdfoinawfpoinpoinion')
 
   -- launch and create the physical region mapping
   local pr = LW.legion_inline_launcher_execute(legion_env.runtime,
                                                legion_env.ctx, il)
-  --for i=0,300000000 do end
-  --print('exec done; built physical region')
+  for i=0,300000000 do end
+  print('exec done; built physical region')
   local launchobj = setmetatable({
     inline_launcher = il,
     physical_region = pr,
     fields          = fields,
     dimensions      = params.dimensions,
   }, LW.ControlScanner)
-  --for i=0,300000000 do end
-  --print('asdflknaopenf;lsenfz;lsefa')
-  return launchobj
+  for i=0,300000000 do end
+  print('asdflknaopenf;lsenfz;lsefa')
+  return launchobj]]
 end
 
 function LW.ControlScanner:ScanThenClose()
@@ -519,9 +533,9 @@ function LW.ControlScanner:ScanThenClose()
   end
 
   -- initialize field-dependent data for iteration
-  for k,fid in ipairs(self.fields) do
-    accs[k] = LW.legion_physical_region_get_field_accessor_generic(
-                self.physical_region, fid)
+  for k,fid in ipairs(self.fids) do
+    local pr  = self.physical_regions[k]
+    accs[k]   = LW.legion_physical_region_get_field_accessor_generic(pr, fid)
     local offtemp = global(LW.legion_byte_offset_t[#dims])
     ptrs[k] = terralib.cast(&int8, get_raw_rect_ptr(
                 accs[k], rect, subrect:getpointer(),
@@ -535,7 +549,7 @@ function LW.ControlScanner:ScanThenClose()
 
   -- define what to do when the iteration terminates
   local function close_up()
-    for k=1,#self.fields do
+    for k=1,#self.fids do
       LW.legion_accessor_generic_destroy(accs[k])
     end
     self:close()
@@ -550,7 +564,7 @@ function LW.ControlScanner:ScanThenClose()
       if i == nil then return close_up() end
 
       local callptrs = {}
-      for fi=1,#self.fields do 
+      for fi=1,#self.fids do 
         callptrs[fi] = ptrs[fi] + i*offs[fi][1]
       end
       return {i}, callptrs
@@ -562,7 +576,7 @@ function LW.ControlScanner:ScanThenClose()
       if xi == nil then return close_up() end
 
       local callptrs = {}
-      for fi=1,#self.fields do 
+      for fi=1,#self.fids do 
         callptrs[fi] = ptrs[fi] + yi*offs[fi][2] + xi*offs[fi][1]
       end
       return {xi,yi}, callptrs
@@ -574,7 +588,7 @@ function LW.ControlScanner:ScanThenClose()
       if xi == nil then return close_up() end
 
       local callptrs = {}
-      for fi=1,#self.fields do 
+      for fi=1,#self.fids do 
         callptrs[fi] = ptrs[fi] +
                        zi*offs[fi][3] + yi*offs[fi][2] + xi*offs[fi][1]
       end
@@ -585,11 +599,19 @@ end
 
 
 function LW.ControlScanner:close()
-  LW.legion_runtime_unmap_region(legion_env.runtime,
-                                 legion_env.ctx,
-                                 self.physical_region)
-  LW.legion_physical_region_destroy(self.physical_region)
-  LW.legion_inline_launcher_destroy(self.inline_launcher)
+  for i=1,#self.fids do
+    local il  = self.inline_launchers[i]
+    local pr  = self.physical_regions[i]
+
+    LW.legion_runtime_unmap_region(legion_env.runtime, legion_env.ctx, pr)
+    LW.legion_physical_region_destroy(pr)
+    LW.legion_inline_launcher_destroy(il)
+  end
+--  LW.legion_runtime_unmap_region(legion_env.runtime,
+--                                 legion_env.ctx,
+--                                 self.physical_region)
+--  LW.legion_physical_region_destroy(self.physical_region)
+--  LW.legion_inline_launcher_destroy(self.inline_launcher)
 end
 
 

@@ -199,10 +199,15 @@ function Bran:Compile()
       type = self.arg_layout:TerraStruct(),
       processor = L.CPU -- DON'T MOVE
     }
-  end
+    
+    -- compile an executable
+    self.executable = codegen.codegen(typed_ast, self)
 
-  -- compile an executable
-  self.executable = codegen.codegen(typed_ast, self)
+  elseif use_legion then
+    self:CompileLegion()
+  else
+    error("INTERNAL: IMPOSSIBLE BRANCH")
+  end
 end
 
 function Bran:CompileFieldsGlobalsSubsets()
@@ -261,7 +266,7 @@ function Bran:argsType ()
   return self.arg_layout:TerraStruct()
 end
 
-local function get_region_num(bran, relation)
+local function get_region_num(bran, relation, field)
   if not use_legion then
     error('INTERNAL: Should only try to record Regions '..
           'when running on the Legion Runtime')
@@ -292,7 +297,7 @@ end
 function Bran:getRegionNum(field)
   if use_single then error("INTERNAL: Cannot use regions w/o Legion") end
   local rel         = field:Relation()
-  return get_region_num(self, rel)
+  return get_region_num(self, rel, field)
 end
 
 function Bran:getFutureNum(globl)
@@ -884,6 +889,275 @@ function Bran:postprocessGPUReduction()
     self:freeReduceGlobalMemPtr(globl)
   end
 end
+
+
+
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+--[[ Legion Extensions                                                     ]]--
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+
+
+
+
+local function pairs_val_sorted(tbl)
+  local list = {}
+  for k,v in pairs(tbl) do table.insert(list, {k,v}) end
+  table.sort(list, function(p1,p2)
+    return p1[2] < p2[2]
+  end)
+
+  local i = 0
+  return function() -- iterator
+    i = i+1
+    if list[i] == nil then return nil
+                      else return list[i][1], list[i][2] end
+  end
+end
+
+
+
+-- Creates a task launcher with task region requirements.
+function Bran:CreateLegionTaskLauncher(task_func)
+
+  -- TODO: Cannot pass a terra function to another terra function.
+  -- Doing so throws error "cannot convert 'table' to 'bool (*)()'".
+  -- Should fix this, and remove the wrapper terra function defined below.
+  local task_func_wrapper
+  local task_TID
+  if self:UsesGlobalReduce() then
+    task_func_wrapper = terra()
+      return LW.NewFutureKernelLauncher(task_func)
+    end
+    task_TID = LW.TID_FUTURE
+  else
+    task_func_wrapper = terra()
+      return LW.NewSimpleKernelLauncher(task_func)
+    end
+    task_TID = LW.TID_SIMPLE
+  end
+  local task_as_arg = task_func_wrapper():PackToTaskArg()
+
+
+  local task_launcher = LW.legion_task_launcher_create(
+                            task_TID,
+                            task_as_arg,
+                            LW.legion_predicate_true(), 0, 0
+                        )
+
+  -- ADD EACH REGION to the launcher as a requirement
+  -- WITH THE appropriate permissions set
+  -- NOTE: Need to make sure to do this in the right order
+  for reg_wrapper, ri in pairs_val_sorted(self.region_nums) do
+    local reg_req = 
+      LW.legion_task_launcher_add_region_requirement_logical_region(
+        task_launcher,
+        reg_wrapper.handle,
+        LW.READ_WRITE,
+        LW.EXCLUSIVE,
+        reg_wrapper.handle, -- why is this repeated?
+        0,
+        false
+      )
+    assert(reg_req == ri)
+  end
+
+  -- ADD EACH FIELD to the launcher as a requirement
+  -- as part of the correct, corresponding region
+  for field, _ in pairs(self.field_ids) do
+    LW.legion_task_launcher_add_field(
+      task_launcher,
+      self:getRegionNum(field),
+      field.fid,
+      true
+    )
+  end
+
+  -- ADD EACH GLOBAL to the launcher as a future being passed to the task
+  -- NOTE: Need to make sure to do this in the right order
+  for globl, gi in pairs_val_sorted(self.future_nums) do
+    LW.legion_task_launcher_add_future(task_launcher, globl.data)
+  end
+
+  return task_launcher
+end
+
+-- Launches Legion task and returns.
+function Bran:CreateLegionLauncher(task_func)
+  local bran = self
+  local task_launcher = bran:CreateLegionTaskLauncher(task_func)
+  if bran:UsesGlobalReduce() then
+    return function(leg_args)
+      local globl   = next(bran.global_reductions)
+      local future  = LW.legion_task_launcher_execute(leg_args.runtime,
+                                                      leg_args.ctx,
+                                                      task_launcher)
+      local res = LW.legion_future_get_result(future)
+      -- Wait till value is available. We can remove this once apply and
+      -- fold operations are implemented using legion API, and we figure out
+      -- how to safely delete old future : Is it safe to call DestroyFuture
+      -- immediately after launching the tasks that use the future?
+      -- TODO: We must apply this return value to old value - necessary for
+      -- multiple partitions. Work around right now applies reduction in the
+      -- task (Liszt kernel) itself, so we can simply replace the old future.
+      globl.data = LW.legion_future_from_buffer(leg_args.runtime,
+                                                res.value, res.value_size)
+      LW.legion_task_result_destroy(res)
+    end
+  else
+    return function(leg_args)
+      LW.legion_task_launcher_execute(leg_args.runtime, leg_args.ctx,
+                                      task_launcher)
+    end
+  end
+end
+
+-- Here we translate the Legion task arguments into our
+-- custom argument layout structure.  This allows us to write
+-- the body of generated code in a way that's agnostic to whether
+-- the code is being executed in a Legion task or not.
+function Bran:GenerateUnpackLegionTaskArgs(argsym, task_args)
+  local bran = self
+  
+  local LegionRect = {}
+  local LegionGetRectFromDom = {}
+  local LegionRawPtrFromAcc = {}
+
+  LegionRect[1] = LW.legion_rect_1d_t
+  LegionRect[2] = LW.legion_rect_2d_t
+  LegionRect[3] = LW.legion_rect_3d_t
+
+  LegionGetRectFromDom[1] = LW.legion_domain_get_rect_1d
+  LegionGetRectFromDom[2] = LW.legion_domain_get_rect_2d
+  LegionGetRectFromDom[3] = LW.legion_domain_get_rect_3d
+
+  LegionRawPtrFromAcc[1] = LW.legion_accessor_generic_raw_rect_ptr_1d
+  LegionRawPtrFromAcc[2] = LW.legion_accessor_generic_raw_rect_ptr_2d
+  LegionRawPtrFromAcc[3] = LW.legion_accessor_generic_raw_rect_ptr_3d
+
+  -- temporary collection of symbols from unpacking the regions
+  local region_temporaries = {}
+
+  local code = quote
+    do -- close after unpacking the fields
+    -- UNPACK REGIONS
+    escape for reg_wrapper, ri in pairs(bran.region_nums) do
+      local reg_dim       = reg_wrapper.dimensions
+      -- KLUDGE cause of WRAPPER
+      if not reg_dim then reg_dim = 1 end
+      local physical_reg  = symbol(LW.legion_physical_region_t)
+      local rect          = symbol(LegionRect[reg_dim])
+      local rectFromDom   = LegionGetRectFromDom[reg_dim]
+
+      region_temporaries[ri] = {
+        physical_reg  = physical_reg,
+        reg_dim       = reg_dim,
+        rect          = rect
+      }
+
+      emit quote
+        var [physical_reg]  = [task_args].regions[ri]
+        var index_space     =
+          LW.legion_physical_region_get_logical_region(
+                                           physical_reg).index_space
+        var domain          =
+          LW.legion_index_space_get_domain([task_args].lg_runtime,
+                                           [task_args].lg_ctx,
+                                           index_space)
+        var [rect]          = rectFromDom(domain)
+      end
+    end end
+
+    -- UNPACK PRIMARY REGION BOUNDS RECTANGLE
+    escape
+      local ri    = bran:getPrimaryRegionNum()
+      local rect  = region_temporaries[ri].rect
+      local ndims = region_temporaries[ri].reg_dim
+      for i=1,ndims do emit quote
+        [argsym].bounds[i-1].lo = rect.lo.x[i-1]
+        [argsym].bounds[i-1].hi = rect.hi.x[i-1]
+      end end
+    end
+    
+    -- UNPACK FIELDS
+    escape for field, farg_name in pairs(bran.field_ids) do
+      local rtemp = region_temporaries[bran:getRegionNum(field)]
+      local physical_reg = rtemp.physical_reg
+      local reg_dim      = rtemp.reg_dim
+      local rect         = rtemp.rect
+
+
+      emit quote
+        var field_accessor =
+          LW.legion_physical_region_get_field_accessor_generic(
+                                              physical_reg, [field.fid])
+        var subrect : LegionRect[reg_dim]
+        var strides : LW.legion_byte_offset_t[reg_dim]
+        var base = [&uint8](
+          [ LegionRawPtrFromAcc[reg_dim] ](
+                              field_accessor, rect, &subrect, strides))
+        [argsym].[farg_name] = [ LW.FieldAccessor[reg_dim] ] { base, strides }
+      end
+    end end
+    end -- closing do started before unpacking the regions
+
+    -- UNPACK FUTURES
+    -- DO NOT WRAP THIS IN A LOCAL SCOPE / DO BLOCK (SEE BELOW)
+    escape for globl, garg_name in pairs(bran.global_ids) do
+      -- position in the Legion task arguments
+      local fut_i   = bran:getFutureNum(globl) 
+      local gtyp    = globl.type:terraType()
+
+      emit quote
+        var fut     = LW.legion_task_get_future([task_args].task, fut_i)
+        var result  = LW.legion_future_get_result(fut)
+        var datum   = @[&gtyp](result.value)
+        -- note that we're going to rely on this variable
+        -- being stably allocated on the stack
+        -- for the remainder of this scope
+        [argsym].[garg_name] = &datum
+        LW.legion_task_result_destroy(result)
+      end
+    end end
+  end -- end quote
+
+  return code
+end
+
+
+
+function Bran:CompileLegion()
+  local task_function   = codegen.codegen(self.kernel.typed_ast, self)
+  self.executable       = self:CreateLegionLauncher(task_function)
+end
+
+
+
+
+--                  ---------------------------------------                  --
+--[[ Legion Dynamic Checks                                                 ]]--
+--                  ---------------------------------------                  --
+
+function Bran:DynamicLegionChecks()
+end
+
+--                  ---------------------------------------                  --
+--[[ Legion Data Binding                                                   ]]--
+--                  ---------------------------------------                  --
+
+function Bran:bindLegionData()
+  -- meh
+end
+
+--                  ---------------------------------------                  --
+--[[ Legion Postprocessing                                                 ]]--
+--                  ---------------------------------------                  --
+
+function Bran:postprocessLegion()
+  -- meh for now
+end
+
 
 
 

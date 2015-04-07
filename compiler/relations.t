@@ -343,7 +343,7 @@ function L.LRelation:NewFieldFunction (name, userfunc)
 end
 
 function L.LRelation:GroupBy(keyf_name)
-  print("GROUPBY")
+  --print("GROUPBY")
   if self:isGrouped() then
     error("GroupBy(): Relation is already grouped", 2)
   elseif not self:isPlain() then
@@ -417,13 +417,14 @@ function L.LRelation:GroupBy(keyf_name)
     local dims      = srcrel:Dims()
     print("LIST DUMPED")
 
+    print('SCANNER BUILDING for relation: ', srcrel:Name())
     local src_scanner = LW.NewControlScanner {
       logical_region = srcrel._logical_region_wrapper.handle,
       dimensions     = srcrel:Dims(),
       privilege      = LW.WRITE_ONLY,
       fields         = {offset_f.fid, length_f.fid},
     }
-    print("SCANNER BUILT")
+    --print("SCANNER BUILT")
     local dst_i, prev_src = 0,0
     for ids, ptrs in src_scanner:ScanThenClose() do
       local src_i   = linid(ids,dims)
@@ -672,6 +673,7 @@ function L.LField.New(rel, name, typ)
     local logical_region_wrapper = rel._logical_region_wrapper
     field.fid = logical_region_wrapper:AllocateField(typ)
   end
+  print('Allocated '..field:FullName())
   return field
 end
 
@@ -844,6 +846,7 @@ function L.LField:LoadFunction(lua_callback)
 
   if use_legion then
     -- Ok, we need to map some stuff down here
+    print('loading on relation: ', self.owner:Name())
     local scanner = LW.NewControlScanner {
       logical_region = self.owner._logical_region_wrapper.handle,
       dimensions     = self.owner:Dims(),

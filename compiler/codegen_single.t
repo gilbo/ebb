@@ -208,413 +208,6 @@ end
 
 
 
---[[--------------------------------------------------------------------]]--
---[[                          LEGION CODE DUMP                          ]]--
---[[--------------------------------------------------------------------]]--
-
-
-local legion_codegen
-
-
-
-if use_legion then
-
-local LegionRect = {}
-local LegionGetRectFromDom = {}
-local LegionRawPtrFromAcc = {}
-
-LegionRect[1] = LW.legion_rect_1d_t
-LegionRect[2] = LW.legion_rect_2d_t
-LegionRect[3] = LW.legion_rect_3d_t
-
-LegionGetRectFromDom[1] = LW.legion_domain_get_rect_1d
-LegionGetRectFromDom[2] = LW.legion_domain_get_rect_2d
-LegionGetRectFromDom[3] = LW.legion_domain_get_rect_3d
-
-LegionRawPtrFromAcc[1] = LW.legion_accessor_generic_raw_rect_ptr_1d
-LegionRawPtrFromAcc[2] = LW.legion_accessor_generic_raw_rect_ptr_2d
-LegionRawPtrFromAcc[3] = LW.legion_accessor_generic_raw_rect_ptr_3d
-
-
-
-
-
-
-
-
-
-
---function Context:GlobalData(global)
---  local gidx   = self.bran.arg_layout:GlobalIdx(global)
---  local gd     = self:localenv()['_global_ptrs']
---  assert(terralib.issymbol(gd))
---  return `([&global.type:terraType()](([gd][ gidx - 1 ]).value))
---end
-
---function Context:GlobalIdx(global)
---  return self.bran.arg_layout:GlobalIdx(global)
---end
-
-
-
-
-
-local function pairs_val_sorted(tbl)
-  local list = {}
-  for k,v in pairs(tbl) do table.insert(list, {k,v}) end
-  table.sort(list, function(p1,p2)
-    return p1[2] < p2[2]
-  end)
-
-  local i = 0
-  return function() -- iterator
-    i = i+1
-    if list[i] == nil then return nil
-                      else return list[i][1], list[i][2] end
-  end
-end
-
--- Creates a task launcher with task region requirements.
-local function legion_CreateTaskLauncher(task_func, ctxt)
-
-  -- TODO: Cannot pass a terra function to another terra function.
-  -- Doing so throws error "cannot convert 'table' to 'bool (*)()'".
-  -- Should fix this, and remove the wrapper terra function defined below.
-  local task_func_wrapper
-  local task_TID
-  if ctxt.bran:UsesGlobalReduce() then
-    task_func_wrapper = terra()
-      return LW.NewFutureKernelLauncher(task_func)
-    end
-    task_TID = LW.TID_FUTURE
-  else
-    task_func_wrapper = terra()
-      return LW.NewSimpleKernelLauncher(task_func)
-    end
-    task_TID = LW.TID_SIMPLE
-  end
-  local task_as_arg = task_func_wrapper():PackToTaskArg()
-
-
-  local task_launcher = LW.legion_task_launcher_create(
-                            task_TID,
-                            task_as_arg,
-                            LW.legion_predicate_true(), 0, 0
-                        )
-
-  -- ADD EACH REGION to the launcher as a requirement
-  -- WITH THE appropriate permissions set
-  -- NOTE: Need to make sure to do this in the right order
-  for reg_wrapper, ri in pairs_val_sorted(ctxt.bran.region_nums) do
-    local reg_req = 
-      LW.legion_task_launcher_add_region_requirement_logical_region(
-        task_launcher,
-        reg_wrapper.handle,
-        LW.READ_WRITE,
-        LW.EXCLUSIVE,
-        reg_wrapper.handle, -- why is this repeated?
-        0,
-        false
-      )
-    assert(reg_req == ri)
-  end
-
-  -- ADD EACH FIELD to the launcher as a requirement
-  -- as part of the correct, corresponding region
-  for field, _ in pairs(ctxt.bran.field_ids) do
-    LW.legion_task_launcher_add_field(
-      task_launcher,
-      ctxt.bran:getRegionNum(field),
-      field.fid,
-      true
-    )
-  end
-
-  -- ADD EACH GLOBAL to the launcher as a future being passed to the task
-  -- NOTE: Need to make sure to do this in the right order
-  for globl, gi in pairs_val_sorted(ctxt.bran.future_nums) do
-    LW.legion_task_launcher_add_future(task_launcher, globl.data)
-  end
-
-  return task_launcher
-end
-
--- Launches Legion task and returns.
-local function legion_CreateLauncher(task_func, ctxt)
-  local task_launcher = legion_CreateTaskLauncher(task_func, ctxt)
-  if ctxt.bran:UsesGlobalReduce() then
-    return function(leg_args)
-      local globl   = next(ctxt.bran.global_reductions)
-      local future  = LW.legion_task_launcher_execute(leg_args.runtime,
-                                                      leg_args.ctx,
-                                                      task_launcher)
-      local res = LW.legion_future_get_result(future)
-      -- Wait till value is available. We can remove this once apply and
-      -- fold operations are implemented using legion API, and we figure out
-      -- how to safely delete old future : Is it safe to call DestroyFuture
-      -- immediately after launching the tasks that use the future?
-      -- TODO: We must apply this return value to old value - necessary for
-      -- multiple partitions. Work around right now applies reduction in the
-      -- task (Liszt kernel) itself, so we can simply replace the old future.
-      globl.data = LW.legion_future_from_buffer(leg_args.runtime,
-                                                res.value, res.value_size)
-      LW.legion_task_result_destroy(res)
-    end
-  else
-    return function(leg_args)
-      LW.legion_task_launcher_execute(leg_args.runtime, leg_args.ctx,
-                                      task_launcher)
-    end
-  end
-end
-
-
-
-
-
-
-
-
--- NOTE: the entries in dims may be symbols,
---       allowing the loop bounds to be dynamically driven
-local function terraIterNd(dims, func)
-  local atyp = L.addr_terra_types[#dims]
-  local addr = symbol(atyp)
-  local iters = {}
-  for d=1,#dims do iters[d] = symbol(uint64) end
-  local loop = quote
-    var [addr] = [atyp]({ a = array( iters ) })
-    [func(addr)]
-  end
-  for drev=1,#dims do
-    local d = #dims-drev + 1 -- flip loop order of dimensions
-    loop = quote for [iters[d]] = [dims[d].lo], [dims[d].hi]+1 do
-      [loop]
-    end end
-  end
-  return loop
-end
-
--- Here we translate the Legion task arguments into our
--- custom argument layout structure.  This allows us to write
--- the body of generated code in a way that's agnostic to whether
--- the code is being executed in a Legion task or not.
-local function generate_unpack_legion_task_args (argsym, task_args, ctxt)
-  -- temporary collection of symbols from unpacking the regions
-  local region_temporaries = {}
-
-  local code = quote
-    do -- close after unpacking the fields
-    -- UNPACK REGIONS
-    escape for reg_wrapper, ri in pairs(ctxt.bran.region_nums) do
-      local reg_dim       = reg_wrapper.dimensions
-      -- KLUDGE cause of WRAPPER
-      if not reg_dim then reg_dim = 1 end
-      local physical_reg  = symbol(LW.legion_physical_region_t)
-      local rect          = symbol(LegionRect[reg_dim])
-      local rectFromDom   = LegionGetRectFromDom[reg_dim]
-
-      region_temporaries[ri] = {
-        physical_reg  = physical_reg,
-        reg_dim       = reg_dim,
-        rect          = rect
-      }
-
-      emit quote
-        var [physical_reg]  = [task_args].regions[ri]
-        var index_space     =
-          LW.legion_physical_region_get_logical_region(
-                                           physical_reg).index_space
-        var domain          =
-          LW.legion_index_space_get_domain([task_args].lg_runtime,
-                                           [task_args].lg_ctx,
-                                           index_space)
-        var [rect]          = rectFromDom(domain)
-      end
-    end end
-
-    -- UNPACK PRIMARY REGION BOUNDS RECTANGLE
-    escape
-      local ri    = ctxt.bran:getPrimaryRegionNum()
-      local rect  = region_temporaries[ri].rect
-      local ndims = region_temporaries[ri].reg_dim
-      for i=1,ndims do emit quote
-        [argsym].bounds[i-1].lo = rect.lo.x[i-1]
-        [argsym].bounds[i-1].hi = rect.hi.x[i-1]
-      end end
-    end
-    
-    -- UNPACK FIELDS
-    escape for field, farg_name in pairs(ctxt.bran.field_ids) do
-      local rtemp = region_temporaries[ctxt.bran:getRegionNum(field)]
-      local physical_reg = rtemp.physical_reg
-      local reg_dim      = rtemp.reg_dim
-      local rect         = rtemp.rect
-
-
-      emit quote
-        var field_accessor =
-          LW.legion_physical_region_get_field_accessor_generic(
-                                              physical_reg, [field.fid])
-        var subrect : LegionRect[reg_dim]
-        var strides : LW.legion_byte_offset_t[reg_dim]
-        var base = [&uint8](
-          [ LegionRawPtrFromAcc[reg_dim] ](
-                              field_accessor, rect, &subrect, strides))
-        [argsym].[farg_name] = [ LW.FieldAccessor[reg_dim] ] { base, strides }
-      end
-    end end
-    end -- closing do started before unpacking the regions
-
-    -- UNPACK FUTURES
-    -- DO NOT WRAP THIS IN A LOCAL SCOPE / DO BLOCK (SEE BELOW)
-    escape for globl, garg_name in pairs(ctxt.bran.global_ids) do
-      -- position in the Legion task arguments
-      local fut_i   = ctxt.bran:getFutureNum(globl) 
-      local gtyp    = globl.type:terraType()
-
-      emit quote
-        var fut     = LW.legion_task_get_future([task_args].task, fut_i)
-        var result  = LW.legion_future_get_result(fut)
-        var datum   = @[&gtyp](result.value)
-        -- note that we're going to rely on this variable
-        -- being stably allocated on the stack
-        -- for the remainder of this scope
-        [argsym].[garg_name] = &datum
-        LW.legion_task_result_destroy(result)
-      end
-    end end
-  end -- end quote
-
-    -- Read in global data from futures: assumption that the caller gets
-    -- ownership of returned legion_result_t. Need to do a deep-copy (copy
-    -- value from result) otherwise.
---    local global_init = quote
---      var [global_ptrs]
---    end
---    for _, global in ipairs(ctxt:Globals()) do
---      local g = ctxt:GlobalIdx(global)
---      global_init = quote
---        [global_init]
---        do
---          var fut = LW.legion_task_get_future([Largs].task, g-1)
---          [global_ptrs][g-1] = LW.legion_future_get_result(fut)
---        end
---      end
---    end
-
-
-    -- Return reduced task result and destroy other task results
-    -- (corresponding to futures)
---    local cleanup_and_ret = quote end
---    local global_to_reduce = ctxt:GlobalToReduce()
---    for _, global in ipairs(ctxt:Globals()) do
---      if global ~= global_to_reduce then
---        local g = ctxt:GlobalIdx(global)
---        cleanup_and_ret = quote
---          [cleanup_and_ret]
---          do
---            LW.legion_task_result_destroy([global_ptrs][g-1])
---          end
---        end
---      end
---    end
---    local gred = ctxt:GlobalIdx(global_to_reduce)
---    if gred then
---      cleanup_and_ret = quote
---        [cleanup_and_ret]
---        return [global_ptrs][ gred-1 ]
---      end
---    end
-
-  return code
-end
-
-function legion_codegen (kernel_ast, ctxt)
-  if ctxt:onGPU() then
-    error('INTERNAL ERROR: Unimplemented GPU codegen with Legion runtime')
-  end
-
-  -- HACK HACK HACK
-  --if ctxt.bran.n_global_ids > 0 then
-  --  error("LEGION GLOBALS TODO")
-  --end
-
-  ctxt:enterblock()
-    -- declare the symbol for the parameter key
-    local param = symbol(ctxt:argKeyTerraType())
-    ctxt:localenv()[kernel_ast.name] = param
-
-    local dims                  = ctxt:dims()
-    if use_legion then
-      local bounds              = `[ctxt:argsym()].bounds
-      for d=1,#dims do
-        dims[d] = { lo = `bounds[d-1].lo, hi = `bounds[d-1].hi }
-      end
-    end
-
-
-    local body = kernel_ast.body:codegen(ctxt)
-
-    if ctxt:isOverSubset() then
-      error("LEGION SUBSETS TODO")
-    else
-      body = terraIterNd(dims, function(iter) return quote
-        var [param] = iter
-        [body]
-      end end)
-    end
-
-  ctxt:leaveblock()
-
-
-  local generate_output_future = quote end
-  if use_legion and ctxt.bran:UsesGlobalReduce() then
-    local globl             = next(ctxt.bran.global_reductions)
-    local gtyp              = globl.type:terraType()
-    local gptr              = ctxt:GlobalPtr(globl)
-    if next(ctxt.bran.global_reductions, globl) then
-      error("INTERNAL: More than 1 global reduction at a time unsupported")
-    end
-    --print('here do thing ', gtyp)
-    generate_output_future  = quote
-      --C.printf('foo %d\n', (@gptr).d[0])
-      return LW.legion_task_result_create( gptr, sizeof(gtyp) )
-    end
-  end
-
-  -- BUILD THE LAUNCHER
-  if use_legion then
-
-    local k = terra (task_args : LW.TaskArgs)
-      var [ctxt:argsym()]
-      [ generate_unpack_legion_task_args(ctxt:argsym(), task_args, ctxt) ]
-
-      [body]
-
-      [generate_output_future]
-    end
-    k:setname(kernel_ast.id)
-
-    return legion_CreateLauncher(k, ctxt)
-  end
-end
-
-
-
-
-
-
-
-end
-
-
-
-
-
-
-
-
 
 
 
@@ -690,7 +283,7 @@ function Codegen.codegen (kernel_ast, bran)
   local ctxt = Context.New(env, bran)
 
   -- BRANCH TO SEPARATE LEGION CODE HERE
-  if use_legion then return legion_codegen(kernel_ast, ctxt) end
+  --if use_legion then return legion_codegen(kernel_ast, ctxt) end
 
   ctxt:enterblock()
     -- declare the symbol for the parameter key
@@ -699,7 +292,14 @@ function Codegen.codegen (kernel_ast, bran)
 
     local dims                  = ctxt:dims()
     local nrow_sym              = `[ctxt:argsym()].n_rows
-    if #dims == 1 then dims = { nrow_sym } end
+    if use_legion then
+      local bounds              = `[ctxt:argsym()].bounds
+      for d=1,#dims do
+        dims[d] = { lo = `bounds[d-1].lo, hi = `bounds[d-1].hi }
+      end
+    else
+      if #dims == 1 then dims = { nrow_sym } end
+    end
     local linid
     if ctxt:onGPU() then linid  = symbol(uint64) end
 
@@ -709,8 +309,8 @@ function Codegen.codegen (kernel_ast, bran)
     -- Over an Elastic Relation
     if ctxt:isOverElastic() then
       if use_legion then
-        error('INTERNAL: ELASTIC ON LEGION CURRENTLY UNSUPPORTED') end
-      if ctxt:onGPU() then
+        error('INTERNAL: ELASTIC ON LEGION CURRENTLY UNSUPPORTED')
+      elseif ctxt:onGPU() then
         error("INTERNAL: ELASTIC ON GPU CURRENTLY UNSUPPORTED")
       else
         body = quote
@@ -721,6 +321,7 @@ function Codegen.codegen (kernel_ast, bran)
 
     -- GENERATE FOR SUBSETS
     if ctxt:isOverSubset() then
+      if use_legion then error("LEGION SUBSETS TODO") end
 
       -- GPU SUBSET VERSION
       if ctxt:onGPU() then
@@ -772,6 +373,7 @@ function Codegen.codegen (kernel_ast, bran)
 
       -- GPU FULL RELATION VERSION
       if ctxt:onGPU() then
+        if use_legion then error("LEGION TODO") end
         body = terraGPUId_to_Nd(dims, nrow_sym, linid, function(addr)
           return quote
             var [param] = [addr]
@@ -791,6 +393,7 @@ function Codegen.codegen (kernel_ast, bran)
 
     -- Extra GPU wrapper
     if ctxt:onGPU() then
+      if use_legion then error("LEGION TODO") end
 
       -- Extra GPU Reduction setup/post-process
       if ctxt:hasGPUReduce() then
@@ -816,6 +419,7 @@ function Codegen.codegen (kernel_ast, bran)
 
   -- BUILD GPU LAUNCHER
   if ctxt:onGPU() then
+    if use_legion then error("LEGION TODO") end
     local cuda_kernel = terra([ctxt:argsym()]) [body] end
     cuda_kernel:setname(kernel_ast.id .. '_cudakernel')
     cuda_kernel = G.kernelwrap(cuda_kernel, L._INTERNAL_DEV_OUTPUT_PTX,
@@ -836,6 +440,35 @@ function Codegen.codegen (kernel_ast, bran)
     end
     launcher:setname(kernel_ast.id)
     return launcher
+
+  -- BUILD LEGION TASK FUNCTION
+  elseif use_legion then
+
+    local generate_output_future = quote end
+    if use_legion and ctxt.bran:UsesGlobalReduce() then
+      local globl             = next(ctxt.bran.global_reductions)
+      local gtyp              = globl.type:terraType()
+      local gptr              = ctxt:GlobalPtr(globl)
+      if next(ctxt.bran.global_reductions, globl) then
+        error("INTERNAL: More than 1 global reduction at a time unsupported")
+      end
+      --print('here do thing ', gtyp)
+      generate_output_future  = quote
+        --C.printf('foo %d\n', (@gptr).d[0])
+        return LW.legion_task_result_create( gptr, sizeof(gtyp) )
+      end
+    end
+
+    local k = terra (task_args : LW.TaskArgs)
+      var [ctxt:argsym()]
+      [ ctxt.bran:GenerateUnpackLegionTaskArgs(ctxt:argsym(), task_args) ]
+
+      [body]
+
+      [generate_output_future]
+    end
+    k:setname(kernel_ast.id)
+    return k
 
   -- BUILD CPU LAUNCHER
   else
