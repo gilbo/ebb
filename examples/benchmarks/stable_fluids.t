@@ -404,20 +404,20 @@ end
 
 --grid.cells:print()
 
-local source_strength = 100.0
+local source_strength = L.Constant(L.float, 100.0)
 local source_velocity = liszt (c : grid.cells)
     if cmath.fabs(c.center[0]) < 1.75 and
        cmath.fabs(c.center[1]) < 1.75
     then
         if not c.in_boundary then
-            c.velocity += L.float(dt) * source_strength * { 0.0, 1.0 }
+            c.velocity += L.float(dt) * source_strength * { 0.0f, 1.0f }
         else
-            c.velocity += L.float(dt) * source_strength * { 0.0, -1.0 }
+            c.velocity += L.float(dt) * source_strength * { 0.0f, -1.0f }
         end
     end
 end
 if PERIODIC then
-    source_strength = 5.0
+    source_strength = L.Constant(L.float, 5.0)
     local optional_insertion = liszt(c) end -- no-op
     if INSERT_DELETE then
         optional_insertion = liszt(c)
@@ -439,7 +439,7 @@ if PERIODIC then
         if cmath.fabs(c.center[0]) < 1.75 and
            cmath.fabs(c.center[1]) < 1.75
         then
-            c.velocity += L.float(dt) * source_strength * { 0.0, 1.0 }
+            c.velocity += L.float(dt) * source_strength * { 0.0f, 1.0f }
         end
 
         optional_insertion(c)
@@ -449,16 +449,16 @@ end
 local liszt draw_grid (c : grid.cells)
     var color = {1.0, 1.0, 1.0}
     vdb.color(color)
-    var p : L.vec3f = { c.center[0],   c.center[1],   0.0 }
+    var p : L.vec3f = { c.center[0],   c.center[1],   0.0f }
     var vel = c.velocity
-    var v = L.vec3f({ vel[0], vel[1], 0.0 })
+    var v = L.vec3f({ vel[0], vel[1], 0.0f })
     vdb.line(p, p+v*N*10)
 end
 
 local liszt draw_particles (p : particles)
     var color = {1.0,1.0,0.0}
     vdb.color(color)
-    var pos : L.vec3f = { p.pos[0], p.pos[1], 0.0 }
+    var pos : L.vec3f = { p.pos[0], p.pos[1], 0.0f }
     vdb.point(pos)
 end
 

@@ -1,5 +1,7 @@
 import "compiler.liszt"
 
+local test = require('tests.test')
+
 local ioOff = L.require 'domains.ioOff'
 local mesh  = ioOff.LoadTrimesh('tests/octa.off')
 
@@ -15,4 +17,4 @@ end
 
 mesh.vertices:map(test_for)
 
-assert(count:get() == 24)
+test.eq(count:get(), 24)

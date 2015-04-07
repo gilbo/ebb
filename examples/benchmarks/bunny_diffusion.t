@@ -75,7 +75,7 @@ local liszt debug_tri_draw ( t : bunny.triangles )
 
   -- compute a display value in the range 0.0 to 1.0 from the temperature
   var scale = L.float(cmath.log(1.0 + avg_temp))
-  if scale > 1.0 then scale = 1.0 end
+  if scale > 1.0 then scale = 1.0f end
 
   -- interpolate the hot and cold colors
   vdb.color((1.0-scale)*cold + scale*hot)
@@ -90,6 +90,7 @@ end
 -- Execute 300 iterations of the diffusion
 
 for i = 1,300 do
+  print('aaa', i)
   --compute_diffusion(bunny.vertices)
   bunny.vertices:map(compute_diffusion)
 
@@ -110,7 +111,7 @@ for i = 1,300 do
   -- END EXTRA
 end
 
-
+print('end')
 ------------------------------------------------------------------------------
 
 -- For this file, we've omitted writing the output anywhere.
