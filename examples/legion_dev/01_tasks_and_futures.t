@@ -1,4 +1,18 @@
 
+
+local legion_dir    = './legion'
+local bindings_dir  = legion_dir..'/bindings/terra'
+local runtime_dir   = legion_dir..'/runtime'
+
+-- Link in a particular library
+terralib.linklibrary(bindings_dir..'/liblegion_terra.so')
+-- Extend the Terra path that looks for C header files
+terralib.includepath = terralib.includepath..';'..runtime_dir..
+                                             ';'..bindings_dir
+-- Extend the Lua path
+package.path = package.path .. ';'..bindings_dir..'/?.t'
+
+
 local C   = terralib.includecstring([[
 #include "stdio.h"
 #include "stdlib.h"
@@ -136,7 +150,7 @@ terra sum_task(
   ctx       : Lg.legion_context_t,
   runtime   : Lg.legion_runtime_t
 )
-  assert(Lg.legion_task_get_num_futures(task) == 2)
+  assert(Lg.legion_task_get_futures_size(task) == 2)
 
   var f1 = Lg.legion_task_get_future(task, 0)
   var r1 = Lg.legion_future_get_result(f1)

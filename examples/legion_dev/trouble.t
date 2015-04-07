@@ -285,6 +285,11 @@ terra top_level_task(
   Lg.legion_inline_launcher_destroy(edges_launcher)
 
 
+
+  
+
+
+
   -- LOOP THE TASKS 1000 TIMES
     -- loop body
   var launch_comp_step = task_launcher(compute_step_TASK_ID,    runtime, ctx)
