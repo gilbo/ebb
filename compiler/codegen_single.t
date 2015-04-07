@@ -295,7 +295,7 @@ function Codegen.codegen (kernel_ast, bran)
     if use_legion then
       local bounds              = `[ctxt:argsym()].bounds
       for d=1,#dims do
-        dims[d] = { lo = `bounds[d-1].lo, hi = `bounds[d-1].hi }
+        dims[d] = { lo = `bounds[d-1].lo, hi = `bounds[d-1].hi + 1 }
       end
     else
       if #dims == 1 then dims = { nrow_sym } end

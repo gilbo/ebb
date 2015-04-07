@@ -221,13 +221,14 @@ function Bran:CompileFieldsGlobalsSubsets()
   self.global_reductions = {}
 
   if use_legion then
-    self.region_nums  = {}
-    self.n_regions    = 0
+    self.region_data        = {}
+    self.sorted_region_data = {}
+    self.n_regions          = 0
 
     self.future_nums  = {}
     self.n_futures    = 0
 
-    self:getPrimaryRegionNum()
+    self:getPrimaryRegionData()
   end
 
   -- reserve ids
@@ -266,38 +267,45 @@ function Bran:argsType ()
   return self.arg_layout:TerraStruct()
 end
 
-local function get_region_num(bran, relation, field)
+local function get_region_data(bran, relation, field)
   if not use_legion then
     error('INTERNAL: Should only try to record Regions '..
           'when running on the Legion Runtime')
   end
-  local reg_wrapper = relation._logical_region_wrapper
-  local reg_num     = bran.region_nums[reg_wrapper]
-  if reg_num then return reg_num
+  -- NOTE WE create a new region data for each region/field pair
+  local sig = tostring(relation:_INTERNAL_UID())
+  if field then sig = sig ..'_'..tostring(field.fid) end
+  local reg_data    = bran.region_data[sig]
+  if reg_data then return reg_data
   else
     if bran.arg_layout:isCompiled() then
       error('INTERNAL ERROR: cannot add region after compiling \n'..
             '  argument layout.  (debug data follows)\n'..
             '      violating relation: '..relation:Name())
     end
-
-    local reg_num = bran.n_regions
+    
+    local reg_data = {
+      wrapper   = relation._logical_region_wrapper,
+      num       = bran.n_regions,
+      --relation  = relation,
+    }
     bran.n_regions = bran.n_regions + 1
 
-    bran.region_nums[reg_wrapper] = reg_num
-    return reg_num
+    bran.region_data[sig]                 = reg_data
+    bran.sorted_region_data[reg_data.num] = reg_data
+    return reg_data
   end
 end
 
-function Bran:getPrimaryRegionNum()
+function Bran:getPrimaryRegionData()
   if use_single then error("INTERNAL: Cannot use regions w/o Legion") end
-  return get_region_num(self, self.relation)
+  return get_region_data(self, self.relation)
 end
 
-function Bran:getRegionNum(field)
+function Bran:getRegionData(field)
   if use_single then error("INTERNAL: Cannot use regions w/o Legion") end
   local rel         = field:Relation()
-  return get_region_num(self, rel, field)
+  return get_region_data(self, rel, field)
 end
 
 function Bran:getFutureNum(globl)
@@ -325,7 +333,7 @@ function Bran:getFieldId(field)
     id = 'field_'..tostring(self.n_field_ids)..'_'..field:Name()
     self.n_field_ids = self.n_field_ids+1
 
-    if use_legion then self:getRegionNum(field) end
+    if use_legion then self:getRegionData(field) end
 
     self.field_ids[field] = id
     self.arg_layout:addField(id, field)
@@ -949,14 +957,14 @@ function Bran:CreateLegionTaskLauncher(task_func)
   -- ADD EACH REGION to the launcher as a requirement
   -- WITH THE appropriate permissions set
   -- NOTE: Need to make sure to do this in the right order
-  for reg_wrapper, ri in pairs_val_sorted(self.region_nums) do
+  for ri, datum in pairs(self.sorted_region_data) do
     local reg_req = 
       LW.legion_task_launcher_add_region_requirement_logical_region(
         task_launcher,
-        reg_wrapper.handle,
+        datum.wrapper.handle,
         LW.READ_WRITE,
         LW.EXCLUSIVE,
-        reg_wrapper.handle, -- why is this repeated?
+        datum.wrapper.handle, -- why is this repeated?
         0,
         false
       )
@@ -968,7 +976,7 @@ function Bran:CreateLegionTaskLauncher(task_func)
   for field, _ in pairs(self.field_ids) do
     LW.legion_task_launcher_add_field(
       task_launcher,
-      self:getRegionNum(field),
+      self:getRegionData(field).num,
       field.fid,
       true
     )
@@ -1042,8 +1050,8 @@ function Bran:GenerateUnpackLegionTaskArgs(argsym, task_args)
   local code = quote
     do -- close after unpacking the fields
     -- UNPACK REGIONS
-    escape for reg_wrapper, ri in pairs(bran.region_nums) do
-      local reg_dim       = reg_wrapper.dimensions
+    escape for ri, datum in pairs(bran.sorted_region_data) do
+      local reg_dim       = datum.wrapper.dimensions
       -- KLUDGE cause of WRAPPER
       if not reg_dim then reg_dim = 1 end
       local physical_reg  = symbol(LW.legion_physical_region_t)
@@ -1071,7 +1079,7 @@ function Bran:GenerateUnpackLegionTaskArgs(argsym, task_args)
 
     -- UNPACK PRIMARY REGION BOUNDS RECTANGLE
     escape
-      local ri    = bran:getPrimaryRegionNum()
+      local ri    = bran:getPrimaryRegionData().num
       local rect  = region_temporaries[ri].rect
       local ndims = region_temporaries[ri].reg_dim
       for i=1,ndims do emit quote
@@ -1082,10 +1090,10 @@ function Bran:GenerateUnpackLegionTaskArgs(argsym, task_args)
     
     -- UNPACK FIELDS
     escape for field, farg_name in pairs(bran.field_ids) do
-      local rtemp = region_temporaries[bran:getRegionNum(field)]
-      local physical_reg = rtemp.physical_reg
-      local reg_dim      = rtemp.reg_dim
-      local rect         = rtemp.rect
+      local rtemp         = region_temporaries[bran:getRegionData(field).num]
+      local physical_reg  = rtemp.physical_reg
+      local reg_dim       = rtemp.reg_dim
+      local rect          = rtemp.rect
 
 
       emit quote
@@ -1103,7 +1111,7 @@ function Bran:GenerateUnpackLegionTaskArgs(argsym, task_args)
     end -- closing do started before unpacking the regions
 
     -- UNPACK FUTURES
-    -- DO NOT WRAP THIS IN A LOCAL SCOPE / DO BLOCK (SEE BELOW)
+    -- DO NOT WRAP THIS IN A LOCAL SCOPE or IN A DO BLOCK (SEE BELOW)
     escape for globl, garg_name in pairs(bran.global_ids) do
       -- position in the Legion task arguments
       local fut_i   = bran:getFutureNum(globl) 
@@ -1115,7 +1123,7 @@ function Bran:GenerateUnpackLegionTaskArgs(argsym, task_args)
         var datum   = @[&gtyp](result.value)
         -- note that we're going to rely on this variable
         -- being stably allocated on the stack
-        -- for the remainder of this scope
+        -- for the remainder of this function scope
         [argsym].[garg_name] = &datum
         LW.legion_task_result_destroy(result)
       end

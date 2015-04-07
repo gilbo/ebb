@@ -63,6 +63,8 @@ end
 -- Seedbank is a cache of brans
 local Seedbank = {}
 
+-- TODO: Lookup based on string-ification of signature
+--    Can lead to collisions in the seedbank...
 function K.seedbank_lookup(sig)
   local str_sig = ''
   for k,v in pairs_sorted(sig) do

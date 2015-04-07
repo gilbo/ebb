@@ -263,7 +263,6 @@ function LogicalRegion:AllocateField(typ)
                 allocate_field_fid_counter
               )
   assert(fid == allocate_field_fid_counter)
-  print('alloc reg fid', self.handle, fid)
   allocate_field_fid_counter = allocate_field_fid_counter + 1
   return fid
 end

@@ -96,6 +96,7 @@ function L.LRelation:isFragmented() return self._is_fragmented end
 --  [size = 35,]        -- IF mode ~= 'GRID'
 --  [dims = {45,90}, ]  -- IF mode == 'GRID'
 -- }
+local relation_uid = 0
 function L.NewRelation(params)
   -- CHECK the parameters coming in
   if type(params) ~= 'table' then
@@ -138,6 +139,7 @@ function L.NewRelation(params)
   local rel = setmetatable( {
     _name      = params.name,
     _mode      = mode,
+    _uid       = relation_uid,
 
     _fields    = terralib.newlist(),
     _subsets   = terralib.newlist(),
@@ -147,6 +149,7 @@ function L.NewRelation(params)
     _incoming_refs = {}, -- used for walking reference graph
   },
   L.LRelation)
+  relation_uid = relation_uid + 1 -- increment unique id counter
 
   -- store mode dependent values
   local size = params.size
@@ -193,6 +196,9 @@ function L.NewRelation(params)
   return rel
 end
 
+function L.LRelation:_INTERNAL_UID()
+  return self._uid
+end
 function L.LRelation:Size()
   return self._logical_size
 end
@@ -343,7 +349,6 @@ function L.LRelation:NewFieldFunction (name, userfunc)
 end
 
 function L.LRelation:GroupBy(keyf_name)
-  --print("GROUPBY")
   if self:isGrouped() then
     error("GroupBy(): Relation is already grouped", 2)
   elseif not self:isPlain() then
@@ -411,20 +416,17 @@ function L.LRelation:GroupBy(keyf_name)
     end) -- length_f write
     end) -- offset_f write
   elseif use_legion then
-    --error("GROUPING UNSUPPORTED")
 
     local keyf_list = key_field:DumpToList()
     local dims      = srcrel:Dims()
-    print("LIST DUMPED")
+    --print('len key', #keyf_list)
 
-    print('SCANNER BUILDING for relation: ', srcrel:Name())
     local src_scanner = LW.NewControlScanner {
       logical_region = srcrel._logical_region_wrapper.handle,
       dimensions     = srcrel:Dims(),
       privilege      = LW.WRITE_ONLY,
       fields         = {offset_f.fid, length_f.fid},
     }
-    --print("SCANNER BUILT")
     local dst_i, prev_src = 0,0
     for ids, ptrs in src_scanner:ScanThenClose() do
       local src_i   = linid(ids,dims)
@@ -673,7 +675,6 @@ function L.LField.New(rel, name, typ)
     local logical_region_wrapper = rel._logical_region_wrapper
     field.fid = logical_region_wrapper:AllocateField(typ)
   end
-  print('Allocated '..field:FullName())
   return field
 end
 
@@ -846,7 +847,6 @@ function L.LField:LoadFunction(lua_callback)
 
   if use_legion then
     -- Ok, we need to map some stuff down here
-    print('loading on relation: ', self.owner:Name())
     local scanner = LW.NewControlScanner {
       logical_region = self.owner._logical_region_wrapper.handle,
       dimensions     = self.owner:Dims(),
