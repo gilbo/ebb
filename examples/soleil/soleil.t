@@ -1469,27 +1469,27 @@ end
 -- to reflect those expressed in the Python prototype code
 -- WARNING_END
 liszt Flow.AddInviscidUpdateUsingFluxX (c : grid.cells)
-    c.rho_t -= (c( 0,0,0).rhoFlux -
+    c.rho_t += -(c( 0,0,0).rhoFlux -
                 c(-1,0,0).rhoFlux)/grid_dx
-    c.rhoVelocity_t -= (c( 0,0,0).rhoVelocityFlux -
+    c.rhoVelocity_t += -(c( 0,0,0).rhoVelocityFlux -
                         c(-1,0,0).rhoVelocityFlux)/grid_dx
-    c.rhoEnergy_t -= (c( 0,0,0).rhoEnergyFlux -
+    c.rhoEnergy_t += -(c( 0,0,0).rhoEnergyFlux -
                       c(-1,0,0).rhoEnergyFlux)/grid_dx
 end
 liszt Flow.AddInviscidUpdateUsingFluxY (c : grid.cells)
-    c.rho_t -= (c(0, 0,0).rhoFlux -
+    c.rho_t += -(c(0, 0,0).rhoFlux -
                 c(0,-1,0).rhoFlux)/grid_dy
-    c.rhoVelocity_t -= (c(0, 0,0).rhoVelocityFlux -
+    c.rhoVelocity_t += -(c(0, 0,0).rhoVelocityFlux -
                         c(0,-1,0).rhoVelocityFlux)/grid_dy
-    c.rhoEnergy_t -= (c(0, 0,0).rhoEnergyFlux -
+    c.rhoEnergy_t += -(c(0, 0,0).rhoEnergyFlux -
                       c(0,-1,0).rhoEnergyFlux)/grid_dy
 end
 liszt Flow.AddInviscidUpdateUsingFluxZ (c : grid.cells)
-    c.rho_t -= (c(0,0, 0).rhoFlux -
+    c.rho_t += -(c(0,0, 0).rhoFlux -
                 c(0,0,-1).rhoFlux)/grid_dz
-    c.rhoVelocity_t -= (c(0,0, 0).rhoVelocityFlux -
+    c.rhoVelocity_t += -(c(0,0, 0).rhoVelocityFlux -
                         c(0,0,-1).rhoVelocityFlux)/grid_dz
-    c.rhoEnergy_t -= (c(0,0, 0).rhoEnergyFlux -
+    c.rhoEnergy_t += -(c(0,0, 0).rhoEnergyFlux -
                       c(0,0,-1).rhoEnergyFlux)/grid_dz
 end
 
@@ -1773,8 +1773,8 @@ liszt Flow.AddParticlesCoupling (p : particles)
         p.cell = grid.cell_locate(p.position)
         -- Add contribution to momentum and energy equations from the previously
         -- computed deltaVelocityOverRelaxationTime and deltaTemperatureTerm
-        p.cell.rhoVelocity_t -= p.mass * p.deltaVelocityOverRelaxationTime
-        p.cell.rhoEnergy_t   -= p.deltaTemperatureTerm
+        p.cell.rhoVelocity_t += -p.mass * p.deltaVelocityOverRelaxationTime
+        p.cell.rhoEnergy_t   += -p.deltaTemperatureTerm
     end
 end
 
