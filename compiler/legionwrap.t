@@ -259,12 +259,15 @@ local allocate_field_fid_counter = 0
 function LogicalRegion:AllocateField(typ)
   local fid = LW.legion_field_allocator_allocate_field(
                 self.fsa,
-                terralib.sizeof(typ.terratype),
+                terralib.sizeof(typ),
                 allocate_field_fid_counter
               )
   assert(fid == allocate_field_fid_counter)
   allocate_field_fid_counter = allocate_field_fid_counter + 1
   return fid
+end
+function LogicalRegion:FreeField(fid)
+  LW.legion_field_allocator_free_field(self.fsa, fid)
 end
 
 -- Internal method: Ask Legion to create 1 dimensional index space
@@ -389,6 +392,63 @@ LW.coherence = {
 --[[         GILBERT added this to make field loading work.                ]]--
 --[[           Think of this as a workspace, not final organization        ]]--
 -----------------------------------------)(Q#$&Y@)#*$(*&_)@--------------------
+
+function LW.CopyField (params)
+  if not params.region  then error('Needs region argument', 2) end
+  if not params.src_fid then error('Needs src_fid argument', 2) end
+  if not params.dst_fid then error('Needs dst_fid argument', 2) end
+
+  local src_region  = params.region
+  local dst_region  = params.region
+  local src_fid     = params.src_fid
+  local dst_fid     = params.dst_fid
+
+  local cplauncher =
+    LW.legion_copy_launcher_create(LW.legion_predicate_true(), 0, 0)
+  
+  -- SETUP ARGUMENTS
+  local src_idx =
+  LW.legion_copy_launcher_add_src_region_requirement_logical_region(
+    cplauncher,
+    src_region,
+    LW.READ_ONLY,
+    LW.EXCLUSIVE,
+    src_region,
+    0,
+    false
+  )
+  local dst_idx =
+  LW.legion_copy_launcher_add_dst_region_requirement_logical_region(
+    cplauncher,
+    dst_region,
+    LW.WRITE_ONLY,
+    LW.EXCLUSIVE,
+    dst_region,
+    0,
+    false
+  )
+  LW.legion_copy_launcher_add_src_field(
+    cplauncher,
+    src_idx,
+    src_fid,
+    true
+  )
+  LW.legion_copy_launcher_add_dst_field(
+    cplauncher,
+    dst_idx,
+    dst_fid,
+    true
+  )
+
+  -- EXEC
+  LW.legion_copy_launcher_execute(legion_env.runtime,
+                                  legion_env.ctx, cplauncher)
+
+  -- CLEANUP
+  LW.legion_copy_launcher_destroy(cplauncher)
+end
+
+
 
 
 

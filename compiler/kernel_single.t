@@ -1138,6 +1138,8 @@ end
 
 function Bran:CompileLegion()
   local task_function     = codegen.codegen(self.kernel.typed_ast, self)
+  -- we attach the task function to the Bran in order to
+  -- prevent it from being garbage collected prematurely
   self.remember_task_func = task_function
   self.executable         = self:CreateLegionLauncher(task_function)
 end
