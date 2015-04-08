@@ -77,7 +77,17 @@ local terra main()
       idempotent = false },
     'future_task', LW.future_task)
   LW.legion_runtime_set_top_level_task_id(TID_TOP_LEVEL)
-  LW.legion_runtime_start(0, [&rawstring](0), false)
+
+  -- arguments
+  var n_args  = 3
+  var args    = arrayof(rawstring,
+    [arg[0]..' '..arg[1]], -- include the Liszt invocation here;
+                           -- doesn't matter though
+    "-level",
+    "5"
+  )
+
+  LW.legion_runtime_start(n_args, args, false)
 end
 
 main()
