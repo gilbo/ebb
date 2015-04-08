@@ -111,12 +111,13 @@ T:map(write1)
 T:map(write2)
 T:map(reduce3)
 T:map(check2)
-
-T:map(write3)
-T:map(check3)
-
-T:map(write4)
-T:map(check4)
+T:map(write2)
+--
+--T:map(write3)
+--T:map(check3)
+--
+--T:map(write4)
+--T:map(check4)
 
 
 
@@ -131,7 +132,7 @@ local function check_write ()
 	-- should initialize each field element to {2, 4, 5, 6}
 	T:map(write2)
 	T:map(reduce3)
-
+--[[
 	f4:set({0, 0, 0, 0})
 	local sum_positions = liszt (t : T)
 		f4 += t.field5
@@ -142,5 +143,6 @@ local function check_write ()
 	local fs  = T:Size()
 	local avg = { f4t[1]/fs, f4t[2]/fs, f4t[3]/fs, f4t[4]/fs }
 	test.fuzzy_aeq(avg, {2, 4, 5, 6})
+]]
 end
-check_write()
+--check_write()

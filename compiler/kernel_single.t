@@ -934,6 +934,7 @@ function Bran:CreateLegionTaskLauncher(task_func)
   -- Should fix this, and remove the wrapper terra function defined below.
   local task_func_wrapper
   local task_TID
+  --local task_func_ptr
   if self:UsesGlobalReduce() then
     task_func_wrapper = terra()
       return LW.NewFutureKernelLauncher(task_func)
@@ -1136,8 +1137,9 @@ end
 
 
 function Bran:CompileLegion()
-  local task_function   = codegen.codegen(self.kernel.typed_ast, self)
-  self.executable       = self:CreateLegionLauncher(task_function)
+  local task_function     = codegen.codegen(self.kernel.typed_ast, self)
+  self.remember_task_func = task_function
+  self.executable         = self:CreateLegionLauncher(task_function)
 end
 
 

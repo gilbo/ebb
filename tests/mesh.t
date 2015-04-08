@@ -1,3 +1,4 @@
+--DISABLE-ON-LEGION
 import "compiler.liszt"
 
 local LMesh = L.require "domains.lmesh"

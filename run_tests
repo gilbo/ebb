@@ -43,15 +43,32 @@ local exclude = {
 
 local disable_str = '--DISABLE-TEST'
 local disable_gpu_str = '--DISABLE-ON-GPU'
+local disable_legion_str = '--DISABLE-ON-LEGION'
+local function str_starts_with(str, prefix)
+  return string.sub(str,1,#prefix) == prefix
+end
 local function is_disabled (filename)
   local h = io.open(filename, "r")
-  local line = h:read()
+  local line1 = h:read()
+  local line2 = h:read()
   io.close(h)
-  local disabled_all = line and
-    string.sub(line,1,#disable_str) == disable_str
-  local disabled_gpu = line and
-    string.sub(line,1,#disable_gpu_str) == disable_gpu_str
-  return disabled_all or (USE_GPU and disabled_gpu)
+  local disabled_all    = false
+  local disabled_gpu    = false
+  local disabled_legion = false
+  if line1 then
+    disabled_all    = disabled_all or str_starts_with(line1, disable_str)
+    disabled_gpu    = disabled_gpu or str_starts_with(line1, disable_gpu_str)
+    disabled_legion = disabled_legion or
+                      str_starts_with(line1, disable_legion_str)
+  end
+  if line2 then
+    disabled_all    = disabled_all or str_starts_with(line2, disable_str)
+    disabled_gpu    = disabled_gpu or str_starts_with(line2, disable_gpu_str)
+    disabled_legion = disabled_legion or
+                      str_starts_with(line2, disable_legion_str)
+  end
+  return disabled_all or (USE_GPU     and disabled_gpu)
+                      or (USE_LEGION  and disabled_legion)
 end
 
 local function output_name (filename)
