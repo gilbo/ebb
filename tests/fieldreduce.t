@@ -6,41 +6,31 @@ local M = ioOff.LoadTrimesh('tests/octa.off')
 local V = M.vertices
 local P = V.pos
 
-local loc_data = {}
-function init_loc_data (loc_data)
-	P:MoveTo(L.CPU)
-	local Pdata = P:DataPtr()
-	for i = 0, V:Size() - 1 do
-		loc_data[i] = {Pdata[i].d[0], Pdata[i].d[1], Pdata[i].d[2]}
-	end
-	P:MoveTo(L.default_processor)
-end
-init_loc_data(loc_data)
+local loc_data = P:DumpToList()
 
 function shift(x,y,z)
-	local liszt shift_func (v : M.vertices)
-	    v.pos += {x,y,z}
-	end
-	M.vertices:map(shift_func)
+  local liszt shift_func (v : M.vertices)
+      v.pos += {x,y,z}
+  end
+  M.vertices:map(shift_func)
 
-	P:MoveTo(L.CPU)
-	local Pdata = P:DataPtr()
-	for i = 0, V:Size() - 1 do
+  local Pdata = P:DumpToList()
+  for i = 1, V:Size() do
+    local v = Pdata[i]
+    local d = loc_data[i]
 
-		local v = Pdata[i]
-		local d = loc_data[i]
+    d[1] = d[1] + x
+    d[2] = d[2] + y
+    d[3] = d[3] + z
 
-		d[1] = d[1] + x
-		d[2] = d[2] + y
-		d[3] = d[3] + z
-
-		--print("Pos " .. tostring(i) .. ': (' .. tostring(v[0]) .. ', ' .. tostring(v[1]) .. ', ' .. tostring(v[2]) .. ')')
-		--print("Loc " .. tostring(i) .. ': (' .. tostring(d[1]) .. ', ' .. tostring(d[2]) .. ', ' .. tostring(d[3]) .. ')')
-		assert(v.d[0] == d[1])
-		assert(v.d[1] == d[2])
-		assert(v.d[2] == d[3])
-	end
-	P:MoveTo(L.default_processor)
+    --print("Pos " .. tostring(i)  .. ': (' .. tostring(v[1]) .. ',' ..
+    --                tostring(v[2]) .. ',' .. tostring(v[3]) .. ')')
+    --print("Loc " .. tostring(i)  .. ': (' .. tostring(d[1]) .. ',' ..
+    --                tostring(d[2]) .. ',' .. tostring(d[3]) .. ')')
+    assert(v[1] == d[1])
+    assert(v[2] == d[2])
+    assert(v[3] == d[3])
+  end
 end
 
 shift(0,0,0)
@@ -55,18 +45,18 @@ local T = M.triangles
 T:NewField("mat", L.mat3d)
 
 local liszt m_set(t : T)
-	var d = L.double(L.id(t))
-	t.mat = {{d, 0.0, 0.0},
+  var d = L.double(L.id(t))
+  t.mat = {{d, 0.0, 0.0},
              {0.0, d, 0.0},
              {0.0, 0.0, d}}
 end
 
 local liszt m_reduce_centered (t : T)
-	t.mat += {
-		{.11, .11, .11},
-		{.22, .22, .22},
-		{.33, .33, .33}
-	}
+  t.mat += {
+    {.11, .11, .11},
+    {.22, .22, .22},
+    {.33, .33, .33}
+  }
 end
 
 T:map(m_set)
@@ -84,22 +74,22 @@ local E = M.edges
 V:NewField("mat", L.mat3d)
 
 local liszt m_set_v(v : V)
-	var d = L.double(L.id(v))
-	v.mat = {{d, 0.0, 0.0},
+  var d = L.double(L.id(v))
+  v.mat = {{d, 0.0, 0.0},
              {0.0, d, 0.0},
              {0.0, 0.0, d}}
 end
 local liszt m_reduce_uncentered (e : E)
-	e.head.mat += .5*{
-		{.11, .11, .11},
-		{.22, .22, .22},
-		{.33, .33, .33}
-	}
-	e.tail.mat += .5*{
-		{.11, .11, .11},
-		{.22, .22, .22},
-		{.33, .33, .33}
-	}
+  e.head.mat += .5*{
+    {.11, .11, .11},
+    {.22, .22, .22},
+    {.33, .33, .33}
+  }
+  e.tail.mat += .5*{
+    {.11, .11, .11},
+    {.22, .22, .22},
+    {.33, .33, .33}
+  }
 end
 
 V:map(m_set_v)

@@ -672,8 +672,7 @@ function L.LField.New(rel, name, typ)
     field.array   = nil
     field:Allocate()
   elseif use_legion then
-    local logical_region_wrapper = rel._logical_region_wrapper
-    field.fid = logical_region_wrapper:AllocateField(typ)
+    field.fid = rel._logical_region_wrapper:AllocateField(typ:terraType())
   end
   return field
 end
@@ -790,7 +789,7 @@ function L.LField:MoveTo( proc )
 end
 
 function L.LRelation:Swap( f1_name, f2_name )
-  if use_legion then error('No Swap() using legion') end
+  --if use_legion then error('No Swap() using legion') end
   local f1 = self[f1_name]
   local f2 = self[f2_name]
   if not L.is_field(f1) then
@@ -801,13 +800,29 @@ function L.LRelation:Swap( f1_name, f2_name )
     error('Cannot Swap() fields of different type', 2)
   end
 
-  local tmp = f1.array
-  f1.array = f2.array
-  f2.array = tmp
+  if use_single then
+    local tmp = f1.array
+    f1.array = f2.array
+    f2.array = tmp
+  elseif use_legion then
+    local region  = self._logical_region_wrapper
+    local rhandle = region.handle
+    local fid_1   = f1.fid
+    local fid_2   = f2.fid
+    -- create a temporary Legion field
+    local fid_tmp = region:AllocateField(f1.type:terraType())
+
+    LW.CopyField { region = rhandle,  src_fid = fid_1,    dst_fid = fid_tmp }
+    LW.CopyField { region = rhandle,  src_fid = fid_2,    dst_fid = fid_1   }
+    LW.CopyField { region = rhandle,  src_fid = fid_tmp,  dst_fid = fid_2   }
+
+    -- destroy temporary field
+    region:FreeField(fid_tmp)
+  end
 end
 
 function L.LRelation:Copy( p )
-  if use_legion then error('No Copy() using legion') end
+  --if use_legion then error('No Copy() using legion') end
   if type(p) ~= 'table' or not p.from or not p.to then
     error("relation:Copy() should be called using the form\n"..
           "  relation:Copy{from='f1',to='f2'}", 2)
@@ -830,13 +845,21 @@ function L.LRelation:Copy( p )
     error('Cannot Copy() fields of different type', 2)
   end
 
-  if not from.array then
-    error('Cannot Copy() from field with no data', 2) end
-  if not to.array then
-    to:Allocate()
-  end
+  if use_single then
+    if not from.array then
+      error('Cannot Copy() from field with no data', 2) end
+    if not to.array then
+      to:Allocate()
+    end
+    to.array:copy(from.array)
 
-  to.array:copy(from.array)
+  elseif use_legion then
+    LW.CopyField {
+      region  = self._logical_region_wrapper.handle,
+      src_fid = from.fid,
+      dst_fid = to.fid,
+    }
+  end
 end
 
 
