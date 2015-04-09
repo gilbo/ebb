@@ -133,6 +133,12 @@ end
 function Bran:isOverSubset()
   return nil ~= self.subset
 end
+function Bran:isBoolMaskSubset()
+  return nil ~= self.subset._boolmask
+end
+function Bran:isIndexSubset()
+  return nil ~= self.subset._index
+end
 
 --                  ---------------------------------------                  --
 --[[ Bran Compilation                                                      ]]--
@@ -235,10 +241,15 @@ function Bran:CompileFieldsGlobalsSubsets()
   for field, _ in pairs(self.kernel.field_use) do
     self:getFieldId(field)
   end
-    if self:overElasticRelation() then
-      if use_legion then error("LEGION UNSUPPORTED TODO") end
-      self:getFieldId(self.relation._is_live_mask)
+  if self:overElasticRelation() then
+    if use_legion then error("LEGION UNSUPPORTED TODO") end
+    self:getFieldId(self.relation._is_live_mask)
+  end
+  if self:isOverSubset() then
+    if self.subset._boolmask then
+      self:getFieldId(self.subset._boolmask)
     end
+  end
   for globl, phase in pairs(self.kernel.global_use) do
     local gid = self:getGlobalId(globl)
 
@@ -254,7 +265,6 @@ function Bran:CompileFieldsGlobalsSubsets()
 
   -- compile subsets in if appropriate
   if self.subset then
-    if use_legion then error("LEGION UNSUPPORTED TODO") end
     self.arg_layout:turnSubsetOn()
   end
 end
@@ -449,20 +459,11 @@ function Bran:bindFieldGlobalSubsetArgs()
   local argptr    = self.args:ptr()
   argptr.n_rows   = self.relation:ConcreteSize()
 
-  if self.subset then
-    argptr.use_boolmask   = false
-    if self.subset._boolmask then
-      argptr.use_boolmask = true
-      argptr.boolmask     = self.subset._boolmask:DataPtr()
-    elseif self.subset._index then
-      argptr.index        = self.subset._index:DataPtr()
-      -- Spoof the number of entries in the index, which is what
-      -- we actually want to iterate over
-      argptr.n_rows       = self.subset._index:Size()
-    else
-      error('INTERNAL ERROR: trying to bind subset, '..
-            'must have boolmask or index')
-    end
+  if self.subset and self.subset._index then
+    argptr.index        = self.subset._index:DataPtr()
+    -- Spoof the number of entries in the index, which is what
+    -- we actually want to iterate over
+    argptr.n_rows       = self.subset._index:Size()
   end
 
   for field, _ in pairs(self.field_ids) do
@@ -1258,8 +1259,6 @@ function ArgLayout:Compile()
   -- add subset data
   local taddr = L.addr_terra_types[self.n_dims]
   if self.subset_on then
-    table.insert(terrastruct.entries, {field='use_boolmask', type=bool})
-    table.insert(terrastruct.entries, {field='boolmask',     type=&bool})
     table.insert(terrastruct.entries, {field='index',        type=&taddr})
     table.insert(terrastruct.entries, {field='index_size',   type=uint64})
   end

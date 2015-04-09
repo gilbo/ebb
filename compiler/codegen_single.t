@@ -69,6 +69,13 @@ function Context:isLiveCheck(param_var)
   --return `ptr[param_var.a[0]]
 end
 
+function Context:isInSubset(param_var)
+  assert(self:isOverSubset())
+  local boolmask_field = self.bran.subset._boolmask
+  local boolmask_ptr   = self:FieldElemPtr(boolmask_field, param_var)
+  return `@boolmask_ptr
+end
+
 -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
 -- Argument Struct related context functions
 
@@ -97,6 +104,12 @@ function Context:isOverElastic() -- meaning the relation mapped over
 end
 function Context:isOverSubset() -- meaning a subset of the relation mapped over
   return self.bran:isOverSubset()
+end
+function Context:isBoolMaskSubset()
+  return self.bran:isBoolMaskSubset()
+end
+function Context:isIndexSubset()
+  return self.bran:isIndexSubset()
 end
 
 -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
@@ -321,165 +334,178 @@ function Codegen.codegen (kernel_ast, bran)
 
     -- GENERATE FOR SUBSETS
     if ctxt:isOverSubset() then
-      if use_legion then error("LEGION SUBSETS TODO") end
 
-      -- GPU SUBSET VERSION
-      if ctxt:onGPU() then
-        body = terraGPUId_to_Nd(dims, nrow_sym, linid, function(addr)
-          return quote
-            -- set param
-            var [param]
-            var use_index = not [ctxt:argsym()].use_boolmask
-            if use_index then
-              param = [ctxt:argsym()].index[linid]
-            else -- use_boolmask
-              param = addr
-            end
-
-            -- conditionally execute
-            if use_index or [ctxt:argsym()].boolmask[linid] then
-              [body]
-            end
+      if ctxt:isBoolMaskSubset() then
+      -- BOOLMASK SUBSET BRANCH
+        if ctxt:onGPU() then
+          if use_legion then
+            error('INTERNAL: LEGION GPU CURRENTLY UNSUPPORTED - TODO')
+          else
+            body = terraGPUId_to_Nd(dims, nrow_sym, linid, function(addr)
+              return quote
+                -- set param
+                if [ctxt:isInSubset(addr)] then
+                  var [param] = addr
+                  [body]
+                end
+              end end)
           end
-        end)
-
-      -- CPU SUBSET VERSION
-      else
-        body = quote
-          if [ctxt:argsym()].use_boolmask then
-          -- BOOLMASK SUBSET BRANCH
-            [terraIterNd(dims, function(iter) return quote
-              if [ctxt:argsym()].boolmask[ [T.linAddrTerraGen(dims)](iter) ]
-              then
+        else
+          body = terraIterNd(dims, function(iter)
+            return quote
+              if [ctxt:isInSubset(iter)] then
                 var [param] = iter
                 [body]
               end
-            end end)]
-          else
-          -- INDEX SUBSET BRANCH
-            -- ONLY GENERATE FOR NON-GRID RELATIONS
-            escape if #ctxt:dims() > 1 then emit quote
-              [terraIterNd({ nrow_sym }, function(iter) return quote
+            end end)
+        end -- BOOLMASK SUBSET BRANCH END
+
+      elseif ctxt:isIndexSubset() then
+      -- INDEX SUBSET BRANCH
+        if use_legion then
+          error('INTERNAL: INDEX SUBSETS ON LEGION CURRENTLY UNSUPPORTED')
+        elseif ctxt:onGPU() then
+          body = terraGPUId_to_Nd(dims, nrow_sym, linid, function(addr)
+            return quote
+              -- set param
+              var [param] = [ctxt:argsym()].index[linid]
+              [body]
+            end end)
+        else
+          if #ctxt:dims() == 1 then
+            body = terraIterNd({ nrow_sym }, function(iter)
+              return quote
                 var [param] = [ctxt:argsym()].index[iter.a[0]]
                 [body]
-              end end)]
-            end end end
+              end end)
           end
         end
-      end
+      end -- INDEX SUBSET BRANCH END
+
 
     -- GENERATE FOR FULL RELATION
     else
 
       -- GPU FULL RELATION VERSION
       if ctxt:onGPU() then
-        if use_legion then error("LEGION TODO") end
-        body = terraGPUId_to_Nd(dims, nrow_sym, linid, function(addr)
-          return quote
-            var [param] = [addr]
-            [body]
-          end
-        end)
+        if use_legion then
+          error("INTERNAL: LEGION GPU CURRENTLY UNSUPPORTED - TODO")
+        else
+          body = terraGPUId_to_Nd(dims, nrow_sym, linid, function(addr)
+            return quote
+              var [param] = [addr]
+              [body]
+            end end)
+        end
 
       -- CPU FULL RELATION VERSION
       else
-        body = terraIterNd(dims, function(iter) return quote
-          var [param] = iter
-          [body]
-        end end)
+        body = terraIterNd(dims, function(iter)
+          return quote
+            var [param] = iter
+            [body]
+          end end)
       end
 
-    end
+    end -- SUBSET/ FULL RELATION BRANCHES END
 
     -- Extra GPU wrapper
     if ctxt:onGPU() then
-      if use_legion then error("LEGION TODO") end
+      if use_legion then
+        error("INTERNAL: LEGION GPU CURRENTLY UNSUPPORTED - TODO")
+      else
+        -- Extra GPU Reduction setup/post-process
+        if ctxt:hasGPUReduce() then
+          body = quote
+            [ctxt:codegenSharedMemInit()]
+            G.barrier()
+            [body]
+            G.barrier()
+            [ctxt:codegenSharedMemTreeReduction()]
+          end
+        end
 
-      -- Extra GPU Reduction setup/post-process
-      if ctxt:hasGPUReduce() then
         body = quote
-          [ctxt:codegenSharedMemInit()]
-          G.barrier()
+          var [ctxt:tid()] = G.thread_id()
+          var [ctxt:bid()] = G.block_id()
+          var [linid]      = [ctxt:bid()] * [ctxt:gpuBlockSize()] + [ctxt:tid()]
+
           [body]
-          G.barrier()
-          [ctxt:codegenSharedMemTreeReduction()]
         end
       end
-
-      body = quote
-        var [ctxt:tid()] = G.thread_id()
-        var [ctxt:bid()] = G.block_id()
-        var [linid]      = [ctxt:bid()] * [ctxt:gpuBlockSize()] + [ctxt:tid()]
-
-        [body]
-      end
-    end
+    end -- GPU WRAPPER
 
   ctxt:leaveblock()
 
   -- BUILD GPU LAUNCHER
   if ctxt:onGPU() then
-    if use_legion then error("LEGION TODO") end
-    local cuda_kernel = terra([ctxt:argsym()]) [body] end
-    cuda_kernel:setname(kernel_ast.id .. '_cudakernel')
-    cuda_kernel = G.kernelwrap(cuda_kernel, L._INTERNAL_DEV_OUTPUT_PTX,
-                               { {"maxntidx",64}, {"minctasm",6} })
+    if use_legion then
+      error("INTERNAL: LEGION GPU CURRENTLY UNSUPPORTED - TODO")
+    else
+      local cuda_kernel = terra([ctxt:argsym()]) [body] end
+      cuda_kernel:setname(kernel_ast.id .. '_cudakernel')
+      cuda_kernel = G.kernelwrap(cuda_kernel, L._INTERNAL_DEV_OUTPUT_PTX,
+                                 { {"maxntidx",64}, {"minctasm",6} })
 
-    local MAX_GRID_DIM = 65536
-    local launcher = terra (n_blocks : uint, args_ptr : &ctxt:argsType())
-      var grid_x : uint,    grid_y : uint,    grid_z : uint   =
-          G.get_grid_dimensions(n_blocks, MAX_GRID_DIM)
-      var params = terralib.CUDAParams {
-        grid_x, grid_y, grid_z,
-        [ctxt:gpuBlockSize()], 1, 1,
-        [ctxt:gpuSharedMemBytes()], nil
-      }
-      cuda_kernel(&params, @args_ptr)
-      G.sync() -- flush print streams
-      -- TODO: Does this sync cause any performance problems?
-    end
-    launcher:setname(kernel_ast.id)
-    return launcher
-
-  -- BUILD LEGION TASK FUNCTION
-  elseif use_legion then
-
-    local generate_output_future = quote end
-    if use_legion and ctxt.bran:UsesGlobalReduce() then
-      local globl             = next(ctxt.bran.global_reductions)
-      local gtyp              = globl.type:terraType()
-      local gptr              = ctxt:GlobalPtr(globl)
-      if next(ctxt.bran.global_reductions, globl) then
-        error("INTERNAL: More than 1 global reduction at a time unsupported")
+      local MAX_GRID_DIM = 65536
+      local launcher = terra (n_blocks : uint, args_ptr : &ctxt:argsType())
+        var grid_x : uint,    grid_y : uint,    grid_z : uint   =
+            G.get_grid_dimensions(n_blocks, MAX_GRID_DIM)
+        var params = terralib.CUDAParams {
+          grid_x, grid_y, grid_z,
+          [ctxt:gpuBlockSize()], 1, 1,
+          [ctxt:gpuSharedMemBytes()], nil
+        }
+        cuda_kernel(&params, @args_ptr)
+        G.sync() -- flush print streams
+        -- TODO: Does this sync cause any performance problems?
       end
-      --print('here do thing ', gtyp)
-      generate_output_future  = quote
-        --C.printf('foo %d\n', (@gptr).d[0])
-        return LW.legion_task_result_create( gptr, sizeof(gtyp) )
-      end
+      launcher:setname(kernel_ast.id)
+      return launcher
     end
-
-    local k = terra (task_args : LW.TaskArgs)
-      var [ctxt:argsym()]
-      [ ctxt.bran:GenerateUnpackLegionTaskArgs(ctxt:argsym(), task_args) ]
-
-      [body]
-
-      [generate_output_future]
-    end
-    k:setname(kernel_ast.id)
-    return k
 
   -- BUILD CPU LAUNCHER
   else
-    local k = terra (args_ptr : &ctxt:argsType())
-      var [ctxt:argsym()] = @args_ptr
-      [body]
-    end
-    k:setname(kernel_ast.id)
-    return k
-  end
-end
+
+    -- BUILD LEGION TASK FUNCTION
+    if use_legion then
+
+      local generate_output_future = quote end
+      if use_legion and ctxt.bran:UsesGlobalReduce() then
+        local globl             = next(ctxt.bran.global_reductions)
+        local gtyp              = globl.type:terraType()
+        local gptr              = ctxt:GlobalPtr(globl)
+        if next(ctxt.bran.global_reductions, globl) then
+          error("INTERNAL: More than 1 global reduction at a time unsupported")
+        end
+        --print('here do thing ', gtyp)
+        generate_output_future  = quote
+          --C.printf('foo %d\n', (@gptr).d[0])
+          return LW.legion_task_result_create( gptr, sizeof(gtyp) )
+        end
+      end
+
+      local k = terra (task_args : LW.TaskArgs)
+        var [ctxt:argsym()]
+        [ ctxt.bran:GenerateUnpackLegionTaskArgs(ctxt:argsym(), task_args) ]
+
+        [body]
+
+        [generate_output_future]
+      end
+      k:setname(kernel_ast.id)
+      return k
+
+    else
+      local k = terra (args_ptr : &ctxt:argsType())
+        var [ctxt:argsym()] = @args_ptr
+        [body]
+      end
+      k:setname(kernel_ast.id)
+      return k
+    end -- CPU LAUNCHERS FOR LEGION/ NON-LEGION END
+  end -- CPU/ GPU LAUNCHERS END
+end -- CODEGEN ENDS
 
 
 
