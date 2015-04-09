@@ -96,8 +96,8 @@ end
 function Context:onGPU()
   return self.bran:isOnGPU()
 end
-function Context:hasGPUReduce()
-  return self.bran:UsesGPUReduce()
+function Context:hasGlobalReduce()
+  return self.bran:UsesGlobalReduce()
 end
 function Context:isOverElastic() -- meaning the relation mapped over
   return self.bran:overElasticRelation()
@@ -415,7 +415,7 @@ function Codegen.codegen (kernel_ast, bran)
         error("INTERNAL: LEGION GPU CURRENTLY UNSUPPORTED - TODO")
       else
         -- Extra GPU Reduction setup/post-process
-        if ctxt:hasGPUReduce() then
+        if ctxt:hasGlobalReduce() then
           body = quote
             [ctxt:codegenSharedMemInit()]
             G.barrier()

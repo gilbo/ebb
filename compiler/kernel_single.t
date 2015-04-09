@@ -497,12 +497,12 @@ end
 function Bran:PostLaunchCleanup()
   -- GPU Reduction finishing and cleanup
   if self:isOnGPU() then
-    if self:UsesGPUReduce()   then  self:postprocessGPUReduction()  end
+    if self:UsesGlobalReduce() then  self:postprocessGPUReduction()  end
   end
 
   -- Handle post execution Insertion and Deletion Behaviors
-  if self:UsesInsert()        then   self:postprocessInsertions()    end
-  if self:UsesDelete()        then   self:postprocessDeletions()     end
+  if self:UsesInsert()         then   self:postprocessInsertions()    end
+  if self:UsesDelete()         then   self:postprocessDeletions()     end
 end
 
 
