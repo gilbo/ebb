@@ -2610,7 +2610,7 @@ liszt Particles.SetVelocitiesToFlow (p: particles)
     flowDynamicViscosity = GetDynamicViscosity(flowTemperature)
 
     -- Update the particle velocity
-if (particles_options.particleType == Particles.Fixed) then
+    if (particles_options.particleType == Particles.Fixed) then
       p.velocity = {0.0,0.0,0.0} -- Don't move the particle
       elseif (particles_options.initParticles == Particles.Restart) then
       -- Do nothing, as we loaded the veloity from a restart

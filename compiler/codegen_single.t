@@ -478,9 +478,7 @@ function Codegen.codegen (kernel_ast, bran)
         if next(ctxt.bran.global_reductions, globl) then
           error("INTERNAL: More than 1 global reduction at a time unsupported")
         end
-        --print('here do thing ', gtyp)
         generate_output_future  = quote
-          --C.printf('foo %d\n', (@gptr).d[0])
           return LW.legion_task_result_create( gptr, sizeof(gtyp) )
         end
       end

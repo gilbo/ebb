@@ -63,14 +63,11 @@ local struct LegionEnv {
 LE.legion_env = global(LegionEnv)
 local legion_env = LE.legion_env:get()
 
+
+
 -------------------------------------------------------------------------------
---[[                       Kernel Launcher Template                        ]]--
+--[[                             Task Launcher                             ]]--
 -------------------------------------------------------------------------------
---[[ Kernel laucnher template is a wrapper for a callback function that is
---   passed to a Legion task, when a Liszt kernel is invoked. We pass a
---   function as an argument to a Legion task, because there isn't a way to
---   dynamically register and invoke tasks.
---]]--
 
 struct LW.TaskArgs {
   task        : LW.legion_task_t,
@@ -80,59 +77,88 @@ struct LW.TaskArgs {
   lg_runtime  : LW.legion_runtime_t
 }
 
+LW.TaskLauncher         = {}
+LW.TaskLauncher.__index = LW.TaskLauncher
 
----------------
--- NO RETURN --
----------------
+LW.SimpleTaskPtrType = { LW.TaskArgs } -> {}
+LW.FutureTaskPtrType = { LW.TaskArgs } -> LW.legion_task_result_t
 
-struct LW.SimpleKernelLauncherTemplate {
-  Launch : { LW.TaskArgs } -> {};
-}
+function LW.NewTaskLauncher(params)
+  if not terralib.isfunction(params.taskfunc) then
+    error('must provide Terra function as "taskfunc" argument', 2)
+  end
+  local taskfunc    = params.taskfunc
+  local taskptrtype = &taskfunc:getdefinitions()[1]:gettype()
+  local TID
+  local taskfuncptr = global( taskptrtype,
+                              taskfunc:getdefinitions()[1]:getpointer() )
 
-terra LW.NewSimpleKernelLauncher( kernel_code : { LW.TaskArgs } -> {} )
-  var l : LW.SimpleKernelLauncherTemplate
-  l.Launch = kernel_code
-  return l
+  if     taskptrtype == LW.SimpleTaskPtrType then
+    TID = LW.TID_SIMPLE
+  elseif taskptrtype == LW.FutureTaskPtrType then
+    TID = LW.TID_FUTURE
+  else
+    error('The supplied function had ptr type\n'..
+          '  '..tostring(taskptrtype)..'\n'..
+          'Was expecting one of the following types\n'..
+          '  '..tostring(LW.SimpleTaskPtrType)..'\n'..
+          '  '..tostring(LW.FutureTaskPtrType)..'\n', 2)
+  end
+
+  -- By looking carefully at the legion_c wrapper
+  -- I was able to determine that we don't need to
+  -- persist this structure
+  local argstruct         = global(LW.legion_task_argument_t)
+  argstruct:get().args    = taskfuncptr:getpointer()
+  argstruct:get().arglen  = terralib.sizeof(taskptrtype)
+
+  local launcher = LW.legion_task_launcher_create(
+    TID,
+    argstruct:get(),
+    LW.legion_predicate_true(),
+    0,
+    0
+  )
+
+  return setmetatable({
+    _taskfunc     = taskfunc,     -- important to prevent garbage collection
+    _taskfuncptr  = taskfuncptr,  -- important to prevent garbage collection
+    _TID          = TID,
+    _launcher     = launcher,
+  }, LW.TaskLauncher)
 end
 
-LW.SimpleKernelLauncherSize = terralib.sizeof(LW.SimpleKernelLauncherTemplate)
-
--- Pack kernel launcher into a task argument for Legion.
-terra LW.SimpleKernelLauncherTemplate:PackToTaskArg()
-  var sub_args = LW.legion_task_argument_t {
-    args       = [&opaque](self),
-    arglen     = LW.SimpleKernelLauncherSize
-  }
-  return sub_args
+function LW.TaskLauncher:AddRegionReq(lr, permission, coherence)
+  local reg_req =
+  LW.legion_task_launcher_add_region_requirement_logical_region(
+    self._launcher,
+    lr.handle,
+    permission,
+    coherence,
+    lr.handle, -- superfluous parent ?
+    0,
+    false
+  )
+  return reg_req
 end
 
-
--------------------------------
--- RETURN LEGION TASK RESULT --
--------------------------------
-
-struct LW.FutureKernelLauncherTemplate {
-  Launch : { LW.TaskArgs } -> LW.legion_task_result_t;
-}
-
-terra LW.NewFutureKernelLauncher( kernel_code : { LW.TaskArgs } ->
-                                                LW.legion_task_result_t )
-  var l : LW.FutureKernelLauncherTemplate
-  l.Launch = kernel_code
-  return l
+function LW.TaskLauncher:AddField(reg_req, fid)
+  LW.legion_task_launcher_add_field(
+    self._launcher,
+    reg_req,
+    fid,
+    true
+  )
 end
 
-LW.FutureKernelLauncherSize = terralib.sizeof(LW.FutureKernelLauncherTemplate)
-
--- Pack kernel launcher into a task argument for Legion.
-terra LW.FutureKernelLauncherTemplate:PackToTaskArg()
-  var sub_args = LW.legion_task_argument_t {
-    args       = [&opaque](self),
-    arglen     = LW.FutureKernelLauncherSize
-  }
-  return sub_args
+function LW.TaskLauncher:AddFuture(future)
+  LW.legion_task_launcher_add_future(self._launcher, future)
 end
 
+-- If there's a future it will be returned
+function LW.TaskLauncher:Execute(runtime, ctx)
+  return LW.legion_task_launcher_execute(runtime, ctx, self._launcher)
+end
 
 -------------------------------------------------------------------------------
 --[[                             Legion Tasks                              ]]--
@@ -149,12 +175,9 @@ terra LW.simple_task(
   runtime     : LW.legion_runtime_t
 )
   var arglen = LW.legion_task_get_arglen(task)
-  assert(arglen == LW.SimpleKernelLauncherSize)
-  var kernel_launcher =
-    [&LW.SimpleKernelLauncherTemplate](LW.legion_task_get_args(task))
-  kernel_launcher.Launch( LW.TaskArgs {
-    task, regions, num_regions, ctx, runtime
-  } )
+  assert(arglen == sizeof(LW.SimpleTaskPtrType))
+  var taskfunc = @[&LW.SimpleTaskPtrType](LW.legion_task_get_args(task))
+  taskfunc( LW.TaskArgs { task, regions, num_regions, ctx, runtime } )
 end
 
 LW.TID_SIMPLE = 200
@@ -167,21 +190,15 @@ terra LW.future_task(
   runtime     : LW.legion_runtime_t
 ) : LW.legion_task_result_t
   var arglen = LW.legion_task_get_arglen(task)
-  assert(arglen == LW.FutureKernelLauncherSize)
-  var kernel_launcher =
-    [&LW.FutureKernelLauncherTemplate](LW.legion_task_get_args(task))
-  var result = kernel_launcher.Launch( LW.TaskArgs {
-    task, regions, num_regions, ctx, runtime
-  } )
-  -- TODO: dummy seems likely broken.  It should refer to this task?
+  assert(arglen == sizeof(LW.FutureTaskPtrType))
+  var taskfunc = @[&LW.FutureTaskPtrType](LW.legion_task_get_args(task))
+  var result = taskfunc( LW.TaskArgs {
+                            task, regions, num_regions, ctx, runtime } )
+
   return result
 end
 
 LW.TID_FUTURE = 300
-
--- GLB: Why do we need this table?
-LW.TaskTypes = { simple = 'simple', future = 'future' }
-
 
 
 -------------------------------------------------------------------------------
@@ -501,64 +518,6 @@ function LW.NewControlScanner(params)
   }, LW.ControlScanner)
 
   return launchobj
-
-  -- NOTE THE BELOW CODE WILL NOT WORK BECAUSE OF A LEGION BUG
-
-  --[[
-  -- create the launcher and bind in the fields
-  local il = LW.legion_inline_launcher_create_logical_region(
-    params.logical_region,  -- legion_logical_region_t handle
-    params.privilege,       -- legion_privilege_mode_t
-    LW.EXCLUSIVE,           -- legion_coherence_property_t
-    params.logical_region,  -- legion_logical_region_t parent
-    0,                      -- legion_mapping_tag_id_t region_tag /* = 0 */
-    false,                  -- bool verified /* = false*/
-    0,                      -- legion_mapper_id_t id /* = 0 */
-    0                       -- legion_mapping_tag_id_t launcher_tag /* = 0 */
-  )
-  for i=0,300000000 do end
-  print('logical region inline launcher created\n',
-        params.logical_region.tree_id)
-  local fields = {}
---  if #params.fields > 1 then
---    local fid = params.fields[2]
---      print('add fid to reg inline ', '('..
---            tostring(params.logical_region.index_space.id)..','..
---            tostring(params.logical_region.field_space.id)..','..
---            tostring(params.logical_region.tree_id)..')',
---            fid)
---    LW.legion_inline_launcher_add_field(il, fid, true)
---    fields[1] = fid
---  else
-    for i,fid in ipairs(params.fields) do
-      --if i > 1 then break end
-      print('add fid to reg inline ', '('..
-            tostring(params.logical_region.index_space.id)..','..
-            tostring(params.logical_region.field_space.id)..','..
-            tostring(params.logical_region.tree_id)..')',
-            fid)
-      LW.legion_inline_launcher_add_field(il, fid, true)
-      fields[i] = fid
-    end
---  end
-
-  for i=0,300000000 do end
-  print('easdfoinawfpoinpoinion')
-
-  -- launch and create the physical region mapping
-  local pr = LW.legion_inline_launcher_execute(legion_env.runtime,
-                                               legion_env.ctx, il)
-  for i=0,300000000 do end
-  print('exec done; built physical region')
-  local launchobj = setmetatable({
-    inline_launcher = il,
-    physical_region = pr,
-    fields          = fields,
-    dimensions      = params.dimensions,
-  }, LW.ControlScanner)
-  for i=0,300000000 do end
-  print('asdflknaopenf;lsenfz;lsefa')
-  return launchobj]]
 end
 
 function LW.ControlScanner:ScanThenClose()
@@ -666,11 +625,6 @@ function LW.ControlScanner:close()
     LW.legion_physical_region_destroy(pr)
     LW.legion_inline_launcher_destroy(il)
   end
---  LW.legion_runtime_unmap_region(legion_env.runtime,
---                                 legion_env.ctx,
---                                 self.physical_region)
---  LW.legion_physical_region_destroy(self.physical_region)
---  LW.legion_inline_launcher_destroy(self.inline_launcher)
 end
 
 

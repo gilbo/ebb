@@ -170,7 +170,11 @@ function Bran.CompileOrFetch(sig)
   return bran
 end
 
+--local compile_counter = 1
 function Bran:Compile()
+--  print('compiling #', compile_counter,
+--        self.kernel.typed_ast:astSize(), self.kernel.typed_ast.id)
+--  compile_counter = compile_counter + 1
   local kernel    = self.kernel
   local typed_ast = self.kernel.typed_ast
 
@@ -930,64 +934,28 @@ end
 -- Creates a task launcher with task region requirements.
 function Bran:CreateLegionTaskLauncher(task_func)
 
-  -- TODO: Cannot pass a terra function to another terra function.
-  -- Doing so throws error "cannot convert 'table' to 'bool (*)()'".
-  -- Should fix this, and remove the wrapper terra function defined below.
-  local task_func_wrapper
-  local task_TID
-  --local task_func_ptr
-  if self:UsesGlobalReduce() then
-    task_func_wrapper = terra()
-      return LW.NewFutureKernelLauncher(task_func)
-    end
-    task_TID = LW.TID_FUTURE
-  else
-    task_func_wrapper = terra()
-      return LW.NewSimpleKernelLauncher(task_func)
-    end
-    task_TID = LW.TID_SIMPLE
-  end
-  local task_as_arg = task_func_wrapper():PackToTaskArg()
-
-
-  local task_launcher = LW.legion_task_launcher_create(
-                            task_TID,
-                            task_as_arg,
-                            LW.legion_predicate_true(), 0, 0
-                        )
+  local task_launcher = LW.NewTaskLauncher { taskfunc = task_func }
 
   -- ADD EACH REGION to the launcher as a requirement
   -- WITH THE appropriate permissions set
   -- NOTE: Need to make sure to do this in the right order
   for ri, datum in pairs(self.sorted_region_data) do
-    local reg_req = 
-      LW.legion_task_launcher_add_region_requirement_logical_region(
-        task_launcher,
-        datum.wrapper.handle,
-        LW.READ_WRITE,
-        LW.EXCLUSIVE,
-        datum.wrapper.handle, -- why is this repeated?
-        0,
-        false
-      )
+    local reg_req = task_launcher:AddRegionReq(datum.wrapper,
+                                               LW.READ_WRITE,
+                                               LW.EXCLUSIVE)
     assert(reg_req == ri)
   end
 
   -- ADD EACH FIELD to the launcher as a requirement
   -- as part of the correct, corresponding region
   for field, _ in pairs(self.field_ids) do
-    LW.legion_task_launcher_add_field(
-      task_launcher,
-      self:getRegionData(field).num,
-      field.fid,
-      true
-    )
+    task_launcher:AddField( self:getRegionData(field).num, field.fid )
   end
 
   -- ADD EACH GLOBAL to the launcher as a future being passed to the task
   -- NOTE: Need to make sure to do this in the right order
   for globl, gi in pairs_val_sorted(self.future_nums) do
-    LW.legion_task_launcher_add_future(task_launcher, globl.data)
+    task_launcher:AddFuture( globl.data )
   end
 
   return task_launcher
@@ -1000,9 +968,7 @@ function Bran:CreateLegionLauncher(task_func)
   if bran:UsesGlobalReduce() then
     return function(leg_args)
       local globl   = next(bran.global_reductions)
-      local future  = LW.legion_task_launcher_execute(leg_args.runtime,
-                                                      leg_args.ctx,
-                                                      task_launcher)
+      local future  = task_launcher:Execute(leg_args.runtime, leg_args.ctx)
       local res = LW.legion_future_get_result(future)
       -- Wait till value is available. We can remove this once apply and
       -- fold operations are implemented using legion API, and we figure out
@@ -1017,8 +983,7 @@ function Bran:CreateLegionLauncher(task_func)
     end
   else
     return function(leg_args)
-      LW.legion_task_launcher_execute(leg_args.runtime, leg_args.ctx,
-                                      task_launcher)
+      task_launcher:Execute(leg_args.runtime, leg_args.ctx)
     end
   end
 end
@@ -1139,9 +1104,6 @@ end
 
 function Bran:CompileLegion()
   local task_function     = codegen.codegen(self.kernel.typed_ast, self)
-  -- we attach the task function to the Bran in order to
-  -- prevent it from being garbage collected prematurely
-  self.remember_task_func = task_function
   self.executable         = self:CreateLegionLauncher(task_function)
 end
 
