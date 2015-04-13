@@ -227,27 +227,90 @@ local LogicalRegion     = {}
 LogicalRegion.__index   = LogicalRegion
 LW.LogicalRegion        = LogicalRegion
 
+local FutureBlob        = {}
+FutureBlob.__index      = FutureBlob
+LW.FutureBlob           = FutureBlob
+
+
 -------------------------------------------------------------------------------
 --[[                            Future methods                             ]]--
 -------------------------------------------------------------------------------
 
-function LW.CreateFuture(typ, cdata)
-  local data_type = typ:terraType()
-  local data = terralib.new(data_type[1])
-  data[0] = cdata
-  local future = LW.legion_future_from_buffer(legion_env.runtime, data,
-                                              terralib.sizeof(data_type))
-  return future
+function FutureBlob:LegionFuture()
+  return self.legion_future
 end
 
-function LW.DestroyFuture(future)
-  LW.legion_future_destroy(future)
+function FutureBlob:AssignTo(global, offset)
+  global:SetData(self)
+  global:SetOffset(offset)
+  self.ref_count = self.ref_count + 1
 end
 
-function LW.GetResultFromFuture(typ, future)
-  local leg_result = LW.legion_future_get_result(future)
-  local data_type = typ:terraType()
-  local data = terralib.new(data_type, terralib.cast(&data_type, leg_result.value)[0])
+function FutureBlob:Release()
+  self.ref_count = self.ref_count - 1
+  if self.ref_count == 0 then
+    LW.legion_future_destroy(self.legion_future)
+    self.legion_future = nil
+  end
+end
+
+function LW.AssignFutureBlobFromFuture(global, legion_future)
+  local f = { legion_future = legion_future, ref_count = 0 }
+  setmetatable(f, FutureBlob)
+  f:AssignTo(global, 0)
+  return f
+end
+
+function LW.AssignFutureBlobFromValue(global, cdata)
+  local ttype = global:Type():terraType()
+  local tsize = terralib.sizeof(ttype)
+  local data_blob = terralib.cast(&ttype, C.malloc(tsize))
+  data_blob[0] = cdata
+  local legion_future = LW.legion_future_from_buffer(legion_env.runtime,
+                                                     data_blob,
+                                                     terralib.sizeof(ttype))
+  local f = { legion_future = legion_future, ref_count = 0 }
+  setmetatable(f, FutureBlob)
+  local old_future = global:Data()
+  if old_future then
+    old_future:Release()
+  end
+  f:AssignTo(global, 0)
+  return f
+end
+
+function LW.AssignFutureBlobFromCollection(globals)
+  local blob_size = 0
+  for _, g in pairs(globals) do
+    blob_size = blob_size + terralib.sizeof(g:Type():terraType())
+  end
+  local data_blob = terralib.cast(&uint8, C.malloc(blob_size))
+  local f = { ref_count = 0 }
+  setmetatable(f, FutureBlob)
+  local offset = 0
+  for _, g in pairs(globals) do
+    local old_future = g:Data()
+    local tsize = terralib.sizeof(g:Type():terraType())
+    C.memcpy(data_blob[offset], old_future:GetResult(g), tsize)
+    local old_future = g:Data()
+    if old_future then
+      old_future:Release()
+    end
+    f:AssignTo(g, offset)
+    offset = offset + tsize
+  end
+  f.legion_future = LW.legion_future_from_buffer(legion_env.runtime, data_blob,
+                                                 terralib.sizeof(ttype))
+  C.free(data_blob)
+  return f
+end
+
+function FutureBlob:GetResult(global)
+  local ttype = global:Type():terraType()
+  local leg_result = LW.legion_future_get_result(self.legion_future)
+  local offset = global:Offset()
+  local d = terralib.cast(&uint8, leg_result.value)
+  local data = terralib.new(ttype, terralib.cast(&ttype, d + offset)[0])
   LW.legion_task_result_destroy(leg_result)
   return data
 end

@@ -955,7 +955,7 @@ function Bran:CreateLegionTaskLauncher(task_func)
   -- ADD EACH GLOBAL to the launcher as a future being passed to the task
   -- NOTE: Need to make sure to do this in the right order
   for globl, gi in pairs_val_sorted(self.future_nums) do
-    task_launcher:AddFuture( globl.data )
+    task_launcher:AddFuture( globl:Data():LegionFuture() )
   end
 
   return task_launcher
@@ -967,19 +967,9 @@ function Bran:CreateLegionLauncher(task_func)
   local task_launcher = bran:CreateLegionTaskLauncher(task_func)
   if bran:UsesGlobalReduce() then
     return function(leg_args)
-      local globl   = next(bran.global_reductions)
+      local global  = next(bran.global_reductions)
       local future  = task_launcher:Execute(leg_args.runtime, leg_args.ctx)
-      local res = LW.legion_future_get_result(future)
-      -- Wait till value is available. We can remove this once apply and
-      -- fold operations are implemented using legion API, and we figure out
-      -- how to safely delete old future : Is it safe to call DestroyFuture
-      -- immediately after launching the tasks that use the future?
-      -- TODO: We must apply this return value to old value - necessary for
-      -- multiple partitions. Work around right now applies reduction in the
-      -- task (Liszt kernel) itself, so we can simply replace the old future.
-      globl.data = LW.legion_future_from_buffer(leg_args.runtime,
-                                                res.value, res.value_size)
-      LW.legion_task_result_destroy(res)
+      LW.AssignFutureBlobFromFuture(global, future)
     end
   else
     return function(leg_args)

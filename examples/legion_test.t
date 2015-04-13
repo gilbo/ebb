@@ -95,8 +95,8 @@ test_keyfields()
 
 -- subset functionality
 local function test_subsets()
-  cells.interior(InitCells)
-  cells.interior(CenteredReads)
+  cells.interior:map(InitCells)
+  cells.interior:map(CenteredReads)
   cells:map(CenteredReads)
 end
 test_subsets()
