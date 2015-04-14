@@ -3,7 +3,7 @@ local ffi = require "ffi"
 
 local USE_LEGION = false
 local USE_GPU    = false
-local NO_GPU     = true
+local NO_DEBUG   = false
 local ONE_LINE_ERR = false
 
 if #arg > 0 then
@@ -13,6 +13,9 @@ if #arg > 0 then
     end
     if arg[i] == '-gpu' or arg[i] == '--gpu' then
       USE_GPU = true
+    end
+    if arg[i] == '-nodebug' or arg[i] == '--nodebug' then
+      NO_DEBUG = true
     end
     if arg[i] == '-h' or arg[i] == '--help' then
       print("Usage : run_tests [options]")

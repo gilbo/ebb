@@ -53,6 +53,14 @@ local terra top_level_task(
   load_liszt()
 end
 
+-- Note 4 types of processors
+
+--      TOC_PROC = ::TOC_PROC, // Throughput core
+--      LOC_PROC = ::LOC_PROC, // Latency core
+--      UTIL_PROC = ::UTIL_PROC, // Utility core
+--      PROC_GROUP = ::PROC_GROUP, // Processor group
+
+
 -- Main function that launches Legion runtime
 local terra main()
   LW.legion_runtime_register_task_void(
@@ -62,20 +70,37 @@ local terra main()
       inner = false,
       idempotent = false },
     'top_level_task', top_level_task)
+
   LW.legion_runtime_register_task_void(
-    LW.TID_SIMPLE, LW.LOC_PROC, true, false, 1,
+    LW.TID_SIMPLE_CPU, LW.LOC_PROC, true, false, 1,
     LW.legion_task_config_options_t {
       leaf = false,
       inner = false,
       idempotent = false },
-    'simple_task', LW.simple_task)
+    'simple_task_cpu', LW.simple_task)
+  LW.legion_runtime_register_task_void(
+    LW.TID_SIMPLE_GPU, LW.LOC_PROC, true, false, 1,
+    LW.legion_task_config_options_t {
+      leaf = false,
+      inner = false,
+      idempotent = false },
+    'simple_task_gpu', LW.simple_task)
+
   LW.legion_runtime_register_task(
-    LW.TID_FUTURE, LW.LOC_PROC, true, false, 1,
+    LW.TID_FUTURE_CPU, LW.LOC_PROC, true, false, 1,
     LW.legion_task_config_options_t {
       leaf = false,
       inner = false,
       idempotent = false },
-    'future_task', LW.future_task)
+    'future_task_cpu', LW.future_task)
+  LW.legion_runtime_register_task(
+    LW.TID_FUTURE_GPU, LW.LOC_PROC, true, false, 1,
+    LW.legion_task_config_options_t {
+      leaf = false,
+      inner = false,
+      idempotent = false },
+    'future_task_gpu', LW.future_task)
+
   LW.legion_runtime_set_top_level_task_id(TID_TOP_LEVEL)
 
   -- arguments

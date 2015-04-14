@@ -11,6 +11,7 @@
 local USE_LEGION = false
 local USE_GPU    = false
 local RUN_SCRIPT = false
+local NO_DEBUG   = false
 
 -- Pre-Process arguments
 if #arg > 0 then
@@ -20,6 +21,8 @@ if #arg > 0 then
       USE_LEGION = true
     elseif arg[i] == '-gpu' or arg[i] == '--gpu' then
       USE_GPU = true
+    elseif arg[i] == '-nodebug' or arg[i] == '--nodebug' then
+      NO_DEBUG = true
     else
       arg[write_i] = arg[i]
       write_i = write_i + 1
@@ -38,7 +41,11 @@ if USE_LEGION then
   local runtime_dir   = legion_dir..'/runtime'
 
   -- Link in a particular library
-  terralib.linklibrary(bindings_dir..'/liblegion_terra.so')
+  if NO_DEBUG then
+    terralib.linklibrary(bindings_dir..'/liblegion_terra_release.so')
+  else
+    terralib.linklibrary(bindings_dir..'/liblegion_terra_debug.so')
+  end
   -- Extend the Terra path that looks for C header files
   terralib.includepath = terralib.includepath..';'..runtime_dir..
                                                ';'..bindings_dir
