@@ -342,20 +342,21 @@ if config.spatialOrder == 2 then
     secondDerivativeModifiedWaveNumber = 4.0,
   }
   elseif config.spatialOrder == 6 then
-  spatial_stencil = {
-    --  Splitting parameter
-    split = 0.5,
-    --  Order 6
-    order = 6,
-    size = 6,
-    numInterpolateCoeffs = 4,
-    interpolateCoeffs = L.Constant(L.vec4d, {0, 37/60, -8/60, 1/60}),
-    numFirstDerivativeCoeffs = 4,
-    firstDerivativeCoeffs = L.Constant(L.vec4d,
-                                       {0.0,45.0/60.0,-9.0/60.0, 1.0/60.0}),
-    firstDerivativeModifiedWaveNumber = 1.59,
-    secondDerivativeModifiedWaveNumber = 6.04
-  }
+  error("Higher-order currently disabled")
+  --spatial_stencil = {
+  --  --  Splitting parameter
+  --  split = 0.5,
+  --  --  Order 6
+  --  order = 6,
+  --  size = 6,
+  --  numInterpolateCoeffs = 4,
+  --  interpolateCoeffs = L.Constant(L.vec4d, {0, 37/60, -8/60, 1/60}),
+  --  numFirstDerivativeCoeffs = 4,
+  --  firstDerivativeCoeffs = L.Constant(L.vec4d,
+  --                                     {0.0,45.0/60.0,-9.0/60.0, 1.0/60.0}),
+  --  firstDerivativeModifiedWaveNumber = 1.59,
+  --  secondDerivativeModifiedWaveNumber = 6.04
+  --}
   else
     error("Spatial stencil order not implemented")
 end
@@ -1548,10 +1549,11 @@ liszt Flow.AddViscousGetFluxX (c : grid.cells)
             ( c(ndx,0,0).temperature - c(1-ndx,0,0).temperature )
         end
        
-        velocityX_XFace   /= grid_dx
-        velocityY_XFace   /= grid_dx
-        velocityZ_XFace   /= grid_dx
-        temperature_XFace /= grid_dx
+        -- Half cell size due to the 0.5 in firstDerivativeCoeffs[ndx] above
+        velocityX_XFace   /= (grid_dx*0.5)
+        velocityY_XFace   /= (grid_dx*0.5)
+        velocityZ_XFace   /= (grid_dx*0.5)
+        temperature_XFace /= (grid_dx*0.5)
 
         -- Tensor components (at face)
         var sigmaXX = muFace * ( 4.0 * velocityX_XFace -
@@ -1593,6 +1595,8 @@ liszt Flow.AddViscousGetFluxY (c : grid.cells)
         var interpolateCoeffs     = spatial_stencil.interpolateCoeffs
         -- Interpolate velocity and derivatives to face
         for ndx = 1, numInterpolateCoeffs do
+          
+          
             velocityFace += interpolateCoeffs[ndx] *
                           ( c(0,1-ndx,0).velocity +
                             c(0,ndx,0).velocity )
@@ -1608,6 +1612,7 @@ liszt Flow.AddViscousGetFluxY (c : grid.cells)
             velocityZ_ZFace += interpolateCoeffs[ndx] *
                                ( c(0,1-ndx,0).velocityGradientZ[2] +
                                  c(0,  ndx,0).velocityGradientZ[2] )
+                                 
         end
 
         -- Differentiate at face
@@ -1628,10 +1633,11 @@ liszt Flow.AddViscousGetFluxY (c : grid.cells)
             ( c(0,ndx,0).temperature - c(0,1-ndx,0).temperature )
         end
        
-        velocityX_YFace   /= grid_dy
-        velocityY_YFace   /= grid_dy
-        velocityZ_YFace   /= grid_dy
-        temperature_YFace /= grid_dy
+        -- Half cell size due to the 0.5 in firstDerivativeCoeffs[ndx] above
+        velocityX_YFace   /= (grid_dy*0.5)
+        velocityY_YFace   /= (grid_dy*0.5)
+        velocityZ_YFace   /= (grid_dy*0.5)
+        temperature_YFace /= (grid_dy*0.5)
 
         -- Tensor components (at face)
         var sigmaXY = muFace * ( velocityX_YFace + velocityY_XFace )
@@ -1708,10 +1714,11 @@ liszt Flow.AddViscousGetFluxZ (c : grid.cells)
             ( c(0,0,ndx).temperature - c(0,0,1-ndx).temperature )
         end
        
-        velocityX_ZFace   /= grid_dz
-        velocityZ_ZFace   /= grid_dz
-        velocityZ_ZFace   /= grid_dz
-        temperature_ZFace /= grid_dz
+        -- Half cell size due to the 0.5 in firstDerivativeCoeffs[ndx] above
+        velocityX_ZFace   /= (grid_dz*0.5)
+        velocityZ_ZFace   /= (grid_dz*0.5)
+        velocityZ_ZFace   /= (grid_dz*0.5)
+        temperature_ZFace /= (grid_dz*0.5)
 
         -- Tensor components (at face)
         var sigmaXZ = muFace * ( velocityX_ZFace + velocityZ_XFace )
@@ -3601,102 +3608,19 @@ local function dump_vec_component_with_cell_rind(field_name, dim_idx)
   io.write("", s)
 end
 
+-- Now write density, velocity, pressure, and temperature
+
 dump_with_cell_rind('rho')
-
---local values = grid.cells.rho:DumpToList()
---local N      = grid.cells.rho:Size()
-----for j=1,veclen do
---s = ''
---k = 1
---for i=1,N do
---  local t = tostring(values[i]):gsub('ULL',' ')
---  if cell_rind[i] == 0 then
---    s = s .. ' ' .. t .. ''
---    k = k+1
---  end
---  if k % 5 == 0 then
---    s = s .. '\n'
---    io.write("", s)
---    s = ''
---  end
---end
----- i-1 to return to 0 indexing
---io.write("", s)
-----end
-
 local veclen = grid.cells.velocity:Type().N
 for j = 1,veclen do
   dump_vec_component_with_cell_rind('velocity', j)
 end
-
---values = grid.cells.velocity:DumpToList()
---N      = grid.cells.velocity:Size()
---local veclen = grid.cells.velocity:Type().N
---for j=1,veclen do
---  s = ''
---  k = 1
---  for i=1,N do
---    local t = tostring(values[i][j]):gsub('ULL',' ')
---    if cell_rind[i]== 0 then
---      s = s .. ' ' .. t .. ''
---      k = k+1
---    end
---    if k % 5 == 0 then
---      s = s .. '\n'
---      io.write("", s)
---      s = ''
---    end
---  end
---  io.write("", s)
---end
-
-
 dump_with_cell_rind('pressure')
-
---values = grid.cells.pressure:DumpToList()
---N      = grid.cells.pressure:Size()
---s = ''
---k = 1
---for i=1,N do
---  local t = tostring(values[i]):gsub('ULL',' ')
---  if cell_rind[i]== 0 then
---    s = s .. ' ' .. t .. ''
---    k = k+1
---  end
---  if k % 5 == 0 then
---    s = s .. '\n'
---    io.write("", s)
---    s = ''
---  end
---end
----- i-1 to return to 0 indexing
---io.write("", s)
-----end
-
 dump_with_cell_rind('temperature')
 
---values = grid.cells.temperature:DumpToList()
---N      = grid.cells.temperature:Size()
-----for j=1,veclen do
---s = ''
---k = 1
---for i=1,N do
---  local t = tostring(values[i]):gsub('ULL',' ')
---  if cell_rind[i]== 0 then
---    s = s .. ' ' .. t .. ''
---    k = k+1
---  end
---  if k % 5 == 0 then
---    s = s .. '\n'
---    io.write("", s)
---    s = ''
---  end
---end
----- i-1 to return to 0 indexing
---io.write("", s)
-----end
-
+-- close the file
 io.close()
+
 
 -- Write a file for the particle positions
 -- Tecplot ASCII format
@@ -3713,7 +3637,6 @@ local particleFile = io.output(particleFileName)
 io.write('VARIABLES = "X", "Y", "Z", "X-Velocity", "Y-Velocity", "Z-Velocity", "Temperature", "Diameter"\n')
 io.write('ZONE SOLUTIONTIME=', TimeIntegrator.simTime:get(), '\n')
 
-
 veclen = particles.position:Type().N
 particles:DumpJoint({'position', 'velocity', 'temperature', 'diameter'},
 function(ids, pos, vel, temp, diam)
@@ -3724,7 +3647,6 @@ function(ids, pos, vel, temp, diam)
            ' ' .. value_tostring(diam) .. '\n'
   io.write("", s)
 end)
-
 
 --values = particles.position:DumpToList()
 --N      = particles.position:Size()
@@ -3779,10 +3701,10 @@ if (timeStep % TimeIntegrator.outputEveryTimeSteps == 0 and
     local xvel = velocity[1]
     if    x < (gridOriginInteriorX
                + grid_options.xWidth/2.0
-               + grid_options.xWidth / (2.0*grid_options.xnum))
+               + grid_options.xWidth / (grid_options.xnum))
       and x > (gridOriginInteriorX
                + grid_options.xWidth/2.0
-               - grid_options.xWidth / (2.0*grid_options.xnum))
+               - grid_options.xWidth / (grid_options.xnum))
       and y < (gridOriginInteriorY + grid_options.yWidth)
       and y > (gridOriginInteriorY)
       and z < (gridOriginInteriorZ + grid_options.zWidth)
@@ -3852,7 +3774,7 @@ if (timeStep % TimeIntegrator.outputEveryTimeSteps == 0 and
     if    y < (gridOriginInteriorY
                + grid_options.yWidth/2.0
                + grid_options.yWidth / (2.0*grid_options.ynum))
-      and x > (gridOriginInteriorY
+      and y > (gridOriginInteriorY
                + grid_options.yWidth/2.0
                - grid_options.yWidth / (2.0*grid_options.ynum))
       and x < (gridOriginInteriorX + grid_options.xWidth)
