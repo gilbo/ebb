@@ -77,15 +77,15 @@ function L.Global (typ, init)
     if not T.luaValConformsToType(init, typ) then error("Second argument to L.Global must be an instance of type " .. typ:toString(), 2) end
 
     local s  = setmetatable({type=typ}, LGlobal)
-    local tt = typ:terraType()
 
     if use_single then
+      local tt = typ:terraType()
       s.data = DataArray.New({size=1,type=tt})
       s:set(init)
 
     elseif use_legion then
       local cdata = T.luaToLisztVal(init, typ)
-      s.data = LW.CreateFuture(typ, cdata)
+      LW.AssignFutureBlobFromValue(s, cdata)
     end
 
     return s
@@ -114,9 +114,8 @@ function LGlobal:set(val)
     end)
 
   elseif use_legion then
-    if self.data then LW.DestroyFuture(self.data) end
     local cdata = T.luaToLisztVal(val, self.type)
-    self.data = LW.CreateFuture(self.type, cdata)
+    LW.AssignFutureBlobFromValue(self, cdata)
   end
 
 end
@@ -131,15 +130,34 @@ function LGlobal:get()
     end)
 
   elseif use_legion then
-    value = T.lisztToLuaVal(LW.GetResultFromFuture(self.type, self.data),
-                            self.type)
+    value = T.lisztToLuaVal(self.data:GetResult(self), self.type)
   end
 
   return value
 end
 
+function LGlobal:SetData(data)
+  self.data = data
+end
+
+function LGlobal:Data()
+  return self.data
+end
+
+function LGlobal:SetOffset(offset)
+  self.offset = 0
+end
+
+function LGlobal:Offset()
+  return self.offset
+end
+
 function LGlobal:DataPtr()
     return self.data:ptr()
+end
+
+function LGlobal:Type()
+  return self.type
 end
 
 -------------------------------------------------------------------------------
