@@ -1025,7 +1025,7 @@ end
 
 -- Function to retrieve particle area, volume and mass
 -- These are Liszt user-defined function that behave like a field
-particles:NewFieldFunction('area', liszt(p)
+particles:NewFieldFunction('surface_area', liszt(p)
     return pi * L.pow(p.diameter, 2)
 end)
 particles:NewFieldFunction('volume', liszt(p)
@@ -1776,12 +1776,16 @@ liszt Flow.AddParticlesCoupling (p : particles)
         -- (for example, when adding the flow coupling to the particles, 
         -- which should be called before in the time stepper)
 
+        -- WARNING: Uniform grid assumption
+        var cellVolume = grid_dx * grid_dy * grid_dz
+        
         -- Retrieve cell containing this particle
         p.cell = grid.cell_locate(p.position)
+        
         -- Add contribution to momentum and energy equations from the previously
         -- computed deltaVelocityOverRelaxationTime and deltaTemperatureTerm
-        p.cell.rhoVelocity_t += -p.mass * p.deltaVelocityOverRelaxationTime
-        p.cell.rhoEnergy_t   += -p.deltaTemperatureTerm
+        p.cell.rhoVelocity_t += -p.mass * p.deltaVelocityOverRelaxationTime / cellVolume
+        p.cell.rhoEnergy_t   += -p.deltaTemperatureTerm / cellVolume
     end
 end
 
@@ -2548,17 +2552,15 @@ liszt Particles.AddFlowCoupling (p: particles)
     
     -- Relaxation time for small particles
     -- - particles Reynolds number (set to zero for Stokesian)
-    var particleReynoldsNumber =
-    (p.density * norm(flowVelocity - p.velocity) * p.diameter) /
-    flowDynamicViscosity
+    var particleReynoldsNumber = 0.0
+    --(p.density * norm(flowVelocity - p.velocity) * p.diameter) / flowDynamicViscosity
     var relaxationTime =
     ( p.density * L.pow(p.diameter,2)/(18.0 * flowDynamicViscosity))/
     ( 1.0 + 0.15 * L.pow(particleReynoldsNumber,0.687) )
-    p.deltaVelocityOverRelaxationTime =
-    (flowVelocity - p.velocity) / relaxationTime
-    p.deltaTemperatureTerm = pi * L.pow(p.diameter, 2) *
-    particles_options.convective_coefficient *
-    (flowTemperature - p.temperature)
+    
+    p.deltaVelocityOverRelaxationTime = (flowVelocity - p.velocity) / relaxationTime
+    
+    p.deltaTemperatureTerm = pi * L.pow(p.diameter, 2) * particles_options.convective_coefficient * (flowTemperature - p.temperature)
     
     -- Update the particle velocity and temperature
     if particles_options.particleType == Particles.Fixed then
@@ -2593,7 +2595,7 @@ liszt Particles.AddRadiation (p : particles)
         var absorbedRadiationIntensity =
           particles_options.absorptivity *
           radiation_options.radiationIntensity *
-          p.area / 4.0
+          p.surface_area / 4.0
 
         -- Add contribution to particle temperature time evolution
         p.temperature_t += absorbedRadiationIntensity /
@@ -3700,11 +3702,13 @@ if (timeStep % TimeIntegrator.outputEveryTimeSteps == 0 and
     local z = cellCenter[3]
     local xvel = velocity[1]
     if    x < (gridOriginInteriorX
-               + grid_options.xWidth/2.0
-               + grid_options.xWidth / (grid_options.xnum))
-      and x > (gridOriginInteriorX
-               + grid_options.xWidth/2.0
-               - grid_options.xWidth / (grid_options.xnum))
+              --               + grid_options.xWidth/2.0
+              -- Modification in order to avoid not finding cells when grid_options.xnum is a pair number. A tolerance of "x-gridSize/1000.0" is added.
+              + grid_options.xWidth/2.0 + (grid_options.xWidth / grid_options.xnum) / 1000.0
+              + grid_options.xWidth / (2.0*grid_options.xnum))
+    and x > (gridOriginInteriorX
+            + grid_options.xWidth/2.0
+            - grid_options.xWidth / (2.0*grid_options.xnum))
       and y < (gridOriginInteriorY + grid_options.yWidth)
       and y > (gridOriginInteriorY)
       and z < (gridOriginInteriorZ + grid_options.zWidth)
@@ -3714,39 +3718,6 @@ if (timeStep % TimeIntegrator.outputEveryTimeSteps == 0 and
       io.write(s)
     end
   end)
-
---  -- Dump the fields to lists for writing
---
---  local cellCenter = grid.cells.centerCoordinates:DumpToList()
---  local velocity   = grid.cells.velocity:DumpToList()
---  
---  local nCells = grid.cells.velocity:Size()
---  local nDim   = grid.cells.velocity:Type().N
---  
---  -- Check for the vertical center of the domain and write the x-vel
---  
---  for i=1,nCells do
---    local s = ''
---    local x = cellCenter[i][1]
---    local y = cellCenter[i][2]
---    local z = cellCenter[i][3]
---    local ycor = tostring(cellCenter[i][2]):gsub('ULL',' ')
---    local xvel = velocity[i][1]
---    if    x < (gridOriginInteriorX
---               + grid_options.xWidth/2.0
---               + grid_options.xWidth / (2.0*grid_options.xnum))
---      and x > (gridOriginInteriorX
---               + grid_options.xWidth/2.0
---               - grid_options.xWidth / (2.0*grid_options.xnum))
---      and y < (gridOriginInteriorY + grid_options.yWidth)
---      and y > (gridOriginInteriorY)
---      and z < (gridOriginInteriorZ + grid_options.zWidth)
---      and z > (gridOriginInteriorZ)
---    then
---      s = ycor .. ', ' .. tostring(xvel) .. '\n'
---      io.write(s)
---    end
---  end
   
   -- Close the file
   io.close()
@@ -3771,9 +3742,11 @@ if (timeStep % TimeIntegrator.outputEveryTimeSteps == 0 and
     local y = cellCenter[2]
     local z = cellCenter[3]
     local yvel = velocity[2]
-    if    y < (gridOriginInteriorY
-               + grid_options.yWidth/2.0
-               + grid_options.yWidth / (2.0*grid_options.ynum))
+     if    y < (gridOriginInteriorY
+                --               + grid_options.yWidth/2.0
+                -- Modification in order to avoid not finding cells when grid_options.ynum is a pair number. A tolerance of "y-gridSize/1000.0" is added.
+                + grid_options.yWidth/2.0 + (grid_options.yWidth / grid_options.ynum) / 1000.0
+                + grid_options.yWidth / (2.0*grid_options.ynum))
       and y > (gridOriginInteriorY
                + grid_options.yWidth/2.0
                - grid_options.yWidth / (2.0*grid_options.ynum))
@@ -3786,40 +3759,6 @@ if (timeStep % TimeIntegrator.outputEveryTimeSteps == 0 and
       io.write(s)
     end
   end)
-  
---  -- Dump the fields to lists for writing
---  
---  local cellCenter = grid.cells.centerCoordinates:DumpToList()
---  local velocity   = grid.cells.velocity:DumpToList()
---  
---  local nCells = grid.cells.velocity:Size()
---  local nDim   = grid.cells.velocity:Type().N
---  
---  -- Check for the vertical center of the domain and write the x-vel
---  
---  for i=1,nCells do
---    local s = ''
---    local x = cellCenter[i][1]
---    local y = cellCenter[i][2]
---    local z = cellCenter[i][3]
---    local xcor = tostring(cellCenter[i][1]):gsub('ULL',' ')
---    local yvel = velocity[i][2]
---    if    y < (gridOriginInteriorY
---               + grid_options.yWidth/2.0
---               + grid_options.yWidth / (2.0*grid_options.ynum))
---      and y > (gridOriginInteriorY
---                 + grid_options.yWidth/2.0
---                 - grid_options.yWidth / (2.0*grid_options.ynum))
---      and x < (gridOriginInteriorX + grid_options.xWidth)
---      and x > (gridOriginInteriorX)
---      and z < (gridOriginInteriorZ + grid_options.zWidth)
---      and z > (gridOriginInteriorZ)
---    then
---      s = xcor .. ', ' .. tostring(yvel) .. '\n'
---      io.write(s)
---    end
---    
---  end
   
   -- Close the file
   io.close()

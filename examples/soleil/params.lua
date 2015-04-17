@@ -5,9 +5,9 @@ return {
   
   -- Flow Initialization  Options --
   initCase     = 'Uniform', -- Uniform, Restart, TaylorGreen2DVortex, TaylorGreen3DVortex
-  initParams = {1.0,71.42857142857143,1.0,0.0,0.0}, -- necessary input conditions
-  bodyForce = {1.2,-1.0,0}, -- body force in x, y, z
-  restartIter = 0.0,
+  initParams = {1.0,100000.0,1.0,0.0,0.0}, -- necessary input conditions
+  bodyForce = {1.2,0.0,0}, -- body force in x, y, z
+  restartIter = 0,
   
   -- Grid Options --
   xnum = 32, -- number of cells in the x-direction
@@ -36,9 +36,9 @@ return {
   
   --Time Integration Options --
   final_time            = 2000.00001,
-  max_iter              = 20000,
-  cfl                   = 2.0, -- Negative CFL implies that we will used fixed delta T
-  delta_time            = 2e-3,
+  max_iter              = 30000,
+  cfl                   = 2.5, -- Negative CFL implies that we will used fixed delta T
+  delta_time            = 1e-3,
   
   --- File Output Options --
   wrtRestart = 'ON',
@@ -51,34 +51,34 @@ return {
   outputDirectory = '../soleilOutput/', -- relative to the liszt-in-terra home directory
   
   -- Fluid Options --
-  gasConstant = 287.058,
-  gamma = 1.4,
+  gasConstant = 200.0,
+  gamma = 1.25,
   viscosity_model = 'Constant', -- Constant, PowerLaw, Sutherland
   dynamic_viscosity_ref = 0.1, --Sutherland's
   dynamic_viscosity_temp_ref = 273.15, --Sutherland's
-  prandtl = 0.72,
+  prandtl = 1.0,
 
   -- Particle Options --
   initParticles = 'Random', -- 'Random' or 'Restart'
   restartParticleIter = 0,
-  particleType = 'Free', -- Fixed or Free
+  particleType = 'Fixed', -- Fixed or Free
   twoWayCoupling = 'OFF',
   num = 1000.0,
   restitutionCoefficient = 1.0,
-  convectiveCoefficient = 200.0, -- W m^-2 K^-1
-  heatCapacity = 1000, -- J Kg^-1 K^-1
-  initialTemperature = 250, -- K
-  density = 18e3, --1000, --8900,
-  diameter_mean = 1e-2, -- 1.2e-5, --0.03,
-  diameter_maxDeviation = 0.0, --0.02,
-  bodyForceParticles = {1.2,-1.0,0}, -- {0,-1.1,0}
-  emissivity = 0.5, --0.4
-  absorptivity = 0.5, -- Equal to emissivity in thermal equilibrium
+  convectiveCoefficient = 20000.0, -- W m^-2 K^-1
+  heatCapacity = 1000.0, -- J Kg^-1 K^-1
+  initialTemperature = 500.0, -- K
+  density = 9e3,
+  diameter_mean = 1e-2,
+  diameter_maxDeviation = 0.0,
+  bodyForceParticles = {0.0,-1.0,0},
+  emissivity = 0.5,
+  absorptivity = 1.0, -- Equal to emissivity in thermal equilibrium
   -- (Kirchhoff law of thermal radiation)
 
   -- Radiation Options --
-  radiationType = 'ON',
-  radiationIntensity = 10.0,
+  radiationType = 'OFF',
+  radiationIntensity = 3e6,
 
   -- vdb visualization --
   visualize = 'OFF', -- ON or OFF
