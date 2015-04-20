@@ -1,5 +1,5 @@
 local K   = {}
-package.loaded["compiler.kernel_single"] = K
+package.loaded["compiler.kernel"] = K
 
 local use_legion = not not rawget(_G, '_legion_env')
 local use_single = not use_legion
@@ -9,7 +9,7 @@ local L   = require "compiler.lisztlib"
 local C   = require "compiler.c"
 local G   = require "compiler.gpu_util"
 
-local codegen         = require "compiler.codegen_single"
+local codegen         = require "compiler.codegen"
 local codesupport     = require "compiler.codegen_support"
 local LE, legion_env, LW
 if use_legion then

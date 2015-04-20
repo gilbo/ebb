@@ -1,5 +1,5 @@
 local Codegen = {}
-package.loaded["compiler.codegen_single"] = Codegen
+package.loaded["compiler.codegen"] = Codegen
 
 local use_legion = not not rawget(_G, '_legion_env')
 local use_single = not use_legion

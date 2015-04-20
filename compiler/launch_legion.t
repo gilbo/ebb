@@ -100,6 +100,9 @@ table.insert(legion_args, tostring(n_gpu))
 -- gpu memory
 --table.insert(legion_args, "-ll:fsize")
 --table.insert(legion_args, "256") -- MB
+-- zero-copy gpu/cpu memory (don't use)
+table.insert(legion_args, "-ll:zsize")
+table.insert(legion_args, "0") -- MB
 -- stack memory
 --table.insert(legion_args, "-ll:stack")
 --table.insert(legion_args, "2") -- MB
@@ -123,7 +126,7 @@ local terra main()
       idempotent = false },
     'simple_task_cpu', LW.simple_task)
   LW.legion_runtime_register_task_void(
-    LW.TID_SIMPLE_GPU, LW.LOC_PROC, true, false, 1,
+    LW.TID_SIMPLE_GPU, LW.TOC_PROC, true, false, 1,
     LW.legion_task_config_options_t {
       leaf = false,
       inner = false,
@@ -138,7 +141,7 @@ local terra main()
       idempotent = false },
     'future_task_cpu', LW.future_task)
   LW.legion_runtime_register_task(
-    LW.TID_FUTURE_GPU, LW.LOC_PROC, true, false, 1,
+    LW.TID_FUTURE_GPU, LW.TOC_PROC, true, false, 1,
     LW.legion_task_config_options_t {
       leaf = false,
       inner = false,
