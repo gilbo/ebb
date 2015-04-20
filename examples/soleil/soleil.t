@@ -342,20 +342,21 @@ if config.spatialOrder == 2 then
     secondDerivativeModifiedWaveNumber = 4.0,
   }
   elseif config.spatialOrder == 6 then
-  spatial_stencil = {
-    --  Splitting parameter
-    split = 0.5,
-    --  Order 6
-    order = 6,
-    size = 6,
-    numInterpolateCoeffs = 4,
-    interpolateCoeffs = L.Constant(L.vec4d, {0, 37/60, -8/60, 1/60}),
-    numFirstDerivativeCoeffs = 4,
-    firstDerivativeCoeffs = L.Constant(L.vec4d,
-                                       {0.0,45.0/60.0,-9.0/60.0, 1.0/60.0}),
-    firstDerivativeModifiedWaveNumber = 1.59,
-    secondDerivativeModifiedWaveNumber = 6.04
-  }
+  error("Higher-order currently disabled")
+  --spatial_stencil = {
+  --  --  Splitting parameter
+  --  split = 0.5,
+  --  --  Order 6
+  --  order = 6,
+  --  size = 6,
+  --  numInterpolateCoeffs = 4,
+  --  interpolateCoeffs = L.Constant(L.vec4d, {0, 37/60, -8/60, 1/60}),
+  --  numFirstDerivativeCoeffs = 4,
+  --  firstDerivativeCoeffs = L.Constant(L.vec4d,
+  --                                     {0.0,45.0/60.0,-9.0/60.0, 1.0/60.0}),
+  --  firstDerivativeModifiedWaveNumber = 1.59,
+  --  secondDerivativeModifiedWaveNumber = 6.04
+  --}
   else
     error("Spatial stencil order not implemented")
 end
@@ -1024,7 +1025,7 @@ end
 
 -- Function to retrieve particle area, volume and mass
 -- These are Liszt user-defined function that behave like a field
-particles:NewFieldFunction('area', liszt(p)
+particles:NewFieldFunction('surface_area', liszt(p)
     return pi * L.pow(p.diameter, 2)
 end)
 particles:NewFieldFunction('volume', liszt(p)
@@ -1548,10 +1549,11 @@ liszt Flow.AddViscousGetFluxX (c : grid.cells)
             ( c(ndx,0,0).temperature - c(1-ndx,0,0).temperature )
         end
        
-        velocityX_XFace   /= grid_dx
-        velocityY_XFace   /= grid_dx
-        velocityZ_XFace   /= grid_dx
-        temperature_XFace /= grid_dx
+        -- Half cell size due to the 0.5 in firstDerivativeCoeffs[ndx] above
+        velocityX_XFace   /= (grid_dx*0.5)
+        velocityY_XFace   /= (grid_dx*0.5)
+        velocityZ_XFace   /= (grid_dx*0.5)
+        temperature_XFace /= (grid_dx*0.5)
 
         -- Tensor components (at face)
         var sigmaXX = muFace * ( 4.0 * velocityX_XFace -
@@ -1593,6 +1595,8 @@ liszt Flow.AddViscousGetFluxY (c : grid.cells)
         var interpolateCoeffs     = spatial_stencil.interpolateCoeffs
         -- Interpolate velocity and derivatives to face
         for ndx = 1, numInterpolateCoeffs do
+          
+          
             velocityFace += interpolateCoeffs[ndx] *
                           ( c(0,1-ndx,0).velocity +
                             c(0,ndx,0).velocity )
@@ -1608,6 +1612,7 @@ liszt Flow.AddViscousGetFluxY (c : grid.cells)
             velocityZ_ZFace += interpolateCoeffs[ndx] *
                                ( c(0,1-ndx,0).velocityGradientZ[2] +
                                  c(0,  ndx,0).velocityGradientZ[2] )
+                                 
         end
 
         -- Differentiate at face
@@ -1628,10 +1633,11 @@ liszt Flow.AddViscousGetFluxY (c : grid.cells)
             ( c(0,ndx,0).temperature - c(0,1-ndx,0).temperature )
         end
        
-        velocityX_YFace   /= grid_dy
-        velocityY_YFace   /= grid_dy
-        velocityZ_YFace   /= grid_dy
-        temperature_YFace /= grid_dy
+        -- Half cell size due to the 0.5 in firstDerivativeCoeffs[ndx] above
+        velocityX_YFace   /= (grid_dy*0.5)
+        velocityY_YFace   /= (grid_dy*0.5)
+        velocityZ_YFace   /= (grid_dy*0.5)
+        temperature_YFace /= (grid_dy*0.5)
 
         -- Tensor components (at face)
         var sigmaXY = muFace * ( velocityX_YFace + velocityY_XFace )
@@ -1708,10 +1714,11 @@ liszt Flow.AddViscousGetFluxZ (c : grid.cells)
             ( c(0,0,ndx).temperature - c(0,0,1-ndx).temperature )
         end
        
-        velocityX_ZFace   /= grid_dz
-        velocityZ_ZFace   /= grid_dz
-        velocityZ_ZFace   /= grid_dz
-        temperature_ZFace /= grid_dz
+        -- Half cell size due to the 0.5 in firstDerivativeCoeffs[ndx] above
+        velocityX_ZFace   /= (grid_dz*0.5)
+        velocityZ_ZFace   /= (grid_dz*0.5)
+        velocityZ_ZFace   /= (grid_dz*0.5)
+        temperature_ZFace /= (grid_dz*0.5)
 
         -- Tensor components (at face)
         var sigmaXZ = muFace * ( velocityX_ZFace + velocityZ_XFace )
@@ -1769,12 +1776,16 @@ liszt Flow.AddParticlesCoupling (p : particles)
         -- (for example, when adding the flow coupling to the particles, 
         -- which should be called before in the time stepper)
 
+        -- WARNING: Uniform grid assumption
+        var cellVolume = grid_dx * grid_dy * grid_dz
+        
         -- Retrieve cell containing this particle
         p.cell = grid.cell_locate(p.position)
+        
         -- Add contribution to momentum and energy equations from the previously
         -- computed deltaVelocityOverRelaxationTime and deltaTemperatureTerm
-        p.cell.rhoVelocity_t += -p.mass * p.deltaVelocityOverRelaxationTime
-        p.cell.rhoEnergy_t   += -p.deltaTemperatureTerm
+        p.cell.rhoVelocity_t += -p.mass * p.deltaVelocityOverRelaxationTime / cellVolume
+        p.cell.rhoEnergy_t   += -p.deltaTemperatureTerm / cellVolume
     end
 end
 
@@ -2541,17 +2552,15 @@ liszt Particles.AddFlowCoupling (p: particles)
     
     -- Relaxation time for small particles
     -- - particles Reynolds number (set to zero for Stokesian)
-    var particleReynoldsNumber =
-    (p.density * norm(flowVelocity - p.velocity) * p.diameter) /
-    flowDynamicViscosity
+    var particleReynoldsNumber = 0.0
+    --(p.density * norm(flowVelocity - p.velocity) * p.diameter) / flowDynamicViscosity
     var relaxationTime =
     ( p.density * L.pow(p.diameter,2)/(18.0 * flowDynamicViscosity))/
     ( 1.0 + 0.15 * L.pow(particleReynoldsNumber,0.687) )
-    p.deltaVelocityOverRelaxationTime =
-    (flowVelocity - p.velocity) / relaxationTime
-    p.deltaTemperatureTerm = pi * L.pow(p.diameter, 2) *
-    particles_options.convective_coefficient *
-    (flowTemperature - p.temperature)
+    
+    p.deltaVelocityOverRelaxationTime = (flowVelocity - p.velocity) / relaxationTime
+    
+    p.deltaTemperatureTerm = pi * L.pow(p.diameter, 2) * particles_options.convective_coefficient * (flowTemperature - p.temperature)
     
     -- Update the particle velocity and temperature
     if particles_options.particleType == Particles.Fixed then
@@ -2586,7 +2595,7 @@ liszt Particles.AddRadiation (p : particles)
         var absorbedRadiationIntensity =
           particles_options.absorptivity *
           radiation_options.radiationIntensity *
-          p.area / 4.0
+          p.surface_area / 4.0
 
         -- Add contribution to particle temperature time evolution
         p.temperature_t += absorbedRadiationIntensity /
@@ -3601,102 +3610,19 @@ local function dump_vec_component_with_cell_rind(field_name, dim_idx)
   io.write("", s)
 end
 
+-- Now write density, velocity, pressure, and temperature
+
 dump_with_cell_rind('rho')
-
---local values = grid.cells.rho:DumpToList()
---local N      = grid.cells.rho:Size()
-----for j=1,veclen do
---s = ''
---k = 1
---for i=1,N do
---  local t = tostring(values[i]):gsub('ULL',' ')
---  if cell_rind[i] == 0 then
---    s = s .. ' ' .. t .. ''
---    k = k+1
---  end
---  if k % 5 == 0 then
---    s = s .. '\n'
---    io.write("", s)
---    s = ''
---  end
---end
----- i-1 to return to 0 indexing
---io.write("", s)
-----end
-
 local veclen = grid.cells.velocity:Type().N
 for j = 1,veclen do
   dump_vec_component_with_cell_rind('velocity', j)
 end
-
---values = grid.cells.velocity:DumpToList()
---N      = grid.cells.velocity:Size()
---local veclen = grid.cells.velocity:Type().N
---for j=1,veclen do
---  s = ''
---  k = 1
---  for i=1,N do
---    local t = tostring(values[i][j]):gsub('ULL',' ')
---    if cell_rind[i]== 0 then
---      s = s .. ' ' .. t .. ''
---      k = k+1
---    end
---    if k % 5 == 0 then
---      s = s .. '\n'
---      io.write("", s)
---      s = ''
---    end
---  end
---  io.write("", s)
---end
-
-
 dump_with_cell_rind('pressure')
-
---values = grid.cells.pressure:DumpToList()
---N      = grid.cells.pressure:Size()
---s = ''
---k = 1
---for i=1,N do
---  local t = tostring(values[i]):gsub('ULL',' ')
---  if cell_rind[i]== 0 then
---    s = s .. ' ' .. t .. ''
---    k = k+1
---  end
---  if k % 5 == 0 then
---    s = s .. '\n'
---    io.write("", s)
---    s = ''
---  end
---end
----- i-1 to return to 0 indexing
---io.write("", s)
-----end
-
 dump_with_cell_rind('temperature')
 
---values = grid.cells.temperature:DumpToList()
---N      = grid.cells.temperature:Size()
-----for j=1,veclen do
---s = ''
---k = 1
---for i=1,N do
---  local t = tostring(values[i]):gsub('ULL',' ')
---  if cell_rind[i]== 0 then
---    s = s .. ' ' .. t .. ''
---    k = k+1
---  end
---  if k % 5 == 0 then
---    s = s .. '\n'
---    io.write("", s)
---    s = ''
---  end
---end
----- i-1 to return to 0 indexing
---io.write("", s)
-----end
-
+-- close the file
 io.close()
+
 
 -- Write a file for the particle positions
 -- Tecplot ASCII format
@@ -3713,7 +3639,6 @@ local particleFile = io.output(particleFileName)
 io.write('VARIABLES = "X", "Y", "Z", "X-Velocity", "Y-Velocity", "Z-Velocity", "Temperature", "Diameter"\n')
 io.write('ZONE SOLUTIONTIME=', TimeIntegrator.simTime:get(), '\n')
 
-
 veclen = particles.position:Type().N
 particles:DumpJoint({'position', 'velocity', 'temperature', 'diameter'},
 function(ids, pos, vel, temp, diam)
@@ -3724,7 +3649,6 @@ function(ids, pos, vel, temp, diam)
            ' ' .. value_tostring(diam) .. '\n'
   io.write("", s)
 end)
-
 
 --values = particles.position:DumpToList()
 --N      = particles.position:Size()
@@ -3778,11 +3702,13 @@ if (timeStep % TimeIntegrator.outputEveryTimeSteps == 0 and
     local z = cellCenter[3]
     local xvel = velocity[1]
     if    x < (gridOriginInteriorX
-               + grid_options.xWidth/2.0
-               + grid_options.xWidth / (2.0*grid_options.xnum))
-      and x > (gridOriginInteriorX
-               + grid_options.xWidth/2.0
-               - grid_options.xWidth / (2.0*grid_options.xnum))
+              --               + grid_options.xWidth/2.0
+              -- Modification in order to avoid not finding cells when grid_options.xnum is a pair number. A tolerance of "x-gridSize/1000.0" is added.
+              + grid_options.xWidth/2.0 + (grid_options.xWidth / grid_options.xnum) / 1000.0
+              + grid_options.xWidth / (2.0*grid_options.xnum))
+    and x > (gridOriginInteriorX
+            + grid_options.xWidth/2.0
+            - grid_options.xWidth / (2.0*grid_options.xnum))
       and y < (gridOriginInteriorY + grid_options.yWidth)
       and y > (gridOriginInteriorY)
       and z < (gridOriginInteriorZ + grid_options.zWidth)
@@ -3792,39 +3718,6 @@ if (timeStep % TimeIntegrator.outputEveryTimeSteps == 0 and
       io.write(s)
     end
   end)
-
---  -- Dump the fields to lists for writing
---
---  local cellCenter = grid.cells.centerCoordinates:DumpToList()
---  local velocity   = grid.cells.velocity:DumpToList()
---  
---  local nCells = grid.cells.velocity:Size()
---  local nDim   = grid.cells.velocity:Type().N
---  
---  -- Check for the vertical center of the domain and write the x-vel
---  
---  for i=1,nCells do
---    local s = ''
---    local x = cellCenter[i][1]
---    local y = cellCenter[i][2]
---    local z = cellCenter[i][3]
---    local ycor = tostring(cellCenter[i][2]):gsub('ULL',' ')
---    local xvel = velocity[i][1]
---    if    x < (gridOriginInteriorX
---               + grid_options.xWidth/2.0
---               + grid_options.xWidth / (2.0*grid_options.xnum))
---      and x > (gridOriginInteriorX
---               + grid_options.xWidth/2.0
---               - grid_options.xWidth / (2.0*grid_options.xnum))
---      and y < (gridOriginInteriorY + grid_options.yWidth)
---      and y > (gridOriginInteriorY)
---      and z < (gridOriginInteriorZ + grid_options.zWidth)
---      and z > (gridOriginInteriorZ)
---    then
---      s = ycor .. ', ' .. tostring(xvel) .. '\n'
---      io.write(s)
---    end
---  end
   
   -- Close the file
   io.close()
@@ -3849,10 +3742,12 @@ if (timeStep % TimeIntegrator.outputEveryTimeSteps == 0 and
     local y = cellCenter[2]
     local z = cellCenter[3]
     local yvel = velocity[2]
-    if    y < (gridOriginInteriorY
-               + grid_options.yWidth/2.0
-               + grid_options.yWidth / (2.0*grid_options.ynum))
-      and x > (gridOriginInteriorY
+     if    y < (gridOriginInteriorY
+                --               + grid_options.yWidth/2.0
+                -- Modification in order to avoid not finding cells when grid_options.ynum is a pair number. A tolerance of "y-gridSize/1000.0" is added.
+                + grid_options.yWidth/2.0 + (grid_options.yWidth / grid_options.ynum) / 1000.0
+                + grid_options.yWidth / (2.0*grid_options.ynum))
+      and y > (gridOriginInteriorY
                + grid_options.yWidth/2.0
                - grid_options.yWidth / (2.0*grid_options.ynum))
       and x < (gridOriginInteriorX + grid_options.xWidth)
@@ -3864,40 +3759,6 @@ if (timeStep % TimeIntegrator.outputEveryTimeSteps == 0 and
       io.write(s)
     end
   end)
-  
---  -- Dump the fields to lists for writing
---  
---  local cellCenter = grid.cells.centerCoordinates:DumpToList()
---  local velocity   = grid.cells.velocity:DumpToList()
---  
---  local nCells = grid.cells.velocity:Size()
---  local nDim   = grid.cells.velocity:Type().N
---  
---  -- Check for the vertical center of the domain and write the x-vel
---  
---  for i=1,nCells do
---    local s = ''
---    local x = cellCenter[i][1]
---    local y = cellCenter[i][2]
---    local z = cellCenter[i][3]
---    local xcor = tostring(cellCenter[i][1]):gsub('ULL',' ')
---    local yvel = velocity[i][2]
---    if    y < (gridOriginInteriorY
---               + grid_options.yWidth/2.0
---               + grid_options.yWidth / (2.0*grid_options.ynum))
---      and y > (gridOriginInteriorY
---                 + grid_options.yWidth/2.0
---                 - grid_options.yWidth / (2.0*grid_options.ynum))
---      and x < (gridOriginInteriorX + grid_options.xWidth)
---      and x > (gridOriginInteriorX)
---      and z < (gridOriginInteriorZ + grid_options.zWidth)
---      and z > (gridOriginInteriorZ)
---    then
---      s = xcor .. ', ' .. tostring(yvel) .. '\n'
---      io.write(s)
---    end
---    
---  end
   
   -- Close the file
   io.close()
