@@ -61,6 +61,50 @@ end
 --      PROC_GROUP = ::PROC_GROUP, // Processor group
 
 
+local function exec(cmd)
+  local handle  = io.popen(cmd)
+  local out     = handle:read()
+  handle:close()
+  return out
+end
+
+local os_type = exec('uname')
+local n_cpu   = 1
+local n_gpu   = 0
+
+if os_type == 'Darwin' then
+  n_cpu = tonumber(exec("sysctl -n hw.ncpu"))
+elseif os_type == 'Linux' then
+  n_cpu = tonumber(exec("nproc"))
+else
+  error('unrecognized operating system: '..os_type..'\n'..
+        ' Contact Developers for Support')
+end
+
+if terralib.cudacompile then
+  n_gpu = 1
+end
+
+local legion_args = {}
+table.insert(legion_args, "-level")
+table.insert(legion_args, "5")
+-- # of cpus
+table.insert(legion_args, "-ll:cpu")
+table.insert(legion_args, tostring(n_cpu))
+-- # of gpus
+table.insert(legion_args, "-ll:gpu")
+table.insert(legion_args, tostring(n_gpu))
+-- cpu memory
+--table.insert(legion_args, "-ll:csize")
+--table.insert(legion_args, "512") -- MB
+-- gpu memory
+--table.insert(legion_args, "-ll:fsize")
+--table.insert(legion_args, "256") -- MB
+-- stack memory
+--table.insert(legion_args, "-ll:stack")
+--table.insert(legion_args, "2") -- MB
+
+
 -- Main function that launches Legion runtime
 local terra main()
   LW.legion_runtime_register_task_void(
@@ -104,14 +148,14 @@ local terra main()
   LW.legion_runtime_set_top_level_task_id(TID_TOP_LEVEL)
 
   -- arguments
-  var n_args  = 3
+  var n_args  = [1 + #legion_args]
   var args    = arrayof(rawstring,
     [arg[0]..' '..arg[1]], -- include the Liszt invocation here;
                            -- doesn't matter though
-    "-level",
-    "5"
+    [legion_args]
   )
 
+  --LW.register_liszt_gpu_mapper()
   LW.legion_runtime_start(n_args, args, false)
 end
 

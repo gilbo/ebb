@@ -11,6 +11,7 @@ local C = require "compiler.c"
 -- have this module expose the full C-API.  Then, we'll augment it below.
 local APIblob = terralib.includecstring([[
 #include "legion_c.h"
+#include "liszt_gpu_mapper.h"
 ]])
 for k,v in pairs(APIblob) do LW[k] = v end
 
