@@ -257,31 +257,40 @@ end
 
 local function terraGPUId_to_Nd(dims, id, func)
   local atyp = L.addr_terra_types[#dims]
+  local diffs = {}
+  for d=1,#dims do
+    diffs[d] = `[dims[d].hi] - [dims[d].lo]
+  end
+  
   local addr = symbol(atyp)
   local translate, guard
   if #dims == 1 then
-    translate = quote var [addr] = [atyp]({ a = array(id) }) end
-    guard     = `[dims[1].lo] <= [addr].a[0] and [addr].a[0] < [dims[1].hi]
+    translate = quote
+      var xid  : uint64 = id
+      var xoff : uint64 = xid + [dims[1].lo]
+      var [addr] = [atyp]({ a = array(xoff) })
+    end
+    guard     = `[addr].a[0] < [dims[1].hi]
   elseif #dims == 2 then
     translate = quote
-      var xid : uint64 = id % [dims[1]]
-      var yid : uint64 = id / [dims[1]]
-      var [addr] = [atyp]({ a = array(xid,yid) })
+      var xid  : uint64 = id % [diffs[1]]
+      var yid  : uint64 = id / [diffs[1]]
+      var xoff : uint64 = xid + [dims[1].lo]
+      var yoff : uint64 = yid + [dims[2].lo]
+      var [addr] = [atyp]({ a = array(xoff,yoff) })
     end
-    guard     =
-      `[dims[1].lo] <= [addr].a[0] and [addr].a[0] < [dims[1].hi] and
-       [dims[2].lo] <= [addr].a[1] and [addr].a[1] < [dims[2].hi]
+    guard = `[addr].a[1] < [dims[2].hi]
   elseif #dims == 3 then
     translate = quote
-      var xid : uint64 = id % [dims[1]]
-      var yid : uint64 = (id / [dims[1]]) % [dims[2]]
-      var zid : uint64 = id / [dims[1]*dims[2]]
-      var [addr] = [atyp]({ a = array(xid,yid,zid) })
+      var xid  : uint64 = id % [diffs[1]]
+      var yid  : uint64 = (id / [diffs[1]]) % [diffs[2]]
+      var zid  : uint64 = id / [diffs[1]*diffs[2]]
+      var xoff : uint64 = xid + [dims[1].lo]
+      var yoff : uint64 = yid + [dims[2].lo]
+      var zoff : uint64 = zid + [dims[3].lo]
+      var [addr] = [atyp]({ a = array(xoff,yoff,zoff) })
     end
-    guard     =
-      `[dims[1].lo] <= [addr].a[0] and [addr].a[0] < [dims[1].hi] and
-       [dims[2].lo] <= [addr].a[1] and [addr].a[1] < [dims[2].hi] and
-       [dims[3].lo] <= [addr].a[2] and [addr].a[2] < [dims[3].hi]
+    guard     = `[addr].a[2] < [dims[3].hi]
   else
     error('INTERNAL: #dims > 3')
   end
