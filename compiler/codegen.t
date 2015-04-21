@@ -261,7 +261,7 @@ local function terraGPUId_to_Nd(dims, id, func)
   for d=1,#dims do
     diffs[d] = `[dims[d].hi] - [dims[d].lo]
   end
-  
+
   local addr = symbol(atyp)
   local translate, guard
   if #dims == 1 then
@@ -284,7 +284,7 @@ local function terraGPUId_to_Nd(dims, id, func)
     translate = quote
       var xid  : uint64 = id % [diffs[1]]
       var yid  : uint64 = (id / [diffs[1]]) % [diffs[2]]
-      var zid  : uint64 = id / [diffs[1]*diffs[2]]
+      var zid  : uint64 = id / [diffs[1]]*[diffs[2]]
       var xoff : uint64 = xid + [dims[1].lo]
       var yoff : uint64 = yid + [dims[2].lo]
       var zoff : uint64 = zid + [dims[3].lo]
