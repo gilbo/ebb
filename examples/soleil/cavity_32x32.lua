@@ -71,13 +71,13 @@ return {
   diameter_mean = 1e-5, -- 1.2e-5, --0.03,
   diameter_maxDeviation = 0.0, --0.02,
   bodyForceParticles = {0,-0.0,0}, -- {0,-1.1,0}
-  emissivity = 0.5, --0.4
-  absorptivity = 0.5, -- Equal to emissivity in thermal equilibrium
+  absorptivity = 1.0, -- Equal to emissivity in thermal equilibrium
   -- (Kirchhoff law of thermal radiation)
   
   -- Radiation Options --
   radiationType = 'ON',
   radiationIntensity = 10.0,
+  zeroAvgHeatSource = 'OFF',
 
   -- vdb visualization --
   visualize = 'OFF', -- ON or OFF
