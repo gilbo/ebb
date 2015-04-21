@@ -46,7 +46,7 @@ return {
   outputEveryTimeSteps  = 100,
   restartEveryTimeSteps = 100,
   headerFrequency       = 20,
-  outputFormat = 'Python', --Tecplot or Python
+  outputFormat = 'Tecplot', --Tecplot or Python
   outputDirectory = '../soleilOutput/', -- relative to the liszt-in-terra home directory
   
   -- Fluid Options --
@@ -78,5 +78,7 @@ return {
   -- Radiation Options --
   radiationType = 'ON',
   radiationIntensity = 10.0,
-  
+
+  -- vdb visualization --
+  visualize = 'OFF', -- ON or OFF
 }

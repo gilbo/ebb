@@ -556,7 +556,7 @@ end
 -- Create empty arrays for storing the restart, in case we will be
 -- reading them from a file and initializing using them below.
 
-local restartnCells, restartIter, restartTime
+local restartNX, restartNY, restartNZ, restartIter, restartTime
 local rho_data_array = {}
 local pressure_data_array = {}
 local velocity_data_array = {}
@@ -571,7 +571,6 @@ if flow_options.initCase == Flow.Restart then
                            config.restartIter .. '.dat'
 
   -- Restart files have the following format
-  --
   --[[
    Soleil Flow Restart
    #cells currentTimeStep currentPhysicalTime
@@ -595,24 +594,48 @@ if flow_options.initCase == Flow.Restart then
   end
 
   -- read the counts of cells, iterations, and the time
-  restartnCells = soleil_in:read('*number')
-  restartIter   = soleil_in:read('*number')
-  restartTime   = soleil_in:read('*number')
+  restartNX   = soleil_in:read('*number')
+  restartNY   = soleil_in:read('*number')
+  restartNZ   = soleil_in:read('*number')
+  restartIter = soleil_in:read('*number')
+  restartTime = soleil_in:read('*number')
+
+  -- create multi-dimensional arrays
+  
+  for i=1,restartNX do
+    rho_data_array[i] = {}
+    pressure_data_array[i] = {}
+    velocity_data_array[i] = {}
+    for j=1,restartNY do
+      rho_data_array[i][j] = {}
+      pressure_data_array[i][j] = {}
+      velocity_data_array[i][j] = {}
+      for k =1,restartNZ do
+        rho_data_array[i][j][k] = {}
+        pressure_data_array[i][j][k] = {}
+        velocity_data_array[i][j][k] = {}
+      end
+    end
+  end
 
   -- now read in all the density, pressure, and velocity data
 
-  for i = 1, restartnCells do
-    rho_data_array[i]      = soleil_in:read('*number')
-    pressure_data_array[i] = soleil_in:read('*number')
-    local vec = {
-      soleil_in:read('*number'),
-      soleil_in:read('*number'),
-      soleil_in:read('*number')
-    }
-    velocity_data_array[i] = vec
+  for k=1,restartNZ do
+    for j=1,restartNY do
+      for i=1,restartNX do
+        rho_data_array[i][j][k]      = soleil_in:read('*number')
+        pressure_data_array[i][j][k] = soleil_in:read('*number')
+        local vec = {
+          soleil_in:read('*number'),
+          soleil_in:read('*number'),
+          soleil_in:read('*number')
+        }
+        velocity_data_array[i][j][k] = vec
+      end
+    end
   end
-  
-  -- don't forget to close the file when done
+
+-- don't forget to close the file when done
   soleil_in:close()
 
   -- Before exiting, increment the time step and physical time so
@@ -628,8 +651,8 @@ end
 -- Now check for and load a particle restart file if requested
 
 local restartnParticles, restartPartIter, restartPartTime
-local particle_pos_array = {}
-local particle_vel_array = {}
+local particle_pos_array  = {}
+local particle_vel_array  = {}
 local particle_temp_array = {}
 local particle_diam_array = {}
 
@@ -807,9 +830,15 @@ grid.cells:NewField('rho', L.double)
 grid.cells:NewField('pressure', L.double)
 grid.cells:NewField('velocity', L.vec3d)
 if flow_options.initCase == Flow.Restart then
-  grid.cells.rho        :Load(rho_data_array)
-  grid.cells.pressure   :Load(pressure_data_array)
-  grid.cells.velocity   :Load(velocity_data_array)
+  grid.cells.rho        :Load(function(i,j,k)
+                              return rho_data_array[i+1][j+1][k+1]
+                              end)
+  grid.cells.pressure   :Load(function(i,j,k)
+                              return pressure_data_array[i+1][j+1][k+1]
+                              end)
+  grid.cells.velocity   :Load(function(i,j,k)
+                              return velocity_data_array[i+1][j+1][k+1]
+                              end)
 else
   grid.cells.rho        :Load(0)
   grid.cells.pressure   :Load(0)
@@ -3406,12 +3435,18 @@ end
     --local velocity = grid.cells.velocity:DumpToList()
     
     local nCells = grid.cells.velocity:Size()
+    local nX = grid_options.xnum + 2*xBnum
+    local nY = grid_options.ynum + 2*yBnum
+    local nZ = grid_options.znum + 2*zBnum
+    
     --local nDim   = grid.cells.velocity:Type().N
     
     -- Write header: number of cells, iteration, physical time
     
     io.write('Soleil Flow Restart\n')
-    local s = '' .. tostring(nCells)
+    local s = '' .. tostring(nX)
+    s = s .. ' ' .. tostring(nY)
+    s = s .. ' ' .. tostring(nZ)
     s = s .. ' ' .. tostring(timeStep)
     s = s .. ' ' .. tostring(TimeIntegrator.simTime:get()) .. '\n'
     io.write(s)
