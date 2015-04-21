@@ -101,12 +101,6 @@ VDB_CALL int vdb_sample(float p) {
 
 static void vdb_os_init();
 
-VDB_CALL void vdb_exit() {
-  if(__vdb.init_error == 0) {
-    vdb_close(__vdb.fd);
-    __vdb.init_error = 1;
-  }
-}
 VDB_CALL int vdb_init() {
   if(!__vdb.is_initialized) {
     __vdb.is_initialized = 1;
@@ -125,7 +119,6 @@ VDB_CALL int vdb_init() {
         vdb_report_error();
         __vdb.init_error = 1;
       }
-      atexit(vdb_exit);
     }
   }
   if(__vdb.is_initialized == 2) { 
