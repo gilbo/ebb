@@ -1,5 +1,5 @@
 local K   = {}
-package.loaded["compiler.kernel_single"] = K
+package.loaded["compiler.kernel"] = K
 
 local use_legion = not not rawget(_G, '_legion_env')
 local use_single = not use_legion
@@ -9,7 +9,7 @@ local L   = require "compiler.lisztlib"
 local C   = require "compiler.c"
 local G   = require "compiler.gpu_util"
 
-local codegen         = require "compiler.codegen_single"
+local codegen         = require "compiler.codegen"
 local codesupport     = require "compiler.codegen_support"
 local LE, legion_env, LW
 if use_legion then
@@ -461,15 +461,31 @@ function Bran:bindFieldGlobalSubsetArgs()
   if use_legion then return end
 
   local argptr    = self.args:ptr()
-  argptr.n_rows   = self.relation:ConcreteSize()
 
+  -- Case 1: subset indirection index
   if self.subset and self.subset._index then
     argptr.index        = self.subset._index:DataPtr()
     -- Spoof the number of entries in the index, which is what
     -- we actually want to iterate over
-    argptr.n_rows       = self.subset._index:Size()
+    argptr.bounds[0].lo = 0
+    argptr.bounds[0].hi = self.subset._index:Size() - 1 
+
+  -- Case 2: elastic relation
+  elseif self:overElasticRelation() then
+    argptr.bounds[0].lo = 0
+    argptr.bounds[0].hi = self.relation:ConcreteSize() - 1
+
+  -- Case 3: generic staticly sized relation
+  else
+    local dims = self.relation:Dims()
+    for d=1,#dims do
+      argptr.bounds[d-1].lo = 0
+      argptr.bounds[d-1].hi = dims[d] - 1
+    end
+
   end
 
+  -- set field and global pointers
   for field, _ in pairs(self.field_ids) do
     self:setFieldPtr(field)
   end
@@ -1204,12 +1220,8 @@ function ArgLayout:Compile()
   local terrastruct = terralib.types.newstruct(self.name)
 
   -- add counter
-  if use_legion then
-    table.insert(terrastruct.entries,
-                 {field='bounds', type=(bounds_struct[self.n_dims])})
-  else
-    table.insert(terrastruct.entries, {field='n_rows', type=uint64})
-  end
+  table.insert(terrastruct.entries,
+               {field='bounds', type=(bounds_struct[self.n_dims])})
   -- add subset data
   local taddr = L.addr_terra_types[self.n_dims]
   if self.subset_on then

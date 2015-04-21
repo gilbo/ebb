@@ -1,5 +1,5 @@
 local Codegen = {}
-package.loaded["compiler.codegen_single"] = Codegen
+package.loaded["compiler.codegen"] = Codegen
 
 local use_legion = not not rawget(_G, '_legion_env')
 local use_single = not use_legion
@@ -255,18 +255,22 @@ local function terraIterNd(dims, func)
   return loop
 end
 
-local function terraGPUId_to_Nd(dims, size, id, func)
+local function terraGPUId_to_Nd(dims, id, func)
   local atyp = L.addr_terra_types[#dims]
   local addr = symbol(atyp)
-  local translate
+  local translate, guard
   if #dims == 1 then
     translate = quote var [addr] = [atyp]({ a = array(id) }) end
+    guard     = `[dims[1].lo] <= [addr].a[0] and [addr].a[0] < [dims[1].hi]
   elseif #dims == 2 then
     translate = quote
       var xid : uint64 = id % [dims[1]]
       var yid : uint64 = id / [dims[1]]
       var [addr] = [atyp]({ a = array(xid,yid) })
     end
+    guard     =
+      `[dims[1].lo] <= [addr].a[0] and [addr].a[0] < [dims[1].hi] and
+       [dims[2].lo] <= [addr].a[1] and [addr].a[1] < [dims[2].hi]
   elseif #dims == 3 then
     translate = quote
       var xid : uint64 = id % [dims[1]]
@@ -274,13 +278,17 @@ local function terraGPUId_to_Nd(dims, size, id, func)
       var zid : uint64 = id / [dims[1]*dims[2]]
       var [addr] = [atyp]({ a = array(xid,yid,zid) })
     end
+    guard     =
+      `[dims[1].lo] <= [addr].a[0] and [addr].a[0] < [dims[1].hi] and
+       [dims[2].lo] <= [addr].a[1] and [addr].a[1] < [dims[2].hi] and
+       [dims[3].lo] <= [addr].a[2] and [addr].a[2] < [dims[3].hi]
   else
     error('INTERNAL: #dims > 3')
   end
 
   return quote
-    if id < size then
-      [translate]
+    [translate]
+    if [guard] then
       [func(addr)]
     end
   end
@@ -295,24 +303,33 @@ function Codegen.codegen (kernel_ast, bran)
   local env  = terralib.newenvironment(nil)
   local ctxt = Context.New(env, bran)
 
-  -- BRANCH TO SEPARATE LEGION CODE HERE
-  --if use_legion then return legion_codegen(kernel_ast, ctxt) end
+  -- unpack bounds argument
+  local bd_decl = quote end
+  local bounds = {}
+  for d=1,#ctxt:dims() do
+    bounds[d] = { lo = symbol(uint64), hi = symbol(uint64), }
+    bd_decl = quote [bd_decl]
+      var [bounds[d].lo] = [ctxt:argsym()].bounds[d-1].lo
+      var [bounds[d].hi] = [ctxt:argsym()].bounds[d-1].hi + 1
+    end
+  end
 
   ctxt:enterblock()
     -- declare the symbol for the parameter key
     local param = symbol(ctxt:argKeyTerraType())
     ctxt:localenv()[kernel_ast.name] = param
 
-    local dims                  = ctxt:dims()
-    local nrow_sym              = `[ctxt:argsym()].n_rows
-    if use_legion then
-      local bounds              = `[ctxt:argsym()].bounds
-      for d=1,#dims do
-        dims[d] = { lo = `bounds[d-1].lo, hi = `bounds[d-1].hi + 1 }
-      end
-    else
-      if #dims == 1 then dims = { nrow_sym } end
-    end
+    --local dims                  = ctxt:dims()
+    --local nrow_sym              = `[ctxt:argsym()].n_rows
+    --local bounds                  = 
+    --if use_legion then
+    --  local bounds              = `[ctxt:argsym()].bounds
+    --  for d=1,#dims do
+    --    dims[d] = { lo = `bounds[d-1].lo, hi = `bounds[d-1].hi + 1 }
+    --  end
+    --else
+    --  if #dims == 1 then dims = { nrow_sym } end
+    --end
     local linid
     if ctxt:onGPU() then linid  = symbol(uint64) end
 
@@ -341,7 +358,7 @@ function Codegen.codegen (kernel_ast, bran)
           if use_legion then
             error('INTERNAL: LEGION GPU CURRENTLY UNSUPPORTED - TODO')
           else
-            body = terraGPUId_to_Nd(dims, nrow_sym, linid, function(addr)
+            body = terraGPUId_to_Nd(bounds, linid, function(addr)
               return quote
                 -- set param
                 if [ctxt:isInSubset(addr)] then
@@ -351,7 +368,7 @@ function Codegen.codegen (kernel_ast, bran)
               end end)
           end
         else
-          body = terraIterNd(dims, function(iter)
+          body = terraIterNd(bounds, function(iter)
             return quote
               if [ctxt:isInSubset(iter)] then
                 var [param] = iter
@@ -362,23 +379,23 @@ function Codegen.codegen (kernel_ast, bran)
 
       elseif ctxt:isIndexSubset() then
       -- INDEX SUBSET BRANCH
+        -- collapse bounds to the one-dimension we're going to use
+        bounds = { bounds[1] }
         if use_legion then
           error('INTERNAL: INDEX SUBSETS ON LEGION CURRENTLY UNSUPPORTED')
         elseif ctxt:onGPU() then
-          body = terraGPUId_to_Nd(dims, nrow_sym, linid, function(addr)
+          body = terraGPUId_to_Nd(bounds, linid, function(addr)
             return quote
               -- set param
               var [param] = [ctxt:argsym()].index[linid]
               [body]
             end end)
         else
-          if #ctxt:dims() == 1 then
-            body = terraIterNd({ nrow_sym }, function(iter)
-              return quote
-                var [param] = [ctxt:argsym()].index[iter.a[0]]
-                [body]
-              end end)
-          end
+          body = terraIterNd(bounds, function(iter)
+            return quote
+              var [param] = [ctxt:argsym()].index[iter.a[0]]
+              [body]
+            end end)
         end
       end -- INDEX SUBSET BRANCH END
 
@@ -391,7 +408,7 @@ function Codegen.codegen (kernel_ast, bran)
         if use_legion then
           error("INTERNAL: LEGION GPU CURRENTLY UNSUPPORTED - TODO")
         else
-          body = terraGPUId_to_Nd(dims, nrow_sym, linid, function(addr)
+          body = terraGPUId_to_Nd(bounds, linid, function(addr)
             return quote
               var [param] = [addr]
               [body]
@@ -400,7 +417,7 @@ function Codegen.codegen (kernel_ast, bran)
 
       -- CPU FULL RELATION VERSION
       else
-        body = terraIterNd(dims, function(iter)
+        body = terraIterNd(bounds, function(iter)
           return quote
             var [param] = iter
             [body]
@@ -442,7 +459,10 @@ function Codegen.codegen (kernel_ast, bran)
     if use_legion then
       error("INTERNAL: LEGION GPU CURRENTLY UNSUPPORTED - TODO")
     else
-      local cuda_kernel = terra([ctxt:argsym()]) [body] end
+      local cuda_kernel = terra([ctxt:argsym()])
+        [bd_decl]
+        [body]
+      end
       cuda_kernel:setname(kernel_ast.id .. '_cudakernel')
       cuda_kernel = G.kernelwrap(cuda_kernel, L._INTERNAL_DEV_OUTPUT_PTX,
                                  { {"maxntidx",64}, {"minctasm",6} })
@@ -486,6 +506,7 @@ function Codegen.codegen (kernel_ast, bran)
       local k = terra (task_args : LW.TaskArgs)
         var [ctxt:argsym()]
         [ ctxt.bran:GenerateUnpackLegionTaskArgs(ctxt:argsym(), task_args) ]
+        [bd_decl] -- MUST come after task arg unpacking
 
         [body]
 
@@ -497,6 +518,7 @@ function Codegen.codegen (kernel_ast, bran)
     else
       local k = terra (args_ptr : &ctxt:argsType())
         var [ctxt:argsym()] = @args_ptr
+        [bd_decl]
         [body]
       end
       k:setname(kernel_ast.id)

@@ -11,6 +11,7 @@ local C = require "compiler.c"
 -- have this module expose the full C-API.  Then, we'll augment it below.
 local APIblob = terralib.includecstring([[
 #include "legion_c.h"
+#include "liszt_gpu_mapper.h"
 ]])
 for k,v in pairs(APIblob) do LW[k] = v end
 
@@ -94,9 +95,11 @@ function LW.NewTaskLauncher(params)
                               taskfunc:getdefinitions()[1]:getpointer() )
 
   if     taskptrtype == LW.SimpleTaskPtrType then
-    TID = LW.TID_SIMPLE
+    TID = LW.TID_SIMPLE_CPU
+    if params.gpu then TID = LW.TID_SIMPLE_GPU end
   elseif taskptrtype == LW.FutureTaskPtrType then
-    TID = LW.TID_FUTURE
+    TID = LW.TID_FUTURE_CPU
+    if params.gpu then TID = LW.TID_FUTURE_GPU end
   else
     error('The supplied function had ptr type\n'..
           '  '..tostring(taskptrtype)..'\n'..
@@ -180,7 +183,8 @@ terra LW.simple_task(
   taskfunc( LW.TaskArgs { task, regions, num_regions, ctx, runtime } )
 end
 
-LW.TID_SIMPLE = 200
+LW.TID_SIMPLE_CPU = 200
+LW.TID_SIMPLE_GPU = 250
 
 terra LW.future_task(
   task        : LW.legion_task_t,
@@ -198,7 +202,8 @@ terra LW.future_task(
   return result
 end
 
-LW.TID_FUTURE = 300
+LW.TID_FUTURE_CPU = 300
+LW.TID_FUTURE_GPU = 350
 
 
 -------------------------------------------------------------------------------
@@ -438,6 +443,88 @@ function LW.NewGridLogicalRegion(params)
   setmetatable(l, LogicalRegion)
   return l
 end
+
+
+
+-------------------------------------------------------------------------------
+--[[  Methods for Introspecting on the Machine we're running on            ]]--
+-------------------------------------------------------------------------------
+
+
+
+function LW.GetMachineData ()
+end
+--[[
+
+  void
+  legion_machine_get_all_processors(
+    legion_machine_t machine,
+    legion_processor_t *processors,
+    unsigned processors_size);
+
+  /**
+   * @see LegionRuntime::LowLevel::Machine::get_all_processors()
+   */
+  unsigned
+  legion_machine_get_all_processors_size(legion_machine_t machine);
+
+
+  // -----------------------------------------------------------------------
+  // Processor Operations
+  // -----------------------------------------------------------------------
+
+  /**
+   * @see LegionRuntime::LowLevel::Processor::kind()
+   */
+  legion_processor_kind_t
+  legion_processor_kind(legion_processor_t proc_);
+
+  // -----------------------------------------------------------------------
+  // Memory Operations
+  // -----------------------------------------------------------------------
+
+  /**
+   * @see LegionRuntime::LowLevel::Memory::kind()
+   */
+  legion_memory_kind_t
+  legion_memory_kind(legion_memory_t proc_);
+
+
+  // -----------------------------------------------------------------------
+  // Machine Query Interface Operations
+  // -----------------------------------------------------------------------
+
+  /**
+   * @return Caller takes ownership of return value.
+   *
+   * @see LegionRuntime::HighLevel::MappingUtilities::MachineQueryInterface()
+   */
+  legion_machine_query_interface_t
+  legion_machine_query_interface_create(legion_machine_t machine);
+
+  /**
+   * @param handle Caller must have ownership of parameter `handle`.
+   *
+   * @see LegionRuntime::HighLevel::MappingUtilities::~MachineQueryInterface()
+   */
+  void
+  legion_machine_query_interface_destroy(
+    legion_machine_query_interface_t handle);
+
+  /**
+   * @see LegionRuntime::HighLevel::MappingUtilities
+   *                   ::MachineQueryInterface::find_memory_kind()
+   */
+  legion_memory_t
+  legion_machine_query_interface_find_memory_kind(
+    legion_machine_query_interface_t handle,
+    legion_processor_t proc,
+    legion_memory_kind_t kind);
+]]
+
+
+
+
 
 
 -------------------------------------------------------------------------------

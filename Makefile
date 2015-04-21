@@ -43,6 +43,8 @@ endif
 LUAJIT_DIR:=$(REAL_TERRA_DIR)/build/LuaJIT-2.0.3
 LEGION_BIND_DIR:=$(REAL_LEGION_DIR)/bindings/terra
 LIBLEGION_TERRA:=$(LEGION_BIND_DIR)/liblegion_terra.so
+LIBLEGION_TERRA_RELEASE:=$(LEGION_BIND_DIR)/liblegion_terra_release.so
+LIBLEGION_TERRA_DEBUG:=$(LEGION_BIND_DIR)/liblegion_terra_debug.so
 # environment variables to be set for recursive call to Legion build
 SET_ENV_VAR:=LUAJIT_DIR=$(LUAJIT_DIR) TERRA_DIR=$(REAL_TERRA_DIR)
 
@@ -53,7 +55,7 @@ SET_ENV_VAR:=LUAJIT_DIR=$(LUAJIT_DIR) TERRA_DIR=$(REAL_TERRA_DIR)
 # set of build dependencies
 ALL_DEP:= terra
 ifdef FOUND_LEGION
-ALL_DEP:=$(ALL_DEP) legion liblegion_terra
+ALL_DEP:=$(ALL_DEP) legion $(LIBLEGION_TERRA_RELEASE) $(LIBLEGION_TERRA_DEBUG)
 endif
 
 all: $(ALL_DEP)
@@ -69,8 +71,15 @@ legion:
 
 
 # this is a target to build only those parts of legion we need
-liblegion_terra: terra legion
-	$(SET_ENV_VAR) make -C $(LEGION_BIND_DIR) 
+$(LIBLEGION_TERRA_RELEASE): terra legion
+	$(SET_ENV_VAR) make -C $(LEGION_BIND_DIR) clean
+	$(SET_ENV_VAR) DEBUG=0 make -C $(LEGION_BIND_DIR)
+	mv $(LIBLEGION_TERRA) $(LIBLEGION_TERRA_RELEASE)
+
+$(LIBLEGION_TERRA_DEBUG): terra legion
+	$(SET_ENV_VAR) make -C $(LEGION_BIND_DIR) clean
+	$(SET_ENV_VAR) make -C $(LEGION_BIND_DIR)
+	mv $(LIBLEGION_TERRA) $(LIBLEGION_TERRA_DEBUG)
 
 
 # undo anything that this makefile might have done
@@ -78,6 +87,8 @@ clean:
 	make -C runtime clean
 ifdef REAL_LEGION_DIR # don't try to recursively call into nowhere
 	$(SET_ENV_VAR) make -C $(LEGION_BIND_DIR) clean
+	rm $(LIBLEGION_TERRA_RELEASE)
+	rm $(LIBLEGION_TERRA_DEBUG)
 endif
 	-rm legion
 	-rm terra

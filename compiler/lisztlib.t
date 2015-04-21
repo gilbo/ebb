@@ -62,9 +62,7 @@ local ast = require "compiler.ast"
 require "compiler.builtins"
 require "compiler.relations"
 local semant = require "compiler.semant"
-require "compiler.kernel_single"
---local K = (use_single and require "compiler.kernel_single") or
---          (use_legion and require "compiler.kernel_legion")
+require "compiler.kernel"
 
 local is_vector = L.is_vector --cache lookup for efficiency
 
