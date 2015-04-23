@@ -36,9 +36,9 @@ return {
   
   --Time Integration Options --
   final_time            = 2000.00001,
-  max_iter              = 60000,
+  max_iter              = 50000,
   cfl                   = 2.5, -- Negative CFL implies that we will used fixed delta T
-  delta_time            = 1e-3,
+  delta_time            = 1e-4,
   
   --- File Output Options --
   wrtRestart = 'ON',
@@ -54,7 +54,7 @@ return {
   gasConstant = 200.0,
   gamma = 1.25,
   viscosity_model = 'Constant', -- Constant, PowerLaw, Sutherland
-  dynamic_viscosity_ref = 0.1, --Sutherland's
+  dynamic_viscosity_ref = 0.1, -- constant value
   dynamic_viscosity_temp_ref = 273.15, --Sutherland's
   prandtl = 1.0,
 
