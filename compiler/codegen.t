@@ -464,6 +464,7 @@ function Codegen.codegen (kernel_ast, bran)
   ctxt:leaveblock()
 
   -- BUILD GPU LAUNCHER
+  local launcher
   if ctxt:onGPU() then
     if use_legion then
       error("INTERNAL: LEGION GPU CURRENTLY UNSUPPORTED - TODO")
@@ -477,7 +478,7 @@ function Codegen.codegen (kernel_ast, bran)
                                  { {"maxntidx",64}, {"minctasm",6} })
 
       local MAX_GRID_DIM = 65536
-      local launcher = terra (n_blocks : uint, args_ptr : &ctxt:argsType())
+      local main_launch = terra (n_blocks : uint, args_ptr : &ctxt:argsType())
         var grid_x : uint,    grid_y : uint,    grid_z : uint   =
             G.get_grid_dimensions(n_blocks, MAX_GRID_DIM)
         var params = terralib.CUDAParams {
@@ -489,14 +490,69 @@ function Codegen.codegen (kernel_ast, bran)
         G.sync() -- flush print streams
         -- TODO: Does this sync cause any performance problems?
       end
-      launcher:setname(kernel_ast.id)
-      return launcher
+      main_launch:setname(kernel_ast.id)
+
+      if ctxt:hasGlobalReduce() then
+        launcher = function(args_ptr)
+          -- determine number of blocks
+          local n_blocks = ctxt.bran:numGPUBlocks() -- unsafe b/c dynamic val
+
+          ctxt.bran:bindGPUReductionData()
+
+          main_launch(n_blocks, args_ptr)
+
+          ctxt.bran:postprocessGPUReduction()
+        end
+      else
+        launcher = function(args_ptr)
+          local n_blocks = ctxt.bran:numGPUBlocks() -- unsafe b/c dynamic val
+          main_launch(n_blocks, args_ptr)
+        end
+      end
     end
 
   -- BUILD CPU LAUNCHER
   else
+    launcher = terra (args_ptr : &ctxt:argsType())
+      var [ctxt:argsym()] = @args_ptr
+      [bd_decl]
+      [body]
+    end
+    launcher:setname(kernel_ast.id)
 
-    -- BUILD LEGION TASK FUNCTION
+  end -- CPU / GPU LAUNCHER END
+
+  -- OPTIONALLY WRAP UP AS A LEGION TASK
+  if use_legion then
+    local generate_output_future = quote end
+    if ctxt.bran:UsesGlobalReduce() then
+      local globl             = next(ctxt.bran.global_reductions)
+      local gtyp              = globl.type:terraType()
+      local gptr              = ctxt:GlobalPtr(globl)
+      if next(ctxt.bran.global_reductions, globl) then
+        error("INTERNAL: More than 1 global reduction at a time unsupported")
+      end
+      generate_output_future  = quote
+        return LW.legion_task_result_create( gptr, sizeof(gtyp) )
+      end
+    end
+
+    local basic_launcher = launcher
+    launcher = terra (task_args : LW.TaskArgs)
+      var [ctxt:argsym()]
+      [ ctxt.bran:GenerateUnpackLegionTaskArgs(ctxt:argsym(), task_args) ]
+      [bd_decl] -- MUST come after task arg unpacking
+
+      basic_launcher(&[ctxt:argsym()])
+
+      [generate_output_future]
+    end
+    launcher:setname(kernel_ast.id)
+  end -- Legion Launcher end
+
+  return launcher
+
+    --[[ BUILD LEGION TASK FUNCTION
     if use_legion then
 
       local generate_output_future = quote end
@@ -533,7 +589,7 @@ function Codegen.codegen (kernel_ast, bran)
       k:setname(kernel_ast.id)
       return k
     end -- CPU LAUNCHERS FOR LEGION/ NON-LEGION END
-  end -- CPU/ GPU LAUNCHERS END
+  end -- CPU/ GPU LAUNCHERS END]]
 end -- CODEGEN ENDS
 
 
