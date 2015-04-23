@@ -978,7 +978,7 @@ Flow.numberOfInteriorCells   = L.Global(L.int, 0)
 Flow.areaInterior            = L.Global(L.double, 0)
 Flow.averagePressure         = L.Global(L.double, 0.0)
 Flow.averageTemperature      = L.Global(L.double, 0.0)
-Flow.averageDeltaTemperature = L.Global(L.double, 0.0)
+Flow.averageHeatSource       = L.Global(L.double, 0.0)
 Flow.averageKineticEnergy    = L.Global(L.double, 0.0)
 Flow.minTemperature          = L.Global(L.double, 0)
 Flow.maxTemperature          = L.Global(L.double, 0)
@@ -1061,8 +1061,8 @@ end
 
 -- Function to retrieve particle area, volume and mass
 -- These are Liszt user-defined function that behave like a field
-particles:NewFieldFunction('surface_area', liszt(p)
-    return pi * L.pow(p.diameter, 2)
+particles:NewFieldFunction('cross_section_area', liszt(p)
+    return pi * L.pow(p.diameter, 2) / 4.0
 end)
 particles:NewFieldFunction('volume', liszt(p)
     return pi * L.pow(p.diameter, 3) / 6.0
@@ -1602,8 +1602,7 @@ liszt Flow.AddViscousGetFluxX (c : grid.cells)
                      velocityFace[2] * sigmaZX
         var cp = fluid_options.gamma * fluid_options.gasConstant / 
                  (fluid_options.gamma - 1.0)
-        var heatFlux = - cp / fluid_options.prandtl * 
-                         muFace * temperature_XFace
+        var heatFlux = - (cp*muFace/fluid_options.prandtl)*temperature_XFace
 
         -- Fluxes
         c.rhoVelocityFlux[0] = sigmaXX
@@ -1686,8 +1685,7 @@ liszt Flow.AddViscousGetFluxY (c : grid.cells)
                      velocityFace[2] * sigmaZY
         var cp = fluid_options.gamma * fluid_options.gasConstant / 
                  (fluid_options.gamma - 1.0)
-        var heatFlux = - cp / fluid_options.prandtl * 
-                         muFace * temperature_YFace
+        var heatFlux = - (cp*muFace/fluid_options.prandtl)*temperature_YFace
 
         -- Fluxes
         c.rhoVelocityFlux[0] = sigmaXY
@@ -1767,8 +1765,7 @@ liszt Flow.AddViscousGetFluxZ (c : grid.cells)
                      velocityFace[2] * sigmaZZ
         var cp = fluid_options.gamma * fluid_options.gasConstant / 
                  (fluid_options.gamma - 1.0)
-        var heatFlux = - cp / fluid_options.prandtl * 
-                         muFace * temperature_ZFace
+        var heatFlux = - (cp*muFace/fluid_options.prandtl)*temperature_ZFace
 
         -- Fluxes
         c.rhoVelocityFlux[0] = sigmaXZ
@@ -1825,8 +1822,8 @@ liszt Flow.AddParticlesCoupling (p : particles)
         
         -- In case we want to hold a fixed temperature by subtracting
         -- a constant heat flux from the fluid, compute the avg. 
-        -- deltaTemperatureTerm to be adjusted later
-        Flow.averageDeltaTemperature += p.deltaTemperatureTerm
+        -- deltaTemperatureTerm to be adjusted later (note change in sign)
+        Flow.averageHeatSource += p.deltaTemperatureTerm / cellVolume
     end
 end
 
@@ -1836,10 +1833,9 @@ end
 
 liszt Flow.AddEnergySource (c : grid.cells)
   if radiation_options.zeroAvgHeatSource == ON then
-    -- WARNING: Uniform grid assumption
-    var cellVolume = grid_dx * grid_dy * grid_dz
-    -- Remove a constant heat flux in all cells to balance with radiation
-    c.rhoEnergy_t += Flow.averageDeltaTemperature / cellVolume
+    -- Remove a constant heat flux in all cells to balance with radiation.
+    -- Note that this has been pre-computed before reaching this kernel (above).
+    c.rhoEnergy_t += Flow.averageHeatSource
   end
 end
 
@@ -1848,8 +1844,12 @@ end
 --------------
 
 liszt Flow.AddBodyForces (c : grid.cells)
-    -- Add body forces to momentum equation
+    -- Add body forces to the momentum
     c.rhoVelocity_t += c.rho * flow_options.bodyForce
+
+    -- Body force contribution to energy equations
+    --c.rhoEnergy_t += c.rho * L.dot(flow_options.bodyForce,c.velocity)
+    --Flow.averageHeatSource += -c.rho * L.dot(flow_options.bodyForce,c.velocity)
 end
 
 -------------------
@@ -2128,11 +2128,6 @@ end
 liszt Flow.UpdateAuxiliaryThermodynamics (c : grid.cells)
   var kineticEnergy =
     0.5 * c.rho * L.dot(c.velocity,c.velocity)
---Define temporary pressure variable to avoid error like this:
---Errors during typechecking liszt
---examples/soleil/soleil.t:557: access of 'cells.pressure' field in <Read> phase
---conflicts with earlier access in <Write> phase at examples/soleil/soleil.t:555
---when I try to reuse the c.pressure variable to calculate the temperature
   var pressure = (fluid_options.gamma - 1.0) *
                  ( c.rhoEnergy - kineticEnergy )
   c.pressure = pressure 
@@ -2583,21 +2578,21 @@ end
 -- Update particle fields based on flow fields
 liszt Particles.AddFlowCoupling (p: particles)
   if p.state == 1 then
+    
+    -- Locate the dual cell within which this particle is located
     p.dual_cell = grid.dual_locate(p.position)
     var flowDensity     = L.double(0)
     var flowVelocity    = L.vec3d({0, 0, 0})
     var flowTemperature = L.double(0)
     var flowDynamicViscosity = L.double(0)
 
+    -- Trilinear interpolation for the flow quantities
     flowDensity     = InterpolateTriRho(p.dual_cell, p.position)
     flowVelocity    = InterpolateTriVelocity(p.dual_cell, p.position)
     flowTemperature = InterpolateTriTemperature(p.dual_cell, p.position)
-    --flowDensity     = InterpolateTrilinear(p.dual_cell, p.position, Rho)
-    --flowVelocity    = InterpolateTrilinear(p.dual_cell, p.position, Velocity)
-    --flowTemperature = InterpolateTrilinear(p.dual_cell, p.position, Temperature)
     flowDynamicViscosity = GetDynamicViscosity(flowTemperature)
     
-    -- Update the particle position
+    -- Update the particle position using the current velocity
     if particles_options.particleType == Particles.Fixed then
       -- Don't move the particle
       elseif particles_options.particleType == Particles.Free then
@@ -2622,8 +2617,8 @@ liszt Particles.AddFlowCoupling (p: particles)
       elseif particles_options.particleType == Particles.Free then
       p.velocity_t += p.deltaVelocityOverRelaxationTime
     end
-    p.temperature_t += p.deltaTemperatureTerm/
-    (p.mass * particles_options.heat_capacity)
+    p.temperature_t += p.deltaTemperatureTerm / (p.mass * particles_options.heat_capacity)
+    
   end
 end
 
@@ -2648,8 +2643,7 @@ liszt Particles.AddRadiation (p : particles)
         -- blackbody self radiation
         var absorbedRadiationIntensity =
           particles_options.absorptivity *
-          radiation_options.radiationIntensity *
-          p.surface_area / 4.0
+          radiation_options.radiationIntensity * p.cross_section_area
 
         -- Add contribution to particle temperature time evolution
         p.temperature_t += absorbedRadiationIntensity /
@@ -2659,24 +2653,25 @@ end
 
 -- Set particle velocities to underlying flow velocity for initialization
 liszt Particles.SetVelocitiesToFlow (p: particles)
+
+    -- Locate the dual cell within which this particle is located
     p.dual_cell = grid.dual_locate(p.position)
     var flowDensity     = L.double(0)
     var flowVelocity    = L.vec3d({0, 0, 0})
     var flowTemperature = L.double(0)
     var flowDynamicViscosity = L.double(0)
+
+    -- Trilinear interpolation
     flowDensity     = InterpolateTriRho(p.dual_cell, p.position)
     flowVelocity    = InterpolateTriVelocity(p.dual_cell, p.position)
     flowTemperature = InterpolateTriTemperature(p.dual_cell, p.position)
-    --flowDensity     = InterpolateTrilinear(p.dual_cell, p.position, Rho)
-    --flowVelocity    = InterpolateTrilinear(p.dual_cell, p.position, Velocity)
-    --flowTemperature = InterpolateTrilinear(p.dual_cell, p.position, Temperature)
     flowDynamicViscosity = GetDynamicViscosity(flowTemperature)
 
     -- Update the particle velocity
     if (particles_options.particleType == Particles.Fixed) then
       p.velocity = {0.0,0.0,0.0} -- Don't move the particle
       elseif (particles_options.initParticles == Particles.Restart) then
-      -- Do nothing, as we loaded the veloity from a restart
+      -- Do nothing, as we loaded the velocity from a restart
     elseif particles_options.particleType == Particles.Free then
       p.velocity = flowVelocity
     end
@@ -3299,15 +3294,17 @@ function TimeIntegrator.ComputeDFunctionDt()
     Flow.AddInviscid()
     Flow.UpdateGhostVelocityGradient()
     Flow.AddViscous()
+    Flow.averageHeatSource:set(0.0)
     grid.cells.interior:map(Flow.AddBodyForces)
     particles:map(Particles.AddFlowCoupling)
-    particles:map(Flow.AddParticlesCoupling)
-    -- In case we want to hold flow temp fixed with radiation active
-    Flow.averageDeltaTemperature:set(Flow.averageDeltaTemperature:get()/
-                                     particles:Size())
-    grid.cells.interior:map(Flow.AddEnergySource)
     particles:map(Particles.AddBodyForces)
     particles:map(Particles.AddRadiation)
+    particles:map(Flow.AddParticlesCoupling)
+    -- In case we want to hold flow temp fixed with radiation active
+    --print(Flow.averageHeatSource:get())
+    Flow.averageHeatSource:set(Flow.averageHeatSource:get()/
+                               Flow.numberOfInteriorCells:get())
+    grid.cells.interior:map(Flow.AddEnergySource)
 end
 
 function TimeIntegrator.UpdateSolution(stage)
@@ -3374,7 +3371,6 @@ function Statistics.ResetSpatialAverages()
     Flow.areaInterior:set(0)
     Flow.averagePressure:set(0.0)
     Flow.averageTemperature:set(0.0)
-    Flow.averageDeltaTemperature:set(0.0)
     Flow.averageKineticEnergy:set(0.0)
     Flow.minTemperature:set(math.huge)
     Flow.maxTemperature:set(-math.huge)
