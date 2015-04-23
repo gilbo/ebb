@@ -450,9 +450,9 @@ function Bran:BindData()
   self:bindFieldGlobalSubsetArgs()
 
   -- Bind/Initialize any reduction data as needed
-  if self:isOnGPU() then
-    if self:UsesGlobalReduce()  then  self:bindGPUReductionData()   end
-  end
+  --if self:isOnGPU() then
+  --  if self:UsesGlobalReduce()  then  self:bindGPUReductionData()   end
+  --end
 end
 
 function Bran:bindFieldGlobalSubsetArgs()
@@ -499,15 +499,15 @@ end
 --                  ---------------------------------------                  --
 
 function Bran:Launch()
-  if self:isOnGPU() then
-    self.executable(self:numGPUBlocks(), self.args:ptr())
-  else
+  --if self:isOnGPU() then
+  --  self.executable(self:numGPUBlocks(), self.args:ptr())
+  --else
     if use_legion then
       self.executable({ ctx = legion_env.ctx, runtime = legion_env.runtime })
     else
       self.executable(self.args:ptr())
     end
-  end
+  --end
 end
 
 --                  ---------------------------------------                  --
@@ -516,9 +516,9 @@ end
 
 function Bran:PostLaunchCleanup()
   -- GPU Reduction finishing and cleanup
-  if self:isOnGPU() then
-    if self:UsesGlobalReduce() then  self:postprocessGPUReduction()  end
-  end
+  --if self:isOnGPU() then
+  --  if self:UsesGlobalReduce() then  self:postprocessGPUReduction()  end
+  --end
 
   -- Handle post execution Insertion and Deletion Behaviors
   if self:UsesInsert()         then   self:postprocessInsertions()    end
@@ -562,6 +562,7 @@ function Bran:DynamicInsertChecks()
   if self.proc ~= L.CPU then
     error("insert statement is currently only supported in CPU-mode.", 4)
   end
+  if use_legion then error('INSERT unsupported on legion currently', 4) end
   local rel = self.insert_data.relation
   local unsafe_msg = rel:UnsafeToInsert(self.insert_data.record_type)
   if unsafe_msg then error(unsafe_msg, 4) end
@@ -620,6 +621,7 @@ function Bran:DynamicDeleteChecks()
   if self.proc ~= L.CPU then
     error("delete statement is currently only supported in CPU-mode.", 4)
   end
+  if use_legion then error('DELETE unsupported on legion currently', 4) end
   local unsafe_msg = self.delete_data.relation:UnsafeToDelete()
   if unsafe_msg then error(unsafe_msg, 4) end
 end
