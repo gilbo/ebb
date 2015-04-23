@@ -36,7 +36,7 @@ return {
   
   --Time Integration Options --
   final_time            = 2000.00001,
-  max_iter              = 30000,
+  max_iter              = 60000,
   cfl                   = 2.5, -- Negative CFL implies that we will used fixed delta T
   delta_time            = 1e-3,
   
@@ -72,13 +72,13 @@ return {
   diameter_mean = 1e-2,
   diameter_maxDeviation = 0.0,
   bodyForceParticles = {0.0,-1.0,0},
-  emissivity = 0.5,
   absorptivity = 1.0, -- Equal to emissivity in thermal equilibrium
   -- (Kirchhoff law of thermal radiation)
 
   -- Radiation Options --
   radiationType = 'OFF',
   radiationIntensity = 3e6,
+  zeroAvgHeatSource = 'OFF',
 
   -- vdb visualization --
   visualize = 'OFF', -- ON or OFF

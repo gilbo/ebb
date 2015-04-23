@@ -468,7 +468,6 @@ local particles_options = {
     diameter_mean = config.diameter_mean,
     diameter_maxDeviation = config.diameter_maxDeviation,
     bodyForce = L.Global(L.vec3d, config.bodyForceParticles),
-    emissivity = config.emissivity,
     absorptivity = config.absorptivity,
     restartParticleIter = config.restartParticleIter,
 }
@@ -504,6 +503,13 @@ else
   error("Radiation type not defined (ON or OFF)")
 end
 radiation_options.radiationIntensity = config.radiationIntensity
+if config.zeroAvgHeatSource == 'ON' then
+  radiation_options.zeroAvgHeatSource = ON
+  elseif config.zeroAvgHeatSource == 'OFF' then
+  radiation_options.zeroAvgHeatSource = OFF
+  else
+  error("Fixing average flow temp (fixAvgFlowTemp) not defined (ON or OFF)")
+end
 
 -- IO options
 -- Choose an output format (Python native or Tecplot)
@@ -972,6 +978,7 @@ Flow.numberOfInteriorCells   = L.Global(L.int, 0)
 Flow.areaInterior            = L.Global(L.double, 0)
 Flow.averagePressure         = L.Global(L.double, 0.0)
 Flow.averageTemperature      = L.Global(L.double, 0.0)
+Flow.averageDeltaTemperature = L.Global(L.double, 0.0)
 Flow.averageKineticEnergy    = L.Global(L.double, 0.0)
 Flow.minTemperature          = L.Global(L.double, 0)
 Flow.maxTemperature          = L.Global(L.double, 0)
@@ -1815,7 +1822,25 @@ liszt Flow.AddParticlesCoupling (p : particles)
         -- computed deltaVelocityOverRelaxationTime and deltaTemperatureTerm
         p.cell.rhoVelocity_t += -p.mass * p.deltaVelocityOverRelaxationTime / cellVolume
         p.cell.rhoEnergy_t   += -p.deltaTemperatureTerm / cellVolume
+        
+        -- In case we want to hold a fixed temperature by subtracting
+        -- a constant heat flux from the fluid, compute the avg. 
+        -- deltaTemperatureTerm to be adjusted later
+        Flow.averageDeltaTemperature += p.deltaTemperatureTerm
     end
+end
+
+--------------
+-- Holding Temperature Fixed in the presence of Radiation
+--------------
+
+liszt Flow.AddEnergySource (c : grid.cells)
+  if radiation_options.zeroAvgHeatSource == ON then
+    -- WARNING: Uniform grid assumption
+    var cellVolume = grid_dx * grid_dy * grid_dz
+    -- Remove a constant heat flux in all cells to balance with radiation
+    c.rhoEnergy_t += Flow.averageDeltaTemperature / cellVolume
+  end
 end
 
 --------------
@@ -3277,6 +3302,10 @@ function TimeIntegrator.ComputeDFunctionDt()
     grid.cells.interior:map(Flow.AddBodyForces)
     particles:map(Particles.AddFlowCoupling)
     particles:map(Flow.AddParticlesCoupling)
+    -- In case we want to hold flow temp fixed with radiation active
+    Flow.averageDeltaTemperature:set(Flow.averageDeltaTemperature:get()/
+                                     particles:Size())
+    grid.cells.interior:map(Flow.AddEnergySource)
     particles:map(Particles.AddBodyForces)
     particles:map(Particles.AddRadiation)
 end
@@ -3345,6 +3374,7 @@ function Statistics.ResetSpatialAverages()
     Flow.areaInterior:set(0)
     Flow.averagePressure:set(0.0)
     Flow.averageTemperature:set(0.0)
+    Flow.averageDeltaTemperature:set(0.0)
     Flow.averageKineticEnergy:set(0.0)
     Flow.minTemperature:set(math.huge)
     Flow.maxTemperature:set(-math.huge)
