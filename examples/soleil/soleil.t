@@ -3824,6 +3824,43 @@ if (timeStep % TimeIntegrator.outputEveryTimeSteps == 0 and
   -- Close the file
   io.close()
   
+    local outputFileName = IO.outputFileNamePrefix .. "temperature.csv"
+  
+  -- Open file
+  
+  local outputFile = io.output(outputFileName)
+  
+  -- CSV header
+  io.write('"Y", "T"\n')
+  
+  -- Check for the vertical center of the domain and write the x-vel
+  grid.cells:DumpJoint({ 'centerCoordinates', 'temperature' },
+  function(ids, cellCenter, temperature)
+    local s = ''
+    local x = cellCenter[1]
+    local y = cellCenter[2]
+    local z = cellCenter[3]
+    if    x < (gridOriginInteriorX
+              --               + grid_options.xWidth/2.0
+              -- Modification in order to avoid not finding cells when grid_options.xnum is a pair number. A tolerance of "x-gridSize/1000.0" is added.
+              + grid_options.xWidth/2.0 + (grid_options.xWidth / grid_options.xnum) / 1000.0
+              + grid_options.xWidth / (2.0*grid_options.xnum))
+    and x > (gridOriginInteriorX
+            + grid_options.xWidth/2.0
+            - grid_options.xWidth / (2.0*grid_options.xnum))
+      and y < (gridOriginInteriorY + grid_options.yWidth)
+      and y > (gridOriginInteriorY)
+      and z < (gridOriginInteriorZ + grid_options.zWidth)
+      and z > (gridOriginInteriorZ)
+    then
+      s = tostring(y) .. ', ' .. tostring(temperature) .. '\n'
+      io.write(s)
+    end
+  end)
+  
+  -- Close the file
+  io.close()
+  
 end
 
 -- Check if it is time to output a particle restart file
