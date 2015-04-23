@@ -69,6 +69,9 @@ terra:
 legion:
 	ln -s $(LEGION_DIR) $@
 
+legion_refresh:
+	$(SET_ENV_VAR) make -C $(LEGION_BIND_DIR)
+	mv $(LIBLEGION_TERRA) $(LIBLEGION_TERRA_DEBUG)
 
 # this is a target to build only those parts of legion we need
 $(LIBLEGION_TERRA_RELEASE): terra legion
@@ -87,8 +90,8 @@ clean:
 	make -C runtime clean
 ifdef REAL_LEGION_DIR # don't try to recursively call into nowhere
 	$(SET_ENV_VAR) make -C $(LEGION_BIND_DIR) clean
-	rm $(LIBLEGION_TERRA_RELEASE)
-	rm $(LIBLEGION_TERRA_DEBUG)
+	-rm $(LIBLEGION_TERRA_RELEASE)
+	-rm $(LIBLEGION_TERRA_DEBUG)
 endif
 	-rm legion
 	-rm terra
