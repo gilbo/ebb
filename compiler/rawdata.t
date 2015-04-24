@@ -76,7 +76,7 @@ local function cpu_free(data)
   C.free(data)
 end
 local function cpu_cpu_copy(dst, src, size)
-  C.memcpy(dst:ptr(), src:ptr(), size)
+  C.memcpy(dst, src, size)
 end
 
 local gpu_allocate = function(a, b)

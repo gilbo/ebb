@@ -12,6 +12,12 @@ local terra stacktrace_dump()
   C.backtrace_symbols_fd(array, size, C.STDERR_FILENO);
 end
 
+local function sanitize_function_name(unsafe)
+  -- eliminate dots for subtables
+  local safe = string.gsub(unsafe, ".", "_")
+  return safe
+end
+
 -- Wrap a Terra function such that it takes no struct or array arguments by value.
 -- All occurrences of struct(or array)-by-value are unpacked before being passed in
 --    and then re-packed once inside the function.
@@ -70,7 +76,8 @@ return function(terrafn, verbose, annotations)
   local terra kernel([kernelSyms]) : {}
     terrafn([repackExprs])
   end
-  local inline = terralib.cudacompile({[terrafn.name]={kernel = kernel, annotations = annotations}}, verbose)[terrafn.name]
+  local safename = sanitize_function_name(terrafn.name)
+  local inline = terralib.cudacompile({[safename]={kernel = kernel, annotations = annotations}}, verbose)[safename]
   -- We return a wrapper around the kernel that takes the original arguments, unpacks
   --    them, then calls the kernel.
   local terra wrapper(kernelparams: &terralib.CUDAParams, [outersyms]) : {}

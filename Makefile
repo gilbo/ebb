@@ -69,8 +69,6 @@ ALL_DEP:=$(ALL_DEP) legion $(LIBLEGION_TERRA_RELEASE) $(LIBLEGION_TERRA_DEBUG)
 endif
 
 all: $(ALL_DEP)
-	echo $(FOUND_LEGION)
-	echo $(REAL_LEGION_DIR)
 	make -C runtime
 
 

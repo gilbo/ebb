@@ -790,6 +790,7 @@ end
 -- The full secondary CUDA kernel to reduce the contents of the
 -- global mem array.  See comment inside function for sketch of algorithm
 function Bran:CompileGlobalMemReductionKernel()
+  --print('BARF')
   local bran      = self
   local fn_name   = bran.kernel.typed_ast.id .. '_globalmem_reduction'
 
