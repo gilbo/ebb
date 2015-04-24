@@ -12,6 +12,8 @@ local USE_LEGION = false
 local USE_GPU    = false
 local RUN_SCRIPT = false
 local NO_DEBUG   = false
+local USE_SPY    = false
+local USE_PROF   = false
 
 -- Pre-Process arguments
 if #arg > 0 then
@@ -23,6 +25,10 @@ if #arg > 0 then
       USE_GPU = true
     elseif arg[i] == '-nodebug' or arg[i] == '--nodebug' then
       NO_DEBUG = true
+    elseif arg[i] == '-spy' or arg[i] == '--spy' then
+      USE_SPY = true
+    elseif arg[i] == '-prof' or arg[i] == '--prof' then
+      USE_PROF = true
     else
       arg[write_i] = arg[i]
       write_i = write_i + 1
@@ -32,6 +38,19 @@ if #arg > 0 then
 end
 if #arg > 0 then RUN_SCRIPT = true end
 
+
+if USE_SPY then
+  if NO_DEBUG then
+    error('Must run without --nodebug to use legion spy')
+  end
+  rawset(_G, 'LISZT_LEGION_USE_SPY', true)
+end
+if USE_PROF then
+  if not NO_DEBUG then
+    error('Must run with option --nodebug to use legion prof')
+  end
+  rawset(_G, 'LISZT_LEGION_USE_PROF', true)
+end
 
 
 if USE_LEGION then

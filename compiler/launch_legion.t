@@ -80,9 +80,23 @@ else
         ' Contact Developers for Support')
 end
 
+local use_legion_spy  = rawget(_G, 'LISZT_LEGION_USE_SPY')
+local use_legion_prof = rawget(_G, 'LISZT_LEGION_USE_PROF')
+local logging_level = 5
+if use_legion_prof or use_legion_spy then
+  logging_level = 2
+end
+local logging_cat
+if use_legion_prof then
+  logging_cat = 'legion_prof'
+end
+if use_legion_spy then
+  logging_cat = 'legion_spy'
+end
+
 local legion_args = {}
 table.insert(legion_args, "-level")
-table.insert(legion_args, "5")
+table.insert(legion_args, tostring(logging_level))
 -- # of cpus
 table.insert(legion_args, "-ll:cpu")
 table.insert(legion_args, tostring(n_cpu))
@@ -103,6 +117,10 @@ end
 -- stack memory
 --table.insert(legion_args, "-ll:stack")
 --table.insert(legion_args, "2") -- MB
+if logging_cat then
+  table.insert(legion_args, "-cat")
+  table.insert(legion_args, logging_cat)
+end
 
 
 -- Main function that launches Legion runtime

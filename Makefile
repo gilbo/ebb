@@ -86,12 +86,12 @@ legion_refresh:
 # this is a target to build only those parts of legion we need
 $(LIBLEGION_TERRA_RELEASE): terra legion
 	$(SET_ENV_VAR) make -C $(LEGION_BIND_DIR) clean
-	$(SET_ENV_VAR) DEBUG=0 make -C $(LEGION_BIND_DIR)
+	$(SET_ENV_VAR) CC_FLAGS=-DLEGION_PROF DEBUG=0 make -C $(LEGION_BIND_DIR)
 	mv $(LIBLEGION_TERRA) $(LIBLEGION_TERRA_RELEASE)
 
 $(LIBLEGION_TERRA_DEBUG): terra legion
 	$(SET_ENV_VAR) make -C $(LEGION_BIND_DIR) clean
-	$(SET_ENV_VAR) make -C $(LEGION_BIND_DIR)
+	$(SET_ENV_VAR) CC_FLAGS=-DLEGION_SPY make -C $(LEGION_BIND_DIR)
 	mv $(LIBLEGION_TERRA) $(LIBLEGION_TERRA_DEBUG)
 
 
