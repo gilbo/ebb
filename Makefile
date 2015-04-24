@@ -1,4 +1,13 @@
 
+# Determine whether or not CUDA is available and visible to Legion
+USE_CUDA=0
+ifdef CUDA
+USE_CUDA=1
+endif
+ifdef CUDATOOLKIT_HOME
+USE_CUDA=1
+endif
+
 # These variables describe the location of your Terra and Legion
 #   installations; set them to the appropriate values please.
 # If Legion isn't available, don't worry,
@@ -47,7 +56,7 @@ LIBLEGION_TERRA_RELEASE:=$(LEGION_BIND_DIR)/liblegion_terra_release.so
 LIBLEGION_TERRA_DEBUG:=$(LEGION_BIND_DIR)/liblegion_terra_debug.so
 # environment variables to be set for recursive call to Legion build
 SET_ENV_VAR:=LUAJIT_DIR=$(LUAJIT_DIR) TERRA_DIR=$(REAL_TERRA_DIR) \
-  SHARED_LOWLEVEL=0 USE_GASNET=0
+  SHARED_LOWLEVEL=0 USE_GASNET=0 USE_CUDA=$(USE_CUDA)
 
 
 # # ----------------------------------------------------------------------- # #

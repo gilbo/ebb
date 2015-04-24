@@ -70,7 +70,6 @@ end
 
 local os_type = exec('uname')
 local n_cpu   = 1
-local n_gpu   = 0
 
 if os_type == 'Darwin' then
   n_cpu = tonumber(exec("sysctl -n hw.ncpu"))
@@ -81,28 +80,26 @@ else
         ' Contact Developers for Support')
 end
 
-if terralib.cudacompile then
-  n_gpu = 1
-end
-
 local legion_args = {}
 table.insert(legion_args, "-level")
 table.insert(legion_args, "5")
 -- # of cpus
 table.insert(legion_args, "-ll:cpu")
 table.insert(legion_args, tostring(n_cpu))
--- # of gpus
-table.insert(legion_args, "-ll:gpu")
-table.insert(legion_args, tostring(n_gpu))
 -- cpu memory
 --table.insert(legion_args, "-ll:csize")
 --table.insert(legion_args, "512") -- MB
--- gpu memory
---table.insert(legion_args, "-ll:fsize")
---table.insert(legion_args, "256") -- MB
--- zero-copy gpu/cpu memory (don't use)
-table.insert(legion_args, "-ll:zsize")
-table.insert(legion_args, "0") -- MB
+if terralib.cudacompile then
+  -- # of gpus
+  table.insert(legion_args, "-ll:gpu")
+  table.insert(legion_args, tostring(1))
+  -- gpu memory
+  --table.insert(legion_args, "-ll:fsize")
+  --table.insert(legion_args, "256") -- MB
+  -- zero-copy gpu/cpu memory (don't use)
+  table.insert(legion_args, "-ll:zsize")
+  table.insert(legion_args, "0") -- MB
+end
 -- stack memory
 --table.insert(legion_args, "-ll:stack")
 --table.insert(legion_args, "2") -- MB

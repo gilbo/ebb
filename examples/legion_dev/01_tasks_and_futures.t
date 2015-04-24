@@ -5,7 +5,7 @@ local bindings_dir  = legion_dir..'/bindings/terra'
 local runtime_dir   = legion_dir..'/runtime'
 
 -- Link in a particular library
-terralib.linklibrary(bindings_dir..'/liblegion_terra.so')
+terralib.linklibrary(bindings_dir..'/liblegion_terra_debug.so')
 -- Extend the Terra path that looks for C header files
 terralib.includepath = terralib.includepath..';'..runtime_dir..
                                              ';'..bindings_dir
