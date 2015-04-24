@@ -18,6 +18,10 @@ float rand_float()
 }
 ]]
 cmath.srand(cmath.time(nil));
+local rand_float = cmath.rand_float
+if L.default_processor == L.GPU then
+    rand_float = terra() return 0.5f end
+end
 local vdb   = L.require 'lib.vdb'
 
 local N = 150
@@ -160,7 +164,7 @@ if PERIODIC then
     local liszt wrap_func(val, lower, upper)
         var diff    = upper-lower
         var temp    = val - lower
-        temp        = L.float(cmath.fmod(temp, diff))
+        temp        = L.float(L.fmod(temp, diff))
         if temp < 0 then
             temp    = temp+diff
         end
@@ -189,8 +193,8 @@ local liszt advect_interpolate_velocity(c : grid.cells)
     var dc      = c.lookup_from
 
     -- figure out fractional position in the dual cell in range [0.0, 1.0]
-    var xfrac   = cmath.fmod((c.lookup_pos[0] - XORIGIN)/cell_w + 0.5, 1.0)
-    var yfrac   = cmath.fmod((c.lookup_pos[1] - YORIGIN)/cell_h + 0.5, 1.0)
+    var xfrac   = L.fmod((c.lookup_pos[0] - XORIGIN)/cell_w + 0.5, 1.0)
+    var yfrac   = L.fmod((c.lookup_pos[1] - YORIGIN)/cell_h + 0.5, 1.0)
 
     -- interpolation constants
     var x1      = L.float(xfrac)
@@ -355,8 +359,8 @@ local liszt compute_particle_velocity (p : particles)
     var dc      = p.dual_cell
 
     -- figure out fractional position in the dual cell in range [0.0, 1.0]
-    var xfrac   = cmath.fmod((p.pos[0] - XORIGIN)/cell_w + 0.5, 1.0)
-    var yfrac   = cmath.fmod((p.pos[1] - YORIGIN)/cell_h + 0.5, 1.0)
+    var xfrac   = L.fmod((p.pos[0] - XORIGIN)/cell_w + 0.5, 1.0)
+    var yfrac   = L.fmod((p.pos[1] - YORIGIN)/cell_h + 0.5, 1.0)
 
     -- interpolation constants
     var x1      = L.float(xfrac)
@@ -392,7 +396,7 @@ if PERIODIC and INSERT_DELETE then
 end
 
 local liszt update_particle_pos (p : particles)
-    var r = L.vec2f({ cmath.rand_float() - 0.5, cmath.rand_float() - 0.5 })
+    var r = L.vec2f({ rand_float() - 0.5, rand_float() - 0.5 })
     var pos = p.next_pos + L.float(dt) * r
     particle_snap(p, pos)
 end
@@ -406,8 +410,8 @@ end
 
 local source_strength = L.Constant(L.float, 100.0)
 local source_velocity = liszt (c : grid.cells)
-    if cmath.fabs(c.center[0]) < 1.75 and
-       cmath.fabs(c.center[1]) < 1.75
+    if L.fabs(c.center[0]) < 1.75 and
+       L.fabs(c.center[1]) < 1.75
     then
         if not c.in_boundary then
             c.velocity += L.float(dt) * source_strength * { 0.0f, 1.0f }
@@ -421,11 +425,11 @@ if PERIODIC then
     local optional_insertion = liszt(c) end -- no-op
     if INSERT_DELETE then
         optional_insertion = liszt(c)
-            var create_particle = cmath.rand_float() < 0.01
+            var create_particle = rand_float() < 0.01
             if create_particle then
                 var pos = c.center + L.vec2f({
-                    cell_w * (cmath.rand_float() - 0.5),
-                    cell_h * (cmath.rand_float() - 0.5)
+                    cell_w * (rand_float() - 0.5),
+                    cell_h * (rand_float() - 0.5)
                 })
                 insert {
                     dual_cell = grid.dual_locate(pos),
@@ -436,8 +440,8 @@ if PERIODIC then
         end
     end
     source_velocity = liszt (c : grid.cells)
-        if cmath.fabs(c.center[0]) < 1.75 and
-           cmath.fabs(c.center[1]) < 1.75
+        if L.fabs(c.center[0]) < 1.75 and
+           L.fabs(c.center[1]) < 1.75
         then
             c.velocity += L.float(dt) * source_strength * { 0.0f, 1.0f }
         end

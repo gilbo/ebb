@@ -414,15 +414,11 @@ function Codegen.codegen (kernel_ast, bran)
 
       -- GPU FULL RELATION VERSION
       if ctxt:onGPU() then
-        if use_legion then
-          error("INTERNAL: LEGION GPU CURRENTLY UNSUPPORTED - TODO")
-        else
-          body = terraGPUId_to_Nd(bounds, linid, function(addr)
-            return quote
-              var [param] = [addr]
-              [body]
-            end end)
-        end
+        body = terraGPUId_to_Nd(bounds, linid, function(addr)
+          return quote
+            var [param] = [addr]
+            [body]
+          end end)
 
       -- CPU FULL RELATION VERSION
       else
@@ -437,27 +433,23 @@ function Codegen.codegen (kernel_ast, bran)
 
     -- Extra GPU wrapper
     if ctxt:onGPU() then
-      if use_legion then
-        error("INTERNAL: LEGION GPU CURRENTLY UNSUPPORTED - TODO")
-      else
-        -- Extra GPU Reduction setup/post-process
-        if ctxt:hasGlobalReduce() then
-          body = quote
-            [ctxt:codegenSharedMemInit()]
-            G.barrier()
-            [body]
-            G.barrier()
-            [ctxt:codegenSharedMemTreeReduction()]
-          end
-        end
-
+      -- Extra GPU Reduction setup/post-process
+      if ctxt:hasGlobalReduce() then
         body = quote
-          var [ctxt:tid()] = G.thread_id()
-          var [ctxt:bid()] = G.block_id()
-          var [linid]      = [ctxt:bid()] * [ctxt:gpuBlockSize()] + [ctxt:tid()]
-
+          [ctxt:codegenSharedMemInit()]
+          G.barrier()
           [body]
+          G.barrier()
+          [ctxt:codegenSharedMemTreeReduction()]
         end
+      end
+
+      body = quote
+        var [ctxt:tid()] = G.thread_id()
+        var [ctxt:bid()] = G.block_id()
+        var [linid]      = [ctxt:bid()] * [ctxt:gpuBlockSize()] + [ctxt:tid()]
+
+        [body]
       end
     end -- GPU WRAPPER
 
@@ -466,50 +458,64 @@ function Codegen.codegen (kernel_ast, bran)
   -- BUILD GPU LAUNCHER
   local launcher
   if ctxt:onGPU() then
-    if use_legion then
-      error("INTERNAL: LEGION GPU CURRENTLY UNSUPPORTED - TODO")
-    else
-      local cuda_kernel = terra([ctxt:argsym()])
-        [bd_decl]
-        [body]
-      end
-      cuda_kernel:setname(kernel_ast.id .. '_cudakernel')
-      cuda_kernel = G.kernelwrap(cuda_kernel, L._INTERNAL_DEV_OUTPUT_PTX,
-                                 { {"maxntidx",64}, {"minctasm",6} })
-
-      local MAX_GRID_DIM = 65536
-      local main_launch = terra (n_blocks : uint, args_ptr : &ctxt:argsType())
-        var grid_x : uint,    grid_y : uint,    grid_z : uint   =
-            G.get_grid_dimensions(n_blocks, MAX_GRID_DIM)
-        var params = terralib.CUDAParams {
-          grid_x, grid_y, grid_z,
-          [ctxt:gpuBlockSize()], 1, 1,
-          [ctxt:gpuSharedMemBytes()], nil
-        }
-        cuda_kernel(&params, @args_ptr)
-        G.sync() -- flush print streams
-        -- TODO: Does this sync cause any performance problems?
-      end
-      main_launch:setname(kernel_ast.id)
-
-      if ctxt:hasGlobalReduce() then
-        launcher = function(args_ptr)
-          -- determine number of blocks
-          local n_blocks = ctxt.bran:numGPUBlocks() -- unsafe b/c dynamic val
-
-          ctxt.bran:bindGPUReductionData()
-
-          main_launch(n_blocks, args_ptr)
-
-          ctxt.bran:postprocessGPUReduction()
-        end
-      else
-        launcher = function(args_ptr)
-          local n_blocks = ctxt.bran:numGPUBlocks() -- unsafe b/c dynamic val
-          main_launch(n_blocks, args_ptr)
-        end
-      end
+    local cuda_kernel = terra([ctxt:argsym()])
+      [bd_decl]
+      [body]
     end
+    cuda_kernel:setname(kernel_ast.id .. '_cudakernel')
+    cuda_kernel = G.kernelwrap(cuda_kernel, L._INTERNAL_DEV_OUTPUT_PTX,
+                               { {"maxntidx",64}, {"minctasm",6} })
+
+    local MAX_GRID_DIM = 65536
+
+    if ctxt:isOverElastic() then
+      error('INTERNAL: NEED TO SUPPORT dynamic n_blocks for elastic launch')
+    end
+    local n_blocks = ctxt.bran:numGPUBlocks()
+
+    launcher = terra (args_ptr : &ctxt:argsType())
+      -- possibly allocate global memory for a GPU reduction
+      [ ctxt.bran:generateGPUReductionPreProcess(args_ptr) ]
+
+      --C.printf('ALSINF\n')
+      -- the main launch
+      var grid_x : uint,    grid_y : uint,    grid_z : uint   =
+          G.get_grid_dimensions(n_blocks, MAX_GRID_DIM)
+      var params = terralib.CUDAParams {
+        grid_x, grid_y, grid_z,
+        [ctxt:gpuBlockSize()], 1, 1,
+        [ctxt:gpuSharedMemBytes()], nil
+      }
+      --C.printf('PRE\n')
+      cuda_kernel(&params, @args_ptr)
+      --C.printf('KERN\n')
+      G.sync() -- flush print streams
+      -- TODO: Does this sync cause any performance problems?
+      --C.printf('END\n')
+
+      -- possibly perform the second launch tree reduction and
+      -- cleanup any global memory here...
+      [ ctxt.bran:generateGPUReductionPostProcess(args_ptr) ]
+    end
+    launcher:setname(kernel_ast.id)
+
+--    if ctxt:hasGlobalReduce() then
+--      launcher = function(args_ptr)
+--        -- determine number of blocks
+--        local n_blocks = ctxt.bran:numGPUBlocks() -- unsafe b/c dynamic val
+--
+--        ctxt.bran:bindGPUReductionData(args_ptr)
+--
+--        main_launch(n_blocks, args_ptr)
+--
+--        ctxt.bran:postprocessGPUReduction()
+--      end
+--    else
+--      launcher = function(args_ptr)
+--        local n_blocks = ctxt.bran:numGPUBlocks() -- unsafe b/c dynamic val
+--        main_launch(n_blocks, args_ptr)
+--      end
+--    end
 
   -- BUILD CPU LAUNCHER
   else
@@ -528,12 +534,22 @@ function Codegen.codegen (kernel_ast, bran)
     if ctxt.bran:UsesGlobalReduce() then
       local globl             = next(ctxt.bran.global_reductions)
       local gtyp              = globl.type:terraType()
-      local gptr              = ctxt:GlobalPtr(globl)
+      local gptr              = ctxt.bran:getLegionGlobalTempSymbol(globl)
+
       if next(ctxt.bran.global_reductions, globl) then
         error("INTERNAL: More than 1 global reduction at a time unsupported")
       end
-      generate_output_future  = quote
-        return LW.legion_task_result_create( gptr, sizeof(gtyp) )
+      if ctxt:onGPU() then
+        generate_output_future  = quote
+          var datum : gtyp
+          G.memcpy_cpu_from_gpu(&datum, gptr, sizeof(gtyp))
+          G.free(gptr)
+          return LW.legion_task_result_create( &datum, sizeof(gtyp) )
+        end
+      else
+        generate_output_future  = quote
+          return LW.legion_task_result_create( gptr, sizeof(gtyp) )
+        end
       end
     end
 
@@ -920,7 +936,7 @@ end
 function ast.GlobalReduce:codegen(ctxt)
   -- GPU impl:
   if ctxt:onGPU() then
-    if use_legion then error("LEGION UNSUPPORTED TODO") end
+    --if use_legion then error("LEGION UNSUPPORTED TODO") end
     local lval = ctxt:gpuReduceSharedMemPtr(self.global.global)
     local rexp = self.exp:codegen(ctxt)
     local rhs  = Support.bin_exp(self.reduceop, self.global.node_type,
@@ -941,7 +957,6 @@ end
 
 
 function ast.FieldWrite:codegen (ctxt)
-  if ctxt:onGPU() and use_legion then error("LEGION UNSUPPORTED TODO") end
   -- If this is a field-reduction on the GPU
   if ctxt:onGPU() and
      self.reduceop and

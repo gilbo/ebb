@@ -46,7 +46,8 @@ LIBLEGION_TERRA:=$(LEGION_BIND_DIR)/liblegion_terra.so
 LIBLEGION_TERRA_RELEASE:=$(LEGION_BIND_DIR)/liblegion_terra_release.so
 LIBLEGION_TERRA_DEBUG:=$(LEGION_BIND_DIR)/liblegion_terra_debug.so
 # environment variables to be set for recursive call to Legion build
-SET_ENV_VAR:=LUAJIT_DIR=$(LUAJIT_DIR) TERRA_DIR=$(REAL_TERRA_DIR)
+SET_ENV_VAR:=LUAJIT_DIR=$(LUAJIT_DIR) TERRA_DIR=$(REAL_TERRA_DIR) \
+  SHARED_LOWLEVEL=0 USE_GASNET=0
 
 
 # # ----------------------------------------------------------------------- # #
@@ -59,6 +60,8 @@ ALL_DEP:=$(ALL_DEP) legion $(LIBLEGION_TERRA_RELEASE) $(LIBLEGION_TERRA_DEBUG)
 endif
 
 all: $(ALL_DEP)
+	echo $(FOUND_LEGION)
+	echo $(REAL_LEGION_DIR)
 	make -C runtime
 
 

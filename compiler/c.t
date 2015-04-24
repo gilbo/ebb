@@ -23,7 +23,8 @@ local enum_list = {
   {str="FLT_MIN",ctype='float',ttype=float},
   {str="FLT_MAX",ctype='float',ttype=float},
   {str="DBL_MIN",ctype='double',ttype=double},
-  {str="DBL_MAX",ctype='double',ttype=double}
+  {str="DBL_MAX",ctype='double',ttype=double},
+  {str="STDERR_FILENO",ctype='int',ttype=int},
 }
 
 
@@ -74,6 +75,8 @@ cuda_include ..
 #include <limits.h>
 #include <math.h>
 #include <time.h>
+#include <execinfo.h>
+#include <unistd.h>
 
 FILE *get_stderr () { return stderr; }
 

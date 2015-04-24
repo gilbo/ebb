@@ -220,11 +220,21 @@ end)
 --[[-----------------------------------------------------------------------]]--
 --[[ Convenience Functions                                                 ]]--
 --[[-----------------------------------------------------------------------]]--
+local function throw_err() error('Cuda error') end
+local function cuda_checkpoint()
+    print('CUDA CHECK HERE')
+    print(debug.traceback())
+end
 local cuda_error_checking = macro(function(code)
+    --local function say_code()
+    --    code:printpretty()
+    --end
     return quote
+        --say_code()
+        --cuda_checkpoint()
         if code ~= 0 then
             C.printf("CUDA ERROR: %s\n", C.cudaGetErrorString(code))
-            error("Cuda error")
+            throw_err()
         end
     end
 end)
@@ -234,15 +244,30 @@ local terra cuda_terra_malloc(size : uint64)
     cuda_error_checking(C.cudaMalloc(&r, size))
     return r
 end
-local function cuda_malloc_wrapper(typ, N)
-    return terralib.cast(&typ, cuda_terra_malloc(N * terralib.sizeof(typ)))
-end
 
 local terra cuda_terra_free(ptr : &opaque)
     cuda_error_checking(C.cudaFree(ptr))
 end
-local function cuda_free_wrapper(ptr)
-    cuda_terra_free(ptr)
+
+local terra cuda_memcpy_cpu_from_gpu(dst:&opaque, src:&opaque, N:uint64)
+    cuda_error_checking(C.cudaMemcpy(dst, src, N, C.cudaMemcpyDeviceToHost))
+end
+local terra cuda_memcpy_gpu_from_cpu(dst:&opaque, src:&opaque, N:uint64)
+    cuda_error_checking(C.cudaMemcpy(dst, src, N, C.cudaMemcpyHostToDevice))
+end
+local terra cuda_memcpy_gpu_from_gpu(dst:&opaque, src:&opaque, N:uint64)
+    cuda_error_checking(C.cudaMemcpy(dst, src, N, C.cudaMemcpyDeviceToDevice))
+end
+
+local terra cuda_peek_at_last_error()
+    cuda_error_checking(C.cudaPeekAtLastError())
+end
+
+local sync_temp_wrapper =
+        terralib.externfunction("cudaThreadSynchronize", {} -> int)
+local terra cuda_sync_wrapper_with_peek()
+    var res = sync_temp_wrapper()
+    cuda_peek_at_last_error()
 end
 
 --[[-----------------------------------------------------------------------]]--
@@ -256,12 +281,17 @@ GPU.thread_id  = thread_id
 GPU.global_tid = global_tid
 GPU.num_blocks = num_blocks
 
-GPU.check      = cuda_error_checking
-GPU.malloc     = cuda_malloc_wrapper
-GPU.free       = cuda_free_wrapper
+GPU.check                   = cuda_error_checking
+GPU.malloc                  = cuda_terra_malloc
+GPU.free                    = cuda_terra_free
+GPU.memcpy_cpu_from_gpu     = cuda_memcpy_cpu_from_gpu
+GPU.memcpy_gpu_from_cpu     = cuda_memcpy_gpu_from_cpu
+GPU.memcpy_gpu_from_gpu     = cuda_memcpy_gpu_from_gpu
+GPU.peek_last_error         = cuda_peek_at_last_error
 
 GPU.barrier    = macro(function() return quote cudalib.nvvm_barrier0() end end)
-GPU.sync       = terralib.externfunction("cudaThreadSynchronize", {} -> int)
+GPU.sync       = cuda_sync_wrapper_with_peek
+--GPU.sync       = terralib.externfunction("cudaThreadSynchronize", {} -> int)
 GPU.device_sync = terralib.externfunction("cudaDeviceSynchronize", {} -> int)
 
 GPU.get_grid_dimensions = get_grid_dimensions

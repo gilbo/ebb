@@ -6,6 +6,7 @@ package.loaded["compiler.rawdata"] = Raw
 
 
 local C = require "compiler.c"
+local G = require "compiler.gpu_util"
 
 
 -------------------------------------------------------------------------------
@@ -87,27 +88,14 @@ local gpu_cpu_copy = gpu_allocate
 local gpu_gpu_copy = gpu_allocate
 
 if terralib.cudacompile then
-  local terra gpuAllocate(size : uint64)
-    var r : &opaque
-    C.cudaMalloc(&r,size)
-    return r
-  end
   gpu_allocate = function(array)
     return terralib.cast(&array._type,
-              gpuAllocate(array._size * terralib.sizeof(array._type)))
+                         G.malloc(array._size * terralib.sizeof(array._type)))
   end
-  gpu_free = function(data)
-    C.cudaFree(data)
-  end
-  cpu_gpu_copy = function(dst, src, size)
-    C.cudaMemcpy(dst:ptr(), src:ptr(), size, C.cudaMemcpyDeviceToHost)
-  end
-  gpu_cpu_copy = function(dst, src, size)
-    C.cudaMemcpy(dst:ptr(), src:ptr(), size, C.cudaMemcpyHostToDevice)
-  end
-  gpu_gpu_copy = function(dst, src, size)
-    C.cudaMemcpy(dst:ptr(), src:ptr(), size, C.cudaMemcpyDeviceToDevice)
-  end
+  gpu_free      = G.free
+  cpu_gpu_copy  = G.memcpy_cpu_from_gpu
+  gpu_cpu_copy  = G.memcpy_gpu_from_cpu
+  gpu_gpu_copy  = G.memcpy_gpu_from_gpu
 end
 
 -- idempotent
@@ -152,13 +140,13 @@ function DataArray:copy(src, size)
   local byte_size = size * terralib.sizeof(src._type)
 
   if     dst._processor == L.CPU and src._processor == L.CPU then
-    cpu_cpu_copy( dst, src, byte_size )
+    cpu_cpu_copy( dst:ptr(), src:ptr(), byte_size )
   elseif dst._processor == L.CPU and src._processor == L.GPU then
-    cpu_gpu_copy( dst, src, byte_size )
+    cpu_gpu_copy( dst:ptr(), src:ptr(), byte_size )
   elseif dst._processor == L.GPU and src._processor == L.CPU then
-    gpu_cpu_copy( dst, src, byte_size )
+    gpu_cpu_copy( dst:ptr(), src:ptr(), byte_size )
   elseif dst._processor == L.GPU and src._processor == L.GPU then
-    gpu_gpu_copy( dst, src, byte_size )
+    gpu_gpu_copy( dst:ptr(), src:ptr(), byte_size )
   else
     error('unsupported processor')
   end

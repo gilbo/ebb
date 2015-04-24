@@ -196,7 +196,6 @@ function Bran:Compile()
 
   -- handle GPU specific compilation
   if self:isOnGPU() then
-    if use_legion then error("LEGION UNSUPPORTED TODO") end
     self.sharedmem_size = 0
     self:CompileGPUReduction()
   end
@@ -400,6 +399,17 @@ function Bran:setGlobalPtr(global)
   self.args:ptr()[id] = dataptr
 end
 
+function Bran:getLegionGlobalTempSymbol(global)
+  local id = self:getGlobalId(global)
+  if not self._legion_global_temps then self._legion_global_temps = {} end
+  local sym = self._legion_global_temps[id]
+  if not sym then
+    local ttype = global.type:terraType()
+    sym = symbol(&ttype)
+    self._legion_global_temps[id] = sym
+  end
+  return sym
+end
 function Bran:getTerraGlobalPtr(args_sym, global)
   local id = self:getGlobalId(global)
   return `[args_sym].[id]
@@ -499,15 +509,11 @@ end
 --                  ---------------------------------------                  --
 
 function Bran:Launch()
-  --if self:isOnGPU() then
-  --  self.executable(self:numGPUBlocks(), self.args:ptr())
-  --else
-    if use_legion then
-      self.executable({ ctx = legion_env.ctx, runtime = legion_env.runtime })
-    else
-      self.executable(self.args:ptr())
-    end
-  --end
+  if use_legion then
+    self.executable({ ctx = legion_env.ctx, runtime = legion_env.runtime })
+  else
+    self.executable(self.args:ptr())
+  end
 end
 
 --                  ---------------------------------------                  --
@@ -681,21 +687,9 @@ function Bran:getBlockSize()
   return self.blocksize
 end
 
-function Bran:setReduceGlobalMemPtr(global, dataptr)
-  local data = self:getReduceData(global)
-  self.args:ptr()[data.id] = dataptr
-end
-
 function Bran:getTerraReduceGlobalMemPtr(args_sym, global)
   local data = self:getReduceData(global)
   return `[args_sym].[data.id]
-end
-
-function Bran:freeReduceGlobalMemPtr(global)
-  local data = self:getReduceData(global)
-  local aptr = self.args:ptr()
-  G.free( aptr[data.id] )
-  aptr[data.id] = nil
 end
 
 function Bran:getTerraReduceSharedMemPtr(global)
@@ -708,8 +702,6 @@ end
 --                  ---------------------------------------                  --
 
 function Bran:CompileGPUReduction()
-  self.sharedmem_size         = self.sharedmem_size or 0
-
   -- NOTE: because GPU memory is idiosyncratic, we need to handle
   --    GPU global memory and
   --    GPU shared memory differently.
@@ -731,19 +723,6 @@ function Bran:CompileGPUReduction()
     self.sharedmem_size     = self.sharedmem_size +
                                 sizeof(ttype) * self.blocksize
   end
---  for globl, phase in pairs(self.kernel.global_use) do
---    if phase.reduceop then
---      self.uses_gpu_reduce  = true
---      local ttype           = globl.type:terraType()
---
---      local reduce_data     = self:getReduceData(globl)
---      reduce_data.phase     = phase
---      reduce_data.sharedmem = cudalib.sharedmemory(ttype, self.blocksize)
---
---      self.sharedmem_size   = self.sharedmem_size +
---                                sizeof(ttype) * self.blocksize
---    end
---  end
 
   self:CompileGlobalMemReductionKernel()
 end
@@ -897,28 +876,45 @@ end
 --[[ GPU Reduction Data Binding                                            ]]--
 --                  ---------------------------------------                  --
 
-function Bran:bindGPUReductionData()
+function Bran:generateGPUReductionPreProcess(argptrsym)
+  if not self:UsesGlobalReduce() then return quote end end
+
   local n_blocks = self:numGPUBlocks()
 
   -- allocate GPU global memory for the reduction
+  local code = quote end
   for globl, _ in pairs(self.global_reductions) do
     local ttype = globl.type:terraType()
-    self:setReduceGlobalMemPtr(globl, G.malloc(ttype, n_blocks))
+    local id    = self:getReduceData(globl).id
+    code = quote code
+      [argptrsym].[id] = [&ttype](G.malloc(sizeof(ttype)))
+    end
   end
+  return code
 end
 
 --                  ---------------------------------------                  --
 --[[ GPU Reduction Postprocessing                                          ]]--
 --                  ---------------------------------------                  --
 
-function Bran:postprocessGPUReduction()
+function Bran:generateGPUReductionPostProcess(argptrsym)
+  if not self:UsesGlobalReduce() then return quote end end
+  
   -- perform inter-block reduction step (secondary kernel launch)
-  self.global_reduction_pass(self.args:ptr())
+  local second_pass = self.global_reduction_pass
+  local code = quote
+    second_pass(argptrsym)
+  end
 
   -- free GPU global memory allocated for the reduction
   for globl, _ in pairs(self.global_reductions) do
-    self:freeReduceGlobalMemPtr(globl)
+    local id    = self:getReduceData(globl).id
+    code = quote code
+      G.free( [argptrsym].[id] )
+      [argptrsym].[id] = nil -- just to be safe
+    end
   end
+  return code
 end
 
 
@@ -952,7 +948,10 @@ end
 -- Creates a task launcher with task region requirements.
 function Bran:CreateLegionTaskLauncher(task_func)
 
-  local task_launcher = LW.NewTaskLauncher { taskfunc = task_func }
+  local task_launcher = LW.NewTaskLauncher {
+    taskfunc = task_func,
+    gpu      = self:isOnGPU(),
+  }
 
   -- ADD EACH REGION to the launcher as a requirement
   -- WITH THE appropriate permissions set
@@ -1091,16 +1090,32 @@ function Bran:GenerateUnpackLegionTaskArgs(argsym, task_args)
       -- position in the Legion task arguments
       local fut_i   = bran:getFutureNum(globl) 
       local gtyp    = globl.type:terraType()
+      local gptr    = bran:getLegionGlobalTempSymbol(globl)
 
-      emit quote
-        var fut     = LW.legion_task_get_future([task_args].task, fut_i)
-        var result  = LW.legion_future_get_result(fut)
-        var datum   = @[&gtyp](result.value)
-        -- note that we're going to rely on this variable
-        -- being stably allocated on the stack
-        -- for the remainder of this function scope
-        [argsym].[garg_name] = &datum
-        LW.legion_task_result_destroy(result)
+      if bran:isOnGPU() then
+        emit quote
+          var fut     = LW.legion_task_get_future([task_args].task, fut_i)
+          var result  = LW.legion_future_get_result(fut)
+          var datum   = @[&gtyp](result.value)
+          var [gptr]  = [&gtyp](G.malloc(sizeof(gtyp)))
+          G.memcpy_gpu_from_cpu(gptr, &datum, sizeof(gtyp))
+          --var [gptr] = &datum
+
+          [argsym].[garg_name] = gptr
+          LW.legion_task_result_destroy(result)
+        end
+      else
+        emit quote
+          var fut     = LW.legion_task_get_future([task_args].task, fut_i)
+          var result  = LW.legion_future_get_result(fut)
+          var datum   = @[&gtyp](result.value)
+          var [gptr]  = &datum
+          -- note that we're going to rely on this variable
+          -- being stably allocated on the stack
+          -- for the remainder of this function scope
+          [argsym].[garg_name] = gptr
+          LW.legion_task_result_destroy(result)
+        end
       end
     end end
   end -- end quote
