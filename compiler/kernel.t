@@ -172,9 +172,12 @@ end
 
 --local compile_counter = 1
 function Bran:Compile()
---  print('compiling #', compile_counter,
---        self.kernel.typed_ast:astSize(), self.kernel.typed_ast.id)
---  compile_counter = compile_counter + 1
+  -- Try to defer Legion GPU tasks.  This might be really dangerous?
+--  if not self._legion_defer_thunk then
+--    self:CompileLegionDeferThunk()
+--    return
+--  end
+
   local kernel    = self.kernel
   local typed_ast = self.kernel.typed_ast
 
@@ -509,6 +512,10 @@ end
 --                  ---------------------------------------                  --
 
 function Bran:Launch()
+--  if self._legion_defer_thunk then
+--    self._legion_defer_thunk.exec()
+--    self._legion_defer_thunk = nil
+--  end
   if use_legion then
     self.executable({ ctx = legion_env.ctx, runtime = legion_env.runtime })
   else
@@ -847,8 +854,10 @@ function Bran:CompileGlobalMemReductionKernel()
     -- REDUCE the shared memory using a tree
     [bran:GenerateSharedMemReduceTree(args, tid, bid, true)]
   end
+  print('foooooo')
   cuda_kernel:setname(fn_name)
   cuda_kernel = G.kernelwrap(cuda_kernel, L._INTERNAL_DEV_OUTPUT_PTX)
+  print('barrrrrr')
 
   -- the globalmem array has an entry for every block in the primary kernel
   local globalmem_array_len = bran:numGPUBlocks() 
@@ -1131,6 +1140,64 @@ function Bran:CompileLegion()
   self.executable         = self:CreateLegionLauncher(task_function)
 end
 
+
+
+
+--[[
+function Bran:CompileLegionDeferThunk()
+  local bran = self
+  
+  -- the thunk container
+  bran._legion_defer_thunk = {}
+  -- a Lua function of what we want to actually do
+  bran._legion_defer_thunk.lua_do_compilation = function(task_args_ptr)
+    bran:Compile()
+  end
+
+  -- a Terra wrapper around that Lua function
+  bran._legion_defer_thunk.task_func = terra( task_args : LW.TaskArgs )
+    bran._legion_defer_thunk.lua_do_compilation(&task_args)
+
+    var dummy : int = 0
+    return LW.legion_task_result_create( &dummy, sizeof(int) )
+  end
+  print('comp thunk')
+  bran._legion_defer_thunk.task_func:compile()
+  print('comp thunk end')
+
+  -- a Legion Task launcher to launch the thunk
+  bran._legion_defer_thunk.legion_task_launcher = LW.NewTaskLauncher {
+    taskfunc = bran._legion_defer_thunk.task_func,
+    gpu      = self:isOnGPU(),
+  }
+
+--  -- ADD EACH REGION to the launcher as a requirement
+--  -- WITH THE appropriate permissions set
+--  -- NOTE: Need to make sure to do this in the right order
+--  for ri, datum in pairs(self.sorted_region_data) do
+--    local reg_req = task_launcher:AddRegionReq(datum.wrapper,
+--                                               LW.READ_WRITE,
+--                                               LW.EXCLUSIVE)
+--    assert(reg_req == ri)
+--  end
+--
+--  -- ADD EACH FIELD to the launcher as a requirement
+--  -- as part of the correct, corresponding region
+--  for field, _ in pairs(self.field_ids) do
+--    task_launcher:AddField( self:getRegionData(field).num, field.fid )
+--  end
+
+  bran._legion_defer_thunk.exec = function()
+    local future = 
+      bran._legion_defer_thunk.legion_task_launcher:Execute(
+                                                        legion_env.runtime,
+                                                        legion_env.ctx)
+    -- block on the future to force Legion to recognize
+    -- a control flow dependency/synchronization point
+    local future_result = LW.legion_future_get_result(future)
+  end
+end
+]]
 
 
 

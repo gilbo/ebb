@@ -1,17 +1,5 @@
 local C = require 'compiler.c'
 
-local MAX_FRAMES = 50
-local rawptr = &opaque
-local terra stacktrace_dump()
-  var array : rawptr[MAX_FRAMES]
-
-  -- get pointers for all entries on the stack
-  var size = C.backtrace(array, MAX_FRAMES);
-
-  -- print out all the frames to stderr
-  C.backtrace_symbols_fd(array, size, C.STDERR_FILENO);
-end
-
 local function sanitize_function_name(unsafe)
   -- eliminate dots for subtables
   local safe = string.gsub(unsafe, ".", "_")
@@ -23,10 +11,11 @@ end
 --    and then re-packed once inside the function.
 return function(terrafn, verbose, annotations)
   terrafn:setinlined(true)
-  terrafn:emitllvm()  -- To guarantee we have a type
-  local succ, T = terrafn:peektype()
-  assert(succ)
-  assert(T.returntype:isunit(), "cukernelwrap: kernel must not return anything.")
+  print('gonna gettype')
+  local T = terrafn:gettype()
+  print('done gettype')
+  assert(T.returntype:isunit(),
+          "cukernelwrap: kernel must not return anything.")
 
   -- All the work is done here
   local function recurse(exprs, types)
@@ -45,7 +34,8 @@ return function(terrafn, verbose, annotations)
       elseif typ:isstruct() then
         local recExprs = typ.entries:map(function(e) return `exp.[e.field] end)
         local recTypes = typ.entries:map(function(e) return e.type end)
-        local recKernelSyms, recUnpackExprs, recRepackExprs = recurse(recExprs, recTypes)
+        local recKernelSyms, recUnpackExprs, recRepackExprs =
+                                                recurse(recExprs, recTypes)
         kernelSyms:insertall(recKernelSyms)
         unpackExprs:insertall(recUnpackExprs)
         repackExprs:insert(`typ { [recRepackExprs] })
@@ -56,13 +46,14 @@ return function(terrafn, verbose, annotations)
           recExprs:insert(`exp[ [i-1] ])
           recTypes:insert(typ.type)
         end
-        local recKernelSyms, recUnpackExprs, recRepackExprs = recurse(recExprs, recTypes)
+        local recKernelSyms, recUnpackExprs, recRepackExprs =
+                                                recurse(recExprs, recTypes)
         kernelSyms:insertall(recKernelSyms)
         unpackExprs:insertall(recUnpackExprs)
         repackExprs:insert(`array([recRepackExprs]))
       else
-        error(string.format("cukernelwrap: type %s not a primitive, pointer, struct, or array. Impossible?",
-          tostring(typ)))
+        error("cukernelwrap: type "..tostring(typ).." not a primitive, "..
+              "pointer, struct, or array. Impossible?")
       end
     end
     return kernelSyms, unpackExprs, repackExprs
@@ -71,22 +62,44 @@ return function(terrafn, verbose, annotations)
   local outersyms = T.parameters:map(function(t) return symbol(t) end)
   local kernelSyms, unpackExprs, repackExprs = recurse(outersyms, T.parameters)
 
-  -- The actual kernel takes unpacked args, re-packs them, then calls the original
-  --    function passed in by the user.
+  -- The actual kernel takes unpacked args, re-packs them,
+  --    then calls the original function passed in by the user.
   local terra kernel([kernelSyms]) : {}
     terrafn([repackExprs])
   end
   local safename = sanitize_function_name(terrafn.name)
-  local inline = terralib.cudacompile({[safename]={kernel = kernel, annotations = annotations}}, verbose)[safename]
-  -- We return a wrapper around the kernel that takes the original arguments, unpacks
-  --    them, then calls the kernel.
+  local modulewrapper, cudaloader = terralib.cudacompile({
+      [safename]={kernel = kernel, annotations = annotations}
+    },
+    verbose,
+    nil,  -- do not specify version
+    false -- defer CUDA loading
+  )
+  local cudakern = modulewrapper[safename]
+
+  -- We return a wrapper around the kernel that takes the
+  --    original arguments, unpacks them, then calls the kernel.
+  -- It also handles defering loading of cuda code on the first execution
+  --    rather than at compile time.
+  local is_loaded = global(bool, false)
+  local error_buf_sz = 2048
   local terra wrapper(kernelparams: &terralib.CUDAParams, [outersyms]) : {}
-    var err = inline(kernelparams, [unpackExprs])
+    -- on the first load, make sure to load
+    if not is_loaded then
+      is_loaded = true
+      var error_buf : int8[error_buf_sz]
+      if 0 ~= cudaloader(nil,nil,error_buf,error_buf_sz) then
+        C.printf("CUDA LOAD ERROR: %s\n", error_buf)
+        terralib.traceback(nil)
+        C.exit(1)
+      end
+    end
+
+    var err = cudakern(kernelparams, [unpackExprs])
     if err ~= 0 then
-      C.printf("CUDA ERROR code %d\n", err)
-      C.printf("CUDA ERROR %s\n", C.cudaGetErrorString(err))
+      C.printf("CUDA EXEC ERROR code %d\n", err)
+      C.printf("CUDA EXEC ERROR %s\n", C.cudaGetErrorString(err))
       terralib.traceback(nil)
-      --stacktrace_dump()
       C.exit(1)
     end
   end

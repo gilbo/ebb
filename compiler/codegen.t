@@ -566,6 +566,9 @@ function Codegen.codegen (kernel_ast, bran)
     launcher:setname(kernel_ast.id)
   end -- Legion Launcher end
 
+  print('comp start')
+  launcher:compile()
+  print('comp end')
   return launcher
 
     --[[ BUILD LEGION TASK FUNCTION
