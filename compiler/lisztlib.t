@@ -9,8 +9,13 @@ local T = require 'compiler.types'
 
 local DataArray = use_single and
                   require('compiler.rawdata').DataArray
-local LW = use_legion and require "compiler.legionwrap"
 
+local LE, legion_env, LW
+if use_legion then
+  LE            = rawget(_G, '_legion_env')
+  legion_env    = LE.legion_env:get()
+  LW            = require 'compiler.legionwrap'
+end
 -------------------------------------------------------------------------------
 --[[ Liszt modules:                                                        ]]--
 -------------------------------------------------------------------------------
@@ -82,25 +87,10 @@ function L.Global (typ, init)
       s:set(init)
 
     elseif use_legion then
-      local cdata = T.luaToLisztVal(init, typ)
-      LW.AssignFutureBlobFromValue(s, cdata)
+      s:set(init)
     end
 
     return s
-end
-
-local function set_cpu_value (_type, data, val)
-  if _type:isVector() then
-    local v     = is_vector(val) and val or L.NewVector(_type:baseType(), val)
-    local sdata = terralib.cast(&_type:terraBaseType(), data:ptr())
-    for i = 0, v.N-1 do
-      sdata[i] = v.data[i+1]
-    end
-
-  -- primitive is easy - just copy it over
-  else
-    data:ptr()[0] = _type == L.int and val - val % 1 or val
-  end
 end
 
 function LGlobal:set(val)
@@ -112,12 +102,21 @@ function LGlobal:set(val)
     end)
 
   elseif use_legion then
-    local cdata = T.luaToLisztVal(val, self.type)
-    LW.AssignFutureBlobFromValue(self, cdata)
+    local typ    = self.type
+    local tt     = typ:terraType()
+    local blob   = global(tt)
+    -- ensure a byte for byte copy
+    (blob:getpointer())[0] = T.luaToLisztVal(val, typ)
+    local future = LW.legion_future_from_buffer(legion_env.runtime,
+                                                blob:getpointer(),
+                                                terralib.sizeof(tt))
+    if self.data then
+      LW.legion_future_destroy(self.data)
+    end
+    self.data    = future
   end
 
 end
-
 
 function LGlobal:get()
   local value
@@ -128,27 +127,31 @@ function LGlobal:get()
     end)
 
   elseif use_legion then
-    value = T.lisztToLuaVal(self.data:GetResult(self), self.type)
+    local tt = self.type:terraType()
+    local result = LW.legion_future_get_result(self.data)
+    local rptr   = terralib.cast(&tt, result.value)
+    value = T.lisztToLuaVal(rptr[0], self.type)
+    LW.legion_task_result_destroy(result)
   end
 
   return value
 end
 
-function LGlobal:SetData(data)
-  self.data = data
-end
+--function LGlobal:SetData(data)
+--  self.data = data
+--end
 
-function LGlobal:Data()
-  return self.data
-end
+--function LGlobal:Data()
+--  return self.data
+--end
 
-function LGlobal:SetOffset(offset)
-  self.offset = 0
-end
+--function LGlobal:SetOffset(offset)
+--  self.offset = 0
+--end
 
-function LGlobal:Offset()
-  return self.offset
-end
+--function LGlobal:Offset()
+--  return self.offset
+--end
 
 function LGlobal:DataPtr()
     return self.data:ptr()

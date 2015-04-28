@@ -16,6 +16,8 @@ package.path = package.path .. ';'..bindings_dir..'/?.t'
 local C   = terralib.includecstring([[
 #include "stdio.h"
 #include "stdlib.h"
+#include "cuda_runtime.h"
+#include "driver_types.h"
 ]])
 local Lg  = terralib.includecstring([[
 #include "legion_c.h"
@@ -68,17 +70,41 @@ function compile_gpu_task()
   local trivial
   terra REMEMBER.ttriv() end
 
---  REMEMBER.ctriv = terralib.cudacompile(
---    {trivial={kernel = ttriv, annotations = nil}}, false)['trivial']
---  terra REMEMBER.wraptriv (taskargs : TaskArgs) : {}
---    var cudaparams : &terralib.CUDAParams
---    var err = REMEMBER.ctriv(cudaparams)
---    if err ~= 0 then
---      C.printf("CUDA LAUNCH ERROR: %s\n", C.cudaGetErrorString(err))
---    end
---  end
+--[[
+  local module, loader = terralib.cudacompile(
+    {trivial={kernel = REMEMBER.ttriv, annotations = nil}},
+  false)
+  REMEMBER.ctriv = module['trivial']
+
+  local is_loaded = global(bool, false)
+  local error_buf_sz = 2048
   terra REMEMBER.wraptriv (taskargs : TaskArgs) : {}
-    REMEMBER.ttriv()
+    C.printf('START RUNNING GPU TASK\n')
+    if not is_loaded then
+      is_loaded = true
+      var error_buf : int8[error_buf_sz]
+      if 0 ~= loader(nil,nil,error_buf,error_buf_sz) then
+        C.printf("CUDA LOAD ERROR: %s\n", error_buf)
+        terralib.traceback(nil)
+        C.exit(1)
+      end
+      C.printf('LOAD COMPLETE\n')
+    end
+
+    var cudaparams = terralib.CUDAParams {
+      1,1,1, 5,1,1, 0, nil
+    }
+    var err = REMEMBER.ctriv(&cudaparams)
+    if err ~= 0 then
+      C.printf("CUDA LAUNCH ERROR: %s\n", C.cudaGetErrorString(err))
+    end
+    C.printf('CUDA LAUNCH DONE\n')
+  end
+]]
+  REMEMBER.wraptriv = terra(taskargs : TaskArgs) : Lg.legion_task_result_t
+    C.printf('running Gpu\n')
+    var datum : int = 5
+    return Lg.legion_task_result_create( &datum, sizeof(int) )
   end
 
   local fptr = REMEMBER.wraptriv:getdefinitions()[1]:getpointer()
@@ -103,7 +129,19 @@ terra top_level_task(
   var farg : FuncType = compile_gpu_task()
 
   C.printf("in top level, launching now\n")
-  launch_task(GPU_TASK_ID, farg, FuncType, runtime, ctx)
+    var future1 = launch_task(GPU_TASK_ID, farg, FuncType, runtime, ctx)
+    var future2 = launch_task(GPU_TASK_ID, farg, FuncType, runtime, ctx)
+    var future3 = launch_task(GPU_TASK_ID, farg, FuncType, runtime, ctx)
+
+
+    var result = Lg.legion_future_get_result(future1)
+    C.printf('returned value is %d\n', @[&int](result.value))
+
+    result = Lg.legion_future_get_result(future2)
+    C.printf('returned value is %d\n', @[&int](result.value))
+
+  result = Lg.legion_future_get_result(future3)
+  C.printf('returned value is %d\n', @[&int](result.value))
 
   --var fib_results = [&Lg.legion_future_t](
   --  C.malloc(num_fibonacci * sizeof(Lg.legion_future_t)))
@@ -134,7 +172,7 @@ terra gpu_task(
   var farg : FuncType = @([&FuncType](Lg.legion_task_get_args(task)))
 
   C.printf("Launching GPU Task\n")
-  farg( TaskArgs { task, regions, n_regions, ctx, runtime } )
+  return farg( TaskArgs { task, regions, n_regions, ctx, runtime } )
 
 
 --
@@ -182,6 +220,8 @@ terra gpu_task(
   --return Lg.legion_task_result_create(result.value, sizeof(int))
 end
 
+
+
 function main()
   -- must first set the top level task ID
   Lg.legion_runtime_set_top_level_task_id(TOP_LEVEL_TASK_ID)
@@ -204,9 +244,9 @@ function main()
     'top_level_task',
     terra2fp(top_level_task) --Lg.legion_task_pointer_t
   )
-  Lg.legion_runtime_register_task_void(
+  Lg.legion_runtime_register_task(
     GPU_TASK_ID,
-    Lg.LOC_PROC,
+    Lg.TOC_PROC,
     true,   -- single = true
     false,  -- index = false
     -1,     -- AUTO_GENERATE_ID 

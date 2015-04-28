@@ -33,13 +33,11 @@ end
 -- Launch Liszt application
 function load_liszt()
   local script_filename = arg[1]
-  print('LOAD START')
   local success = xpcall( function ()
     assert(terralib.loadfile(script_filename))()
     LW.legion_runtime_issue_execution_fence(LE.legion_env:get().runtime,
                                             LE.legion_env:get().ctx)
   end, top_level_err_handler)
-  print('LOAD EXIT')
 end
 
 -- Run Liszt compiler/ Lua-Terra interpreter as a top level task

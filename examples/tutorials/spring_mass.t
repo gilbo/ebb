@@ -97,7 +97,7 @@ end
 -- Again, we won't discuss VDB here, but I'm going to include
 -- a little bit of code to visualize the result
 
--- START EXTRA VDB CODE
+--[[ START EXTRA VDB CODE
 local sqrt3 = math.sqrt(3)
 local vdb   = L.require('lib.vdb')
 local liszt compute_normal ( t : dragon.triangles )
@@ -120,7 +120,7 @@ local liszt debug_tri_draw ( t : dragon.triangles )
   vdb.triangle(t.v[0].pos, t.v[1].pos, t.v[2].pos)
 end
 -- END EXTRA VDB CODE
-
+]]
 ------------------------------------------------------------------------------
 
 -- Now, let's try running this simulation for a while
@@ -130,12 +130,12 @@ for i=1,40000 do
   dragon.vertices:map(update_vel_pos)
 
   -- EXTRA: VDB (For visualization)
-  if i%100 == 0 then
-    vdb.vbegin()
-      vdb.frame() -- this call clears the canvas for a new frame
-      dragon.triangles:map(debug_tri_draw)
-    vdb.vend()
-  end
+--  if i%100 == 0 then
+--    vdb.vbegin()
+--      vdb.frame() -- this call clears the canvas for a new frame
+--      dragon.triangles:map(debug_tri_draw)
+--    vdb.vend()
+--  end
   if i%1000 == 0 then print('iter', i) end
   -- END EXTRA
 end
