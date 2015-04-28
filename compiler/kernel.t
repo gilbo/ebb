@@ -254,6 +254,7 @@ function Bran:CompileFieldsGlobalsSubsets()
   if self:isOverSubset() then
     if self.subset._boolmask then
       self:getFieldId(self.subset._boolmask)
+      self._compiled_with_boolmask = true
     end
   end
   for globl, phase in pairs(self.kernel.global_use) do
@@ -441,6 +442,16 @@ function Bran:DynamicChecks()
       error("cannot execute kernel because hidden field "..
             underscore_field_fail:FullName()..
             " is not currently located on "..tostring(self.proc), 3)
+    end
+  end
+
+  if self:isOverSubset() then
+    if self._compiled_with_boolmask and not self:isBoolMaskSubset() then
+      error('INTERNAL: Should not try to run a function compiled for '..
+            'boolmask subsets over an index subset')
+    elseif not self._compiled_with_boolmask and not self:isIndexSubset() then
+      error('INTERNAL: Should not try to run a function compiled for '..
+            'index subsets over a boolmask subset')
     end
   end
 
@@ -854,10 +865,8 @@ function Bran:CompileGlobalMemReductionKernel()
     -- REDUCE the shared memory using a tree
     [bran:GenerateSharedMemReduceTree(args, tid, bid, true)]
   end
-  print('foooooo')
   cuda_kernel:setname(fn_name)
   cuda_kernel = G.kernelwrap(cuda_kernel, L._INTERNAL_DEV_OUTPUT_PTX)
-  print('barrrrrr')
 
   -- the globalmem array has an entry for every block in the primary kernel
   local globalmem_array_len = bran:numGPUBlocks() 
@@ -982,7 +991,7 @@ function Bran:CreateLegionTaskLauncher(task_func)
   -- ADD EACH GLOBAL to the launcher as a future being passed to the task
   -- NOTE: Need to make sure to do this in the right order
   for globl, gi in pairs_val_sorted(self.future_nums) do
-    task_launcher:AddFuture( globl:Data():LegionFuture() )
+    task_launcher:AddFuture( globl.data )
   end
 
   return task_launcher
@@ -991,16 +1000,23 @@ end
 -- Launches Legion task and returns.
 function Bran:CreateLegionLauncher(task_func)
   local bran = self
-  local task_launcher = bran:CreateLegionTaskLauncher(task_func)
+  --local task_launcher = bran:CreateLegionTaskLauncher(task_func)
   if bran:UsesGlobalReduce() then
     return function(leg_args)
+      local task_launcher = bran:CreateLegionTaskLauncher(task_func)
       local global  = next(bran.global_reductions)
       local future  = task_launcher:Execute(leg_args.runtime, leg_args.ctx)
-      LW.AssignFutureBlobFromFuture(global, future)
+      if global.data then
+        LW.legion_future_destroy(global.data)
+      end
+      global.data = future
+      task_launcher:Destroy()
     end
   else
     return function(leg_args)
+      local task_launcher = bran:CreateLegionTaskLauncher(task_func)
       task_launcher:Execute(leg_args.runtime, leg_args.ctx)
+      task_launcher:Destroy()
     end
   end
 end

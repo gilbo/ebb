@@ -80,11 +80,24 @@ cuda_include ..
 
 FILE *get_stderr () { return stderr; }
 
+
 ]]..
 enum_c_define
 )
 
+rawset(c_blob, 'assert', macro(function(test)
+  local filename = test.tree.filename
+  local linenumber = test.tree.linenumber
 
+  return quote
+    if not test then
+      var stderr = c_blob.get_stderr()
+      c_blob.fprintf(stderr,
+        [filename..':'..linenumber..': Terra Assertion Failed!\n'])
+      c_blob.exit(1)
+    end
+  end
+end))
 
 
 -- now extract the enum constants

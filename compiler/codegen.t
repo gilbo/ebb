@@ -364,18 +364,14 @@ function Codegen.codegen (kernel_ast, bran)
       if ctxt:isBoolMaskSubset() then
       -- BOOLMASK SUBSET BRANCH
         if ctxt:onGPU() then
-          if use_legion then
-            error('INTERNAL: LEGION GPU CURRENTLY UNSUPPORTED - TODO')
-          else
-            body = terraGPUId_to_Nd(bounds, linid, function(addr)
-              return quote
-                -- set param
-                if [ctxt:isInSubset(addr)] then
-                  var [param] = addr
-                  [body]
-                end
-              end end)
-          end
+          body = terraGPUId_to_Nd(bounds, linid, function(addr)
+            return quote
+              -- set param
+              if [ctxt:isInSubset(addr)] then
+                var [param] = addr
+                [body]
+              end
+            end end)
         else
           body = terraIterNd(bounds, function(iter)
             return quote
@@ -477,7 +473,6 @@ function Codegen.codegen (kernel_ast, bran)
       -- possibly allocate global memory for a GPU reduction
       [ ctxt.bran:generateGPUReductionPreProcess(args_ptr) ]
 
-      --C.printf('ALSINF\n')
       -- the main launch
       var grid_x : uint,    grid_y : uint,    grid_z : uint   =
           G.get_grid_dimensions(n_blocks, MAX_GRID_DIM)
@@ -486,36 +481,15 @@ function Codegen.codegen (kernel_ast, bran)
         [ctxt:gpuBlockSize()], 1, 1,
         [ctxt:gpuSharedMemBytes()], nil
       }
-      --C.printf('PRE\n')
       cuda_kernel(&params, @args_ptr)
-      --C.printf('KERN\n')
       G.sync() -- flush print streams
       -- TODO: Does this sync cause any performance problems?
-      --C.printf('END\n')
 
       -- possibly perform the second launch tree reduction and
       -- cleanup any global memory here...
       [ ctxt.bran:generateGPUReductionPostProcess(args_ptr) ]
     end
     launcher:setname(kernel_ast.id)
-
---    if ctxt:hasGlobalReduce() then
---      launcher = function(args_ptr)
---        -- determine number of blocks
---        local n_blocks = ctxt.bran:numGPUBlocks() -- unsafe b/c dynamic val
---
---        ctxt.bran:bindGPUReductionData(args_ptr)
---
---        main_launch(n_blocks, args_ptr)
---
---        ctxt.bran:postprocessGPUReduction()
---      end
---    else
---      launcher = function(args_ptr)
---        local n_blocks = ctxt.bran:numGPUBlocks() -- unsafe b/c dynamic val
---        main_launch(n_blocks, args_ptr)
---      end
---    end
 
   -- BUILD CPU LAUNCHER
   else
@@ -566,9 +540,6 @@ function Codegen.codegen (kernel_ast, bran)
     launcher:setname(kernel_ast.id)
   end -- Legion Launcher end
 
-  print('comp start')
-  launcher:compile()
-  print('comp end')
   return launcher
 
     --[[ BUILD LEGION TASK FUNCTION

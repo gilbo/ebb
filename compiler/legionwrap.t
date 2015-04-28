@@ -131,6 +131,13 @@ function LW.NewTaskLauncher(params)
   }, LW.TaskLauncher)
 end
 
+function LW.TaskLauncher:Destroy()
+  self._taskfunc = nil
+  self._taskfuncptr = nil
+  LW.legion_task_launcher_destroy(self._launcher)
+  self._launcher = nil
+end
+
 function LW.TaskLauncher:AddRegionReq(lr, permission, coherence)
   local reg_req =
   LW.legion_task_launcher_add_region_requirement_logical_region(
@@ -178,7 +185,7 @@ terra LW.simple_task(
   runtime     : LW.legion_runtime_t
 )
   var arglen = LW.legion_task_get_arglen(task)
-  assert(arglen == sizeof(LW.SimpleTaskPtrType))
+  C.assert(arglen == sizeof(LW.SimpleTaskPtrType))
   var taskfunc = @[&LW.SimpleTaskPtrType](LW.legion_task_get_args(task))
   taskfunc( LW.TaskArgs { task, regions, num_regions, ctx, runtime } )
 end
@@ -194,7 +201,7 @@ terra LW.future_task(
   runtime     : LW.legion_runtime_t
 ) : LW.legion_task_result_t
   var arglen = LW.legion_task_get_arglen(task)
-  assert(arglen == sizeof(LW.FutureTaskPtrType))
+  C.assert(arglen == sizeof(LW.FutureTaskPtrType))
   var taskfunc = @[&LW.FutureTaskPtrType](LW.legion_task_get_args(task))
   var result = taskfunc( LW.TaskArgs {
                             task, regions, num_regions, ctx, runtime } )

@@ -11,9 +11,9 @@ end
 --    and then re-packed once inside the function.
 return function(terrafn, verbose, annotations)
   terrafn:setinlined(true)
-  print('gonna gettype')
+  --print('gonna gettype')
   local T = terrafn:gettype()
-  print('done gettype')
+  --print('done gettype')
   assert(T.returntype:isunit(),
           "cukernelwrap: kernel must not return anything.")
 
