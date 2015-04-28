@@ -126,18 +126,24 @@ local grid_options = {
   zWidth      = config.zWidth,
   -- Boundary condition type for each face of the block and possible
   -- wall velocity, if no-slip.
-  xBCLeft     = config.xBCLeft,
-  xBCLeftVel  = config.xBCLeftVel,
-  xBCRight    = config.xBCRight,
-  xBCRightVel = config.xBCRightVel,
-  yBCLeft     = config.yBCLeft,
-  yBCLeftVel  = config.yBCLeftVel,
-  yBCRight    = config.yBCRight,
-  yBCRightVel = config.yBCRightVel,
-  zBCLeft     = config.zBCLeft,
-  zBCLeftVel  = config.zBCLeftVel,
-  zBCRight    = config.zBCRight,
-  zBCRightVel = config.zBCRightVel
+  xBCLeft      = config.xBCLeft,
+  xBCLeftVel   = config.xBCLeftVel,
+  xBCLeftTemp  = config.xBCLeftTemp,
+  xBCRight     = config.xBCRight,
+  xBCRightVel  = config.xBCRightVel,
+  xBCRightTemp = config.xBCRightTemp,
+  yBCLeft      = config.yBCLeft,
+  yBCLeftVel   = config.yBCLeftVel,
+  yBCLeftTemp  = config.yBCLeftTemp,
+  yBCRight     = config.yBCRight,
+  yBCRightVel  = config.yBCRightVel,
+  yBCRightTemp = config.yBCRightTemp,
+  zBCLeft      = config.zBCLeft,
+  zBCLeftVel   = config.zBCLeftVel,
+  zBCLeftTemp  = config.zBCLeftTemp,
+  zBCRight     = config.zBCRight,
+  zBCRightVel  = config.zBCRightVel,
+  zBCRightTemp = config.zBCRightTemp,
 }
 
 -- Define offsets for boundary conditions in flow solver
@@ -151,6 +157,7 @@ local grid_options = {
 local xSignX, xSignY, xSignZ
 local xBCLeftVelX, xBCLeftVelY, xBCLeftVelZ
 local xBCRightVelX, xBCRightVelY, xBCRightVelZ
+local xBCLeftTemp, xBCRightTemp
 -- Offset liszt functions
 local liszt XOffsetPeriodic(boundaryPointDepth)
   return 0
@@ -173,6 +180,8 @@ if grid_options.xBCLeft  == "periodic" and
   xBCRightVelX = 0.0
   xBCRightVelY = 0.0
   xBCRightVelZ = 0.0
+  xBCLeftTemp  = -1.0
+  xBCRightTemp = -1.0
   grid_options.xBCLeftParticles  = Particles.Permeable
   grid_options.xBCRightParticles = Particles.Permeable
 elseif grid_options.xBCLeft == "symmetry" and
@@ -187,10 +196,12 @@ elseif grid_options.xBCLeft == "symmetry" and
   xBCRightVelX = 0.0
   xBCRightVelY = 0.0
   xBCRightVelZ = 0.0
+  xBCLeftTemp  = -1.0
+  xBCRightTemp = -1.0
   grid_options.xBCLeftParticles  = Particles.Solid
   grid_options.xBCRightParticles = Particles.Solid
-elseif grid_options.xBCLeft  == "wall" and
-       grid_options.xBCRight == "wall" then
+elseif grid_options.xBCLeft  == "adiabatic_wall" and
+       grid_options.xBCRight == "adiabatic_wall" then
   XOffset = XOffsetSymmetry
   xSignX = -1
   xSignY = -1
@@ -201,6 +212,24 @@ elseif grid_options.xBCLeft  == "wall" and
   xBCRightVelX = 2.0*grid_options.xBCRightVel[1]
   xBCRightVelY = 2.0*grid_options.xBCRightVel[2]
   xBCRightVelZ = 2.0*grid_options.xBCRightVel[3]
+  xBCLeftTemp  = -1.0
+  xBCRightTemp = -1.0
+  grid_options.xBCLeftParticles  = Particles.Solid
+  grid_options.xBCRightParticles = Particles.Solid
+elseif grid_options.xBCLeft  == "isothermal_wall" and
+       grid_options.xBCRight == "isothermal_wall" then
+  XOffset = XOffsetSymmetry
+  xSignX = -1
+  xSignY = -1
+  xSignZ = -1
+  xBCLeftVelX  = 2.0*grid_options.xBCLeftVel[1]
+  xBCLeftVelY  = 2.0*grid_options.xBCLeftVel[2]
+  xBCLeftVelZ  = 2.0*grid_options.xBCLeftVel[3]
+  xBCRightVelX = 2.0*grid_options.xBCRightVel[1]
+  xBCRightVelY = 2.0*grid_options.xBCRightVel[2]
+  xBCRightVelZ = 2.0*grid_options.xBCRightVel[3]
+  xBCLeftTemp  = grid_options.xBCLeftTemp
+  xBCRightTemp = grid_options.xBCRightTemp
   grid_options.xBCLeftParticles  = Particles.Solid
   grid_options.xBCRightParticles = Particles.Solid
 else
@@ -212,6 +241,7 @@ end
 local ySignX, ySignY, ySignZ
 local yBCLeftVelX, yBCLeftVelY, yBCLeftVelZ
 local yBCRightVelX, yBCRightVelY, yBCRightVelZ
+local yBCLeftTemp, yBCRightTemp
 local liszt YOffsetDummyPeriodic(boundaryPointDepth)
   return 0
 end
@@ -224,12 +254,14 @@ if grid_options.yBCLeft  == "periodic" and
   ySignX = 1
   ySignY = 1
   ySignZ = 1
-  yBCLeftVelX = 0.0
-  yBCLeftVelY = 0.0
-  yBCLeftVelZ = 0.0
+  yBCLeftVelX  = 0.0
+  yBCLeftVelY  = 0.0
+  yBCLeftVelZ  = 0.0
   yBCRightVelX = 0.0
   yBCRightVelY = 0.0
   yBCRightVelZ = 0.0
+  yBCLeftTemp  = -1.0
+  yBCRightTemp = -1.0
   grid_options.yBCLeftParticles  = Particles.Permeable
   grid_options.yBCRightParticles = Particles.Permeable
 elseif grid_options.yBCLeft  == "symmetry" and
@@ -238,16 +270,18 @@ elseif grid_options.yBCLeft  == "symmetry" and
   ySignX = 1
   ySignY = -1
   ySignZ = 1
-  yBCLeftVelX = 0.0
-  yBCLeftVelY = 0.0
-  yBCLeftVelZ = 0.0
+  yBCLeftVelX  = 0.0
+  yBCLeftVelY  = 0.0
+  yBCLeftVelZ  = 0.0
   yBCRightVelX = 0.0
   yBCRightVelY = 0.0
   yBCRightVelZ = 0.0
+  yBCLeftTemp  = -1.0
+  yBCRightTemp = -1.0
   grid_options.yBCLeftParticles  = Particles.Solid
   grid_options.yBCRightParticles = Particles.Solid
-elseif grid_options.yBCLeft  == "wall" and
-       grid_options.yBCRight == "wall" then
+elseif grid_options.yBCLeft  == "adiabatic_wall" and
+       grid_options.yBCRight == "adiabatic_wall" then
   YOffset = YOffsetSymmetry
   ySignX = -1
   ySignY = -1
@@ -258,6 +292,24 @@ elseif grid_options.yBCLeft  == "wall" and
   yBCRightVelX = 2.0*grid_options.yBCRightVel[1]
   yBCRightVelY = 2.0*grid_options.yBCRightVel[2]
   yBCRightVelZ = 2.0*grid_options.yBCRightVel[3]
+  yBCLeftTemp  = -1.0
+  yBCRightTemp = -1.0
+  grid_options.yBCLeftParticles  = Particles.Solid
+  grid_options.yBCRightParticles = Particles.Solid
+elseif grid_options.yBCLeft  == "isothermal_wall" and
+       grid_options.yBCRight == "isothermal_wall" then
+  YOffset = YOffsetSymmetry
+  ySignX = -1
+  ySignY = -1
+  ySignZ = -1
+  yBCLeftVelX  = 2.0*grid_options.yBCLeftVel[1]
+  yBCLeftVelY  = 2.0*grid_options.yBCLeftVel[2]
+  yBCLeftVelZ  = 2.0*grid_options.yBCLeftVel[3]
+  yBCRightVelX = 2.0*grid_options.yBCRightVel[1]
+  yBCRightVelY = 2.0*grid_options.yBCRightVel[2]
+  yBCRightVelZ = 2.0*grid_options.yBCRightVel[3]
+  yBCLeftTemp  = grid_options.yBCLeftTemp
+  yBCRightTemp = grid_options.yBCRightTemp
   grid_options.yBCLeftParticles  = Particles.Solid
   grid_options.yBCRightParticles = Particles.Solid
 else
@@ -269,6 +321,7 @@ end
 local zSignX, zSignY, zSignZ
 local zBCLeftVelX, zBCLeftVelY, zBCLeftVelZ
 local zBCRightVelX, zBCRightVelY, zBCRightVelZ
+local zBCLeftTemp, zBCRightTemp
 -- Offset liszt functions
 local liszt ZOffsetPeriodic(boundaryPointDepth)
   return 0
@@ -285,12 +338,14 @@ if grid_options.zBCLeft  == "periodic" and
   zSignX = 1
   zSignY = 1
   zSignZ = 1
-  zBCLeftVelX = 0.0
-  zBCLeftVelY = 0.0
-  zBCLeftVelZ = 0.0
+  zBCLeftVelX  = 0.0
+  zBCLeftVelY  = 0.0
+  zBCLeftVelZ  = 0.0
   zBCRightVelX = 0.0
   zBCRightVelY = 0.0
   zBCRightVelZ = 0.0
+  zBCLeftTemp  = -1.0
+  zBCRightTemp = -1.0
   grid_options.zBCLeftParticles  = Particles.Permeable
   grid_options.zBCRightParticles = Particles.Permeable
 elseif grid_options.zBCLeft == "symmetry" and
@@ -305,10 +360,12 @@ elseif grid_options.zBCLeft == "symmetry" and
   zBCRightVelX = 0.0
   zBCRightVelY = 0.0
   zBCRightVelZ = 0.0
+  zBCLeftTemp  = -1.0
+  zBCRightTemp = -1.0
   grid_options.zBCLeftParticles  = Particles.Solid
   grid_options.zBCRightParticles = Particles.Solid
-elseif grid_options.zBCLeft  == "wall" and
-       grid_options.zBCRight == "wall" then
+elseif grid_options.zBCLeft  == "adiabatic_wall" and
+       grid_options.zBCRight == "adiabatic_wall" then
   ZOffset = ZOffsetSymmetry
   zSignX = -1
   zSignY = -1
@@ -319,6 +376,24 @@ elseif grid_options.zBCLeft  == "wall" and
   zBCRightVelX = 2.0*grid_options.zBCRightVel[1]
   zBCRightVelY = 2.0*grid_options.zBCRightVel[2]
   zBCRightVelZ = 2.0*grid_options.zBCRightVel[3]
+  zBCLeftTemp  = -1.0
+  zBCRightTemp = -1.0
+  grid_options.zBCLeftParticles  = Particles.Solid
+  grid_options.zBCRightParticles = Particles.Solid
+elseif grid_options.zBCLeft  == "isothermal_wall" and
+       grid_options.zBCRight == "isothermal_wall" then
+  ZOffset = ZOffsetSymmetry
+  zSignX = -1
+  zSignY = -1
+  zSignZ = -1
+  zBCLeftVelX  = 2.0*grid_options.zBCLeftVel[1]
+  zBCLeftVelY  = 2.0*grid_options.zBCLeftVel[2]
+  zBCLeftVelZ  = 2.0*grid_options.zBCLeftVel[3]
+  zBCRightVelX = 2.0*grid_options.zBCRightVel[1]
+  zBCRightVelY = 2.0*grid_options.zBCRightVel[2]
+  zBCRightVelZ = 2.0*grid_options.zBCRightVel[3]
+  zBCLeftTemp  = grid_options.zBCLeftTemp
+  zBCRightTemp = grid_options.zBCRightTemp
   grid_options.zBCLeftParticles  = Particles.Solid
   grid_options.zBCRightParticles = Particles.Solid
 else
@@ -1901,61 +1976,84 @@ end
 -- Helper function for updating the ghost fields to minimize repeated code
 local liszt UpdateGhostFieldsHelper(c_bnd, c_int,
                                     SignX, SignY, SignZ,
-                                    BCVelX, BCVelY, BCVelZ)
+                                    BCVelX, BCVelY, BCVelZ,
+                                    BCTemp)
+
+  -- Temporary variables for computing new halo state
+  var rho = L.double(0.0)
+  var temp_wall   = L.double(0.0)
+  var temperature = L.double(0.0)
+  var velocity    = L.vec3d({0.0, 0.0, 0.0})
 
   -- Compute the Cv for updating the Energy equation
   var cv = fluid_options.gasConstant / (fluid_options.gamma - 1.0)
 
   -- Compute the new velocity (including any wall conditions)
-  var velocity = L.vec3d({0.0, 0.0, 0.0})
   velocity[0] = c_int.rhoVelocity[0]/c_int.rho * SignX + BCVelX
   velocity[1] = c_int.rhoVelocity[1]/c_int.rho * SignY + BCVelY
   velocity[2] = c_int.rhoVelocity[2]/c_int.rho * SignZ + BCVelZ
 
+  -- Compute the temperature for the halo cell (possibly adiabatic/isothermal)
+  temp_wall = c_int.temperature
+  if BCTemp > 0.0 then
+    temp_wall = BCTemp
+  end
+  temperature = 2.0*temp_wall - c_int.temperature
+
+  -- Recompute the density in the halo in case of a temperature change
+  -- Pressure is a zero-order extrapolation
+  rho = c_int.pressure / ( fluid_options.gasConstant * temperature )
+
   -- Update the boundary cell based on the values in the matching interior cell
-  c_bnd.rhoBoundary            =  c_int.rho
-  c_bnd.rhoVelocityBoundary[0] =  c_int.rho*velocity[0]
-  c_bnd.rhoVelocityBoundary[1] =  c_int.rho*velocity[1]
-  c_bnd.rhoVelocityBoundary[2] =  c_int.rho*velocity[2]
-  c_bnd.rhoEnergyBoundary      =  c_int.rho * (cv * c_int.temperature +
+  c_bnd.rhoBoundary            =  rho
+  c_bnd.rhoVelocityBoundary[0] =  rho*velocity[0]
+  c_bnd.rhoVelocityBoundary[1] =  rho*velocity[1]
+  c_bnd.rhoVelocityBoundary[2] =  rho*velocity[2]
+  c_bnd.rhoEnergyBoundary      =  rho * (cv * temperature +
                                               0.5*L.dot(velocity,velocity))
   c_bnd.velocityBoundary[0]    =  velocity[0]
   c_bnd.velocityBoundary[1]    =  velocity[1]
   c_bnd.velocityBoundary[2]    =  velocity[2]
   c_bnd.pressureBoundary       =  c_int.pressure
-  c_bnd.temperatureBoundary    =  c_int.temperature
+  c_bnd.temperatureBoundary    =  temperature
 
 end
 liszt Flow.UpdateGhostFieldsStep1 (c : grid.cells)
     if c.xneg_depth > 0 then
         UpdateGhostFieldsHelper(c, c(XOffset(c.xneg_depth),0,0),
                                 xSignX, xSignY, xSignZ,
-                                xBCLeftVelX, xBCLeftVelY, xBCLeftVelZ)
+                                xBCLeftVelX, xBCLeftVelY, xBCLeftVelZ,
+                                xBCLeftTemp)
     end
     if c.xpos_depth > 0 then
         UpdateGhostFieldsHelper(c, c(-XOffset(c.xpos_depth),0,0),
                                 xSignX, xSignY, xSignZ,
-                                xBCRightVelX, xBCRightVelY, xBCRightVelZ)
+                                xBCRightVelX, xBCRightVelY, xBCRightVelZ,
+                                xBCRightTemp)
     end
     if c.yneg_depth > 0 then
         UpdateGhostFieldsHelper(c, c(0,YOffset(c.yneg_depth),0),
                                 ySignX, ySignY, ySignZ,
-                                yBCLeftVelX, yBCLeftVelY, yBCLeftVelZ)
+                                yBCLeftVelX, yBCLeftVelY, yBCLeftVelZ,
+                                yBCLeftTemp)
     end
     if c.ypos_depth > 0 then
         UpdateGhostFieldsHelper(c, c(0,-YOffset(c.ypos_depth),0),
                                 ySignX, ySignY, ySignZ,
-                                yBCRightVelX, yBCRightVelY, yBCRightVelZ)
+                                yBCRightVelX, yBCRightVelY, yBCRightVelZ,
+                                yBCRightTemp)
     end
     if c.zneg_depth > 0 then
         UpdateGhostFieldsHelper(c, c(0,0,ZOffset(c.zneg_depth)),
                                 zSignX, zSignY, zSignZ,
-                                zBCLeftVelX, zBCLeftVelY, zBCLeftVelZ)
+                                zBCLeftVelX, zBCLeftVelY, zBCLeftVelZ,
+                                zBCLeftTemp)
     end
     if c.zpos_depth > 0 then
         UpdateGhostFieldsHelper(c, c(0,0,-ZOffset(c.zpos_depth)),
                                 zSignX, zSignY, zSignZ,
-                                zBCRightVelX, zBCRightVelY, zBCRightVelZ)
+                                zBCRightVelX, zBCRightVelY, zBCRightVelZ,
+                                zBCRightTemp)
     end
 end
 liszt Flow.UpdateGhostFieldsStep2 (c : grid.cells)
@@ -1971,31 +2069,48 @@ function Flow.UpdateGhost()
 end
 
 -- Helper function for updating the ghost fields to minimize repeated code
-local liszt UpdateGhostThermodynamicsHelper (c_bnd, c_int)
+local liszt UpdateGhostThermodynamicsHelper (c_bnd, c_int, BCTemp)
+
+  -- Temporary variables for computing new halo state
+  var temp_wall   = L.double(0.0)
+  var temperature = L.double(0.0)
+
+  -- Compute the temperature for the halo cell (possibly adiabatic/isothermal)
+  temp_wall = c_int.temperature
+  if BCTemp > 0.0 then
+    temp_wall = BCTemp
+  end
+  temperature = 2.0*temp_wall - c_int.temperature
 
   -- Update the boundary cell based on the values in the matching interior cell
   c_bnd.pressureBoundary    = c_int.pressure
-  c_bnd.temperatureBoundary = c_int.temperature
+  c_bnd.temperatureBoundary = temperature
 
 end
 liszt Flow.UpdateGhostThermodynamicsStep1 (c : grid.cells)
   if c.xneg_depth > 0 then
-    UpdateGhostThermodynamicsHelper(c, c(XOffset(c.xneg_depth),0,0))
+    UpdateGhostThermodynamicsHelper(c, c(XOffset(c.xneg_depth),0,0),
+                                    xBCLeftTemp)
   end
   if c.xpos_depth > 0 then
-    UpdateGhostThermodynamicsHelper(c, c(-XOffset(c.xpos_depth),0,0))
+    UpdateGhostThermodynamicsHelper(c, c(-XOffset(c.xpos_depth),0,0),
+                                    xBCRightTemp)
   end
   if c.yneg_depth > 0 then
-    UpdateGhostThermodynamicsHelper(c, c(0,YOffset(c.yneg_depth),0))
+    UpdateGhostThermodynamicsHelper(c, c(0,YOffset(c.yneg_depth),0),
+                                    yBCLeftTemp)
   end
   if c.ypos_depth > 0 then
-    UpdateGhostThermodynamicsHelper(c, c(0,-YOffset(c.ypos_depth),0))
+    UpdateGhostThermodynamicsHelper(c, c(0,-YOffset(c.ypos_depth),0),
+                                    yBCRightTemp)
   end
   if c.zneg_depth > 0 then
-    UpdateGhostThermodynamicsHelper(c, c(0,0,ZOffset(c.zneg_depth)))
+    UpdateGhostThermodynamicsHelper(c, c(0,0,ZOffset(c.zneg_depth)),
+                                    zBCLeftTemp)
   end
   if c.zpos_depth > 0 then
-    UpdateGhostThermodynamicsHelper(c, c(0,0,-ZOffset(c.zpos_depth)))
+    UpdateGhostThermodynamicsHelper(c, c(0,0,-ZOffset(c.zpos_depth)),
+                                    zBCRightTemp)
   end
 end
 liszt Flow.UpdateGhostThermodynamicsStep2 (c : grid.cells)
@@ -2063,7 +2178,14 @@ end
 -- Helper function for updating the conservatives to minimize repeated code
 local liszt UpdateGhostConservedHelper (c_bnd, c_int,
                                         SignX, SignY, SignZ,
-                                        BCVelX, BCVelY, BCVelZ)
+                                        BCVelX, BCVelY, BCVelZ,
+                                        BCTemp)
+
+  -- Temporary variables for computing new halo state
+  var rho = L.double(0.0)
+  var temp_wall   = L.double(0.0)
+  var temperature = L.double(0.0)
+  var velocity    = L.vec3d({0.0, 0.0, 0.0})
 
   -- Compute the Cv for updating the Energy equation
   var cv = fluid_options.gasConstant / (fluid_options.gamma - 1.0)
@@ -2073,13 +2195,24 @@ local liszt UpdateGhostConservedHelper (c_bnd, c_int,
   velocity[0] = c_int.rhoVelocity[0]/c_int.rho * SignX + BCVelX
   velocity[1] = c_int.rhoVelocity[1]/c_int.rho * SignY + BCVelY
   velocity[2] = c_int.rhoVelocity[2]/c_int.rho * SignZ + BCVelZ
-  
+
+  -- Compute the temperature for the halo cell (possibly adiabatic/isothermal)
+  temp_wall = c_int.temperature
+  if BCTemp > 0.0 then
+    temp_wall = BCTemp
+  end
+  temperature = 2.0*temp_wall - c_int.temperature
+
+  -- Recompute the density in the halo in case of a temperature change
+  -- Pressure is a zero-order extrapolation
+  rho = c_int.pressure / ( fluid_options.gasConstant * temperature )
+
   -- Update the boundary cell based on the values in the matching interior cell
-  c_bnd.rhoBoundary            =   c_int.rho
-  c_bnd.rhoVelocityBoundary[0] =   c_int.rho*velocity[0]
-  c_bnd.rhoVelocityBoundary[1] =   c_int.rho*velocity[1]
-  c_bnd.rhoVelocityBoundary[2] =   c_int.rho*velocity[2]
-  c_bnd.rhoEnergyBoundary      =   c_int.rho * (cv * c_int.temperature +
+  c_bnd.rhoBoundary            =   rho
+  c_bnd.rhoVelocityBoundary[0] =   rho*velocity[0]
+  c_bnd.rhoVelocityBoundary[1] =   rho*velocity[1]
+  c_bnd.rhoVelocityBoundary[2] =   rho*velocity[2]
+  c_bnd.rhoEnergyBoundary      =   rho * (cv * temperature +
                                                 0.5*L.dot(velocity,velocity))
 
 end
@@ -2087,32 +2220,38 @@ liszt Flow.UpdateGhostConservedStep1 (c : grid.cells)
   if c.xneg_depth > 0 then
     UpdateGhostConservedHelper(c, c(XOffset(c.xneg_depth),0,0),
                                xSignX, xSignY, xSignZ,
-                               xBCLeftVelX, xBCLeftVelY, xBCLeftVelZ)
+                               xBCLeftVelX, xBCLeftVelY, xBCLeftVelZ,
+                               xBCLeftTemp)
   end
   if c.xpos_depth > 0 then
     UpdateGhostConservedHelper(c, c(-XOffset(c.xpos_depth),0,0),
                                xSignX, xSignY, xSignZ,
-                               xBCRightVelX, xBCRightVelY, xBCRightVelZ)
+                               xBCRightVelX, xBCRightVelY, xBCRightVelZ,
+                               xBCRightTemp)
   end
   if c.yneg_depth > 0 then
     UpdateGhostConservedHelper(c, c(0,YOffset(c.yneg_depth),0),
                                ySignX, ySignY, ySignZ,
-                               yBCLeftVelX, yBCLeftVelY, yBCLeftVelZ)
+                               yBCLeftVelX, yBCLeftVelY, yBCLeftVelZ,
+                               yBCLeftTemp)
   end
   if c.ypos_depth > 0 then
     UpdateGhostConservedHelper(c, c(0,-YOffset(c.ypos_depth),0),
                                ySignX, ySignY, ySignZ,
-                               yBCRightVelX, yBCRightVelY, yBCRightVelZ)
+                               yBCRightVelX, yBCRightVelY, yBCRightVelZ,
+                               yBCRightTemp)
   end
   if c.zneg_depth > 0 then
     UpdateGhostConservedHelper(c, c(0,0,ZOffset(c.zneg_depth)),
                                zSignX, zSignY, zSignZ,
-                               zBCLeftVelX, zBCLeftVelY, zBCLeftVelZ)
+                               zBCLeftVelX, zBCLeftVelY, zBCLeftVelZ,
+                               zBCLeftTemp)
   end
   if c.zpos_depth > 0 then
     UpdateGhostConservedHelper(c, c(0,0,-ZOffset(c.zpos_depth)),
                                zSignX, zSignY, zSignZ,
-                               zBCRightVelX, zBCRightVelY, zBCRightVelZ)
+                               zBCRightVelX, zBCRightVelY, zBCRightVelZ,
+                               zBCRightTemp)
   end
 end
 liszt Flow.UpdateGhostConservedStep2 (c : grid.cells)
@@ -3282,8 +3421,8 @@ function TimeIntegrator.InitializeVariables()
     grid.vertices.interior:map(Flow.InitializeVertexRindLayer)
     grid.cells.interior:map(Flow.InitializePrimitives)
     grid.cells.interior:map(Flow.UpdateConservedFromPrimitive)
-    Flow.UpdateGhost()
     Flow.UpdateAuxiliary()
+    Flow.UpdateGhost()
 
     particles:map(Particles.Feed)
     particles:map(Particles.Locate)
