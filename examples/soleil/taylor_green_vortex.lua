@@ -50,6 +50,8 @@ return {
   wrtRestart = 'ON',
   wrtVolumeSolution = 'ON',
   wrt1DSlice = 'ON',
+  wrtParticleEvolution = 'OFF',
+  particleEvolutionIndex = 0,
   outputEveryTimeSteps  = 50,
   restartEveryTimeSteps = 50,
   headerFrequency       = 20,

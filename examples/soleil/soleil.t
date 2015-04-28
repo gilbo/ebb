@@ -600,22 +600,32 @@ if config.wrtRestart == 'ON' then
   elseif config.wrtRestart == 'OFF' then
   IO.wrtRestart = OFF
   else
-  error("Restart writing not defined (ON or OFF)")
+  error("Restart writing not defined (wrtRestart ON or OFF)")
 end
 if config.wrtVolumeSolution == 'ON' then
   IO.wrtVolumeSolution = ON
   elseif config.wrtVolumeSolution == 'OFF' then
   IO.wrtVolumeSolution = OFF
   else
-  error("Volume solution writing not defined (ON or OFF)")
+  error("Volume solution writing not defined (wrtVolumeSolution ON or OFF)")
 end
 if config.wrt1DSlice == 'ON' then
   IO.wrt1DSlice = ON
   elseif config.wrt1DSlice == 'OFF' then
   IO.wrt1DSlice = OFF
   else
-  error("1D slice writing not defined (ON or OFF)")
+  error("1D slice writing not defined (wrt1DSlice ON or OFF)")
 end
+if config.wrtParticleEvolution == 'ON' then
+  IO.wrtParticleEvolution = ON
+  elseif config.wrtParticleEvolution == 'OFF' then
+  IO.wrtParticleEvolution = OFF
+  else
+  error("Particle evolution writing not defined (wrtParticleEvolution ON or OFF)")
+end
+-- Store the index of the particle that we would like to track
+IO.particleEvolutionIndex = config.particleEvolutionIndex
+
 -- Store the directory for all output files from the config
 IO.outputFileNamePrefix = config.outputDirectory
 
@@ -4000,6 +4010,53 @@ if (timeStep % TimeIntegrator.outputEveryTimeSteps == 0 and
   -- Close the file
   io.close()
   
+end
+
+  -- Write a file for the evolution in time of particle i
+  
+if (timeStep % TimeIntegrator.outputEveryTimeSteps == 0 and
+    IO.wrtParticleEvolution == ON) then
+  
+  -- Prepare the particle evolution file name for the current iteration
+  
+  local particleEvolutionIndex  = IO.particleEvolutionIndex
+  local outputFileName = IO.outputFileNamePrefix .. "evolution_particle_" .. tostring(particleEvolutionIndex) .. ".dat"
+  
+  -- Check if file already exists
+  
+  local fileDidNotExist = io.open(outputFileName,"r") == nil
+  
+  -- Open file
+  
+  local outputFile = io.open(outputFileName,"a")
+  io.output(outputFile)
+  
+  -- CSV header
+  
+  if fileDidNotExist then
+    io.write('"Time", "X", "Y", "Z", "X-Velocity", "Y-Velocity", "Z-Velocity", "Temperature", "Diameter"\n')
+  end
+  
+  -- Check for the particle with 'index=particleIndex' and write its primitive variables
+  
+  local pos  = particles.position:DumpToList()
+  local vel  = particles.velocity:DumpToList()
+  local temp = particles.temperature:DumpToList()
+  local diam = particles.diameter:DumpToList()
+  
+  local s =             value_tostring(TimeIntegrator.simTime:get())       .. ''
+ 	s = s .. ' ' .. value_tostring(pos[particleEvolutionIndex])  .. ''
+ 	s = s .. ' ' .. value_tostring(vel[particleEvolutionIndex])  .. ''
+ 	s = s .. ' ' .. value_tostring(temp[particleEvolutionIndex]) .. ''
+ 	s = s .. ' ' .. value_tostring(diam[particleEvolutionIndex]) .. '\n'
+  
+  io.write("", s)
+  
+  -- Close the file
+  
+  io.close()
+  
+  --end
 end
 
 -- Check if it is time to output a particle restart file
