@@ -17,19 +17,25 @@ return {
   xWidth = 6.283185307179586,
   yWidth = 6.283185307179586,
   zWidth = 6.283185307179586,
-  -- BCs on each boundary: 'periodic,' 'symmetry,' or 'wall'
+  -- BCs: 'periodic,' 'symmetry,' 'adiabatic_wall,' or 'isothermal_wall'
   xBCLeft  = 'periodic',
   xBCLeftVel = {0.0, 0.0, 0.0},
+  xBCLeftTemp = 0.0,
   xBCRight = 'periodic',
   xBCRightVel = {0.0, 0.0, 0.0},
+  xBCRightTemp = 0.0,
   yBCLeft  = 'periodic',
   yBCLeftVel = {0.0, 0.0, 0.0},
+  yBCLeftTemp = 0.0,
   yBCRight = 'periodic',
   yBCRightVel = {0.0, 0.0, 0.0},
+  yBCRightTemp = 0.0,
   zBCLeft  = 'periodic',
   zBCLeftVel = {0.0, 0.0, 0.0},
+  zBCLeftTemp = 0.0,
   zBCRight = 'periodic',
   zBCRightVel = {0.0, 0.0, 0.0},
+  zBCRightTemp = 0.0,
   
   -- Spatial Integration Options --
   spatialOrder = 2, -- 2 or 6
