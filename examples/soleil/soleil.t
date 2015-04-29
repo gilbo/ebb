@@ -2554,6 +2554,15 @@ local function value_tostring(val)
   return tostring(val)
 end
 
+local function value_tostring_comma(val)
+  if type(val) == 'table' then
+    local s = tostring(val[1])
+    for i=2,#val do s = s..', '..tostring(val[i]) end
+    return s
+  end
+  return tostring(val)
+end
+
 -- Write cells field to output file
 Flow.WriteField = function (outputFileNamePrefix,xSize,ySize,zSize,field)
     -- Make up complete file name based on name of field
@@ -4045,9 +4054,9 @@ if (timeStep % TimeIntegrator.outputEveryTimeSteps == 0 and
   local temp = particles.temperature:DumpToList()
   local diam = particles.diameter:DumpToList()
   
-  local s =             value_tostring(TimeIntegrator.simTime:get())       .. ''
- 	s = s .. ', ' .. value_tostring(pos[particleEvolutionIndex])  .. ''
- 	s = s .. ', ' .. value_tostring(vel[particleEvolutionIndex])  .. ''
+  local s =             value_tostring(TimeIntegrator.simTime:get())  .. ''
+ 	s = s .. ', ' .. value_tostring_comma(pos[particleEvolutionIndex])  .. ''
+ 	s = s .. ', ' .. value_tostring_comma(vel[particleEvolutionIndex])  .. ''
  	s = s .. ', ' .. value_tostring(temp[particleEvolutionIndex]) .. ''
  	s = s .. ', ' .. value_tostring(diam[particleEvolutionIndex]) .. '\n'
   
