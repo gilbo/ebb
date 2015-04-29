@@ -15,6 +15,7 @@ examples/gpu/red_ops.t
 local_files
 
 simple_trimesh_diffusion_output
+vega_output
 
 notes.txt
 

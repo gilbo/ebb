@@ -5,14 +5,25 @@ local Tetmesh = L.require 'examples.fem.tetmesh'
 local VEGFileIO = L.require 'examples.fem.vegfileio'
 local PN = L.require 'lib.pathname'
 
--- Input can be liszt or vega
-local input = 'vega'
 
-print("Loading mesh ...")
-local turtle = VEGFileIO.LoadTetmesh
-  'examples/fem/turtle-volumetric-homogeneous.veg'
+--------------------------------------------------------------------------------
+--[[                     Setup file name, relation etc                      ]]--
+--------------------------------------------------------------------------------
 
-local mesh = turtle
+if not arg[2] or arg[2] == "-h" or arg[2] == "--help" then
+  print("Usage : ./liszt examples/fem/sim_main.t path_to_dir_with_sim_output")
+  os.exit(1)
+end
+
+file_dir = arg[2]
+num_frames = tonumber(io.open(tostring(file_dir .. "/num_frames")):read())
+local mesh = VEGFileIO.LoadTetmesh(file_dir .. "/mesh")
+print("Will read " .. tostring(num_frames) .. " from " .. file_dir .. "\n")
+
+
+--------------------------------------------------------------------------------
+--[[                    Parse mesh file, read positions                     ]]--
+--------------------------------------------------------------------------------
 
 function split_on_spaces(str)
   local a = {}
@@ -30,7 +41,28 @@ function split_on_spaces(str)
   return a
 end
 
--- let's visualize the mesh if we can?
+function loadPositions(filename, mesh)
+  local positions = {}
+  local infile = io.open(tostring(filename), "r")
+  local line = infile:read()
+  local toprint = true
+  while line ~= nil do
+    local p = {}
+    positions[#positions + 1] = p
+    local tokens = split_on_spaces(line)
+    for i = 1,3 do
+      p[i] = tonumber(tokens[i]:sub(1, tokens[i]:len()-1))
+    end
+    line = infile:read()
+  end
+  infile:close()
+  mesh.vertices.pos:Load(positions)
+end
+
+
+--------------------------------------------------------------------------------
+--[[                           Draw calls to VDB                            ]]--
+--------------------------------------------------------------------------------
 
 local sqrt3 = math.sqrt(3)
 
@@ -87,32 +119,18 @@ function visualize(mesh)
   vdb.frame() -- this call clears the canvas for a new frame
   mesh.tetrahedra:map(visualizeDeformation)
   vdb.vend()
+end
+
+
+--------------------------------------------------------------------------------
+--[[                      Read positions, draw, wait                        ]]--
+--------------------------------------------------------------------------------
+
+for i = 0,num_frames do
+  loadPositions( file_dir .. "/vertices_" .. tostring(i), mesh)
+  visualize(mesh)
   print('Hit enter for next frame')
   io.read()
-end
-
-function loadPositions(filename, mesh)
-  local positions = {}
-  local infile = io.open(tostring(filename), "r")
-  local line = infile:read()
-  local toprint = true
-  while line ~= nil do
-    local p = {}
-    positions[#positions + 1] = p
-    local tokens = split_on_spaces(line)
-    for i = 1,3 do
-      p[i] = tonumber(tokens[i]:sub(1, tokens[i]:len()-1))
-    end
-    line = infile:read()
-  end
-  infile:close()
-  mesh.vertices.pos:Load(positions)
-end
-
-visualize(mesh)
-for i = 0,10 do
-  loadPositions("examples/fem/out/mesh_" .. input .. "_" ..tostring(i), mesh)
-  visualize(mesh)
 end
 
 -- pause before exit
