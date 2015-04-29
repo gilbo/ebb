@@ -3399,7 +3399,7 @@ end
 ------------------
 
 function TimeIntegrator.SetupTimeStep()
-    particles:map(Particles.Feed)
+    --particles:map(Particles.Feed) -- for now, feeding of particles is disabled
     grid.cells:map(Flow.InitializeTemporaries)
     particles:map(Particles.InitializeTemporaries)
 end
@@ -3433,8 +3433,9 @@ function TimeIntegrator.InitializeVariables()
     grid.cells.interior:map(Flow.UpdateConservedFromPrimitive)
     Flow.UpdateAuxiliary()
     Flow.UpdateGhost()
-
-    particles:map(Particles.Feed)
+    if particles_options.initParticles ~= Particles.Restart then
+      particles:map(Particles.Feed)
+    end
     particles:map(Particles.Locate)
     particles:map(Particles.SetVelocitiesToFlow)
 end
