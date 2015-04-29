@@ -4020,7 +4020,7 @@ if (timeStep % TimeIntegrator.outputEveryTimeSteps == 0 and
   -- Prepare the particle evolution file name for the current iteration
   
   local particleEvolutionIndex  = IO.particleEvolutionIndex
-  local outputFileName = IO.outputFileNamePrefix .. "evolution_particle_" .. tostring(particleEvolutionIndex) .. ".dat"
+  local outputFileName = IO.outputFileNamePrefix .. "evolution_particle_" .. tostring(particleEvolutionIndex) .. ".csv"
   
   -- Check if file already exists
   
@@ -4045,10 +4045,10 @@ if (timeStep % TimeIntegrator.outputEveryTimeSteps == 0 and
   local diam = particles.diameter:DumpToList()
   
   local s =             value_tostring(TimeIntegrator.simTime:get())       .. ''
- 	s = s .. ' ' .. value_tostring(pos[particleEvolutionIndex])  .. ''
- 	s = s .. ' ' .. value_tostring(vel[particleEvolutionIndex])  .. ''
- 	s = s .. ' ' .. value_tostring(temp[particleEvolutionIndex]) .. ''
- 	s = s .. ' ' .. value_tostring(diam[particleEvolutionIndex]) .. '\n'
+ 	s = s .. ', ' .. value_tostring(pos[particleEvolutionIndex])  .. ''
+ 	s = s .. ', ' .. value_tostring(vel[particleEvolutionIndex])  .. ''
+ 	s = s .. ', ' .. value_tostring(temp[particleEvolutionIndex]) .. ''
+ 	s = s .. ', ' .. value_tostring(diam[particleEvolutionIndex]) .. '\n'
   
   io.write("", s)
   
