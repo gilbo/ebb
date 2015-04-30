@@ -11,7 +11,7 @@ local PN = L.require 'lib.pathname'
 --------------------------------------------------------------------------------
 
 if not arg[2] or arg[2] == "-h" or arg[2] == "--help" then
-  print("Usage : ./liszt examples/fem/sim_main.t path_to_dir_with_sim_output")
+  print("Usage : ./liszt examples/fem/view-files.t path_to_dir_with_sim_output")
   os.exit(1)
 end
 
