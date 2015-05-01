@@ -1,14 +1,12 @@
 import "compiler.liszt"
-
+local PN = L.require 'lib.pathname'
 
 local Tetmesh = {}
 Tetmesh.__index = Tetmesh
 package.loaded["examples.fem.tetmesh"] = Tetmesh
 
 
-
 ------------------------------------------------------------------------------
-
 
 -- Includes all vertices directly connected to a vertex, through an element,
 -- including the indexing vertex itself.
@@ -117,11 +115,25 @@ function Tetmesh.LoadFromLists(vertices, elements)
   -- build vertex-vertex relation for storing mass matrix (and other fields?)
   build_element_edges(mesh, elements)
 
+  -- get determintant for tetreahedron
+  mesh.tetrahedra:NewFieldMacro('elementDet', L.NewMacro(function(t)
+      return liszt quote
+          var a = t.v[0].pos
+          var b = t.v[1].pos
+          var c = t.v[2].pos
+          var d = t.v[3].pos
+        in
+          L.dot(a - d, L.cross(b - d, c - d))
+        end
+      end) )
+
+  -- element density
+  mesh.tetrahedra:NewFieldMacro('density', L.NewMacro(function(t)
+    return liszt `mesh.density end ))
+
   -- and return the resulting mesh
   return mesh
 end
-
-
 
 
 ------------------------------------------------------------------------------
@@ -137,3 +149,54 @@ end
 
 ------------------------------------------------------------------------------
 
+
+-- Print out fields over edges (things like stiffnexx matrix or mass).
+
+function fieldToString(x)
+  if type(x) == 'table' then
+    local str = "{ "
+    for k,v in ipairs(x) do
+      str = str..fieldToString(v).." "
+    end
+    return (str.."}")
+  else
+    return tostring(x)
+  end
+end
+
+function Tetmesh:dumpEdgeFieldToFile(field, file_name)
+  local field_list = self.edges[field]:DumpToList()
+  local tail_list = self.edges.tail:DumpToList()
+  local head_list = self.edges.head:DumpToList()
+  local field_liszt = PN.scriptdir() .. file_name
+  local out = io.open(tostring(field_liszt), 'w')
+  for i = 1, #field_list do
+    out:write( tostring(tail_list[i]) .. "  " ..
+               tostring(head_list[i]) .. "  " ..
+               fieldToString(field_list[i]) .. "\n" )
+  end
+  out:close()
+end
+
+function Tetmesh:dumpVertFieldToFile(field, file_name)
+  local field_list = self.vertices[field]:DumpToList()
+  local field_liszt = PN.scriptdir() .. file_name
+  local out = io.open(tostring(field_liszt), 'w')
+  for i = 1, #field_list do
+    out:write(fieldToString(field_list[i]) .. "\n" )
+  end
+  out:close()
+end
+
+function Tetmesh:dumpDeformationToFile(file_name)
+  local pos = self.vertices.pos:DumpToList()
+  local d = self.vertices.q:DumpToList()
+  local field_liszt = PN.scriptdir() .. file_name
+  local out = io.open(tostring(field_liszt), 'w')
+  for i = 1, #pos do
+    out:write(tostring(pos[i][1] + d[i][1]) .. ", " ..
+              tostring(pos[i][2] + d[i][2]) .. ", " ..
+              tostring(pos[i][3] + d[i][3]) .. "\n" )
+  end
+  out:close()
+end
