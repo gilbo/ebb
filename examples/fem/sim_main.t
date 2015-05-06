@@ -24,7 +24,9 @@ local forceModel = 'stvk'
 local numTimeSteps = 5
 local cudaProfile = false
 
-if #arg > 0 then
+if #arg < 3 then
+  printUsageAndExit()
+else
   for i=2,#arg,2 do
     if arg[i] == '-config' then
       configFileName = arg[i+1]
@@ -47,7 +49,10 @@ end
 local configFile = loadfile(configFileName)()
 
 print("Loading " .. configFile.meshFileName)
-local mesh = VEGFileIO.LoadTetmesh(configFile.meshFileName)
+local mesh   = VEGFileIO.LoadTetmesh(configFile.meshFileName)
+mesh.density = configFile.rho
+mesh.E       = configFile.E
+mesh.Nu      = configFile.Nu
 
 local I = nil
 if cudaProfile then
@@ -83,8 +88,6 @@ end
 mesh.edges:NewField('stiffness', L.mat3d)
 mesh.edges:NewField('mass', L.double):Load(0)
 mesh.tetrahedra:NewField('volume', L.double)
-mesh.tetrahedra:NewField('lambdaLame', L.double):Load(0)
-mesh.tetrahedra:NewField('muLame', L.double):Load(0)
 mesh.vertices:NewField('q', L.vec3d):Load({ 0, 0, 0})
 mesh.vertices:NewField('qvel', L.vec3d):Load({ 0, 0, 0 })
 mesh.vertices:NewField('qaccel', L.vec3d):Load({ 0, 0, 0 })
@@ -137,30 +140,6 @@ function computeMassMatrix(mesh)
     end
   end
   mesh.tetrahedra:map(buildMassMatrix)
-end
-
-------------------------------------------------------------------------------
--- Initialize Lame constants. This includes lambda and mu. See
---     libraries/volumetricMesh/volumetricMeshENuMaterial.h
---     (getLambda and getMu)
--- This code is used to initialize Lame constants when stiffnexx matrix/ internal_forces
--- are initialized.
-
-local liszt getLambda(t)
-  var E : L.double = mesh.E
-  var Nu : L.double = mesh.Nu
-  return ( (Nu * E) / ( ( 1 + Nu ) * ( 1 - 2 * Nu ) ) )
-end
-
-local liszt getMu(t)
-  var E : L.double = mesh.E
-  var Nu : L.double = mesh.Nu
-  return ( ( E / ( 2 * ( 1 + Nu) ) ) )
-end
-
-local liszt initializeLameConstants (t : mesh.tetrahedra)
-  t.lambdaLame = getLambda(t)
-  t.muLame = getMu(t)
 end
 
 
@@ -507,7 +486,6 @@ function main()
   local fixedDOFs        = nil
 
   computeMassMatrix(volumetric_mesh)
-  mesh.tetrahedra:map(initializeLameConstants)
 
   F:setupFieldsFunctions(mesh)
 
