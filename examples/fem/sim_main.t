@@ -504,7 +504,7 @@ function main()
   }
   integrator:setupFieldsFunctions(mesh)
 
-  mesh:dumpDeformationToFile("out/mesh_liszt_"..tostring(0))
+  mesh:dumpDeformationToFile("liszt_output/mesh_liszt_"..tostring(0))
 
   local timer_step = U.Timer.New()
   for i=1,options.numTimesteps do
@@ -512,7 +512,7 @@ function main()
     setExternalConditions(volumetric_mesh, i)
     integrator:doTimestep(volumetric_mesh)
     print("Time for step "..i.." is "..(timer_step:Stop()*1E6).." us\n")
-    mesh:dumpDeformationToFile("out/mesh_liszt_"..tostring(i))
+    mesh:dumpDeformationToFile("liszt_output/mesh_liszt_"..tostring(i))
   end
 end
 

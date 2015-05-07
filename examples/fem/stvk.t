@@ -294,6 +294,9 @@ function S:setupFieldsFunctions(mesh)
     e.stiffness = U.constantMatrix3(0)
   end
 
+  ------------------------------------------------------------------------------
+  -- Invoke all precomputation.
+
   mesh.tetrahedra:map(self.precomputeStVKIntegrals)
 
 end

@@ -16,6 +16,8 @@ local_files
 
 simple_trimesh_diffusion_output
 vega_output
+liszt_output
+liszt_fem_output
 
 notes.txt
 
