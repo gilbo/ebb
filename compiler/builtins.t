@@ -690,6 +690,7 @@ L.cbrt  = Builtin.newDoubleFunction('cbrt')
 L.floor = Builtin.newDoubleFunction('floor')
 L.ceil  = Builtin.newDoubleFunction('ceil')
 L.fabs  = Builtin.newDoubleFunction('fabs')
+L.log   = Builtin.newDoubleFunction('log')
 
 
 --terra b_and (a : int, b : int)

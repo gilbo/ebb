@@ -133,10 +133,10 @@ function Tetmesh.LoadFromLists(vertices, elements)
 
   -- lame constants
   mesh.tetrahedra:NewFieldMacro('lambdaLame', L.NewMacro(function(t)
-    return liszt `L.double( (mesh.Nu * mesh.E) / ( ( 1.0 + mesh.Nu ) * ( 1.0 - 2.0 * mesh.Nu ) ) )
+    return liszt `L.double(mesh.lambdaLame)
   end ))
   mesh.tetrahedra:NewFieldMacro('muLame', L.NewMacro(function(t)
-    return liszt `L.double( ( mesh.E / ( 2.0 * ( 1.0 + mesh.Nu) ) ) )
+    return liszt `L.double(mesh.muLame)
   end ))
 
   -- and return the resulting mesh

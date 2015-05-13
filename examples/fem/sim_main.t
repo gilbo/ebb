@@ -53,6 +53,8 @@ local mesh   = VEGFileIO.LoadTetmesh(configFile.meshFileName)
 mesh.density = configFile.rho
 mesh.E       = configFile.E
 mesh.Nu      = configFile.Nu
+mesh.lambdaLame = mesh.Nu * mesh.E / ( ( 1.0 + mesh.Nu ) * ( 1.0 - 2.0 * mesh.Nu ) )
+mesh.muLame     = mesh.E / ( 2.0 * ( 1.0 + mesh.Nu) )
 
 local I = nil
 if cudaProfile then
@@ -127,7 +129,7 @@ function computeMassMatrix(mesh)
   -- A: Yes.  This means we want the full mass matrix,
   --    not just a uniform scalar per-vertex
   local liszt buildMassMatrix (t : mesh.tetrahedra)
-    var tet_vol = U.fabs(t.elementDet)/6
+    var tet_vol = L.fabs(t.elementDet)/6
     var factor = tet_vol * t.density/ 20
     for i = 0,4 do
       for j = 0,4 do
@@ -178,7 +180,7 @@ function ImplicitBackwardEulerIntegrator:setupFieldsFunctions(mesh)
   mesh.vertices:NewField('qvel_1', L.vec3d):Load({ 0, 0, 0 })
   mesh.vertices:NewField('qaccel_1', L.vec3d):Load({ 0, 0, 0 })
   mesh.vertices:NewField('qresidual', L.vec3d):Load({ 0, 0, 0 })
-  mesh.vertices:NewField('qdelta', L.vec3d):Load({ 0, 0, 0 })
+  mesh.vertices:NewField('qvdelta', L.vec3d):Load({ 0, 0, 0 })
   mesh.vertices:NewField('precond', L.vec3d):Load({ 0, 0, 0 })
   mesh.vertices:NewField('x', L.vec3d):Load({ 0, 0, 0 })
   mesh.vertices:NewField('r', L.vec3d):Load({ 0, 0, 0 })
@@ -200,8 +202,8 @@ function ImplicitBackwardEulerIntegrator:setupFieldsFunctions(mesh)
     v.qaccel_1 = { 0, 0, 0 }
   end
 
-  liszt self.initializeqdelta (v : mesh.vertices)
-    v.qdelta = v.qresidual
+  liszt self.initializeqvdelta (v : mesh.vertices)
+    v.qvdelta = v.qresidual
   end
 
   liszt self.scaleInternalForces (v : mesh.vertices)
@@ -261,7 +263,7 @@ function ImplicitBackwardEulerIntegrator:setupFieldsFunctions(mesh)
   end
 
   liszt self.getError (v : mesh.vertices)
-    var qd = v.qdelta
+    var qd = v.qvdelta
     var err = L.dot(qd, qd)
     self.err += err
   end
@@ -277,7 +279,7 @@ function ImplicitBackwardEulerIntegrator:setupFieldsFunctions(mesh)
     for e in v.edges do
       v.r += U.multiplyMatVec3(e.stiffness, e.head.x)
     end
-    v.r = v.qdelta - v.r
+    v.r = v.qvdelta - v.r
   end
 
   liszt self.pcgCalculateNormResidual (v : mesh.vertices)
@@ -315,8 +317,8 @@ function ImplicitBackwardEulerIntegrator:setupFieldsFunctions(mesh)
   end
 
   liszt self.updateAfterSolve (v : mesh.vertices)
-    v.qdelta = v.x
-    v.qvel += v.qdelta
+    v.qvdelta = v.x
+    v.qvel += v.qvdelta
     -- TODO: subtracting q from q?
     -- q += q_1-q + self.timestep * qvel
     v.q = v.q_1 + self.timestep * v.qvel
@@ -424,7 +426,7 @@ function ImplicitBackwardEulerIntegrator:doTimestep(mesh)
     end
 
     -- TODO: this should be a copy and not a separate function in the end
-    mesh.vertices:map(self.initializeqdelta)
+    mesh.vertices:map(self.initializeqvdelta)
 
     -- TODO: This code doesn't have any way of handling fixed vertices
     -- at the moment.  Should enforce that here somehow

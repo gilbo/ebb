@@ -54,7 +54,7 @@ function S:setupFieldsFunctions(mesh)
         end
         t.Phig[i, j] = sign * L.dot( L.vec3d( { 1, 1, 1 } ),
                                      L.cross(column0, column1) ) / det
-        t.volume = U.fabs(det) / 6
+        t.volume = L.fabs(det) / 6
       end
     end
   end
@@ -238,7 +238,7 @@ function S:setupFieldsFunctions(mesh)
     for ci = 0,4 do
       for ai = 0,4 do
         var qa = t.v[ai].q
-        var mat : L.mat3d = U.constantMatrix3(0)
+        var mat : L.mat3d = { { 0, 0, 0 }, { 0,0, 0 }, { 0, 0, 0 } }
         for ei = 0,4 do
           var tetCoefCcae = self.tetCoefC(volume, phi, dots, ci, ai, ei)
           var tetCoefCcea = self.tetCoefC(volume, phi, dots, ci, ei, ai)
@@ -269,7 +269,7 @@ function S:setupFieldsFunctions(mesh)
     var volume = t.volume
     for ci = 0,4 do
       for ei = 0,4 do
-        var mat : L.mat3d = U.constantMatrix3(0)
+        var mat : L.mat3d = { { 0, 0, 0 }, { 0, 0, 0 }, { 0, 0, 0 } }
         for ai = 0,4 do
           var qa = t.v[ai].q
           for bi = 0,4 do
@@ -291,7 +291,7 @@ function S:setupFieldsFunctions(mesh)
   end
   
   liszt self.resetStiffnessMatrix (e : mesh.edges)
-    e.stiffness = U.constantMatrix3(0)
+    e.stiffness = { { 0, 0, 0 }, { 0, 0, 0 }, { 0, 0, 0 } }
   end
 
   ------------------------------------------------------------------------------

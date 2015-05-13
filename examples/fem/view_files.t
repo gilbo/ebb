@@ -127,7 +127,7 @@ end
 --------------------------------------------------------------------------------
 
 for i = 0,num_frames do
-  loadPositions( file_dir .. "/vertices_" .. tostring(i), mesh)
+  loadpositions( file_dir .. "/vertices_" .. tostring(i), mesh)
   visualize(mesh)
   print('Hit enter for next frame')
   io.read()
