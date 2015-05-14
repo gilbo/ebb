@@ -67,8 +67,11 @@ function N:setupFieldsFunctions(mesh)
   -- u = t.muLame, l = t.lambdaLame (should be this, but u in the Matlab code is
   -- slightly different)
   liszt self.PK1(t)
+    var F     = t.F
     var FinvT = t.FinvT
-    var PP    = t.muLame * (t.F - t.FinvT) + (t.lambdaLame * L.log(t.Fdet)) * t.FinvT
+    -- L.print(F)
+    -- L.print(FinvT)
+    var PP    = t.muLame * (t.F - FinvT) + (t.lambdaLame * L.log(t.Fdet)) * FinvT
     return PP
   end
 
@@ -95,9 +98,9 @@ function N:setupFieldsFunctions(mesh)
   liszt self.recomputeAndResetTetTemporaries(t : mesh.tetrahedra)
    -- recompute
     var Ds : L.mat3d  = { { 0, 0, 0 }, { 0, 0, 0 }, { 0, 0, 0 } }
-    var x4 = t.v[3].pos
+    var x4 = t.v[3].pos + t.v[3].q
     for j = 0, 3 do
-      var le : L.vec3d = t.v[j].pos - x4
+      var le : L.vec3d = (t.v[j].pos + t.v[j].q) - x4
       for i = 0,3 do
         Ds[i,j] = le[i]
       end
@@ -127,11 +130,12 @@ function N:setupFieldsFunctions(mesh)
   liszt self.computeInternalForces(t : mesh.tetrahedra)
     var  P  : L.mat3d = self.PK1(t)
     var BmT : L.mat3d = U.transposeMatrix3(t.Bm)
+    var rhs : L.mat3d = U.multiplyMatrices3d(P, BmT)
     var  H  : L.mat3d = (t.W) * U.multiplyMatrices3d(P, BmT)
     for i = 0,3 do
       var fi : L.vec3d = { H[0,i], H[1,i], H[2,i] }
-      t.v[i].internal_forces +=  fi
-      t.v[3].internal_forces += -fi
+      t.v[i].internal_forces += ( fi)
+      t.v[3].internal_forces += (-fi)
     end
   end
 
