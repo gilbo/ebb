@@ -48,8 +48,9 @@ end
 
 local configFile = loadfile(configFileName)()
 
-print("Loading " .. configFile.meshFileName)
-local mesh   = VEGFileIO.LoadTetmesh(configFile.meshFileName)
+local meshFileName = configFile.meshFileName
+print("Loading " .. meshFileName)
+local mesh   = VEGFileIO.LoadTetmesh(meshFileName)
 mesh.density = configFile.rho
 mesh.E       = configFile.E
 mesh.Nu      = configFile.Nu
@@ -98,13 +99,17 @@ mesh.vertices:NewField('internal_forces', L.vec3d):Load({0, 0, 0})
 
 -- stvk or neohookean
 local F = nil
+local outDirName = nil
 if forceModel == 'stvk' then
   F = L.require 'examples.fem.stvk'
+  outDirName = 'liszt_output/stvk-out'
+  os.execute('mkdir -p ' .. outDirName)
 else
-  print("Error: Only StVK force model supported")
-  os.exit(2)
+  F = L.require 'examples.fem.neohookean'
+  outDirName = 'liszt_output/nh-out'
+  os.execute('mkdir -p ' .. outDirName)
 end
-F.profile = false
+F.profile = false  -- measure and print out detailed timing?
 
 
 --------------------------------------------------------------------------------
@@ -467,7 +472,8 @@ end
 
 local liszt setExternalForces (v : mesh.vertices)
   var pos = v.pos
-  v.external_forces = { 10000, -80*(50-pos[1]), 0 }
+  -- v.external_forces = { 10000, -80*(50-pos[1]), 0 }
+  v.external_forces = { 1000, 0, 0 }
 end
 
 function setExternalConditions(mesh, iter)
@@ -506,7 +512,7 @@ function main()
   }
   integrator:setupFieldsFunctions(mesh)
 
-  mesh:dumpDeformationToFile("liszt_output/mesh_liszt_"..tostring(0))
+  mesh:dumpDeformationToFile(outDirName.."/vertices_"..tostring(0))
 
   local timer_step = U.Timer.New()
   for i=1,options.numTimesteps do
@@ -514,8 +520,14 @@ function main()
     setExternalConditions(volumetric_mesh, i)
     integrator:doTimestep(volumetric_mesh)
     print("Time for step "..i.." is "..(timer_step:Stop()*1E6).." us\n")
-    mesh:dumpDeformationToFile("liszt_output/mesh_liszt_"..tostring(i))
+    mesh:dumpDeformationToFile(outDirName..'/vertices_'..tostring(i))
   end
+
+  -- Output frame number and mesh file for viewing later on
+  local numFramesFile = io.open(outDirName..'/num_frames', 'w')
+  numFramesFile:write(tostring(numTimeSteps))
+  numFramesFile:close()
+  os.execute('cp ' .. meshFileName .. ' ' .. outDirName .. '/mesh')
 end
 
 main()

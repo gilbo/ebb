@@ -16,7 +16,9 @@ if not arg[2] or arg[2] == "-h" or arg[2] == "--help" then
 end
 
 file_dir = arg[2]
-num_frames = tonumber(io.open(tostring(file_dir .. "/num_frames")):read())
+local numFramesFile = io.open(tostring(file_dir .. "/num_frames"))
+local num_frames = tonumber(numFramesFile:read())
+numFramesFile:close()
 local mesh = VEGFileIO.LoadTetmesh(file_dir .. "/mesh")
 print("Will read " .. tostring(num_frames) .. " from " .. file_dir .. "\n")
 
@@ -127,7 +129,7 @@ end
 --------------------------------------------------------------------------------
 
 for i = 0,num_frames do
-  loadpositions( file_dir .. "/vertices_" .. tostring(i), mesh)
+  loadPositions( file_dir .. "/vertices_" .. tostring(i), mesh)
   visualize(mesh)
   print('Hit enter for next frame')
   io.read()

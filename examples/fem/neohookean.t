@@ -33,6 +33,7 @@ function N:setupFieldsFunctions(mesh)
   mesh.tetrahedra:NewField('W',  L.double)   -- volume of tetrahedron
 
   -- list of temporaries : F, FinvT, Fdet
+  -- TODO: Add J too!
   mesh.tetrahedra:NewField('F',     L.mat3d)     -- deformation gradient
   mesh.tetrahedra:NewField('FinvT', L.mat3d)     -- (deformation gradient) inverse transpose
   mesh.tetrahedra:NewField('Fdet',  L.double)    -- determinant of (deformation gradient)
@@ -45,14 +46,14 @@ function N:setupFieldsFunctions(mesh)
   -- algorithm 1
   liszt self.computeBAndW(t : mesh.tetrahedra)
     var Dm : L.mat3d
-    var x4 : L.vec3d = t.v[4].pos
+    var x4 : L.vec3d = t.v[3].pos
     for j = 0,3  do
       var le : L.vec3d = t.v[j].pos - x4
       for i = 0,3 do
         Dm[i,j] = le[i]
       end
     end
-    var det = U.detMatrix3d(Dm)
+    var det = L.fabs(U.detMatrix3d(Dm))
     t.W  = det/6.0
     t.Bm = U.invertMatrix3d(Dm)
   end
@@ -67,7 +68,7 @@ function N:setupFieldsFunctions(mesh)
   -- slightly different)
   liszt self.PK1(t)
     var FinvT = t.FinvT
-    var PP    = t.muLame * (t.F - t.FinvT) + (t.lambdaLame * t.Fdet) * t.FinvT
+    var PP    = t.muLame * (t.F - t.FinvT) + (t.lambdaLame * L.log(t.Fdet)) * t.FinvT
     return PP
   end
 
@@ -83,16 +84,18 @@ function N:setupFieldsFunctions(mesh)
     var c2       = t.lambdaLame * (dFTFinvT[0,0] + dFTFinvT[1,1] + dFTFinvT[2,2])
     var FinvTdFTFinvT = U.multiplyMatrices3d(FinvT, dFTFinvT)
     var dP = (t.muLame * dF) + (c1 * FinvTdFTFinvT) + c2 * FinvT
+    return dP
   end
 
   ------------------------------------------------------------------------------
   -- Recompute temporaies for the new time step (F, Finv, J)
   -- For corresponding code, see Matlab code fem.m/ siggraph notes algorithm 1
   -- Reset internal forces and stiffness matrix
-  liszt self.recomputeAndResetTemporaries(t : mesh.tetrahedra)
+
+  liszt self.recomputeAndResetTetTemporaries(t : mesh.tetrahedra)
    -- recompute
     var Ds : L.mat3d  = { { 0, 0, 0 }, { 0, 0, 0 }, { 0, 0, 0 } }
-    var x4 = t.v[4].pos
+    var x4 = t.v[3].pos
     for j = 0, 3 do
       var le : L.vec3d = t.v[j].pos - x4
       for i = 0,3 do
@@ -104,16 +107,15 @@ function N:setupFieldsFunctions(mesh)
     t.F = F
     var Finv = U.invertMatrix3d(F)
     t.FinvT  = U.transposeMatrix3(Finv)
-    t.Fdet   = L.log(U.detMatrix3d(F))
-    -- reset
-    for i = 0,4 do
-      t.v[i].internal_forces = 0
-    end
-    for i = 0,4 do
-      for j = 0,4 do
-        t.e[i,j].stiffness = { { 0, 0, 0 }, { 0, 0, 0 }, { 0, 0, 0 } }
-      end
-    end
+    t.Fdet   = L.fabs(U.detMatrix3d(F))
+  end
+
+  liszt self.recomputeAndResetEdgeTemporaries(e : mesh.edges)
+    e.stiffness = { { 0, 0, 0 }, { 0, 0, 0 }, { 0, 0, 0 } }
+  end
+
+  liszt self.recomputeAndResetVertexTemporaries(v : mesh.vertices)
+    v.internal_forces = { 0, 0, 0 }
   end
 
   ------------------------------------------------------------------------------
@@ -125,11 +127,11 @@ function N:setupFieldsFunctions(mesh)
   liszt self.computeInternalForces(t : mesh.tetrahedra)
     var  P  : L.mat3d = self.PK1(t)
     var BmT : L.mat3d = U.transposeMatrix3(t.Bm)
-    var  H  : L.mat3d = (-t.W) * U.multiplyMatrices3d(P, BmT)
+    var  H  : L.mat3d = (t.W) * U.multiplyMatrices3d(P, BmT)
     for i = 0,3 do
       var fi : L.vec3d = { H[0,i], H[1,i], H[2,i] }
       t.v[i].internal_forces +=  fi
-      t.v[4].internal_forces += -fi
+      t.v[3].internal_forces += -fi
     end
   end
 
@@ -140,14 +142,14 @@ function N:setupFieldsFunctions(mesh)
   -- u = t.muLame, l = t.lambdaLame (should be this, but u in the Matlab code is
   -- slightly different)
   liszt self.computeStiffnessMatrix(t : mesh.tetrahedra)
-    var Bm    : L.mat3d = t.Bm
+    var Bm  : L.mat3d = t.Bm
     var BmT : L.mat3d = U.transposeMatrix3(t.Bm)
     var dFRow : L.mat4x3d = { { 0, 0, 0 }, { 0, 0, 0 }, { 0, 0, 0 }, { 0, 0, 0 } }
     -- assemble dFRow
     for i = 0,3 do
       for j = 0,3 do
         dFRow[i,j]  =  Bm[i,j]
-        dFRow[4,j] += -Bm[i,j]
+        dFRow[3,j] += -Bm[i,j]
       end
     end
     -- for every vertex, assemble interactions with every other vertex
@@ -156,18 +158,18 @@ function N:setupFieldsFunctions(mesh)
         var dF : L.mat3d = { { 0, 0, 0 }, { 0, 0, 0 }, { 0, 0, 0 } }
         for j = 0,3 do
           dF[k,j] = dFRow[v,j]
-          var dP : L.mat3d = self.dPdF(t, dF)
-          var dH : L.mat3d = (-t.W) * U.multiplyMatrices3d(dP, BmT)
-          for i = 0,3 do
-            -- Matlab code:
-            --   Kb(:, kk, ii) = dH(:,ii);
-            --   Kb(:, kk, 4) = Kb(:, kk, 4)-dH(:, ii);
-            -- add ith column of dH into kth column of stiffness e[v,i]
-            -- subtract ith column of dH from kth column of stiffness e[v,4]
-            for r = 0,3 do
-              t.e[v,i].stiffness[r, k] += dH[r, i]
-              t.e[v,4].stiffness[r, k] -= dH[r, i]
-            end
+        end
+        var dP : L.mat3d = self.dPdF(t, dF)
+        var dH : L.mat3d = (t.W) * U.multiplyMatrices3d(dP, BmT)
+        for i = 0,3 do
+          -- Matlab code:
+          --   Kb(:, kk, ii) = dH(:,ii);
+          --   Kb(:, kk, 4) = Kb(:, kk, 4)-dH(:, ii);
+          -- add ith column of dH into kth column of stiffness e[v,i]
+          -- subtract ith column of dH from kth column of stiffness e[v,4]
+          for r = 0,3 do
+            t.e[i,v].stiffness[r, k] += dH[r, i]
+            t.e[3,v].stiffness[r, k] -= dH[r, i]
           end
         end
       end
@@ -186,16 +188,22 @@ end
 -- Wrapper functions to compute internal forces and stiffness matrix
 --------------------------------------------------------------------------------
 
-local function computeInternalForcesAndStiffnessMatrix(mesh)
-  mesh.edges:map(S.recomputeAndResetTemporaries)
+local ts = 0
+function N.computeInternalForcesAndStiffnessMatrix(mesh)
+  ts = ts + 1
+  mesh.tetrahedra:map(N.recomputeAndResetTetTemporaries)
+  mesh.edges:map(N.recomputeAndResetEdgeTemporaries)
+  mesh.vertices:map(N.recomputeAndResetVertexTemporaries)
   local timer = U.Timer.New()
   timer:Start()
   mesh.tetrahedra:map(N.computeInternalForces)
   local t_if = timer:Stop() * 1E6
   print("Time to assemble force is "..(t_if).." us")
+  mesh:dumpVertFieldToFile('internal_forces', "liszt_output/nh-out/internal_forces_"..tostring(ts))
   timer:Start()
   mesh.tetrahedra:map(N.computeStiffnessMatrix)
   local t_stiff = timer:Stop() * 1E6
   print("Time to assemble stiffness matrix is "..(t_stiff).." us")
+  mesh:dumpEdgeFieldToFile('stiffness', "liszt_output/nh-out/stiffness_"..tostring(ts))
   print("Time to assemble force and stiffness matrix is "..(t_if + t_stiff).." us")
 end
