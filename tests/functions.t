@@ -21,7 +21,7 @@ end
 local t1 = liszt(c : cells)
   assert(square(7) == 49)
 end
-cells:map(t1)
+cells:foreach(t1)
 
 -------------------------------
 --Test stacked function calls--
@@ -32,7 +32,7 @@ end
 local t2 = liszt(c : cells)
     assert(sum(square(1), square(2), square(3)) == 14)
 end
-cells:map(t2)
+cells:foreach(t2)
 
 -------------------------------------------
 --Test function that behaves like a field--
@@ -43,7 +43,7 @@ end)
 local t3 = liszt(c : cells)
     assert(c.scaledposition == 2 * c.position)
 end
-cells:map(t3)
+cells:foreach(t3)
 
 --------------------------------------
 --Combine normal and field functions--
@@ -56,7 +56,7 @@ local t4 = liszt(c : cells)
     var expected = 4.0 * length(c.position) * length(c.position)
     assert(square(lensq - expected) < 0.00005)
 end
-cells:map(t4)
+cells:foreach(t4)
 
 ------------------------------------------
 --Test Functions with more than one line--
@@ -70,7 +70,7 @@ local t5 = liszt (c : cells)
     assert(sub1_but_non_neg(2) == 1)
     assert(sub1_but_non_neg(0) == 0)
 end
-cells:map(t5)
+cells:foreach(t5)
 
 ----------------------------
 --Test Dynamic Scoping Bug--
@@ -86,7 +86,7 @@ local dyn_kern = liszt (c : cells)
     var r = dyn_outer(2)
     assert(r == 4)
 end
-cells:map(dyn_kern)
+cells:foreach(dyn_kern)
 
 
 ------------------
@@ -96,19 +96,19 @@ local empty_f = liszt() end
 local t6 = liszt (c : cells)
   empty_f()
 end
-cells:map(t6)
+cells:foreach(t6)
 -- Two failure cases to exercise case of no return value
 test.fail_function(function()
   local liszt t(c : cells)
     var x = empty_f()
   end
-  cells:map(t)
+  cells:foreach(t)
 end, 'can only assign numbers, bools, or keys')
 test.fail_function(function()
   local liszt t(c : cells)
     var x = 2 + empty_f()
   end
-  cells:map(t)
+  cells:foreach(t)
 end, "invalid types for operator '%+'")
 
 --------------
@@ -118,7 +118,7 @@ local print_42 = liszt() L.print(42) end
 local do_print = liszt ( c : cells )
   print_42()
 end
-cells:map(do_print)
+cells:foreach(do_print)
 
 
 --------------
@@ -128,7 +128,7 @@ local get_3 = liszt() return 3 end
 local check_3 = liszt ( c : cells )
   L.assert(get_3() == 3)
 end
-cells:map(check_3)
+cells:foreach(check_3)
 
 
 ------------------------------

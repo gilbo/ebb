@@ -97,8 +97,8 @@ end
 -- compiled either function.
 
 -- Let's go ahead and run the simulation forward for one time-step
-bunny.vertices:map(compute_update)
-bunny.vertices:map(apply_update)
+bunny.vertices:foreach(compute_update)
+bunny.vertices:foreach(apply_update)
 
 -- Now, typechecking and compilation have happened for
 -- both `compute_update` and for `apply_update`.
@@ -123,7 +123,7 @@ end
 -- `compute_and_apply_update`.  To see what happens, uncomment the
 -- following line.
 
---bunny.vertices:map(compute_and_apply_update)
+--bunny.vertices:foreach(compute_and_apply_update)
 
 -- You should see a big error.  If you look up above the stack dump,
 -- you'll see an error that looks something like this:
@@ -211,7 +211,7 @@ local liszt compute_with_temp ( v : bunny.vertices )
 end
 
 -- Let's go ahead and run a single iteration of this new scheme
-bunny.vertices:map(compute_with_temp)
+bunny.vertices:foreach(compute_with_temp)
 
 -- Now, rather than trying to ping-pong the computation back and forth,
 -- let's just swap the underlying buffers.  This just requires a pointer
@@ -219,7 +219,7 @@ bunny.vertices:map(compute_with_temp)
 bunny.vertices:Swap('temperature', 'temp_temperature')
 
 -- Great, now we can go ahead and take another step
-bunny.vertices:map(compute_with_temp)
+bunny.vertices:foreach(compute_with_temp)
 bunny.vertices:Swap('temperature', 'temp_temperature')
 
 
@@ -240,7 +240,7 @@ local liszt compute_degree ( v : bunny.vertices )
   end
 end
 
-bunny.vertices:map(compute_degree)
+bunny.vertices:foreach(compute_degree)
 
 -- Great.  Now, let's define an edge-centered version of heat diffusion.
 -- At this point we should note that Trimesh provides directed edges,
@@ -275,13 +275,13 @@ end
 -- zero out the temperature field and then we'll run the compute_update
 -- and apply_update steps one after another.
 
-bunny.vertices:map(zero_d_temperature)
+bunny.vertices:foreach(zero_d_temperature)
 
-bunny.edges:map(compute_edge_update)
-bunny.vertices:map(apply_edge_update)
+bunny.edges:foreach(compute_edge_update)
+bunny.vertices:foreach(apply_edge_update)
 
-bunny.edges:map(compute_edge_update)
-bunny.vertices:map(apply_edge_update)
+bunny.edges:foreach(compute_edge_update)
+bunny.vertices:foreach(apply_edge_update)
 
 -- and on and on and on ...
 

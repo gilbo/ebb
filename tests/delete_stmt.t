@@ -27,7 +27,7 @@ test.fail_function(function()
   local liszt test( c : cells )
     delete c
   end
-  cells:map(test)
+  cells:foreach(test)
 end, "Cannot delete from relation cells because it\'s not ELASTIC")
 
 -- cannot delete indirectly
@@ -35,7 +35,7 @@ test.fail_function(function()
   local liszt test( p : particles )
     delete p.cell
   end
-  particles:map(test)
+  particles:foreach(test)
 end, "Only centered keys may be deleted")
 
 -- CANNOT HAVE 2 DELETE STATEMENTS in the same function
@@ -47,7 +47,7 @@ test.fail_function(function()
       delete p
     end
   end
-  particles:map(test)
+  particles:foreach(test)
 end, "Temporary: can only have one delete statement per function")
 
 
@@ -70,9 +70,9 @@ local liszt post_delete_trivial( p : particles )
   L.assert(p.pos[0] == 3)
 end
 
-particles:map(delete_even)
+particles:foreach(delete_even)
 
 test.eq(particles:Size(), 5)
 
 -- trivial function should not blow up
-particles:map(post_delete_trivial)
+particles:foreach(post_delete_trivial)

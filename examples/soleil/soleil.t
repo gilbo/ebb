@@ -4182,5 +4182,5 @@ while ((TimeIntegrator.simTime:get() < TimeIntegrator.final_time) and
     if vdb_options.visualize == ON then
       Visualization.Draw()
     end
-    
+    break -- one iteration
 end

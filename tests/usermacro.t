@@ -12,7 +12,7 @@ local square = L.NewMacro(function(x)
     return liszt `x*x
 end)
 
-mesh.vertices:map(liszt(v : mesh.vertices)
+mesh.vertices:foreach(liszt(v : mesh.vertices)
 	assert(square(7) == 49)
 end)
 
@@ -22,7 +22,7 @@ end)
 local sum = L.NewMacro(function(x, y, z)
     return liszt `x + y + z
 end)
-mesh.vertices:map(liszt(v : mesh.vertices)
+mesh.vertices:foreach(liszt(v : mesh.vertices)
     assert(sum(square(1), square(2), square(3)) == 14)
 end)
 
@@ -32,7 +32,7 @@ end)
 mesh.vertices:NewFieldMacro('scaledpos', L.NewMacro(function(v)
     return liszt `2*v.pos 
 end))
-mesh.vertices:map(liszt(v : mesh.vertices)
+mesh.vertices:foreach(liszt(v : mesh.vertices)
     assert(v.scaledpos == 2 * v.pos)
 end)
 
@@ -42,7 +42,7 @@ end)
 local norm = L.NewMacro(function(v)
     return liszt `dot(v, v)
 end)
-mesh.vertices:map(liszt(v : mesh.vertices)
+mesh.vertices:foreach(liszt(v : mesh.vertices)
     var lensq = norm(v.scaledpos)
     var expected = 4.0 * length(v.pos) * length(v.pos)
     assert(square(lensq - expected) < 0.00005)
@@ -59,7 +59,7 @@ local sub1_but_non_neg = L.NewMacro(function(num)
         result
     end
 end)
-mesh.vertices:map(liszt (v : mesh.vertices)
+mesh.vertices:foreach(liszt (v : mesh.vertices)
     assert(sub1_but_non_neg(2) == 1)
     assert(sub1_but_non_neg(0) == 0)
 end)
@@ -72,7 +72,7 @@ mesh.vertices:NewField('temperature', L.double):Load(1.0)
 mesh.vertices:NewFieldMacro('__apply_macro', L.NewMacro(function(v, scale)
     return liszt `scale * v.temperature
 end))
-mesh.vertices:map(liszt (v : mesh.vertices)
+mesh.vertices:foreach(liszt (v : mesh.vertices)
     assert(v(1) == 1)
     assert(v(5) == 5)
 end)

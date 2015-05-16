@@ -28,7 +28,7 @@ test.fail_function(function()
   local liszt t( p : particles )
     insert { cell = L.UNSAFE_ROW( L.uint64(0), cells ), pos = {0.1,0.1,0.1} } into particles
   end
-  particles:map(t)
+  particles:foreach(t)
 end, "Cannot insert into relation particles while mapping over it")
 
 -- TODO: this could be relaxed
@@ -38,7 +38,7 @@ test.fail_function(function()
     insert { temperature = L.float(0.1) } into cells
     p.cell.temperature += L.float(0.25)
   end
-  particles:map(t)
+  particles:foreach(t)
 end, "Cannot insert into relation cells because it\'s not ELASTIC")
 --"Cannot access field cells%.temperature while inserting.* into relation cells")
 
@@ -48,7 +48,7 @@ test.fail_function(function()
   local liszt t( c : cells )
     insert { cell = c } into particles
   end
-  cells:map(t)
+  cells:foreach(t)
 end, "inserted record type does not match relation")
 
 
@@ -58,7 +58,7 @@ test.fail_function(function()
     var pos = { L.double(L.id(c)), 0, 0 }
     insert { cell = c, pos = pos, diameter = 0.1 } into particles
   end
-  cells:map(t)
+  cells:foreach(t)
 end, "cannot insert a value into field particles.diameter because it is undefined")
 
 
@@ -72,7 +72,7 @@ test.fail_function(function()
   local liszt t( c : cells )
     insert { cell = c } into grouped_rel
   end
-  cells:map(t)
+  cells:foreach(t)
 end, 'Cannot insert into relation grouped_rel because it\'s not ELASTIC')
 
 -- Inserting into something that isn't a relation
@@ -81,7 +81,7 @@ test.fail_function(function()
   local liszt t( c : cells )
     insert { cell = c } into sum
   end
-  cells:map(t)
+  cells:foreach(t)
 end, 'Expected a relation to insert into')
 
 
@@ -95,7 +95,7 @@ test.fail_function(function()
       insert { cell = c, pos = {0.1,0.1,0.1} } into particles
     end
   end
-  cells:map(t)
+  cells:foreach(t)
 end, 'Cannot insert into relation particles twice')
 
 -- Would like to have EXAMPLE of
@@ -118,11 +118,11 @@ local post_insert_trivial = liszt( p : particles )
   L.assert(p.pos[0] >= 0)
 end
 
-cells:map(seed_particles)
+cells:foreach(seed_particles)
 
 test.eq(particles:Size(), 10)
 
 -- trivial function should not blow up
-particles:map(post_insert_trivial)
+particles:foreach(post_insert_trivial)
 
 

@@ -130,8 +130,8 @@ function buildVertexInletOutletSets ()
 		f.value.v2.outlet or= true
 		f.value.v3.outlet or= true
 	end
-	M.right:map(mark_inlet_vertices)
-	M.right:map(mark_outlet_vertices)
+	M.right:foreach(mark_inlet_vertices)
+	M.right:foreach(mark_outlet_vertices)
 
 	local is_inlet   = V.inlet:DataPtr()
 	local is_outlet  = V.outlet:DataPtr()
@@ -216,21 +216,21 @@ moveToArch(L.GPU)
 local function main()
 
 	--[[ Initialize external forces: ]]--
-	V.inlet_vertices:map(liszt (v : M.vertices)
+	V.inlet_vertices:foreach(liszt (v : M.vertices)
 		v.fext = L.vec3f({.01, 0, 0})
 	end)
 
-	V.outlet_vertices:map(liszt (v : M.vertices)
+	V.outlet_vertices:foreach(liszt (v : M.vertices)
 		v.fext = L.vec3f({-.01, 0, 0})
 	end)
 
 	--[[ Initialize acceleration based on initial forces ]]--
-	M.vertices:map(liszt (v : M.vertices)
+	M.vertices:foreach(liszt (v : M.vertices)
 		v.a_n = (v.fext - v.fint) / v.mass
 	end)
 
 	--[[ Initialize edge lengths]]--
-	M.edges:map(liszt (e : M.edges)
+	M.edges:foreach(liszt (e : M.edges)
 		var v1 = e.head
 		var v2 = e.tail
 
@@ -255,17 +255,17 @@ local function main()
 		end
 
 		--[[ Execute! ]]--
-		M.vertices:map(reset_internal_forces)
+		M.vertices:foreach(reset_internal_forces)
 
-		M.vertices:map(update_nodal_velocities)
-		M.vertices:map(update_pos_and_disp)
+		M.vertices:foreach(update_nodal_velocities)
+		M.vertices:foreach(update_pos_and_disp)
 
-		M.edges:map(calc_edge_disp)
-		M.edges:map(calc_internal_force)
+		M.edges:foreach(calc_edge_disp)
+		M.edges:foreach(calc_internal_force)
 
-		M.vertices:map(compute_accel)
-		M.vertices:map(update_previous_velocity)
-		M.vertices:map(update_velocity)
+		M.vertices:foreach(compute_accel)
+		M.vertices:foreach(update_previous_velocity)
+		M.vertices:foreach(update_velocity)
 
 		-- Time update: t^n = t^{n-1} + deltat^{n-1/2}
 		t_n = t_n + dt_n_h

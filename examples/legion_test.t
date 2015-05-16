@@ -73,31 +73,31 @@ end
 local function test_accesses()
   print(g_scal:get())
   terralib.tree.printraw(g_vec:get())
-  cells:map(CenteredWrite)
-  cells:map(CenteredMul)
-  cells:map(CenteredReads)
-  cells:map(ReduceField)
-  cells:map(ReduceGlobalVec)
-  cells:map(CenteredReads)
+  cells:foreach(CenteredWrite)
+  cells:foreach(CenteredMul)
+  cells:foreach(CenteredReads)
+  cells:foreach(ReduceField)
+  cells:foreach(ReduceGlobalVec)
+  cells:foreach(CenteredReads)
   terralib.tree.printraw(g_vec:get())
 end
 test_accesses()
 
 -- keyfield functionality
 local function test_keyfields()
-  dual_cells:map(InitDual)
-  cells:map(InitCells)
-  cells:map(CenteredReads)
-  cells:map(CollectDual)
-  cells:map(CenteredReads)
+  dual_cells:foreach(InitDual)
+  cells:foreach(InitCells)
+  cells:foreach(CenteredReads)
+  cells:foreach(CollectDual)
+  cells:foreach(CenteredReads)
 end
 test_keyfields()
 
 -- subset functionality
 local function test_subsets()
-  cells.interior:map(InitCells)
-  cells.interior:map(CenteredReads)
-  cells:map(CenteredReads)
+  cells.interior:foreach(InitCells)
+  cells.interior:foreach(CenteredReads)
+  cells:foreach(CenteredReads)
 end
 test_subsets()
 

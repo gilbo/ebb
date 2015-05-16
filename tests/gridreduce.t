@@ -41,13 +41,13 @@ local liszt count_raw3 ( c : rel3 )
   glob_raw_count_3 += 1
 end
 
-rel1:map(count_one1)
-rel2:map(count_one2)
-rel3:map(count_one3)
+rel1:foreach(count_one1)
+rel2:foreach(count_one2)
+rel3:foreach(count_one3)
 
-rel1:map(count_raw1)
-rel2:map(count_raw2)
-rel3:map(count_raw3)
+rel1:foreach(count_raw1)
+rel2:foreach(count_raw2)
+rel3:foreach(count_raw3)
 
 test.eq(rel1:Size(), glob_one_count_1:get())
 test.eq(rel1:Size(), glob_raw_count_1:get())

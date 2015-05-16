@@ -125,8 +125,8 @@ function buildVertexInletOutletSets ()
 		f.value.v2.outlet or= true
 		f.value.v3.outlet or= true
 	end
-	M.left:map(mark_inlet_vertices)
-	M.right:map(mark_outlet_vertices)
+	M.left:foreach(mark_inlet_vertices)
+	M.right:foreach(mark_outlet_vertices)
 
 	local is_inlet   = V.inlet:DataPtr()
 	local is_outlet  = V.outlet:DataPtr()
@@ -418,17 +418,17 @@ end
 -------------------------------------------------------------------------------
 local function main ()
 	-- Initialize position
-	M.vertices:map(liszt (v : M.vertices)
+	M.vertices:foreach(liszt (v : M.vertices)
 		v.initialPos = L.vec3f(v.position)
 	end)
 
 
 	--[[ Initialize external forces: ]]--
-	V.inlet_vertices:map(liszt (v : M.vertices)
+	V.inlet_vertices:foreach(liszt (v : M.vertices)
 		v.fext = L.vec3f({10000000, 0, 0})
 	end)
 
-	V.outlet_vertices:map(liszt (v : M.vertices)
+	V.outlet_vertices:foreach(liszt (v : M.vertices)
 		v.fext = L.vec3f({-10000000, 0, 0})
 	end)
 
@@ -442,23 +442,23 @@ local function main ()
 		-- Update half time:  t^{n+1/2} = t^n + 1/2*deltat^{n+1/2}
 		t_n_h = t_n + dt_n_h/2
 
-		M.vertices:map(reset_internal_forces)
+		M.vertices:foreach(reset_internal_forces)
 		-- Update nodal velocities (inline function to escape current t values)
-		M.vertices:map(liszt (v : M.vertices)
+		M.vertices:foreach(liszt (v : M.vertices)
 			v.v_n_h = v.v_n + L.vec3f((t_n_h - t_n) * v.a_n)
 		end)
 
-		M.vertices:map(update_position)
-		M.cells:map(calculate_internal_force)
-		M.vertices:map(compute_acceleration)
-		M.vertices:map(update_velocity)
+		M.vertices:foreach(update_position)
+		M.cells:foreach(calculate_internal_force)
+		M.vertices:foreach(compute_acceleration)
+		M.vertices:foreach(update_velocity)
 
 		-- Time update: t^n = t^{n-1} + deltat^{n-1/2}
 		t_n = t_n + dt_n_h
 	end
 
 	-- DEBUG
-	M.vertices:map(liszt (v : M.vertices)
+	M.vertices:foreach(liszt (v : M.vertices)
 		L.print(v.position)
 	end)
 end

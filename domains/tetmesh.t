@@ -81,29 +81,29 @@ function Tetmesh:build_edges(elements)
   end))
 
 
---  -- set up pointers from tetrahedra to edges
---  mesh.tetrahedra:NewField('e', L.matrix(mesh.edges, 4, 4))
---  local liszt compute_tet_edges (t : mesh.tetrahedra)
---    for i = 0,4 do
---      for e in t.v[i].edges do
---        for j = 0,4 do
---          if e.head == t.v[j] then t.e[i, j] = e end
---        end
---      end
---    end
---  end
---  mesh.tetrahedra:map(compute_tet_edges)
+  -- set up pointers from tetrahedra to edges
+  mesh.tetrahedra:NewField('e', L.matrix(mesh.edges, 4, 4))
+  local liszt compute_tet_edges (t : mesh.tetrahedra)
+    for i = 0,4 do
+      for e in t.v[i].edges do
+        for j = 0,4 do
+          if e.head == t.v[j] then t.e[i, j] = e end
+        end
+      end
+    end
+  end
+  mesh.tetrahedra:foreach(compute_tet_edges)
 
---  -- set up pointers from vertices to self edges
---  mesh.vertices:NewField('diag', mesh.edges)
---  local liszt compute_self_edges (v : mesh.vertices)
---    for e in v.edges do
---      if e.head == v then
---        v.diag = e
---      end
---    end
---  end
---  mesh.vertices:map(compute_self_edges)
+  -- set up pointers from vertices to self edges
+  mesh.vertices:NewField('diag', mesh.edges)
+  local liszt compute_self_edges (v : mesh.vertices)
+    for e in v.edges do
+      if e.head == v then
+        v.diag = e
+      end
+    end
+  end
+  mesh.vertices:foreach(compute_self_edges)
 
 end
 

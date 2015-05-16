@@ -18,6 +18,6 @@ local l = liszt (v : R)
 
   red += y
 end
-R:map(l)
+R:foreach(l)
 
 test.eq(red:get(), R:Size())

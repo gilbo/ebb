@@ -28,7 +28,7 @@ mesh.vertices.t:Load(init_temperature)
 local liszt compute_degree (e : mesh.edges)
   e.tail.degree += 1
 end
-mesh.edges:map(compute_degree)
+mesh.edges:foreach(compute_degree)
 
 local liszt compute_update (e : mesh.edges )
   var diff_t = e.head.t - e.tail.t
@@ -48,11 +48,11 @@ local liszt visualize ( v : mesh.vertices )
 end
 
 for i=1,360 do
-  mesh.edges:map(compute_update)
-  mesh.vertices:map(apply_update)
+  mesh.edges:foreach(compute_update)
+  mesh.vertices:foreach(apply_update)
 
   vdb.vbegin()
     vdb.frame()
-    mesh.vertices:map(visualize)
+    mesh.vertices:foreach(visualize)
   vdb.vend()
 end

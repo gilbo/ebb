@@ -10,7 +10,7 @@ local root_test = liszt (r : R)
 	r.cbrt = L.cbrt(L.id(r))
 	r.sqrt = L.sqrt(L.id(r))
 end
-R:map(root_test)
+R:foreach(root_test)
 
 R.cbrt:print()
 R.sqrt:print()
@@ -19,7 +19,7 @@ local trig_test = liszt (r : R)
 	r.sin = L.sin(L.id(r))
 	r.cos = L.cos(L.id(r))
 end
-R:map(trig_test)
+R:foreach(trig_test)
 
 R.sin:print()
 R.cos:print()

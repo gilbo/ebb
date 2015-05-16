@@ -13,7 +13,7 @@ test.fail_function(function()
       nv.field1 = 3
     end
   end
-  M.vertices:map(write_neighbor)
+  M.vertices:foreach(write_neighbor)
 end, 'Non%-Exclusive WRITE')
 
 test.fail_function(function()
@@ -24,7 +24,7 @@ test.fail_function(function()
       sum += nv.field1
     end
   end
-  M.vertices:map(read_write_conflict)
+  M.vertices:foreach(read_write_conflict)
 end, 'READ Phase is incompatible with.* EXCLUSIVE Phase')
 
 test.fail_function(function()
@@ -35,7 +35,7 @@ test.fail_function(function()
       sum += nv.field1
     end
   end
-  M.vertices:map(read_reduce_conflict)
+  M.vertices:foreach(read_reduce_conflict)
 end, 'READ Phase is incompatible with.* REDUCE%(%+%) Phase')
 
 test.fail_function(function()
@@ -46,7 +46,7 @@ test.fail_function(function()
       nv.field1 *= 2
     end
   end
-  M.vertices:map(reduce_reduce_conflict)
+  M.vertices:foreach(reduce_reduce_conflict)
 end, 'REDUCE%(%*%) Phase is incompatible with.* REDUCE%(%+%) Phase')
 
 -- writing and reducing exclusively should be fine
@@ -54,7 +54,7 @@ local liszt write_reduce_exclusive (v : M.vertices)
   v.field1 = 3
   v.field1 += 1
 end
-M.vertices:map(write_reduce_exclusive)
+M.vertices:foreach(write_reduce_exclusive)
 
 
 -- two different reductions exclusively should be fine
@@ -62,7 +62,7 @@ local liszt reduce_reduce_exclusive (v : M.vertices)
   v.field1 += 2
   v.field1 *= 2
 end
-M.vertices:map(reduce_reduce_exclusive)
+M.vertices:foreach(reduce_reduce_exclusive)
 
 
 
@@ -73,7 +73,7 @@ test.fail_function(function()
   local liszt global_write_bad (v : M.vertices)
     g1 = v.field1
   end
-  M.vertices:map(global_write_bad)
+  M.vertices:foreach(global_write_bad)
 end, 'Cannot write to globals in functions')
 
 test.fail_function(function()
@@ -81,7 +81,7 @@ test.fail_function(function()
     var x = g1
     g1 += 1
   end
-  M.vertices:map(global_read_reduce_conflict)
+  M.vertices:foreach(global_read_reduce_conflict)
 end, 'REDUCE%(%+%) Phase for Global is incompatible with.*'..
      'READ Phase for Global')
 
@@ -90,7 +90,7 @@ test.fail_function(function()
     g1 += v.field1
     g1 *= v.field1
   end
-  M.vertices:map(global_reduce_reduce_conflict)
+  M.vertices:foreach(global_reduce_reduce_conflict)
 end, 'REDUCE%(%*%) Phase for Global is incompatible with.*'..
      'REDUCE%(%+%) Phase for Global')
 

@@ -24,7 +24,7 @@ local test_dot = liszt(r : R)
     assert(dot(v1, sum) == 6 + 18 + 42) -- test working with local variables
     assert(dot(v1, v1 + v2) == 6 + 18 + 42) -- test working with expressions
 end
-R:map(test_dot)
+R:foreach(test_dot)
 
 
 
@@ -32,7 +32,7 @@ test.fail_function(function()
   local liszt t(r : R)
     assert(dot(v1, v3) == 7)
   end
-  R:map(t)
+  R:foreach(t)
 end, "must have equal dimensions")
 
 local vb = L.Constant(L.vec3b, {true, true, false})
@@ -40,5 +40,5 @@ test.fail_function(function()
   local liszt t(r : R)
     assert(dot(v1, vb) == 52)
   end
-  R:map(t)
+  R:foreach(t)
 end, "must be numeric vectors")

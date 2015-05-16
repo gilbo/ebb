@@ -19,5 +19,5 @@ local check_count = liszt(v : mesh.vertices)
     L.assert(c == v.count)
 end
 
-mesh.edges:map(sum_count)
-mesh.vertices:map(check_count)
+mesh.edges:foreach(sum_count)
+mesh.vertices:foreach(check_count)

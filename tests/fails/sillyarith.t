@@ -4,5 +4,5 @@ local R = L.NewRelation { name="R", size=5 }
 local liszt fail_assert (r : R)
     L.assert(2 + 2 == 5)
 end
-R:map(fail_assert)
+R:foreach(fail_assert)
 

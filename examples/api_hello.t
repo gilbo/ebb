@@ -36,6 +36,6 @@ local liszt apply_diffuse ( c : grid.cells )
 end
 
 for i = 1, 1000 do
-  grid.cells:map(compute_diffuse)
-  grid.cells:map(apply_diffuse)
+  grid.cells:foreach(compute_diffuse)
+  grid.cells:foreach(apply_diffuse)
 end

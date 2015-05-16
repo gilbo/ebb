@@ -63,10 +63,10 @@ local liszt build_laplacian(t : bunny.triangles)
 end
 
 local function compute_laplacian(mesh)
-  mesh.edges:map(zero_laplacian_edge)
-  mesh.vertices:map(zero_laplacian_vert)
-  mesh.triangles:map(compute_area_normals)
-  mesh.triangles:map(build_laplacian)
+  mesh.edges:foreach(zero_laplacian_edge)
+  mesh.vertices:foreach(zero_laplacian_vert)
+  mesh.triangles:foreach(compute_area_normals)
+  mesh.triangles:foreach(build_laplacian)
 end
 
 
@@ -124,15 +124,15 @@ end
 
 for i = 1,400 do
   compute_laplacian(bunny)
-  bunny.vertices:map(zero_d_pos)
+  bunny.vertices:foreach(zero_d_pos)
 
-  bunny.vertices:map(compute_diffusion)
-  bunny.vertices:map(apply_diffusion)
+  bunny.vertices:foreach(compute_diffusion)
+  bunny.vertices:foreach(apply_diffusion)
 
   -- EXTRA: VDB
   vdb.vbegin()
     vdb.frame() -- this call clears the canvas for a new frame
-    bunny.triangles:map(debug_tri_draw)
+    bunny.triangles:foreach(debug_tri_draw)
   vdb.vend()
   -- END EXTRA
 end

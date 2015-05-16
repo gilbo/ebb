@@ -30,11 +30,11 @@ for i=1,360 do
   for k=1,10000 do end
 
   time:set(i * math.pi / 180.0)
-  mesh.vertices:map(set_oscillation)
+  mesh.vertices:foreach(set_oscillation)
 
   vdb.vbegin()
   vdb.frame()
-    mesh.vertices:map(visualize)
+    mesh.vertices:foreach(visualize)
   vdb.vend()
 end
 
@@ -72,11 +72,11 @@ local liszt visualize ( v : mesh.vertices )
 end
 
 for i=1,360 do
-  mesh.vertices:map(compute_update)
+  mesh.vertices:foreach(compute_update)
 
   vdb.vbegin()
   vdb.frame()
-    mesh.vertices:map(visualize)
+    mesh.vertices:foreach(visualize)
   vdb.vend()
 end
 
@@ -123,12 +123,12 @@ local liszt visualize ( v : mesh.vertices )
 end
 
 for i=1,360 do
-  mesh.vertices:map(compute_update)
-  mesh.vertices:map(apply_update)
+  mesh.vertices:foreach(compute_update)
+  mesh.vertices:foreach(apply_update)
 
   vdb.vbegin()
   vdb.frame()
-    mesh.vertices:map(visualize)
+    mesh.vertices:foreach(visualize)
   vdb.vend()
 end
 
@@ -138,5 +138,5 @@ end
 
 --vdb.vbegin()
 --vdb.frame() -- this call clears the canvas for a new frame
---    bunny.triangles:map(debug_tri_draw)
+--    bunny.triangles:foreach(debug_tri_draw)
 --vdb.vend()

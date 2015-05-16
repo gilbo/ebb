@@ -15,6 +15,6 @@ local test_for = liszt (v : mesh.vertices)
 	end
 end
 
-mesh.vertices:map(test_for)
+mesh.vertices:foreach(test_for)
 
 test.eq(count:get(), 24)

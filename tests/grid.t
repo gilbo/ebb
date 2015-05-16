@@ -52,7 +52,7 @@ end)
 local liszt f3consistency( r : rel3 )
   L.assert(r.f3 == r.f3func)
 end
-rel3:map(f3consistency)
+rel3:foreach(f3consistency)
 
 
 -- try to group a 2d grid; we know this will fail
@@ -74,7 +74,7 @@ local liszt group_k ( r2 : rel2 )
     L.assert(  L.double(L.int(r1.v1) / 2) == r2.v2[1])
   end
 end
-rel2:map(group_k)
+rel2:foreach(group_k)
 
 
 -- test some simple affine relationships
@@ -89,14 +89,14 @@ local liszt affinetest3to2 ( r3 : rel3 )
                            {1,0,0,0}}, r3)
   L.assert(r3.a3 == r2.a2)
 end
-rel3:map(affinetest3to2)
+rel3:foreach(affinetest3to2)
 local liszt affinetest2to3 ( r2 : rel2 )
   var r3 = L.Affine(rel3, {{0,1,0},
                            {1,0,0},
                            {0,0,0}}, r2)
   L.assert(r3.a3 == r2.a2)
 end
-rel2:map(affinetest2to3)
+rel2:foreach(affinetest2to3)
 -- this one shouldn't match almost at all
 local liszt scramble2to3 ( r2 : rel2 )
   var r3 = L.Affine(rel3, {{1,0,0},
@@ -104,7 +104,7 @@ local liszt scramble2to3 ( r2 : rel2 )
                            {0,1,0}}, r2)
   L.assert(r3.a3 == 0 or r3.a3 ~= r2.a2)
 end
-rel2:map(scramble2to3)
+rel2:foreach(scramble2to3)
 
 
 -- Test Periodicity
@@ -120,6 +120,6 @@ local liszt test_wrap ( r : prel2 )
   L.assert( (r.cid[0]+1) % 3 == off.cid[0] and
             (r.cid[1]+1) % 4 == off.cid[1] )
 end
-prel2:map(test_wrap)
+prel2:foreach(test_wrap)
 
 

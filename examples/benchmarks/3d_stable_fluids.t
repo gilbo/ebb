@@ -76,8 +76,8 @@ local liszt neumann_cpy_update (c : grid.cells)
     c.velocity = c.vel_shadow
 end
 local function vel_neumann_bnd(cells)
-    cells.boundary:map(neumann_shadow_update)
-    cells.boundary:map(neumann_cpy_update)
+    cells.boundary:foreach(neumann_shadow_update)
+    cells.boundary:foreach(neumann_cpy_update)
 end
 
 
@@ -107,7 +107,7 @@ local function diffuse_lin_solve(edge, diagonal)
 
     -- do 20 Jacobi iterations
     for i=1,20 do
-        domain:map(diffuse_lin_solve_jacobi_step)
+        domain:foreach(diffuse_lin_solve_jacobi_step)
         grid.cells:Swap('velocity','vel_shadow')
         if not PERIODIC then vel_neumann_bnd(grid.cells) end
     end
@@ -225,12 +225,12 @@ local function advect_velocity(grid)
     advect_dt:set(dt:get() * N)
 
     grid.cells:Swap('velocity','velocity_prev')
-    grid.cells:map(advect_where_from)
-    grid.cells:map(advect_point_locate)
+    grid.cells:foreach(advect_where_from)
+    grid.cells:foreach(advect_point_locate)
     if PERIODIC then
-        grid.cells:map(advect_interpolate_velocity)
+        grid.cells:foreach(advect_interpolate_velocity)
     else
-        grid.cells.interior:map(advect_interpolate_velocity)
+        grid.cells.interior:foreach(advect_interpolate_velocity)
         vel_neumann_bnd(grid.cells)
     end
 end
@@ -272,8 +272,8 @@ local pressure_cpy_update = liszt (c : grid.cells)
     c.p = c.p_temp
 end
 local function pressure_neumann_bnd(cells)
-    cells.boundary:map(pressure_shadow_update)
-    cells.boundary:map(pressure_cpy_update)
+    cells.boundary:foreach(pressure_shadow_update)
+    cells.boundary:foreach(pressure_cpy_update)
 end
 
 
@@ -288,7 +288,7 @@ local function project_lin_solve(edge, diagonal)
 
     -- do 20 Jacobi iterations
     for i=1,20 do
-        domain:map(project_lin_solve_jacobi_step)
+        domain:foreach(project_lin_solve_jacobi_step)
         grid.cells:Swap('p','p_temp')
         if not PERIODIC then pressure_neumann_bnd(grid.cells) end
     end
@@ -316,7 +316,7 @@ local function project_velocity(grid)
     local domain = grid.cells.interior
     if PERIODIC then domain = grid.cells end
 
-    domain:map(compute_divergence)
+    domain:foreach(compute_divergence)
     if PERIODIC then
         grid.cells:Copy{from='divergence', to='p'}
     else
@@ -328,7 +328,7 @@ local function project_velocity(grid)
     project_lin_solve(edge, diagonal)
 
     grid.cells:Swap('velocity','velocity_prev')
-    domain:map(compute_projection)
+    domain:foreach(compute_projection)
 
     if not PERIODIC then vel_neumann_bnd(grid.cells) end
 end
@@ -365,7 +365,7 @@ end)
 
 particles:NewField('next_pos', L.vec3f):Load({0,0,0})
 particles:NewField('pos', L.vec3f):Load({0,0,0})
-particles:map(liszt (p : particles) -- init...
+particles:foreach(liszt (p : particles) -- init...
     p.pos = p.dual_cell.vertex.cell(-1,-1,-1).center +
             L.vec3f({xcwidth/2.0, ycwidth/2.0, zcwidth/2.0})
 end)
@@ -456,7 +456,7 @@ end
 local STEPS = 500 -- use 500 on my local machine
 for i = 1, STEPS do
     if math.floor(i / 70) % 2 == 0 then
-        grid.cells:map(source_velocity)
+        grid.cells:foreach(source_velocity)
     end
 
     diffuse_velocity(grid)
@@ -465,16 +465,16 @@ for i = 1, STEPS do
     advect_velocity(grid)
     project_velocity(grid)
 
-    particles:map(compute_particle_velocity)
-    particles:map(update_particle_pos)
-    particles:map(locate_particles)
+    particles:foreach(compute_particle_velocity)
+    particles:foreach(update_particle_pos)
+    particles:foreach(locate_particles)
 
 
     --if i % 5 == 0 then
         vdb.vbegin()
             vdb.frame()
-            --grid.cells:map(draw_grid)
-            particles:map(draw_particles)
+            --grid.cells:foreach(draw_grid)
+            particles:foreach(draw_particles)
         vdb.vend()
     --end
     --print('push key')

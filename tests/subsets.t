@@ -31,8 +31,8 @@ local test_interior = liszt ( c : cells )
   L.assert(c.value == 1)
 end
 
-cells.boundary:map(test_boundary)
-cells.interior:map(test_interior)
+cells.boundary:foreach(test_boundary)
+cells.interior:foreach(test_interior)
 
 
 
@@ -62,8 +62,8 @@ local liszt grid_test_interior ( c : gridcells )
   L.assert(c.value == 1)
 end
 
-gridcells.boundary:map(grid_test_boundary)
-gridcells.interior:map(grid_test_interior)
+gridcells.boundary:foreach(grid_test_boundary)
+gridcells.interior:foreach(grid_test_interior)
 
 
 

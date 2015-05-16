@@ -92,21 +92,21 @@ end
 for i = 1,300 do
   print('aaa', i)
   --compute_diffusion(bunny.vertices)
-  bunny.vertices:map(compute_diffusion)
+  bunny.vertices:foreach(compute_diffusion)
 
   avg_temp_change:set(0.0)
   --apply_diffusion(bunny.vertices)
-  bunny.vertices:map(apply_diffusion)
+  bunny.vertices:foreach(apply_diffusion)
   avg_temp_change:set( avg_temp_change:get() / bunny:nVerts())
 
   --clear_temporary(bunny.vertices)
-  bunny.vertices:map(clear_temporary)
+  bunny.vertices:foreach(clear_temporary)
 
   -- EXTRA: VDB
   vdb.vbegin()
     vdb.frame() -- this call clears the canvas for a new frame
     --debug_tri_draw(bunny.triangles)
-    bunny.triangles:map(debug_tri_draw)
+    bunny.triangles:foreach(debug_tri_draw)
   vdb.vend()
   -- END EXTRA
 end

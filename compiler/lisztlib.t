@@ -215,9 +215,9 @@ function L.NewUserFunc(func_ast, luaenv)
     return new_user_func
 end
 
-function L.LUserFunc:MapOver(relset, params)
+function L.LUserFunc:ForEachOver(relset, params)
   if #self.ast.params ~= 1 or self.ast.exp then
-    error('In order to map a function over a relation or subset, '..
+    error('In order to execute a function over a relation or subset, '..
           'the function must have exactly 1 argument and no return value', 3)
   end
 

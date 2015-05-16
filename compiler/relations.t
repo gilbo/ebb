@@ -243,7 +243,7 @@ function L.LRelation:Periodicity()
   return wraps
 end
 
-function L.LRelation:map(user_func, params)
+function L.LRelation:foreach(user_func, params)
   if not L.is_function(user_func) then
     error('map(): expects a liszt function as the argument', 2)
   end
@@ -252,7 +252,7 @@ function L.LRelation:map(user_func, params)
     error('map(): if supplied with a second argument, map expects '..
           'a table of options', 2)
   end
-  user_func:MapOver(self, params)
+  user_func:ForEachOver(self, params)
 end
 
 -- generator func for looping over the relation's fields
@@ -557,11 +557,11 @@ end
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
 
-function L.LSubset:map(user_func)
+function L.LSubset:foreach(user_func)
   if not L.is_function(user_func) then
     error('map(): expects a liszt function as the argument', 2)
   end
-  user_func:MapOver(self)
+  user_func:ForEachOver(self)
 end
 
 function L.LSubset:Relation()

@@ -41,8 +41,8 @@ local diffuse_nums = liszt ( c : grid.cells )
   end
 end
 
-grid.cells:map(diffuse_names)
-grid.cells:map(diffuse_nums)
+grid.cells:foreach(diffuse_names)
+grid.cells:foreach(diffuse_nums)
 
 ------------------------------------------------------------------------------
 
@@ -59,7 +59,7 @@ test.fail_function(function()
       end
     end
   end
-  grid.cells:map(nonconst)
+  grid.cells:foreach(nonconst)
 end, "cannot index using non-constant mapping")
 
 

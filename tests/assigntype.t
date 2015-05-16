@@ -9,5 +9,5 @@ test.fail_function(function()
   local liszt test (r : R)
     sf.a = 1
   end
-  R:map(test)
+  R:foreach(test)
 end, "select operator not supported")

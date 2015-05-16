@@ -176,13 +176,13 @@ for i = 1,300 do
 
   -- in order to execute a function, we map it over the appropriate
   -- relation in the domain.  Here, both functions run on the vertices
-  bunny.vertices:map(compute_update)
-  bunny.vertices:map(apply_update)
+  bunny.vertices:foreach(compute_update)
+  bunny.vertices:foreach(apply_update)
 
   -- EXTRA: VDB (For visualization)
   vdb.vbegin()
     vdb.frame() -- this call clears the canvas for a new frame
-    bunny.triangles:map(debug_tri_draw)
+    bunny.triangles:foreach(debug_tri_draw)
   vdb.vend()
   -- END EXTRA
 end

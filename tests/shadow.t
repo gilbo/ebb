@@ -13,10 +13,10 @@ local center_shadow = liszt ( c : cells )
   var c = c
   L.assert(c.val == 5)
 end
-cells:map(center_shadow)
+cells:foreach(center_shadow)
 
 local center_other = liszt ( c : cells )
   var v = 25
   var v = 2
 end
-cells:map(center_other)
+cells:foreach(center_other)
