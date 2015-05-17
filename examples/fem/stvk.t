@@ -360,10 +360,14 @@ local function computeStiffnessMatrix(mesh)
   print("Time to assemble stiffness matrix is "..(timer:Stop()*1E6).." us")
 end
 
+local ts = 0
 function S.computeInternalForcesAndStiffnessMatrix(mesh)
+  ts = ts + 1
   local timer = U.Timer.New()
   timer:Start()
   computeInternalForces(mesh)
+  mesh:dumpVertFieldToFile('internal_forces', "liszt_output/stvk-out/internal_forces_"..tostring(ts))
   computeStiffnessMatrix(mesh)
+  mesh:dumpEdgeFieldToFile('stiffness', "liszt_output/stvk-out/stiffness_"..tostring(ts))
   print("Time to assemble force and stiffness matrix is "..(timer:Stop()*1E6).." us")
 end
