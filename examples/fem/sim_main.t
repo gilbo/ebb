@@ -386,6 +386,7 @@ function ImplicitBackwardEulerIntegrator:solvePCG(mesh)
     iter = iter + 1
   end
   if normRes > thresh then
+      print("Residual is ", normRes)
       error("PCG solver did not converge!")
   end
   print("Time for solver is "..(timer_solver:Stop()*1E6).." us")
@@ -486,10 +487,22 @@ function clearExternalForces(mesh)
   mesh.vertices.external_forces:Load({ 0, 0, 0 })
 end
 
-local liszt setExternalForces (v : mesh.vertices)
+local setExternalForces = nil
+
+local liszt setExternalForcesStvk (v : mesh.vertices)
   var pos = v.pos
   -- v.external_forces = { 10000, -80*(50-pos[1]), 0 }
   v.external_forces = { 1000, 0, 0 }
+end
+
+local liszt setExternalForcesNh (v : mesh.vertices)
+    v.external_forces = { 5.0, 0, 0 }
+end
+
+if forceModel == 'stvk' then
+    setExternalForces = setExternalForcesStvk
+else
+    setExternalForces = setExternalForcesNh
 end
 
 function setExternalConditions(mesh, iter)
@@ -526,7 +539,8 @@ function main()
     cgMaxIterations       = options.cgMaxIterations,
     internalForcesScalingFactor  = options.deformableObjectCompliance
   }
-  integrator.useDamp = (forceModel == 'stvk')
+  -- integrator.useDamp = (forceModel == 'stvk')
+  integrator.useDamp = true
   integrator:setupFieldsFunctions(mesh)
 
   mesh:dumpDeformationToFile(outDirName.."/vertices_"..tostring(0))
