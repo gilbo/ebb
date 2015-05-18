@@ -20,7 +20,7 @@ local liszt visualize ( v : mesh.vertices )
   vdb.point(v.pos)
 end
 
-mesh.vertices:map(visualize)
+mesh.vertices:foreach(visualize)
 
 -----------------------------
 
@@ -29,7 +29,7 @@ local liszt visualize ( v : mesh.vertices )
   vdb.point(v.pos)
 end
 
-mesh.vertices:map(visualize)
+mesh.vertices:foreach(visualize)
 
 -----------------------------
 
@@ -44,7 +44,7 @@ local liszt set_oscillation ( v : mesh.vertices )
   v.q = v.pos
 end
 
-mesh.vertices:map(set_oscillation)
+mesh.vertices:foreach(set_oscillation)
 
 
 -----------------------------]]
@@ -64,7 +64,7 @@ local liszt set_oscillation ( v : mesh.vertices )
   v.q = 0.5*( L.sin(time) + 1) * v.pos
 end
 
-mesh.vertices:map(set_oscillation)
+mesh.vertices:foreach(set_oscillation)
 
 local liszt visualize ( v : mesh.vertices )
   vdb.color({1,1,0})
@@ -75,11 +75,11 @@ for i=1,360 do
   for k=1,10000 do end
 
   time:set(i * math.pi / 180.0)
-  mesh.vertices:map(set_oscillation)
+  mesh.vertices:foreach(set_oscillation)
 
   vdb.vbegin()
   vdb.frame()
-    mesh.vertices:map(visualize)
+    mesh.vertices:foreach(visualize)
   vdb.vend()
 end
 
@@ -92,5 +92,5 @@ end
 
 --vdb.vbegin()
 --vdb.frame() -- this call clears the canvas for a new frame
---    bunny.triangles:map(debug_tri_draw)
+--    bunny.triangles:foreach(debug_tri_draw)
 --vdb.vend()

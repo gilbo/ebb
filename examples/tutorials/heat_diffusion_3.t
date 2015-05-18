@@ -73,7 +73,7 @@ end
 
 -- We'll actually only need to set the Dirichlet condition once and
 -- then leave it alone.  Notice we are mapping over the subset here
-grid.cells.boundary:map(dirichlet_condition)
+grid.cells.boundary:foreach(dirichlet_condition)
 
 
 ------------------------------------------------------------------------------
@@ -102,13 +102,13 @@ end
 
 for i = 1,500 do
   -- Note that we're mapping the main computation over the grid's interior
-  grid.cells.interior:map(compute_update)
-  grid.cells.interior:map(apply_update)
+  grid.cells.interior:foreach(compute_update)
+  grid.cells.interior:foreach(apply_update)
 
   -- EXTRA: VDB (For visualization)
   vdb.vbegin()
     vdb.frame() -- this call clears the canvas for a new frame
-    grid.cells:map(debug_quad_draw)
+    grid.cells:foreach(debug_quad_draw)
   vdb.vend()
   -- END EXTRA
 end

@@ -28,8 +28,8 @@ local liszt Check (c : grid.cells)
     L.assert( c.field == c(xn,-yn).field)
 end
 
-grid.cells:map(Init)
-grid.cells:map(Check)
+grid.cells:foreach(Init)
+grid.cells:foreach(Check)
 
 print(grid:xBoundaryDepth())
 print(grid:yBoundaryDepth())

@@ -280,8 +280,8 @@ while gl.glfwWindowShouldClose(window) == 0 do
 
 
     time_global:set(time)
-    vertices:map(update_pos1)
-    vertices:map(update_pos2)
+    vertices:foreach(update_pos1)
+    vertices:foreach(update_pos2)
     triangles:UpdateGClef()
 
     -- Issue the actual draw call

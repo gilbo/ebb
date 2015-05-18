@@ -13,8 +13,8 @@ function main ()
 	local liszt sum_pos (v : mesh.vertices)
 		com += L.vec3f(v.position)
 	end
-	--mesh.vertices:map(sum_pos)
-	mesh.vertices:map(sum_pos)
+	--mesh.vertices:foreach(sum_pos)
+	mesh.vertices:foreach(sum_pos)
 
 	local center = com:get() / mesh.vertices:Size()
 

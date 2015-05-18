@@ -28,23 +28,23 @@ local f5 = liszt (r : R) si  +=   -two  end
 local f6 = liszt (r : R) sb  and= false end
 --local f7 = liszt (r : R) sd  /=   2.0   end
 
-R:map(f1)
+R:foreach(f1)
 test.fuzzy_aeq(sf3:get(), {nr, 2*nr, 3*nr})
 
-R:map(f2)
+R:foreach(f2)
 test.fuzzy_aeq(si4:get(), {1-2*nr,2-2*nr,3-2*nr,4-2*nr})
 
-R:map(f3)
+R:foreach(f3)
 test.aeq(sb5:get(), {true, false, true, false, true})
 
-R:map(f4)
+R:foreach(f4)
 test.eq(sf:get(), nr)
 
-R:map(f5)
+R:foreach(f5)
 test.eq(si:get(), -2*nr)
 
-R:map(f6)
+R:foreach(f6)
 test.eq(sb:get(), false)
 
---R:map(f7)
+--R:foreach(f7)
 --test.eq(sd:get(), math.pow(2,-nr))

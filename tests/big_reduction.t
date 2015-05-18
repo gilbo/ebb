@@ -12,7 +12,7 @@ end
 
 function run_test()
 	gerr:set(0)
-	vertices:map(RunRed)
+	vertices:foreach(RunRed)
 	L.assert(N == gerr:get())
 end
 

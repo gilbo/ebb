@@ -83,7 +83,7 @@ grid.cells:NewField("force_temp", L.vector(L.double, 3*8))
 -- This is also needed to maintain the code style which allows
 -- extensibility to less structured Hex-Mesh topologies
 grid.cells:NewField('v', L.vector(grid.vertices, 8))
-grid.cells:map(liszt( c : grid.cells )
+grid.cells:foreach(liszt( c : grid.cells )
   c.v[0] = c.vertex(0,1,1)
   c.v[1] = c.vertex(1,1,1)
   c.v[2] = c.vertex(1,0,1)
@@ -475,8 +475,8 @@ function m.initMeshParameters ()
   m.dtcourant = 1e20
   m.dthydro   = 1e20
 
-  grid.vertices:map(initVectorPosition)
-  grid.cells:map(initialVolumeCalc)
+  grid.vertices:foreach(initVectorPosition)
+  grid.cells:foreach(initialVolumeCalc)
 end
 
 function timeIncrement( )
@@ -703,8 +703,8 @@ local liszt calcPositionForNodes(v : grid.vertices)
 end
 
 function lagrangeNodal ()
-  grid.cells:map(calcVolumeForceForElems)
-  grid.vertices:map(calcPositionForNodes)
+  grid.cells:foreach(calcVolumeForceForElems)
+  grid.vertices:foreach(calcPositionForNodes)
 end
 
 local liszt calcElemCharacteristicLength(localCoords, volume)
@@ -1199,9 +1199,9 @@ local liszt updateVolumeForElements(c : grid.cells)
 end
 
 function lagrangeElements ()
-  grid.cells:map(calcKinemAndMQGradientsForElems1)
-  grid.cells:map(calcKinemAndMQGradientsForElems2)
-  grid.cells:map(applyMaterialPropertiesAndUpdateVolume)
+  grid.cells:foreach(calcKinemAndMQGradientsForElems1)
+  grid.cells:foreach(calcKinemAndMQGradientsForElems2)
+  grid.cells:foreach(applyMaterialPropertiesAndUpdateVolume)
 end
 
 
@@ -1243,8 +1243,8 @@ function calcTimeConstraintsForElems ()
   dthydro_tmp:set(1e20)
   dtcourant_tmp:set(1e20)
 
-  grid.cells:map(reduceDtCourant)
-  grid.cells:map(reduceDtHydro)
+  grid.cells:foreach(reduceDtCourant)
+  grid.cells:foreach(reduceDtHydro)
 
   local courant_result = dtcourant_tmp:get()
   if courant_result ~= 1e20 then

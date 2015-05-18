@@ -119,7 +119,7 @@ end
 function visualize(mesh)
   vdb.vbegin()
   vdb.frame() -- this call clears the canvas for a new frame
-  mesh.tetrahedra:map(visualizeDeformation)
+  mesh.tetrahedra:foreach(visualizeDeformation)
   vdb.vend()
 end
 

@@ -40,9 +40,9 @@ local liszt clear (p : M.vertices)
 end
 
 for i = 1, 1000 do
-	M.vertices:map(compute_step)
-	M.vertices:map(propagate_temp)
-	M.vertices:map(clear)
+	M.vertices:foreach(compute_step)
+	M.vertices:foreach(propagate_temp)
+	M.vertices:foreach(clear)
 end
 
 M.vertices.temperature:print()

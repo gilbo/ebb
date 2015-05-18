@@ -12,7 +12,7 @@ function shift(x,y,z)
   local liszt shift_func (v : M.vertices)
       v.pos += {x,y,z}
   end
-  M.vertices:map(shift_func)
+  M.vertices:foreach(shift_func)
 
   local Pdata = P:DumpToList()
   for i = 1, V:Size() do
@@ -59,8 +59,8 @@ local liszt m_reduce_centered (t : T)
   }
 end
 
-T:map(m_set)
-T:map(m_reduce_centered)
+T:foreach(m_set)
+T:foreach(m_reduce_centered)
 
 T.mat:print()
 
@@ -92,7 +92,7 @@ local liszt m_reduce_uncentered (e : E)
   }
 end
 
-V:map(m_set_v)
-E:map(m_reduce_uncentered)
+V:foreach(m_set_v)
+E:foreach(m_reduce_uncentered)
 
 V.mat:print()

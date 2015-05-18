@@ -22,4 +22,4 @@ local liszt test (r : R)
 
 end
 
-R:map(test)
+R:foreach(test)

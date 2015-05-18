@@ -29,7 +29,7 @@ local liszt test_bool (r : R)
     -- had to hunt down this bug once already
     lassert(luavalue_true)
 end
-R:map(test_bool)
+R:foreach(test_bool)
 
 local liszt test_decls (r : R)
     -- DeclStatement tests --
@@ -60,7 +60,7 @@ local liszt test_decls (r : R)
     var x = doo == dah
     lassert(doo == dah)
 end
-R:map(test_decls)
+R:foreach(test_decls)
 
 
 local liszt test_conditionals (r : R)
@@ -110,7 +110,7 @@ local liszt test_conditionals (r : R)
     lassert(a == 3)
 end
 
-R:map(test_conditionals)
+R:foreach(test_conditionals)
 
 local liszt test_arith(r : R)
     -- BinaryOp, UnaryOp, InitStatement, Number, Bool, and RValue codegen tests
@@ -155,7 +155,7 @@ local liszt test_arith(r : R)
     f = a * vv
     lassert(f == e)
 end
-R:map(test_arith)
+R:foreach(test_arith)
 
 local liszt test_while (r : R)
     -- While Statement tests --
@@ -171,7 +171,7 @@ local liszt test_while (r : R)
         var b = false
     end
 end
-R:map(test_while)
+R:foreach(test_while)
 
 
 local liszt test_do (r : R)
@@ -192,7 +192,7 @@ local liszt test_do (r : R)
     lassert(x == true)
     lassert(y == 4)
 end
-R:map(test_do)
+R:foreach(test_do)
 
 
 local liszt test_repeat (r : R)
@@ -212,7 +212,7 @@ local liszt test_repeat (r : R)
     until y == 5
     lassert(y == 5)
 end
-R:map(test_repeat)
+R:foreach(test_repeat)
 
 
 local liszt test_for (r : R)
@@ -224,4 +224,4 @@ local liszt test_for (r : R)
     end
     lassert(x == true)
 end
-R:map(test_for)
+R:foreach(test_for)

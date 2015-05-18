@@ -85,7 +85,7 @@ local function build_edges(mesh, vs) --v1s, v2s, v3s)
       if e.head == t.v[1] then t.e32 = e end
     end
   end
-  mesh.triangles:map(compute_tri_pointers)
+  mesh.triangles:foreach(compute_tri_pointers)
 end
 
 -- Let's define a new function as an entry in the Trimesh table

@@ -59,7 +59,7 @@ vdb.vbegin  = VDB_C.vdb_begin
 vdb.vend    = VDB_C.vdb_end
 vdb.flush  = VDB_C.vdb_flush
 vdb.frame  = VDB_C.vdb_frame
-vdb.sample = VDB_C.vdb_sample
+--vdb.sample = VDB_C.vdb_sample
 
 
 

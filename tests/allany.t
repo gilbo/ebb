@@ -13,4 +13,4 @@ local liszt pass(r : R)
     L.assert(L.all({true, true, true}))
     L.assert(not L.all({true, false}))
 end
-R:map(pass)
+R:foreach(pass)

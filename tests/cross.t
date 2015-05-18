@@ -20,4 +20,4 @@ local test_cross = liszt(r : R)
     assert(cross(v1, expr) == {2, 8, -6}) -- test working with local variables
     assert(cross(v1, v1 + 2 * v2) == {2, 8, -6}) -- test working with expressions
 end
-R:map(test_cross)
+R:foreach(test_cross)

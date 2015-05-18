@@ -567,6 +567,10 @@ LW.coherence = {
 --[[           Think of this as a workspace, not final organization        ]]--
 -----------------------------------------)(Q#$&Y@)#*$(*&_)@--------------------
 
+function LW.heavyweightBarrier()
+  LW.legion_runtime_issue_execution_fence(legion_env.runtime, legion_env.ctx)
+end
+
 function LW.CopyField (params)
   if not params.region  then error('Needs region argument', 2) end
   if not params.src_fid then error('Needs src_fid argument', 2) end

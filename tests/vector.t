@@ -21,7 +21,7 @@ local k = liszt (v : mesh.vertices)
 	var x       = {5, 5, 5}
 	v.pos += x + {0, 1, 1}
 end
-mesh.vertices:map(k)
+mesh.vertices:foreach(k)
 
 --[[
 -- Additive reduction over doubles currently unsupported
@@ -29,7 +29,7 @@ local s = L.Global(L.vector(L.double, 3), {0.0, 0.0, 0.0})
 local sum_pos = liszt(v : mesh.vertices)
 	s += v.pos
 end
-mesh.vertices:map(sum_pos)
+mesh.vertices:foreach(sum_pos)
 
 local f = s:get() / mesh.vertices:Size()
 test.fuzzy_aeq(f.data, {5, 6, 6})
@@ -44,7 +44,7 @@ test.fail_function(function()
 		var v3 = L.vec3f({1.1, 2.2, 3.3})
 		var v2 = L.vec2f(v3)
 	end
-  mesh.vertices:map(t)
+  mesh.vertices:foreach(t)
 end,
 'Cannot cast between primitives, vectors, matrices of different dimensions')
 

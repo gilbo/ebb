@@ -20,7 +20,7 @@ function main ()
 	local liszt sum_pos (c : grid.cells)
 		com += c.center
 	end
-	grid.cells:map(sum_pos)
+	grid.cells:foreach(sum_pos)
 
 	local center = com:get() / grid.cells:Size()
 

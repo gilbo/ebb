@@ -7,4 +7,4 @@ local liszt fail_assert (r : R)
     L.assert(x == 4)
 end
 
-R:map(fail_assert)
+R:foreach(fail_assert)

@@ -10,7 +10,7 @@ function center_of_mass ()
 	local sum_pos = liszt (v : mesh.vertices)
 		com += L.vec3f(v.pos)
 	end
-	mesh.vertices:map(sum_pos)
+	mesh.vertices:foreach(sum_pos)
 	local sz = mesh.vertices:Size()
 	local c  = com:get()
 	return { c[1]/sz, c[2]/sz, c[3]/sz }
@@ -21,7 +21,7 @@ local function displace_mesh (delta_x, delta_y, delta_z)
 	local dk = liszt (v : mesh.vertices)
 		v.pos += d
 	end
-	mesh.vertices:map(dk)
+	mesh.vertices:foreach(dk)
 end
 
 test.aeq(center_of_mass(), {0, 0, 0})

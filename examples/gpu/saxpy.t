@@ -25,7 +25,7 @@ function run_liszt_saxpy (tests)
 	end
 	
 	for i = 1, tests do
-		R:map(liszt_saxpy)
+		R:foreach(liszt_saxpy)
 	end
 end
 

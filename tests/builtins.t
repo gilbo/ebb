@@ -10,7 +10,7 @@ test.fail_function(function()
     var v = L.id({ e.head, e.tail })
     L.print(v)
   end
-  mesh.edges:map(bad_id)
+  mesh.edges:foreach(bad_id)
 end, "expected a relational key")
 
 
@@ -19,5 +19,5 @@ test.fail_function(function()
     var l = L.length({e.head, e.tail})
     L.print(l)
   end
-  mesh.edges:map(bad_length)
+  mesh.edges:foreach(bad_length)
 end, "length expects vectors of numeric type")

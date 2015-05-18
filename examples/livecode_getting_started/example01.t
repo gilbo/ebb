@@ -26,6 +26,6 @@ local liszt translate ( v : mesh.vertices )
   v.pos += {1,0,0}
 end
 
-mesh.vertices:map(translate)
+mesh.vertices:foreach(translate)
 
 mesh.vertices.pos:print()

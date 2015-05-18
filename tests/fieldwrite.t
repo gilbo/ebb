@@ -7,7 +7,7 @@ function shift(x,y,z)
   local liszt pass_func (r : R)
       r.position = {x,y,z}
   end
-  R:map(pass_func)
+  R:foreach(pass_func)
 end
 
 function check(x,y,z)

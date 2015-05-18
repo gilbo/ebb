@@ -35,4 +35,4 @@ local test_terra = liszt(r : R)
 
   srand(2) -- correctly handle a built-in C function with void return type
 end
-R:map(test_terra)
+R:foreach(test_terra)

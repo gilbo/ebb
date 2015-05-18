@@ -447,15 +447,15 @@ end
 
 
 -- set implicit function
---grid.vertices:map(set_sphere_field)
---grid.vertices:map(set_hyperboloid)
-grid.vertices:map(set_sins)
+--grid.vertices:foreach(set_sphere_field)
+--grid.vertices:foreach(set_hyperboloid)
+grid.vertices:foreach(set_sins)
 
 -- gen quads
-grid.edges:map(cut_edges)
-grid.cells:map(gather_dual_pos)
+grid.edges:foreach(cut_edges)
+grid.cells:foreach(gather_dual_pos)
 -- draw quads
-quads:map(debug_draw_quads)
+quads:foreach(debug_draw_quads)
 
 
 

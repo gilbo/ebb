@@ -141,7 +141,7 @@ function Trimesh:build_edges(vs)
       if e.head == t.v[1] then t.e32 = e end
     end
   end
-  mesh.triangles:map(compute_tri_pointers)
+  mesh.triangles:foreach(compute_tri_pointers)
 end
 
 

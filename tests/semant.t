@@ -39,7 +39,7 @@ test.fail_function(function()
  	local liszt t(cell : R)
 		checkthis1 = cell.f1
 	end
-	R:map(t)
+	R:foreach(t)
 end, "Illegal assignment: left hand side cannot be assigned")
 
 -- Should fail when we re-assign a new value to x, since it originally
@@ -49,7 +49,7 @@ test.fail_function(function()
 		var x = cell
   	  	x = cell
 	end
-	R:map(t)
+	R:foreach(t)
 end, "Illegal assignment: variables of key type cannot be re%-assigned")
 
 -- Should fail because we do not allow assignments to fields
@@ -58,7 +58,7 @@ test.fail_function(function()
 	local fail3 = liszt(cell : R)
 		R.f1 = 5
 	end
-	R:map(fail3)
+	R:foreach(fail3)
 end, "Illegal assignment: left hand side cannot be assigned")
 
 -- Should fail because we do not allow the user to alias fields,
@@ -67,14 +67,14 @@ test.fail_function(function()
 	local liszt t(cell : R)
 		var z = R.f1
 	end
-	R:map(t)
+	R:foreach(t)
 end, "can only assign")
 
 test.fail_function(function()
  	local liszt t(cell : R)
 		undefined = 3
 	end
-	R:map(t)
+	R:foreach(t)
 end, "variable 'undefined' is not defined")
 
 -- Can't assign a value of a different type to a variable that has already
@@ -84,7 +84,7 @@ test.fail_function(function()
 		var floatvar = 2 + 3.3
 		floatvar = true
 	end
-	R:map(t)
+	R:foreach(t)
 end, "Could not coerce expression of type 'bool' into type 'double'")
 
 -- local8 is not in scope in the while loop
@@ -101,7 +101,7 @@ test.fail_function(function()
 			local7 = 4.5
 		end
 	end
-	R:map(t)
+	R:foreach(t)
 end, "variable 'local8' is not defined")
 
 test.fail_function(function()
@@ -117,7 +117,7 @@ test.fail_function(function()
 			var local10 = local7
 		end
 	end
-	R:map(t)
+	R:foreach(t)
 end, "variable 'local8' is not defined")
 
 test.fail_function(function()
@@ -128,14 +128,14 @@ test.fail_function(function()
 			local1 = 2.0 -- should fail, local1 is of type bool
 		end
 	end
-	R:map(t)
+	R:foreach(t)
 end, "Could not coerce expression of type 'double' into type 'bool'")
 
 test.fail_function(function()
 	local liszt t(cell : R)
 		lassert(4 == true) -- binary op will fail here, type mismatch
 	end
-	R:map(t)
+	R:foreach(t)
 end, "incompatible types: int and bool")
 
 local v = L.Constant(L.vec3f, {1, 1, 1})
@@ -143,14 +143,14 @@ test.fail_function(function()
 	local liszt t(cell : R)
 		lassert(v) -- assert fail, comparison returns a vector of bools
 	end
-	R:map(t)
+	R:foreach(t)
 end, "expected a boolean")
 
 test.fail_function(function()
 	local liszt t(cell : R)
 		a.b = 12
 	end
-	R:map(t)
+	R:foreach(t)
 end, "Illegal assignment: left hand side cannot be assigned")
 
 test.fail_function(function()
@@ -161,7 +161,7 @@ test.fail_function(function()
 		end
 		v = 5
 	end
-	R:map(t)
+	R:foreach(t)
 end, "Could not coerce expression of type 'int' into type 'bool'")
 
 local tbl = {}
@@ -169,21 +169,21 @@ test.fail_function(function()
 	local liszt t(cell : R)
 		var x = 3 + tbl
 	end
-	R:map(t)
+	R:foreach(t)
 end, "invalid types")
 
 test.fail_function(function()
 	local liszt t(cell : R)
 		var x = tbl
 	end
-	R:map(t)
+	R:foreach(t)
 end, "can only assign")
 
 test.fail_function(function()
 	local liszt t(cell : R)
 		tbl.x = 4
 	end
-	R:map(t)
+	R:foreach(t)
 end, "lua table does not have member 'x'")
 
 local tbl = {x={}}
@@ -191,7 +191,7 @@ test.fail_function(function()
 	local liszt t(cell : R)
 		tbl.x.y = 4
 	end
-	R:map(t)
+	R:foreach(t)
 end, "lua table does not have member 'y'")
 
 tbl.x.z = 4
@@ -199,7 +199,7 @@ test.fail_function(function()
 	local liszt t(cell : R)
 		var x = tbl.x
 	end
-	R:map(t)
+	R:foreach(t)
 end, "can only assign")
 
 test.fail_function(function()
@@ -209,7 +209,7 @@ test.fail_function(function()
 		end
 		var g = i
 	end
-	R:map(t)
+	R:foreach(t)
 end, "variable 'i' is not defined")
 
 
@@ -240,4 +240,4 @@ local good = liszt (cell : R)
 	end
 	lassert(local9 == 14)
 end
-R:map(good)
+R:foreach(good)

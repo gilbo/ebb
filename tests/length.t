@@ -25,4 +25,4 @@ local liszt test_dot (r : R)
     assert(length(sum) == ans2) -- test working with local variables
     assert(length(v1 + v2) == ans2) -- test working with expressions
 end
-R:map(test_dot)
+R:foreach(test_dot)

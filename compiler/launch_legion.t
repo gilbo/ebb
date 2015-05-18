@@ -35,8 +35,7 @@ function load_liszt()
   local script_filename = arg[1]
   local success = xpcall( function ()
     assert(terralib.loadfile(script_filename))()
-    LW.legion_runtime_issue_execution_fence(LE.legion_env:get().runtime,
-                                            LE.legion_env:get().ctx)
+    LW.heavyweightBarrier()
   end, top_level_err_handler)
 end
 
@@ -136,14 +135,14 @@ local terra main()
   LW.legion_runtime_register_task_void(
     LW.TID_SIMPLE_CPU, LW.LOC_PROC, true, false, 1,
     LW.legion_task_config_options_t {
-      leaf = false,
+      leaf = true,
       inner = false,
       idempotent = false },
     'simple_task_cpu', LW.simple_task)
   LW.legion_runtime_register_task_void(
     LW.TID_SIMPLE_GPU, LW.TOC_PROC, true, false, 1,
     LW.legion_task_config_options_t {
-      leaf = false,
+      leaf = true,
       inner = false,
       idempotent = false },
     'simple_task_gpu', LW.simple_task)
@@ -151,14 +150,14 @@ local terra main()
   LW.legion_runtime_register_task(
     LW.TID_FUTURE_CPU, LW.LOC_PROC, true, false, 1,
     LW.legion_task_config_options_t {
-      leaf = false,
+      leaf = true,
       inner = false,
       idempotent = false },
     'future_task_cpu', LW.future_task)
   LW.legion_runtime_register_task(
     LW.TID_FUTURE_GPU, LW.TOC_PROC, true, false, 1,
     LW.legion_task_config_options_t {
-      leaf = false,
+      leaf = true,
       inner = false,
       idempotent = false },
     'future_task_gpu', LW.future_task)

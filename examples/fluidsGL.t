@@ -173,9 +173,9 @@ local liszt advectInterpolateVelocity (c : grid.cells)
 end
 
 local function advectVelocity(grid)
-	grid.cells:map(advectWhereFrom)
-    grid.cells:map(advectPointLocate)
-    grid.cells:map(advectInterpolateVelocity)
+	grid.cells:foreach(advectWhereFrom)
+    grid.cells:foreach(advectPointLocate)
+    grid.cells:foreach(advectInterpolateVelocity)
 end
 
 --
@@ -238,7 +238,7 @@ local function diffuseProjectGPU(grid, gridFFT)
 	C.cufftExecR2C(fftplan.r2c, xGPUPtr, terralib.cast(&C.cufftComplex,xFFTGPUPtr))
 	C.cufftExecR2C(fftplan.r2c, yGPUPtr, terralib.cast(&C.cufftComplex,yFFTGPUPtr))
 
-	gridFFT.cells:map(diffuseProjectFFT)
+	gridFFT.cells:foreach(diffuseProjectFFT)
 
 	-- FFT C2R
 	C.cufftExecC2R(fftplan.c2r, terralib.cast(&C.cufftComplex,xFFTGPUPtr), xGPUPtr)
@@ -262,7 +262,7 @@ local function diffuseProjectCPU(grid, gridFFT)
 	C.cudaMemcpy(xFFTCPUPtr,fftplan.xGPU,terralib.sizeof(float)*N*N,cudaMemcpyDeviceToHost)
 	C.cudaMemcpy(yFFTCPUPtr,fftplan.yGPU,terralib.sizeof(float)*N*N,cudaMemcpyDeviceToHost)
 
-	gridFFT.cells:map(diffuseProjectFFT)
+	gridFFT.cells:foreach(diffuseProjectFFT)
 
 	C.cudaMemcpy(fftplan.xGPU,xFFTCPUPtr,terralib.sizeof(float)*N*N,cudaMemcpyHostToDevice)
 	C.cudaMemcpy(fftplan.yGPU,yFFTCPUPtr,terralib.sizeof(float)*N*N,cudaMemcpyHostToDevice)
@@ -307,7 +307,7 @@ end)
 
 particles:NewField('nextPos', L.vec2f):Load({0,0})
 particles:NewField('pos', L.vec2f):Load({0,0})
-particles:map(liszt (p : particles) -- init...
+particles:foreach(liszt (p : particles) -- init...
     p.pos = p.dual_cell.vertex.cell(-1,-1).center +
             L.vec2f({cell_w/2.0, cell_h/2.0})
 end)
@@ -348,11 +348,11 @@ end
 for i = 1, 1 do
 	advectVelocity(grid)
     diffuseProject(grid, gridFFT)
-    --grid.cells:map(updateVelocity)
+    --grid.cells:foreach(updateVelocity)
     
-	particles:map(computeParticleVelocity)
-    particles:map(updateParticlePos)
-    particles:map(locateParticles)
+	particles:foreach(computeParticleVelocity)
+    particles:foreach(updateParticlePos)
+    particles:foreach(locateParticles)
 end
 
 grid.cells:print()
