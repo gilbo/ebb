@@ -297,7 +297,7 @@ function S:setupFieldsFunctions(mesh)
   ------------------------------------------------------------------------------
   -- Invoke all precomputation.
 
-  mesh.tetrahedra:map(self.precomputeStVKIntegrals)
+  mesh.tetrahedra:foreach(self.precomputeStVKIntegrals)
 
 end
 
@@ -310,18 +310,18 @@ local computeInternalForcesHelper = function(tetrahedra)
   if S.profile then
     local timer = U.Timer.New()
     timer:Start()
-    tetrahedra:map(S.addIFLinearTerms)
+    tetrahedra:foreach(S.addIFLinearTerms)
     print("Time for internal forces linear terms is "..(timer:Stop()*1E6).." us")
     timer:Start()
-    tetrahedra:map(S.addIFQuadraticTerms)
+    tetrahedra:foreach(S.addIFQuadraticTerms)
     print("Time for internal forces quadratic terms is "..(timer:Stop()*1E6).." us")
     timer:Start()
-    tetrahedra:map(S.addIFCubicTerms)
+    tetrahedra:foreach(S.addIFCubicTerms)
     print("Time for internal forces cubic terms is "..(timer:Stop()*1E6).." us")
   else
-    tetrahedra:map(S.addIFLinearTerms)
-    tetrahedra:map(S.addIFQuadraticTerms)
-    tetrahedra:map(S.addIFCubicTerms)
+    tetrahedra:foreach(S.addIFLinearTerms)
+    tetrahedra:foreach(S.addIFQuadraticTerms)
+    tetrahedra:foreach(S.addIFCubicTerms)
   end
 end
 
@@ -329,23 +329,23 @@ local computeStiffnessMatrixHelper = function(tetrahedra)
   if S.profile then
     local timer = U.Timer.New()
     timer:Start()
-    tetrahedra:map(S.addStiffLinearTerms)
+    tetrahedra:foreach(S.addStiffLinearTerms)
     print("Time for stiffness linear terms is "..(timer:Stop()*1E6).." us")
     timer:Start()
-    tetrahedra:map(S.addStiffQuadraticTerms)
+    tetrahedra:foreach(S.addStiffQuadraticTerms)
     print("Time for stiffness quadratic terms is "..(timer:Stop()*1E6).." us")
     timer:Start()
-    tetrahedra:map(S.addStiffCubicTerms)
+    tetrahedra:foreach(S.addStiffCubicTerms)
     print("Time for stiffness cubic terms is "..(timer:Stop()*1E6).." us")
   else
-    tetrahedra:map(S.addStiffLinearTerms)
-    tetrahedra:map(S.addStiffQuadraticTerms)
-    tetrahedra:map(S.addStiffCubicTerms)
+    tetrahedra:foreach(S.addStiffLinearTerms)
+    tetrahedra:foreach(S.addStiffQuadraticTerms)
+    tetrahedra:foreach(S.addStiffCubicTerms)
   end
 end
 
 local function computeInternalForces(mesh)
-  mesh.vertices:map(S.resetInternalForces)
+  mesh.vertices:foreach(S.resetInternalForces)
   local timer = U.Timer.New()
   timer:Start()
   computeInternalForcesHelper(mesh.tetrahedra)
@@ -353,7 +353,7 @@ local function computeInternalForces(mesh)
 end
 
 local function computeStiffnessMatrix(mesh)
-  mesh.edges:map(S.resetStiffnessMatrix)
+  mesh.edges:foreach(S.resetStiffnessMatrix)
   local timer = U.Timer.New()
   timer:Start()
   computeStiffnessMatrixHelper(mesh.tetrahedra)

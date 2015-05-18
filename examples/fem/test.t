@@ -112,7 +112,7 @@ end
 
 vdb.vbegin()
   vdb.frame() -- this call clears the canvas for a new frame
-  turtle.tetrahedra:map(visualize)
+  turtle.tetrahedra:foreach(visualize)
 vdb.vend()
 
 -- pause before exit

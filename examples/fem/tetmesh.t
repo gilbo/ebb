@@ -70,7 +70,7 @@ local function build_element_edges(mesh, elements)
       end
     end
   end
-  mesh.tetrahedra:map(compute_tet_edges)
+  mesh.tetrahedra:foreach(compute_tet_edges)
 
   -- set up pointers from vertices to self edges
   mesh.vertices:NewField('diag', mesh.edges)
@@ -81,7 +81,7 @@ local function build_element_edges(mesh, elements)
       end
     end
   end
-  mesh.vertices:map(compute_self_edges)
+  mesh.vertices:foreach(compute_self_edges)
 
 end
 

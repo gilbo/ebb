@@ -183,7 +183,7 @@ function N:setupFieldsFunctions(mesh)
   ------------------------------------------------------------------------------
   -- Invoke all precomputation.
 
-  mesh.tetrahedra:map(self.computeBAndW)
+  mesh.tetrahedra:foreach(self.computeBAndW)
 
 end
 
@@ -195,17 +195,17 @@ end
 local ts = 0
 function N.computeInternalForcesAndStiffnessMatrix(mesh)
   ts = ts + 1
-  mesh.tetrahedra:map(N.recomputeAndResetTetTemporaries)
-  mesh.edges:map(N.recomputeAndResetEdgeTemporaries)
-  mesh.vertices:map(N.recomputeAndResetVertexTemporaries)
+  mesh.tetrahedra:foreach(N.recomputeAndResetTetTemporaries)
+  mesh.edges:foreach(N.recomputeAndResetEdgeTemporaries)
+  mesh.vertices:foreach(N.recomputeAndResetVertexTemporaries)
   local timer = U.Timer.New()
   timer:Start()
-  mesh.tetrahedra:map(N.computeInternalForces)
+  mesh.tetrahedra:foreach(N.computeInternalForces)
   local t_if = timer:Stop() * 1E6
   print("Time to assemble force is "..(t_if).." us")
   mesh:dumpVertFieldToFile('internal_forces', "liszt_output/nh-out/internal_forces_"..tostring(ts))
   timer:Start()
-  mesh.tetrahedra:map(N.computeStiffnessMatrix)
+  mesh.tetrahedra:foreach(N.computeStiffnessMatrix)
   local t_stiff = timer:Stop() * 1E6
   print("Time to assemble stiffness matrix is "..(t_stiff).." us")
   mesh:dumpEdgeFieldToFile('stiffness', "liszt_output/nh-out/stiffness_"..tostring(ts))

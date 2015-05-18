@@ -2074,8 +2074,8 @@ liszt Flow.UpdateGhostFieldsStep2 (c : grid.cells)
     c.temperature = c.temperatureBoundary
 end
 function Flow.UpdateGhost()
-    grid.cells.boundary:map(Flow.UpdateGhostFieldsStep1)
-    grid.cells.boundary:map(Flow.UpdateGhostFieldsStep2)
+    grid.cells.boundary:foreach(Flow.UpdateGhostFieldsStep1)
+    grid.cells.boundary:foreach(Flow.UpdateGhostFieldsStep2)
 end
 
 -- Helper function for updating the ghost fields to minimize repeated code
@@ -2130,8 +2130,8 @@ liszt Flow.UpdateGhostThermodynamicsStep2 (c : grid.cells)
     end
 end
 function Flow.UpdateGhostThermodynamics()
-    grid.cells.boundary:map(Flow.UpdateGhostThermodynamicsStep1)
-    grid.cells.boundary:map(Flow.UpdateGhostThermodynamicsStep2)
+    grid.cells.boundary:foreach(Flow.UpdateGhostThermodynamicsStep1)
+    grid.cells.boundary:foreach(Flow.UpdateGhostThermodynamicsStep2)
 end
 
 -- Helper function for updating the ghost fields to minimize repeated code
@@ -2181,8 +2181,8 @@ liszt Flow.UpdateGhostVelocityStep2 (c : grid.cells)
     c.velocity = c.velocityBoundary
 end
 function Flow.UpdateGhostVelocity()
-    grid.cells.boundary:map(Flow.UpdateGhostVelocityStep1)
-    grid.cells.boundary:map(Flow.UpdateGhostVelocityStep2)
+    grid.cells.boundary:foreach(Flow.UpdateGhostVelocityStep1)
+    grid.cells.boundary:foreach(Flow.UpdateGhostVelocityStep2)
 end
 
 -- Helper function for updating the conservatives to minimize repeated code
@@ -2270,8 +2270,8 @@ liszt Flow.UpdateGhostConservedStep2 (c : grid.cells)
     c.rhoEnergy   = c.rhoEnergyBoundary
 end
 function Flow.UpdateGhostConserved()
-    grid.cells.boundary:map(Flow.UpdateGhostConservedStep1)
-    grid.cells.boundary:map(Flow.UpdateGhostConservedStep2)
+    grid.cells.boundary:foreach(Flow.UpdateGhostConservedStep1)
+    grid.cells.boundary:foreach(Flow.UpdateGhostConservedStep2)
 end
 
 liszt Flow.UpdateAuxiliaryThermodynamics (c : grid.cells)
@@ -2451,9 +2451,9 @@ local liszt calculateHeatConductionSpectralRadius ( c : grid.cells )
   maxHeatConductionSpectralRadius max= c.heatConductionSpectralRadius
 end
 function Flow.CalculateSpectralRadii(cells)
-  cells:map(calculateConvectiveSpectralRadius)
-  cells:map(calculateViscousSpectralRadius)
-  cells:map(calculateHeatConductionSpectralRadius)
+  cells:foreach(calculateConvectiveSpectralRadius)
+  cells:foreach(calculateViscousSpectralRadius)
+  cells:foreach(calculateHeatConductionSpectralRadius)
 end
 --Flow.CalculateSpectralRadii = liszt(c : grid.cells)
 --    var dXYZInverseSquare = 1.0/grid_dx * 1.0/grid_dx +
@@ -2520,13 +2520,13 @@ local liszt maxTemperature        ( c : grid.cells )
   Flow.maxTemperature         max= c.temperature
 end
 function Flow.IntegrateQuantities(cells)
-  cells:map(numberOfInteriorCells)
-  cells:map(areaInterior         )
-  cells:map(averagePressure      )
-  cells:map(averageTemperature   )
-  cells:map(averageKineticEnergy )
-  cells:map(minTemperature       )
-  cells:map(maxTemperature       )
+  cells:foreach(numberOfInteriorCells)
+  cells:foreach(areaInterior         )
+  cells:foreach(averagePressure      )
+  cells:foreach(averageTemperature   )
+  cells:foreach(averageKineticEnergy )
+  cells:foreach(minTemperature       )
+  cells:foreach(maxTemperature       )
 end
 --Flow.IntegrateQuantities = liszt(c : grid.cells)
 --    -- WARNING: update cellVolume computation for non-uniform grids
@@ -3344,41 +3344,41 @@ end
 -------
 
 function Flow.AddInviscid()
-    grid.cells:map(Flow.AddInviscidInitialize)
-    grid.cells:map(Flow.AddInviscidGetFluxX)
-    grid.cells.interior:map(Flow.AddInviscidUpdateUsingFluxX)
-    grid.cells:map(Flow.AddInviscidGetFluxY)
-    grid.cells.interior:map(Flow.AddInviscidUpdateUsingFluxY)
-    grid.cells:map(Flow.AddInviscidGetFluxZ)
-    grid.cells.interior:map(Flow.AddInviscidUpdateUsingFluxZ)
+    grid.cells:foreach(Flow.AddInviscidInitialize)
+    grid.cells:foreach(Flow.AddInviscidGetFluxX)
+    grid.cells.interior:foreach(Flow.AddInviscidUpdateUsingFluxX)
+    grid.cells:foreach(Flow.AddInviscidGetFluxY)
+    grid.cells.interior:foreach(Flow.AddInviscidUpdateUsingFluxY)
+    grid.cells:foreach(Flow.AddInviscidGetFluxZ)
+    grid.cells.interior:foreach(Flow.AddInviscidUpdateUsingFluxZ)
 end
 
 function Flow.UpdateGhostVelocityGradient()
-    grid.cells:map(Flow.UpdateGhostVelocityGradientStep1)
-    grid.cells:map(Flow.UpdateGhostVelocityGradientStep2)
+    grid.cells:foreach(Flow.UpdateGhostVelocityGradientStep1)
+    grid.cells:foreach(Flow.UpdateGhostVelocityGradientStep2)
 end
 
 function Flow.AddViscous()
-    grid.cells:map(Flow.AddViscousGetFluxX)
-    grid.cells.interior:map(Flow.AddViscousUpdateUsingFluxX)
-    grid.cells:map(Flow.AddViscousGetFluxY)
-    grid.cells.interior:map(Flow.AddViscousUpdateUsingFluxY)
-    grid.cells:map(Flow.AddViscousGetFluxZ)
-    grid.cells.interior:map(Flow.AddViscousUpdateUsingFluxZ)
+    grid.cells:foreach(Flow.AddViscousGetFluxX)
+    grid.cells.interior:foreach(Flow.AddViscousUpdateUsingFluxX)
+    grid.cells:foreach(Flow.AddViscousGetFluxY)
+    grid.cells.interior:foreach(Flow.AddViscousUpdateUsingFluxY)
+    grid.cells:foreach(Flow.AddViscousGetFluxZ)
+    grid.cells.interior:foreach(Flow.AddViscousUpdateUsingFluxZ)
 end
 
 function Flow.Update(stage)
-    grid.cells:map(Flow.UpdateFunctions[stage])
+    grid.cells:foreach(Flow.UpdateFunctions[stage])
 end
 
 function Flow.ComputeVelocityGradients()
-    grid.cells.interior:map(Flow.ComputeVelocityGradientX)
-    grid.cells.interior:map(Flow.ComputeVelocityGradientY)
-    grid.cells.interior:map(Flow.ComputeVelocityGradientZ)
+    grid.cells.interior:foreach(Flow.ComputeVelocityGradientX)
+    grid.cells.interior:foreach(Flow.ComputeVelocityGradientY)
+    grid.cells.interior:foreach(Flow.ComputeVelocityGradientZ)
 end
 
 function Flow.UpdateAuxiliaryVelocityConservedAndGradients()
-    grid.cells.interior:map(Flow.UpdateAuxiliaryVelocity)
+    grid.cells.interior:foreach(Flow.UpdateAuxiliaryVelocity)
     Flow.UpdateGhostConserved()
     Flow.UpdateGhostVelocity()
     Flow.ComputeVelocityGradients()
@@ -3386,7 +3386,7 @@ end
 
 function Flow.UpdateAuxiliary()
     Flow.UpdateAuxiliaryVelocityConservedAndGradients()
-    grid.cells.interior:map(Flow.UpdateAuxiliaryThermodynamics)
+    grid.cells.interior:foreach(Flow.UpdateAuxiliaryThermodynamics)
     Flow.UpdateGhostThermodynamics()
 end
 
@@ -3395,12 +3395,12 @@ end
 ------------
 
 function Particles.Update(stage)
-    particles:map(Particles.UpdateFunctions[stage])
+    particles:foreach(Particles.UpdateFunctions[stage])
 end
 
 function Particles.UpdateAuxiliary()
-    particles:map(Particles.UpdateAuxiliaryStep1)
-    particles:map(Particles.UpdateAuxiliaryStep2)
+    particles:foreach(Particles.UpdateAuxiliaryStep1)
+    particles:foreach(Particles.UpdateAuxiliaryStep2)
 end
 
 ------------------
@@ -3408,18 +3408,19 @@ end
 ------------------
 
 function TimeIntegrator.SetupTimeStep()
-    --particles:map(Particles.Feed) -- for now, feeding of particles is disabled
-    grid.cells:map(Flow.InitializeTemporaries)
-    particles:map(Particles.InitializeTemporaries)
+    --particles:foreach(Particles.Feed)
+    -- for now, feeding of particles is disabled
+    grid.cells:foreach(Flow.InitializeTemporaries)
+    particles:foreach(Particles.InitializeTemporaries)
 end
 
 function TimeIntegrator.ConcludeTimeStep()
-    particles:map(Particles.Collect)
+    particles:foreach(Particles.Collect)
 end
 
 function TimeIntegrator.InitializeTimeDerivatives()
-    grid.cells:map(Flow.InitializeTimeDerivatives)
-    particles:map(Particles.InitializeTimeDerivatives)
+    grid.cells:foreach(Flow.InitializeTimeDerivatives)
+    particles:foreach(Particles.InitializeTimeDerivatives)
 end
 
 function TimeIntegrator.UpdateAuxiliary()
@@ -3434,19 +3435,19 @@ function TimeIntegrator.UpdateTime(timeOld, stage)
 end
 
 function TimeIntegrator.InitializeVariables()
-    grid.cells:map(Flow.InitializeCenterCoordinates)
-    grid.cells.interior:map(Flow.InitializeCellRindLayer)
-    grid.vertices:map(Flow.InitializeVertexCoordinates)
-    grid.vertices.interior:map(Flow.InitializeVertexRindLayer)
-    grid.cells.interior:map(Flow.InitializePrimitives)
-    grid.cells.interior:map(Flow.UpdateConservedFromPrimitive)
+    grid.cells:foreach(Flow.InitializeCenterCoordinates)
+    grid.cells.interior:foreach(Flow.InitializeCellRindLayer)
+    grid.vertices:foreach(Flow.InitializeVertexCoordinates)
+    grid.vertices.interior:foreach(Flow.InitializeVertexRindLayer)
+    grid.cells.interior:foreach(Flow.InitializePrimitives)
+    grid.cells.interior:foreach(Flow.UpdateConservedFromPrimitive)
     Flow.UpdateAuxiliary()
     Flow.UpdateGhost()
     if particles_options.initParticles ~= Particles.Restart then
-      particles:map(Particles.Feed)
+      particles:foreach(Particles.Feed)
     end
-    particles:map(Particles.Locate)
-    particles:map(Particles.SetVelocitiesToFlow)
+    particles:foreach(Particles.Locate)
+    particles:foreach(Particles.SetVelocitiesToFlow)
 end
 
 function TimeIntegrator.ComputeDFunctionDt()
@@ -3454,16 +3455,16 @@ function TimeIntegrator.ComputeDFunctionDt()
     Flow.UpdateGhostVelocityGradient()
     Flow.AddViscous()
     Flow.averageHeatSource:set(0.0)
-    grid.cells.interior:map(Flow.AddBodyForces)
-    particles:map(Particles.AddFlowCoupling)
-    particles:map(Particles.AddBodyForces)
-    particles:map(Particles.AddRadiation)
-    particles:map(Flow.AddParticlesCoupling)
+    grid.cells.interior:foreach(Flow.AddBodyForces)
+    particles:foreach(Particles.AddFlowCoupling)
+    particles:foreach(Particles.AddBodyForces)
+    particles:foreach(Particles.AddRadiation)
+    particles:foreach(Flow.AddParticlesCoupling)
     -- In case we want to hold flow temp fixed with radiation active
     --print(Flow.averageHeatSource:get())
     Flow.averageHeatSource:set(Flow.averageHeatSource:get()/
                                Flow.numberOfInteriorCells:get())
-    grid.cells.interior:map(Flow.AddEnergySource)
+    grid.cells.interior:foreach(Flow.AddEnergySource)
 end
 
 function TimeIntegrator.UpdateSolution(stage)
@@ -3558,7 +3559,7 @@ end
 function Statistics.ComputeSpatialAverages()
     Statistics.ResetSpatialAverages()
     Flow.IntegrateQuantities(grid.cells.interior)
-    particles:map(Particles.IntegrateQuantities)
+    particles:foreach(Particles.IntegrateQuantities)
     Statistics.UpdateSpatialAverages(grid, particles)
 end
 
@@ -4143,8 +4144,8 @@ end
 function Visualization.Draw()
     vdb.vbegin()
     vdb.frame()
-    grid.cells:map(Flow.DrawFunction)
-    particles:map(Particles.DrawFunction)
+    grid.cells:foreach(Flow.DrawFunction)
+    particles:foreach(Particles.DrawFunction)
     vdb.vend()
 end
 
@@ -4182,5 +4183,4 @@ while ((TimeIntegrator.simTime:get() < TimeIntegrator.final_time) and
     if vdb_options.visualize == ON then
       Visualization.Draw()
     end
-    break -- one iteration
 end

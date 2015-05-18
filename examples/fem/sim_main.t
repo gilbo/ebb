@@ -146,7 +146,7 @@ function computeMassMatrix(mesh)
       end
     end
   end
-  mesh.tetrahedra:map(buildMassMatrix)
+  mesh.tetrahedra:foreach(buildMassMatrix)
 end
 
 
@@ -341,32 +341,32 @@ function ImplicitBackwardEulerIntegrator:solvePCG(mesh)
   local timer_solver = U.Timer.New()
   timer_solver:Start()
   mesh.vertices.x:Load({ 0, 0, 0 })
-  mesh.vertices:map(self.pcgCalculatePreconditioner, {blocksize=16})
+  mesh.vertices:foreach(self.pcgCalculatePreconditioner, {blocksize=16})
   local iter = 1
-  mesh.vertices:map(self.pcgCalculateExactResidual, {blocksize=16})
+  mesh.vertices:foreach(self.pcgCalculateExactResidual, {blocksize=16})
   self.normRes:set(0)
-  mesh.vertices:map(self.pcgInitialize, {blocksize=16})
-  mesh.vertices:map(self.pcgCalculateNormResidual, {blocksize=16})
+  mesh.vertices:foreach(self.pcgInitialize, {blocksize=16})
+  mesh.vertices:foreach(self.pcgCalculateNormResidual, {blocksize=16})
   local normRes = self.normRes:get()
   local thresh = self.cgEpsilon * self.cgEpsilon * normRes
   while normRes > thresh and
         iter <= self.cgMaxIterations do
-    mesh.vertices:map(self.pcgComputeAp, {blocksize=16})
+    mesh.vertices:foreach(self.pcgComputeAp, {blocksize=16})
     self.alphaDenom:set(0)
-    mesh.vertices:map(self.pcgComputeAlphaDenom, {blocksize=64})
+    mesh.vertices:foreach(self.pcgComputeAlphaDenom, {blocksize=64})
     self.alpha:set( normRes / self.alphaDenom:get() )
-    mesh.vertices:map(self.pcgUpdateX, {blocksize=64})
+    mesh.vertices:foreach(self.pcgUpdateX, {blocksize=64})
     if iter % 30 == 0 then
-      mesh.vertices:map(self.pcgCalculateExactResidual, {blocksize=16})
+      mesh.vertices:foreach(self.pcgCalculateExactResidual, {blocksize=16})
     else
-      mesh.vertices:map(self.pcgUpdateResidual, {blocksize=64})
+      mesh.vertices:foreach(self.pcgUpdateResidual, {blocksize=64})
     end
     local normResOld = normRes
     self.normRes:set(0)
-    mesh.vertices:map(self.pcgCalculateNormResidual, {blocksize=64})
+    mesh.vertices:foreach(self.pcgCalculateNormResidual, {blocksize=64})
     normRes = self.normRes:get()
     self.beta:set( normRes / normResOld )
-    mesh.vertices:map(self.pcgUpdateP, {blocksize=64})
+    mesh.vertices:foreach(self.pcgUpdateP, {blocksize=64})
     iter = iter + 1
   end
   if normRes > thresh then
@@ -385,22 +385,22 @@ function ImplicitBackwardEulerIntegrator:doTimestep(mesh)
   local errQuotient
 
   -- store current amplitudes and set initial gues for qaccel, qvel
-  mesh.vertices:map(self.initializeQFields)
+  mesh.vertices:foreach(self.initializeQFields)
 
   -- Limit our total number of iterations allowed per timestep
   for numIter = 1, self.maxIterations do
 
     F.computeInternalForcesAndStiffnessMatrix(mesh)
 
-    mesh.vertices:map(self.scaleInternalForces)
-    mesh.edges:map(self.scaleStiffnessMatrix)
+    mesh.vertices:foreach(self.scaleInternalForces)
+    mesh.edges:foreach(self.scaleStiffnessMatrix)
 
     -- ZERO out the residual field
     mesh.vertices.qresidual:Load({ 0, 0, 0 })
 
     -- NOTE: useStaticSolver == FALSE
     --    We just assume this everywhere
-    mesh.edges:map(self.createRayleighDampMatrix)
+    mesh.edges:foreach(self.createRayleighDampMatrix)
 
     -- Build effective stiffness:
     --    Keff = M + h D + h^2 * K
@@ -413,30 +413,30 @@ function ImplicitBackwardEulerIntegrator:doTimestep(mesh)
 
     -- superfluous on iteration 1, but safe to run
     if numIter ~= 1 then
-      mesh.vertices:map(self.updateqresidual1)
+      mesh.vertices:foreach(self.updateqresidual1)
     end
 
     -- some magic incantations corresponding to the above
-    mesh.edges:map(self.updateStiffness11)
-    mesh.edges:map(self.updateStiffness12)
-    mesh.vertices:map(self.updateqresidual2)
-    mesh.edges:map(self.updateStiffness2)
+    mesh.edges:foreach(self.updateStiffness11)
+    mesh.edges:foreach(self.updateStiffness12)
+    mesh.vertices:foreach(self.updateqresidual2)
+    mesh.edges:foreach(self.updateStiffness2)
 
     -- Add external/ internal internal_forces
-    mesh.vertices:map(self.updateqresidual3)
+    mesh.vertices:foreach(self.updateqresidual3)
 
     -- superfluous on iteration 1, but safe to run
     if numIter ~= 1 then
-      mesh.vertices:map(self.updateqresidual4)
+      mesh.vertices:foreach(self.updateqresidual4)
     end
 
     -- TODO: this should be a copy and not a separate function in the end
-    mesh.vertices:map(self.initializeqvdelta)
+    mesh.vertices:foreach(self.initializeqvdelta)
 
     -- TODO: This code doesn't have any way of handling fixed vertices
     -- at the moment.  Should enforce that here somehow
     self.err:set(0)
-    mesh.vertices:map(self.getError)
+    mesh.vertices:foreach(self.getError)
 
     -- compute initial error on the 1st iteration
     if numIter == 1 then
@@ -455,7 +455,7 @@ function ImplicitBackwardEulerIntegrator:doTimestep(mesh)
 
     -- Reinsert the rows?
 
-    mesh.vertices:map(self.updateAfterSolve)
+    mesh.vertices:foreach(self.updateAfterSolve)
 
     -- Constrain (zero) fields for the subset of constrained vertices
   end
@@ -478,7 +478,7 @@ end
 
 function setExternalConditions(mesh, iter)
   if iter == 1 then
-    mesh.vertices:map(setExternalForces)
+    mesh.vertices:foreach(setExternalForces)
   end
 end
 
