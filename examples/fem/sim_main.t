@@ -24,7 +24,9 @@ local forceModel = 'stvk'
 local numTimeSteps = 5
 local cudaProfile = false
 
-if #arg > 0 then
+if #arg < 3 then
+  printUsageAndExit()
+else
   for i=2,#arg,2 do
     if arg[i] == '-config' then
       configFileName = arg[i+1]
@@ -46,8 +48,14 @@ end
 
 local configFile = loadfile(configFileName)()
 
-print("Loading " .. configFile.meshFileName)
-local mesh = VEGFileIO.LoadTetmesh(configFile.meshFileName)
+local meshFileName = configFile.meshFileName
+print("Loading " .. meshFileName)
+local mesh   = VEGFileIO.LoadTetmesh(meshFileName)
+mesh.density = configFile.rho
+mesh.E       = configFile.E
+mesh.Nu      = configFile.Nu
+mesh.lambdaLame = mesh.Nu * mesh.E / ( ( 1.0 + mesh.Nu ) * ( 1.0 - 2.0 * mesh.Nu ) )
+mesh.muLame     = mesh.E / ( 2.0 * ( 1.0 + mesh.Nu) )
 
 local I = nil
 if cudaProfile then
@@ -83,8 +91,6 @@ end
 mesh.edges:NewField('stiffness', L.mat3d)
 mesh.edges:NewField('mass', L.double):Load(0)
 mesh.tetrahedra:NewField('volume', L.double)
-mesh.tetrahedra:NewField('lambdaLame', L.double):Load(0)
-mesh.tetrahedra:NewField('muLame', L.double):Load(0)
 mesh.vertices:NewField('q', L.vec3d):Load({ 0, 0, 0})
 mesh.vertices:NewField('qvel', L.vec3d):Load({ 0, 0, 0 })
 mesh.vertices:NewField('qaccel', L.vec3d):Load({ 0, 0, 0 })
@@ -93,13 +99,17 @@ mesh.vertices:NewField('internal_forces', L.vec3d):Load({0, 0, 0})
 
 -- stvk or neohookean
 local F = nil
+local outDirName = nil
 if forceModel == 'stvk' then
   F = L.require 'examples.fem.stvk'
+  outDirName = 'liszt_output/stvk-out'
+  os.execute('mkdir -p ' .. outDirName)
 else
-  print("Error: Only StVK force model supported")
-  os.exit(2)
+  F = L.require 'examples.fem.neohookean'
+  outDirName = 'liszt_output/nh-out'
+  os.execute('mkdir -p ' .. outDirName)
 end
-F.profile = false
+F.profile = false  -- measure and print out detailed timing?
 
 
 --------------------------------------------------------------------------------
@@ -124,7 +134,7 @@ function computeMassMatrix(mesh)
   -- A: Yes.  This means we want the full mass matrix,
   --    not just a uniform scalar per-vertex
   local liszt buildMassMatrix (t : mesh.tetrahedra)
-    var tet_vol = U.fabs(t.elementDet)/6
+    var tet_vol = L.fabs(t.elementDet)/6
     var factor = tet_vol * t.density/ 20
     for i = 0,4 do
       for j = 0,4 do
@@ -137,30 +147,6 @@ function computeMassMatrix(mesh)
     end
   end
   mesh.tetrahedra:map(buildMassMatrix)
-end
-
-------------------------------------------------------------------------------
--- Initialize Lame constants. This includes lambda and mu. See
---     libraries/volumetricMesh/volumetricMeshENuMaterial.h
---     (getLambda and getMu)
--- This code is used to initialize Lame constants when stiffnexx matrix/ internal_forces
--- are initialized.
-
-local liszt getLambda(t)
-  var E : L.double = mesh.E
-  var Nu : L.double = mesh.Nu
-  return ( (Nu * E) / ( ( 1 + Nu ) * ( 1 - 2 * Nu ) ) )
-end
-
-local liszt getMu(t)
-  var E : L.double = mesh.E
-  var Nu : L.double = mesh.Nu
-  return ( ( E / ( 2 * ( 1 + Nu) ) ) )
-end
-
-local liszt initializeLameConstants (t : mesh.tetrahedra)
-  t.lambdaLame = getLambda(t)
-  t.muLame = getMu(t)
 end
 
 
@@ -199,7 +185,7 @@ function ImplicitBackwardEulerIntegrator:setupFieldsFunctions(mesh)
   mesh.vertices:NewField('qvel_1', L.vec3d):Load({ 0, 0, 0 })
   mesh.vertices:NewField('qaccel_1', L.vec3d):Load({ 0, 0, 0 })
   mesh.vertices:NewField('qresidual', L.vec3d):Load({ 0, 0, 0 })
-  mesh.vertices:NewField('qdelta', L.vec3d):Load({ 0, 0, 0 })
+  mesh.vertices:NewField('qvdelta', L.vec3d):Load({ 0, 0, 0 })
   mesh.vertices:NewField('precond', L.vec3d):Load({ 0, 0, 0 })
   mesh.vertices:NewField('x', L.vec3d):Load({ 0, 0, 0 })
   mesh.vertices:NewField('r', L.vec3d):Load({ 0, 0, 0 })
@@ -221,8 +207,8 @@ function ImplicitBackwardEulerIntegrator:setupFieldsFunctions(mesh)
     v.qaccel_1 = { 0, 0, 0 }
   end
 
-  liszt self.initializeqdelta (v : mesh.vertices)
-    v.qdelta = v.qresidual
+  liszt self.initializeqvdelta (v : mesh.vertices)
+    v.qvdelta = v.qresidual
   end
 
   liszt self.scaleInternalForces (v : mesh.vertices)
@@ -282,7 +268,7 @@ function ImplicitBackwardEulerIntegrator:setupFieldsFunctions(mesh)
   end
 
   liszt self.getError (v : mesh.vertices)
-    var qd = v.qdelta
+    var qd = v.qvdelta
     var err = L.dot(qd, qd)
     self.err += err
   end
@@ -298,7 +284,7 @@ function ImplicitBackwardEulerIntegrator:setupFieldsFunctions(mesh)
     for e in v.edges do
       v.r += U.multiplyMatVec3(e.stiffness, e.head.x)
     end
-    v.r = v.qdelta - v.r
+    v.r = v.qvdelta - v.r
   end
 
   liszt self.pcgCalculateNormResidual (v : mesh.vertices)
@@ -336,8 +322,8 @@ function ImplicitBackwardEulerIntegrator:setupFieldsFunctions(mesh)
   end
 
   liszt self.updateAfterSolve (v : mesh.vertices)
-    v.qdelta = v.x
-    v.qvel += v.qdelta
+    v.qvdelta = v.x
+    v.qvel += v.qvdelta
     -- TODO: subtracting q from q?
     -- q += q_1-q + self.timestep * qvel
     v.q = v.q_1 + self.timestep * v.qvel
@@ -445,7 +431,7 @@ function ImplicitBackwardEulerIntegrator:doTimestep(mesh)
     end
 
     -- TODO: this should be a copy and not a separate function in the end
-    mesh.vertices:map(self.initializeqdelta)
+    mesh.vertices:map(self.initializeqvdelta)
 
     -- TODO: This code doesn't have any way of handling fixed vertices
     -- at the moment.  Should enforce that here somehow
@@ -486,7 +472,8 @@ end
 
 local liszt setExternalForces (v : mesh.vertices)
   var pos = v.pos
-  v.external_forces = { 10000, -80*(50-pos[1]), 0 }
+  -- v.external_forces = { 10000, -80*(50-pos[1]), 0 }
+  v.external_forces = { 1000, 0, 0 }
 end
 
 function setExternalConditions(mesh, iter)
@@ -507,7 +494,6 @@ function main()
   local fixedDOFs        = nil
 
   computeMassMatrix(volumetric_mesh)
-  mesh.tetrahedra:map(initializeLameConstants)
 
   F:setupFieldsFunctions(mesh)
 
@@ -526,7 +512,7 @@ function main()
   }
   integrator:setupFieldsFunctions(mesh)
 
-  mesh:dumpDeformationToFile("out/mesh_liszt_"..tostring(0))
+  mesh:dumpDeformationToFile(outDirName.."/vertices_"..tostring(0))
 
   local timer_step = U.Timer.New()
   for i=1,options.numTimesteps do
@@ -534,8 +520,14 @@ function main()
     setExternalConditions(volumetric_mesh, i)
     integrator:doTimestep(volumetric_mesh)
     print("Time for step "..i.." is "..(timer_step:Stop()*1E6).." us\n")
-    mesh:dumpDeformationToFile("out/mesh_liszt_"..tostring(i))
+    mesh:dumpDeformationToFile(outDirName..'/vertices_'..tostring(i))
   end
+
+  -- Output frame number and mesh file for viewing later on
+  local numFramesFile = io.open(outDirName..'/num_frames', 'w')
+  numFramesFile:write(tostring(numTimeSteps))
+  numFramesFile:close()
+  os.execute('cp ' .. meshFileName .. ' ' .. outDirName .. '/mesh')
 end
 
 main()

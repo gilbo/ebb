@@ -100,6 +100,31 @@ function Tetmesh.LoadFromLists(vertices, elements)
   local n_tets  = #elements
   local n_verts = #vertices
 
+  -- Correct orientation for tetrahedra
+  for i = 1, n_tets do
+    local verts = elements[i]
+    local x = {}
+    for j = 1,4 do
+      x[j] = vertices[verts[j] + 1]
+    end
+    local e = {}
+    for j = 1,3 do
+      e[j] = {}
+      for c = 1,3 do
+        e[j][c] = x[j][c] - x[4][c]
+      end
+    end
+    local det  = ( e[1][1] * ( e[2][2] * e[3][3] - e[2][3] * e[3][2] ) +
+                   e[1][2] * ( e[2][3] * e[3][1] - e[3][3] * e[2][1] ) +
+                   e[1][3] * ( e[2][1] * e[3][2] - e[2][2] * e[3][1] )
+                 )
+    if det < 0 then
+      local temp = verts[1]
+      verts[1] = verts[2]
+      verts[2] = temp
+    end
+  end
+
   -- Define two new relations and store them in the mesh
   mesh.tetrahedra = L.NewRelation { size = n_tets, name = 'tetrahedra' }
   mesh.vertices   = L.NewRelation { size = n_verts, name = 'vertices' }
@@ -130,6 +155,14 @@ function Tetmesh.LoadFromLists(vertices, elements)
   -- element density
   mesh.tetrahedra:NewFieldMacro('density', L.NewMacro(function(t)
     return liszt `mesh.density end ))
+
+  -- lame constants
+  mesh.tetrahedra:NewFieldMacro('lambdaLame', L.NewMacro(function(t)
+    return liszt `L.double(mesh.lambdaLame)
+  end ))
+  mesh.tetrahedra:NewFieldMacro('muLame', L.NewMacro(function(t)
+    return liszt `L.double(mesh.muLame)
+  end ))
 
   -- and return the resulting mesh
   return mesh
@@ -162,6 +195,16 @@ function fieldToString(x)
   else
     return tostring(x)
   end
+end
+
+function Tetmesh:dumpTetFieldToFile(field, file_name)
+  local field_list = self.tetrahedra[field]:DumpToList()
+  local field_liszt = PN.scriptdir() .. file_name
+  local out = io.open(tostring(field_liszt), 'w')
+  for i = 1, #field_list do
+    out:write(fieldToString(field_list[i]) .. "\n" )
+  end
+  out:close()
 end
 
 function Tetmesh:dumpEdgeFieldToFile(field, file_name)

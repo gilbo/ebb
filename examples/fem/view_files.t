@@ -16,7 +16,9 @@ if not arg[2] or arg[2] == "-h" or arg[2] == "--help" then
 end
 
 file_dir = arg[2]
-num_frames = tonumber(io.open(tostring(file_dir .. "/num_frames")):read())
+local numFramesFile = io.open(tostring(file_dir .. "/num_frames"))
+local num_frames = tonumber(numFramesFile:read())
+numFramesFile:close()
 local mesh = VEGFileIO.LoadTetmesh(file_dir .. "/mesh")
 print("Will read " .. tostring(num_frames) .. " from " .. file_dir .. "\n")
 
