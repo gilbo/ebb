@@ -491,8 +491,7 @@ local setExternalForces = nil
 
 local liszt setExternalForcesStvk (v : mesh.vertices)
   var pos = v.pos
-  -- v.external_forces = { 10000, -80*(50-pos[1]), 0 }
-  v.external_forces = { 1000, 0, 0 }
+  v.external_forces = { 10.0, -0.8*pos[1], 0 }
 end
 
 local liszt setExternalForcesNh (v : mesh.vertices)

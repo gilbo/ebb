@@ -28,13 +28,13 @@ do
   config="examples/fem/configs/${model}.config"
   for force in "nh"
   do
-    rm $outfile
     outfile="${outdir}/log_${model}_${force}_cpu"
+    rm -rf $outfile
     echo "Running $config  with $force force model, $steps steps, cpu ..."
     command=`./liszt examples/fem/sim_main.t -config  $config -force $force -steps $steps >> ${outfile}`
     $command
     outfile="${outdir}/log_${model}_${force}_gpu"
-    rm $outfile
+    rm -rf $outfile
     echo "Running $config  with $force force model, $steps steps, gpu ..."
     command=`./liszt --gpu examples/fem/sim_main.t -config  $config -force $force -steps $steps >> ${outfile}`
     $command
