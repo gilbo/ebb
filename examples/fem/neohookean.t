@@ -69,8 +69,6 @@ function N:setupFieldsFunctions(mesh)
   liszt self.PK1(t)
     var F     = t.F
     var FinvT = t.FinvT
-    -- L.print(F)
-    -- L.print(FinvT)
     var PP    = t.muLame * (t.F - FinvT) + (t.lambdaLame * L.log(t.Fdet)) * FinvT
     return PP
   end
@@ -203,11 +201,11 @@ function N.computeInternalForcesAndStiffnessMatrix(mesh)
   mesh.tetrahedra:foreach(N.computeInternalForces)
   local t_if = timer:Stop() * 1E6
   print("Time to assemble force is "..(t_if).." us")
-  mesh:dumpVertFieldToFile('internal_forces', "liszt_output/nh-out/internal_forces_"..tostring(ts))
+  -- mesh:dumpVertFieldToFile('internal_forces', "liszt_output/nh-out/internal_forces_"..tostring(ts))
   timer:Start()
   mesh.tetrahedra:foreach(N.computeStiffnessMatrix)
   local t_stiff = timer:Stop() * 1E6
   print("Time to assemble stiffness matrix is "..(t_stiff).." us")
-  mesh:dumpEdgeFieldToFile('stiffness', "liszt_output/nh-out/stiffness_"..tostring(ts))
+  -- mesh:dumpEdgeFieldToFile('stiffness', "liszt_output/nh-out/stiffness_"..tostring(ts))
   print("Time to assemble force and stiffness matrix is "..(t_if + t_stiff).." us")
 end

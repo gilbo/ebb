@@ -192,7 +192,9 @@ function ImplicitBackwardEulerIntegrator:setupFieldsFunctions(mesh)
   mesh.vertices:NewField('z', L.vec3d):Load({ 0, 0, 0 })
   mesh.vertices:NewField('p', L.vec3d):Load({ 0, 0, 0 })
   mesh.vertices:NewField('Ap', L.vec3d):Load({ 0, 0, 0 })
-  mesh.edges:NewField('raydamp', L.mat3d)
+  if self.useDamp then
+    mesh.edges:NewField('raydamp', L.mat3d)
+  end
 
   self.err = L.Global(L.double, 0)
   self.normRes = L.Global(L.double, 0)
@@ -219,9 +221,14 @@ function ImplicitBackwardEulerIntegrator:setupFieldsFunctions(mesh)
     e.stiffness = self.internalForcesScalingFactor * e.stiffness
   end
 
-  liszt self.createRayleighDampMatrix (e : mesh.edges)
-    e.raydamp = self.dampingStiffnessCoef * e.stiffness +
-                U.diagonalMatrix(self.dampingMassCoef * e.mass)
+  if self.useDamp then
+    liszt self.createRayleighDampMatrix (e : mesh.edges)
+      e.raydamp = self.dampingStiffnessCoef * e.stiffness +
+                  U.diagonalMatrix(self.dampingMassCoef * e.mass)
+    end
+  else
+    liszt self.createRayleighDampMatrix (e : mesh.edhes)
+    end
   end
 
   liszt self.updateqresidual1 (v : mesh.vertices)
@@ -247,19 +254,28 @@ function ImplicitBackwardEulerIntegrator:setupFieldsFunctions(mesh)
     end
   end
 
-  liszt self.updateStiffness1 (e : mesh.edges)
-    e.stiffness = self.timestep * e.stiffness
-    e.stiffness += e.raydamp
-    -- TODO: This damping matrix seems to be zero unless set otherwise.
-    -- e.stiffness = e.stiffness + e.dampingmatrix
+  if self.useDamp then
+    liszt self.updateStiffness1 (e : mesh.edges)
+      e.stiffness = self.timestep * e.stiffness
+      e.stiffness += e.raydamp
+    end
+  else
+    liszt self.updateStiffness1 (e : mesh.edges)
+      e.stiffness = self.timestep * e.stiffness
+    end
   end
 
   liszt self.updateStiffness11 (e : mesh.edges)
     e.stiffness = self.timestep * e.stiffness
   end
 
-  liszt self.updateStiffness12 (e : mesh.edges)
-    e.stiffness += e.raydamp
+  if self.useDamp then
+    liszt self.updateStiffness12 (e : mesh.edges)
+      e.stiffness += e.raydamp
+    end
+  else
+    liszt self.updateStiffness12 (e : mesh.edges)
+    end
   end
 
   liszt self.updateStiffness2 (e : mesh.edges)
@@ -370,6 +386,7 @@ function ImplicitBackwardEulerIntegrator:solvePCG(mesh)
     iter = iter + 1
   end
   if normRes > thresh then
+      print("Residual is ", normRes)
       error("PCG solver did not converge!")
   end
   print("Time for solver is "..(timer_solver:Stop()*1E6).." us")
@@ -470,10 +487,21 @@ function clearExternalForces(mesh)
   mesh.vertices.external_forces:Load({ 0, 0, 0 })
 end
 
-local liszt setExternalForces (v : mesh.vertices)
+local setExternalForces = nil
+
+local liszt setExternalForcesStvk (v : mesh.vertices)
   var pos = v.pos
-  -- v.external_forces = { 10000, -80*(50-pos[1]), 0 }
-  v.external_forces = { 1000, 0, 0 }
+  v.external_forces = { 10.0, -0.8*pos[1], 0 }
+end
+
+local liszt setExternalForcesNh (v : mesh.vertices)
+    v.external_forces = { 5.0, 0, 0 }
+end
+
+if forceModel == 'stvk' then
+    setExternalForces = setExternalForcesStvk
+else
+    setExternalForces = setExternalForcesNh
 end
 
 function setExternalConditions(mesh, iter)
@@ -510,6 +538,8 @@ function main()
     cgMaxIterations       = options.cgMaxIterations,
     internalForcesScalingFactor  = options.deformableObjectCompliance
   }
+  -- integrator.useDamp = (forceModel == 'stvk')
+  integrator.useDamp = true
   integrator:setupFieldsFunctions(mesh)
 
   mesh:dumpDeformationToFile(outDirName.."/vertices_"..tostring(0))

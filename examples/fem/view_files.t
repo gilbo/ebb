@@ -128,6 +128,10 @@ end
 --[[                      Read positions, draw, wait                        ]]--
 --------------------------------------------------------------------------------
 
+visualize(mesh)
+print('Hit enter for next frame')
+io.read()
+
 for i = 0,num_frames do
   loadPositions( file_dir .. "/vertices_" .. tostring(i), mesh)
   visualize(mesh)
