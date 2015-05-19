@@ -188,7 +188,7 @@ function Bran:Compile()
   end
 
   self.arg_layout = ArgLayout.New()
-  self.arg_layout:setNDims(self.relation:nDims())
+  self.arg_layout:setRelation(self.relation)
 
   -- compile various kinds of data into the arg layout
   self:CompileFieldsGlobalsSubsets()
@@ -1264,8 +1264,9 @@ function ArgLayout.New()
   }, ArgLayout)
 end
 
-function ArgLayout:setNDims(n)
-  self.n_dims = n
+function ArgLayout:setRelation(rel)
+  self._key_type  = L.key(rel):terraType()
+  self.n_dims     = rel:nDims()
 end
 
 function ArgLayout:addField(name, field)
@@ -1324,7 +1325,7 @@ function ArgLayout:Compile()
   table.insert(terrastruct.entries,
                {field='bounds', type=(bounds_struct[self.n_dims])})
   -- add subset data
-  local taddr = L.addr_terra_types[self.n_dims]
+  local taddr = self._key_type
   if self.subset_on then
     table.insert(terrastruct.entries, {field='index',        type=&taddr})
     table.insert(terrastruct.entries, {field='index_size',   type=uint64})

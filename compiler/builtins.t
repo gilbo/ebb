@@ -79,7 +79,7 @@ function B.id.check(ast, ctxt)
     return L.uint64
 end
 function B.id.codegen(ast, ctxt)
-    return `[ast.params[1]:codegen(ctxt)].a[0]
+    return `[ast.params[1]:codegen(ctxt)].a0
 end
 
 B.xid = Builtin.new()
@@ -96,7 +96,7 @@ function B.xid.check(ast, ctxt)
     return L.uint64
 end
 function B.xid.codegen(ast, ctxt)
-    return `[ast.params[1]:codegen(ctxt)].a[0]
+    return `[ast.params[1]:codegen(ctxt)].a0
 end
 
 B.yid = Builtin.new()
@@ -113,7 +113,7 @@ function B.yid.check(ast, ctxt)
     return L.uint64
 end
 function B.yid.codegen(ast, ctxt)
-    return `[ast.params[1]:codegen(ctxt)].a[1]
+    return `[ast.params[1]:codegen(ctxt)].a1
 end
 
 B.zid = Builtin.new()
@@ -135,7 +135,7 @@ function B.zid.check(ast, ctxt)
     return L.uint64
 end
 function B.zid.codegen(ast, ctxt)
-    return `[ast.params[1]:codegen(ctxt)].a[2]
+    return `[ast.params[1]:codegen(ctxt)].a2
 end
 
 
@@ -238,7 +238,8 @@ function B.Affine.codegen(ast, ctxt)
         -- read out the constant offset
         local sum = `mat.d[yi][ncol-1]
         for xi = 0,ncol-2 do
-            sum = `[sum] + mat.d[yi][xi] * srckey.a[xi]
+            local astr = 'a'..tostring(xi)
+            sum = `[sum] + mat.d[yi][xi] * srckey.[astr]
         end
         -- make sure to clamp back down into address values
         sum = `[uint64](sum)
@@ -255,7 +256,7 @@ function B.Affine.codegen(ast, ctxt)
         var [srckey] = [ args[3]:codegen(ctxt) ]
         var [mat]    = [ args[2]:codegen(ctxt) ]
     in
-        [dsttype]({ a = array( [results] ) })
+        [dsttype]({ results })
     end
     return wrapped
 end
@@ -302,16 +303,16 @@ function B.UNSAFE_ROW.codegen(ast, ctxt)
     local ndim = rel:nDims()
     local addrtype = L.key(rel):terraType()
     if ndim == 1 then
-        return `[addrtype]({ array( [ast.params[1]:codegen(ctxt)] ) })
+        return `[addrtype]({ [ast.params[1]:codegen(ctxt)] })
     else
         local vecui = ast.params[1]:codegen(ctxt)
         if ndim == 2 then
             return quote var v = vecui in
-                [addrtype]({ array( v.d[0], v.d[1] )})
+                [addrtype]({ v.d[0], v.d[1] })
             end
         else
             return quote var v = vecui in
-                [addrtype]({ array( v.d[0], v.d[1], v.d[2] )})
+                [addrtype]({ v.d[0], v.d[1], v.d[2] })
             end
         end
     end
@@ -337,7 +338,7 @@ end
 local terra lisztAssert(test : bool, file : rawstring, line : int)
     if not test then
         C.fprintf(C.get_stderr(), "%s:%d: assertion failed!\n", file, line)
-        assert(false)
+        C.exit(1)
     end
 end
 
@@ -452,17 +453,18 @@ local function buildPrintSpec(ctxt, output, printSpec, elemQuotes, definitions)
     elseif lt:isScalarKey() then
         if lt.ndims == 1 then
             printSpec = printSpec ..
-                        printSingle(L.uint64, `code.a[0], elemQuotes)
+                        printSingle(L.uint64, `code.a0, elemQuotes)
         else
-            local sym = symbol(L.addr_terra_types[lt.ndims])
+            local sym = symbol(lt:terraType())
             definitions = quote
                 [definitions]
                 var [sym] = [code]
             end
             printSpec = printSpec .. '{'
             for i = 0, lt.ndims-1 do
+                local astr = 'a'..tostring(i)
                 printSpec = printSpec .. ' ' ..
-                            printSingle(L.uint64, `sym.a[i], elemQuotes)
+                            printSingle(L.uint64, `sym.[astr], elemQuotes)
             end
             printSpec = printSpec .. ' }'
         end

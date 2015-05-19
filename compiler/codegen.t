@@ -64,9 +64,6 @@ function Context:isLiveCheck(param_var)
   local livemask_field  = self.bran.relation._is_live_mask
   local livemask_ptr    = self:FieldElemPtr(livemask_field, param_var)
   return `@livemask_ptr
-  --local ptr = self:FieldPtr(self.bran.relation._is_live_mask)
-  -- Assuming 1D address is ok, b/c elastic relations must be 1D
-  --return `ptr[param_var.a[0]]
 end
 
 function Context:isInSubset(param_var)
@@ -121,26 +118,13 @@ end
 
 function Context:FieldElemPtr(field, key)
   local farg        = `[ self:argsym() ].[ self.bran:getFieldId(field) ]
-  local dims        = field:Relation():Dims()
   if use_single then
     local ptr       = farg
-    local idxarith  = T.linAddrTerraGen(dims)
-    return `(ptr + idxarith(key))
+    return `(ptr + key:terraLinearize())
   elseif use_legion then
-    local k         = symbol()
-    local baseptr   = symbol()
-    local strides   = symbol()
-    local rawptr    = `[baseptr] + [k].a[0] * strides[0].offset
-    if #dims > 1 then rawptr = `[rawptr] + [k].a[1] * strides[1].offset end
-    if #dims > 2 then rawptr = `[rawptr] + [k].a[2] * strides[2].offset end
-    -- capture to prevent duplication in Terra AST
-    return quote
-      var [k] = key
-      var [baseptr] = farg.ptr
-      var [strides] = farg.strides
-    in
-      [&(field:Type():terraType())](rawptr)
-    end
+    local ftyp      = field:Type():terraType()
+    local ptr       = `farg.ptr
+    return `[&ftyp](ptr + key:legionTerraLinearize(farg.strides))
   end
 end
 
@@ -233,72 +217,93 @@ end
 
 -- NOTE: the entries in dims may be symbols,
 --       allowing the loop bounds to be dynamically driven
-local function terraIterNd(dims, func)
-  local atyp = L.addr_terra_types[#dims]
-  local addr = symbol(atyp)
-  local iters = {}
-  for d=1,#dims do iters[d] = symbol(uint64) end
-  local loop = quote
-    var [addr] = [atyp]({ a = array( iters ) })
-    [func(addr)]
-  end
-  for drev=1,#dims do
-    local d = #dims-drev + 1 -- flip loop order of dimensions
+local function terraIterNd(keytyp, dims, func)
+  local addr = symbol(keytyp)
+  if keytyp == uint64 then -- special index case
     local lo = 0
-    local hi = dims[d]
-    if type(dims[d]) == 'table' and dims[d].lo then
-      lo = dims[d].lo
-      hi = dims[d].hi
+    local hi = dims[1]
+    if type(dims[1]) == 'table' and dims[1].lo then
+      lo = dims[1].lo
+      hi = dims[1].hi
     end
-    loop = quote for [iters[d]] = lo, hi do [loop] end end
+    return quote for [addr] = lo, hi do [func(addr)] end end
+
+  else -- usual case
+    local iters = {}
+    for d=1,#dims do iters[d] = symbol(keytyp.entries[d].type) end
+    local loop = quote
+      var [addr] = [keytyp]({ iters })
+      [func(addr)]
+    end
+    for drev=1,#dims do
+      local d = #dims-drev + 1 -- flip loop order of dimensions
+      local lo = 0
+      local hi = dims[d]
+      if type(dims[d]) == 'table' and dims[d].lo then
+        lo = dims[d].lo
+        hi = dims[d].hi
+      end
+      loop = quote for [iters[d]] = lo, hi do [loop] end end
+    end
+    return loop
+
   end
-  return loop
 end
 
-local function terraGPUId_to_Nd(dims, id, func)
-  local atyp = L.addr_terra_types[#dims]
-  local diffs = {}
-  for d=1,#dims do
-    diffs[d] = `[dims[d].hi] - [dims[d].lo]
-  end
+local function terraGPUId_to_Nd(keytyp, dims, id, func)
+  if keytyp == uint64 then -- special index case
+    local addr = symbol(keytyp)
+    return quote
+      var [addr] = id + [dims[1].lo]
+      if [addr].a0 < [dims[1].hi] then
+        [func(addr)]
+      end
+    end
 
-  local addr = symbol(atyp)
-  local translate, guard
-  if #dims == 1 then
-    translate = quote
-      var xid  : uint64 = id
-      var xoff : uint64 = xid + [dims[1].lo]
-      var [addr] = [atyp]({ a = array(xoff) })
+  else -- usual case
+    local diffs = {}
+    for d=1,#dims do
+      diffs[d] = `[dims[d].hi] - [dims[d].lo]
     end
-    guard     = `[addr].a[0] < [dims[1].hi]
-  elseif #dims == 2 then
-    translate = quote
-      var xid  : uint64 = id % [diffs[1]]
-      var yid  : uint64 = id / [diffs[1]]
-      var xoff : uint64 = xid + [dims[1].lo]
-      var yoff : uint64 = yid + [dims[2].lo]
-      var [addr] = [atyp]({ a = array(xoff,yoff) })
-    end
-    guard = `[addr].a[1] < [dims[2].hi]
-  elseif #dims == 3 then
-    translate = quote
-      var xid  : uint64 = id % [diffs[1]]
-      var yid  : uint64 = (id / [diffs[1]]) % [diffs[2]]
-      var zid  : uint64 = id / ([diffs[1]]*[diffs[2]])
-      var xoff : uint64 = xid + [dims[1].lo]
-      var yoff : uint64 = yid + [dims[2].lo]
-      var zoff : uint64 = zid + [dims[3].lo]
-      var [addr] = [atyp]({ a = array(xoff,yoff,zoff) })
-    end
-    guard     = `[addr].a[2] < [dims[3].hi]
-  else
-    error('INTERNAL: #dims > 3')
-  end
 
-  return quote
-    [translate]
-    if [guard] then
-      [func(addr)]
+    local addr = symbol(keytyp)
+    local translate, guard
+    if #dims == 1 then
+      translate = quote
+        var xid  : uint64 = id
+        var xoff : uint64 = xid + [dims[1].lo]
+        var [addr] = [keytyp]({ xoff })
+      end
+      guard     = `[addr].a0 < [dims[1].hi]
+    elseif #dims == 2 then
+      translate = quote
+        var xid  : uint64 = id % [diffs[1]]
+        var yid  : uint64 = id / [diffs[1]]
+        var xoff : uint64 = xid + [dims[1].lo]
+        var yoff : uint64 = yid + [dims[2].lo]
+        var [addr] = [keytyp]({ xoff,yoff })
+      end
+      guard = `[addr].a1 < [dims[2].hi]
+    elseif #dims == 3 then
+      translate = quote
+        var xid  : uint64 = id % [diffs[1]]
+        var yid  : uint64 = (id / [diffs[1]]) % [diffs[2]]
+        var zid  : uint64 = id / ([diffs[1]]*[diffs[2]])
+        var xoff : uint64 = xid + [dims[1].lo]
+        var yoff : uint64 = yid + [dims[2].lo]
+        var zoff : uint64 = zid + [dims[3].lo]
+        var [addr] = [keytyp]({ xoff,yoff,zoff })
+      end
+      guard     = `[addr].a2 < [dims[3].hi]
+    else
+      error('INTERNAL: #dims > 3')
+    end
+
+    return quote
+      [translate]
+      if [guard] then
+        [func(addr)]
+      end
     end
   end
 end
@@ -325,20 +330,10 @@ function Codegen.codegen (kernel_ast, bran)
 
   ctxt:enterblock()
     -- declare the symbol for the parameter key
-    local param = symbol(ctxt:argKeyTerraType())
+    local paramtyp  = ctxt:argKeyTerraType()
+    local param     = symbol(paramtyp)
     ctxt:localenv()[kernel_ast.name] = param
 
-    --local dims                  = ctxt:dims()
-    --local nrow_sym              = `[ctxt:argsym()].n_rows
-    --local bounds                  = 
-    --if use_legion then
-    --  local bounds              = `[ctxt:argsym()].bounds
-    --  for d=1,#dims do
-    --    dims[d] = { lo = `bounds[d-1].lo, hi = `bounds[d-1].hi + 1 }
-    --  end
-    --else
-    --  if #dims == 1 then dims = { nrow_sym } end
-    --end
     local linid
     if ctxt:onGPU() then linid  = symbol(uint64) end
 
@@ -364,7 +359,7 @@ function Codegen.codegen (kernel_ast, bran)
       if ctxt:isBoolMaskSubset() then
       -- BOOLMASK SUBSET BRANCH
         if ctxt:onGPU() then
-          body = terraGPUId_to_Nd(bounds, linid, function(addr)
+          body = terraGPUId_to_Nd(paramtyp, bounds, linid, function(addr)
             return quote
               -- set param
               if [ctxt:isInSubset(addr)] then
@@ -373,7 +368,7 @@ function Codegen.codegen (kernel_ast, bran)
               end
             end end)
         else
-          body = terraIterNd(bounds, function(iter)
+          body = terraIterNd(paramtyp, bounds, function(iter)
             return quote
               if [ctxt:isInSubset(iter)] then
                 var [param] = iter
@@ -385,20 +380,21 @@ function Codegen.codegen (kernel_ast, bran)
       elseif ctxt:isIndexSubset() then
       -- INDEX SUBSET BRANCH
         -- collapse bounds to the one-dimension we're going to use
-        bounds = { bounds[1] }
+        local paramtyp  = uint64
+        local bounds    = { bounds[1] }
         if use_legion then
           error('INTERNAL: INDEX SUBSETS ON LEGION CURRENTLY UNSUPPORTED')
         elseif ctxt:onGPU() then
-          body = terraGPUId_to_Nd(bounds, linid, function(addr)
+          body = terraGPUId_to_Nd(paramtyp, bounds, linid, function(iter)
             return quote
               -- set param
-              var [param] = [ctxt:argsym()].index[linid]
+              var [param] = [ctxt:argsym()].index[iter]
               [body]
             end end)
         else
-          body = terraIterNd(bounds, function(iter)
+          body = terraIterNd(paramtyp, bounds, function(iter)
             return quote
-              var [param] = [ctxt:argsym()].index[iter.a[0]]
+              var [param] = [ctxt:argsym()].index[iter]
               [body]
             end end)
         end
@@ -410,7 +406,7 @@ function Codegen.codegen (kernel_ast, bran)
 
       -- GPU FULL RELATION VERSION
       if ctxt:onGPU() then
-        body = terraGPUId_to_Nd(bounds, linid, function(addr)
+        body = terraGPUId_to_Nd(paramtyp, bounds, linid, function(addr)
           return quote
             var [param] = [addr]
             [body]
@@ -418,7 +414,7 @@ function Codegen.codegen (kernel_ast, bran)
 
       -- CPU FULL RELATION VERSION
       else
-        body = terraIterNd(bounds, function(iter)
+        body = terraIterNd(paramtyp, bounds, function(iter)
           return quote
             var [param] = iter
             [body]
@@ -831,19 +827,19 @@ end
 function ast.GenericFor:codegen (ctxt)
     local set       = self.set:codegen(ctxt)
     local iter      = symbol("iter")
-    local rel       = self.set.node_type.relation
+    local dstrel    = self.set.node_type.relation
     -- the key being used to drive the where query should
     -- come from a grouped relation, which is necessarily 1d
-    local projected = `[L.addr_terra_types[1]]({array([iter])})
+    local projected = `[L.key(dstrel):terraType()]( { iter } )
 
     for i,p in ipairs(self.set.node_type.projections) do
-        local field = rel[p]
+        local field = dstrel[p]
         --projected   = doProjection(projected,field,ctxt)
         projected   = `@[ ctxt:FieldElemPtr(field, projected) ]
-        rel         = field.type.relation
-        assert(rel)
+        dstrel      = field.type.relation
+        assert(dstrel)
     end
-    local sym = symbol(L.key(rel):terraType())
+    local sym = symbol(L.key(dstrel):terraType())
     ctxt:enterblock()
         ctxt:localenv()[self.name] = sym
         local body = self.body:codegen(ctxt)
@@ -981,13 +977,11 @@ function ast.InsertStatement:codegen (ctxt)
 
   -- index to write to
   local index = ctxt:getInsertIndex()
-  local i_addr = `[L.addr_terra_types[1]]({ a = array(index) })
+  local i_addr = `[L.key(relation):terraType()]( {index} )
 
   -- start with writing the live mask
   local live_mask  = ctxt:FieldElemPtr(relation._is_live_mask, i_addr)
   local write_code = quote @live_mask = true end
-  --local live_mask  = ctxt:FieldPtr(relation._is_live_mask)
-  --local write_code = quote live_mask[index] = true end
 
   -- the rest of the fields should be assigned values based on the
   -- record literal specified as an argument to the insert statement

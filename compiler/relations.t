@@ -399,7 +399,7 @@ function L.LRelation:GroupBy(keyf_name)
         offptr[src_i] = dst_i -- where to find the first row
         local count = 0
         while dst_i < n_dst do
-          local lin_src = T.linAddrLua(keyptr[dst_i],dims)
+          local lin_src = keyptr[dst_i]:luaLinearize()
           if lin_src ~= src_i then break end
           if lin_src < prev_src then
             error("GroupBy(): Key field '"..key_field:Name().."' "..
@@ -419,7 +419,6 @@ function L.LRelation:GroupBy(keyf_name)
 
     local keyf_list = key_field:DumpToList()
     local dims      = srcrel:Dims()
-    --print('len key', #keyf_list)
 
     local src_scanner = LW.NewControlScanner {
       logical_region = srcrel._logical_region_wrapper.handle,
@@ -516,7 +515,7 @@ function L.LIndex.New(params)
     index._array:write_ptr(function(ptr)
       for i=1,#params.data do
         for k=1,params.ndims do
-          ptr[i-1].a[k-1] = params.data[i][k]
+          ptr[i-1]['a'..tostring(k-1)] = params.data[i][k]
         end
       end
     end) -- write_ptr
@@ -959,14 +958,31 @@ function L.LField:LoadFromMemory(mem)
   end
   self:Allocate()
 
+  if self.type:isKey() then
+    if not self.type:isScalar() then
+      error('no support for loading non-scalar keys from memory', 2)
+    end
+    if self.type.ndims ~= 1 then
+      error('no support for loading non-1d keys from memory', 2)
+    end
+    -- read out a list and then load that
+    local data      = {}
+    local n_array   = self:Size()
+    local arr       = terralib.cast(&uint64, mem)
+    for k=0,n_array-1 do
+      data[k+1] = tonumber(arr[k])
+    end
+    self:LoadList(data)
+  else
   -- avoid extra copies by wrapping and using the standard copy
-  local wrapped = DynamicArray.Wrap{
-    size = self:ConcreteSize(),
-    type = self.type:terraType(),
-    data = mem,
-    processor = L.CPU,
-  }
-  self.array:copy(wrapped)
+    local wrapped = DynamicArray.Wrap{
+      size = self:ConcreteSize(),
+      type = self.type:terraType(),
+      data = mem,
+      processor = L.CPU,
+    }
+    self.array:copy(wrapped)
+  end
 end
 
 function L.LField:LoadConstant(constant)

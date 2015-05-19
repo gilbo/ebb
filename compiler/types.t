@@ -4,7 +4,11 @@ local T = {}
 -- types are defined inline when this file is first executed.
 -- packed.loaded["compiler.types"] = T
 
-local L = require "compiler.lisztlib"
+local L   = require "compiler.lisztlib"
+
+local use_legion = not not rawget(_G, '_legion_env')
+local LW
+if use_legion then LW  = require "compiler.legionwrap" end
 
 -- From the Lua Documentation
 function pairs_sorted(tbl, compare)
@@ -242,6 +246,7 @@ local function checkrelation(relation)
               "A relation must be provided", 4)
     end
 end
+--[[
 L.addr_terra_types = {}
 for i=1,3 do
   local struct_name = "addr_"..tostring(i)
@@ -272,21 +277,120 @@ function T.linAddrTerraGen(dims)
     end)
   elseif #dims == 2 then
     return macro(function(addr)
-      return quote var a = addr.a in a[0] + [dims[1]] * a[1] end
+      return quote var a = addr.a in a[0] + [ dims[1] ] * a[1] end
     end)
   elseif #dims == 3 then
     return macro(function(addr)
-      return quote var a = addr.a in a[0] + [dims[1]] * (a[1] +
-                                                         [dims[2]]*a[2]) end
+      return quote var a = addr.a in a[0] +
+                           [ dims[1] ] * (a[1] + [ dims[2] ]*a[2]) end
     end)
   else error('INTERNAL > 3 dimensional address???') end
 end
+]]
+local function dims_to_bit_dims(dims)
+  local bitdims = {}
+  for k=1,#dims do
+    if      dims[k] < 256         then  bitdims[k] = 8
+    elseif  dims[k] < 65536       then  bitdims[k] = 16
+    elseif  dims[k] < 4294967296  then  bitdims[k] = 32
+                                  else  bitdims[k] = 64 end
+  end
+  return bitdims
+end
+local function bit_dims_to_dim_types(bitdims)
+  local dimtyps = {}
+  for k=1,#bitdims do
+    if      bitdims[k] == 8   then  dimtyps[k] = uint8
+    elseif  bitdims[k] == 16  then  dimtyps[k] = uint16
+    elseif  bitdims[k] == 32  then  dimtyps[k] = uint32
+                              else  dimtyps[k] = uint64 end
+  end
+  return dimtyps
+end
+local function dims_to_strides(dims)
+  local strides = {1}
+  if #dims >= 2 then  strides[2] = dims[1]            end
+  if #dims >= 3 then  strides[3] = dims[1] * dims[2]  end
+  return strides
+end
+local function lua_lin_gen(strides)
+  local code = 'return function(self) return self.a0'
+  for k=2,#strides do
+    code = code..' + '..tostring(strides[k])..' * self.a'..tostring(k-1)
+  end
+  return assert(loadstring(code..' end'))()
+end
+local function terra_lin_gen(keytyp, strides)
+  local key   = symbol(keytyp)
+  local exp   = `key.a0
+  for k=2,#strides do
+    exp = `[exp] + [strides[k]] * key.['a'..tostring(k-1)]
+  end
+  return terra( [key] ) : uint64  return exp  end
+end
+local function legion_terra_lin_gen(keytyp)
+  local key     = symbol(keytyp)
+  local strides = symbol(LW.legion_byte_offset_t[#keytyp.entries])
+  local exp     = `key.a0 * strides[0].offset
+  for k=2,#keytyp.entries do
+    exp = `[exp] + strides[k-1].offset * key.['a'..tostring(k-1)]
+  end
+  return terra( [key], [strides] ) : uint64   return exp  end
+end
+local function get_physical_key_type(rel)
+  local cached = rawget(rel, '_key_type_cached')
+  if cached then return cached end
+  -- If not cached, then execute the rest of this function
+  -- to build the type
+
+  local dims    = rel:Dims()
+  local bitdims = dims_to_bit_dims(dims)
+  local dimtyps = bit_dims_to_dim_types(bitdims)
+  local strides = dims_to_strides(dims)
+  if rel:isElastic() then
+    bitdims = {64}
+    dimtyps = {uint64}
+  end
+
+  local name    = 'key'
+  for k=1,#bitdims do name = name .. '_' .. tostring(bitdims[k]) end
+  name = name .. '_'..rel:Name()
+
+  local PhysKey = terralib.types.newstruct(name)
+  for k=1,#bitdims do name = 
+    table.insert(PhysKey.entries,
+                 { field = 'a'..tostring(k-1), type = dimtyps[k] })
+  end
+
+  -- install specialized methods
+  PhysKey.methods.luaLinearize            = lua_lin_gen(strides)
+  PhysKey.methods.terraLinearize          = terra_lin_gen(PhysKey, strides)
+  if use_legion then
+    PhysKey.methods.legionTerraLinearize  = legion_terra_lin_gen(PhysKey)
+  end
+  -- add equality / inequality tests
+  local ndim = #dims
+  PhysKey.metamethods.__eq = macro(function(lhs,rhs)
+    local exp = `lhs.a0 == rhs.a0
+    for k=2,ndim do
+      local astr = 'a'..tostring(k-1)
+      exp = `exp and lhs.[astr] == rhs.[astr]
+    end
+    return exp
+  end)
+  PhysKey.metamethods.__ne = macro(function(lhs,rhs)
+    return `not lhs == rhs
+  end)
+
+  return PhysKey
+end
+
 local keyType = cached(function(relation)
     checkrelation(relation)
     local rt = Type:new("key")
     rt.relation = relation
     rt.ndims    = relation:nDims()
-    rt.terratype = L.addr_terra_types[rt.ndims]
+    rt.terratype = get_physical_key_type(relation)
     return rt
 end)
 local internalType = cached(function(obj)
@@ -564,9 +668,9 @@ local function luaToLisztVal (luaval, typ)
 
   elseif typ:isScalarKey() then
     if typ.ndims == 1 then
-      return terralib.new(typ:terraType(), { { luaval } })
+      return terralib.new(typ:terraType(), { luaval })
     else
-      return terralib.new(typ:terraType(), {luaval})
+      return terralib.new(typ:terraType(), luaval)
     end
 
   elseif typ:isVector() then
@@ -603,12 +707,11 @@ local function lisztToLuaVal(lzval, typ)
 
   elseif typ:isScalarKey() then
     if typ.ndims == 1 then
-      return tonumber(lzval.a[0])
+      return tonumber(lzval.a0)
     elseif typ.ndims == 2 then
-      return { tonumber(lzval.a[0]), tonumber(lzval.a[1]) }
+      return { tonumber(lzval.a0), tonumber(lzval.a1) }
     elseif typ.ndims == 3 then
-      return { tonumber(lzval.a[0]), tonumber(lzval.a[1]),
-                                     tonumber(lzval.a[2]) }
+      return { tonumber(lzval.a0), tonumber(lzval.a1), tonumber(lzval.a2) }
     else
       error('INTERNAL: Cannot have > 3 dimensional keys')
     end
