@@ -22,11 +22,11 @@ steps=5
 outdir="liszt_times"
 mkdir -p $outdir
 
-# for model in "turtle" "dragon" "hose" # stvk
-for model in "sphere" "bunny"           # neohookean
+for model in "turtle" "dragon" "hose" # stvk
+# for model in "sphere" "bunny"         # neohookean
 do
   config="examples/fem/configs/${model}.config"
-  for force in "nh"
+  for force in "stvk"
   do
     outfile="${outdir}/log_${model}_${force}_cpu"
     rm -rf $outfile
