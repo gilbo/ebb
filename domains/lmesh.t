@@ -1,11 +1,11 @@
 local LMesh = {}
 package.loaded["domains.lmesh"] = LMesh
-local L = terralib.require "compiler.lisztlib"
-local PN = terralib.require "lib.pathname"
+local L = require "compiler.lisztlib"
+local PN = require "lib.pathname"
 local lisztlibrary = tostring(PN.liszt_root()..'runtime/libsingle_runtime.so')
 terralib.linklibrary(lisztlibrary)
 
-local C = terralib.require "compiler.c"
+local C = require "compiler.c"
 -------------------------------------------------------------------------------
 --[[ Code that loads all relations from mesh file formats:                 ]]--
 -------------------------------------------------------------------------------
