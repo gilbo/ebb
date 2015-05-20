@@ -3,8 +3,8 @@ import 'compiler.liszt'
 local vdb = {}
 package.loaded["lib.vdb"] = vdb
 
-local L = terralib.require "compiler.lisztlib"
-local T = terralib.require "compiler.types"
+local L = require "compiler.lisztlib"
+local T = require "compiler.types"
 local VDB_C = terralib.includecstring "#include <lib/vdb.h>"
 
 

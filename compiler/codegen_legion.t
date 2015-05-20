@@ -3,13 +3,13 @@ package.loaded["compiler.codegen_legion"] = Codegen
 
 local ast = require "compiler.ast"
 
-local C = terralib.require 'compiler.c'
-local L = terralib.require 'compiler.lisztlib'
-local Cc = terralib.require 'compiler.codegen_common'
+local C = require 'compiler.c'
+local L = require 'compiler.lisztlib'
+local Cc = require 'compiler.codegen_common'
 
 -- Legion dependencies
-terralib.require "compiler.legion_data"
-terralib.require "legionlib-terra"
+require "compiler.legion_data"
+require "legionlib-terra"
 local Lc = terralib.includecstring([[
 #include "legion_c.h"
 ]])

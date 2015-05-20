@@ -2,7 +2,7 @@ import "compiler.liszt"
 
 local test = require('tests.test')
 
-local PN = terralib.require('lib.pathname')
+local PN = require('lib.pathname')
 local Pathname = PN.Pathname
 
 local testdir = Pathname.new('pathname_testdir')

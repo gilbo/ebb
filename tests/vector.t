@@ -1,7 +1,7 @@
 package.path = package.path .. ";./tests/?.lua;?.lua"
 local test = require "test"
 import "compiler.liszt"
-local types = terralib.require "compiler.types"
+local types = require "compiler.types"
 
 ------------------
 -- Should pass: --

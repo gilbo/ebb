@@ -1,10 +1,10 @@
 local K = {}
 package.loaded["compiler.kernel_common"] = K
 
-local L = terralib.require "compiler.lisztlib"
-local specialization = terralib.require "compiler.specialization"
-local semant         = terralib.require "compiler.semant"
-local phase          = terralib.require "compiler.phase"
+local L = require "compiler.lisztlib"
+local specialization = require "compiler.specialization"
+local semant         = require "compiler.semant"
+local phase          = require "compiler.phase"
 
 -- Use the following to produce
 -- deterministic order of table entries

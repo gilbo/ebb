@@ -1,11 +1,11 @@
 local B = {}
 package.loaded["compiler.builtins"] = B
 
-local L = terralib.require "compiler.lisztlib"
-local T = terralib.require "compiler.types"
-local C = terralib.require "compiler.c"
-local G = terralib.require "compiler.gpu_util"
-local AST = terralib.require "compiler.ast"
+local L = require "compiler.lisztlib"
+local T = require "compiler.types"
+local C = require "compiler.c"
+local G = require "compiler.gpu_util"
+local AST = require "compiler.ast"
 
 ---------------------------------------------
 --[[ Builtin functions                   ]]--
@@ -445,10 +445,12 @@ function B.length.codegen(ast, ctxt)
         len2 = `len2 + vec.d[i] * vec.d[i]
     end
 
+    local sqrt = C.sqrt
+    if ctxt:onGPU() then sqrt = G.sqrt end
     return quote
         var [vec] = [exp]
     in
-        C.sqrt( len2 )
+        sqrt( len2 )
     end
 end
 

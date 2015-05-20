@@ -1,18 +1,18 @@
 local K = {}
 package.loaded["compiler.kernel_legion"] = K
-local Kc = terralib.require "compiler.kernel_common"
-local L = terralib.require "compiler.lisztlib"
-local C = terralib.require "compiler.c"
+local Kc = require "compiler.kernel_common"
+local L = require "compiler.lisztlib"
+local C = require "compiler.c"
 
-local Tc = terralib.require "compiler.typedefs"
-terralib.require "legionlib-terra"
+local Tc = require "compiler.typedefs"
+require "legionlib-terra"
 local Lc = terralib.includecstring([[
 #include "legion_c.h"
 ]])
 
-local codegen = terralib.require "compiler.codegen_legion"
-local Ld      = terralib.require "compiler.legion_data"
-local Lt      = terralib.require "compiler.legion_tasks"
+local codegen = require "compiler.codegen_legion"
+local Ld      = require "compiler.legion_data"
+local Lt      = require "compiler.legion_tasks"
 
 -------------------------------------------------------------------------------
 --[[                            Kernels, Brans                             ]]--

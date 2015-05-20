@@ -3,10 +3,10 @@ package.loaded["compiler.codegen_single"] = Codegen
 
 local ast = require "compiler.ast"
 
-local C = terralib.require 'compiler.c'
-local L = terralib.require 'compiler.lisztlib'
-local G = terralib.require 'compiler.gpu_util'
-local Cc = terralib.require 'compiler.codegen_common'
+local C = require 'compiler.c'
+local L = require 'compiler.lisztlib'
+local G = require 'compiler.gpu_util'
+local Cc = require 'compiler.codegen_common'
 
 L._INTERNAL_DEV_OUTPUT_PTX = false
 --[[--------------------------------------------------------------------]]--

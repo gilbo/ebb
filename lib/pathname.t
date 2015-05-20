@@ -19,7 +19,7 @@ local PN = {}
 package.loaded["lib.pathname"] = PN
 
 local ffi = require("ffi")
-local C   = terralib.require "compiler.c"
+local C   = require "compiler.c"
 
 -- All this garble is needed to expose
 -- POSIX routines in a workable form

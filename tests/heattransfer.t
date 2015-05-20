@@ -1,1 +1,1 @@
-terralib.require 'examples.heattransfer'
+require 'examples.heattransfer'

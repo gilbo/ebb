@@ -6,7 +6,7 @@ package.loaded["compiler.parser"] = P
 
 -- Import ast nodes, keeping out of global scope
 local ast = require "compiler.ast"
-local pratt = terralib.require "compiler.pratt"
+local pratt = require "compiler.pratt"
 
 local block_terminators = {
   ['end']    = 1,

@@ -4,7 +4,7 @@ local T = {}
 -- types are defined inline when this file is first executed.
 -- packed.loaded["compiler.types"] = T
 
-local L = terralib.require "compiler.lisztlib"
+local L = require "compiler.lisztlib"
 
 -- From the Lua Documentation
 function pairs_sorted(tbl, compare)
