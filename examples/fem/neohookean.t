@@ -156,6 +156,10 @@ function N:setupFieldsFunctions(mesh)
     end
     -- for every vertex, assemble interactions with every other vertex
     for v = 0,4 do
+      var s0 : L.mat3d = { { 0, 0, 0 }, { 0, 0, 0 }, { 0, 0, 0 } }
+      var s1 : L.mat3d = { { 0, 0, 0 }, { 0, 0, 0 }, { 0, 0, 0 } }
+      var s2 : L.mat3d = { { 0, 0, 0 }, { 0, 0, 0 }, { 0, 0, 0 } }
+      var s3 : L.mat3d = { { 0, 0, 0 }, { 0, 0, 0 }, { 0, 0, 0 } }
       for k = 0,3 do
         var dF : L.mat3d = { { 0, 0, 0 }, { 0, 0, 0 }, { 0, 0, 0 } }
         for j = 0,3 do
@@ -163,18 +167,20 @@ function N:setupFieldsFunctions(mesh)
         end
         var dP : L.mat3d = self.dPdF(t, dF)
         var dH : L.mat3d = (t.W) * U.multiplyMatrices3d(dP, BmT)
-        for i = 0,3 do
-          -- Matlab code:
-          --   Kb(:, kk, ii) = dH(:,ii);
-          --   Kb(:, kk, 4) = Kb(:, kk, 4)-dH(:, ii);
-          -- add ith column of dH into kth column of stiffness e[v,i]
-          -- subtract ith column of dH from kth column of stiffness e[v,4]
-          for r = 0,3 do
-            t.e[i,v].stiffness[r, k] += dH[r, i]
-            t.e[3,v].stiffness[r, k] -= dH[r, i]
-          end
+        -- was before:
+        -- t.e[i,v].stiffness[r, k] += dH[r, i]
+        -- t.e[3,v].stiffness[r, k] -= dH[r, i]
+        for r = 0,3 do
+          s0[r, k] =    dH[r, 0]
+          s1[r, k] =    dH[r, 1]
+          s2[r, k] =    dH[r, 2]
+          s3[r, k] = -( dH[r, 0] + dH[r, 1] + dH[r, 2] )
         end
       end
+      t.e[0, v].stiffness += s0
+      t.e[1, v].stiffness += s1
+      t.e[2, v].stiffness += s2
+      t.e[3, v].stiffness += s3
     end
   end
 
