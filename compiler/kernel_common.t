@@ -98,9 +98,7 @@ end
 function L.NewKernelFromFunction(user_func, relation)
   local new_kernel = setmetatable({}, L.LKernel)
 
-  --user_func.ast:pretty_print()
   local func_ast  = user_func.ast:alpha_rename() -- ensure this is a safe copy
-  --func_ast:pretty_print()
   local ast_root  = AST.LisztKernel:DeriveFrom(func_ast)
   ast_root.id     = func_ast.id
   ast_root.name   = func_ast.params[1]
@@ -116,6 +114,7 @@ end
 
 function L.LKernel:TypeCheck()
   self.typed_ast = semant.check(self.specialized_ast)
+  -- self.typed_ast:pretty_print()
 
   -- TODO: throw an error if more than one global is being reduced
 
