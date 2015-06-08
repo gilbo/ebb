@@ -103,11 +103,11 @@ local outDirName = nil
 if forceModel == 'stvk' then
   F = L.require 'examples.fem.stvk'
   outDirName = 'liszt_output/stvk-out'
-  os.execute('mkdir -p ' .. outDirName)
+  os.execute('mkdir -p examples/fem/' .. outDirName)
 else
   F = L.require 'examples.fem.neohookean'
   outDirName = 'liszt_output/nh-out'
-  os.execute('mkdir -p ' .. outDirName)
+  os.execute('mkdir -p examples/fem/' .. outDirName)
 end
 F.profile = false  -- measure and print out detailed timing?
 
@@ -554,10 +554,10 @@ function main()
   end
 
   -- Output frame number and mesh file for viewing later on
-  local numFramesFile = io.open(outDirName..'/num_frames', 'w')
+  local numFramesFile = io.open('examples/fem/' .. outDirName..'/num_frames', 'w')
   numFramesFile:write(tostring(numTimeSteps))
   numFramesFile:close()
-  os.execute('cp ' .. meshFileName .. ' ' .. outDirName .. '/mesh')
+  os.execute('cp ' .. meshFileName .. ' ' .. 'examples/fem/' .. outDirName .. '/mesh')
 end
 
 main()
