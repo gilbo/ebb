@@ -318,6 +318,12 @@ ast.NewInertPass('phasePass')
 function ast.FieldWrite:phasePass (ctxt)
   -- We intentionally skip over the Field Access here...
   self.fieldaccess.key:phasePass(ctxt)
+  if self.fieldaccess:is(ast.FieldAccessIndex) then
+    self.fieldaccess.index:phasePass(ctxt)
+    if self.fieldaccess.index2 then
+        self.fieldaccess.index2:phasePass(ctxt)
+    end
+  end
 
   local pargs    = { centered = self.fieldaccess.key.is_centered }
   if self.reduceop then
@@ -334,7 +340,22 @@ function ast.FieldWrite:phasePass (ctxt)
 end
 
 function ast.FieldAccess:phasePass (ctxt)
+  -- if we got here, it wasn't through a write or reduce use
   self.key:phasePass(ctxt)
+  local ptype = PhaseType.New {
+    centered = self.key.is_centered,
+    read = true
+  }
+  ctxt:logfield(self.field, ptype, self)
+end
+
+function ast.FieldAccessIndex:phasePass (ctxt)
+  -- if we got here, it wasn't through a write or reduce use
+  self.key:phasePass(ctxt)
+  self.index:phasePass(ctxt)
+  if (self.index2) then
+      self.index2:phasePass(ctxt)
+  end
 
   local ptype = PhaseType.New {
     centered = self.key.is_centered,
@@ -342,6 +363,7 @@ function ast.FieldAccess:phasePass (ctxt)
   }
   ctxt:logfield(self.field, ptype, self)
 end
+
 
 
 function ast.Call:phasePass (ctxt)
@@ -366,6 +388,12 @@ end
 
 
 function ast.GlobalReduce:phasePass(ctxt)
+  if self.global:is(ast.GlobalIndex) then
+    self.global.index:phasePass(ctxt)
+    if self.global.index2 then
+        self.global.index2:phasePass(ctxt)
+    end
+  end
   local ptype = PhaseType.New { reduceop = self.reduceop }
   local global = self.global.global
   ctxt:logglobal(global, ptype, self)
@@ -375,6 +403,16 @@ end
 
 function ast.Global:phasePass (ctxt)
   -- if we got here, it wasn't through a write or reduce use
+  ctxt:logglobal(self.global, PhaseType.New { read = true } , self)
+end
+
+function ast.GlobalIndex:phasePass (ctxt)
+  -- if we got here, it wasn't through a write or reduce use
+  self.index:phasePass(ctxt)
+  if self.index2 then
+      self.index2:phasePass(ctxt)
+  end
+  self.base:phasePass(ctxt)
   ctxt:logglobal(self.global, PhaseType.New { read = true } , self)
 end
 
