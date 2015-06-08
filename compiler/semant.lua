@@ -1226,6 +1226,7 @@ function ast.SquareIndex:check(ctxt)
     elseif base:is(ast.Global) then
         sqidx = ast.GlobalIndex:DeriveFrom(base)
         sqidx.node_type = base.node_type
+        sqidx.global    = base.global
     else
         sqidx = self:clone()
     end
