@@ -395,16 +395,22 @@ end
 -- Allocate an unstructured logical region
 -- NOTE: Call from top level task only.
 function LW.NewLogicalRegion(params)
+  -- Max rows for index space = n_rows right now ==> no inserts
+  -- Should eventually figure out an upper bound on number of rows and use that
+  -- when creating index space.
   local l = {
               type      = 'unstructured',
               relation  = params.relation,
               field_ids = 0,
               n_rows    = params.n_rows,
+              rows_live = 0,
+              rows_max  = params.n_rows
             }
-  -- index space
-  l.is  = Create1DGridIndexSpace(l.n_rows)
-  l.isa = LW.legion_index_allocator_create(legion_env.runtime,
-                                           legion_env.ctx, l.is)
+  l.is = Create1DGridIndexSpace(l.n_rows)
+  --l.is  = LW.legion_index_space_create(legion_env.runtime,
+  --                                     legion_env.ctx, l.n_rows)
+  --l.isa = LW.legion_index_allocator_create(legion_env.runtime,
+  --                                         legion_env.ctx, l.is)
   -- field space
   l.fs  = LW.legion_field_space_create(legion_env.runtime,
                                        legion_env.ctx)
@@ -414,6 +420,8 @@ function LW.NewLogicalRegion(params)
   l.handle = LW.legion_logical_region_create(legion_env.runtime,
                                              legion_env.ctx, l.is, l.fs)
   setmetatable(l, LogicalRegion)
+  -- actually allocate rows
+  --l:AllocateRows(l.n_rows)
   return l
 end
 
@@ -543,7 +551,7 @@ end
 LW.privilege = {
   EXCLUSIVE           = LW.READ_WRITE,
   READ                = LW.READ_ONLY,
-  READ_OR_EXCLUISVE   = LW.READ_WRITE,
+  READ_OR_EXCLUSIVE   = LW.READ_WRITE,
   REDUCE              = LW.REDUCE,
   REDUCE_OR_EXCLUSIVE = LW.REDUCE,
 }
@@ -553,7 +561,7 @@ LW.privilege = {
 LW.coherence = {
   EXCLUSIVE           = LW.EXCLUSIVE,
   READ                = LW.EXCLUSIVE,
-  READ_OR_EXCLUISVE   = LW.EXCLUSIVE,
+  READ_OR_EXCLUSIVE   = LW.EXCLUSIVE,
   REDUCE              = LW.REDUCE,
   REDUCE_OR_EXCLUSIVE = LW.REDUCE,
 }
