@@ -14,7 +14,7 @@ local codesupport     = require "compiler.codegen_support"
 local LE, legion_env, LW
 if use_legion then
   LE = rawget(_G, '_legion_env')
-  legion_env = LE.legion_env:get()
+  legion_env = LE.legion_env[0]
   LW = require 'compiler.legionwrap'
 end
 local DataArray       = require('compiler.rawdata').DataArray
