@@ -347,7 +347,7 @@ function ReductionObj:sharedMemReductionCode(tid_sym, globalptr)
   code = quote
     [code]
     [self._gpu_reduce_atomic(`@[globalptr],
-                             `[self._sharedmem][0])
+                             `[self._sharedmem][0])]
   end
   return code
 end

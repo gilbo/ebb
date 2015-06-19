@@ -57,7 +57,7 @@ local liszt clear (p : M.vertices)
   p.jacobistep = 0
 end
 
-for i = 1, 333 do
+for i = 1, 1000 do
   M.edges:foreach(compute_step)
   M.vertices:foreach(propagate_temp)
   M.vertices:foreach(clear)
