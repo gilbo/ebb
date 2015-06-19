@@ -736,13 +736,28 @@ function Bran:CompileGPUReduction()
   -- Find all the global variables in this kernel that are being reduced
   for globl, data in pairs(self.global_reductions) do
     local ttype             = globl.type:terraType()
-    data.sharedmem          = cudalib.sharedmemory(ttype, self.blocksize)
-
-    self.sharedmem_size     = self.sharedmem_size +
-                                sizeof(ttype) * self.blocksize
+--    data.sharedmem          = cudalib.sharedmemory(ttype, self.blocksize)
+--
+--    self.sharedmem_size     = self.sharedmem_size +
+--                                sizeof(ttype) * self.blocksize
+    local op      = data.phase.reduceop
+    local lz_type = globl.type
+    local reduceobj = G.ReductionObj.New {
+      ttype             = ttype,
+      blocksize         = self.blocksize,
+      reduce_ident      = codesupport.reduction_identity(lz_type, op),
+      reduce_binop      = function(lval, rhs)
+        return codesupport.reduction_binop(lz_type, op, lval, rhs)
+      end,
+      gpu_reduce_atomic = function(lval, rhs)
+        return codesupport.gpu_atomic_exp(op, lz_type, lval, rhs, lz_type)
+      end,
+    }
+    data.reduceobj = reduceobj
+    self.sharedmem_size = self.sharedmem_size + reduceobj:sharedMemSize()
   end
 
-  self:CompileGlobalMemReductionKernel()
+  --self:CompileGlobalMemReductionKernel()
 end
 
 -- The following routine is also used inside the primary compile CUDA kernel
@@ -753,9 +768,13 @@ function Bran:GenerateSharedMemInitialization(tid_sym)
     local lz_type   = globl.type
     local sharedmem = data.sharedmem
 
+    --code = quote
+    --  [code]
+    --  [sharedmem][tid_sym] = [codesupport.reduction_identity(lz_type, op)]
+    --end
     code = quote
       [code]
-      [sharedmem][tid_sym] = [codesupport.reduction_identity(lz_type, op)]
+      [data.reduceobj:sharedMemInitCode(tid_sym)]
     end
   end
   return code
@@ -772,7 +791,7 @@ function Bran:GenerateSharedMemReduceTree(args_sym, tid_sym, bid_sym, is_final)
     local finalptr    = self:getTerraGlobalPtr(args_sym, globl)
     local globalmem   = self:getTerraReduceGlobalMemPtr(args_sym, globl)
 
-    -- Insert an unrolled reduction tree here
+    --[[ Insert an unrolled reduction tree here
     local step = self.blocksize
     while step > 1 do
       step = step/2
@@ -800,6 +819,11 @@ function Bran:GenerateSharedMemReduceTree(args_sym, tid_sym, bid_sym, is_final)
           [globalmem][bid_sym] = [sharedmem][0]
         end
       end
+    end
+    --]]
+    code = quote
+      [code]
+      [data.reduceobj:sharedMemReductionCode(tid_sym, finalptr)]
     end
   end
   return code

@@ -291,6 +291,68 @@ local terra cuda_sync_wrapper_with_peek()
   cuda_peek_at_last_error()
 end
 
+
+
+--[[-----------------------------------------------------------------------]]--
+--[[ Global Reductions                                                     ]]--
+--[[-----------------------------------------------------------------------]]--
+
+local ReductionObj = {}
+ReductionObj.__index = ReductionObj
+
+function ReductionObj.New(args)
+  local ro = setmetatable({
+    _ttype              = args.ttype or assert(false,'no ttype'),
+    _blocksize          = args.blocksize or assert(false,'no blocksize'),
+    _reduce_ident       = args.reduce_ident
+                          or assert(false,'no reduce_ident'),
+    _reduce_binop       = args.reduce_binop
+                          or assert(false,'no reduce_binop'),
+    _gpu_reduce_atomic  = args.gpu_reduce_atomic
+                          or assert(false,'no gpu_reduce_atomic'),
+  }, ReductionObj)
+
+  -- initialization of shared memory variable
+  ro._sharedmem     = cudalib.sharedmemory(ro._ttype, ro._blocksize)
+  ro._sharedmemsize = terralib.sizeof(ro._ttype) * ro._blocksize
+
+  return ro
+end
+
+--function ReductionObj:getSharedMemPtr()
+--  return self._sharedmem
+--end
+function ReductionObj:sharedMemSize()
+  return self._sharedmemsize
+end
+function ReductionObj:sharedMemInitCode(tid_sym)
+  return quote
+    [self._sharedmem][tid_sym] = [self._reduce_ident]
+  end
+end
+-- returns a snippet of code to be included at the end of the kernel
+function ReductionObj:sharedMemReductionCode(tid_sym, globalptr)
+  -- Shared Memory Reduction Tree
+  local step = self._blocksize
+  local code = quote escape while step > 1 do
+    step = step / 2
+    emit quote if tid_sym < step then
+      var exp = [self._reduce_binop(`[self._sharedmem][tid_sym],
+                                    `[self._sharedmem][tid_sym + step])]
+      terralib.attrstore(&[self._sharedmem][tid_sym], exp, {isvolatile=true})
+    end end
+  end end end
+
+  -- Now append the reduction into the global counter
+  code = quote
+    [code]
+    [self._gpu_reduce_atomic(`@[globalptr],
+                             `[self._sharedmem][0])
+  end
+  return code
+end
+
+
 --[[-----------------------------------------------------------------------]]--
 --[[ gpu_util Interface                                                    ]]--
 --[[-----------------------------------------------------------------------]]--
@@ -359,3 +421,8 @@ GPU.atomic_min_float_SLOW  = generate_slow_atomic_32(min,float)
 GPU.atomic_max_uint64_SLOW = generate_slow_atomic_64(max,uint64)
 GPU.atomic_max_double_SLOW = generate_slow_atomic_64(max,double)
 GPU.atomic_max_float_SLOW  = generate_slow_atomic_32(max,float)
+
+-- Algorithms
+GPU.ReductionObj = ReductionObj
+
+
