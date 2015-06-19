@@ -83,8 +83,9 @@ A.Expression:NewKind('Reduce',           {'exp'})
 A.Expression:NewKind('UnaryOp',          {'exp'})
 
 A.Expression:NewKind('TableLookup',      {'table','member'})
-A.Expression:NewKind('SquareIndex',      {'base','index', 'index2'})
 A.Expression:NewKind('Call', {'func'},   {'params'})
+
+A.Expression:NewKind('SquareIndex',      {'base','index', 'index2'})
 
 A.Expression:NewKind('Name')
 A.Expression:NewKind('Number')
@@ -101,6 +102,9 @@ A.Expression:NewKind('Global')
 A.Expression:NewKind('Cast',             {'value'})
 A.Statement :NewKind('FieldWrite',       {'fieldaccess','exp'})
 A.Statement :NewKind('GlobalReduce',     {'global','exp'})
+-- two special cases for handling reductions correctly
+A.Expression:NewKind('FieldAccessIndex', {'key', 'index', 'index2'})
+A.Expression:NewKind('GlobalIndex',      {'index', 'index2'})
 
   -- Quotes mark pre-typechecked sub-trees, and compile to nothing
 A.Expression:NewKind('Quote',            {'code'})
@@ -368,6 +372,16 @@ function A.Global:pretty_print(indent)
   print(indent .. self.kind .. ": " .. symtostr(name) ..maybe_type(self))
 end
 
+function A.GlobalIndex:pretty_print(indent)
+  indent = indent or ''
+  local name = self.name or ""
+  print(indent .. self.kind .. ": " .. symtostr(name) ..maybe_type(self))
+  self.index:pretty_print(indent .. indent_delta)
+  if self.index2 then
+      self.index2:pretty_print(indent .. indent_delta)
+  end
+end
+
 function A.Cast:pretty_print(indent)
   indent = indent or ''
   print(indent .. self.kind .. ": " .. tostring(self.node_type))
@@ -400,6 +414,17 @@ function A.FieldAccess:pretty_print(indent)
   print(indent .. self.kind .. ': ' .. tostring(self.field)..maybe_type(self))
   self.key:pretty_print(indent..indent_delta)
   print(indent..indent_delta..symtostr(self.name))
+end
+
+function A.FieldAccessIndex:pretty_print(indent)
+  indent = indent or ''
+  print(indent .. self.kind .. ': ' .. tostring(self.field)..maybe_type(self))
+  self.key:pretty_print(indent..indent_delta)
+  print(indent..indent_delta..symtostr(self.name))
+  self.index:pretty_print(indent .. indent_delta)
+  if self.index2 then
+      self.index2:pretty_print(indent .. indent_delta)
+  end
 end
 
 function A.Call:pretty_print (indent)
@@ -437,6 +462,9 @@ function A.SquareIndex:pretty_print (indent)
   print(indent .. self.kind .. ": (base, index)"..maybe_type(self))
   self.base:pretty_print(indent .. indent_delta)
   self.index:pretty_print(indent .. indent_delta)
+  if self.index2 then
+      self.index2:pretty_print(indent .. indent_delta)
+  end
 end
 
 function A.Name:pretty_print (indent)

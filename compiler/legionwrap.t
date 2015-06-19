@@ -61,8 +61,8 @@ local struct LegionEnv {
   runtime : LW.legion_runtime_t,
   ctx     : LW.legion_context_t
 }
-LE.legion_env = global(LegionEnv)
-local legion_env = LE.legion_env:get()
+LE.legion_env = C.safemalloc( LegionEnv )
+local legion_env = LE.legion_env[0]
 
 
 
@@ -91,8 +91,8 @@ function LW.NewTaskLauncher(params)
   local taskfunc    = params.taskfunc
   local taskptrtype = &taskfunc:getdefinitions()[1]:gettype()
   local TID
-  local taskfuncptr = global( taskptrtype,
-                              taskfunc:getdefinitions()[1]:getpointer() )
+  local taskfuncptr = C.safemalloc( taskptrtype )
+  taskfuncptr[0]    = taskfunc:getdefinitions()[1]:getpointer()
 
   if     taskptrtype == LW.SimpleTaskPtrType then
     TID = LW.TID_SIMPLE_CPU
@@ -111,13 +111,13 @@ function LW.NewTaskLauncher(params)
   -- By looking carefully at the legion_c wrapper
   -- I was able to determine that we don't need to
   -- persist this structure
-  local argstruct         = global(LW.legion_task_argument_t)
-  argstruct:get().args    = taskfuncptr:getpointer()
-  argstruct:get().arglen  = terralib.sizeof(taskptrtype)
+  local argstruct   = C.safemalloc( LW.legion_task_argument_t )
+  argstruct.args    = taskfuncptr -- taskptrtype*
+  argstruct.arglen  = terralib.sizeof(taskptrtype)
 
   local launcher = LW.legion_task_launcher_create(
     TID,
-    argstruct:get(),
+    argstruct[0],
     LW.legion_predicate_true(),
     0,
     0
@@ -395,16 +395,22 @@ end
 -- Allocate an unstructured logical region
 -- NOTE: Call from top level task only.
 function LW.NewLogicalRegion(params)
+  -- Max rows for index space = n_rows right now ==> no inserts
+  -- Should eventually figure out an upper bound on number of rows and use that
+  -- when creating index space.
   local l = {
               type      = 'unstructured',
               relation  = params.relation,
               field_ids = 0,
               n_rows    = params.n_rows,
+              rows_live = 0,
+              rows_max  = params.n_rows
             }
-  -- index space
-  l.is  = Create1DGridIndexSpace(l.n_rows)
-  l.isa = LW.legion_index_allocator_create(legion_env.runtime,
-                                           legion_env.ctx, l.is)
+  l.is = Create1DGridIndexSpace(l.n_rows)
+  --l.is  = LW.legion_index_space_create(legion_env.runtime,
+  --                                     legion_env.ctx, l.n_rows)
+  --l.isa = LW.legion_index_allocator_create(legion_env.runtime,
+  --                                         legion_env.ctx, l.is)
   -- field space
   l.fs  = LW.legion_field_space_create(legion_env.runtime,
                                        legion_env.ctx)
@@ -414,6 +420,8 @@ function LW.NewLogicalRegion(params)
   l.handle = LW.legion_logical_region_create(legion_env.runtime,
                                              legion_env.ctx, l.is, l.fs)
   setmetatable(l, LogicalRegion)
+  -- actually allocate rows
+  --l:AllocateRows(l.n_rows)
   return l
 end
 
@@ -543,7 +551,7 @@ end
 LW.privilege = {
   EXCLUSIVE           = LW.READ_WRITE,
   READ                = LW.READ_ONLY,
-  READ_OR_EXCLUISVE   = LW.READ_WRITE,
+  READ_OR_EXCLUSIVE   = LW.READ_WRITE,
   REDUCE              = LW.REDUCE,
   REDUCE_OR_EXCLUSIVE = LW.REDUCE,
 }
@@ -553,7 +561,7 @@ LW.privilege = {
 LW.coherence = {
   EXCLUSIVE           = LW.EXCLUSIVE,
   READ                = LW.EXCLUSIVE,
-  READ_OR_EXCLUISVE   = LW.EXCLUSIVE,
+  READ_OR_EXCLUSIVE   = LW.EXCLUSIVE,
   REDUCE              = LW.REDUCE,
   REDUCE_OR_EXCLUSIVE = LW.REDUCE,
 }
@@ -692,37 +700,37 @@ function LW.ControlScanner:ScanThenClose()
   local rect
   local get_raw_rect_ptr
   if #dims == 1 then
-    subrect            = global(LW.legion_rect_1d_t)
-    rect               = global(LW.legion_rect_1d_t)
+    subrect            = C.safemalloc( LW.legion_rect_1d_t )
+    rect               = C.safemalloc( LW.legion_rect_1d_t )
     get_raw_rect_ptr   = LW.legion_accessor_generic_raw_rect_ptr_1d
   elseif #dims == 2 then
-    subrect            = global(LW.legion_rect_2d_t)
-    rect               = global(LW.legion_rect_2d_t)
+    subrect            = C.safemalloc( LW.legion_rect_2d_t )
+    rect               = C.safemalloc( LW.legion_rect_2d_t )
     get_raw_rect_ptr   = LW.legion_accessor_generic_raw_rect_ptr_2d
   elseif #dims == 3 then
-    subrect            = global(LW.legion_rect_3d_t)
-    rect               = global(LW.legion_rect_3d_t)
+    subrect            = C.safemalloc( LW.legion_rect_3d_t )
+    rect               = C.safemalloc( LW.legion_rect_3d_t )
     get_raw_rect_ptr   = LW.legion_accessor_generic_raw_rect_ptr_3d
   else
     error('INTERNAL n_dimensions > 3')
   end
   for d=1,#dims do
-    rect:get().lo.x[d-1] = 0
-    rect:get().hi.x[d-1] = dims[d]-1
+    rect.lo.x[d-1] = 0
+    rect.hi.x[d-1] = dims[d]-1
   end
 
   -- initialize field-dependent data for iteration
   for k,fid in ipairs(self.fids) do
     local pr  = self.physical_regions[k]
     accs[k]   = LW.legion_physical_region_get_field_accessor_generic(pr, fid)
-    local offtemp = global(LW.legion_byte_offset_t[#dims])
+    local offtemp = C.safemalloc(LW.legion_byte_offset_t[#dims])
     ptrs[k] = terralib.cast(&int8, get_raw_rect_ptr(
-                accs[k], rect, subrect:getpointer(),
-                terralib.cast(&LW.legion_byte_offset_t, offtemp:getpointer())
+                accs[k], rect[0], subrect,
+                terralib.cast(&LW.legion_byte_offset_t, offtemp)
               ))
     offs[k] = {}
     for d=1,#dims do
-      offs[k][d] = offtemp:get()[d-1].offset
+      offs[k][d] = offtemp[0][d-1].offset
     end
   end
 

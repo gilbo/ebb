@@ -12,6 +12,8 @@ local src  = info.source
 -- strip leading '@'' and trailing 'compiler/c.t'
 local liszt_dir = src:sub(2,-14)
 
+local ffi = require 'ffi'
+
 
 local enum_list = {
   {str='SEEK_SET',ctype='int',ttype=int},
@@ -97,6 +99,16 @@ rawset(c_blob, 'assert', macro(function(test)
       c_blob.exit(1)
     end
   end
+end))
+
+rawset(c_blob, 'safemalloc', macro(function()
+  error('safemalloc may not be called inside of Terra code')
+end,
+function( ttype, finalizer )
+  if not finalizer then finalizer = c_blob.free end
+  local ptr = terralib.cast( &ttype, c_blob.malloc(terralib.sizeof(ttype)) )
+  ffi.gc( ptr, finalizer )
+  return ptr
 end))
 
 

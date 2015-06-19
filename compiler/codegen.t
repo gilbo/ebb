@@ -467,7 +467,7 @@ function Codegen.codegen (kernel_ast, bran)
 
     launcher = terra (args_ptr : &ctxt:argsType())
       -- possibly allocate global memory for a GPU reduction
-      [ ctxt.bran:generateGPUReductionPreProcess(args_ptr) ]
+      --[ ctxt.bran:generateGPUReductionPreProcess(args_ptr) ]
 
       -- the main launch
       var grid_x : uint,    grid_y : uint,    grid_z : uint   =
@@ -483,7 +483,7 @@ function Codegen.codegen (kernel_ast, bran)
 
       -- possibly perform the second launch tree reduction and
       -- cleanup any global memory here...
-      [ ctxt.bran:generateGPUReductionPostProcess(args_ptr) ]
+      --[ ctxt.bran:generateGPUReductionPostProcess(args_ptr) ]
     end
     launcher:setname(kernel_ast.id)
 
@@ -878,6 +878,17 @@ function ast.Global:codegen (ctxt)
   return `@dataptr
 end
 
+function ast.GlobalIndex:codegen (ctxt)
+  local ptr = ctxt:GlobalPtr(self.global)
+  local index = self.index:codegen(ctxt)
+  if self.index2 == nil then
+      return `ptr.d[index]
+  else
+      local index2 = self.index2:codegen(ctxt)
+      return `ptr.d[index][index2]
+  end
+end
+
 function ast.Where:codegen(ctxt)
   --if use_legion then error("LEGION UNSUPPORTED TODO") end
   local key       = self.key:codegen(ctxt)
@@ -951,6 +962,18 @@ end
 function ast.FieldAccess:codegen (ctxt)
   local key = self.key:codegen(ctxt)
   return `@[ ctxt:FieldElemPtr(self.field, key) ]
+end
+
+function ast.FieldAccessIndex:codegen (ctxt)
+  local key = self.key:codegen(ctxt)
+  local ptr = `@[ ctxt:FieldElemPtr(self.field, key) ]
+  local index = self.index:codegen(ctxt)
+  if self.index2 == nil then
+      return `ptr.d[index]
+  else
+      local index2 = self.index2:codegen(ctxt)
+      return `ptr.d[index][index2]
+  end
 end
 
 

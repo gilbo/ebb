@@ -81,12 +81,14 @@ return function(terrafn, verbose, annotations)
   --    original arguments, unpacks them, then calls the kernel.
   -- It also handles defering loading of cuda code on the first execution
   --    rather than at compile time.
-  local is_loaded = global(bool, false)
+  --local is_loaded = global(bool, false)
+  local is_loaded = C.safemalloc( bool )
+  is_loaded[0] = false
   local error_buf_sz = 2048
   local terra wrapper(kernelparams: &terralib.CUDAParams, [outersyms]) : {}
     -- on the first load, make sure to load
-    if not is_loaded then
-      is_loaded = true
+    if not @is_loaded then
+      @is_loaded = true
       var error_buf : int8[error_buf_sz]
       if 0 ~= cudaloader(nil,nil,error_buf,error_buf_sz) then
         C.printf("CUDA LOAD ERROR: %s\n", error_buf)
@@ -104,5 +106,6 @@ return function(terrafn, verbose, annotations)
     end
   end
   wrapper:setinlined(true)
+  wrapper.global_mem_hide = is_loaded
   return wrapper
 end

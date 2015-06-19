@@ -88,20 +88,7 @@ lang.exp = pratt.Pratt() -- returns a pratt parser
 :infix('min', 5,   leftbinaryred)
 
 :infix('^',   6,   rightbinary)
-:infix('.',   7, function(P,lhs)
-  local node = ast.TableLookup:New(P)
-  node.table = lhs
-  local op = P:next().type
-  local start = P:cur().linenumber
-  if P:nextif('[') then --allow an escape to determine a field expression
-    node.member = P:luaexpr()
-    P:expectmatch(']', '[', start)
-  else
-    node.member = P:expect(P.name).value
-  end
-  return node
-end)
-:infix('[',   8, function(P,lhs)
+:infix('[',   7, function(P,lhs)
   local begin = P:next().linenumber
   local node = ast.SquareIndex:New(P)
   local exp = P:exp()
@@ -117,7 +104,20 @@ end)
   if exp2 then node.index2 = exp2 end
   return node
 end)
-:infix('(',   8, function(P,lhs)
+:infix('.',   8, function(P,lhs)
+  local node = ast.TableLookup:New(P)
+  node.table = lhs
+  local op = P:next().type
+  local start = P:cur().linenumber
+  if P:nextif('[') then --allow an escape to determine a field expression
+    node.member = P:luaexpr()
+    P:expectmatch(']', '[', start)
+  else
+    node.member = P:expect(P.name).value
+  end
+  return node
+end)
+:infix('(',   9, function(P,lhs)
   local begin = P:next().linenumber
   local node = ast.Call:New(P)
   local params = {}

@@ -83,6 +83,7 @@ legion:
 #	$(SET_ENV_VAR) make -C $(LEGION_BIND_DIR)
 #	mv $(LIBLEGION_TERRA) $(LIBLEGION_TERRA_DEBUG)
 
+ifdef FOUND_LEGION
 # this is a target to build only those parts of legion we need
 $(LIBLEGION_TERRA_RELEASE): terra legion $(LIBLEGION_TERRA_DEBUG)
 	$(SET_ENV_VAR) make -C $(LEGION_BIND_DIR) clean
@@ -93,7 +94,7 @@ $(LIBLEGION_TERRA_DEBUG): terra legion
 	$(SET_ENV_VAR) make -C $(LEGION_BIND_DIR) clean
 	$(SET_ENV_VAR) CC_FLAGS=-DLEGION_SPY make -C $(LEGION_BIND_DIR)
 	mv $(LIBLEGION_TERRA) $(LIBLEGION_TERRA_DEBUG)
-
+endif
 
 # undo anything that this makefile might have done
 clean:

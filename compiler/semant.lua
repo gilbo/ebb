@@ -218,7 +218,8 @@ function check_reduce(node, ctxt)
     local ltype     = lvalue.node_type
 
     -- Centered reductions don't need to be atomic!
-    if node.lvalue:is(ast.FieldAccess) and node.lvalue.key.is_centered then return end
+    if (node.lvalue:is(ast.FieldAccess) or node.lvalue:is(ast.FieldAccessIndex)) and
+        node.lvalue.key.is_centered then return end
 
     if op == nil then return end
 
@@ -243,7 +244,8 @@ function ast.Assignment:check(ctxt)
     if rtype == L.error then return node end
 
     -- Promote global lhs to lvalue if there was a reduction
-    if node.lvalue:is(ast.Global) and not self.reduceop then
+    if (node.lvalue:is(ast.Global) or node.lvalue:is(ast.GlobalIndex)) and
+        not self.reduceop then
         ctxt:error(self.lvalue, "Cannot write to globals in functions")
         node.lvalue.is_lvalue = true
     end
@@ -256,7 +258,7 @@ function ast.Assignment:check(ctxt)
     -- How should we restrict assignments to keys?
     elseif node.lvalue.node_type:isKey() and
            ( not ( node.lvalue:is(ast.FieldAccess) or
-                   ( node.lvalue:is(ast.SquareIndex) and
+                   ( node.lvalue:is(ast.FieldAccessIndex) and
                      node.lvalue.base and
                      node.lvalue.base:is(ast.FieldAccess)
                    )
@@ -276,7 +278,7 @@ function ast.Assignment:check(ctxt)
 
     -- replace assignment with a global reduce if we see a
     -- global on the left hand side
-    if node.lvalue:is(ast.Global) then
+    if node.lvalue:is(ast.Global)  or node.lvalue:is(ast.GlobalIndex) then
         check_reduce(node, ctxt)
         local gr = ast.GlobalReduce:DeriveFrom(node)
         gr.global      = node.lvalue
@@ -285,7 +287,7 @@ function ast.Assignment:check(ctxt)
         return gr
     -- replace assignment with a field write if we see a
     -- field access on the left hand side
-    elseif node.lvalue:is(ast.FieldAccess) then
+    elseif node.lvalue:is(ast.FieldAccess) or node.lvalue:is(ast.FieldAccessIndex) then
         check_reduce(node, ctxt)
         local fw = ast.FieldWrite:DeriveFrom(node)
         fw.fieldaccess = node.lvalue
@@ -1211,14 +1213,32 @@ function ast.TableLookup:check(ctxt)
 end
 
 function ast.SquareIndex:check(ctxt)
-    local sqidx  = self:clone()
-    local base   = self.base:check(ctxt)
-    local idx    = self.index:check(ctxt)
-    sqidx.base, sqidx.index     = base, idx
-    local btyp, ityp            = base.node_type, idx.node_type
+    -- mutate squareindex into a node of type base
 
-    if btyp == L.error or ityp == L.error then sqidx.node_type = L.error
-                                               return sqidx end
+    local base  = self.base:check(ctxt)
+    local sqidx = nil
+    if base:is(ast.FieldAccess) then
+        sqidx = ast.FieldAccessIndex:DeriveFrom(base)
+        sqidx.name  = base.member
+        sqidx.key   = base.key
+        sqidx.field = base.field
+        sqidx.node_type = base.node_type
+    elseif base:is(ast.Global) then
+        sqidx = ast.GlobalIndex:DeriveFrom(base)
+        sqidx.node_type = base.node_type
+        sqidx.global    = base.global
+    else
+        sqidx = self:clone()
+    end
+
+    local idx  = self.index:check(ctxt)
+    sqidx.base, sqidx.index = base, idx
+    local btyp, ityp = base.node_type, idx.node_type
+
+    if btyp == L.error or ityp == L.error then
+        sqidx.node_type = L.error
+        return sqidx
+    end
 
     if not ityp:isIntegral() then return err(idx, ctxt, 'expected an '..
         'integer index, but found '..ityp:toString()) end
@@ -1226,11 +1246,13 @@ function ast.SquareIndex:check(ctxt)
     -- matrix case
     if self.index2 then
         local idx2      = self.index2:check(ctxt)
-        sqidx.index2    = idx2
+        sqidx.index2     = idx2
         local i2typ     = idx2.node_type
 
-        if i2typ == L.error then sqidx.node_type = L.error
-                                 return sqidx end
+        if i2typ == L.error then
+            sqidx.node_type = L.error
+            return sqidx
+        end
 
         if not ityp:isIntegral() then return err(idx2, ctxt, 'expected an '..
             'integer index, but found '..i2typ:toString()) end
@@ -1244,7 +1266,6 @@ function ast.SquareIndex:check(ctxt)
 
     -- is an lvalue only when the base is
     if base.is_lvalue then sqidx.is_lvalue = true end
-
     sqidx.node_type = btyp:baseType()
     return sqidx
 end

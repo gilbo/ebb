@@ -13,7 +13,7 @@ local DataArray = use_single and
 local LE, legion_env, LW
 if use_legion then
   LE            = rawget(_G, '_legion_env')
-  legion_env    = LE.legion_env:get()
+  legion_env    = LE.legion_env[0]
   LW            = require 'compiler.legionwrap'
 end
 -------------------------------------------------------------------------------
@@ -104,11 +104,10 @@ function LGlobal:set(val)
   elseif use_legion then
     local typ    = self.type
     local tt     = typ:terraType()
-    local blob   = global(tt)
-    -- ensure a byte for byte copy
-    (blob:getpointer())[0] = T.luaToLisztVal(val, typ)
+    local blob   = C.safemalloc( tt )
+    blob[0]      = T.luaToLisztVal(val, typ)
     local future = LW.legion_future_from_buffer(legion_env.runtime,
-                                                blob:getpointer(),
+                                                blob,
                                                 terralib.sizeof(tt))
     if self.data then
       LW.legion_future_destroy(self.data)
