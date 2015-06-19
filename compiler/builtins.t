@@ -79,7 +79,7 @@ function B.id.check(ast, ctxt)
     return L.uint64
 end
 function B.id.codegen(ast, ctxt)
-    return `[ast.params[1]:codegen(ctxt)].a0
+    return `[uint64]([ast.params[1]:codegen(ctxt)].a0)
 end
 
 B.xid = Builtin.new()

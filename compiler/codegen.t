@@ -255,7 +255,7 @@ local function terraGPUId_to_Nd(keytyp, dims, id, func)
     local addr = symbol(keytyp)
     return quote
       var [addr] = id + [dims[1].lo]
-      if [addr].a0 < [dims[1].hi] then
+      if addr < [dims[1].hi] then
         [func(addr)]
       end
     end
