@@ -11,9 +11,9 @@ local liszt RunRed(v : vertices)
 end
 
 function run_test()
-	gerr:set(0)
-	vertices:foreach(RunRed)
-	L.assert(N == gerr:get())
+  gerr:set(0)
+  vertices:foreach(RunRed)
+  L.assert(N == gerr:get())
 end
 
 run_test()
