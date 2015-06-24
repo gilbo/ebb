@@ -712,7 +712,12 @@ end
 
 function Bran:getTerraReduceSharedMemPtr(global)
   local data = self:getReduceData(global)
-  return data.sharedmem
+
+  if self.useTreeReduce then
+    return data.sharedmem
+  else
+    return data.reduceobj:getSharedMemPtr()
+  end
 end
 
 --                  ---------------------------------------                  --
@@ -720,6 +725,7 @@ end
 --                  ---------------------------------------                  --
 
 function Bran:CompileGPUReduction()
+  self.useTreeReduce = true
   -- NOTE: because GPU memory is idiosyncratic, we need to handle
   --    GPU global memory and
   --    GPU shared memory differently.
@@ -736,28 +742,33 @@ function Bran:CompileGPUReduction()
   -- Find all the global variables in this kernel that are being reduced
   for globl, data in pairs(self.global_reductions) do
     local ttype             = globl.type:terraType()
---    data.sharedmem          = cudalib.sharedmemory(ttype, self.blocksize)
---
---    self.sharedmem_size     = self.sharedmem_size +
---                                sizeof(ttype) * self.blocksize
-    local op      = data.phase.reduceop
-    local lz_type = globl.type
-    local reduceobj = G.ReductionObj.New {
-      ttype             = ttype,
-      blocksize         = self.blocksize,
-      reduce_ident      = codesupport.reduction_identity(lz_type, op),
-      reduce_binop      = function(lval, rhs)
-        return codesupport.reduction_binop(lz_type, op, lval, rhs)
-      end,
-      gpu_reduce_atomic = function(lval, rhs)
-        return codesupport.gpu_atomic_exp(op, lz_type, lval, rhs, lz_type)
-      end,
-    }
-    data.reduceobj = reduceobj
-    self.sharedmem_size = self.sharedmem_size + reduceobj:sharedMemSize()
+    if self.useTreeReduce then
+      data.sharedmem          = cudalib.sharedmemory(ttype, self.blocksize)
+  
+      self.sharedmem_size     = self.sharedmem_size +
+                                  sizeof(ttype) * self.blocksize
+    else
+      local op      = data.phase.reduceop
+      local lz_type = globl.type
+      local reduceobj = G.ReductionObj.New {
+        ttype             = ttype,
+        blocksize         = self.blocksize,
+        reduce_ident      = codesupport.reduction_identity(lz_type, op),
+        reduce_binop      = function(lval, rhs)
+          return codesupport.reduction_binop(lz_type, op, lval, rhs)
+        end,
+        gpu_reduce_atomic = function(lval, rhs)
+          return codesupport.gpu_atomic_exp(op, lz_type, lval, rhs, lz_type)
+        end,
+      }
+      data.reduceobj = reduceobj
+      self.sharedmem_size = self.sharedmem_size + reduceobj:sharedMemSize()
+    end
   end
 
-  --self:CompileGlobalMemReductionKernel()
+  if self.useTreeReduce then
+    self:CompileGlobalMemReductionKernel()
+  end
 end
 
 -- The following routine is also used inside the primary compile CUDA kernel
@@ -768,13 +779,16 @@ function Bran:GenerateSharedMemInitialization(tid_sym)
     local lz_type   = globl.type
     local sharedmem = data.sharedmem
 
-    --code = quote
-    --  [code]
-    --  [sharedmem][tid_sym] = [codesupport.reduction_identity(lz_type, op)]
-    --end
-    code = quote
-      [code]
-      [data.reduceobj:sharedMemInitCode(tid_sym)]
+    if self.useTreeReduce then
+      code = quote
+        [code]
+        [sharedmem][tid_sym] = [codesupport.reduction_identity(lz_type, op)]
+      end
+    else
+      code = quote
+        [code]
+        [data.reduceobj:sharedMemInitCode(tid_sym)]
+      end
     end
   end
   return code
@@ -791,39 +805,41 @@ function Bran:GenerateSharedMemReduceTree(args_sym, tid_sym, bid_sym, is_final)
     local finalptr    = self:getTerraGlobalPtr(args_sym, globl)
     local globalmem   = self:getTerraReduceGlobalMemPtr(args_sym, globl)
 
-    --[[ Insert an unrolled reduction tree here
-    local step = self.blocksize
-    while step > 1 do
-      step = step/2
+    -- Insert an unrolled reduction tree here
+    if self.useTreeReduce then
+      local step = self.blocksize
+      while step > 1 do
+        step = step/2
+        code = quote
+          [code]
+          if tid_sym < step then
+            var exp = [codesupport.reduction_binop(
+                        lz_type, op, `[sharedmem][tid_sym],
+                                     `[sharedmem][tid_sym + step])]
+            terralib.attrstore(&[sharedmem][tid_sym], exp, {isvolatile=true})
+          end
+          G.barrier()
+        end
+      end
+
+      -- Finally, reduce into the actual global value
       code = quote
         [code]
-        if tid_sym < step then
-          var exp = [codesupport.reduction_binop(
-                      lz_type, op, `[sharedmem][tid_sym],
-                                   `[sharedmem][tid_sym + step])]
-          terralib.attrstore(&[sharedmem][tid_sym], exp, {isvolatile=true})
-        end
-        G.barrier()
-      end
-    end
-
-    -- Finally, reduce into the actual global value
-    code = quote
-      [code]
-      if [tid_sym] == 0 then
-        if is_final then
-          @[finalptr] = [codesupport.reduction_binop(lz_type, op,
-                                                     `@[finalptr],
-                                                     `[sharedmem][0])]
-        else
-          [globalmem][bid_sym] = [sharedmem][0]
+        if [tid_sym] == 0 then
+          if is_final then
+            @[finalptr] = [codesupport.reduction_binop(lz_type, op,
+                                                       `@[finalptr],
+                                                       `[sharedmem][0])]
+          else
+            [globalmem][bid_sym] = [sharedmem][0]
+          end
         end
       end
-    end
-    --]]
-    code = quote
-      [code]
-      [data.reduceobj:sharedMemReductionCode(tid_sym, finalptr)]
+    else
+      code = quote
+        [code]
+        [data.reduceobj:sharedMemReductionCode(tid_sym, finalptr)]
+      end
     end
   end
   return code
@@ -832,7 +848,6 @@ end
 -- The full secondary CUDA kernel to reduce the contents of the
 -- global mem array.  See comment inside function for sketch of algorithm
 function Bran:CompileGlobalMemReductionKernel()
-  --print('BARF')
   local bran      = self
   local fn_name   = bran.kernel.typed_ast.id .. '_globalmem_reduction'
 
@@ -920,6 +935,7 @@ end
 --                  ---------------------------------------                  --
 
 function Bran:generateGPUReductionPreProcess(argptrsym)
+  if not self.useTreeReduce then return quote end end
   if not self:UsesGlobalReduce() then return quote end end
 
   local n_blocks = self:numGPUBlocks()
@@ -941,6 +957,7 @@ end
 --                  ---------------------------------------                  --
 
 function Bran:generateGPUReductionPostProcess(argptrsym)
+  if not self.useTreeReduce then return quote end end
   if not self:UsesGlobalReduce() then return quote end end
   
   -- perform inter-block reduction step (secondary kernel launch)

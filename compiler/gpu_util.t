@@ -120,30 +120,46 @@ local fmod = terralib.externfunction("__nv_fmod", {double, double} -> double)
 --[[-----------------------------------------------------------------------]]--
 --[[ Atomic reductions                                                     ]]--
 --[[-----------------------------------------------------------------------]]--
-local reduce_max_int32 = macro(function(result_ptr, val)
-  return terralib.asm(terralib.types.unit,
-    "red.global.max.u32 [$0], $1;","l,r",true,result_ptr,val)
+local terra reduce_max_int32(address : &int32, operand : int32)
+  terralib.asm(terralib.types.unit,
+    "red.global.max.s32 [$0], $1;","l,r",true,address,operand)
+end
+
+local terra reduce_min_int32(address : &int32, operand : int32)
+  terralib.asm(terralib.types.unit,
+    "red.global.min.s32 [$0], $1;","l,r",true,address,operand)
+end
+
+local terra reduce_add_int32(address : &int32, operand : int32)
+  terralib.asm(terralib.types.unit,
+    "red.global.add.s32 [$0], $1;","l,r",true,address,operand)
+end
+
+--[[
+-- doubt this will work right
+local terra reduce_and_b32(address : &bool, operand : bool)
+  terralib.asm(terralib.types.unit,
+    "red.global.and.b32 [$0], $1;","l,r",true,address,operand)
 end)
 
-local reduce_min_int32 = macro(function(result_ptr, val)
-  return terralib.asm(terralib.types.unit,
-    "red.global.min.u32 [$0], $1;","l,r",true,result_ptr,val)
+-- doubt this will work right
+local terra reduce_or_b32(address : &bool, operand : bool)
+  terralib.asm(terralib.types.unit,
+    "red.global.or.b32 [$0], $1;","l,r",true,address,operand)
 end)
+--]]
 
-local reduce_add_int32 = macro(function(result_ptr, val)
-  return terralib.asm(terralib.types.unit,
-    "red.global.add.u32 [$0], $1;","l,r",true,result_ptr,val)
-end)
+-- presumably this should work too?
+local terra reduce_max_f32(address : &float, operand : float)
+  terralib.asm(terralib.types.unit,
+    "red.global.max.f32 [$0], $1;","l,f",true,address,operand)
+end
 
-local reduce_and_b32 = macro(function(result_ptr, val)
-  return terralib.asm(terralib.types.unit,
-    "red.global.and.b32 [$0], $1;","l,r",true,result_ptr,val)
-end)
-
-local reduce_or_b32 = macro(function(result_ptr, val)
-  return terralib.asm(terralib.types.unit,
-    "red.global.or.b32 [$0], $1;","l,r",true,result_ptr,val)
-end)
+-- presumably this should work too?
+local terra reduce_min_f32(address : &float, operand : float)
+  terralib.asm(terralib.types.unit,
+    "red.global.min.f32 [$0], $1;","l,f",true,address,operand)
+end
 
 local atomic_add_float =
   terralib.intrinsic("llvm.nvvm.atomic.load.add.f32.p0f32",
@@ -153,18 +169,16 @@ local atomic_add_float =
 --[[-----------------------------------------------------------------------]]--
 --[[ Implementation of slow atomics                                        ]]--
 --[[-----------------------------------------------------------------------]]--
-local cas_uint64 = terra(address : &uint64, compare : uint64, value : uint64)
+local terra cas_uint64(address : &uint64, compare : uint64, value : uint64)
   return terralib.asm(terralib.types.uint64,
     "atom.global.cas.b64 $0, [$1], $2, $3;",
     "=l,l,l,l",true,address,compare,value)
 end
 
-local cas_uint32 = terra(address : &uint32, compare : uint32, value : uint32)
-  var old : uint32 = @address
-  terralib.asm(terralib.types.uint32,
+local terra cas_uint32(address : &uint32, compare : uint32, value : uint32)
+  return terralib.asm(terralib.types.uint32,
     "atom.global.cas.32 $0, [$1], $2, $3;",
-    "r,l,r,r",true,old,address,compare,value)
-  return old
+    "=r,l,r,r",true,address,compare,value)
 end
 
 local function generate_slow_atomic_64 (op, typ)
@@ -319,9 +333,9 @@ function ReductionObj.New(args)
   return ro
 end
 
---function ReductionObj:getSharedMemPtr()
---  return self._sharedmem
---end
+function ReductionObj:getSharedMemPtr()
+  return self._sharedmem
+end
 function ReductionObj:sharedMemSize()
   return self._sharedmemsize
 end
@@ -333,21 +347,27 @@ end
 -- returns a snippet of code to be included at the end of the kernel
 function ReductionObj:sharedMemReductionCode(tid_sym, globalptr)
   -- Shared Memory Reduction Tree
-  local step = self._blocksize
-  local code = quote escape while step > 1 do
-    step = step / 2
-    emit quote if tid_sym < step then
-      var exp = [self._reduce_binop(`[self._sharedmem][tid_sym],
-                                    `[self._sharedmem][tid_sym + step])]
-      terralib.attrstore(&[self._sharedmem][tid_sym], exp, {isvolatile=true})
-    end end
-  end end end
+  local code = quote escape
+    local step = self._blocksize
+    while step > 1 do
+      step = step / 2
+      emit quote
+        if tid_sym < step then
+          var exp = [self._reduce_binop(`[self._sharedmem][tid_sym],
+                                        `[self._sharedmem][tid_sym + step])]
+          terralib.attrstore(&[self._sharedmem][tid_sym],
+                             exp, {isvolatile=true})
+        end
+        GPU.barrier()
+      end
+    end
+  end end
 
-  -- Now append the reduction into the global counter
   code = quote
     [code]
-    [self._gpu_reduce_atomic(`@[globalptr],
-                             `[self._sharedmem][0])]
+    if tid_sym == 0 then
+      [ self._gpu_reduce_atomic( `@globalptr, `[self._sharedmem][0] ) ]
+    end
   end
   return code
 end
@@ -399,8 +419,8 @@ GPU.atomic_add_float = atomic_add_float
 GPU.atomic_max_int32 = reduce_max_int32
 GPU.reduce_min_int32 = reduce_min_int32
 GPU.reduce_add_int32 = reduce_add_int32
-GPU.reduce_and_b32   = reduce_and_b32
-GPU.reduce_or_b32    = reduce_or_b32
+--GPU.reduce_and_b32   = reduce_and_b32
+--GPU.reduce_or_b32    = reduce_or_b32
 
 -- Slow operations:
 GPU.atomic_add_uint64_SLOW = generate_slow_atomic_64(add,uint64)

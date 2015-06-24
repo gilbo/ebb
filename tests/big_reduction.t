@@ -1,5 +1,6 @@
 
 import 'compiler.liszt'
+require 'tests.test'
 
 local N = 1000000
 
@@ -13,7 +14,7 @@ end
 function run_test()
   gerr:set(0)
   vertices:foreach(RunRed)
-  L.assert(N == gerr:get())
+  test.eq(N, gerr:get())
 end
 
 run_test()

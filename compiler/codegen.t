@@ -467,7 +467,7 @@ function Codegen.codegen (kernel_ast, bran)
 
     launcher = terra (args_ptr : &ctxt:argsType())
       -- possibly allocate global memory for a GPU reduction
-      --[ ctxt.bran:generateGPUReductionPreProcess(args_ptr) ]
+      [ ctxt.bran:generateGPUReductionPreProcess(args_ptr) ]
 
       -- the main launch
       var grid_x : uint,    grid_y : uint,    grid_z : uint   =
@@ -483,7 +483,7 @@ function Codegen.codegen (kernel_ast, bran)
 
       -- possibly perform the second launch tree reduction and
       -- cleanup any global memory here...
-      --[ ctxt.bran:generateGPUReductionPostProcess(args_ptr) ]
+      [ ctxt.bran:generateGPUReductionPostProcess(args_ptr) ]
     end
     launcher:setname(kernel_ast.id)
 
