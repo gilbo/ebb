@@ -4,6 +4,8 @@ local C   = require 'compiler.c'
 
 if not terralib.cudacompile then return end
 
+local WARPSIZE = 32
+
 --[[-----------------------------------------------------------------------]]--
 --[[ Thread/Grid/Block                                                     ]]--
 --[[-----------------------------------------------------------------------]]--
@@ -106,6 +108,7 @@ local libdevice = terralib.cudahome..
 terralib.linklibrary(libdevice)
 
 local cbrt = terralib.externfunction("__nv_cbrt", double -> double)
+local sqrt = terralib.externfunction("__nv_sqrt", double -> double)
 local cos  = terralib.externfunction("__nv_cos",  double -> double)
 local acos = terralib.externfunction("__nv_acos", double -> double)
 local sin  = terralib.externfunction("__nv_sin",  double -> double)
@@ -115,7 +118,24 @@ local atan = terralib.externfunction("__nv_atan", double -> double)
 local log  = terralib.externfunction("__nv_log",  double -> double)
 local pow  = terralib.externfunction("__nv_pow",  {double, double} -> double)
 local fmod = terralib.externfunction("__nv_fmod", {double, double} -> double)
+local floor  = terralib.externfunction("__nv_floor", double -> double)
+local ceil = terralib.externfunction("__nv_ceil", double -> double)
+local fabs = terralib.externfunction("__nv_fabs", double -> double)
 
+
+local terra popc_b32(bits : uint32) : uint32
+  return terralib.asm(terralib.types.uint32,
+    "popc.b32  $0, $1;","=r,r",false,bits)
+end
+
+local terra brev_b32(bits : uint32) : uint32
+  return terralib.asm(terralib.types.uint32,
+    "brev.b32  $0, $1;","=r,r",false,bits)
+end
+local terra clz_b32(bits : uint32) : uint32
+  return terralib.asm(terralib.types.uint32,
+    "clz.b32  $0, $1;","=r,r",false,bits)
+end
 
 --[[-----------------------------------------------------------------------]]--
 --[[ Atomic reductions                                                     ]]--
@@ -165,6 +185,24 @@ local atomic_add_float =
   terralib.intrinsic("llvm.nvvm.atomic.load.add.f32.p0f32",
                      {&float,float} -> {float})
 
+local terra atomic_add_uint64(address : &uint64, operand : uint64) : uint64
+  return terralib.asm(terralib.types.uint64,
+    "atom.global.add.u64 $0, [$1], $2;","=l,l,l",true,address,operand)
+end
+
+--[[-----------------------------------------------------------------------]]--
+--[[ Warp Level Instructions                                               ]]--
+--[[-----------------------------------------------------------------------]]--
+
+local terra warpballot_b32() : uint32
+  return terralib.asm(terralib.types.uint32,
+    "vote.ballot.b32 $0, 0xFFFFFFFF;","=r",false)
+end
+
+local terra shuffle_index_b32( input : uint32, idx : uint32 ) : uint32
+  return terralib.asm(terralib.types.uint32,
+    "shfl.idx.b32.idx $0, $1, $2, 0x1F;","=r,r,r",false,input,idx)
+end
 
 --[[-----------------------------------------------------------------------]]--
 --[[ Implementation of slow atomics                                        ]]--
@@ -374,6 +412,43 @@ end
 
 
 --[[-----------------------------------------------------------------------]]--
+--[[ Write Buffer                                                          ]]--
+--[[-----------------------------------------------------------------------]]--
+
+-- Reserves a unique index using the @writeidxptr counter;
+-- increments @writeidxptr atomically; runs at the warp level
+local function reserve_idx(tidsym, writeidxptr)
+  local code = quote
+  -- First, we're going to number all of the threads writing uniquely.
+  -- And get a total count
+    var ballot      = warpballot_b32()
+      -- total # of writes
+    var write_count = popc_b32(ballot)
+      -- generate a pattern of all 1s up to but excluding this thread
+    var ones        = ([uint64](1) << (tidsym % 32)) - 1
+      -- # of writes by threads with a lower #; densely orders active threads
+    var active_num  = popc_b32(ballot and ones)
+  -- Second, now that we can designate a thread as leader, reserve some space
+    -- Lowest # active thread becomes the leader
+    var leader_num  = clz_b32(brev_b32(ballot))
+    var is_leader   = active_num == 0
+
+    var start_idx : uint64 = 0
+    if is_leader then
+      -- leader reserves buffer space for the whole warp
+      start_idx = atomic_add_uint64(writeidxptr, write_count)
+    end
+  --  -- need to scatter the start_byte value to all active threads in the warp
+  --  start_idx = shuffle_index_b32(start_idx, leader_num)
+  ---- Third, return this resulting value about where to write
+  in
+    start_idx + active_num
+  end
+  return code
+end
+
+
+--[[-----------------------------------------------------------------------]]--
 --[[ gpu_util Interface                                                    ]]--
 --[[-----------------------------------------------------------------------]]--
 GPU.kernelwrap = require 'compiler.cukernelwrap'
@@ -400,16 +475,16 @@ GPU.device_sync = terralib.externfunction("cudaDeviceSynchronize", {} -> int)
 GPU.get_grid_dimensions = get_grid_dimensions
 
 GPU.cbrt  = cbrt
-GPU.sqrt  = cudalib.nvvm_sqrt_rm_d
+GPU.sqrt  = sqrt
 GPU.cos   = cos
 GPU.acos  = acos
 GPU.sin   = sin
 GPU.asin  = asin
 GPU.tan   = tan
 GPU.atan  = atan
-GPU.floor = cudalib.nvvm_floor_d
-GPU.ceil  = cudalib.nvvm_ceil_d
-GPU.fabs  = cudalib.nvvm_fabs_d
+GPU.floor = floor
+GPU.ceil  = ceil
+GPU.fabs  = fabs
 GPU.log   = log
 GPU.pow   = pow
 GPU.fmod  = fmod
@@ -444,5 +519,6 @@ GPU.atomic_max_float_SLOW  = generate_slow_atomic_32(max,float)
 
 -- Algorithms
 GPU.ReductionObj = ReductionObj
+GPU.reserve_idx  = reserve_idx
 
 

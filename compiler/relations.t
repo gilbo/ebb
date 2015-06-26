@@ -1253,17 +1253,18 @@ end
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
 
-function L.LRelation:ResizeConcrete(new_size)
+function L.LRelation:_INTERNAL_Resize(new_concrete_size, new_logical)
   if not self:isElastic() then
     error('Can only resize ELASTIC relations', 2)
   end
   if use_legion then error("Can't resize while using Legion", 2) end
 
-  self._is_live_mask.array:resize(new_size)
+  self._is_live_mask.array:resize(new_concrete_size)
   for _,field in ipairs(self._fields) do
-    field.array:resize(new_size)
+    field.array:resize(new_concrete_size)
   end
-  self._concrete_size = new_size
+  self._concrete_size = new_concrete_size
+  if new_logical then self._logical_size = new_logical end
 end
 
 -------------------------------------------------------------------------------
@@ -1311,7 +1312,7 @@ function L.LRelation:Defrag()
   if not self:isElastic() then
     error("Defrag(): Cannot Defrag a non-elastic relation")
   end
-  -- TODO: MAKE IDEMPOTENT FOR EFFICIENCY
+  -- TODO: MAKE IDEMPOTENT FOR EFFICIENCY  (huh?)
 
   -- Check that all fields are on CPU:
   for _,field in ipairs(self._fields) do
@@ -1381,7 +1382,7 @@ function L.LRelation:Defrag()
   -- now cleanup by resizing the relation
   local logical_size = self:Size()
   -- since the data is now compact, we can shrink down the size
-  self:ResizeConcrete(logical_size)
+  self:_INTERNAL_Resize(logical_size, logical_size)
 
   -- mark as compact
   rawset(self, '_is_fragmented', false)

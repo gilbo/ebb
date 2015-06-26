@@ -1,4 +1,3 @@
---DISABLE-ON-GPU  (TODO: Make this test pass on GPU)
 --DISABLE-ON-LEGION
 
 import "compiler.liszt"

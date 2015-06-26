@@ -198,7 +198,7 @@ function Bran:Compile()
   if kernel.deletes then    self:CompileDeletes()   end
 
   -- handle GPU specific compilation
-  if self:isOnGPU() then
+  if self:isOnGPU() and self:UsesGlobalReduce() then
     self.sharedmem_size = 0
     self:CompileGPUReduction()
   end
@@ -563,16 +563,17 @@ end
 
 function Bran:CompileInserts()
   local bran = self
-  assert(bran.proc == L.CPU)
 
+  -- max 1 insert allowed
   local rel, ast_nodes = next(bran.kernel.inserts)
+  -- stash some useful data
   bran.insert_data = {
-    relation = rel,
+    relation    = rel, -- relation we're going to insert into, not map over
     record_type = ast_nodes[1].record_type,
-    n_inserted  = L.Global(L.uint64, 0),
+    write_idx   = L.Global(L.uint64, 0),
   }
   -- register the global variable
-  bran:getGlobalId(bran.insert_data.n_inserted)
+  bran:getGlobalId(bran.insert_data.write_idx)
 
   -- prep all the fields we want to be able to write to.
   for _,field in ipairs(rel._fields) do
@@ -583,9 +584,9 @@ function Bran:CompileInserts()
 end
 
 function Bran:DynamicInsertChecks()
-  if self.proc ~= L.CPU then
-    error("insert statement is currently only supported in CPU-mode.", 4)
-  end
+  --if self.proc ~= L.CPU then
+  --  error("insert statement is currently only supported in CPU-mode.", 4)
+  --end
   if use_legion then error('INSERT unsupported on legion currently', 4) end
   local rel = self.insert_data.relation
   local unsafe_msg = rel:UnsafeToInsert(self.insert_data.record_type)
@@ -596,32 +597,40 @@ function Bran:bindInsertData()
   local insert_rel                    = self.insert_data.relation
   local center_size_logical           = self.relation:Size()
   local insert_size_concrete          = insert_rel:ConcreteSize()
+  local insert_size_logical           = insert_rel:Size()
+  --print('INSERT BIND',
+  --  center_size_logical, insert_size_concrete, insert_size_logical)
 
-  self.insert_data.n_inserted:set(0)
-  -- cache the old size
+  -- point the write index at the first entry after the end of the
+  -- used portion of the data arrays
+  self.insert_data.write_idx:set(insert_size_concrete)
+  -- cache the old sizes
   self.insert_data.last_concrete_size = insert_size_concrete
-  -- set the write head to point to the end of array
-  self.args:ptr().insert_write        = insert_size_concrete
-  -- resize to create more space at the end of the array
-  insert_rel:ResizeConcrete(insert_size_concrete +
-                            center_size_logical)
+  self.insert_data.last_logical_size  = insert_size_logical
+
+  -- then make sure to reserve enough space to perform the insertion
+  -- don't worry about updating logical size here
+  insert_rel:_INTERNAL_Resize(insert_size_concrete + center_size_logical)
 end
 
 function Bran:postprocessInsertions()
   local insert_rel        = self.insert_data.relation
   local old_concrete_size = self.insert_data.last_concrete_size
-  local old_logical_size  = insert_rel._logical_size
-  -- WARNING UNSAFE CONVERSION FROM UINT64 to DOUBLE
-  local n_inserted        = tonumber(self.insert_data.n_inserted:get())
+  local old_logical_size  = self.insert_data.last_logical_size
 
-  -- shrink array back down to where we actually ended up writing
-  local new_concrete_size = old_concrete_size + n_inserted
-  insert_rel:ResizeConcrete(new_concrete_size)
-  -- update the logical view of the size
-  insert_rel._logical_size = old_logical_size + n_inserted
+  local new_concrete_size = tonumber(self.insert_data.write_idx:get())
+  local n_inserted        = new_concrete_size - old_concrete_size
+  local new_logical_size  = old_logical_size + n_inserted
+  --print("POST INSERT",
+  --  old_concrete_size, old_logical_size, new_concrete_size,
+  --  n_inserted, new_logical_size)
 
-  -- NOTE that this relation is definitely fragmented now
-  self.insert_data.relation:_INTERNAL_MarkFragmented()
+  -- shrink array back to fit how much we actually wrote
+  insert_rel:_INTERNAL_Resize(new_concrete_size, new_logical_size)
+
+  -- NOTE that this relation is now considered fragmented
+  -- (change this?)
+  insert_rel:_INTERNAL_MarkFragmented()
 end
 
 --                  ---------------------------------------                  --
@@ -658,12 +667,13 @@ end
 function Bran:postprocessDeletions()
   -- WARNING UNSAFE CONVERSION FROM UINT64 TO DOUBLE
   local rel = self.delete_data.relation
-  local updated_size = tonumber(self.delete_data.updated_size:get())
-  rel._logical_size = updated_size
+  local updated_size  = tonumber(self.delete_data.updated_size:get())
+  local concrete_size = rel:ConcreteSize()
+  rel:_INTERNAL_Resize(concrete_size, updated_size)
   rel:_INTERNAL_MarkFragmented()
 
   -- if we have too low an occupancy
-  if rel:Size() < 0.5 * rel:ConcreteSize() then
+  if updated_size < 0.5 * concrete_size then
     rel:Defrag()
   end
 end
@@ -698,7 +708,7 @@ function Bran:numGPUBlocks()
 end
 
 function Bran:nBytesSharedMem()
-  return self.sharedmem_size
+  return self.sharedmem_size or 0
 end
 
 function Bran:getBlockSize()
@@ -907,6 +917,10 @@ function Bran:CompileGlobalMemReductionKernel()
   cuda_kernel:setname(fn_name)
   cuda_kernel = G.kernelwrap(cuda_kernel, L._INTERNAL_DEV_OUTPUT_PTX)
 
+  if self:overElasticRelation() then
+    error('NEED TO FIX GLOBAL REDUCTION FOR ELASTIC GPU RELATIONS')
+  end
+
   -- the globalmem array has an entry for every block in the primary kernel
   local globalmem_array_len = bran:numGPUBlocks() 
   local terra launcher( argptr : &(bran:argsType()) )
@@ -938,6 +952,9 @@ function Bran:generateGPUReductionPreProcess(argptrsym)
   if not self.useTreeReduce then return quote end end
   if not self:UsesGlobalReduce() then return quote end end
 
+  if self:overElasticRelation() then
+    error('NEED TO FIX GLOBAL REDUCTION FOR ELASTIC GPU RELATIONS')
+  end
   local n_blocks = self:numGPUBlocks()
 
   -- allocate GPU global memory for the reduction
@@ -1371,9 +1388,8 @@ function ArgLayout:Compile()
     table.insert(terrastruct.entries, {field='index',        type=&taddr})
     table.insert(terrastruct.entries, {field='index_size',   type=uint64})
   end
-  if self.insert_on then
-    table.insert(terrastruct.entries, {field='insert_write', type=uint64})
-  end
+  --if self.insert_on then
+  --end
   -- add fields
   for _,v in ipairs(self.fields) do table.insert(terrastruct.entries, v) end
   -- add globals

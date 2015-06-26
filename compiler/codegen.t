@@ -152,6 +152,23 @@ function Context:bid()
   return self._bid
 end
 
+function Context:gpuNumBlocks(args_ptr)
+  if not self:isOverElastic() then
+    if self:isOverSubset() and self:isIndexSubset() then
+      return math.ceil(self.bran.subset._index:Size() / self:gpuBlockSize())
+    else
+      return math.ceil(self.bran.relation:ConcreteSize() / self:gpuBlockSize())
+    end
+  else -- Is ELASTIC
+    local bounds      = `args_ptr.bounds
+    -- we're guaranteed indexing is 1-dimensional
+    local size        = `[double](bounds[0].hi - bounds[0].lo)
+    local blocksize   = `[double]([self:gpuBlockSize()])
+    local nblocks     = `[uint64]( size / blocksize + 1.0 )
+    return nblocks
+  end
+end
+
 -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
 -- GPU reduction related context functions
 
@@ -187,17 +204,24 @@ function Context:deleteSizeVar()
   end
 end
 
-function Context:getInsertIndex()
-  return `[self:argsym()].insert_write
-end
+function Context:reserveInsertIndex()
+  local write_idx_ptr = self:GlobalPtr(self.bran.insert_data.write_idx)
 
-function Context:incrementInsertIndex()
-  local insert_index = self:getInsertIndex()
-  local counter = self:GlobalPtr(self.bran.insert_data.n_inserted)
+  -- GPU insertion
+  if self:onGPU() then
+    local tid = self:tid()
+    return G.reserve_idx(tid, write_idx_ptr)
 
-  return quote
-    insert_index = insert_index + 1
-    @counter = @counter + 1
+  -- CPU insertion
+  else
+    local code = quote
+      var reserved = @write_idx_ptr
+      @write_idx_ptr = reserved + 1
+    in
+      reserved
+    end
+    return code
+
   end
 end
 
@@ -344,8 +368,8 @@ function Codegen.codegen (kernel_ast, bran)
     if ctxt:isOverElastic() then
       if use_legion then
         error('INTERNAL: ELASTIC ON LEGION CURRENTLY UNSUPPORTED')
-      elseif ctxt:onGPU() then
-        error("INTERNAL: ELASTIC ON GPU CURRENTLY UNSUPPORTED")
+      --elseif ctxt:onGPU() then
+      --  error("INTERNAL: ELASTIC ON GPU CURRENTLY UNSUPPORTED")
       else
         body = quote
           if [ctxt:isLiveCheck(param)] then [body] end
@@ -460,16 +484,16 @@ function Codegen.codegen (kernel_ast, bran)
 
     local MAX_GRID_DIM = 65536
 
-    if ctxt:isOverElastic() then
-      error('INTERNAL: NEED TO SUPPORT dynamic n_blocks for elastic launch')
-    end
-    local n_blocks = ctxt.bran:numGPUBlocks()
+    --if ctxt:isOverElastic() then
+    --  error('INTERNAL: NEED TO SUPPORT dynamic n_blocks for elastic launch')
+    --end
 
     launcher = terra (args_ptr : &ctxt:argsType())
       -- possibly allocate global memory for a GPU reduction
       [ ctxt.bran:generateGPUReductionPreProcess(args_ptr) ]
 
       -- the main launch
+      var n_blocks = [ctxt:gpuNumBlocks(args_ptr)]
       var grid_x : uint,    grid_y : uint,    grid_z : uint   =
           G.get_grid_dimensions(n_blocks, MAX_GRID_DIM)
       var params = terralib.CUDAParams {
@@ -996,15 +1020,20 @@ function ast.DeleteStatement:codegen (ctxt)
 end
 
 function ast.InsertStatement:codegen (ctxt)
-  local relation = self.relation.node_type.value -- to insert into
+  local insert_rel = self.relation.node_type.value -- to insert into
 
   -- index to write to
-  local index = ctxt:getInsertIndex()
-  local i_addr = `[L.key(relation):terraType()]( {index} )
+  local i_type = L.key(insert_rel):terraType()
+  local i_addr = symbol(i_type)
+  local write_code = quote
+    var [i_addr] = [i_type]( { [ctxt:reserveInsertIndex()] } )
+  end
 
   -- start with writing the live mask
-  local live_mask  = ctxt:FieldElemPtr(relation._is_live_mask, i_addr)
-  local write_code = quote @live_mask = true end
+  local live_mask  = ctxt:FieldElemPtr(insert_rel._is_live_mask, i_addr)
+  local write_code = quote write_code
+    @live_mask = true
+  end
 
   -- the rest of the fields should be assigned values based on the
   -- record literal specified as an argument to the insert statement
@@ -1013,19 +1042,12 @@ function ast.InsertStatement:codegen (ctxt)
     local fieldptr = ctxt:FieldElemPtr(field, i_addr)
     --local fieldptr = ctxt:FieldPtr(field)
 
-    write_code = quote
-      write_code
+    write_code = quote write_code
       @fieldptr = exp_code
-      --fieldptr[index] = exp_code
     end
   end
 
-  local inc_stmt = ctxt:incrementInsertIndex()
-
-  return quote
-    write_code
-    inc_stmt
-  end
+  return write_code
 end
 
 
