@@ -639,21 +639,20 @@ end
 
 function Bran:CompileDeletes()
   local bran = self
-  assert(bran.proc == L.CPU)
 
   local rel = next(bran.kernel.deletes)
   bran.delete_data = {
-    relation = rel,
-    updated_size = L.Global(L.uint64, 0)
+    relation  = rel,
+    n_deleted = L.Global(L.uint64, 0)
   }
   -- register global variable
-  bran:getGlobalId(bran.delete_data.updated_size)
+  bran:getGlobalId(bran.delete_data.n_deleted)
 end
 
 function Bran:DynamicDeleteChecks()
-  if self.proc ~= L.CPU then
-    error("delete statement is currently only supported in CPU-mode.", 4)
-  end
+  --if self.proc ~= L.CPU then
+  --  error("delete statement is currently only supported in CPU-mode.", 4)
+  --end
   if use_legion then error('DELETE unsupported on legion currently', 4) end
   local unsafe_msg = self.delete_data.relation:UnsafeToDelete()
   if unsafe_msg then error(unsafe_msg, 4) end
@@ -661,13 +660,14 @@ end
 
 function Bran:bindDeleteData()
   local relsize = tonumber(self.delete_data.relation._logical_size)
-  self.delete_data.updated_size:set(relsize)
+  self.delete_data.n_deleted:set(0)
 end
 
 function Bran:postprocessDeletions()
   -- WARNING UNSAFE CONVERSION FROM UINT64 TO DOUBLE
   local rel = self.delete_data.relation
-  local updated_size  = tonumber(self.delete_data.updated_size:get())
+  local n_deleted     = tonumber(self.delete_data.n_deleted:get())
+  local updated_size  = rel:Size() - n_deleted
   local concrete_size = rel:ConcreteSize()
   rel:_INTERNAL_Resize(concrete_size, updated_size)
   rel:_INTERNAL_MarkFragmented()
@@ -695,15 +695,18 @@ end
 -- within the codegen compilation and the compilation of a secondary
 -- CUDA Kernel (below)
 
-function Bran:numGPUBlocks()
-  if self:isOverSubset() then
-    if self.subset._boolmask then
-      return math.ceil(self.relation:ConcreteSize() / self.blocksize)
-    elseif self.subset._index then
-      return math.ceil(self.subset._index:Size() / self.blocksize)
-    end
+function Bran:numGPUBlocks(argptr)
+  if self:overElasticRelation() then
+    local size    = `argptr.bounds[0].hi - argptr.bounds[0].lo
+    local nblocks = `[uint64]( C.ceil( [double](size) /
+                                       [double](self.blocksize) ))
+    return nblocks
   else
-    return math.ceil(self.relation:ConcreteSize() / self.blocksize)
+    if self:isOverSubset() and self:isIndexSubset() then
+      return math.ceil(self.subset._index:Size() / self.blocksize)
+    else
+      return math.ceil(self.relation:ConcreteSize() / self.blocksize)
+    end
   end
 end
 
@@ -917,13 +920,9 @@ function Bran:CompileGlobalMemReductionKernel()
   cuda_kernel:setname(fn_name)
   cuda_kernel = G.kernelwrap(cuda_kernel, L._INTERNAL_DEV_OUTPUT_PTX)
 
-  if self:overElasticRelation() then
-    error('NEED TO FIX GLOBAL REDUCTION FOR ELASTIC GPU RELATIONS')
-  end
-
   -- the globalmem array has an entry for every block in the primary kernel
-  local globalmem_array_len = bran:numGPUBlocks() 
   local terra launcher( argptr : &(bran:argsType()) )
+    var globalmem_array_len = [ self:numGPUBlocks(argptr) ]
     var launch_params = terralib.CUDAParams {
       1,1,1, [bran.blocksize],1,1, [bran.sharedmem_size], nil
     }
@@ -952,18 +951,16 @@ function Bran:generateGPUReductionPreProcess(argptrsym)
   if not self.useTreeReduce then return quote end end
   if not self:UsesGlobalReduce() then return quote end end
 
-  if self:overElasticRelation() then
-    error('NEED TO FIX GLOBAL REDUCTION FOR ELASTIC GPU RELATIONS')
-  end
-  local n_blocks = self:numGPUBlocks()
-
   -- allocate GPU global memory for the reduction
-  local code = quote end
+  local n_blocks = symbol()
+  local code = quote
+    var [n_blocks] = [self:numGPUBlocks(argptrsym)]
+  end
   for globl, _ in pairs(self.global_reductions) do
     local ttype = globl.type:terraType()
     local id    = self:getReduceData(globl).id
     code = quote code
-      [argptrsym].[id] = [&ttype](G.malloc(sizeof(ttype)))
+      [argptrsym].[id] = [&ttype](G.malloc(sizeof(ttype) * n_blocks))
     end
   end
   return code

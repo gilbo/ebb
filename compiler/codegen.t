@@ -153,20 +153,7 @@ function Context:bid()
 end
 
 function Context:gpuNumBlocks(args_ptr)
-  if not self:isOverElastic() then
-    if self:isOverSubset() and self:isIndexSubset() then
-      return math.ceil(self.bran.subset._index:Size() / self:gpuBlockSize())
-    else
-      return math.ceil(self.bran.relation:ConcreteSize() / self:gpuBlockSize())
-    end
-  else -- Is ELASTIC
-    local bounds      = `args_ptr.bounds
-    -- we're guaranteed indexing is 1-dimensional
-    local size        = `[double](bounds[0].hi - bounds[0].lo)
-    local blocksize   = `[double]([self:gpuBlockSize()])
-    local nblocks     = `[uint64]( size / blocksize + 1.0 )
-    return nblocks
-  end
+  return self.bran:numGPUBlocks(args_ptr)
 end
 
 -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
@@ -197,10 +184,10 @@ end
 -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
 -- Insertion / Deletion related context functions
 
-function Context:deleteSizeVar()
+function Context:deleteCountPtr()
   local dd = self.bran.delete_data
   if dd then
-    return `@[self:GlobalPtr(dd.updated_size)]
+    return self:GlobalPtr(dd.n_deleted)
   end
 end
 
@@ -1011,12 +998,25 @@ function ast.DeleteStatement:codegen (ctxt)
 
   local key           = self.key:codegen(ctxt)
   local live_mask     = ctxt:FieldElemPtr(relation._is_live_mask, key)
-  local set_mask_stmt = quote @live_mask = false end
 
-  local updated_size     = ctxt:deleteSizeVar()
-  local size_update_stmt = quote [updated_size] = [updated_size]-1 end
+  local n_deleted_ptr = ctxt:deleteCountPtr()
+  local size_update_stmt
+  if ctxt:onGPU() then
+    size_update_stmt = quote
+      -- SUPER INEFFICIENT: This should use a global reduction strategy
+      G.atomic_add_uint64_SLOW(n_deleted_ptr, 1)
+    end
+  else
+    size_update_stmt = quote
+      @n_deleted_ptr = @n_deleted_ptr + 1
+    end
+  end
 
-  return quote set_mask_stmt size_update_stmt end
+  return quote
+    -- idempotency...
+    if @live_mask then size_update_stmt end
+    @live_mask = false
+  end
 end
 
 function ast.InsertStatement:codegen (ctxt)

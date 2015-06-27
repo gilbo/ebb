@@ -109,12 +109,12 @@ test.eq(particles:Size(), 0)
 
 -- seed a particle in every cell
 local seed_particles = liszt( c : cells )
-  var pos = { L.double(L.id(c)), 0, 0 }
+  var pos = { L.double(L.id(c) + 1), 0, 0 }
   insert { cell = c, pos = pos } into particles
 end
 
 local post_insert_trivial = liszt( p : particles )
-  L.assert(p.pos[0] >= 0)
+  L.assert(p.pos[0] > 0)
 end
 
 cells:foreach(seed_particles)
@@ -123,5 +123,19 @@ test.eq(particles:Size(), 10)
 
 -- trivial function should not blow up
 particles:foreach(post_insert_trivial)
+
+-- reduce this over the particles
+
+local psum = L.Global(L.double, 0)
+local liszt sumparticles( p : particles )
+  psum += p.pos[0]
+end
+particles:foreach(sumparticles)
+
+test.eq(psum:get(), 55)
+
+
+
+
 
 

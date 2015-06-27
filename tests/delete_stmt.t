@@ -1,4 +1,3 @@
---DISABLE-ON-GPU  (TODO: Make this test pass on GPU)
 --DISABLE-ON-LEGION
 
 import "compiler.liszt"
@@ -76,3 +75,4 @@ test.eq(particles:Size(), 5)
 
 -- trivial function should not blow up
 particles:foreach(post_delete_trivial)
+
