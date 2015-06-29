@@ -189,6 +189,10 @@ local terra atomic_add_uint64(address : &uint64, operand : uint64) : uint64
   return terralib.asm(terralib.types.uint64,
     "atom.global.add.u64 $0, [$1], $2;","=l,l,l",true,address,operand)
 end
+local terra reduce_add_uint64(address : &uint64, operand : uint64)
+  terralib.asm(terralib.types.unit,
+    "red.global.add.u64 [$0], $1;","l,l",true,address,operand)
+end
 
 --[[-----------------------------------------------------------------------]]--
 --[[ Warp Level Instructions                                               ]]--
@@ -201,7 +205,7 @@ end
 
 local terra shuffle_index_b32( input : uint32, idx : uint32 ) : uint32
   return terralib.asm(terralib.types.uint32,
-    "shfl.idx.b32.idx $0, $1, $2, 0x1F;","=r,r,r",false,input,idx)
+    "shfl.idx.b32 $0, $1, $2, 0x1F;","=r,r,r",false,input,idx)
 end
 
 --[[-----------------------------------------------------------------------]]--
@@ -439,7 +443,7 @@ local function reserve_idx(tidsym, writeidxptr)
       start_idx = atomic_add_uint64(writeidxptr, write_count)
     end
   --  -- need to scatter the start_byte value to all active threads in the warp
-  --  start_idx = shuffle_index_b32(start_idx, leader_num)
+    start_idx = shuffle_index_b32(start_idx, leader_num)
   ---- Third, return this resulting value about where to write
   in
     start_idx + active_num
@@ -496,6 +500,8 @@ GPU.reduce_min_int32 = reduce_min_int32
 GPU.reduce_add_int32 = reduce_add_int32
 --GPU.reduce_and_b32   = reduce_and_b32
 --GPU.reduce_or_b32    = reduce_or_b32
+
+GPU.reduce_add_uint64   = reduce_add_uint64
 
 -- Slow operations:
 GPU.atomic_add_uint64_SLOW = generate_slow_atomic_64(add,uint64)

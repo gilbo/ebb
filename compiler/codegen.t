@@ -1004,7 +1004,7 @@ function ast.DeleteStatement:codegen (ctxt)
   if ctxt:onGPU() then
     size_update_stmt = quote
       -- SUPER INEFFICIENT: This should use a global reduction strategy
-      G.atomic_add_uint64_SLOW(n_deleted_ptr, 1)
+      G.reduce_add_uint64(n_deleted_ptr, 1)
     end
   else
     size_update_stmt = quote

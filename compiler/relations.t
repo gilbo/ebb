@@ -1307,44 +1307,69 @@ function L.LRelation:_INTERNAL_MarkFragmented()
   rawset(self, '_is_fragmented', true)
 end
 
+TOTAL_DEFRAG_TIME = 0
 function L.LRelation:Defrag()
-  error("BROKEN IN SUBTLE WAYS")
+  local start_time = terralib.currenttimeinseconds()
   if not self:isElastic() then
     error("Defrag(): Cannot Defrag a non-elastic relation")
   end
   -- TODO: MAKE IDEMPOTENT FOR EFFICIENCY  (huh?)
 
-  -- Check that all fields are on CPU:
-  for _,field in ipairs(self._fields) do
-    if field.array:location() ~= L.CPU then
-      error('Defrag on GPU unimplemented')
-    end
+  -- handle GPU resident fields
+  local any_on_gpu  = false
+  local on_gpu      = {}
+  local live_gpu    = false
+  for i,field in ipairs(self._fields) do
+    on_gpu[i]   = field.array:location() == L.GPU
+    any_on_gpu  = true
   end
-  if self._is_live_mask.array:location() ~= L.CPU then
-    error('Defrag on GPU unimplemented')
+  if self._is_live_mask.array:location() == L.GPU then
+    live_gpu    = true
+    any_on_gpu  = true
+  end
+  -- disallow logic
+  --if any_on_gpu then
+  --  error('Defrag on GPU unimplemented')
+  --end
+  -- slow workaround logic
+  if any_on_gpu then
+    for i,field in ipairs(self._fields) do
+      if on_gpu[i] then field:MoveTo(L.CPU) end
+    end
+    if live_gpu then self._is_live_mask:MoveTo(L.CPU) end
   end
 
   -- ok, build a terra function that we can execute to compact
   -- we can cache it!
   local defrag_func = self._cpu_defrag_func
-  if not defrag_func then
+  local type_sig    = self._cpu_defrag_struct_signature
+  if not defrag_func or (type_sig and type_sig ~= self:StructuralType()) then
     -- read and write heads for copy
-    local dst = symbol(L.addr:terraType(), 'dst')
-    local src = symbol(L.addr:terraType(), 'src')
+    local dst = symbol(uint64, 'dst')
+    local src = symbol(uint64, 'src')
 
-    -- create data copying chunk for fields
+    -- also need symbols for pointers to all the arrays
+    -- They will be passed in as arguments to allow for arrays to move
+    local args        = {}
+    local liveptrtype = &( self._is_live_mask:Type():terraType() )
+    local liveptr     = symbol(liveptrtype)
+    args[#self._fields + 1] = liveptr
+
+    -- fill out the rest of the arguments and build a code
+    -- snippet that will allow us to copy all of them together
     local do_copy = quote end
-    for _,field in ipairs(self._fields) do
-      local ptr = field:DataPtr()
+    for i,field in ipairs(self._fields) do
+      local fptrtype = &( field:Type():terraType() )
+      local ptrarg   = symbol( fptrtype )
+      args[i]        = ptrarg
+
       do_copy = quote
         do_copy
-        ptr[dst] = ptr[src]
+        ptrarg[dst] = ptrarg[src]
       end
     end
 
-    local liveptr = self._is_live_mask:DataPtr()
-    local addrtype = L.addr:terraType()
-    defrag_func = terra ( concrete_size : addrtype )
+    defrag_func = terra ( concrete_size : uint64, [args] )
       -- scan the write-head forward from start
       -- and the read head backward from end
       var [dst] = 0
@@ -1374,10 +1399,26 @@ function L.LRelation:Defrag()
       end
     end
     rawset(self, '_cpu_defrag_func', defrag_func)
+    rawset(self, '_cpu_defrag_struct_signature', self:StructuralType())
   end
 
+  -- assemble the arguments
+  local ptrargs = {}
+  for i,field in ipairs(self._fields) do
+    ptrargs[i] = field:DataPtr()
+  end
+  ptrargs[#self._fields+1] = self._is_live_mask:DataPtr()
+
   -- run the defrag func
-  defrag_func(self:ConcreteSize())
+  defrag_func(self:ConcreteSize(), unpack(ptrargs))
+
+  -- move back to GPU if necessary
+  if any_on_gpu then
+    for i,field in ipairs(self._fields) do
+      if on_gpu[i] then field:MoveTo(L.GPU) end
+    end
+    if live_gpu then self._is_live_mask:MoveTo(L.GPU) end
+  end
 
   -- now cleanup by resizing the relation
   local logical_size = self:Size()
@@ -1386,4 +1427,6 @@ function L.LRelation:Defrag()
 
   -- mark as compact
   rawset(self, '_is_fragmented', false)
+  TOTAL_DEFRAG_TIME = TOTAL_DEFRAG_TIME +
+                      (terralib.currenttimeinseconds() - start_time)
 end

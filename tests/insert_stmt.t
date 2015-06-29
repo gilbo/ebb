@@ -117,6 +117,10 @@ local post_insert_trivial = liszt( p : particles )
   L.assert(p.pos[0] > 0)
 end
 
+local test_cell_id = liszt( p : particles )
+  L.assert(L.id(p.cell) < 10)
+end
+
 cells:foreach(seed_particles)
 
 test.eq(particles:Size(), 10)
@@ -133,6 +137,27 @@ end
 particles:foreach(sumparticles)
 
 test.eq(psum:get(), 55)
+
+
+-- The following try to ensure that repeated insertion works
+-- correctly
+
+-- try a second and third insertion
+cells:foreach(seed_particles)
+cells:foreach(seed_particles)
+
+-- should at least believe that 20 more were inserted, but
+-- this is insufficient to check initialization
+test.eq(particles:Size(), 30)
+
+-- check that reasonable values were written
+particles:foreach(test_cell_id)
+
+-- and then reduce to provide a count of what was inserted/initialized
+-- in terms of data that is unlikely to occur by happenstance
+psum:set(0)
+particles:foreach(sumparticles)
+test.eq(psum:get(), 55*3)
 
 
 
