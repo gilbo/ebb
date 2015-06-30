@@ -13,12 +13,6 @@ L = lisztlib
 local statement = function(self, lexer)
     local ast, assign = P.ParseStatement(lexer)
     local constructor
-    --if ast.kind == 'LisztKernel' then
-    --    constructor = function (env_fn) 
-    --        local env = env_fn()
-    --        return lisztlib.NewKernel(ast, env)
-    --    end
-    --else
     if ast.kind == 'UserFunction' then
         constructor = function (env_fn)
             local env = env_fn()
@@ -38,22 +32,16 @@ local lisztlanguage = {
     -- unfortunate affect of not allowing anyone to use 'min' or 'max
     -- as variable names within Liszt code.
     keywords    = {
-        --"kernel",
         "quote",
         "max", "min",
         "var",
         "insert", "into", "delete",
+        "_", -- want to hold onto this token in case it's useful
     },
 
-    -- Liszt quotes, anonymous kernels and functions
+    -- Liszt quotes and anonymous functions
     expression = function (self, lexer)
         local ast = P.ParseExpression(lexer)
-        --if ast.kind == 'LisztKernel' then
-        --    return function (env_fn) 
-        --        local env = env_fn()
-        --        return lisztlib.NewKernel(ast, env)
-        --    end
-        --else
         if ast.kind == 'UserFunction' then
             return function (env_fn)
                 local env = env_fn()
@@ -69,7 +57,7 @@ local lisztlanguage = {
         end
     end,
 
-    -- named Liszt functions and kernels
+    -- named Liszt functions
     statement = statement,
     localstatement = statement,
 }

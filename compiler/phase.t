@@ -226,7 +226,7 @@ function Context:logdelete(relation, node)
     }, node)
   end
 
-  -- check that this is the only delete for this kernel
+  -- check that this is the only delete for this function
   -- since only the relation mapped over can possibly be deleted from
   -- this check suffices
   if self.deletes[relation] then
@@ -269,7 +269,7 @@ end
 function Context:dumpDeletes()
   local ret = {}
   for relation,record in pairs(self.deletes) do
-    -- ASSUME UNIQUE INSERT PER KERNEL
+    -- ASSUME UNIQUE INSERT PER FUNCTION
     ret[relation] = {record.last_access} -- list of AST nodes for deletes
   end
   if next(ret) == nil then return nil end -- return nil if nothing
@@ -280,16 +280,16 @@ end
 --[[ Phase Pass:                                                          ]]--
 ------------------------------------------------------------------------------
 
-function Phase.phasePass(kernel_ast)
+function Phase.phasePass(ufunc_ast)
   local env  = terralib.newenvironment(nil)
   local diag = terralib.newdiagnostics()
   local ctxt = Context.new(env, diag)
 
   -- record the relation being mapped over
-  ctxt.relation = kernel_ast.relation
+  ctxt.relation = ufunc_ast.relation
 
   diag:begin()
-    kernel_ast:phasePass(ctxt)
+    ufunc_ast:phasePass(ctxt)
   diag:finishandabortiferrors("Errors during phasechecking Liszt", 1)
 
   local field_use   = ctxt:dumpFieldTypes()

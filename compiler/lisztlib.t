@@ -56,20 +56,19 @@ local LSubset    = make_prototype("LSubset","subset")
 local LIndex     = make_prototype("LIndex","index")
 local LGlobal    = make_prototype("LGlobal","global")
 local LConstant  = make_prototype("LConstant","constant")
---local LVector    = make_prototype("LVector","vector")
 local LMacro     = make_prototype("LMacro","macro")
-local LUserFunc  = make_prototype("LUserFunc", "function")
-local Kernel     = make_prototype("LKernel","kernel")
+local LUserFunc  = make_prototype("LUserFunc","function")
+local UFVersion  = make_prototype("UFVersion","version")
 
 local C = require "compiler.c"
 local T = require "compiler.types"
 local ast = require "compiler.ast"
 require "compiler.builtins"
 require "compiler.relations"
-local semant = require "compiler.semant"
-require "compiler.kernel"
+require "compiler.ufunc"
 
-local is_vector = L.is_vector --cache lookup for efficiency
+local semant  = require "compiler.semant"
+local phase   = require "compiler.phase"
 
 -------------------------------------------------------------------------------
 --[[ LGlobals:                                                             ]]--
@@ -206,32 +205,154 @@ local specialization = require('compiler.specialization')
 -------------------------------------------------------------------------------
 
 function L.NewUserFunc(func_ast, luaenv)
-    local new_user_func = setmetatable({}, L.LUserFunc)
+  local special = specialization.specialize(luaenv, func_ast)
+  
+  local ufunc = setmetatable({
+    _decl_ast     = special,
+    _versions     = {}, -- the versions table is nested
+    _name         = special.id,
+  }, LUserFunc)
 
-    local special = specialization.specialize(luaenv, func_ast)
-    new_user_func.ast = special
-
-    return new_user_func
+  return ufunc
 end
 
-function L.LUserFunc:ForEachOver(relset, params)
-  if #self.ast.params ~= 1 or self.ast.exp then
-    error('In order to execute a function over a relation or subset, '..
-          'the function must have exactly 1 argument and no return value', 3)
+function L.NewUFVersion(ufunc, signature)
+  local version = setmetatable({
+    _ufunc    = ufunc,
+  }, UFVersion)
+
+  for k,v in pairs(signature) do
+    version['_'..k] = v
   end
 
+  return version
+end
+
+-- Use the following to produce
+-- deterministic order of table entries
+-- From the Lua Documentation
+local function pairs_sorted(tbl, compare)
+  local arr = {}
+  for k in pairs(tbl) do table.insert(arr, k) end
+  table.sort(arr, compare)
+
+  local i = 0
+  local iter = function() -- iterator
+    i = i + 1
+    if arr[i] == nil then return nil
+    else return arr[i], tbl[arr[i]] end
+  end
+  return iter
+end
+
+function L.LUserFunc:_get_typechecked(relset)
+  -- lookup based on relation
   local relation = relset
   if L.is_subset(relset) then relation = relset:Relation() end
+  local lookup = self._versions[relation]
+  if lookup then return lookup end
 
-  -- otherwise, try caching a kernel based on the relation
-  if not self.kernel_cache then self.kernel_cache = {} end
-  local cached_kernel = self.kernel_cache[relation]
-  if not cached_kernel then
-    cached_kernel = L.NewKernelFromFunction(self, relation)
-    self.kernel_cache[relation] = cached_kernel
+  -- Otherwise, the Lookup failed, so...
+
+  -- check that this function makes sense to use as top-level entry
+  if #self._decl_ast.params ~= 1 or self._decl_ast.exp then
+    error('In order to execute a function over a relation or subset, the '..
+          'function must have exactly 1 argument and no return value', 4)
   end
 
-  cached_kernel(relset, params)
+  -- make a safe copy that we can explicitly type annotate
+  local aname_ast     = self._decl_ast:alpha_rename()
+
+  -- check the annotation for consistency with the argument
+  local annotation    = aname_ast.ptypes[1]
+  if annotation then
+    local arel = annotation.relation
+    if arel ~= relation then
+      error('The supplied relation did not match the parameter '..
+            'annotation:\n  '..relation:Name()..' vs. '..arel:Name(), 4)
+    end
+  else
+    -- add an annotation if none was present
+    aname_ast.ptypes[1] = L.key(relation)
+  end
+
+  -- now actually type and phase check
+  local typed_ast     = semant.check( aname_ast )
+  local phase_results = phase.phasePass( typed_ast )
+
+  -- cache the computation
+  local cached = {
+    typed_ast       = typed_ast,
+    phase_results   = phase_results,
+    versions        = {},
+  }
+  self._versions[relation] = cached
+
+  return cached
+end
+
+local function get_ufunc_version(ufunc, typeversion_table, relset, params)
+  params = params or {}
+
+  local proc = params.location or L.default_processor
+
+  -- To lookup the version we want, we need to construct a signature
+  local sig = {
+    proc      = proc,
+  }
+  sig.relation  = relset
+  if L.is_subset(relset) then
+    sig.relation  = relset:Relation()
+    sig.subset    = relset
+  end
+  if proc == L.GPU then   sig.blocksize = params.blocksize or 64  end
+  if sig.relation:isElastic() then  sig.is_elastic = true  end
+
+  -- and convert that signature into a string for lookup
+  local str_sig = ''
+  for k,v in pairs_sorted(sig) do
+    str_sig = str_sig .. k .. '=' .. tostring(v) .. ';'
+  end
+
+  -- do the actual lookup
+  local version = typeversion_table.versions[str_sig]
+  if version then return version end
+
+  -- if the lookup failed, then we need to construct a new
+  -- version matching this signature
+  version = L.NewUFVersion(ufunc, sig)
+  local typed_ast     = typeversion_table.typed_ast
+  local phase_results = typeversion_table.phase_results
+  version:_Compile(typed_ast, phase_results)
+
+  -- and make sure to cache it
+  typeversion_table.versions[str_sig] = version
+
+  return version
+end
+
+EXEC_TIMER = 0
+function L.LUserFunc:doForEach(relset, params)
+  self:_doForEach(relset, params)
+end
+function L.LUserFunc:_doForEach(relset, params)
+  if #self._decl_ast.params ~= 1 or self._decl_ast.exp then
+  end
+  if not (L.is_subset(relset) or L.is_relation(relset)) then
+    error('Functions must be executed over a relation or subset, but '..
+          'argument was neither: '..tostring(relset), 3)
+  end
+
+  -- get the appropriately typed version of the function
+  -- and a collection of all the versions associated with it...
+  local typeversion = self:_get_typechecked(relset)
+
+  -- now we either retreive or construct the appropriate function version
+  local version = get_ufunc_version(self, typeversion, relset, params)
+
+  --local preexectime = terralib.currenttimeinseconds()
+  version:Execute()
+  --EXEC_TIMER = EXEC_TIMER + (terralib.currenttimeinseconds() - preexectime)
 end
 
 

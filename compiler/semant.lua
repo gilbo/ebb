@@ -764,7 +764,7 @@ function ast.Name:check(ctxt)
     -- try to find the name in the local Liszt scope
     local typ = ctxt:liszt()[self.name]
     -- if the name is in the local scope, then it must have been declared
-    -- somewhere in the liszt kernel.  Thus, it has to be a primitive, a
+    -- somewhere in the liszt function.  Thus, it has to be a primitive, a
     -- bool, or a topological element.
     if typ then
         local node     = ast.Name:DeriveFrom(self)
@@ -952,8 +952,10 @@ end
         local func = self:clone()
 
         func.params = {}
+        func.ptypes = {}
         for i=1,#(self.params) do
             func.params[i] = self.params[i]:UniqueCopy()
+            func.ptypes[i] = self.ptypes[i]
             symbol_remap[self.params[i]] = func.params[i]
         end
 
@@ -1008,11 +1010,6 @@ end
         r.body = self.body:alpha_rename(remap)
         r.cond = self.cond:alpha_rename(remap)
         return r
-    end
-
-    function ast.LisztKernel:alpha_rename(remap)
-        error('should never try to alpha rename a whole kernel')
-        -- even though a kernel does define names
     end
 
     function ast.Name:alpha_rename(remap)
@@ -1090,7 +1087,7 @@ local function InlineUserFunc(ctxt, src_node, the_func, param_asts)
     -- note that this alpha rename is safe because the
     -- param_asts haven't been attached yet.  We know from
     -- specialization that there are no free variables in the function.
-    local f = the_func.ast:alpha_rename()
+    local f = the_func._decl_ast:alpha_rename()
 
     -- check that the correct number of arguments are provided
     if #(f.params) ~= #param_asts then
@@ -1418,28 +1415,29 @@ end
 ------------------------------------------------------------------------------
 --[[ Semantic checking called from here:                                  ]]--
 ------------------------------------------------------------------------------
-function ast.LisztKernel:check(ctxt)
-    local kernel              = self:clone()
-    kernel.name               = self.name
 
-    local set    = self.set:check(ctxt)
-    if set.node_type:isInternal() and
-       L.is_relation(set.node_type.value)
-    then
-        kernel.relation             = set.node_type.value
-        local key_type              = L.key(kernel.relation)
-        -- record the center
-        ctxt:recordcenter(kernel.name)
-        ctxt:liszt()[kernel.name]   = key_type
-        kernel.body                 = self.body:check(ctxt)
-    else
-        ctxt:error(kernel.set, "Expected a relation")
-    end
+-- only makes sense to type-check as a top-level execution right now...
+function ast.UserFunction:check(ctxt)
+    local ufunc                 = self:clone()
+    local param                 = self.params[1]
+    local ptype                 = self.ptypes[1]
+    ufunc.params                = { param }
+    ufunc.ptypes                = { ptype }
 
-    return kernel
+    -- TODO: double check things here?
+    --      #param == 1
+    --      ptype is a scalarkey
+    --      self has no self.exp to return
+    
+    ufunc.relation              = ptype.relation
+    ctxt:recordcenter(param)
+    ctxt:liszt()[param]         = ptype
+    ufunc.body                  = self.body:check(ctxt)
+
+    return ufunc
 end
 
-function S.check(kernel_ast)
+function S.check(some_ast)
     -- environment for checking variables and scopes
     local env  = terralib.newenvironment(nil)
     local diag = terralib.newdiagnostics()
@@ -1449,8 +1447,8 @@ function S.check(kernel_ast)
 
     diag:begin()
     env:enterblock()
-    local new_kernel_ast = kernel_ast:check(ctxt)
+    local typed_ast  = some_ast:check(ctxt)
     env:leaveblock()
     diag:finishandabortiferrors("Errors during typechecking liszt", 1)
-    return new_kernel_ast
+    return typed_ast
 end

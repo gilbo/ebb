@@ -245,14 +245,14 @@ end
 
 function L.LRelation:foreach(user_func, params)
   if not L.is_function(user_func) then
-    error('map(): expects a liszt function as the argument', 2)
+    error('foreach(): expects a liszt function as the argument', 2)
   end
   params = params or {}
   if type(params) ~= 'table' then
-    error('map(): if supplied with a second argument, map expects '..
+    error('foreach(): if supplied with a second argument, foreach expects '..
           'a table of options', 2)
   end
-  user_func:ForEachOver(self, params)
+  user_func:_doForEach(self, params)
 end
 
 -- generator func for looping over the relation's fields
@@ -560,7 +560,7 @@ function L.LSubset:foreach(user_func)
   if not L.is_function(user_func) then
     error('map(): expects a liszt function as the argument', 2)
   end
-  user_func:ForEachOver(self)
+  user_func:_doForEach(self)
 end
 
 function L.LSubset:Relation()

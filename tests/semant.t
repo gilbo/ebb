@@ -12,12 +12,20 @@ R:NewField('f1', L.float)
 R:NewField('f2', L.vector(L.float, 3))
 s1 = L.Global(L.int, 0)
 
+-- used to check nominal constraints on relation types
+local otherR = L.NewRelation { name="otherR", size=6 }
+otherR:NewField('f1', L.float)
+otherR:NewField('f2', L.vector(L.float, 3))
+
 
 ------------------------
 -- Initialize fields: --
 ------------------------
 R.f1:Load(0)
 R.f2:Load({0,0,0})
+
+otherR.f1:Load(0)
+otherR.f2:Load({0,0,0})
 
 
 ---------------------
@@ -213,6 +221,12 @@ test.fail_function(function()
 end, "variable 'i' is not defined")
 
 
+test.fail_function(function()
+	local liszt badrel( cell : R )
+		cell.f1 = 2
+	end
+	otherR:foreach(badrel) -- should complain
+end, "The supplied relation did not match the parameter annotation")
 
 -- Nothing should fail in this function:
 local good = liszt (cell : R)

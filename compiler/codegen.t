@@ -28,10 +28,10 @@ L._INTERNAL_DEV_OUTPUT_PTX = false
 local Context = {}
 Context.__index = Context
 
-function Context.New(env, bran)
+function Context.New(env, ufunc_version)
     local ctxt = setmetatable({
         env  = env,
-        bran = bran,
+        ufv  = ufunc_version,
     }, Context)
     return ctxt
 end
@@ -50,25 +50,25 @@ end
 -- Info about the relation mapped over
 
 function Context:dims()
-  if not self._dims_val then self._dims_val = self.bran.relation:Dims() end
+  if not self._dims_val then self._dims_val = self.ufv._relation:Dims() end
   return self._dims_val
 end
 
 function Context:argKeyTerraType()
-  return L.key(self.bran.relation):terraType()
+  return L.key(self.ufv._relation):terraType()
 end
 
 -- This one is the odd one out, generates some code
 function Context:isLiveCheck(param_var)
   assert(self:isOverElastic())
-  local livemask_field  = self.bran.relation._is_live_mask
+  local livemask_field  = self.ufv._relation._is_live_mask
   local livemask_ptr    = self:FieldElemPtr(livemask_field, param_var)
   return `@livemask_ptr
 end
 
 function Context:isInSubset(param_var)
   assert(self:isOverSubset())
-  local boolmask_field = self.bran.subset._boolmask
+  local boolmask_field = self.ufv._subset._boolmask
   local boolmask_ptr   = self:FieldElemPtr(boolmask_field, param_var)
   return `@boolmask_ptr
 end
@@ -77,7 +77,7 @@ end
 -- Argument Struct related context functions
 
 function Context:argsType()
-  return self.bran:argsType()
+  return self.ufv:_argsType()
 end
 
 function Context:argsym()
@@ -91,33 +91,33 @@ end
 -- Modal Data
 
 function Context:onGPU()
-  return self.bran:isOnGPU()
+  return self.ufv:isOnGPU()
 end
 function Context:hasGlobalReduce()
-  return self.bran:UsesGlobalReduce()
+  return self.ufv:UsesGlobalReduce()
 end
 function Context:isOverElastic() -- meaning the relation mapped over
-  return self.bran:overElasticRelation()
+  return self.ufv:overElasticRelation()
 end
 function Context:isOverSubset() -- meaning a subset of the relation mapped over
-  return self.bran:isOverSubset()
+  return self.ufv:isOverSubset()
 end
 function Context:isBoolMaskSubset()
-  return self.bran:isBoolMaskSubset()
+  return self.ufv:isBoolMaskSubset()
 end
 function Context:isIndexSubset()
-  return self.bran:isIndexSubset()
+  return self.ufv:isIndexSubset()
 end
 
 -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
 -- Generic Field / Global context functions
 
 function Context:hasExclusivePhase(field)
-  return self.bran.kernel.field_use[field]:isCentered()
+  return self.ufv._field_use[field]:isCentered()
 end
 
 function Context:FieldElemPtr(field, key)
-  local farg        = `[ self:argsym() ].[ self.bran:getFieldId(field) ]
+  local farg        = `[ self:argsym() ].[ self.ufv:_getFieldId(field) ]
   if use_single then
     local ptr       = farg
     return `(ptr + key:terraLinearize())
@@ -129,17 +129,17 @@ function Context:FieldElemPtr(field, key)
 end
 
 function Context:GlobalPtr(global)
-  return self.bran:getTerraGlobalPtr(self:argsym(), global)
+  return self.ufv:_getTerraGlobalPtr(self:argsym(), global)
 end
 
 -- -- -- -- -- -- -- -- -- -- -- --
 -- GPU related context functions
 
 function Context:gpuBlockSize()
-  return self.bran:getBlockSize()
+  return self.ufv:_getBlockSize()
 end
 function Context:gpuSharedMemBytes()
-  return self.bran:nBytesSharedMem()
+  return self.ufv:_nBytesSharedMem()
 end
 
 function Context:tid()
@@ -153,7 +153,7 @@ function Context:bid()
 end
 
 function Context:gpuNumBlocks(args_ptr)
-  return self.bran:numGPUBlocks(args_ptr)
+  return self.ufv:_numGPUBlocks(args_ptr)
 end
 
 -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
@@ -161,22 +161,15 @@ end
 
 function Context:gpuReduceSharedMemPtr(globl)
   local tid = self:tid()
-  local shared_ptr = self.bran:getTerraReduceSharedMemPtr(globl)
+  local shared_ptr = self.ufv:_getTerraReduceSharedMemPtr(globl)
   return `[shared_ptr][tid]
 end
 
--- Two odd functions to ask the bran to generate a bit of code
--- TODO: Should we refactor the actual codegen functions in the Bran
--- into a "codegen support" file, also containing the arithmetic
--- expression dispatching.
---    RULE FOR REFACTOR: take all codegen that does not depend on
---      The AST structure, and factor that into one file apart
---      from this AST driven codegeneration file
 function Context:codegenSharedMemInit()
-  return self.bran:GenerateSharedMemInitialization(self:tid())
+  return self.ufv:_GenerateSharedMemInitialization(self:tid())
 end
 function Context:codegenSharedMemTreeReduction()
-  return self.bran:GenerateSharedMemReduceTree(self:argsym(),
+  return self.ufv:_GenerateSharedMemReduceTree(self:argsym(),
                                                self:tid(),
                                                self:bid())
 end
@@ -185,14 +178,14 @@ end
 -- Insertion / Deletion related context functions
 
 function Context:deleteCountPtr()
-  local dd = self.bran.delete_data
+  local dd = self.ufv._delete_data
   if dd then
     return self:GlobalPtr(dd.n_deleted)
   end
 end
 
 function Context:reserveInsertIndex()
-  local write_idx_ptr = self:GlobalPtr(self.bran.insert_data.write_idx)
+  local write_idx_ptr = self:GlobalPtr(self.ufv._insert_data.write_idx)
 
   -- GPU insertion
   if self:onGPU() then
@@ -324,9 +317,10 @@ end
 --[[                        Codegen Entrypoint                          ]]--
 --[[--------------------------------------------------------------------]]--
 
-function Codegen.codegen (kernel_ast, bran)
+function Codegen.codegen (ufunc_ast, ufunc_version)
   local env  = terralib.newenvironment(nil)
-  local ctxt = Context.New(env, bran)
+  local ctxt = Context.New(env, ufunc_version)
+  local ufunc_name = ufunc_version._ufunc._name
 
   -- unpack bounds argument
   local bd_decl = quote end
@@ -343,12 +337,13 @@ function Codegen.codegen (kernel_ast, bran)
     -- declare the symbol for the parameter key
     local paramtyp  = ctxt:argKeyTerraType()
     local param     = symbol(paramtyp)
-    ctxt:localenv()[kernel_ast.name] = param
+    local pname     = ufunc_ast.params[1]
+    ctxt:localenv()[pname] = param
 
     local linid
     if ctxt:onGPU() then linid  = symbol(uint64) end
 
-    local body = kernel_ast.body:codegen(ctxt)
+    local body = ufunc_ast.body:codegen(ctxt)
 
     -- Handle Masking of dead rows when mapping
     -- Over an Elastic Relation
@@ -465,7 +460,7 @@ function Codegen.codegen (kernel_ast, bran)
       [bd_decl]
       [body]
     end
-    cuda_kernel:setname(kernel_ast.id .. '_cudakernel')
+    cuda_kernel:setname(ufunc_name .. '_cudakernel')
     cuda_kernel = G.kernelwrap(cuda_kernel, L._INTERNAL_DEV_OUTPUT_PTX,
                                { {"maxntidx",64}, {"minctasm",6} })
 
@@ -477,7 +472,7 @@ function Codegen.codegen (kernel_ast, bran)
 
     launcher = terra (args_ptr : &ctxt:argsType())
       -- possibly allocate global memory for a GPU reduction
-      [ ctxt.bran:generateGPUReductionPreProcess(args_ptr) ]
+      [ ctxt.ufv:_generateGPUReductionPreProcess(args_ptr) ]
 
       -- the main launch
       var n_blocks = [ctxt:gpuNumBlocks(args_ptr)]
@@ -494,9 +489,9 @@ function Codegen.codegen (kernel_ast, bran)
 
       -- possibly perform the second launch tree reduction and
       -- cleanup any global memory here...
-      [ ctxt.bran:generateGPUReductionPostProcess(args_ptr) ]
+      [ ctxt.ufv:_generateGPUReductionPostProcess(args_ptr) ]
     end
-    launcher:setname(kernel_ast.id)
+    launcher:setname(ufunc_name)
 
   -- BUILD CPU LAUNCHER
   else
@@ -505,19 +500,19 @@ function Codegen.codegen (kernel_ast, bran)
       [bd_decl]
       [body]
     end
-    launcher:setname(kernel_ast.id)
+    launcher:setname(ufunc_name)
 
   end -- CPU / GPU LAUNCHER END
 
   -- OPTIONALLY WRAP UP AS A LEGION TASK
   if use_legion then
     local generate_output_future = quote end
-    if ctxt.bran:UsesGlobalReduce() then
-      local globl             = next(ctxt.bran.global_reductions)
+    if ctxt:hasGlobalReduce() then
+      local globl             = next(ctxt.ufv._global_reductions)
       local gtyp              = globl.type:terraType()
-      local gptr              = ctxt.bran:getLegionGlobalTempSymbol(globl)
+      local gptr              = ctxt.ufv:_getLegionGlobalTempSymbol(globl)
 
-      if next(ctxt.bran.global_reductions, globl) then
+      if next(ctxt.ufv._global_reductions, globl) then
         error("INTERNAL: More than 1 global reduction at a time unsupported")
       end
       if ctxt:onGPU() then
@@ -537,56 +532,18 @@ function Codegen.codegen (kernel_ast, bran)
     local basic_launcher = launcher
     launcher = terra (task_args : LW.TaskArgs)
       var [ctxt:argsym()]
-      [ ctxt.bran:GenerateUnpackLegionTaskArgs(ctxt:argsym(), task_args) ]
+      [ ctxt.ufv:_GenerateUnpackLegionTaskArgs(ctxt:argsym(), task_args) ]
       [bd_decl] -- MUST come after task arg unpacking
 
       basic_launcher(&[ctxt:argsym()])
 
       [generate_output_future]
     end
-    launcher:setname(kernel_ast.id)
+    launcher:setname(ufunc_name)
   end -- Legion Launcher end
 
   return launcher
 
-    --[[ BUILD LEGION TASK FUNCTION
-    if use_legion then
-
-      local generate_output_future = quote end
-      if use_legion and ctxt.bran:UsesGlobalReduce() then
-        local globl             = next(ctxt.bran.global_reductions)
-        local gtyp              = globl.type:terraType()
-        local gptr              = ctxt:GlobalPtr(globl)
-        if next(ctxt.bran.global_reductions, globl) then
-          error("INTERNAL: More than 1 global reduction at a time unsupported")
-        end
-        generate_output_future  = quote
-          return LW.legion_task_result_create( gptr, sizeof(gtyp) )
-        end
-      end
-
-      local k = terra (task_args : LW.TaskArgs)
-        var [ctxt:argsym()]
-        [ ctxt.bran:GenerateUnpackLegionTaskArgs(ctxt:argsym(), task_args) ]
-        [bd_decl] -- MUST come after task arg unpacking
-
-        [body]
-
-        [generate_output_future]
-      end
-      k:setname(kernel_ast.id)
-      return k
-
-    else
-      local k = terra (args_ptr : &ctxt:argsType())
-        var [ctxt:argsym()] = @args_ptr
-        [bd_decl]
-        [body]
-      end
-      k:setname(kernel_ast.id)
-      return k
-    end -- CPU LAUNCHERS FOR LEGION/ NON-LEGION END
-  end -- CPU/ GPU LAUNCHERS END]]
 end -- CODEGEN ENDS
 
 
@@ -617,9 +574,6 @@ function ast.LetExpr:codegen (ctxt)
   return quote [block] in [exp] end
 end
 
--- DON'T CODEGEN A KERNEL DIRECTLY; HANDLE IN Codegen.codegen()
---function ast.LisztKernel:codegen (ctxt)
---end
 
 function ast.Block:codegen (ctxt)
   -- start with an empty ast node, or we'll get an error when appending new quotes below

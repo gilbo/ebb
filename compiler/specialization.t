@@ -45,14 +45,14 @@ end
 ------------------------------------------------------------------------------
 --[[ specialization:                                                      ]]--
 ------------------------------------------------------------------------------
-function S.specialize(luaenv, kernel_ast)
+function S.specialize(luaenv, some_ast)
   local env  = terralib.newenvironment(luaenv)
   local diag = terralib.newdiagnostics()
   local ctxt = Context.new(env, diag)
 
   diag:begin()
   env:enterblock()
-  local new_ast = kernel_ast:specialize(ctxt)
+  local new_ast = some_ast:specialize(ctxt)
   env:leaveblock()
   diag:finishandabortiferrors("Errors during specializing Liszt", 1)
 
@@ -75,6 +75,9 @@ end
 
 local function exec_type_annotation(typexp, ast_node, ctxt)
   local typ = exec_external(typexp, ctxt, L.error)
+  -- handle use of relations as shorthand for key types
+  if L.is_relation(typ) then typ = L.key(typ) end
+
   if not T.isLisztType(typ) then
     ctxt:error(ast_node, "Expected Liszt type annotation but found " ..
                          type(typ))
@@ -268,20 +271,6 @@ function ast.GenericFor:specialize(ctxt)
   return r
 end
 
-function ast.LisztKernel:specialize(ctxt)
-  local kernel                = self:clone()
-
-  kernel.set                  = self.set:specialize(ctxt)
-
-  -- REGISTER SYMBOL
-  local name_str              = kernel.name
-  kernel.name                 = ast.GenSymbol(name_str)
-  ctxt:liszt()[name_str]      = kernel.name
-  kernel.body                 = self.body:specialize(ctxt)
-
-  return kernel
-end
-
 
 
 
@@ -466,10 +455,15 @@ function ast.UserFunction:specialize(ctxt)
   ctxt:enterblock()
   -- register symbols for params
   local params = {}
+  local ptypes = {}
   for i=1,#(self.params) do
     local name_str = self.params[i]
     params[i] = ast.GenSymbol(name_str)
     ctxt:liszt()[name_str] = params[i]
+
+    if self.ptypes[i] then
+      ptypes[i] = exec_type_annotation(self.ptypes[i], self, ctxt)
+    end
   end
 
   local body = self.body:specialize(ctxt)
@@ -479,7 +473,7 @@ function ast.UserFunction:specialize(ctxt)
   end
   ctxt:leaveblock()
 
-  func.params, func.body, func.exp = params, body, exp
+  func.params, func.ptypes, func.body, func.exp = params, ptypes, body, exp
   return func
 end
 

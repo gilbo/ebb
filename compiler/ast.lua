@@ -68,7 +68,6 @@ function AST:NewKind(kind, child_asts, child_ast_lists)
   return ast
 end
 
-AST:NewKind(         'LisztKernel',      {'set','body'})
 AST:NewKind(         'UserFunction',     {'body','exp'}, {'params'})
 AST:NewKind(         'Expression')
 AST:NewKind(         'Statement')
@@ -303,19 +302,6 @@ end
 
 function AST:pretty_print(indent)
   error('PRETTY PRINT not implemented for AST node ' .. self.kind)
-end
-
-function A.LisztKernel:pretty_print (indent)
-  indent = indent or ''
-  print(indent .. self.kind .. ": (name, set, body)")
-  indent = indent .. indent_delta
-  print(indent .. symtostr(self.name))
-  if self.set then
-    self.set:pretty_print(indent)
-  else
-    print(indent .. 'nil')
-  end
-  self.body:pretty_print(indent)
 end
 
 function A.UserFunction:pretty_print (indent)
