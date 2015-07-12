@@ -139,6 +139,16 @@ test.fail_function(function()
 end, "variable 'recurse' is not defined")
 
 
+-----------------------------------------------------
+--check that return values are prohibited if mapped--
+-----------------------------------------------------
+test.fail_function(function()
+  local liszt t(c : cells)
+    return 3
+  end
+  cells:foreach(t)
+end, 'Functions executed over relations should not return values')
+
 
 -----------------------------------------------
 --Test improper placement of return statement--

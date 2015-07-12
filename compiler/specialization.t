@@ -362,6 +362,10 @@ local function luav_to_ast(luav, src_node)
   elseif type(luav) == 'number' or type(luav) == 'boolean' then
     node = prim_to_AST(src_node, luav)
 
+  elseif type(luav) == 'string' then
+    node = ast.String:DeriveFrom(src_node)
+    node.value = luav
+
   else
     return nil
   end

@@ -245,25 +245,23 @@ local function pairs_sorted(tbl, compare)
   return iter
 end
 
-function L.LUserFunc:_get_typechecked(relset)
-  -- lookup based on relation
+function L.LUserFunc:_get_typechecked(relset, strargs)
+  -- lookup based on relation, not subset
   local relation = relset
   if L.is_subset(relset) then relation = relset:Relation() end
-  local lookup = self._versions[relation]
+  -- build lookup key string
+  local keystr = tostring(relset)
+  for _,arg in ipairs(strargs) do   keystr = keystr..','..arg   end
+  -- and perform lookup
+  local lookup = self._versions[keystr]
   if lookup then return lookup end
 
   -- Otherwise, the Lookup failed, so...
 
-  -- check that this function makes sense to use as top-level entry
-  if #self._decl_ast.params ~= 1 or self._decl_ast.exp then
-    error('In order to execute a function over a relation or subset, the '..
-          'function must have exactly 1 argument and no return value', 4)
-  end
-
   -- make a safe copy that we can explicitly type annotate
   local aname_ast     = self._decl_ast:alpha_rename()
 
-  -- check the annotation for consistency with the argument
+  -- process the first argument's type annotation.  Consistent? Present?
   local annotation    = aname_ast.ptypes[1]
   if annotation then
     local arel = annotation.relation
@@ -276,17 +274,27 @@ function L.LUserFunc:_get_typechecked(relset)
     aname_ast.ptypes[1] = L.key(relation)
   end
 
+  -- process the remaining arguments' type annotations.
+  for i,str in ipairs(strargs) do
+    local annotation = aname_ast.ptypes[i+1]
+    if annotation then
+      error('Secondary string arguments to functions should be '..
+            'untyped arguments', 4)
+    end
+    aname_ast.ptypes[i+1] = L.internal(str)
+  end
+
   -- now actually type and phase check
   local typed_ast     = semant.check( aname_ast )
   local phase_results = phase.phasePass( typed_ast )
 
-  -- cache the computation
+  -- cache the type/phase-checking computations
   local cached = {
     typed_ast       = typed_ast,
     phase_results   = phase_results,
     versions        = {},
   }
-  self._versions[relation] = cached
+  self._versions[keystr] = cached
 
   return cached
 end
@@ -332,20 +340,46 @@ local function get_ufunc_version(ufunc, typeversion_table, relset, params)
 end
 
 EXEC_TIMER = 0
-function L.LUserFunc:doForEach(relset, params)
-  self:_doForEach(relset, params)
+function L.LUserFunc:doForEach(relset, ...)
+  self:_doForEach(relset, ...)
 end
-function L.LUserFunc:_doForEach(relset, params)
-  if #self._decl_ast.params ~= 1 or self._decl_ast.exp then
-  end
+function L.LUserFunc:_doForEach(relset, ...)
   if not (L.is_subset(relset) or L.is_relation(relset)) then
     error('Functions must be executed over a relation or subset, but '..
           'argument was neither: '..tostring(relset), 3)
   end
 
+  -- unpack direct arguments and/or launch parameters
+  local args    = {...}
+  local params  = {}
+  if type(args[#args]) == 'table' then
+    params = args[#args]
+    args[#args] = nil
+  end
+
+  -- check that number of arguments matches, allowing for the
+  -- extra first argument in the function signature that is a
+  -- key for the relation being mapped over
+  local narg_expected = #self._decl_ast.params - 1
+  if narg_expected ~= #args then
+    error('Function was expecting '..tostring(narg_expected)..
+          ' arguments, but got '..tostring(#args), 3)
+  end
+  -- Also, right now we restrict all secondary arguments to be strings
+  for i,a in ipairs(args) do
+    if type(a) ~= 'string' then
+      error('Argument '..tostring(i)..' was expected to be a string; '..
+            'Secondary arguments to functions mapped over relations '..
+            'must be strings.', 3)
+    end
+  end
+  if self._decl_ast.exp then
+    error('Functions executed over relations should not return values', 3)
+  end
+
   -- get the appropriately typed version of the function
   -- and a collection of all the versions associated with it...
-  local typeversion = self:_get_typechecked(relset)
+  local typeversion = self:_get_typechecked(relset, args)
 
   -- now we either retreive or construct the appropriate function version
   local version = get_ufunc_version(self, typeversion, relset, params)
