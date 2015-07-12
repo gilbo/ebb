@@ -1,5 +1,5 @@
 local UF   = {}
-package.loaded["compiler.ufunc"] = UF
+package.loaded["compiler.ufversions"] = UF
 
 local use_legion = not not rawget(_G, '_legion_env')
 local use_single = not use_legion

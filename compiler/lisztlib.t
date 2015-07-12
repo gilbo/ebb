@@ -65,7 +65,7 @@ local T = require "compiler.types"
 local ast = require "compiler.ast"
 require "compiler.builtins"
 require "compiler.relations"
-require "compiler.ufunc"
+require "compiler.ufversions"
 
 local semant  = require "compiler.semant"
 local phase   = require "compiler.phase"
