@@ -36,8 +36,8 @@ ArgLayout.__index = ArgLayout
 
 LAUNCH_TIMER = 0
 function UFVersion:Execute()
-  if not self:IsCompiled() then
-    error('Cannot Execute() uncompiled UFVersion', 2)
+  if not self:isCompiled() then
+    self:Compile()
   end
 
   -- Regardless of the caching, we need to make sure
@@ -69,7 +69,7 @@ function UFVersion:Execute()
 end
 
 -- Define ways of inspecting high-level UFVersion state/modes
-function UFVersion:IsCompiled()
+function UFVersion:isCompiled()
   return nil ~= self._executable
 end
 function UFVersion:UsesInsert()
@@ -101,9 +101,10 @@ end
 --[[ UF Compilation                                                        ]]--
 --                  ---------------------------------------                  --
 
-NUM_COMPILES = 0
-function UFVersion:_Compile(typed_ast, phase_data)
-  --NUM_COMPILES = NUM_COMPILES + 1
+function UFVersion:Compile()
+  local typed_ast   = self._typed_ast
+  local phase_data  = self._phase_data
+
   self._arg_layout = ArgLayout.New()
   self._arg_layout:setRelation(self._relation)
 

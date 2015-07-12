@@ -245,7 +245,7 @@ local function pairs_sorted(tbl, compare)
   return iter
 end
 
-function L.LUserFunc:_get_typechecked(relset, strargs)
+function L.LUserFunc:_get_typechecked(calldepth, relset, strargs)
   -- lookup based on relation, not subset
   local relation = relset
   if L.is_subset(relset) then relation = relset:Relation() end
@@ -267,7 +267,8 @@ function L.LUserFunc:_get_typechecked(relset, strargs)
     local arel = annotation.relation
     if arel ~= relation then
       error('The supplied relation did not match the parameter '..
-            'annotation:\n  '..relation:Name()..' vs. '..arel:Name(), 4)
+            'annotation:\n  '..relation:Name()..' vs. '..arel:Name(),
+            calldepth)
     end
   else
     -- add an annotation if none was present
@@ -279,7 +280,7 @@ function L.LUserFunc:_get_typechecked(relset, strargs)
     local annotation = aname_ast.ptypes[i+1]
     if annotation then
       error('Secondary string arguments to functions should be '..
-            'untyped arguments', 4)
+            'untyped arguments', calldepth)
     end
     aname_ast.ptypes[i+1] = L.internal(str)
   end
@@ -329,9 +330,8 @@ local function get_ufunc_version(ufunc, typeversion_table, relset, params)
   -- if the lookup failed, then we need to construct a new
   -- version matching this signature
   version = L.NewUFVersion(ufunc, sig)
-  local typed_ast     = typeversion_table.typed_ast
-  local phase_results = typeversion_table.phase_results
-  version:_Compile(typed_ast, phase_results)
+  version._typed_ast  = typeversion_table.typed_ast
+  version._phase_data = typeversion_table.phase_results
 
   -- and make sure to cache it
   typeversion_table.versions[str_sig] = version
@@ -339,14 +339,14 @@ local function get_ufunc_version(ufunc, typeversion_table, relset, params)
   return version
 end
 
-EXEC_TIMER = 0
-function L.LUserFunc:doForEach(relset, ...)
-  self:_doForEach(relset, ...)
+-- this will cause typechecking to fire
+function L.LUserFunc:GetVersion(relset, ...)
+  self:_Get_Version(3, relset, ...)
 end
-function L.LUserFunc:_doForEach(relset, ...)
+function L.LUserFunc:_Get_Version(calldepth, relset, ...)
   if not (L.is_subset(relset) or L.is_relation(relset)) then
     error('Functions must be executed over a relation or subset, but '..
-          'argument was neither: '..tostring(relset), 3)
+          'argument was neither: '..tostring(relset), calldepth)
   end
 
   -- unpack direct arguments and/or launch parameters
@@ -363,26 +363,42 @@ function L.LUserFunc:_doForEach(relset, ...)
   local narg_expected = #self._decl_ast.params - 1
   if narg_expected ~= #args then
     error('Function was expecting '..tostring(narg_expected)..
-          ' arguments, but got '..tostring(#args), 3)
+          ' arguments, but got '..tostring(#args), calldepth)
   end
   -- Also, right now we restrict all secondary arguments to be strings
   for i,a in ipairs(args) do
     if type(a) ~= 'string' then
       error('Argument '..tostring(i)..' was expected to be a string; '..
             'Secondary arguments to functions mapped over relations '..
-            'must be strings.', 3)
+            'must be strings.', calldepth)
     end
   end
   if self._decl_ast.exp then
-    error('Functions executed over relations should not return values', 3)
+    error('Functions executed over relations should not return values',
+          calldepth)
   end
 
   -- get the appropriately typed version of the function
   -- and a collection of all the versions associated with it...
-  local typeversion = self:_get_typechecked(relset, args)
+  local typeversion = self:_get_typechecked(calldepth+1, relset, args)
 
   -- now we either retreive or construct the appropriate function version
   local version = get_ufunc_version(self, typeversion, relset, params)
+
+  return version
+end
+
+function L.LUserFunc:Compile(relset, ...)
+  local version = self:_Get_Version(3, relset, ...)
+  version:Compile()
+end
+
+EXEC_TIMER = 0
+function L.LUserFunc:doForEach(relset, ...)
+  self:_doForEach(relset, ...)
+end
+function L.LUserFunc:_doForEach(relset, ...)
+  local version = self:_Get_Version(4, relset, ...)
 
   --local preexectime = terralib.currenttimeinseconds()
   version:Execute()
