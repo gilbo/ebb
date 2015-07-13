@@ -40,6 +40,8 @@ function UFVersion:Execute()
     self:Compile()
   end
 
+  self._exec_timer:start()
+
   -- Regardless of the caching, we need to make sure
   -- that the current state of the system and relevant data safely allows
   -- us to launch the UFunc.  This might include checks to make sure that
@@ -66,6 +68,7 @@ function UFVersion:Execute()
   -- any such computations.
   self:_PostLaunchCleanup()
 
+  self._exec_timer:stop()
 end
 
 -- Define ways of inspecting high-level UFVersion state/modes
@@ -102,6 +105,8 @@ end
 --                  ---------------------------------------                  --
 
 function UFVersion:Compile()
+  self._compile_timer:start()
+
   local typed_ast   = self._typed_ast
   local phase_data  = self._phase_data
 
@@ -138,6 +143,8 @@ function UFVersion:Compile()
   else
     error("INTERNAL: IMPOSSIBLE BRANCH")
   end
+
+  self._compile_timer:stop()
 end
 
 function UFVersion:_CompileFieldsGlobalsSubsets(phase_data)

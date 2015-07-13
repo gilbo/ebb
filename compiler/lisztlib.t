@@ -69,6 +69,7 @@ require "compiler.ufversions"
 
 local semant  = require "compiler.semant"
 local phase   = require "compiler.phase"
+local Stats   = require "compiler.stats"
 
 -------------------------------------------------------------------------------
 --[[ LGlobals:                                                             ]]--
@@ -218,7 +219,9 @@ end
 
 function L.NewUFVersion(ufunc, signature)
   local version = setmetatable({
-    _ufunc    = ufunc,
+    _ufunc          = ufunc,
+    _compile_timer  = Stats.NewTimer(ufunc._name..'_compile_time'),
+    _exec_timer     = Stats.NewTimer(ufunc._name..'_execution_time'),
   }, UFVersion)
 
   for k,v in pairs(signature) do
@@ -343,6 +346,15 @@ end
 function L.LUserFunc:GetVersion(relset, ...)
   self:_Get_Version(3, relset, ...)
 end
+function L.LUserFunc:GetAllVersions()
+  local vs = {}
+  for _,typeversion in pairs(self._versions) do
+    for _,version in pairs(typeversion.versions) do
+      table.insert(vs, version)
+    end
+  end
+  return vs
+end
 function L.LUserFunc:_Get_Version(calldepth, relset, ...)
   if not (L.is_subset(relset) or L.is_relation(relset)) then
     error('Functions must be executed over a relation or subset, but '..
@@ -400,13 +412,28 @@ end
 function L.LUserFunc:_doForEach(relset, ...)
   local version = self:_Get_Version(4, relset, ...)
 
-  --local preexectime = terralib.currenttimeinseconds()
   version:Execute()
-  --EXEC_TIMER = EXEC_TIMER + (terralib.currenttimeinseconds() - preexectime)
 end
 
 
-
+function L.LUserFunc:getCompileTime()
+  local versions  = self:GetAllVersions()
+  local sumtime   = Stats.NewTimer('')
+  for _,vs in ipairs(versions) do
+    sumtime = sumtime + vs._compile_timer
+  end
+  sumtime:setName(self._name..'_compile_time')
+  return sumtime
+end
+function L.LUserFunc:getExecutionTime()
+  local versions  = self:GetAllVersions()
+  local sumtime   = Stats.NewTimer('')
+  for _,vs in ipairs(versions) do
+    sumtime = sumtime + vs._exec_timer
+  end
+  sumtime:setName(self._name..'_execution_time')
+  return sumtime
+end
 
 
 
