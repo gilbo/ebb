@@ -1300,6 +1300,9 @@ local function printStats()
   grid.cells:MoveTo(L.CPU)
   local finalEnergy = grid.cells.e:DataPtr()[0]
   print("   Final origin energy = " .. tostring(finalEnergy))
+
+  print()
+  L.PrintStats()
 end
 
 

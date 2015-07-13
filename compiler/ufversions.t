@@ -34,11 +34,12 @@ ArgLayout.__index = ArgLayout
 -------------------------------------------------------------------------------
 
 
-LAUNCH_TIMER = 0
 function UFVersion:Execute()
   if not self:isCompiled() then
     self:Compile()
   end
+
+  UFVersion._total_function_launch_count:increment()
 
   self._exec_timer:start()
 
