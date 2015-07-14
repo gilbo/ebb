@@ -538,38 +538,6 @@ end
 ]]
 
 
-
-
-
-
--------------------------------------------------------------------------------
---[[                    Privilege and coherence values                     ]]--
--------------------------------------------------------------------------------
-
--- There are more privileges in Legion, like write discard. We should separate
--- exclusive into read_write and write_discard for better performance.
-LW.privilege = {
-  EXCLUSIVE           = LW.READ_WRITE,
-  READ                = LW.READ_ONLY,
-  READ_OR_EXCLUSIVE   = LW.READ_WRITE,
-  REDUCE              = LW.REDUCE,
-  REDUCE_OR_EXCLUSIVE = LW.REDUCE,
-}
-
--- TODO: How should we use this? Right now, read/ exclusive use EXCLUSIVE,
--- reduction uses ATOMIC.
-LW.coherence = {
-  EXCLUSIVE           = LW.EXCLUSIVE,
-  READ                = LW.EXCLUSIVE,
-  READ_OR_EXCLUSIVE   = LW.EXCLUSIVE,
-  REDUCE              = LW.REDUCE,
-  REDUCE_OR_EXCLUSIVE = LW.REDUCE,
-}
-
-
-
-
-
 ---------------------)(Q#$&Y@)#*$(*&_)@----------------------------------------
 --[[         GILBERT added this to make field loading work.                ]]--
 --[[           Think of this as a workspace, not final organization        ]]--

@@ -147,6 +147,25 @@ function UFVersion:Compile()
   self._compile_timer:stop()
 end
 
+--  We do not use write discard and reduce privileges in Legion right now. When
+--  we do use those features, record_permission should be updated to reflect
+--  the correct privileges and coherence values.
+local function record_permission(reg_data, use)
+  if use:isReadOnly() then
+    reg_data.privilege = LW.READ_ONLY
+  else
+    reg_data.privilege = LW.READ_WRITE
+  end
+  reg_data.coherence   = LW.EXCLUSIVE
+end
+
+-- Set privilege to read, coherence to exclusive, useful for primary and
+-- boolmasks.
+local function record_read(reg_data)
+  reg_data.privilege = LW.READ_WRITE
+  reg_data.coherence = LW.EXCLUSIVE
+end
+
 function UFVersion:_CompileFieldsGlobalsSubsets(phase_data)
   -- initialize id structures
   self._field_ids    = {}
@@ -165,13 +184,20 @@ function UFVersion:_CompileFieldsGlobalsSubsets(phase_data)
     self._future_nums  = {}
     self._n_futures    = 0
 
-    self:_getPrimaryRegionData()
+    local reg_data = self:_getPrimaryRegionData()
+    record_read(reg_data)
   end
 
   -- reserve ids
   self._field_use = phase_data.field_use
-  for field, _ in pairs(self._field_use) do
+  for field, use in pairs(self._field_use) do
     self:_getFieldId(field)
+    -- record region data for legion
+    -- (logical region, region number, permission)
+    if use_legion then
+      local reg_data = self:_getRegionData(field)
+      record_permission(reg_data, use)
+    end
   end
   if self:overElasticRelation() then
     if use_legion then error("LEGION UNSUPPORTED TODO") end
@@ -180,6 +206,10 @@ function UFVersion:_CompileFieldsGlobalsSubsets(phase_data)
   if self:isOverSubset() then
     if self._subset._boolmask then
       self:_getFieldId(self._subset._boolmask)
+      if use_legion then
+        local reg_data = self:_getRegionData(self._subset._boolmask)
+        record_read(reg_data)
+      end
       self._compiled_with_boolmask = true
     end
   end
@@ -276,8 +306,6 @@ function UFVersion:_getFieldId(field)
   else
     id = 'field_'..tostring(self._n_field_ids)..'_'..field:Name()
     self._n_field_ids = self._n_field_ids+1
-
-    if use_legion then self:_getRegionData(field) end
 
     self._field_ids[field] = id
     self._arg_layout:addField(id, field)
@@ -950,8 +978,8 @@ function UFVersion:_CreateLegionTaskLauncher(task_func)
   -- NOTE: Need to make sure to do this in the right order
   for ri, datum in pairs(self._sorted_region_data) do
     local reg_req = task_launcher:AddRegionReq(datum.wrapper,
-                                               LW.READ_WRITE,
-                                               LW.EXCLUSIVE)
+                                               datum.privilege,
+                                               datum.coherence)
     assert(reg_req == ri)
   end
 
