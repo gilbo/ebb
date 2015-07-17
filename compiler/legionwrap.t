@@ -337,12 +337,12 @@ function LogicalRegion:AllocateRows(num)
   if self.type ~= 'unstructured' then
     error("Cannot allocate rows for grid relation ", self.relation:Name(), 3)
   else
-    if self.rows_live + num > self.rows_max then
+    if self.live_rows + num > self.max_rows then
       error("Cannot allocate more rows for relation ", self.relation:Name())
     end
   end
   LW.legion_index_allocator_alloc(self.isa, num)
-  self.rows_live = self.rows_live + num
+  self.live_rows = self.live_rows + num
 end
 
 local allocate_field_fid_counter = 0
@@ -403,14 +403,14 @@ function LW.NewLogicalRegion(params)
               relation  = params.relation,
               field_ids = 0,
               n_rows    = params.n_rows,
-              rows_live = 0,
-              rows_max  = params.n_rows
+              live_rows = 0,
+              max_rows  = params.n_rows
             }
-  l.is = Create1DGridIndexSpace(l.n_rows)
-  --l.is  = LW.legion_index_space_create(legion_env.runtime,
-  --                                     legion_env.ctx, l.n_rows)
-  --l.isa = LW.legion_index_allocator_create(legion_env.runtime,
-  --                                         legion_env.ctx, l.is)
+  --l.is = Create1DGridIndexSpace(l.n_rows)
+  l.is  = LW.legion_index_space_create(legion_env.runtime,
+                                       legion_env.ctx, l.max_rows)
+  l.isa = LW.legion_index_allocator_create(legion_env.runtime,
+                                           legion_env.ctx, l.is)
   -- field space
   l.fs  = LW.legion_field_space_create(legion_env.runtime,
                                        legion_env.ctx)
@@ -421,7 +421,7 @@ function LW.NewLogicalRegion(params)
                                              legion_env.ctx, l.is, l.fs)
   setmetatable(l, LogicalRegion)
   -- actually allocate rows
-  --l:AllocateRows(l.n_rows)
+  l:AllocateRows(l.n_rows)
   return l
 end
 

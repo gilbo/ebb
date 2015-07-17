@@ -1026,24 +1026,25 @@ end
 -- custom argument layout structure.  This allows us to write
 -- the body of generated code in a way that's agnostic to whether
 -- the code is being executed in a Legion task or not.
+
 function UFVersion:_GenerateUnpackLegionTaskArgs(argsym, task_args)
-  local ufv = self
-  
   local LegionRect = {}
   local LegionGetRectFromDom = {}
   local LegionRawPtrFromAcc = {}
-
+  
   LegionRect[1] = LW.legion_rect_1d_t
   LegionRect[2] = LW.legion_rect_2d_t
   LegionRect[3] = LW.legion_rect_3d_t
-
+  
   LegionGetRectFromDom[1] = LW.legion_domain_get_rect_1d
   LegionGetRectFromDom[2] = LW.legion_domain_get_rect_2d
   LegionGetRectFromDom[3] = LW.legion_domain_get_rect_3d
-
+  
   LegionRawPtrFromAcc[1] = LW.legion_accessor_generic_raw_rect_ptr_1d
   LegionRawPtrFromAcc[2] = LW.legion_accessor_generic_raw_rect_ptr_2d
   LegionRawPtrFromAcc[3] = LW.legion_accessor_generic_raw_rect_ptr_3d
+
+  local ufv = self
 
   -- temporary collection of symbols from unpacking the regions
   local region_temporaries = {}
@@ -1053,16 +1054,16 @@ function UFVersion:_GenerateUnpackLegionTaskArgs(argsym, task_args)
     -- UNPACK REGIONS
     escape for ri, datum in pairs(ufv._sorted_region_data) do
       local reg_dim       = datum.wrapper.dimensions
-      -- KLUDGE cause of WRAPPER
-      if not reg_dim then reg_dim = 1 end
       local physical_reg  = symbol(LW.legion_physical_region_t)
-      local rect          = symbol(LegionRect[reg_dim])
-      local rectFromDom   = LegionGetRectFromDom[reg_dim]
+      local domain        = symbol(LW.legion_domain_t)
+
+      local rect          = reg_dim and symbol(LegionRect[reg_dim]) or nil
+      local rectFromDom   = reg_dim and LegionGetRectFromDom[reg_dim] or nil
 
       region_temporaries[ri] = {
         physical_reg  = physical_reg,
-        reg_dim       = reg_dim,
-        rect          = rect
+        reg_dim       = reg_dim,  -- nil for unstructured
+        rect          = rect      -- nil for unstructured
       }
 
       emit quote
@@ -1070,22 +1071,34 @@ function UFVersion:_GenerateUnpackLegionTaskArgs(argsym, task_args)
         var index_space     =
           LW.legion_physical_region_get_logical_region(
                                            physical_reg).index_space
-        var domain          =
+        var [domain]        =
           LW.legion_index_space_get_domain([task_args].lg_runtime,
                                            [task_args].lg_ctx,
                                            index_space)
-        var [rect]          = rectFromDom(domain)
       end
+      -- structured case
+      if reg_dim then emit quote
+        var [rect]          = rectFromDom([domain])
+      end end
     end end
 
     -- UNPACK PRIMARY REGION BOUNDS RECTANGLE
     escape
       local ri    = ufv:_getPrimaryRegionData().num
       local rect  = region_temporaries[ri].rect
-      local ndims = region_temporaries[ri].reg_dim
-      for i=1,ndims do emit quote
-        [argsym].bounds[i-1].lo = rect.lo.x[i-1]
-        [argsym].bounds[i-1].hi = rect.hi.x[i-1]
+      -- structured
+      if rect then
+        local ndims = region_temporaries[ri].reg_dim
+        for i=1,ndims do emit quote
+          [argsym].bounds[i-1].lo = rect.lo.x[i-1]
+          [argsym].bounds[i-1].hi = rect.hi.x[i-1]
+        end end
+      -- unstructured
+      else emit quote
+        -- TODO(chinmayee): how do we get the number of rows for unstructured
+        -- case?
+        [argsym].bounds[0].lo = 0
+        [argsym].bounds[0].hi = [ufv:_getPrimaryRegionData().wrapper.live_rows] - 1 -- bound is 1 off: the actual highest index value
       end end
     end
     
@@ -1096,8 +1109,8 @@ function UFVersion:_GenerateUnpackLegionTaskArgs(argsym, task_args)
       local reg_dim       = rtemp.reg_dim
       local rect          = rtemp.rect
 
-
-      emit quote
+      -- structured
+      if reg_dim then emit quote
         var field_accessor =
           LW.legion_physical_region_get_field_accessor_generic(
                                               physical_reg, [field.fid])
@@ -1108,6 +1121,20 @@ function UFVersion:_GenerateUnpackLegionTaskArgs(argsym, task_args)
                               field_accessor, rect, &subrect, strides))
         [argsym].[farg_name] = [ LW.FieldAccessor[reg_dim] ] { base, strides }
       end
+      -- unstructured
+      else emit quote
+        var field_accessor =
+          LW.legion_physical_region_get_field_accessor_generic(
+                                              physical_reg, [field.fid])
+        var base : &opaque
+        -- TODO(chinmayee): size_t in terra?
+        var stride_val : uint64 = 0
+        var ok = LW.legion_accessor_generic_get_soa_parameters(
+          field_accessor, &base, &stride_val)
+        var strides : LW.legion_byte_offset_t[1]
+        strides[0].offset = (stride_val)
+        [argsym].[farg_name] = [ LW.FieldAccessor[1] ] { [&uint8](base), strides }
+      end end
     end end
     end -- closing do started before unpacking the regions
 
