@@ -103,24 +103,32 @@ local cuda_success, cuda_version =
   pcall(function() return cudalib.localversion() end)
 cuda_version = cuda_success and cuda_version or 30
 
+local externcall = terralib.externfunction
 local libdevice = terralib.cudahome..
   string.format("/nvvm/libdevice/libdevice.compute_%d.10.bc",cuda_version)
-terralib.linklibrary(libdevice)
+if terralib.linkllvm then
+  local llvmbc = terralib.linkllvm(libdevice)
+  externcall = function(name, ftype)
+    return llvmbc:extern(name, ftype)
+  end
+else
+  terralib.linklibrary(libdevice)
+end
 
-local cbrt = terralib.externfunction("__nv_cbrt", double -> double)
-local sqrt = terralib.externfunction("__nv_sqrt", double -> double)
-local cos  = terralib.externfunction("__nv_cos",  double -> double)
-local acos = terralib.externfunction("__nv_acos", double -> double)
-local sin  = terralib.externfunction("__nv_sin",  double -> double)
-local asin = terralib.externfunction("__nv_asin", double -> double)
-local tan  = terralib.externfunction("__nv_tan",  double -> double)
-local atan = terralib.externfunction("__nv_atan", double -> double)
-local log  = terralib.externfunction("__nv_log",  double -> double)
-local pow  = terralib.externfunction("__nv_pow",  {double, double} -> double)
-local fmod = terralib.externfunction("__nv_fmod", {double, double} -> double)
-local floor  = terralib.externfunction("__nv_floor", double -> double)
-local ceil = terralib.externfunction("__nv_ceil", double -> double)
-local fabs = terralib.externfunction("__nv_fabs", double -> double)
+local cbrt  = externcall("__nv_cbrt", double -> double)
+local sqrt  = externcall("__nv_sqrt", double -> double)
+local cos   = externcall("__nv_cos",  double -> double)
+local acos  = externcall("__nv_acos", double -> double)
+local sin   = externcall("__nv_sin",  double -> double)
+local asin  = externcall("__nv_asin", double -> double)
+local tan   = externcall("__nv_tan",  double -> double)
+local atan  = externcall("__nv_atan", double -> double)
+local log   = externcall("__nv_log",  double -> double)
+local pow   = externcall("__nv_pow",  {double, double} -> double)
+local fmod  = externcall("__nv_fmod", {double, double} -> double)
+local floor = externcall("__nv_floor", double -> double)
+local ceil  = externcall("__nv_ceil", double -> double)
+local fabs  = externcall("__nv_fabs", double -> double)
 
 
 local terra popc_b32(bits : uint32) : uint32
