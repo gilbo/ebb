@@ -1,7 +1,8 @@
 import "compiler.liszt"
 
-local print, assert, dot, cross, length = L.print, L.assert, L.dot, L.cross, L.length
-local sqrt = terralib.includec('math.h').sqrt
+local print, assert, dot, cross, length =
+  L.print, L.assert, L.dot, L.cross, L.length
+local sqrt = L.sqrt
 local R = L.NewRelation { name="R", size=6 }
 
 local v1 = L.Constant(L.vec3f, {1, 2, 3})

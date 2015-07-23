@@ -130,6 +130,9 @@ local floor = externcall("__nv_floor", double -> double)
 local ceil  = externcall("__nv_ceil", double -> double)
 local fabs  = externcall("__nv_fabs", double -> double)
 
+local fmin  = externcall("__nv_fmin", {double,double} -> double)
+local fmax  = externcall("__nv_fmax", {double,double} -> double)
+
 
 local terra popc_b32(bits : uint32) : uint32
   return terralib.asm(terralib.types.uint32,
@@ -500,6 +503,9 @@ GPU.fabs  = fabs
 GPU.log   = log
 GPU.pow   = pow
 GPU.fmod  = fmod
+
+GPU.fmin  = fmin
+GPU.fmax  = fmax
 
 -- Intrinsic atomic reductions:
 GPU.atomic_add_float = atomic_add_float

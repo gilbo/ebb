@@ -131,12 +131,9 @@ end
 --[[                         Utility Functions                          ]]--
 --[[--------------------------------------------------------------------]]--
 
-local fmin = terralib.externfunction("__nv_fmin", {double,double} -> double)
-local fmax = terralib.externfunction("__nv_fmax", {double,double} -> double)
-
 local minexp = macro(function(lhe,rhe)
     if lhe:gettype() == double and L.default_processor == L.GPU then
-        return `fmin(lhe,rhe)
+        return `G.fmin(lhe,rhe)
     else 
       return quote
         var a = [lhe]
@@ -151,7 +148,7 @@ end)
 
 local maxexp = macro(function(lhe,rhe)
     if lhe:gettype() == double and L.default_processor == L.GPU then
-        return `fmax(lhe,rhe)
+        return `G.fmax(lhe,rhe)
     else 
       return quote
         var a = [lhe]
