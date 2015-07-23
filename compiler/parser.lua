@@ -143,6 +143,10 @@ lang.simpleexp = function(P)
     node.name = P:next().value
     P:ref(node.name)
     return node
+  elseif P:matches(P.string) then
+    local node     = ast.String:New(P)
+    node.value     = P:next().value
+    return node
   elseif P:matches(P.number) then
     local node     = ast.Number:New(P)
     local token    = P:next()

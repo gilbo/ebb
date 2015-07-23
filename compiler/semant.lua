@@ -814,9 +814,15 @@ function ast.Number:check(ctxt)
 end
 
 function ast.Bool:check(ctxt)
-    local boolnode     = self:clone()
-    boolnode.node_type = L.bool
+    local boolnode      = self:clone()
+    boolnode.node_type  = L.bool
     return boolnode
+end
+
+function ast.String:check(ctxt)
+    local strnode       = self:clone()
+    strnode.node_type   = L.internal(self.value)
+    return strnode
 end
 
 function convert_to_matrix_literal(literal, ctxt)
@@ -1040,26 +1046,32 @@ local function RunMacro(ctxt,src_node,the_macro,params)
     local param_syms   = {}
     local declarations = {}
     for i, p_ast in ipairs(params) do
-        local decl       = ast.DeclStatement:DeriveFrom(src_node)
-        decl.name        = ast.GenSymbol('_macro_arg_'..tostring(i))
-        decl.initializer = p_ast
-        decl.node_type   = p_ast.node_type
+        local ptype     = p_ast.node_type
+        -- exception for strings
+        if ptype:isInternal() and type(ptype.value) == 'string' then
+            param_syms[i]   = ptype.value
+        else
+            local decl       = ast.DeclStatement:DeriveFrom(src_node)
+            decl.name        = ast.GenSymbol('_macro_arg_'..tostring(i))
+            decl.initializer = p_ast
+            decl.node_type   = p_ast.node_type
 
-        local n     = ast.Name:DeriveFrom(p_ast)
-        n.name      = decl.name
-        n.node_type = p_ast.node_type
+            local n     = ast.Name:DeriveFrom(p_ast)
+            n.name      = decl.name
+            n.node_type = p_ast.node_type
 
-        local q = ast.Quote:DeriveFrom(p_ast)
-        q.code = n
-        q.node_type = n.node_type
+            local q = ast.Quote:DeriveFrom(p_ast)
+            q.code = n
+            q.node_type = n.node_type
 
-        if p_ast.is_centered then
-            n.is_centered = true
-            q.is_centered = true
+            if p_ast.is_centered then
+                n.is_centered = true
+                q.is_centered = true
+            end
+
+            table.insert(declarations, decl)
+            param_syms[i]   = q
         end
-
-        declarations[i] = decl
-        param_syms[i]   = q
     end
 
     local result = the_macro.genfunc(unpack(param_syms))
@@ -1101,11 +1113,19 @@ local function InlineUserFunc(ctxt, src_node, the_func, param_asts)
 
     -- bind params to variables (use a quote to fake it?)
     local statements = {}
+    local string_literals = {}
     for i,p_ast in ipairs(QuoteParams(param_asts)) do
-        local decl = ast.DeclStatement:DeriveFrom(src_node)
-        decl.name = f.params[i]
-        decl.initializer = p_ast
-        statements[i] = decl
+        -- exception for strings
+        local ptype     = param_asts[i].node_type
+        local argname   = f.params[i]
+        if ptype:isInternal() and type(ptype.value) == 'string' then
+            string_literals[argname] = ptype
+        else
+            local decl = ast.DeclStatement:DeriveFrom(src_node)
+            decl.name = argname
+            decl.initializer = p_ast
+            table.insert(statements, decl)
+        end
     end
 
     -- now add the function body statements to the list
@@ -1138,12 +1158,17 @@ local function InlineUserFunc(ctxt, src_node, the_func, param_asts)
         expansion.node_type = L.internal('no-return function')
     end
 
-    -- wrap up in a quote
+    -- wrap up in a quote and typecheck
     local q = ast.Quote:DeriveFrom(src_node)
     q.code = expansion
+    ctxt:enterblock()
+        for name,strtype in pairs(string_literals) do
+            ctxt:liszt()[name] = strtype
+        end
+        local qchecked = q:check(ctxt)
+    ctxt:leaveblock()
 
-    -- return the result of typechecking the quote we built
-    return q:check(ctxt)
+    return qchecked
 end
 
 function ast.TableLookup:check(ctxt)
@@ -1209,10 +1234,9 @@ function ast.TableLookup:check(ctxt)
 
 end
 
-function ast.SquareIndex:check(ctxt)
+local function SqIdxVecMat(self, base, ctxt)
     -- mutate squareindex into a node of type base
 
-    local base  = self.base:check(ctxt)
     local sqidx = nil
     if base:is(ast.FieldAccess) then
         sqidx = ast.FieldAccessIndex:DeriveFrom(base)
@@ -1265,6 +1289,44 @@ function ast.SquareIndex:check(ctxt)
     if base.is_lvalue then sqidx.is_lvalue = true end
     sqidx.node_type = btyp:baseType()
     return sqidx
+end
+
+local function SqIdxKey(self, base, ctxt)
+    local lookup    = ast.TableLookup:DeriveFrom(self)
+    lookup.table    = self.base -- assign unchecked version...
+
+    -- make sure we have a string we're indexing with
+    local stringobj = self.index:check(ctxt)
+    local stype     = stringobj.node_type
+    if not stype:isInternal() or type(stype.value) ~= 'string' then
+        ctxt:error(self.index, 'Expecting string literal to index key')
+        lookup.node_type = L.error
+        return lookup
+    end
+    local str = stype.value
+
+    -- re-direct to the full table-lookup logic
+    lookup.member   = str
+    return lookup:check(ctxt)
+end
+
+function ast.SquareIndex:check(ctxt)
+    -- Square indices come up in two cases:
+    --  1. vector or matrix entries being extracted
+    --  2. accessing fields from a key using a string literal
+    
+    local base  = self.base:check(ctxt)
+    if base.node_type:isMatrix() or base.node_type:isVector() then
+        return SqIdxVecMat(self, base, ctxt)
+    elseif base.node_type:isScalarKey() then
+        return SqIdxKey(self, base, ctxt)
+    else
+        ctxt:error(base, 'type '..base.node_type:toString()..
+                    ' does not support indexing with square brackets []')
+        local errnode = ast.SquareIndex:DeriveFrom(self)
+        errnode.node_type = L.error
+        return errnode
+    end
 end
 
 function ast.Call:check(ctxt)
@@ -1419,19 +1481,38 @@ end
 -- only makes sense to type-check as a top-level execution right now...
 function ast.UserFunction:check(ctxt)
     local ufunc                 = self:clone()
-    local param                 = self.params[1]
-    local ptype                 = self.ptypes[1]
-    ufunc.params                = { param }
-    ufunc.ptypes                = { ptype }
+    local keyparam              = self.params[1]
+    local keytype               = self.ptypes[1]
+    if not keytype:isScalarKey() then
+        ctxt:error(self, 'First argument to function must have key type')
+        return self
+    end
+    -- record the first parameter in the context
+    ctxt:recordcenter(keyparam)
+    ctxt:liszt()[keyparam]      = keytype
 
-    -- TODO: double check things here?
-    --      #param == 1
-    --      ptype is a scalarkey
-    --      self has no self.exp to return
+    for i=2,#self.params do
+        local pname = self.params[i]
+        local ptype = self.ptypes[i]
+        if not ptype:isInternal() or type(ptype.value) ~= 'string' then
+            ctxt:error(self, 'Expected secondary arguments to be strings')
+            ptype = L.error
+        end
+        ctxt:liszt()[pname]     = ptype
+    end
+
+    -- double-check that there's no return value; redundant
+    if self.exp then
+        ctxt:error(self, 'A mapped function may not return a value')
+        return self
+    end
+
+    -- discard the string arguments, because type-checking
+    -- will substitute them into the AST directly
+    ufunc.params                = { keyparam }
+    ufunc.ptypes                = { keytype }
     
-    ufunc.relation              = ptype.relation
-    ctxt:recordcenter(param)
-    ctxt:liszt()[param]         = ptype
+    ufunc.relation              = keytype.relation
     ufunc.body                  = self.body:check(ctxt)
 
     return ufunc

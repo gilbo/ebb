@@ -65,10 +65,11 @@ local T = require "compiler.types"
 local ast = require "compiler.ast"
 require "compiler.builtins"
 require "compiler.relations"
-require "compiler.ufunc"
+require "compiler.ufversions"
 
 local semant  = require "compiler.semant"
 local phase   = require "compiler.phase"
+local Stats   = require "compiler.stats"
 
 -------------------------------------------------------------------------------
 --[[ LGlobals:                                                             ]]--
@@ -218,7 +219,9 @@ end
 
 function L.NewUFVersion(ufunc, signature)
   local version = setmetatable({
-    _ufunc    = ufunc,
+    _ufunc          = ufunc,
+    _compile_timer  = Stats.NewTimer(ufunc._name..'_compile_time'),
+    _exec_timer     = Stats.NewTimer(ufunc._name..'_execution_time'),
   }, UFVersion)
 
   for k,v in pairs(signature) do
@@ -245,48 +248,57 @@ local function pairs_sorted(tbl, compare)
   return iter
 end
 
-function L.LUserFunc:_get_typechecked(relset)
-  -- lookup based on relation
+function L.LUserFunc:_get_typechecked(calldepth, relset, strargs)
+  -- lookup based on relation, not subset
   local relation = relset
   if L.is_subset(relset) then relation = relset:Relation() end
-  local lookup = self._versions[relation]
+  -- build lookup key string
+  local keystr = tostring(relset)
+  for _,arg in ipairs(strargs) do   keystr = keystr..','..arg   end
+  -- and perform lookup
+  local lookup = self._versions[keystr]
   if lookup then return lookup end
 
   -- Otherwise, the Lookup failed, so...
 
-  -- check that this function makes sense to use as top-level entry
-  if #self._decl_ast.params ~= 1 or self._decl_ast.exp then
-    error('In order to execute a function over a relation or subset, the '..
-          'function must have exactly 1 argument and no return value', 4)
-  end
-
   -- make a safe copy that we can explicitly type annotate
   local aname_ast     = self._decl_ast:alpha_rename()
 
-  -- check the annotation for consistency with the argument
+  -- process the first argument's type annotation.  Consistent? Present?
   local annotation    = aname_ast.ptypes[1]
   if annotation then
     local arel = annotation.relation
     if arel ~= relation then
       error('The supplied relation did not match the parameter '..
-            'annotation:\n  '..relation:Name()..' vs. '..arel:Name(), 4)
+            'annotation:\n  '..relation:Name()..' vs. '..arel:Name(),
+            calldepth)
     end
   else
     -- add an annotation if none was present
     aname_ast.ptypes[1] = L.key(relation)
   end
 
+  -- process the remaining arguments' type annotations.
+  for i,str in ipairs(strargs) do
+    local annotation = aname_ast.ptypes[i+1]
+    if annotation then
+      error('Secondary string arguments to functions should be '..
+            'untyped arguments', calldepth)
+    end
+    aname_ast.ptypes[i+1] = L.internal(str)
+  end
+
   -- now actually type and phase check
   local typed_ast     = semant.check( aname_ast )
   local phase_results = phase.phasePass( typed_ast )
 
-  -- cache the computation
+  -- cache the type/phase-checking computations
   local cached = {
     typed_ast       = typed_ast,
     phase_results   = phase_results,
     versions        = {},
   }
-  self._versions[relation] = cached
+  self._versions[keystr] = cached
 
   return cached
 end
@@ -321,9 +333,8 @@ local function get_ufunc_version(ufunc, typeversion_table, relset, params)
   -- if the lookup failed, then we need to construct a new
   -- version matching this signature
   version = L.NewUFVersion(ufunc, sig)
-  local typed_ast     = typeversion_table.typed_ast
-  local phase_results = typeversion_table.phase_results
-  version:_Compile(typed_ast, phase_results)
+  version._typed_ast  = typeversion_table.typed_ast
+  version._phase_data = typeversion_table.phase_results
 
   -- and make sure to cache it
   typeversion_table.versions[str_sig] = version
@@ -331,32 +342,98 @@ local function get_ufunc_version(ufunc, typeversion_table, relset, params)
   return version
 end
 
-EXEC_TIMER = 0
-function L.LUserFunc:doForEach(relset, params)
-  self:_doForEach(relset, params)
+-- this will cause typechecking to fire
+function L.LUserFunc:GetVersion(relset, ...)
+  self:_Get_Version(3, relset, ...)
 end
-function L.LUserFunc:_doForEach(relset, params)
-  if #self._decl_ast.params ~= 1 or self._decl_ast.exp then
+function L.LUserFunc:GetAllVersions()
+  local vs = {}
+  for _,typeversion in pairs(self._versions) do
+    for _,version in pairs(typeversion.versions) do
+      table.insert(vs, version)
+    end
   end
+  return vs
+end
+function L.LUserFunc:_Get_Version(calldepth, relset, ...)
   if not (L.is_subset(relset) or L.is_relation(relset)) then
     error('Functions must be executed over a relation or subset, but '..
-          'argument was neither: '..tostring(relset), 3)
+          'argument was neither: '..tostring(relset), calldepth)
+  end
+
+  -- unpack direct arguments and/or launch parameters
+  local args    = {...}
+  local params  = {}
+  if type(args[#args]) == 'table' then
+    params = args[#args]
+    args[#args] = nil
+  end
+
+  -- check that number of arguments matches, allowing for the
+  -- extra first argument in the function signature that is a
+  -- key for the relation being mapped over
+  local narg_expected = #self._decl_ast.params - 1
+  if narg_expected ~= #args then
+    error('Function was expecting '..tostring(narg_expected)..
+          ' arguments, but got '..tostring(#args), calldepth)
+  end
+  -- Also, right now we restrict all secondary arguments to be strings
+  for i,a in ipairs(args) do
+    if type(a) ~= 'string' then
+      error('Argument '..tostring(i)..' was expected to be a string; '..
+            'Secondary arguments to functions mapped over relations '..
+            'must be strings.', calldepth)
+    end
+  end
+  if self._decl_ast.exp then
+    error('Functions executed over relations should not return values',
+          calldepth)
   end
 
   -- get the appropriately typed version of the function
   -- and a collection of all the versions associated with it...
-  local typeversion = self:_get_typechecked(relset)
+  local typeversion = self:_get_typechecked(calldepth+1, relset, args)
 
   -- now we either retreive or construct the appropriate function version
   local version = get_ufunc_version(self, typeversion, relset, params)
 
-  --local preexectime = terralib.currenttimeinseconds()
+  return version
+end
+
+function L.LUserFunc:Compile(relset, ...)
+  local version = self:_Get_Version(3, relset, ...)
+  version:Compile()
+end
+
+EXEC_TIMER = 0
+function L.LUserFunc:doForEach(relset, ...)
+  self:_doForEach(relset, ...)
+end
+function L.LUserFunc:_doForEach(relset, ...)
+  local version = self:_Get_Version(4, relset, ...)
+
   version:Execute()
-  --EXEC_TIMER = EXEC_TIMER + (terralib.currenttimeinseconds() - preexectime)
 end
 
 
-
+function L.LUserFunc:getCompileTime()
+  local versions  = self:GetAllVersions()
+  local sumtime   = Stats.NewTimer('')
+  for _,vs in ipairs(versions) do
+    sumtime = sumtime + vs._compile_timer
+  end
+  sumtime:setName(self._name..'_compile_time')
+  return sumtime
+end
+function L.LUserFunc:getExecutionTime()
+  local versions  = self:GetAllVersions()
+  local sumtime   = Stats.NewTimer('')
+  for _,vs in ipairs(versions) do
+    sumtime = sumtime + vs._exec_timer
+  end
+  sumtime:setName(self._name..'_execution_time')
+  return sumtime
+end
 
 
 

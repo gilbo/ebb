@@ -10,3 +10,6 @@ for i=1,1000 do
   R:foreach(pass_func)
   --for j=1,10 do end
 end
+
+--pass_func:getCompileTime():print()
+--pass_func:getExecutionTime():print()
