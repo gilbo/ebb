@@ -27,16 +27,33 @@ double rand_unity() {
 cmath.srand(cmath.time(nil));
 local vdb = L.require 'lib.vdb'
 
+-- Load the pathname library, which just provides a couple of 
+-- convenience functions for manipulating filesystem paths.
+local PN = L.require 'lib.pathname'
+
 -----------------------------------------------------------------------------
 --[[                       LOAD THE CONFIG FILE                          ]]--
 -----------------------------------------------------------------------------
 
 -- This location is hard-coded at the moment. The idea is that you will
 -- have multiple config files available in other locations, and copy them
--- to this location with the name config.lua before running.
+-- to this location with the name params.lua before running.
 
 local filename = './examples/soleil/params.lua'
 local config = loadfile(filename)()
+
+--- Immediately check that the output directory exists. Throw an error if not.
+
+local Pathname  = PN.Pathname
+local outputdir = Pathname.new(config.outputDirectory)
+
+if not outputdir:exists() then
+  outputdir:mkdir()
+  print("\nWARNING: The requested output directory does not exist: "..
+        config.outputDirectory .. ", \n"..
+        "so it has been created. Please check your intended behavior.\n")
+end
+
 
 -----------------------------------------------------------------------------
 --[[                            CONSTANT VARIABLES                       ]]--
@@ -402,39 +419,19 @@ end
 
 -- Spatial integration options
 local spatial_stencil = {}
-if config.spatialOrder == 2 then
-  spatial_stencil = {
-    --  Splitting parameter
-    split = 0.5,
-    --  Order 2
-    order = 2,
-    size = 2,
-    numInterpolateCoeffs = 2,
-    interpolateCoeffs = L.Constant(L.vec2d, {0, 0.5}),
-    numFirstDerivativeCoeffs = 2,
-    firstDerivativeCoeffs = L.Constant(L.vec2d, {0, 0.5}),
-    firstDerivativeModifiedWaveNumber = 1.0,
-    secondDerivativeModifiedWaveNumber = 4.0,
-  }
-  elseif config.spatialOrder == 6 then
-  error("Higher-order currently disabled")
-  --spatial_stencil = {
-  --  --  Splitting parameter
-  --  split = 0.5,
-  --  --  Order 6
-  --  order = 6,
-  --  size = 6,
-  --  numInterpolateCoeffs = 4,
-  --  interpolateCoeffs = L.Constant(L.vec4d, {0, 37/60, -8/60, 1/60}),
-  --  numFirstDerivativeCoeffs = 4,
-  --  firstDerivativeCoeffs = L.Constant(L.vec4d,
-  --                                     {0.0,45.0/60.0,-9.0/60.0, 1.0/60.0}),
-  --  firstDerivativeModifiedWaveNumber = 1.59,
-  --  secondDerivativeModifiedWaveNumber = 6.04
-  --}
-  else
-    error("Spatial stencil order not implemented")
-end
+spatial_stencil = {
+  --  Splitting parameter
+  split = 0.5,
+  --  Order 2
+  order = 2,
+  size = 2,
+  numInterpolateCoeffs = 2,
+  interpolateCoeffs = L.Constant(L.vec2d, {0, 0.5}),
+  numFirstDerivativeCoeffs = 2,
+  firstDerivativeCoeffs = L.Constant(L.vec2d, {0, 0.5}),
+  firstDerivativeModifiedWaveNumber = 1.0,
+  secondDerivativeModifiedWaveNumber = 4.0,
+}
 
 -- Time integrator options
 TimeIntegrator.coeff_function        = {1/6, 1/3, 1/3, 1/6}
@@ -1075,38 +1072,187 @@ Particles.averageTemperature = L.Global(L.double, 0.0)
 
 print("\n")
 print("---------------------------------------------------------------------")
-print("|    _____    ___     _      ____   _____   _                       |")
-print("|   / ____|  / __ \\  | |    | ___| |_   _| | |                      |")
-print("|  | (___   | |  | | | |    | |_     | |   | |  Stanford University |")
-print("|   \\___ \\  | |  | | | |    |  _|    | |   | |        PSAAP 2       |")
-print("|   ____) | | |__| | | |__  | |__   _| |_  | |__                    |")
-print("|  |_____/   \\____/  |____| |____| |_____| |____|                   |")
+print("|    _____    ___     _      ____   _____   _          __    __     |")
+print("|   / ____|  / __ \\  | |    | ___| |_   _| | |        \\  \\  /  /    |")
+print("|  | (___   | |  | | | |    | |_     | |   | |   ___   \\  \\/  /     |")
+print("|   \\___ \\  | |  | | | |    |  _|    | |   | |  |___|   |    |      |")
+print("|   ____) | | |__| | | |__  | |__   _| |_  | |__       /  /\\  \\     |")
+print("|  |_____/   \\____/  |____| |____| |_____| |____|     /__/  \\__\\    |")
+print("|                                                                   |")
+print("| Soleil-X is a turbulence/particle/radiation solver written in     |")
+print("| the Liszt DSL for execution with the Legion runtime.              |")
 print("|                                                                   |")
 print("---------------------------------------------------------------------")
-print("| Copyright (C) 2013-2014 ...                                       |")
-print("| Soleil is a turbulence/particle/radiation solver written in       |")
-print("| the Liszt DSL and executed by the Legion runtime.                 |")
---print("| Soleil is distributed in the hope that it will be useful,       |")
---print("| but WITHOUT ANY WARRANTY; without even the implied warranty of  |")
---print("| MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the    |")
---print("| XXXX XXXX XXXX License (version X.X) for more details.          |")
+print("|                                                                   |")
+print("| Soleil-X Version 0.0.1                                            |")
+print("| Copyright (C) 2013-2015, Dr. Thomas D. Economon,                  |")
+print("|                          Dr. Ivan Bermejo-Moreno                  |")
+print("|                                                                   |")
+print("| This program is free software; you can redistribute it and/or     |")
+print("| modify it under the terms of the GNU General Public               |")
+print("| License as published by the Free Software Foundation; either      |")
+print("| version 3 of the License, or (at your option) any later version.  |")
+print("|                                                                   |")
+print("| This program is distributed in the hope that it will be useful,   |")
+print("| but WITHOUT ANY WARRANTY; without even the implied warranty of    |")
+print("| MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU  |")
+print("| General Public License for more details.                          |")
+print("|                                                                   |")
+print("| You should have received a copy of the GNU General Public         |")
+print("| License along with this program. If not, see                      |")
+print("| <http://www.gnu.org/licenses/>.                                   |")
+print("|                                                                   |")
 print("---------------------------------------------------------------------")
-print("\n")
-print("-------------------------- Grid Definition --------------------------")
-print("Grid x dimension: ", grid_options.xnum)
-print("Grid y dimension: ", grid_options.ynum)
-print("Grid z dimension: ", grid_options.znum)
-print("xBoundaryDepth()", grid:xBoundaryDepth())
-print("yBoundaryDepth()", grid:yBoundaryDepth())
-print("zBoundaryDepth()", grid:zBoundaryDepth())
-print("grid xOrigin()", grid:xOrigin())
-print("grid yOrigin()", grid:yOrigin())
-print("grid zOrigin()", grid:zOrigin())
-print("grid xWidth()", grid:xWidth())
-print("grid yWidth()", grid:yWidth())
-print("grid zWidth()", grid:zWidth())
-
-print("\n")
+print("")
+print("------------------------- Grid Definition ---------------------------")
+io.stdout:write(" Grid cells: ",
+                string.format(" %d",grid_options.xnum), " x",
+                string.format(" %d",grid_options.ynum), " x",
+                string.format(" %d",grid_options.znum), "\n")
+io.stdout:write(" Grid boundary depth in cells: ",
+                string.format(" %d",grid:xBoundaryDepth()), " x",
+                string.format(" %d",grid:yBoundaryDepth()), " x",
+                string.format(" %d",grid:zBoundaryDepth()), "\n")
+io.stdout:write(" Grid origin (w/ halo): (",
+                string.format(" %6f",grid:xOrigin()), ",",
+                string.format(" %6f",grid:yOrigin()), ",",
+                string.format(" %6f",grid:zOrigin()), " ) meters\n")
+io.stdout:write(" Domain size (meters w/ halo): ",
+                string.format(" %6f",grid:xWidth()), " x",
+                string.format(" %6f",grid:yWidth()), " x",
+                string.format(" %6f",grid:zWidth()), "\n")
+io.stdout:write(" Cell size (meters): ",
+                string.format(" %6f",grid:xCellWidth()), " x",
+                string.format(" %6f",grid:yCellWidth()), " x",
+                string.format(" %6f",grid:zCellWidth()), "\n")
+io.stdout:write(" Total grid cells (w/ halo): ",
+                string.format(" %d",(grid_options.xnum+2*grid:xBoundaryDepth())
+                *(grid_options.ynum+2*grid:yBoundaryDepth())
+                *(grid_options.znum+2*grid:zBoundaryDepth())), "\n")
+print("")
+print("----------------------- Boundary Conditions -------------------------")
+io.stdout:write(" X- : ", grid_options.xBCLeft, ", V = (",
+                string.format("%4f",grid_options.xBCLeftVel[1]), ",",
+                string.format("%4f",grid_options.xBCLeftVel[2]), ",",
+                string.format("%4f",grid_options.xBCLeftVel[3]), "), T = ",
+                string.format("%4f",grid_options.xBCLeftTemp), "\n")
+io.stdout:write(" X+ : ", grid_options.xBCRight, ", V = (",
+                string.format("%4f",grid_options.xBCRightVel[1]), ",",
+                string.format("%4f",grid_options.xBCRightVel[2]), ",",
+                string.format("%4f",grid_options.xBCRightVel[3]), "), T = ",
+                string.format("%4f",grid_options.xBCRightTemp), "\n")
+io.stdout:write(" Y- : ", grid_options.yBCLeft, ", V = (",
+                string.format("%4f",grid_options.yBCLeftVel[1]), ",",
+                string.format("%4f",grid_options.yBCLeftVel[2]), ",",
+                string.format("%4f",grid_options.yBCLeftVel[3]), "), T = ",
+                string.format("%4f",grid_options.yBCLeftTemp), "\n")
+io.stdout:write(" Y+ : ", grid_options.yBCRight, ", V = (",
+                string.format("%4f",grid_options.yBCRightVel[1]), ",",
+                string.format("%4f",grid_options.yBCRightVel[2]), ",",
+                string.format("%4f",grid_options.yBCRightVel[3]), "), T = ",
+                string.format("%4f",grid_options.yBCRightTemp), "\n")
+io.stdout:write(" Z- : ", grid_options.zBCLeft, ", V = (",
+                string.format("%4f",grid_options.zBCLeftVel[1]), ",",
+                string.format("%4f",grid_options.zBCLeftVel[2]), ",",
+                string.format("%4f",grid_options.zBCLeftVel[3]), "), T = ",
+                string.format("%4f",grid_options.zBCLeftTemp), "\n")
+io.stdout:write(" Z+ : ", grid_options.zBCRight, ", V = (",
+                string.format("%4f",grid_options.zBCRightVel[1]), ",",
+                string.format("%4f",grid_options.zBCRightVel[2]), ",",
+                string.format("%4f",grid_options.zBCRightVel[3]), "), T = ",
+                string.format("%4f",grid_options.zBCRightTemp), "\n")
+print("")
+print("-------------------------- Fluid Options ----------------------------")
+io.stdout:write(" Gas constant: ",
+                string.format(" %f",fluid_options.gasConstant), "\n")
+io.stdout:write(" Ratio of spcific heats: ",
+                string.format(" %f",fluid_options.gamma), "\n")
+io.stdout:write(" Viscosity model: ", config.viscosity_model, "\n")
+io.stdout:write(" Constant viscosity or reference value: ",
+                string.format(" %f",fluid_options.dynamic_viscosity_ref), "\n")
+io.stdout:write(" Reference temp for Sutherland's law: ",
+                string.format(" %f",fluid_options.dynamic_viscosity_temp_ref), "\n")
+io.stdout:write(" Fluid init. type: ", config.initCase, "\n")
+if flow_options.initCase == Flow.Restart then
+  io.stdout:write(" Restarting from iteration: ",
+                  string.format(" %d",config.restartIter), "\n")
+else
+  io.stdout:write(" Fluid init. params: (",
+                  string.format("%1.3f",config.initParams[1]), ",",
+                  string.format("%1.3f",config.initParams[2]), ",",
+                  string.format("%1.3f",config.initParams[3]), ",",
+                  string.format("%1.3f",config.initParams[4]), ",",
+                  string.format("%1.3f",config.initParams[5]), ")\n")
+end
+io.stdout:write(" Fluid body force: (",
+                string.format("%1.3f",config.bodyForce[1]), ",",
+                string.format("%1.3f",config.bodyForce[2]), ",",
+                string.format("%1.3f",config.bodyForce[3]), ")\n")
+print("")
+print("------------------------- Particle Options --------------------------")
+io.stdout:write(" Particle init. type: ", config.initParticles, "\n")
+if particles_options.initCase == Particles.Restart then
+  io.stdout:write(" Restarting from iteration: ",
+                  string.format(" %d",config.restartParticleIter), "\n")
+else
+  io.stdout:write(" Initial temperature: ",
+                  string.format(" %f",config.initialTemperature), "\n")
+  io.stdout:write(" Mean particle diameter: ",
+                  string.format(" %f",config.diameter_mean), "\n")
+  io.stdout:write(" Diameter max deviation: ",
+                  string.format(" %f",config.diameter_maxDeviation), "\n")
+end
+io.stdout:write(" Particle type (fixed or free): ", config.particleType, "\n")
+io.stdout:write(" Two-way coupling: ", config.twoWayCoupling, "\n")
+io.stdout:write(" Number of particles: ", string.format(" %d",config.num), "\n")
+io.stdout:write(" Particle density: ",
+                string.format(" %f",config.density), "\n")
+io.stdout:write(" Coefficient of restitution: ",
+                string.format(" %f",config.restitutionCoefficient), "\n")
+io.stdout:write(" Convective coefficient: ",
+                string.format(" %f",config.convectiveCoefficient), "\n")
+io.stdout:write(" Heat capacity: ",
+                string.format(" %f",config.heatCapacity), "\n")
+io.stdout:write(" Absorptivity: ",
+                string.format(" %f",config.absorptivity), "\n")
+io.stdout:write(" Particle body force: (",
+                string.format("%1.3f",config.bodyForceParticles[1]), ",",
+                string.format("%1.3f",config.bodyForceParticles[2]), ",",
+                string.format("%1.3f",config.bodyForceParticles[3]), ")\n")
+print("")
+print("------------------------ Radiation Options --------------------------")
+io.stdout:write(" Radiation type: ", config.radiationType, "\n")
+io.stdout:write(" Radiation intensity: ",
+                string.format(" %f",config.radiationIntensity), "\n")
+io.stdout:write(" Force zero avg. heat source: ", config.zeroAvgHeatSource, "\n")
+print("")
+print("------------------------- Time Integration --------------------------")
+io.stdout:write(" Final physical time: ",
+                string.format(" %f",config.final_time), "\n")
+io.stdout:write(" Maximum number of iterations: ",
+                string.format(" %f",config.max_iter), "\n")
+if config.cfl > 0.0 then
+io.stdout:write(" Courant–Friedrichs–Lewy (CFL) number: ",
+                string.format(" %f",config.cfl), "\n")
+else
+io.stdout:write(" Fixed time step: ",
+                string.format(" %f",config.delta_time), "\n")
+end
+print("")
+print("-------------------------- Output Options ---------------------------")
+io.stdout:write(" Restart files: ", config.wrtRestart, "\n")
+io.stdout:write(" Restart output frequency (iterations): ",
+                string.format(" %d",config.restartEveryTimeSteps), "\n")
+io.stdout:write(" Volume solution files: ", config.wrtVolumeSolution, "\n")
+io.stdout:write(" 1D slice output: ", config.wrt1DSlice, "\n")
+io.stdout:write(" Particle tracking output ", config.wrtParticleEvolution, "\n")
+io.stdout:write(" Solution output frequency (iterations): ",
+                string.format(" %d",config.outputEveryTimeSteps), "\n")
+io.stdout:write(" Header frequency (iterations): ",
+                string.format(" %d",config.headerFrequency), "\n")
+io.stdout:write(" Output format: ", config.outputFormat, "\n")
+io.stdout:write(" Output directory: ", config.outputDirectory, "\n")
+print("")
 print("--------------------------- Start Solver ----------------------------")
 
 -----------------------------------------------------------------------------
@@ -1145,7 +1291,7 @@ local liszt GetSoundSpeed (temperature)
 end
 
 -- Function to retrieve particle area, volume and mass
--- These are Liszt user-defined function that behave like a field
+-- These are Liszt user-defined functions that behave like a field
 particles:NewFieldFunction('cross_section_area', liszt(p)
     return pi * L.pow(p.diameter, 2) / 4.0
 end)

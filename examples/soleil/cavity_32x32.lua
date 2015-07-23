@@ -36,9 +36,6 @@ return {
   zBCRight = 'symmetry',
   zBCRightVel = {0.0, 0.0, 0.0},
   zBCRightTemp = 0.0,
-
-  -- Spatial Integration Options --
-  spatialOrder = 2, -- 2 or 6
   
   --Time Integration Options --
   final_time            = 20.00001,
