@@ -178,7 +178,6 @@ function L.NewRelation(params)
     rel._is_live_mask:Load(true)
 
   elseif use_legion then
-    --error('TEMPORARY RELATIONS ARE BROKEN FOR LEGION')
     -- create a logical region.
     if mode == 'GRID' then
       rawset(rel, '_logical_region_wrapper', LW.NewGridLogicalRegion {
@@ -359,10 +358,6 @@ function L.LRelation:GroupBy(keyf_name)
     error("GroupBy(): Grouping by non-scalar-key fields is "..
           "prohibited.", 2)
   end
-
-  --if use_legion then
-  --  error('GroupBy(): Grouping unimplemented for Legion currently', 2)
-  --end
 
   -- In the below, we use the following convention
   --  SRC is the relation referred to by the key field
@@ -620,7 +615,7 @@ function L.LRelation:NewSubsetFromFunction (name, predicate)
   local index_tbl = {}
   local subset_size = 0
   local dims = self:Dims()
-  boolmask:LoadFunction(function(xi,yi,zi)
+  boolmask:LoadLuaFunction(function(xi,yi,zi)
     local val = predicate(xi,yi,zi)
     local ids = {xi,yi,zi}
     if val then
@@ -783,7 +778,6 @@ function L.LField:MoveTo( proc )
 end
 
 function L.LRelation:Swap( f1_name, f2_name )
-  --if use_legion then error('No Swap() using legion') end
   local f1 = self[f1_name]
   local f2 = self[f2_name]
   if not L.is_field(f1) then
@@ -816,7 +810,6 @@ function L.LRelation:Swap( f1_name, f2_name )
 end
 
 function L.LRelation:Copy( p )
-  --if use_legion then error('No Copy() using legion') end
   if type(p) ~= 'table' or not p.from or not p.to then
     error("relation:Copy() should be called using the form\n"..
           "  relation:Copy{from='f1',to='f2'}", 2)
@@ -856,8 +849,7 @@ function L.LRelation:Copy( p )
   end
 end
 
-
-function L.LField:LoadFunction(lua_callback)
+function L.LField:LoadLuaFunction(lua_callback)
   if self.owner:isFragmented() then
     error('cannot load into fragmented relation', 2)
   end
@@ -893,6 +885,40 @@ function L.LField:LoadFunction(lua_callback)
         dataptr[lin] = T.luaToLisztVal(val, self.type)
       end
     end) -- write_ptr
+  end
+end
+
+-- To load fields using terra callback, we have two versions: single and
+-- distributed. These two execute the same way without Legion. With Legion, the
+-- distributed version will launch tasks while the single version will create
+-- inline physical regions.
+function L.LField:LoadTerraFunctionSingle(terra_callback)
+  if self.owner:isFragmented() then
+    error('cannot load into fragmented relation', 2)
+  end
+  local dld = self:GetDLD()
+  if use_single then
+    terra_callback(dld:Compile())
+  elseif use_legion then
+    local params = { relation = self.owner, fields = { self }, privilege = LW.WRITE_ONLY }
+    local region = LW.NewInlinePhysicalRegion(params)
+    dld:SetDataPointer(region:GetDataPointers()[1])
+    dld:SetDims(self.owner:Dims())
+    dld:SetStride(region:GetStrides()[1])
+    dld:SetOffset(region:GetOffsets()[1])
+    terra_callback(dld:Compile())
+    region:Destroy()
+  end
+end
+function L.LField:LoadTerraFunctionDistributed(terra_callback)
+  if self.owner:isFragmented() then
+    error('cannot load into fragmented relation', 2)
+  end
+  local dld
+  if use_single then
+    terra_callback(self:GetDLD():Compile())
+  elseif use_legion then
+    error('Distributed Terra callbacks for load currently not implemented with Legion')
   end
 end
 
@@ -933,11 +959,11 @@ function L.LField:LoadList(tbl)
   end
 
   if self.owner:nDims() == 1 then
-    self:LoadFunction(function(i) return tbl[i+1] end)
+    self:LoadLuaFunction(function(i) return tbl[i+1] end)
   elseif self.owner:nDims() == 2 then
-    self:LoadFunction(function(xi,yi) return tbl[yi+1][xi+1] end)
+    self:LoadLuaFunction(function(xi,yi) return tbl[yi+1][xi+1] end)
   elseif self.owner:nDims() == 3 then
-    self:LoadFunction(function(xi,yi,zi) return tbl[zi+1][yi+1][xi+1] end)
+    self:LoadLuaFunction(function(xi,yi,zi) return tbl[zi+1][yi+1][xi+1] end)
   else
     error('INTERNAL > 3 dimensions')
   end
@@ -985,9 +1011,23 @@ function L.LField:LoadConstant(constant)
     error('cannot load into fragmented relation', 2)
   end
 
-  self:LoadFunction(function()
-    return constant
-  end)
+  local ttype = self.type:terraType()
+
+  local terra LoadConstantFunction(d : DLD.ctype)
+    var c : ttype = [T.luaToLisztVal(constant, self.type)]
+    var b = d.dims
+    var s = d.stride
+    for i = 0, b[0] do
+      for j = 0, b[1] do
+        for k = 0, b[2] do
+          var ptr = [&uint8](d.address) + i*s[0] + j*s[1] + k*s[2]
+          C.memcpy(ptr, &c, d.type.size_bytes)
+        end
+      end
+    end
+  end
+
+  self:LoadTerraFunctionSingle(LoadConstantFunction)
 end
 
 -- generic dispatch function for loads
@@ -996,8 +1036,8 @@ function L.LField:Load(arg)
     error('cannot load into fragmented relation', 2)
   end
   -- load from lua callback
-  if      type(arg) == 'function' then
-    return self:LoadFunction(arg)
+  if type(arg) == 'function' then
+    return self:LoadLuaFunction(arg)
   elseif  type(arg) == 'cdata' then
     if use_legion then
       error('Load from memory while using Legion is unimplemented', 2)
@@ -1007,16 +1047,21 @@ function L.LField:Load(arg)
       return self:LoadFromMemory(arg)
     end
   elseif  type(arg) == 'table' then
-    if (self.type:isScalarKey() and #arg == self.type.ndims) or
+    -- terra function
+    if (terralib.isfunction(arg)) then
+      return self:LoadTerraFunction(arg)
+    -- scalars, vectors and matrices
+    elseif (self.type:isScalarKey() and #arg == self.type.ndims) or
        (self.type:isVector() and #arg == self.type.N) or
-       (self.type:isMatrix() and #arg == self.type.Nrow) 
+       (self.type:isMatrix() and #arg == self.type.Nrow)
     then
       return self:LoadConstant(arg)
     else
+      -- default tables to try loading as Lua lists
       return self:LoadList(arg)
     end
   end
-  -- default to trying to load as a constant
+  -- default to try loading as constants
   return self:LoadConstant(arg)
 end
 
@@ -1212,32 +1257,26 @@ end
 -------------------------------------------------------------------------------
 
 
-function L.LField:getDLD()
-  error("DLD NEEDS REVISION FOR MODES")
+function L.LField:GetDLD()
   if self.owner:isFragmented() then
-    error('cannot get DLD from fragmented relation', 2)
-  end
-  if not self.type:baseType():isPrimitive() then
-    error('Can only return DLDs for fields with primitive base type')
+    error('Cannot get DLD from fragmented relation', 2)
   end
 
-  local terra_type = self.type:terraBaseType()
-  local dims = {}
-  if self.type:isVector() then
-    dims = {self.type.N}
-  elseif self.type:isMatrix() then
-    dims = {self.type.Nrow, self.type.Ncol}
+  if use_single then
+    local dld = DLD.new({
+      address         = self:DataPtr(),
+      location        = tostring(self.array:location()),
+      type            = self.type,
+      dims            = self.owner:Dims(),
+      compact         = true,
+    })
+    return dld
+  elseif use_legion then
+    local dld = DLD.new({
+      type = self.type,
+    })
+    return dld
   end
-
-  local dld = DLD.new({
-    location        = tostring(self.array:location()),
-    type            = terra_type,
-    type_dims       = dims,
-    logical_size    = self.owner:ConcreteSize(),
-    data            = self:DataPtr(),
-    compact         = true,
-  })
-  return dld
 end
 
 

@@ -1028,22 +1028,6 @@ end
 -- the code is being executed in a Legion task or not.
 
 function UFVersion:_GenerateUnpackLegionTaskArgs(argsym, task_args)
-  local LegionRect = {}
-  local LegionGetRectFromDom = {}
-  local LegionRawPtrFromAcc = {}
-  
-  LegionRect[1] = LW.legion_rect_1d_t
-  LegionRect[2] = LW.legion_rect_2d_t
-  LegionRect[3] = LW.legion_rect_3d_t
-  
-  LegionGetRectFromDom[1] = LW.legion_domain_get_rect_1d
-  LegionGetRectFromDom[2] = LW.legion_domain_get_rect_2d
-  LegionGetRectFromDom[3] = LW.legion_domain_get_rect_3d
-  
-  LegionRawPtrFromAcc[1] = LW.legion_accessor_generic_raw_rect_ptr_1d
-  LegionRawPtrFromAcc[2] = LW.legion_accessor_generic_raw_rect_ptr_2d
-  LegionRawPtrFromAcc[3] = LW.legion_accessor_generic_raw_rect_ptr_3d
-
   local ufv = self
 
   -- temporary collection of symbols from unpacking the regions
@@ -1057,8 +1041,8 @@ function UFVersion:_GenerateUnpackLegionTaskArgs(argsym, task_args)
       local physical_reg  = symbol(LW.legion_physical_region_t)
       local domain        = symbol(LW.legion_domain_t)
 
-      local rect          = reg_dim and symbol(LegionRect[reg_dim]) or nil
-      local rectFromDom   = reg_dim and LegionGetRectFromDom[reg_dim] or nil
+      local rect          = reg_dim and symbol(LW.LegionRect[reg_dim]) or nil
+      local rectFromDom   = reg_dim and LW.LegionGetRectFromDom[reg_dim] or nil
 
       region_temporaries[ri] = {
         physical_reg  = physical_reg,
@@ -1114,10 +1098,10 @@ function UFVersion:_GenerateUnpackLegionTaskArgs(argsym, task_args)
         var field_accessor =
           LW.legion_physical_region_get_field_accessor_generic(
                                               physical_reg, [field.fid])
-        var subrect : LegionRect[reg_dim]
+        var subrect : LW.LegionRect[reg_dim]
         var strides : LW.legion_byte_offset_t[reg_dim]
         var base = [&uint8](
-          [ LegionRawPtrFromAcc[reg_dim] ](
+          [ LW.LegionRawPtrFromAcc[reg_dim] ](
                               field_accessor, rect, &subrect, strides))
         [argsym].[farg_name] = [ LW.FieldAccessor[reg_dim] ] { base, strides }
       end
