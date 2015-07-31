@@ -898,7 +898,22 @@ function L.LField:LoadTerraFunctionSingle(terra_callback)
   end
   local dld = self:GetDLD()
   if use_single then
-    terra_callback(dld:Compile())
+    if dld.location == 'CPU' then
+        terra_callback(dld:Compile())
+    -- TODO(Chinmayee): move some of this to rawdata, or another function?
+    -- we could also just create GPU functions?
+    elseif dld.location == 'GPU' then
+        local cpu_buf = DynamicArray.New {
+            processor = L.CPU,
+            size = self:ConcreteSize(),
+            type = self:Type():terraType()
+        }
+        dld.address   = cpu_buf:ptr()
+        dld.location  = 'CPU'
+        terra_callback(dld:Compile())
+        self.array:copy(cpu_buf)
+        cpu_buf:free()
+    end
   elseif use_legion then
     local params = { relation = self.owner, fields = { self }, privilege = LW.WRITE_ONLY }
     local region = LW.NewInlinePhysicalRegion(params)
@@ -1262,6 +1277,7 @@ function L.LField:GetDLD()
     error('Cannot get DLD from fragmented relation', 2)
   end
 
+  -- TODO(Chinmayee): use concrete size here?
   if use_single then
     local dld = DLD.new({
       address         = self:DataPtr(),
