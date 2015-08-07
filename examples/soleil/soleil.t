@@ -1665,44 +1665,38 @@ liszt Flow.AddViscousGetFluxX (c : grid.cells)
         var velocityX_ZFace = L.double(0)
         var velocityY_YFace = L.double(0)
         var velocityZ_ZFace = L.double(0)
-        var numInterpolateCoeffs  = spatial_stencil.numInterpolateCoeffs
-        var interpolateCoeffs     = spatial_stencil.interpolateCoeffs
+
         -- Interpolate velocity and derivatives to face
-        for ndx = 1, numInterpolateCoeffs do
-            velocityFace += interpolateCoeffs[ndx] *
-                          ( c(1-ndx,0,0).velocity +
-                            c(  ndx,0,0).velocity )
-            velocityX_YFace += interpolateCoeffs[ndx] *
-                               ( c(1-ndx,0,0).velocityGradientY[0] +
-                                 c(  ndx,0,0).velocityGradientY[0] )
-            velocityX_ZFace += interpolateCoeffs[ndx] *
-                               ( c(1-ndx,0,0).velocityGradientZ[0] +
-                                 c(  ndx,0,0).velocityGradientZ[0] )
-            velocityY_YFace += interpolateCoeffs[ndx] *
-                               ( c(1-ndx,0,0).velocityGradientY[1] +
-                                 c(  ndx,0,0).velocityGradientY[1] )
-            velocityZ_ZFace += interpolateCoeffs[ndx] *
-                               ( c(1-ndx,0,0).velocityGradientZ[2] +
-                                 c(  ndx,0,0).velocityGradientZ[2] )
-        end
+        velocityFace += 0.5 *
+                      ( c(0,0,0).velocity +
+                        c(1,0,0).velocity )
+        velocityX_YFace = 0.5 *
+                           ( c(0,0,0).velocityGradientY[0] +
+                             c(1,0,0).velocityGradientY[0] )
+        velocityX_ZFace = 0.5 *
+                           ( c(0,0,0).velocityGradientZ[0] +
+                             c(1,0,0).velocityGradientZ[0] )
+        velocityY_YFace = 0.5 *
+                           ( c(0,0,0).velocityGradientY[1] +
+                             c(1,0,0).velocityGradientY[1] )
+        velocityZ_ZFace = 0.5 *
+                           ( c(0,0,0).velocityGradientZ[2] +
+                             c(1,0,0).velocityGradientZ[2] )
 
         -- Differentiate at face
-        var velocityX_XFace = L.double(0)
-        var velocityY_XFace = L.double(0)
-        var velocityZ_XFace = L.double(0)
-        var temperature_XFace = L.double(0)
-        var numFirstDerivativeCoeffs = spatial_stencil.numFirstDerivativeCoeffs
-        var firstDerivativeCoeffs    = spatial_stencil.firstDerivativeCoeffs
-        for ndx = 1, numFirstDerivativeCoeffs do
-          velocityX_XFace += firstDerivativeCoeffs[ndx] *
-            ( c(ndx,0,0).velocity[0] - c(1-ndx,0,0).velocity[0] )
-          velocityY_XFace += firstDerivativeCoeffs[ndx] *
-            ( c(ndx,0,0).velocity[1] - c(1-ndx,0,0).velocity[1] )
-          velocityZ_XFace += firstDerivativeCoeffs[ndx] *
-            ( c(ndx,0,0).velocity[2] - c(1-ndx,0,0).velocity[2] )
-          temperature_XFace += firstDerivativeCoeffs[ndx] *
-            ( c(ndx,0,0).temperature - c(1-ndx,0,0).temperature )
-        end
+        var velocityX_XFace   = L.double(0.0)
+        var velocityY_XFace   = L.double(0.0)
+        var velocityZ_XFace   = L.double(0.0)
+        var temperature_XFace = L.double(0.0)
+
+        velocityX_XFace = 0.5 *
+          ( c(1,0,0).velocity[0] - c(0,0,0).velocity[0] )
+        velocityY_XFace = 0.5 *
+          ( c(1,0,0).velocity[1] - c(0,0,0).velocity[1] )
+        velocityZ_XFace = 0.5 *
+          ( c(1,0,0).velocity[2] - c(0,0,0).velocity[2] )
+        temperature_XFace = 0.5 *
+          ( c(1,0,0).temperature - c(0,0,0).temperature )
        
         -- Half cell size due to the 0.5 in firstDerivativeCoeffs[ndx] above
         velocityX_XFace   /= (grid_dx*0.5)
@@ -1745,47 +1739,38 @@ liszt Flow.AddViscousGetFluxY (c : grid.cells)
         var velocityY_ZFace = L.double(0)
         var velocityX_XFace = L.double(0)
         var velocityZ_ZFace = L.double(0)
-        var numInterpolateCoeffs  = spatial_stencil.numInterpolateCoeffs
-        var interpolateCoeffs     = spatial_stencil.interpolateCoeffs
-        -- Interpolate velocity and derivatives to face
-        for ndx = 1, numInterpolateCoeffs do
-          
-          
-            velocityFace += interpolateCoeffs[ndx] *
-                          ( c(0,1-ndx,0).velocity +
-                            c(0,ndx,0).velocity )
-            velocityY_XFace += interpolateCoeffs[ndx] *
-                               ( c(0,1-ndx,0).velocityGradientX[1] +
-                                 c(0,  ndx,0).velocityGradientX[1] )
-            velocityY_ZFace += interpolateCoeffs[ndx] *
-                               ( c(0,1-ndx,0).velocityGradientZ[1] +
-                                 c(0,  ndx,0).velocityGradientZ[1] )
-            velocityX_XFace += interpolateCoeffs[ndx] *
-                               ( c(0,1-ndx,0).velocityGradientX[0] +
-                                 c(0,  ndx,0).velocityGradientX[0] )
-            velocityZ_ZFace += interpolateCoeffs[ndx] *
-                               ( c(0,1-ndx,0).velocityGradientZ[2] +
-                                 c(0,  ndx,0).velocityGradientZ[2] )
-                                 
-        end
 
+        -- Interpolate velocity and derivatives to face
+        velocityFace = 0.5 *
+                      ( c(0,0,0).velocity +
+                        c(0,1,0).velocity )
+        velocityY_XFace = 0.5 *
+                           ( c(0,0,0).velocityGradientX[1] +
+                             c(0,1,0).velocityGradientX[1] )
+        velocityY_ZFace = 0.5 *
+                           ( c(0,0,0).velocityGradientZ[1] +
+                             c(0,1,0).velocityGradientZ[1] )
+        velocityX_XFace = 0.5 *
+                           ( c(0,0,0).velocityGradientX[0] +
+                             c(0,1,0).velocityGradientX[0] )
+        velocityZ_ZFace = 0.5 *
+                           ( c(0,0,0).velocityGradientZ[2] +
+                             c(0,1,0).velocityGradientZ[2] )
+                             
         -- Differentiate at face
-        var velocityX_YFace = L.double(0)
-        var velocityY_YFace = L.double(0)
-        var velocityZ_YFace = L.double(0)
-        var temperature_YFace = L.double(0)
-        var numFirstDerivativeCoeffs = spatial_stencil.numFirstDerivativeCoeffs
-        var firstDerivativeCoeffs    = spatial_stencil.firstDerivativeCoeffs
-        for ndx = 1, numFirstDerivativeCoeffs do
-          velocityX_YFace += firstDerivativeCoeffs[ndx] *
-            ( c(0,ndx,0).velocity[0] - c(0,1-ndx,0).velocity[0] )
-          velocityY_YFace += firstDerivativeCoeffs[ndx] *
-            ( c(0,ndx,0).velocity[1] - c(0,1-ndx,0).velocity[1] )
-          velocityZ_YFace += firstDerivativeCoeffs[ndx] *
-            ( c(0,ndx,0).velocity[2] - c(0,1-ndx,0).velocity[2] )
-          temperature_YFace += firstDerivativeCoeffs[ndx] *
-            ( c(0,ndx,0).temperature - c(0,1-ndx,0).temperature )
-        end
+        var velocityX_YFace   = L.double(0.0)
+        var velocityY_YFace   = L.double(0.0)
+        var velocityZ_YFace   = L.double(0.0)
+        var temperature_YFace = L.double(0.0)
+
+        velocityX_YFace = 0.5 *
+          ( c(0,1,0).velocity[0] - c(0,0,0).velocity[0] )
+        velocityY_YFace = 0.5 *
+          ( c(0,1,0).velocity[1] - c(0,0,0).velocity[1] )
+        velocityZ_YFace = 0.5 *
+          ( c(0,1,0).velocity[2] - c(0,0,0).velocity[2] )
+        temperature_YFace = 0.5 *
+          ( c(0,1,0).temperature - c(0,0,0).temperature )
        
         -- Half cell size due to the 0.5 in firstDerivativeCoeffs[ndx] above
         velocityX_YFace   /= (grid_dy*0.5)
@@ -1824,48 +1809,36 @@ liszt Flow.AddViscousGetFluxZ (c : grid.cells)
         var muFace = 0.5 * (GetDynamicViscosity(c(0,0,0).temperature) +
                             GetDynamicViscosity(c(0,0,1).temperature))
         var velocityFace    = L.vec3d({0.0, 0.0, 0.0})
-        var velocityZ_XFace = L.double(0)
-        var velocityZ_YFace = L.double(0)
-        var velocityX_XFace = L.double(0)
-        var velocityY_YFace = L.double(0)
-        var numInterpolateCoeffs  = spatial_stencil.numInterpolateCoeffs
-        var interpolateCoeffs     = spatial_stencil.interpolateCoeffs
+        var velocityZ_XFace = L.double(0.0)
+        var velocityZ_YFace = L.double(0.0)
+        var velocityX_XFace = L.double(0.0)
+        var velocityY_YFace = L.double(0.0)
+
         -- Interpolate velocity and derivatives to face
-        for ndx = 1, numInterpolateCoeffs do
-            velocityFace += interpolateCoeffs[ndx] *
-                          ( c(0,0,1-ndx).velocity +
-                            c(0,0,  ndx).velocity )
-            velocityZ_XFace += interpolateCoeffs[ndx] *
-                               ( c(0,0,1-ndx).velocityGradientX[2] +
-                                 c(0,0,  ndx).velocityGradientX[2] )
-            velocityZ_YFace +=  interpolateCoeffs[ndx] *
-                               ( c(0,0,1-ndx).velocityGradientY[2] +
-                                 c(0,0,  ndx).velocityGradientY[2] )
-            velocityX_XFace += interpolateCoeffs[ndx] *
-                               ( c(0,0,1-ndx).velocityGradientX[0] +
-                                 c(0,0,  ndx).velocityGradientX[0] )
-            velocityY_YFace += interpolateCoeffs[ndx] *
-                               ( c(0,0,1-ndx).velocityGradientY[1] +
-                                 c(0,0,  ndx).velocityGradientY[1] )
-        end
+        velocityFace = 0.5 * ( c(0,0,0).velocity + c(0,0,1).velocity )
+        velocityZ_XFace = 0.5 *
+                           ( c(0,0,0).velocityGradientX[2] +
+                             c(0,0,0).velocityGradientX[2] )
+        velocityZ_YFace = 0.5 *
+                           ( c(0,0,0).velocityGradientY[2] +
+                             c(0,0,1).velocityGradientY[2] )
+        velocityX_XFace = 0.5 *
+                           ( c(0,0,0).velocityGradientX[0] +
+                             c(0,0,1).velocityGradientX[0] )
+        velocityY_YFace = 0.5 *
+                           ( c(0,0,0).velocityGradientY[1] +
+                             c(0,0,1).velocityGradientY[1] )
 
         -- Differentiate at face
-        var velocityX_ZFace = L.double(0)
-        var velocityY_ZFace = L.double(0)
-        var velocityZ_ZFace = L.double(0)
-        var temperature_ZFace = L.double(0)
-        var numFirstDerivativeCoeffs = spatial_stencil.numFirstDerivativeCoeffs
-        var firstDerivativeCoeffs    = spatial_stencil.firstDerivativeCoeffs
-        for ndx = 1, numFirstDerivativeCoeffs do
-          velocityX_ZFace += firstDerivativeCoeffs[ndx] *
-            ( c(0,0,ndx).velocity[0] - c(0,0,1-ndx).velocity[0] )
-          velocityY_ZFace += firstDerivativeCoeffs[ndx] *
-            ( c(0,0,ndx).velocity[1] - c(0,0,1-ndx).velocity[1] )
-          velocityZ_ZFace += firstDerivativeCoeffs[ndx] *
-            ( c(0,0,ndx).velocity[2] - c(0,0,1-ndx).velocity[2] )
-          temperature_ZFace += firstDerivativeCoeffs[ndx] *
-            ( c(0,0,ndx).temperature - c(0,0,1-ndx).temperature )
-        end
+        var velocityX_ZFace   = L.double(0.0)
+        var velocityY_ZFace   = L.double(0.0)
+        var velocityZ_ZFace   = L.double(0.0)
+        var temperature_ZFace = L.double(0.0)
+
+        velocityX_ZFace   = 0.5*( c(0,0,1).velocity[0] - c(0,0,0).velocity[0] )
+        velocityY_ZFace   = 0.5*( c(0,0,1).velocity[1] - c(0,0,0).velocity[1] )
+        velocityZ_ZFace   = 0.5*( c(0,0,1).velocity[2] - c(0,0,0).velocity[2] )
+        temperature_ZFace = 0.5*( c(0,0,1).temperature - c(0,0,0).temperature )
        
         -- Half cell size due to the 0.5 in firstDerivativeCoeffs[ndx] above
         velocityX_ZFace   /= (grid_dz*0.5)
@@ -1897,16 +1870,16 @@ liszt Flow.AddViscousGetFluxZ (c : grid.cells)
 end
 
 liszt Flow.AddViscousUpdateUsingFluxX (c : grid.cells)
-    c.rhoVelocity_t += (c(0,0,0).rhoVelocityFlux -
+    c.rhoVelocity_t += (c( 0,0,0).rhoVelocityFlux -
                         c(-1,0,0).rhoVelocityFlux)/grid_dx
-    c.rhoEnergy_t   += (c(0,0,0).rhoEnergyFlux -
+    c.rhoEnergy_t   += (c( 0,0,0).rhoEnergyFlux -
                         c(-1,0,0).rhoEnergyFlux)/grid_dx
 end
 
 liszt Flow.AddViscousUpdateUsingFluxY (c : grid.cells)
-    c.rhoVelocity_t += (c(0,0,0).rhoVelocityFlux -
+    c.rhoVelocity_t += (c(0, 0,0).rhoVelocityFlux -
                         c(0,-1,0).rhoVelocityFlux)/grid_dy
-    c.rhoEnergy_t   += (c(0,0,0).rhoEnergyFlux -
+    c.rhoEnergy_t   += (c(0, 0,0).rhoEnergyFlux -
                         c(0,-1,0).rhoEnergyFlux)/grid_dy
 end
 
@@ -4218,3 +4191,7 @@ while ((TimeIntegrator.simTime:get() < TimeIntegrator.final_time) and
       Visualization.Draw()
     end
 end
+
+print("")
+print("--------------------------- Exit Success ----------------------------")
+print("")
