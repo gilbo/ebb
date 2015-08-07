@@ -1667,7 +1667,7 @@ liszt Flow.AddViscousGetFluxX (c : grid.cells)
         var velocityZ_ZFace = L.double(0)
 
         -- Interpolate velocity and derivatives to face
-        velocityFace += 0.5 *
+        velocityFace = 0.5 *
                       ( c(0,0,0).velocity +
                         c(1,0,0).velocity )
         velocityX_YFace = 0.5 *
@@ -1818,7 +1818,7 @@ liszt Flow.AddViscousGetFluxZ (c : grid.cells)
         velocityFace = 0.5 * ( c(0,0,0).velocity + c(0,0,1).velocity )
         velocityZ_XFace = 0.5 *
                            ( c(0,0,0).velocityGradientX[2] +
-                             c(0,0,0).velocityGradientX[2] )
+                             c(0,0,1).velocityGradientX[2] )
         velocityZ_YFace = 0.5 *
                            ( c(0,0,0).velocityGradientY[2] +
                              c(0,0,1).velocityGradientY[2] )
