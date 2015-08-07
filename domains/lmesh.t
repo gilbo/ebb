@@ -40,7 +40,7 @@ local function initFieldViaCopy(field, src)
 
     local ftype = field.type:terraType()
 
-    field:LoadLuaFunction(function(i) return src[i] end)
+    field:LoadFunction(function(i) return src[i] end)
 end
 
 -- we assume srcmem has terra type &uint32
@@ -64,7 +64,7 @@ local function initRowFromMemory32(field, srcmem, stride, offset)
     offset      = offset or 0
     assert(field.data == nil)
 
-    field:LoadLuaFunction(function(i)
+    field:LoadFunction(function(i)
         return srcmem[stride*i + offset]
     end)
 
