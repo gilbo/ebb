@@ -939,13 +939,12 @@ function L.LRelation:LoadJointTerraFunction(fields_arg, terra_callback)
     for i = 1, nfields do
       local dld = fields[i]:GetDLD()
       if dld.location == 'GPU' then
-        print("Allocate " .. i)
         cpu_buf[i]    = DynamicArray.New {
             processor = L.CPU,
             size      = self:ConcreteSize(),
-            type      = self:Type():terraType()
+            type      = fields[i]:Type():terraType()
         }
-        dld.address   = cpu_buf:ptr()
+        dld.address   = cpu_buf[i]:ptr()
         dld.location  = 'CPU'
       else
         cpu_buf[i] = nil
@@ -955,23 +954,21 @@ function L.LRelation:LoadJointTerraFunction(fields_arg, terra_callback)
     terra_callback(dld_array)
     for i = 1, nfields do
       if cpu_buf[i] then
-        print("Copy " .. i)
         fields[i].array:copy(cpu_buf[i])
-        print("Free " .. i)
         cpu_buf[i]:free()
       end
     end
   elseif use_legion then
     -- TODO(Chinmayee): check if it is better to do a separate physical region
     -- for each field
-    local params = { relation = self.owner, fields = { self }, privilege = LW.WRITE_ONLY }
+    local params = { relation = self, fields = fields, privilege = LW.WRITE_ONLY }
     local region = LW.NewInlinePhysicalRegion(params)
     local data_ptrs = region:GetDataPointers()
     local dims      = self:Dims()
     local strides   = region:GetStrides()
     local offsets   = region:GetOffsets()
     for i = 1, nfields do
-      local dld = self:GetDLD()
+      local dld = fields[i]:GetDLD()
       dld:SetDataPointer(data_ptrs[i])
       dld:SetDims(dims)
       dld:SetStride(strides[i])
@@ -1299,10 +1296,10 @@ function L.LRelation:DumpJointTerraFunction(fields_arg, terra_callback)
           cpu_buf[i]  = DynamicArray.New {
             processor = L.CPU,
             size      = self:ConcreteSize(),
-            type      = fields_arg[i]:terraType()
+            type      = fields[i]:Type():terraType()
           }
-          cpu_buf:copy(fields[i].array)
-          dld.address = cpu_buf:ptr()
+          cpu_buf[i]:copy(fields[i].array)
+          dld.address = cpu_buf[i]:ptr()
           dld.location = 'CPU'
         else
           cpu_buf[i] = nil
@@ -1323,7 +1320,7 @@ function L.LRelation:DumpJointTerraFunction(fields_arg, terra_callback)
     local strides   = region:GetStrides()
     local offsets   = region:GetOffsets()
     for i = 1, nfields do
-      local dld = self:GetDLD()
+      local dld = fields[i]:GetDLD()
       dld:SetDataPointer(data_ptrs[i])
       dld:SetDims(dims)
       dld:SetStride(strides[i])
