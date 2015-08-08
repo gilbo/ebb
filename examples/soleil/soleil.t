@@ -1499,266 +1499,154 @@ liszt Flow.AddInviscidInitialize (c : grid.cells)
     --L.print(c.rho, c.rhoEnergy, c.pressure, c.rhoEnthalpy)
 end
 
--- Compute inviscid fluxes in X direction
+-- Routine that computes the inviscid flux through the face of 
+-- any two adjacent cells with a centered scheme. The left cell (c_l),
+-- right cell (c_r), and coordinate direction (x = 0, y = 1, or z = 2)
+-- are the inputs.
+liszt Flow.CenteredInviscidFlux (c_l, c_r, direction)
+
+    -- Diagonal terms of inviscid flux
+    var rhoFactorDiagonal         = L.double(0.0)
+    var rhoVelocityFactorDiagonal = L.vec3d({0.0, 0.0, 0.0})
+    var rhoEnergyFactorDiagonal   = L.double(0.0)
+    var fpdiag                    = L.double(0.0)
+
+    rhoFactorDiagonal = 0.5 *
+                      ( c_l.rho *
+                        c_l.velocity[direction] +
+                        c_r.rho *
+                        c_r.velocity[direction] )
+    rhoVelocityFactorDiagonal = 0.5 *
+                              ( c_l.rhoVelocity *
+                                c_l.velocity[direction] +
+                                c_r.rhoVelocity *
+                                c_r.velocity[direction] )
+    rhoEnergyFactorDiagonal = 0.5 *
+                            ( c_l.rhoEnthalpy *
+                              c_l.velocity[direction] +
+                              c_r.rhoEnthalpy *
+                              c_r.velocity[direction] )
+    fpdiag += 0.5 * ( c_l.pressure + c_r.pressure )
+
+    -- Skewed terms
+    var rhoFactorSkew         = L.double(0.0)
+    var rhoVelocityFactorSkew = L.vec3d({0.0, 0.0, 0.0})
+    var rhoEnergyFactorSkew   = L.double(0.0)
+    var tmp                   = L.double(0.0)
+
+    tmp = 0.5 * c_r.velocity[direction]
+
+    rhoFactorSkew         += c_l.rho * tmp
+    rhoVelocityFactorSkew += c_l.rhoVelocity * tmp
+    rhoEnergyFactorSkew   += c_l.rhoEnthalpy * tmp
+
+    tmp = 0.5 * c_l.velocity[direction]
+
+    rhoFactorSkew         += c_r.rho * tmp
+    rhoVelocityFactorSkew += c_r.rhoVelocity * tmp
+    rhoEnergyFactorSkew   += c_r.rhoEnthalpy * tmp
+
+    -- Compute fluxes with prescribed splitting
+    var s = spatial_stencil.split
+    var rhoFlux_temp         = s * rhoFactorDiagonal +
+                              (1-s) * rhoFactorSkew
+    var rhoVelocityFlux_temp = s * rhoVelocityFactorDiagonal +
+                              (1-s) * rhoVelocityFactorSkew
+    var rhoEnergyFlux_temp   = s * rhoEnergyFactorDiagonal +
+                              (1-s) * rhoEnergyFactorSkew
+    rhoVelocityFlux_temp[direction] += fpdiag
+
+    -- Return the fluxes in a 5D array
+    return {rhoFlux_temp,
+            rhoVelocityFlux_temp[0],
+            rhoVelocityFlux_temp[1],
+            rhoVelocityFlux_temp[2],
+            rhoEnergyFlux_temp}
+end
+
+-- Compute inviscid fluxes in X direction. Include the first boundary
+-- cell (c.xneg_depth == 1) to define left flux on first interior cell.
 liszt Flow.AddInviscidGetFluxX (c : grid.cells)
-    -- Consider first boundary element (c.xneg_depth == 1) to define left flux
-    -- on first interior cell
     if c.in_interior or c.xneg_depth == 1 then
-        var directionIdx = 0
-        var numInterpolateCoeffs  = spatial_stencil.numInterpolateCoeffs
-        var interpolateCoeffs     = spatial_stencil.interpolateCoeffs
-        var numFirstDerivativeCoeffs = spatial_stencil.numFirstDerivativeCoeffs
-        var firstDerivativeCoeffs    = spatial_stencil.firstDerivativeCoeffs
-
-        -- Diagonal terms
-        var rhoFactorDiagonal = L.double(0)
-        var rhoVelocityFactorDiagonal = L.vec3d({0.0, 0.0, 0.0})
-        var rhoEnergyFactorDiagonal   = L.double(0.0)
-        var fpdiag = L.double(0.0)
-        for ndx = 1, numInterpolateCoeffs do
-            rhoFactorDiagonal += interpolateCoeffs[ndx] *
-                          ( c(1-ndx,0,0).rho *
-                            c(1-ndx,0,0).velocity[directionIdx] +
-                            c(ndx,0,0).rho *
-                            c(ndx,0,0).velocity[directionIdx] )
-            rhoVelocityFactorDiagonal += interpolateCoeffs[ndx] *
-                                   ( c(1-ndx,0,0).rhoVelocity *
-                                     c(1-ndx,0,0).velocity[directionIdx] +
-                                     c(ndx,0,0).rhoVelocity *
-                                     c(ndx,0,0).velocity[directionIdx] )
-            rhoEnergyFactorDiagonal += interpolateCoeffs[ndx] *
-                                 ( c(1-ndx,0,0).rhoEnthalpy *
-                                   c(1-ndx,0,0).velocity[directionIdx] +
-                                   c(ndx,0,0).rhoEnthalpy *
-                                   c(ndx,0,0).velocity[directionIdx] )
-            fpdiag += interpolateCoeffs[ndx] *
-                    ( c(1-ndx,0,0).pressure +
-                      c(ndx,0,0).pressure )
-        end
-
-        -- Skewed terms
-        var rhoFactorSkew         = L.double(0)
-        var rhoVelocityFactorSkew = L.vec3d({0.0, 0.0, 0.0})
-        var rhoEnergyFactorSkew   = L.double(0.0)
-        -- mdx = -N+1,...,0
-        for mdx = 2-numFirstDerivativeCoeffs, 1 do
-          var tmp = L.double(0)
-          for ndx = 1, mdx+numFirstDerivativeCoeffs do
-            tmp += firstDerivativeCoeffs[ndx-mdx] * 
-                   c(ndx,0,0).velocity[directionIdx]
-          end
-
-          rhoFactorSkew         += c(mdx,0,0).rho * tmp
-          rhoVelocityFactorSkew += c(mdx,0,0).rhoVelocity * tmp
-          rhoEnergyFactorSkew   += c(mdx,0,0).rhoEnthalpy * tmp
-        end
-        --  mdx = 1,...,N
-        for mdx = 1,numFirstDerivativeCoeffs do
-          var tmp = L.double(0)
-          for ndx = mdx-numFirstDerivativeCoeffs+1, 1 do
-            tmp += firstDerivativeCoeffs[mdx-ndx] * 
-                   c(ndx,0,0).velocity[directionIdx]
-          end
-
-          rhoFactorSkew         += c(mdx,0,0).rho * tmp
-          rhoVelocityFactorSkew += c(mdx,0,0).rhoVelocity * tmp
-          rhoEnergyFactorSkew   += c(mdx,0,0).rhoEnthalpy * tmp
-        end
-
-        var s = spatial_stencil.split
-        c.rhoFlux          = s * rhoFactorDiagonal +
-                             (1-s) * rhoFactorSkew
-        c.rhoVelocityFlux  = s * rhoVelocityFactorDiagonal +
-                             (1-s) * rhoVelocityFactorSkew
-        c.rhoEnergyFlux    = s * rhoEnergyFactorDiagonal +
-                             (1-s) * rhoEnergyFactorSkew
-        c.rhoVelocityFlux[directionIdx] += fpdiag
+      
+      -- Compute the inviscid flux with a centered scheme.
+      -- Input the left and right cell states for this face and
+      -- the direction index for the flux (x = 0, y = 1, or z = 2).
+        var flux = Flow.CenteredInviscidFlux(c(0,0,0), c(1,0,0), 0)
+        
+        -- Store this flux in the cell to the left of the face.
+        c.rhoFlux         =  flux[0]
+        c.rhoVelocityFlux = {flux[1],flux[2],flux[3]}
+        c.rhoEnergyFlux   =  flux[4]
+        
     end
 end
 
--- Compute inviscid fluxes in Y direction
+-- Compute inviscid fluxes in Y direction. Include the first boundary
+-- cell (c.yneg_depth == 1) to define left flux on first interior cell.
 liszt Flow.AddInviscidGetFluxY (c : grid.cells)
-    -- Consider first boundary element (c.yneg_depth == 1) to define down flux
-    -- on first interior cell
     if c.in_interior or c.yneg_depth == 1 then
-        var directionIdx = 1
-        var numInterpolateCoeffs  = spatial_stencil.numInterpolateCoeffs
-        var interpolateCoeffs     = spatial_stencil.interpolateCoeffs
-        var numFirstDerivativeCoeffs = spatial_stencil.numFirstDerivativeCoeffs
-        var firstDerivativeCoeffs    = spatial_stencil.firstDerivativeCoeffs
-        var rhoFactorDiagonal = L.double(0)
-
-        -- Diagonal terms
-        var rhoVelocityFactorDiagonal = L.vec3d({0.0, 0.0, 0.0})
-        var rhoEnergyFactorDiagonal   = L.double(0.0)
-        var fpdiag = L.double(0.0)
-        for ndx = 1, numInterpolateCoeffs do
-            rhoFactorDiagonal += interpolateCoeffs[ndx] *
-                          ( c(0,1-ndx,0).rho *
-                            c(0,1-ndx,0).velocity[directionIdx] +
-                            c(0,ndx,0).rho *
-                            c(0,ndx,0).velocity[directionIdx] )
-            rhoVelocityFactorDiagonal += interpolateCoeffs[ndx] *
-                                   ( c(0,1-ndx,0).rhoVelocity *
-                                     c(0,1-ndx,0).velocity[directionIdx] +
-                                     c(0,ndx,0).rhoVelocity *
-                                     c(0,ndx,0).velocity[directionIdx] )
-            rhoEnergyFactorDiagonal += interpolateCoeffs[ndx] *
-                                 ( c(0,1-ndx,0).rhoEnthalpy *
-                                   c(0,1-ndx,0).velocity[directionIdx] +
-                                   c(0,ndx,0).rhoEnthalpy *
-                                   c(0,ndx,0).velocity[directionIdx] )
-            fpdiag += interpolateCoeffs[ndx] *
-                    ( c(0,1-ndx,0).pressure +
-                      c(0,ndx,0).pressure )
-        end
-
-        -- Skewed terms
-        var rhoFactorSkew     = L.double(0)
-        var rhoVelocityFactorSkew     = L.vec3d({0.0, 0.0, 0.0})
-        var rhoEnergyFactorSkew       = L.double(0.0)
-        -- mdx = -N+1,...,0
-        for mdx = 2-numFirstDerivativeCoeffs, 1 do
-          var tmp = L.double(0)
-          for ndx = 1, mdx+numFirstDerivativeCoeffs do
-            tmp += firstDerivativeCoeffs[ndx-mdx] * 
-                   c(0,ndx,0).velocity[directionIdx]
-          end
-
-          rhoFactorSkew         += c(0,mdx,0).rho * tmp
-          rhoVelocityFactorSkew += c(0,mdx,0).rhoVelocity * tmp
-          rhoEnergyFactorSkew   += c(0,mdx,0).rhoEnthalpy * tmp
-        end
-        --  mdx = 1,...,N
-        for mdx = 1,numFirstDerivativeCoeffs do
-          var tmp = L.double(0)
-          for ndx = mdx-numFirstDerivativeCoeffs+1, 1 do
-            tmp += firstDerivativeCoeffs[mdx-ndx] * 
-                   c(0,ndx,0).velocity[directionIdx]
-          end
-
-          rhoFactorSkew         += c(0,mdx,0).rho * tmp
-          rhoVelocityFactorSkew += c(0,mdx,0).rhoVelocity * tmp
-          rhoEnergyFactorSkew   += c(0,mdx,0).rhoEnthalpy * tmp
-        end
-
-        var s = spatial_stencil.split
-        c.rhoFlux          = s * rhoFactorDiagonal +
-                             (1-s) * rhoFactorSkew
-        c.rhoVelocityFlux  = s * rhoVelocityFactorDiagonal +
-                             (1-s) * rhoVelocityFactorSkew
-        c.rhoEnergyFlux    = s * rhoEnergyFactorDiagonal +
-                             (1-s) * rhoEnergyFactorSkew
-        c.rhoVelocityFlux[directionIdx]  += fpdiag
+      
+      -- Compute the inviscid flux with a centered scheme.
+      -- Input the left and right cell states for this face and
+      -- the direction index for the flux (x = 0, y = 1, or z = 2).
+      var flux = Flow.CenteredInviscidFlux(c(0,0,0), c(0,1,0), 1)
+      
+      -- Store this flux in the cell to the left of the face.
+      c.rhoFlux         =  flux[0]
+      c.rhoVelocityFlux = {flux[1],flux[2],flux[3]}
+      c.rhoEnergyFlux   =  flux[4]
+      
     end
 end
 
--- Compute inviscid fluxes in Z direction
+-- Compute inviscid fluxes in Z direction. Include the first boundary
+-- cell (c.zneg_depth == 1) to define left flux on first interior cell.
 liszt Flow.AddInviscidGetFluxZ (c : grid.cells)
-    -- Consider first boundary element (c.zneg_depth == 1) to define down flux
-    -- on first interior cell
     if c.in_interior or c.zneg_depth == 1 then
-        var directionIdx = 2
-        var numInterpolateCoeffs     = spatial_stencil.numInterpolateCoeffs
-        var interpolateCoeffs        = spatial_stencil.interpolateCoeffs
-        var numFirstDerivativeCoeffs = spatial_stencil.numFirstDerivativeCoeffs
-        var firstDerivativeCoeffs    = spatial_stencil.firstDerivativeCoeffs
-        var rhoFactorDiagonal        = L.double(0)
-
-        -- Diagonal terms
-        var rhoVelocityFactorDiagonal = L.vec3d({0.0, 0.0, 0.0})
-        var rhoEnergyFactorDiagonal   = L.double(0.0)
-        var fpdiag = L.double(0.0)
-        for ndx = 1, numInterpolateCoeffs do
-            rhoFactorDiagonal += interpolateCoeffs[ndx] *
-                          ( c(0,0,1-ndx).rho *
-                            c(0,0,1-ndx).velocity[directionIdx] +
-                            c(0,0,  ndx).rho *
-                            c(0,0,  ndx).velocity[directionIdx] )
-            rhoVelocityFactorDiagonal += interpolateCoeffs[ndx] *
-                                   ( c(0,0,1-ndx).rhoVelocity *
-                                     c(0,0,1-ndx).velocity[directionIdx] +
-                                     c(0,0,  ndx).rhoVelocity *
-                                     c(0,0,  ndx).velocity[directionIdx] )
-            rhoEnergyFactorDiagonal += interpolateCoeffs[ndx] *
-                                 ( c(0,0,1-ndx).rhoEnthalpy *
-                                   c(0,0,1-ndx).velocity[directionIdx] +
-                                   c(0,0,  ndx).rhoEnthalpy *
-                                   c(0,0,  ndx).velocity[directionIdx] )
-            fpdiag += interpolateCoeffs[ndx] *
-                    ( c(0,0,1-ndx).pressure +
-                      c(0,0,  ndx).pressure )
-        end
-
-        -- Skewed terms
-        var rhoFactorSkew             = L.double(0)
-        var rhoVelocityFactorSkew     = L.vec3d({0.0, 0.0, 0.0})
-        var rhoEnergyFactorSkew       = L.double(0.0)
-        -- mdx = -N+1,...,0
-        for mdx = 2-numFirstDerivativeCoeffs, 1 do
-          var tmp = L.double(0)
-          for ndx = 1, mdx+numFirstDerivativeCoeffs do
-            tmp += firstDerivativeCoeffs[ndx-mdx] * 
-                   c(0,0,ndx).velocity[directionIdx]
-          end
-
-          rhoFactorSkew         += c(0,0,mdx).rho * tmp
-          rhoVelocityFactorSkew += c(0,0,mdx).rhoVelocity * tmp
-          rhoEnergyFactorSkew   += c(0,0,mdx).rhoEnthalpy * tmp
-        end
-        --  mdx = 1,...,N
-        for mdx = 1,numFirstDerivativeCoeffs do
-          var tmp = L.double(0)
-          for ndx = mdx-numFirstDerivativeCoeffs+1, 1 do
-            tmp += firstDerivativeCoeffs[mdx-ndx] * 
-                   c(0,0,ndx).velocity[directionIdx]
-          end
-
-          rhoFactorSkew         += c(0,0,mdx).rho * tmp
-          rhoVelocityFactorSkew += c(0,0,mdx).rhoVelocity * tmp
-          rhoEnergyFactorSkew   += c(0,0,mdx).rhoEnthalpy * tmp
-        end
-
-        var s = spatial_stencil.split
-        c.rhoFlux          = s * rhoFactorDiagonal +
-                             (1-s) * rhoFactorSkew
-        c.rhoVelocityFlux  = s * rhoVelocityFactorDiagonal +
-                             (1-s) * rhoVelocityFactorSkew
-        c.rhoEnergyFlux    = s * rhoEnergyFactorDiagonal +
-                             (1-s) * rhoEnergyFactorSkew
-        c.rhoVelocityFlux[directionIdx]  += fpdiag
+      
+      -- Compute the inviscid flux with a centered scheme.
+      -- Input the left and right cell states for this face and
+      -- the direction index for the flux (x = 0, y = 1, or z = 2).
+      var flux = Flow.CenteredInviscidFlux(c(0,0,0), c(0,0,1), 2)
+      
+      -- Store this flux in the cell to the left of the face.
+      c.rhoFlux         =  flux[0]
+      c.rhoVelocityFlux = {flux[1],flux[2],flux[3]}
+      c.rhoEnergyFlux   =  flux[4]
+      
     end
 end
 
 -- Update conserved variables using flux values from previous part
 -- write conserved variables, read flux variables
 -- WARNING_START For non-uniform grids, the metrics used below 
--- (grid_dx, grid_dy, grid_dz) are not  appropriate and should be changed 
+-- (grid_dx, grid_dy, grid_dz) are not appropriate and should be changed
 -- to reflect those expressed in the Python prototype code
 -- WARNING_END
 liszt Flow.AddInviscidUpdateUsingFluxX (c : grid.cells)
     c.rho_t += -(c( 0,0,0).rhoFlux -
-                c(-1,0,0).rhoFlux)/grid_dx
+                 c(-1,0,0).rhoFlux)/grid_dx
     c.rhoVelocity_t += -(c( 0,0,0).rhoVelocityFlux -
-                        c(-1,0,0).rhoVelocityFlux)/grid_dx
+                         c(-1,0,0).rhoVelocityFlux)/grid_dx
     c.rhoEnergy_t += -(c( 0,0,0).rhoEnergyFlux -
-                      c(-1,0,0).rhoEnergyFlux)/grid_dx
+                       c(-1,0,0).rhoEnergyFlux)/grid_dx
 end
 liszt Flow.AddInviscidUpdateUsingFluxY (c : grid.cells)
     c.rho_t += -(c(0, 0,0).rhoFlux -
-                c(0,-1,0).rhoFlux)/grid_dy
+                 c(0,-1,0).rhoFlux)/grid_dy
     c.rhoVelocity_t += -(c(0, 0,0).rhoVelocityFlux -
-                        c(0,-1,0).rhoVelocityFlux)/grid_dy
+                         c(0,-1,0).rhoVelocityFlux)/grid_dy
     c.rhoEnergy_t += -(c(0, 0,0).rhoEnergyFlux -
-                      c(0,-1,0).rhoEnergyFlux)/grid_dy
+                       c(0,-1,0).rhoEnergyFlux)/grid_dy
 end
 liszt Flow.AddInviscidUpdateUsingFluxZ (c : grid.cells)
     c.rho_t += -(c(0,0, 0).rhoFlux -
-                c(0,0,-1).rhoFlux)/grid_dz
+                 c(0,0,-1).rhoFlux)/grid_dz
     c.rhoVelocity_t += -(c(0,0, 0).rhoVelocityFlux -
-                        c(0,0,-1).rhoVelocityFlux)/grid_dz
+                         c(0,0,-1).rhoVelocityFlux)/grid_dz
     c.rhoEnergy_t += -(c(0,0, 0).rhoEnergyFlux -
-                      c(0,0,-1).rhoEnergyFlux)/grid_dz
+                       c(0,0,-1).rhoEnergyFlux)/grid_dz
 end
 
 ----------
@@ -1777,44 +1665,38 @@ liszt Flow.AddViscousGetFluxX (c : grid.cells)
         var velocityX_ZFace = L.double(0)
         var velocityY_YFace = L.double(0)
         var velocityZ_ZFace = L.double(0)
-        var numInterpolateCoeffs  = spatial_stencil.numInterpolateCoeffs
-        var interpolateCoeffs     = spatial_stencil.interpolateCoeffs
+
         -- Interpolate velocity and derivatives to face
-        for ndx = 1, numInterpolateCoeffs do
-            velocityFace += interpolateCoeffs[ndx] *
-                          ( c(1-ndx,0,0).velocity +
-                            c(  ndx,0,0).velocity )
-            velocityX_YFace += interpolateCoeffs[ndx] *
-                               ( c(1-ndx,0,0).velocityGradientY[0] +
-                                 c(  ndx,0,0).velocityGradientY[0] )
-            velocityX_ZFace += interpolateCoeffs[ndx] *
-                               ( c(1-ndx,0,0).velocityGradientZ[0] +
-                                 c(  ndx,0,0).velocityGradientZ[0] )
-            velocityY_YFace += interpolateCoeffs[ndx] *
-                               ( c(1-ndx,0,0).velocityGradientY[1] +
-                                 c(  ndx,0,0).velocityGradientY[1] )
-            velocityZ_ZFace += interpolateCoeffs[ndx] *
-                               ( c(1-ndx,0,0).velocityGradientZ[2] +
-                                 c(  ndx,0,0).velocityGradientZ[2] )
-        end
+        velocityFace = 0.5 *
+                      ( c(0,0,0).velocity +
+                        c(1,0,0).velocity )
+        velocityX_YFace = 0.5 *
+                           ( c(0,0,0).velocityGradientY[0] +
+                             c(1,0,0).velocityGradientY[0] )
+        velocityX_ZFace = 0.5 *
+                           ( c(0,0,0).velocityGradientZ[0] +
+                             c(1,0,0).velocityGradientZ[0] )
+        velocityY_YFace = 0.5 *
+                           ( c(0,0,0).velocityGradientY[1] +
+                             c(1,0,0).velocityGradientY[1] )
+        velocityZ_ZFace = 0.5 *
+                           ( c(0,0,0).velocityGradientZ[2] +
+                             c(1,0,0).velocityGradientZ[2] )
 
         -- Differentiate at face
-        var velocityX_XFace = L.double(0)
-        var velocityY_XFace = L.double(0)
-        var velocityZ_XFace = L.double(0)
-        var temperature_XFace = L.double(0)
-        var numFirstDerivativeCoeffs = spatial_stencil.numFirstDerivativeCoeffs
-        var firstDerivativeCoeffs    = spatial_stencil.firstDerivativeCoeffs
-        for ndx = 1, numFirstDerivativeCoeffs do
-          velocityX_XFace += firstDerivativeCoeffs[ndx] *
-            ( c(ndx,0,0).velocity[0] - c(1-ndx,0,0).velocity[0] )
-          velocityY_XFace += firstDerivativeCoeffs[ndx] *
-            ( c(ndx,0,0).velocity[1] - c(1-ndx,0,0).velocity[1] )
-          velocityZ_XFace += firstDerivativeCoeffs[ndx] *
-            ( c(ndx,0,0).velocity[2] - c(1-ndx,0,0).velocity[2] )
-          temperature_XFace += firstDerivativeCoeffs[ndx] *
-            ( c(ndx,0,0).temperature - c(1-ndx,0,0).temperature )
-        end
+        var velocityX_XFace   = L.double(0.0)
+        var velocityY_XFace   = L.double(0.0)
+        var velocityZ_XFace   = L.double(0.0)
+        var temperature_XFace = L.double(0.0)
+
+        velocityX_XFace = 0.5 *
+          ( c(1,0,0).velocity[0] - c(0,0,0).velocity[0] )
+        velocityY_XFace = 0.5 *
+          ( c(1,0,0).velocity[1] - c(0,0,0).velocity[1] )
+        velocityZ_XFace = 0.5 *
+          ( c(1,0,0).velocity[2] - c(0,0,0).velocity[2] )
+        temperature_XFace = 0.5 *
+          ( c(1,0,0).temperature - c(0,0,0).temperature )
        
         -- Half cell size due to the 0.5 in firstDerivativeCoeffs[ndx] above
         velocityX_XFace   /= (grid_dx*0.5)
@@ -1857,47 +1739,38 @@ liszt Flow.AddViscousGetFluxY (c : grid.cells)
         var velocityY_ZFace = L.double(0)
         var velocityX_XFace = L.double(0)
         var velocityZ_ZFace = L.double(0)
-        var numInterpolateCoeffs  = spatial_stencil.numInterpolateCoeffs
-        var interpolateCoeffs     = spatial_stencil.interpolateCoeffs
-        -- Interpolate velocity and derivatives to face
-        for ndx = 1, numInterpolateCoeffs do
-          
-          
-            velocityFace += interpolateCoeffs[ndx] *
-                          ( c(0,1-ndx,0).velocity +
-                            c(0,ndx,0).velocity )
-            velocityY_XFace += interpolateCoeffs[ndx] *
-                               ( c(0,1-ndx,0).velocityGradientX[1] +
-                                 c(0,  ndx,0).velocityGradientX[1] )
-            velocityY_ZFace += interpolateCoeffs[ndx] *
-                               ( c(0,1-ndx,0).velocityGradientZ[1] +
-                                 c(0,  ndx,0).velocityGradientZ[1] )
-            velocityX_XFace += interpolateCoeffs[ndx] *
-                               ( c(0,1-ndx,0).velocityGradientX[0] +
-                                 c(0,  ndx,0).velocityGradientX[0] )
-            velocityZ_ZFace += interpolateCoeffs[ndx] *
-                               ( c(0,1-ndx,0).velocityGradientZ[2] +
-                                 c(0,  ndx,0).velocityGradientZ[2] )
-                                 
-        end
 
+        -- Interpolate velocity and derivatives to face
+        velocityFace = 0.5 *
+                      ( c(0,0,0).velocity +
+                        c(0,1,0).velocity )
+        velocityY_XFace = 0.5 *
+                           ( c(0,0,0).velocityGradientX[1] +
+                             c(0,1,0).velocityGradientX[1] )
+        velocityY_ZFace = 0.5 *
+                           ( c(0,0,0).velocityGradientZ[1] +
+                             c(0,1,0).velocityGradientZ[1] )
+        velocityX_XFace = 0.5 *
+                           ( c(0,0,0).velocityGradientX[0] +
+                             c(0,1,0).velocityGradientX[0] )
+        velocityZ_ZFace = 0.5 *
+                           ( c(0,0,0).velocityGradientZ[2] +
+                             c(0,1,0).velocityGradientZ[2] )
+                             
         -- Differentiate at face
-        var velocityX_YFace = L.double(0)
-        var velocityY_YFace = L.double(0)
-        var velocityZ_YFace = L.double(0)
-        var temperature_YFace = L.double(0)
-        var numFirstDerivativeCoeffs = spatial_stencil.numFirstDerivativeCoeffs
-        var firstDerivativeCoeffs    = spatial_stencil.firstDerivativeCoeffs
-        for ndx = 1, numFirstDerivativeCoeffs do
-          velocityX_YFace += firstDerivativeCoeffs[ndx] *
-            ( c(0,ndx,0).velocity[0] - c(0,1-ndx,0).velocity[0] )
-          velocityY_YFace += firstDerivativeCoeffs[ndx] *
-            ( c(0,ndx,0).velocity[1] - c(0,1-ndx,0).velocity[1] )
-          velocityZ_YFace += firstDerivativeCoeffs[ndx] *
-            ( c(0,ndx,0).velocity[2] - c(0,1-ndx,0).velocity[2] )
-          temperature_YFace += firstDerivativeCoeffs[ndx] *
-            ( c(0,ndx,0).temperature - c(0,1-ndx,0).temperature )
-        end
+        var velocityX_YFace   = L.double(0.0)
+        var velocityY_YFace   = L.double(0.0)
+        var velocityZ_YFace   = L.double(0.0)
+        var temperature_YFace = L.double(0.0)
+
+        velocityX_YFace = 0.5 *
+          ( c(0,1,0).velocity[0] - c(0,0,0).velocity[0] )
+        velocityY_YFace = 0.5 *
+          ( c(0,1,0).velocity[1] - c(0,0,0).velocity[1] )
+        velocityZ_YFace = 0.5 *
+          ( c(0,1,0).velocity[2] - c(0,0,0).velocity[2] )
+        temperature_YFace = 0.5 *
+          ( c(0,1,0).temperature - c(0,0,0).temperature )
        
         -- Half cell size due to the 0.5 in firstDerivativeCoeffs[ndx] above
         velocityX_YFace   /= (grid_dy*0.5)
@@ -1936,48 +1809,36 @@ liszt Flow.AddViscousGetFluxZ (c : grid.cells)
         var muFace = 0.5 * (GetDynamicViscosity(c(0,0,0).temperature) +
                             GetDynamicViscosity(c(0,0,1).temperature))
         var velocityFace    = L.vec3d({0.0, 0.0, 0.0})
-        var velocityZ_XFace = L.double(0)
-        var velocityZ_YFace = L.double(0)
-        var velocityX_XFace = L.double(0)
-        var velocityY_YFace = L.double(0)
-        var numInterpolateCoeffs  = spatial_stencil.numInterpolateCoeffs
-        var interpolateCoeffs     = spatial_stencil.interpolateCoeffs
+        var velocityZ_XFace = L.double(0.0)
+        var velocityZ_YFace = L.double(0.0)
+        var velocityX_XFace = L.double(0.0)
+        var velocityY_YFace = L.double(0.0)
+
         -- Interpolate velocity and derivatives to face
-        for ndx = 1, numInterpolateCoeffs do
-            velocityFace += interpolateCoeffs[ndx] *
-                          ( c(0,0,1-ndx).velocity +
-                            c(0,0,  ndx).velocity )
-            velocityZ_XFace += interpolateCoeffs[ndx] *
-                               ( c(0,0,1-ndx).velocityGradientX[2] +
-                                 c(0,0,  ndx).velocityGradientX[2] )
-            velocityZ_YFace +=  interpolateCoeffs[ndx] *
-                               ( c(0,0,1-ndx).velocityGradientY[2] +
-                                 c(0,0,  ndx).velocityGradientY[2] )
-            velocityX_XFace += interpolateCoeffs[ndx] *
-                               ( c(0,0,1-ndx).velocityGradientX[0] +
-                                 c(0,0,  ndx).velocityGradientX[0] )
-            velocityY_YFace += interpolateCoeffs[ndx] *
-                               ( c(0,0,1-ndx).velocityGradientY[1] +
-                                 c(0,0,  ndx).velocityGradientY[1] )
-        end
+        velocityFace = 0.5 * ( c(0,0,0).velocity + c(0,0,1).velocity )
+        velocityZ_XFace = 0.5 *
+                           ( c(0,0,0).velocityGradientX[2] +
+                             c(0,0,1).velocityGradientX[2] )
+        velocityZ_YFace = 0.5 *
+                           ( c(0,0,0).velocityGradientY[2] +
+                             c(0,0,1).velocityGradientY[2] )
+        velocityX_XFace = 0.5 *
+                           ( c(0,0,0).velocityGradientX[0] +
+                             c(0,0,1).velocityGradientX[0] )
+        velocityY_YFace = 0.5 *
+                           ( c(0,0,0).velocityGradientY[1] +
+                             c(0,0,1).velocityGradientY[1] )
 
         -- Differentiate at face
-        var velocityX_ZFace = L.double(0)
-        var velocityY_ZFace = L.double(0)
-        var velocityZ_ZFace = L.double(0)
-        var temperature_ZFace = L.double(0)
-        var numFirstDerivativeCoeffs = spatial_stencil.numFirstDerivativeCoeffs
-        var firstDerivativeCoeffs    = spatial_stencil.firstDerivativeCoeffs
-        for ndx = 1, numFirstDerivativeCoeffs do
-          velocityX_ZFace += firstDerivativeCoeffs[ndx] *
-            ( c(0,0,ndx).velocity[0] - c(0,0,1-ndx).velocity[0] )
-          velocityY_ZFace += firstDerivativeCoeffs[ndx] *
-            ( c(0,0,ndx).velocity[1] - c(0,0,1-ndx).velocity[1] )
-          velocityZ_ZFace += firstDerivativeCoeffs[ndx] *
-            ( c(0,0,ndx).velocity[2] - c(0,0,1-ndx).velocity[2] )
-          temperature_ZFace += firstDerivativeCoeffs[ndx] *
-            ( c(0,0,ndx).temperature - c(0,0,1-ndx).temperature )
-        end
+        var velocityX_ZFace   = L.double(0.0)
+        var velocityY_ZFace   = L.double(0.0)
+        var velocityZ_ZFace   = L.double(0.0)
+        var temperature_ZFace = L.double(0.0)
+
+        velocityX_ZFace   = 0.5*( c(0,0,1).velocity[0] - c(0,0,0).velocity[0] )
+        velocityY_ZFace   = 0.5*( c(0,0,1).velocity[1] - c(0,0,0).velocity[1] )
+        velocityZ_ZFace   = 0.5*( c(0,0,1).velocity[2] - c(0,0,0).velocity[2] )
+        temperature_ZFace = 0.5*( c(0,0,1).temperature - c(0,0,0).temperature )
        
         -- Half cell size due to the 0.5 in firstDerivativeCoeffs[ndx] above
         velocityX_ZFace   /= (grid_dz*0.5)
@@ -2009,16 +1870,16 @@ liszt Flow.AddViscousGetFluxZ (c : grid.cells)
 end
 
 liszt Flow.AddViscousUpdateUsingFluxX (c : grid.cells)
-    c.rhoVelocity_t += (c(0,0,0).rhoVelocityFlux -
+    c.rhoVelocity_t += (c( 0,0,0).rhoVelocityFlux -
                         c(-1,0,0).rhoVelocityFlux)/grid_dx
-    c.rhoEnergy_t   += (c(0,0,0).rhoEnergyFlux -
+    c.rhoEnergy_t   += (c( 0,0,0).rhoEnergyFlux -
                         c(-1,0,0).rhoEnergyFlux)/grid_dx
 end
 
 liszt Flow.AddViscousUpdateUsingFluxY (c : grid.cells)
-    c.rhoVelocity_t += (c(0,0,0).rhoVelocityFlux -
+    c.rhoVelocity_t += (c(0, 0,0).rhoVelocityFlux -
                         c(0,-1,0).rhoVelocityFlux)/grid_dy
-    c.rhoEnergy_t   += (c(0,0,0).rhoEnergyFlux -
+    c.rhoEnergy_t   += (c(0, 0,0).rhoEnergyFlux -
                         c(0,-1,0).rhoEnergyFlux)/grid_dy
 end
 
@@ -4330,3 +4191,7 @@ while ((TimeIntegrator.simTime:get() < TimeIntegrator.final_time) and
       Visualization.Draw()
     end
 end
+
+print("")
+print("--------------------------- Exit Success ----------------------------")
+print("")
