@@ -906,63 +906,91 @@ function L.LField:LoadFunction(lua_callback)
   end
 end
 
--- To load fields using terra callback, we have two versions: single and
--- distributed. These two execute the same way without Legion. With Legion, the
--- distributed version will launch tasks while the single version will create
--- inline physical regions.
--- Default one is single.
-function L.LField:LoadTerraFunctionSingle(terra_callback)
+-- To load fields using terra callback. Terra callback gets a list of dlds.
+--   callback([dlds])
+function L.LRelation:LoadJointTerraFunction(fields_arg, terra_callback)
   if not terralib.isfunction(terra_callback) then
-    error('LoadTerraFunction.. should be used with terra callback')
+    error('LoadJointTerraFunction.. should be used with terra callback')
   end
-  if self.owner:isFragmented() then
-    error('cannot load into fragmented relation', 2)
+  if self:isFragmented() then
+    error('cannot load to fragmented relation', 2)
+  elseif type(fields_arg) ~= 'table' or #fields_arg == 0 then
+    error('LoadJointTerraFunction(): Expects a list of fields as its first argument', 2)
   end
-  local dld = self:GetDLD()
+  local fields = {}
+  for i,f in ipairs(fields_arg) do
+    if type(f) == 'string' then f = self[f] end
+    if not L.is_field(f) then
+      error('LoadJointTerraFunction(): list entry '..tostring(i)..' was either '..
+            'not a field or not the name of a field in '..
+            'relation '..self:Name(),2)
+    end
+    if f.owner ~= self then
+      error('LoadJointTerraFunction(): list entry '..tostring(i)..', field '..
+            f:FullName()..' is not a field of relation '..self:Name(), 2)
+    end
+    fields[i] = f
+  end
+  local nfields = #fields
+
+  local dld_array = terralib.new(DLD.ctype[nfields])
   if use_single then
-    if dld.location == 'CPU' then
-        terra_callback(dld:Compile())
-    -- TODO(Chinmayee): move some of this to rawdata, or another function?
-    -- we could also just create GPU functions?
-    elseif dld.location == 'GPU' then
-        local cpu_buf = DynamicArray.New {
+    local cpu_buf = {}
+    for i = 1, nfields do
+      local dld = fields[i]:GetDLD()
+      if dld.location == 'GPU' then
+        print("Allocate " .. i)
+        cpu_buf[i]    = DynamicArray.New {
             processor = L.CPU,
-            size = self:ConcreteSize(),
-            type = self:Type():terraType()
+            size      = self:ConcreteSize(),
+            type      = self:Type():terraType()
         }
         dld.address   = cpu_buf:ptr()
         dld.location  = 'CPU'
-        terra_callback(dld:Compile())
-        self.array:copy(cpu_buf)
-        cpu_buf:free()
+      else
+        cpu_buf[i] = nil
+      end
+      dld_array[i-1] = dld:Compile()
+    end
+    terra_callback(dld_array)
+    for i = 1, nfields do
+      if cpu_buf[i] then
+        print("Copy " .. i)
+        fields[i].array:copy(cpu_buf[i])
+        print("Free " .. i)
+        cpu_buf[i]:free()
+      end
     end
   elseif use_legion then
+    -- TODO(Chinmayee): check if it is better to do a separate physical region
+    -- for each field
     local params = { relation = self.owner, fields = { self }, privilege = LW.WRITE_ONLY }
     local region = LW.NewInlinePhysicalRegion(params)
-    dld:SetDataPointer(region:GetDataPointers()[1])
-    dld:SetDims(self.owner:Dims())
-    dld:SetStride(region:GetStrides()[1])
-    dld:SetOffset(region:GetOffsets()[1])
-    terra_callback(dld:Compile())
+    local data_ptrs = region:GetDataPointers()
+    local dims      = self:Dims()
+    local strides   = region:GetStrides()
+    local offsets   = region:GetOffsets()
+    for i = 1, nfields do
+      local dld = self:GetDLD()
+      dld:SetDataPointer(data_ptrs[i])
+      dld:SetDims(dims)
+      dld:SetStride(strides[i])
+      dld:SetOffset(offsets[i])
+      dld_array[i-1] = dld:Compile()
+    end
+    terra_callback(dld_array)
     region:Destroy()
   end
 end
-function L.LField:LoadTerraFunctionDistributed(terra_callback)
-  if not terralib.isfunction(terra_callback) then
-    error('LoadTerraFunction.. should be used with terra callback')
-  end
-  if self.owner:isFragmented() then
-    error('cannot load into fragmented relation', 2)
-  end
-  local dld
-  if use_single then
-    terra_callback(self:GetDLD():Compile())
-  elseif use_legion then
-    error('Distributed Terra callbacks for load currently not implemented with Legion')
-  end
-end
+
+-- Load a single field using a terra callback
+-- callback accepts argument dld
+--   callback(dld)
 function L.LField:LoadTerraFunction(terra_callback)
-  self:LoadTerraFunctionSingle(terra_callback)
+  if not terralib.isfunction(terra_callback) then
+    error('LoadTerraFunction should be used with terra callback')
+  end
+  self.owner:LoadJointTerraFunction({self}, terra_callback)
 end
 
 function L.LField:LoadList(tbl)
@@ -1056,7 +1084,8 @@ function L.LField:LoadConstant(constant)
 
   local ttype = self.type:terraType()
 
-  local terra LoadConstantFunction(d : DLD.ctype)
+  local terra LoadConstantFunction(darray : &DLD.ctype)
+    var d = darray[0]
     var c : ttype = [T.luaToLisztVal(constant, self.type)]
     var b = d.dims
     var s = d.stride
@@ -1234,30 +1263,27 @@ function L.LField:DumpToList()
   return arr
 end
 
--- To dump fields using terra callback, we have two versions: single and
--- distributed. These two execute the same way without Legion. With Legion, the
--- distributed version will launch tasks while the single version will create
--- inline physical regions.
--- Default one is single.
-function L.LRelation:DumpJointTerraSingle(fields_arg, terra_callback)
+-- To dump fields using terra callback. Terra callback gets a list of dlds.
+--   callback([dlds])
+function L.LRelation:DumpJointTerraFunction(fields_arg, terra_callback)
   if not terralib.isfunction(terra_callback) then
-    error('DumpJointTerra.. should be used with terra callback')
+    error('DumpJointTerraFunction.. should be used with terra callback')
   end
   if self:isFragmented() then
     error('cannot dump from fragmented relation', 2)
   elseif type(fields_arg) ~= 'table' or #fields_arg == 0 then
-    error('DumpJointTerra(): Expects a list of fields as its first argument', 2)
+    error('DumpJointTerraFunction(): Expects a list of fields as its first argument', 2)
   end
   local fields = {}
   for i,f in ipairs(fields_arg) do
     if type(f) == 'string' then f = self[f] end
     if not L.is_field(f) then
-      error('DumpJoint(): list entry '..tostring(i)..' was either '..
+      error('DumpJointTerraFunction(): list entry '..tostring(i)..' was either '..
             'not a field or not the name of a field in '..
             'relation '..self:Name(),2)
     end
     if f.owner ~= self then
-      error('DumpJoint(): list entry '..tostring(i)..', field '..
+      error('DumpJointFunction(): list entry '..tostring(i)..', field '..
             f:FullName()..' is not a field of relation '..self:Name(), 2)
     end
     fields[i] = f
@@ -1268,22 +1294,22 @@ function L.LRelation:DumpJointTerraSingle(fields_arg, terra_callback)
   if use_single then
     local cpu_buf = {}
     for i = 1, nfields do
-      local dld = self:GetDLD()
+      local dld = fields[i]:GetDLD()
         if dld.location == 'GPU' then
           cpu_buf[i]  = DynamicArray.New {
             processor = L.CPU,
             size      = self:ConcreteSize(),
             type      = fields_arg[i]:terraType()
           }
-          cpu_buf:copy(fields_arg[i].array)
+          cpu_buf:copy(fields[i].array)
           dld.address = cpu_buf:ptr()
           dld.location = 'CPU'
         else
           cpu_buf[i] = nil
         end
       dld_array[i-1] = dld:Compile()
-      terra_callback(dld_array)
     end
+    terra_callback(dld_array)
     for i = 1, nfields do
       if cpu_buf[i] then cpu_buf[i]:free() end
     end
@@ -1308,70 +1334,15 @@ function L.LRelation:DumpJointTerraSingle(fields_arg, terra_callback)
     region:Destroy()
   end
 end
-function L.LRelation:DumpJointTerraDistributed(fields_arg, terra_callback)
-  if not terralib.isfunction(terra_callback) then
-    error('DumpJointTerra.. should be used with terra callback')
-  end
-  if self:isFragmented() then
-    error('cannot dump from fragmented relation', 2)
-  elseif type(fields_arg) ~= 'table' or #fields_arg == 0 then
-    error('DumpJointTerra(): Expects a list of fields as its first argument', 2)
-  end
-  local fields = {}
-  for i,f in ipairs(fields_arg) do
-    if type(f) == 'string' then f = self[f] end
-    if not L.is_field(f) then
-      error('DumpJoint(): list entry '..tostring(i)..' was either '..
-            'not a field or not the name of a field in '..
-            'relation '..self:Name(),2)
-    end
-    if f.owner ~= self then
-      error('DumpJoint(): list entry '..tostring(i)..', field '..
-            f:FullName()..' is not a field of relation '..self:Name(), 2)
-    end
-    fields[i] = f
-  end
-  local nfields = #fields
 
-  local dld_array = terralib.new(DLD.ctype[nfields])
-  if use_single then
-    local cpu_buf = {}
-    for i = 1, nfields do
-      local dld = self:GetDLD()
-        if dld.location == 'GPU' then
-          cpu_buf[i]  = DynamicArray.New {
-            processor = L.CPU,
-            size      = self:ConcreteSize(),
-            type      = fields_arg[i]:terraType()
-          }
-          cpu_buf:copy(fields_arg[i].array)
-          dld.address = cpu_buf:ptr()
-          dld.location = 'CPU'
-        else
-          cpu_buf[i] = nil
-        end
-      dld_array[i-1] = dld:Compile()
-      terra_callback(dld_array)
-    end
-    for i = 1, nfields do
-      if cpu_buf[i] then cpu_buf[i]:free() end
-    end
-  elseif use_legion then
-    error('Distributed Terra callbacks for dump currently not implemented with Legion')
-  end
-end
-function L.LRelation:DumpJointTerra(fields_arg, terra_callback)
-  self:DumpJointTerraSingle(fields_arg, terra_callback)
-end
-
--- uses default of DumpJointTerra
+-- Dump a single field using a terra callback
 -- callback accepts argument dld
 --   callback(dld)
 function L.LField:DumpTerraFunction(terra_callback)
   if not terralib.isfunction(terra_callback) then
     error('DumpTerraFunction should be used with terra callback')
   end
-  self.ownner:DumpJointTerra({self}, terra_callback)
+  self.ownner:DumpJointTerraFunction({self}, terra_callback)
 end
 
 
@@ -1460,7 +1431,8 @@ function L.LField:LoadFromCSV(filename)
   end
 
   local btype = self.type:terraBaseType()
-  local terra LoadCSVFunction(d : DLD.ctype)
+  local terra LoadCSVFunction(darray : &DLD.ctype)
+    var d    = darray[0]
     var s    = d.stride
     var st   = d.type.stride
     var dim  = d.dims
@@ -1509,7 +1481,8 @@ function L.LField:SaveToCSV(filename)
   end
 
   local btype = self.type:terraBaseType()
-  local terra SaveCSVFunction(d : DLD.ctype)
+  local terra SaveCSVFunction(darray : &DLD.ctype)
+    var d    = darray[0]
     var s    = d.stride
     var st   = d.type.stride
     var dim  = d.dims
