@@ -140,16 +140,16 @@ function dld:SetOffset(offset)
 end
 
 function dld:SetCompactStrideOffset()
-  -- default is row major, must set stride explicitly otherwise
+  -- default is column major, must set stride explicitly otherwise
   local size_entry = self.type.size_bytes
   if self.ndims == 1 then
     self.stride = { size_entry }
   elseif self.ndims == 2 then
-    self.stride = { size_entry * self.dims[2], size_entry }
+    self.stride = { size_entry, size_entry * self.dims[1] }
   elseif self.ndims == 3 then
-    self.stride = { size_entry * self.dims[2] * self.dims[3],
-                    size_entry * self.dims[3],
-                    size_entry }
+    self.stride = { size_entry,
+                    size_entry * self.dims[1],
+                    size_entry * self.dims[1] * self.dims[2] }
   end
   self.offset = 0
 end

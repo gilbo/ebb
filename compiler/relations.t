@@ -908,7 +908,7 @@ end
 
 -- To load fields using terra callback. Terra callback gets a list of dlds.
 --   callback([dlds])
-function L.LRelation:LoadJointTerraFunction(fields_arg, terra_callback)
+function L.LRelation:LoadJointTerraFunction(terra_callback, fields_arg)
   if not terralib.isfunction(terra_callback) then
     error('LoadJointTerraFunction.. should be used with terra callback')
   end
@@ -987,7 +987,7 @@ function L.LField:LoadTerraFunction(terra_callback)
   if not terralib.isfunction(terra_callback) then
     error('LoadTerraFunction should be used with terra callback')
   end
-  self.owner:LoadJointTerraFunction({self}, terra_callback)
+  self.owner:LoadJointTerraFunction(terra_callback, {self})
 end
 
 function L.LField:LoadList(tbl)
@@ -1262,7 +1262,7 @@ end
 
 -- To dump fields using terra callback. Terra callback gets a list of dlds.
 --   callback([dlds])
-function L.LRelation:DumpJointTerraFunction(fields_arg, terra_callback)
+function L.LRelation:DumpJointTerraFunction(terra_callback, fields_arg)
   if not terralib.isfunction(terra_callback) then
     error('DumpJointTerraFunction.. should be used with terra callback')
   end
@@ -1339,7 +1339,7 @@ function L.LField:DumpTerraFunction(terra_callback)
   if not terralib.isfunction(terra_callback) then
     error('DumpTerraFunction should be used with terra callback')
   end
-  self.ownner:DumpJointTerraFunction({self}, terra_callback)
+  self.owner:DumpJointTerraFunction(terra_callback, {self})
 end
 
 
@@ -1437,7 +1437,6 @@ function L.LField:LoadFromCSV(filename)
     var bt  : btype    -- base type
     var c   : int8     -- delimiter in csv, comma
     var ptr : &uint8   -- data ptr
-    -- loops assume row major order whenever there are multiple dimensions
     for i = 0, dim[0] do
       for j = 0, dim[1] do
         for k = 0, dim[2] do
@@ -1452,12 +1451,21 @@ function L.LField:LoadFromCSV(filename)
                 c = 0
                 while (c ~= 44) do
                   c = C.fgetc(fp)
-                  C.assert ((c == 32 or c == 44) and C.ferror(fp) == 0 and C.feof(fp) == 0)
+                  C.assert ((c == 32 or c == 44) and C.ferror(fp) == 0 and C.feof(fp) == 0,
+                            "Expected a comma or a space in CSV file")
                 end
               end
             end
           end
         end
+      end
+    end
+    c = 0
+    while (C.feof(fp) == 0) do
+      c = C.fgetc(fp)
+      if (c > 0 and (c < 9 or (c > 13 and c ~= 32))) then
+        C.printf("CSV file %s longer than expected. Expected space or end of file.\n", filename)
+        C.exit(-1)
       end
     end
   end
@@ -1486,7 +1494,6 @@ function L.LField:SaveToCSV(filename)
     var dimt = d.type.dims
     var bt  : btype    -- base type
     var ptr : &uint8   -- data ptr
-    -- loops assume row major order whenever there are multiple dimensions
     for i = 0, dim[0] do
       for j = 0, dim[1] do
         for k = 0, dim[2] do
