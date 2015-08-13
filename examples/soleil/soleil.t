@@ -638,31 +638,22 @@ end
 --[[                       Load Data for a Restart                       ]]--
 -----------------------------------------------------------------------------
 
--- Create empty arrays for storing the restart, in case we will be
--- reading them from a file and initializing using them below.
+-- Create empty arrays for storing the restart info
 
 local restartNX, restartNY, restartNZ, restartIter, restartTime
-local rho_data_array = {}
-local pressure_data_array = {}
-local velocity_data_array = {}
 
 if flow_options.initCase == Flow.Restart then
 
-  -- here's the path object for our soleil restart file we want to read in.
-  -- Notice that the path is relative to this script's location on
-  -- disk rather than the present working directory, which varies
-  -- depending on where we invoke this script from.
+  -- here's the path object for our soleil restart info file. note that
+  -- this file only contains auxiliary info we need, and that the fields
+  -- are contained in CSVs to be read in below
   local restart_filename = IO.outputFileNamePrefix .. 'restart_' ..
                            config.restartIter .. '.dat'
 
-  -- Restart files have the following format
+  -- Restart info files have the following format
   --[[
    Soleil Flow Restart
    #cells currentTimeStep currentPhysicalTime
-   rho0 pressure0 u0 v0 w0
-   ...
-   ...   #cells rows of primitives for each cell
-   ...
   ]]--
 
   -- In Lua, we can open files just like in C
@@ -685,42 +676,7 @@ if flow_options.initCase == Flow.Restart then
   restartIter = soleil_in:read('*number')
   restartTime = soleil_in:read('*number')
 
-  -- create multi-dimensional arrays
-  
-  for i=1,restartNX do
-    rho_data_array[i] = {}
-    pressure_data_array[i] = {}
-    velocity_data_array[i] = {}
-    for j=1,restartNY do
-      rho_data_array[i][j] = {}
-      pressure_data_array[i][j] = {}
-      velocity_data_array[i][j] = {}
-      for k =1,restartNZ do
-        rho_data_array[i][j][k] = {}
-        pressure_data_array[i][j][k] = {}
-        velocity_data_array[i][j][k] = {}
-      end
-    end
-  end
-
-  -- now read in all the density, pressure, and velocity data
-
-  for k=1,restartNZ do
-    for j=1,restartNY do
-      for i=1,restartNX do
-        rho_data_array[i][j][k]      = soleil_in:read('*number')
-        pressure_data_array[i][j][k] = soleil_in:read('*number')
-        local vec = {
-          soleil_in:read('*number'),
-          soleil_in:read('*number'),
-          soleil_in:read('*number')
-        }
-        velocity_data_array[i][j][k] = vec
-      end
-    end
-  end
-
--- don't forget to close the file when done
+  -- don't forget to close the file when done
   soleil_in:close()
 
   -- Before exiting, increment the time step and physical time so
@@ -731,78 +687,9 @@ if flow_options.initCase == Flow.Restart then
   TimeIntegrator.simTime:set(restartTime)
   TimeIntegrator.max_iter = TimeIntegrator.max_iter + restartIter
   
-end
-
--- Now check for and load a particle restart file if requested
-
-local restartnParticles, restartPartIter, restartPartTime
-local particle_pos_array  = {}
-local particle_vel_array  = {}
-local particle_temp_array = {}
-local particle_diam_array = {}
-
-
-if particles_options.initParticles == Particles.Restart then
-  
-  -- here's the path object for our soleil restart file we want to read in.
-  -- Notice that the path is relative to this script's location on
-  -- disk rather than the present working directory, which varies
-  -- depending on where we invoke this script from.
-  local restart_filename = IO.outputFileNamePrefix .. 'restart_particles_' ..
-  config.restartParticleIter .. '.dat'
-  
-  -- Particle restart files have the following format
-  --
-  --[[
-   Soleil Particle Restart
-   #particles currentIteration currentPhysicalTime
-   x0 y0 z0 u0 v0 w0 temperature0 diameter0
-   ...
-   ...   #particles rows of values for each particle
-   ...
-   ]]--
-  
-  -- In Lua, we can open files just like in C
-  local soleil_in = io.open(tostring(restart_filename), "r")
-  if not soleil_in then
-    error('Error: failed to open '..tostring(restart_filename))
-  end
-  
-  -- we can read a line like so
-  local SOLEIL_SIG = soleil_in:read('*line')
-  
-  if SOLEIL_SIG ~= 'Soleil Particle Restart' then
-    error('Restart file must begin with the first line "Soleil Particle Restart"')
-  end
-  
-  -- read the counts of cells, iterations, and the time
-  restartnParticles = soleil_in:read('*number')
-  restartPartIter   = soleil_in:read('*number')
-  restartPartTime   = soleil_in:read('*number')
-  
-  -- now read in all the density, pressure, and velocity data
-  
-  for i = 1, restartnParticles do
-    local pos_vec = {
-      soleil_in:read('*number'),
-      soleil_in:read('*number'),
-      soleil_in:read('*number')
-    }
-    particle_pos_array[i] = pos_vec
-    local vel_vec = {
-      soleil_in:read('*number'),
-      soleil_in:read('*number'),
-      soleil_in:read('*number')
-    }
-    particle_vel_array[i]  = vel_vec
-    particle_temp_array[i] = soleil_in:read('*number')
-    particle_diam_array[i] = soleil_in:read('*number')
-  end
-  
-  -- don't forget to close the file when done
-  soleil_in:close()
   
 end
+
 
 -----------------------------------------------------------------------------
 --[[                       GRID/PARTICLES RELATIONS                      ]]--
@@ -914,15 +801,12 @@ grid.cells:NewField('rho', L.double)
 grid.cells:NewField('pressure', L.double)
 grid.cells:NewField('velocity', L.vec3d)
 if flow_options.initCase == Flow.Restart then
-  grid.cells.rho        :Load(function(i,j,k)
-                              return rho_data_array[i+1][j+1][k+1]
-                              end)
-  grid.cells.pressure   :Load(function(i,j,k)
-                              return pressure_data_array[i+1][j+1][k+1]
-                              end)
-  grid.cells.velocity   :Load(function(i,j,k)
-                              return velocity_data_array[i+1][j+1][k+1]
-                              end)
+  grid.cells.rho:LoadFromCSV(IO.outputFileNamePrefix .. 'restart_rho_' ..
+                             config.restartIter .. '.csv')
+  grid.cells.pressure:LoadFromCSV(IO.outputFileNamePrefix .. 'restart_pressure_'
+                                  .. config.restartIter .. '.csv')
+  grid.cells.velocity:LoadFromCSV(IO.outputFileNamePrefix .. 'restart_velocity_'
+                                  .. config.restartIter .. '.csv')
 else
   grid.cells.rho        :Load(0)
   grid.cells.pressure   :Load(0)
@@ -996,10 +880,10 @@ particles:NewField('diameter', L.double)
 --   - a particle already collected has a state = 2
 particles:NewField('state', L.int)
 if particles_options.initParticles == Particles.Restart then
-  particles.position      :Load(particle_pos_array)
-  particles.velocity      :Load(particle_vel_array)
-  particles.temperature   :Load(particle_temp_array)
-  particles.diameter      :Load(particle_diam_array)
+  particles.position:LoadFromCSV(IO.outputFileNamePrefix .. 'restart_particle_position_' .. config.restartParticleIter .. '.csv')
+  particles.velocity:LoadFromCSV(IO.outputFileNamePrefix .. 'restart_particle_velocity_' .. config.restartParticleIter .. '.csv')
+  particles.temperature:LoadFromCSV(IO.outputFileNamePrefix .. 'restart_particle_temperature_' .. config.restartParticleIter .. '.csv')
+  particles.diameter:LoadFromCSV(IO.outputFileNamePrefix .. 'restart_particle_diameter_' .. config.restartParticleIter .. '.csv')
   particles.state         :Load(1)
 else
 particles.position      :Load({0, 0, 0})
@@ -3448,7 +3332,7 @@ function IO.WriteFlowRestart(timeStep)
   if (timeStep % TimeIntegrator.restartEveryTimeSteps == 0 and
       IO.wrtRestart == ON) then
       
-      -- Prepare the restart file name for the current iteration
+      -- Prepare the restart info file (.dat)
       
       local outputFileName = IO.outputFileNamePrefix .. "restart_" ..
       tostring(timeStep) .. ".dat"
@@ -3457,20 +3341,12 @@ function IO.WriteFlowRestart(timeStep)
       
       local outputFile = io.output(outputFileName)
       
-      -- Dump the fields to lists for writing
-      
-      --local rho      = grid.cells.rho:DumpToList()
-      --local pressure = grid.cells.pressure:DumpToList()
-      --local velocity = grid.cells.velocity:DumpToList()
+      -- We only need to write a few things to this info file (not fields)
       
       local nCells = grid.cells.velocity:Size()
       local nX = grid_options.xnum + 2*xBnum
       local nY = grid_options.ynum + 2*yBnum
       local nZ = grid_options.znum + 2*zBnum
-      
-      --local nDim   = grid.cells.velocity:Type().N
-      
-      -- Write header: number of cells, iteration, physical time
       
       io.write('Soleil Flow Restart\n')
       local s = '' .. tostring(nX)
@@ -3479,32 +3355,24 @@ function IO.WriteFlowRestart(timeStep)
       s = s .. ' ' .. tostring(timeStep)
       s = s .. ' ' .. tostring(TimeIntegrator.simTime:get()) .. '\n'
       io.write(s)
-      
-      -- Write the primitve variables: density, pressure, u, v, w.
-      -- One row per cell, in the order it was dumped to the list.
-      
-      grid.cells:DumpJoint({ 'rho', 'pressure', 'velocity' },
-                           function(ids, dens, pres, vel)
-                           io.write(value_tostring(dens)..' '..value_tostring(pres)..
-                                    ' '..value_tostring(vel)..'\n')
-                           end)
                            
      -- Close the restart file
+     
      io.close()
      
      -- Write the restart CSV files for density, pressure, and velocity
      
      local fileName = IO.outputFileNamePrefix .. "restart_rho_" ..
      tostring(timeStep) .. ".csv"
-     grid.cells.rho:SaveToCSV(fileName)
+     grid.cells.rho:SaveToCSV(fileName,{precision=16})
      
      fileName = IO.outputFileNamePrefix .. "restart_pressure_" ..
      tostring(timeStep) .. ".csv"
-     grid.cells.pressure:SaveToCSV(fileName)
+     grid.cells.pressure:SaveToCSV(fileName,{precision=16})
      
      fileName = IO.outputFileNamePrefix .. "restart_velocity_" ..
      tostring(timeStep) .. ".csv"
-     grid.cells.velocity:SaveToCSV(fileName)
+     grid.cells.velocity:SaveToCSV(fileName,{precision=16})
      
   end
   
@@ -3663,70 +3531,30 @@ end
 end
 
 function IO.WriteParticleRestart(timeStep)
-  
--- Check if it is time to output a particle restart file
-if (timeStep % TimeIntegrator.restartEveryTimeSteps == 0 and
-    IO.wrtRestart == ON) then
-    
-    -- Prepare the restart file name for the current iteration
-    
-    local outputFileName = IO.outputFileNamePrefix .. "restart_particles_" ..
-    tostring(timeStep) .. ".dat"
-    
-    -- Open file
-    
-    local outputFile = io.output(outputFileName)
-    
-    -- Dump the fields to lists for writing
-    
---    local p_position = particles.position:DumpToList()
---    local p_velocity = particles.velocity:DumpToList()
---    local diameter   = particles.diameter:DumpToList()
---    local particleT  = particles.temperature:DumpToList()
-    
-    local nParticles = particles.position:Size()
-    local nDim       = particles.position:Type().N
-    
-    -- Write header: number of particles, iteration, physical time
-    
-    io.write('Soleil Particle Restart\n')
-    local s = '' .. tostring(nParticles)
-    s = s .. ' ' .. tostring(timeStep)
-    s = s .. ' ' .. tostring(TimeIntegrator.simTime:get()) .. '\n'
-    io.write(s)
-    
-    -- Write the primitve variables for the particles
 
-    particles:DumpJoint({'position','velocity','temperature','diameter'},
-    function(ids, pos, vel, temp, diam)
-      s = ''
-      s = s .. ' ' .. value_tostring(pos) .. ''
-      s = s .. ' ' .. value_tostring(vel) .. ''
-      s = s .. ' ' .. value_tostring(temp) ..
-               ' ' .. value_tostring(diam) .. '\n'
-      io.write("", s)
-    end)
+  -- Check if it is time to output a particle restart file
+  if (timeStep % TimeIntegrator.restartEveryTimeSteps == 0 and
+  IO.wrtRestart == ON) then
 
-    --for i=1,nParticles do
-    --  s = ''
-    --  for j=1,nDim do
-    --    local t = tostring(p_position[i][j]):gsub('ULL',' ')
-    --    s = s .. ' ' .. t .. ''
-    --  end
-    --  for j=1,nDim do
-    --    local t = tostring(p_velocity[i][j]):gsub('ULL',' ')
-    --    s = s .. ' ' .. t .. ''
-    --  end
-    --  local temp = tostring(particleT[i]):gsub('ULL',' ')
-    --  local diam = tostring(diameter[i]):gsub('ULL',' ')
-    --  s = s .. ' ' .. temp .. ' ' .. diam .. '\n'
-    --  io.write("", s)
-    --end
-    
-    -- Close the restart file
-    io.close()
-    
-end
+    -- Write the restart CSV files for density, pressure, and velocity
+
+    local fileName = IO.outputFileNamePrefix .. 'restart_particle_position_' ..
+    config.restartParticleIter .. '.csv'
+    particles.position:SaveToCSV(fileName,{precision=16})
+
+    fileName = IO.outputFileNamePrefix .. 'restart_particle_velocity_' ..
+    config.restartParticleIter .. '.csv'
+    particles.velocity:SaveToCSV(fileName,{precision=16})
+
+    fileName = IO.outputFileNamePrefix .. 'restart_particle_temperature_' ..
+    config.restartParticleIter .. '.csv'
+    particles.temperature:SaveToCSV(fileName,{precision=16})
+
+    fileName = IO.outputFileNamePrefix .. 'restart_particle_diameter_' ..
+    config.restartParticleIter .. '.csv'
+    particles.diameter:SaveToCSV(fileName,{precision=16})
+
+  end
 
 end
 
