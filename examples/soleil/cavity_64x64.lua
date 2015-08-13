@@ -52,7 +52,7 @@ return {
   outputEveryTimeSteps  = 1000,
   restartEveryTimeSteps = 1000,
   headerFrequency       = 20,
-  outputFormat = 'Tecplot', --Tecplot or Python
+  outputFormat = 'Tecplot', -- Only 'Tecplot' is currently available
   outputDirectory = '../soleilOutput/', -- relative to the liszt-in-terra home directory
   
   -- Fluid Options --
