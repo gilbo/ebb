@@ -1408,13 +1408,6 @@ end
 
 -- load/ save field from file (very basic error handling right now)
 
-local typeformat = {}
-typeformat[int] = "%d"
-typeformat[uint64] = "%u"
-typeformat[bool] = "%d"
-typeformat[float] = "%f"
-typeformat[double] = "%lf"
-
 function L.LField:LoadFromCSV(filename)
   if self.owner:isFragmented() then
     error('cannot load into fragmented relation', 2)
@@ -1428,6 +1421,18 @@ function L.LField:LoadFromCSV(filename)
   end
 
   local btype = self.type:terraBaseType()
+  local typeformat = ""
+  if btype == int then
+    typeformat = "%d"
+  elseif btype == uint64 then
+    typeformat = "%u"
+  elseif btype == bool then
+    typeformat = "%d"
+  elseif btype == float then
+    typeformat = "%f"
+  elseif btype == double then
+    typeformat = "%lf"
+  end
   local terra LoadCSVFunction(darray : &DLD.ctype)
     var d    = darray[0]
     var s    = d.stride
@@ -1444,7 +1449,7 @@ function L.LField:LoadFromCSV(filename)
             for jt = 0, dimt[1] do
               ptr = [&uint8](d.address) + i*s[0] + j*s[1] + k*s[2]
               ptr = [&uint8](ptr) + it*st[0] + jt*st[1]
-              C.assert(C.fscanf(fp, [typeformat[btype]], &bt) == 1)
+              C.assert(C.fscanf(fp, typeformat, &bt) == 1)
               C.assert(C.ferror(fp) == 0 and C.feof(fp) == 0)
               C.memcpy(ptr, &bt, d.type.base_bytes)
               if (it ~= dimt[0]-1 or jt ~= dimt[1]-1) then
@@ -1473,7 +1478,7 @@ function L.LField:LoadFromCSV(filename)
   C.fclose(fp)
 end
 
-function L.LField:SaveToCSV(filename)
+function L.LField:SaveToCSV(filename, args)
   if self.owner:isFragmented() then
     error('cannot save a fragmented relation', 2)
   end
@@ -1484,8 +1489,23 @@ function L.LField:SaveToCSV(filename)
   if fp == nil then
     error('Cannot write to file ' .. filename)
   end
+  local precision_str = ""
+  if args and args.precision then precision_str = "." .. tostring(args.precision) end
 
   local btype = self.type:terraBaseType()
+  local btype = self.type:terraBaseType()
+  local typeformat = ""
+  if btype == int then
+    typeformat = "%d"
+  elseif btype == uint64 then
+    typeformat = "%u"
+  elseif btype == bool then
+    typeformat = "%d"
+  elseif btype == float then
+    typeformat = "%" .. precision_str .. "f"
+  elseif btype == double then
+    typeformat = "%" .. precision_str .. "lf"
+  end
   local terra SaveCSVFunction(darray : &DLD.ctype)
     var d    = darray[0]
     var s    = d.stride
@@ -1502,7 +1522,7 @@ function L.LField:SaveToCSV(filename)
               ptr = [&uint8](d.address) + i*s[0] + j*s[1] + k*s[2]
               ptr = [&uint8](ptr) + it*st[0] + jt*st[1]
               C.memcpy(&bt, ptr, d.type.base_bytes)
-              C.assert(C.fprintf(fp, [typeformat[btype]], bt) > 0)
+              C.assert(C.fprintf(fp, typeformat, bt) > 0)
               if (it ~= dimt[0]-1 or jt ~= dimt[1]-1) then
                 C.assert(C.fprintf(fp, ", ") > 0)
               end
