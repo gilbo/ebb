@@ -120,6 +120,10 @@ if logging_cat then
   table.insert(legion_args, "-cat")
   table.insert(legion_args, logging_cat)
 end
+if logging_cat == 'legion_prof' then
+  table.insert(legion_args, "-hl:prof")
+  table.insert(legion_args, "1")
+end
 
 
 -- Main function that launches Legion runtime
