@@ -53,7 +53,7 @@ return {
   restartEveryTimeSteps = 1000,
   headerFrequency       = 20,
   outputFormat = 'Tecplot', --Tecplot or Python
-  outputDirectory = '../soleilOutput/', -- relative to the liszt-in-terra home directory
+  outputDirectory = '../Desktop/soleilOutput/', -- relative to the liszt-in-terra home directory
   
   -- Fluid Options --
   gasConstant = 200.0,
