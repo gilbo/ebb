@@ -397,7 +397,7 @@ function LW.NewLogicalRegion(params)
               live_rows = 0,
               max_rows  = params.n_rows
             }
-  --l.is = Create1DGridIndexSpace(l.n_rows)
+  if l.max_rows == 0 then l.max_rows = 1 end  -- legion throws an error with 0 max rows
   l.is  = LW.legion_index_space_create(legion_env.runtime,
                                        legion_env.ctx, l.max_rows)
   l.isa = LW.legion_index_allocator_create(legion_env.runtime,
