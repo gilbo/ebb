@@ -1,16 +1,14 @@
 import "compiler.liszt"
 
--- Uncomment the next line to target a GPU. Note that terra should
--- be compiled with GPU support (ENABLE_CUDA & CUDA_HOME vars are
--- needed. 
-
---L.default_processor = L.GPU
+-- dld for terra callbacks (Tecplot output)
+local dld  = L.require 'compiler.dld'
 
 local Grid  = L.require 'domains.grid' 
-local cmath = terralib.includecstring [[ 
+local C = terralib.includecstring [[
 #include <math.h> 
 #include <stdlib.h> 
 #include <time.h>
+#include <stdio.h>
 
 double rand_double() {
       double r = (double)rand();
@@ -24,7 +22,7 @@ double rand_unity() {
 
 ]]
 
-cmath.srand(cmath.time(nil));
+C.srand(C.time(nil));
 local vdb = L.require 'lib.vdb'
 
 -- Load the pathname library, which just provides a couple of 
@@ -892,7 +890,7 @@ particles.temperature   :Load(particles_options.initialTemperature)
 -- Initialize to random distribution with given mean value and maximum
 -- deviation from it
 particles.diameter      :Load(function(i)
-                              return cmath.rand_unity() *
+                              return C.rand_unity() *
                                 particles_options.diameter_maxDeviation +
                                 particles_options.diameter_mean
                               end)
@@ -2872,9 +2870,9 @@ liszt Particles.Feed(p: particles)
         var widthY    = particles_options.feederParams[4]
         var widthZ    = particles_options.feederParams[5]
 
-        p.position[0] = centerX + (cmath.rand_unity()-0.5) * widthX
-        p.position[1] = centerY + (cmath.rand_unity()-0.5) * widthY
-        p.position[2] = centerZ + (cmath.rand_unity()-0.5) * widthZ
+        p.position[0] = centerX + (C.rand_unity()-0.5) * widthX
+        p.position[1] = centerY + (C.rand_unity()-0.5) * widthY
+        p.position[2] = centerZ + (C.rand_unity()-0.5) * widthZ
         p.state = 1
                         
       elseif particles_options.feederType == 
@@ -2895,11 +2893,11 @@ liszt Particles.Feed(p: particles)
         if L.floor(p.id/injectorBox_particlesPerTimeStep) ==
            TimeIntegrator.timeStep then
             p.position[0] = injectorBox_centerX +
-                            (cmath.rand_unity()-0.5) * injectorBox_widthX
+                            (C.rand_unity()-0.5) * injectorBox_widthX
             p.position[1] = injectorBox_centerY +
-                            (cmath.rand_unity()-0.5) * injectorBox_widthY
+                            (C.rand_unity()-0.5) * injectorBox_widthY
             p.position[2] = injectorBox_centerZ +
-                            (cmath.rand_unity()-0.5) * injectorBox_widthZ
+                            (C.rand_unity()-0.5) * injectorBox_widthZ
             p.velocity[0] = injectorBox_velocityX
             p.velocity[1] = injectorBox_velocityY
             p.velocity[2] = injectorBox_velocityZ
@@ -2942,11 +2940,11 @@ liszt Particles.Feed(p: particles)
         if L.floor(p.id/injectorA_particlesPerTimeStep) ==
           TimeIntegrator.timeStep then
             p.position[0] = injectorA_centerX +
-                            (cmath.rand_unity()-0.5) * injectorA_widthX
+                            (C.rand_unity()-0.5) * injectorA_widthX
             p.position[1] = injectorA_centerY +
-                            (cmath.rand_unity()-0.5) * injectorA_widthY
+                            (C.rand_unity()-0.5) * injectorA_widthY
             p.position[2] = injectorA_centerZ +
-                            (cmath.rand_unity()-0.5) * injectorA_widthZ
+                            (C.rand_unity()-0.5) * injectorA_widthZ
             p.velocity[0] = injectorA_velocityX
             p.velocity[1] = injectorA_velocityY
             p.velocity[2] = injectorA_velocityZ
@@ -2962,11 +2960,11 @@ liszt Particles.Feed(p: particles)
                        injectorB_particlesPerTimeStep) ==
           TimeIntegrator.timeStep then
             p.position[0] = injectorB_centerX +
-                            (cmath.rand_unity()-0.5) * injectorB_widthX
+                            (C.rand_unity()-0.5) * injectorB_widthX
             p.position[1] = injectorB_centerY +
-                            (cmath.rand_unity()-0.5) * injectorB_widthY
+                            (C.rand_unity()-0.5) * injectorB_widthY
             p.position[2] = injectorB_centerZ +
-                            (cmath.rand_unity()-0.5) * injectorB_widthZ
+                            (C.rand_unity()-0.5) * injectorB_widthZ
             p.velocity[0] = injectorB_velocityX
             p.velocity[1] = injectorB_velocityY
             p.velocity[2] = injectorB_velocityZ
@@ -3378,7 +3376,161 @@ function IO.WriteFlowRestart(timeStep)
   
 end
 
-function IO.WriteFlowTecplot(timeStep)
+-- terra callback to jointly dump multiple fields. Here, we use the
+-- function to write our Tecplot output (ASCII) for the flow phase.
+-- Callback can dump fields to stdout/ err/ any kind of file.
+-- Callback has read only access to requested fields.
+local terra FlowTecplotTerra(dldarray : &dld.ctype)
+
+-- Access the density, velocity, pressure, and temperature
+-- fields and set the appropriate dimensions and strides.
+
+var rho = dldarray[0]
+var s_r = rho.stride
+var dim = rho.dims
+
+var velocity = dldarray[1]
+var s_v      = velocity.stride
+var s_vec_v  = velocity.type.stride
+
+var pressure = dldarray[2]
+var s_p = pressure.stride
+
+var temperature = dldarray[3]
+var s_t = temperature.stride
+
+-- Create one pointer that we will use repeatedly to access the
+-- data in the current sell based on our strides.
+
+var value : &double
+
+-- Unpack all of the additional options that we input to the
+-- callback in order to complete the file writing.
+
+var filename = "flow.plt"
+var timeStep = 0
+var timePhys = 0.0
+var nX = 32
+var nY = 32
+var nZ = 1
+
+var dX = 1.0/32.0
+var dY = 1.0/32.0
+var dZ = 1.0/32.0
+
+var originX = 0.0
+var originY = 0.0
+var originZ = 0.0
+
+-- Get a file pointer and open up the Tecplot file for writing.
+
+var fp : &C.FILE
+fp = C.fopen(filename, "w")
+
+-- Write the Tecplot header for a cell-centered data file.
+
+C.fprintf(fp,"%s",'TITLE = "Soleil-X Flow Solution"\n')
+C.fprintf(fp,"%s %s",'VARIABLES = "X", "Y", "Z", "Density", "X-Velocity",',
+          ' "Y-Velocity", "Z-Velocity", "Pressure", "Temperature"\n')
+C.fprintf(fp,"%s %d %s %f %s %d %s %d %s %d %s",'ZONE STRANDID=', timeStep+1,
+          ' SOLUTIONTIME=', timePhys, ' I=', nX+1, ' J=', nY+1, ' K=', nZ+1,
+          ' DATAPACKING=BLOCK VARLOCATION=([4-9]=CELLCENTERED)\n')
+
+-- First, write the x, y, and z coords for the vertices. Note that
+-- we are currently computing these on the fly to avoid issues with
+-- halo layers/periodic boundaries, etc.
+
+-- X Coordinates
+for k = 1, nZ+2 do
+  for j = 1, nY+2 do
+    for i = 1, nX+2 do
+      C.fprintf(fp," %.16f ", originX + (dX * (i-1)))
+    end
+    C.fprintf(fp,"%s","\n")
+  end
+end
+
+-- Y Coordinates
+for k = 1, nZ+2 do
+  for j = 1, nY+2 do
+    for i = 1, nX+2 do
+      C.fprintf(fp," %.16f ", originY + (dY * (j-1)))
+    end
+    C.fprintf(fp,"%s","\n")
+  end
+end
+
+-- Z Coordinates
+for k = 1, nZ+2 do
+  for j = 1, nY+2 do
+    for i = 1, nX+2 do
+      C.fprintf(fp," %.16f ", originZ + (dZ * (k-1)))
+    end
+    C.fprintf(fp,"%s","\n")
+  end
+end
+
+-- Density
+for k = 1, nZ+1 do
+  for j = 1, nY+1 do
+    for i = 1, nX+1 do
+      value = [&double]([&uint8](rho.address) + i*s_r[0] + j*s_r[1] + k*s_r[2])
+      C.fprintf(fp," %.16f ",@value)
+    end
+    C.fprintf(fp,"%s","\n")
+  end
+end
+
+-- Velocity (i_vec = 0)
+for i_vec = 0,3 do
+  for k = 1, nZ+1 do
+    for j = 1, nY+1 do
+      for i = 1, nX+1 do
+        value = [&double]([&uint8](velocity.address) + i*s_v[0] + j*s_v[1] + k*s_v[2] + i_vec*s_vec_v[0])
+        C.fprintf(fp," %.16f ", @value)
+      end
+      C.fprintf(fp,"%s","\n")
+    end
+  end
+end
+
+-- Pressure
+for k = 1, nZ+1 do
+  for j = 1, nY+1 do
+    for i = 1, nX+1 do
+      value = [&double]([&uint8](pressure.address) + (i)*s_p[0] + (j)*s_p[1] + (k)*s_p[2])
+      C.fprintf(fp," %.16f ",@value)
+    end
+    C.fprintf(fp,"%s","\n")
+  end
+end
+
+-- Temperature
+for k = 1, nZ+1 do
+  for j = 1, nY+1 do
+    for i = 1, nX+1 do
+      value = [&double]([&uint8](temperature.address) + (i)*s_t[0] + (j)*s_t[1] + (k)*s_t[2])
+      C.fprintf(fp," %.16f ",@value)
+    end
+    C.fprintf(fp,"%s","\n")
+  end
+end
+
+-- Close the Tecplot file
+C.fclose(fp)
+
+end
+
+function IO.WriteFlowTecplotTerra(timeStep)
+  
+  -- Use the terra callback to write the file (avoids Lua).
+  grid.cells:DumpJointTerraFunction(FlowTecplotTerra, {'rho','velocity','pressure','temperature'})
+
+
+end
+
+
+function IO.WriteFlowTecplotLua(timeStep)
 
 -- Check if it is time to output to file
 if (timeStep % TimeIntegrator.outputEveryTimeSteps == 0 and
@@ -3390,12 +3542,6 @@ if (timeStep % TimeIntegrator.outputEveryTimeSteps == 0 and
 
   -- Open file
   local outputFile = io.output(outputFileName)
-
-  -- Get the bool fields for the rind layer so we can avoid writing
-  --local cell_rind = grid.cells.cellRindLayer:DumpToList()
-  --local vert_rind = grid.vertices.vertexRindLayer:DumpToList()
-
-  -- Compute the number of vertices to be written
 
   -- Write header
   io.write('TITLE = "Data"\n')
@@ -3862,7 +4008,8 @@ function IO.WriteOutput(timeStep)
   -- Write the volume solution files for visualization
 
   if IO.outputFormat == IO.Tecplot then
-    IO.WriteFlowTecplot(timeStep)
+    IO.WriteFlowTecplotTerra(timeStep)
+    IO.WriteFlowTecplotLua(timeStep)
     IO.WriteParticleTecplot(timeStep)
   else
     print("Output format not defined. No output written to disk.")
