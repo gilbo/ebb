@@ -15,46 +15,11 @@ local APIblob = terralib.includecstring([[
 ]])
 for k,v in pairs(APIblob) do LW[k] = v end
 
-local function iterate1d(n)
-  local i = -1
-  return function()
-    i = i+1
-    if i>= n then return nil end
-    return i
-  end
-end
-local function iterate2d(nx,ny)
-  local xi = -1
-  local yi = 0
-  return function()
-    xi = xi+1
-    if xi >= nx then xi = 0; yi = yi + 1 end
-    if yi >= ny then return nil end
-    return xi, yi
-  end
-end
-local function iterate3d(nx,ny,nz)
-  local xi = -1
-  local yi = 0
-  local zi = 0
-  return function()
-    xi = xi+1
-    if xi >= nx then xi = 0; yi = yi + 1 end
-    if yi >= ny then yi = 0; zi = zi + 1 end
-    if zi >= nz then return nil end
-    return xi, yi, zi
-  end
-end
-local function linid(ids,dims)
-      if #dims == 1 then return ids[1]
-  elseif #dims == 2 then return ids[1] + dims[1] * ids[2]
-  elseif #dims == 3 then return ids[1] + dims[1] * (ids[2] + dims[2]*ids[3])
-  else error('INTERNAL > 3 dimensional address???') end
-end
 
 -------------------------------------------------------------------------------
---[[                          Legion environment                           ]]--
+--[[  Legion environment                                                   ]]--
 -------------------------------------------------------------------------------
+
 
 local LE = rawget(_G, '_legion_env')
 local struct LegionEnv {
@@ -65,10 +30,64 @@ LE.legion_env = C.safemalloc( LegionEnv )
 local legion_env = LE.legion_env[0]
 
 
+-------------------------------------------------------------------------------
+--[[  Data Accessors - Logical / Physical Regions, Fields, Futures         ]]--
+-------------------------------------------------------------------------------
+
+-- Field IDs
+local fid_t = LW.legion_field_id_t
+
+-- Logical Regions
+local LogicalRegion     = {}
+LogicalRegion.__index   = LogicalRegion
+LW.LogicalRegion        = LogicalRegion
+
+-- Inline Physical Regions (if we need these, we must create inline launchers,
+-- request regions, and free launchers and regions)
+local InlinePhysicalRegion    = {}
+InlinePhysicalRegion.__index  = InlinePhysicalRegion
+LW.InlinePhysicalRegion       = InlinePhysicalRegion
+
+-- Futures
+local FutureBlob        = {}
+FutureBlob.__index      = FutureBlob
+LW.FutureBlob           = FutureBlob
+
+-- 1D, 2D and 3D field accessors to access fields within Legion tasks
+LW.FieldAccessor = {}
+for d = 1, 3 do
+  LW.FieldAccessor[d] = struct {
+    ptr     : &uint8,
+    strides : LW.legion_byte_offset_t[d]
+  }
+  LW.FieldAccessor[d].__typename =
+    function() return 'FieldAccessor_'..tostring(d) end
+end
+
+local LegionRect = {}
+LW.LegionRect = LegionRect
+local LegionGetRectFromDom = {}
+LW.LegionGetRectFromDom = LegionGetRectFromDom
+local LegionRawPtrFromAcc = {}
+LW.LegionRawPtrFromAcc = LegionRawPtrFromAcc
+
+LegionRect[1] = LW.legion_rect_1d_t
+LegionRect[2] = LW.legion_rect_2d_t
+LegionRect[3] = LW.legion_rect_3d_t
+
+LegionGetRectFromDom[1] = LW.legion_domain_get_rect_1d
+LegionGetRectFromDom[2] = LW.legion_domain_get_rect_2d
+LegionGetRectFromDom[3] = LW.legion_domain_get_rect_3d
+
+LegionRawPtrFromAcc[1] = LW.legion_accessor_generic_raw_rect_ptr_1d
+LegionRawPtrFromAcc[2] = LW.legion_accessor_generic_raw_rect_ptr_2d
+LegionRawPtrFromAcc[3] = LW.legion_accessor_generic_raw_rect_ptr_3d
+
 
 -------------------------------------------------------------------------------
---[[                             Task Launcher                             ]]--
+--[[  Task Launcher                                                        ]]--
 -------------------------------------------------------------------------------
+
 
 struct LW.TaskArgs {
   task        : LW.legion_task_t,
@@ -171,11 +190,12 @@ function LW.TaskLauncher:Execute(runtime, ctx)
 end
 
 -------------------------------------------------------------------------------
---[[                             Legion Tasks                              ]]--
+--[[  Legion Tasks                                                         ]]--
 -------------------------------------------------------------------------------
 --[[ A simple task is a task that does not have any return value. A future_task
 --   is a task that returns a Legion future, or return value.
 --]]--
+
 
 terra LW.simple_task(
   task        : LW.legion_task_t,
@@ -214,39 +234,9 @@ LW.TID_FUTURE_GPU = 350
 
 
 -------------------------------------------------------------------------------
---[[                             Miscellaneous                             ]]--
+--[[  Future methods                                                       ]]--
 -------------------------------------------------------------------------------
 
-
-LW.FieldAccessor = {}
-for d = 1, 3 do
-  LW.FieldAccessor[d] = struct {
-    ptr     : &uint8,
-    strides : LW.legion_byte_offset_t[d]
-  }
-  LW.FieldAccessor[d].__typename =
-    function() return 'FieldAccessor_'..tostring(d) end
-end
-
-
--------------------------------------------------------------------------------
---[[                                 Types                                 ]]--
--------------------------------------------------------------------------------
-
-local fid_t = LW.legion_field_id_t
-
-local LogicalRegion     = {}
-LogicalRegion.__index   = LogicalRegion
-LW.LogicalRegion        = LogicalRegion
-
-local FutureBlob        = {}
-FutureBlob.__index      = FutureBlob
-LW.FutureBlob           = FutureBlob
-
-
--------------------------------------------------------------------------------
---[[                            Future methods                             ]]--
--------------------------------------------------------------------------------
 
 function FutureBlob:LegionFuture()
   return self.legion_future
@@ -329,20 +319,21 @@ end
 
 
 -------------------------------------------------------------------------------
---[[                        Logical region methods                         ]]--
+--[[  Logical Region Methods                                               ]]--
 -------------------------------------------------------------------------------
+
 
 -- NOTE: Call from top level task only.
 function LogicalRegion:AllocateRows(num)
   if self.type ~= 'unstructured' then
     error("Cannot allocate rows for grid relation ", self.relation:Name(), 3)
   else
-    if self.rows_live + num > self.rows_max then
+    if self.live_rows + num > self.max_rows then
       error("Cannot allocate more rows for relation ", self.relation:Name())
     end
   end
   LW.legion_index_allocator_alloc(self.isa, num)
-  self.rows_live = self.rows_live + num
+  self.live_rows = self.live_rows + num
 end
 
 local allocate_field_fid_counter = 0
@@ -403,14 +394,14 @@ function LW.NewLogicalRegion(params)
               relation  = params.relation,
               field_ids = 0,
               n_rows    = params.n_rows,
-              rows_live = 0,
-              rows_max  = params.n_rows
+              live_rows = 0,
+              max_rows  = params.n_rows
             }
-  l.is = Create1DGridIndexSpace(l.n_rows)
-  --l.is  = LW.legion_index_space_create(legion_env.runtime,
-  --                                     legion_env.ctx, l.n_rows)
-  --l.isa = LW.legion_index_allocator_create(legion_env.runtime,
-  --                                         legion_env.ctx, l.is)
+  if l.max_rows == 0 then l.max_rows = 1 end  -- legion throws an error with 0 max rows
+  l.is  = LW.legion_index_space_create(legion_env.runtime,
+                                       legion_env.ctx, l.max_rows)
+  l.isa = LW.legion_index_allocator_create(legion_env.runtime,
+                                           legion_env.ctx, l.is)
   -- field space
   l.fs  = LW.legion_field_space_create(legion_env.runtime,
                                        legion_env.ctx)
@@ -421,7 +412,7 @@ function LW.NewLogicalRegion(params)
                                              legion_env.ctx, l.is, l.fs)
   setmetatable(l, LogicalRegion)
   -- actually allocate rows
-  --l:AllocateRows(l.n_rows)
+  l:AllocateRows(l.n_rows)
   return l
 end
 
@@ -460,11 +451,136 @@ function LW.NewGridLogicalRegion(params)
 end
 
 
+-------------------------------------------------------------------------------
+--[[  Physical Region Methods                                              ]]--
+-------------------------------------------------------------------------------
+
+
+function LW.NewInlinePhysicalRegion(params)
+  if not params.relation then
+    error('Expects relation argument', 2)
+  elseif not params.fields then
+    error('Expects fields list argument', 2)
+  elseif not params.privilege then
+    error('Expects privilege argument', 2)
+  end
+
+  -- legion data (inline launchers, physical regions, accessors) to free later
+  local ils  = {}
+  local prs  = {}
+  local accs = {}
+
+  -- structured/ grid and dimensions
+  local relation = params.relation
+  local is_grid  = relation:isGrid()
+  local dims     = relation:Dims()
+
+  -- data pointer, stride, offset
+  local ptrs  = {}
+  local strides = {}
+  local offsets = {}
+
+  for i, field in ipairs(params.fields) do
+    -- create inline launcher
+    ils[i]  = LW.legion_inline_launcher_create_logical_region(
+      params.relation._logical_region_wrapper.handle,  -- legion_logical_region_t handle
+      params.privilege,         -- legion_privilege_mode_t
+      LW.EXCLUSIVE,             -- legion_coherence_property_t
+      params.relation._logical_region_wrapper.handle,  -- legion_logical_region_t parent
+      0,                        -- legion_mapping_tag_id_t region_tag /* = 0 */
+      false,                    -- bool verified /* = false*/
+      0,                        -- legion_mapper_id_t id /* = 0 */
+      0                         -- legion_mapping_tag_id_t launcher_tag /* = 0 */
+    )
+    -- add field to launcher
+    LW.legion_inline_launcher_add_field(ils[i], params.fields[i].fid, true)
+    -- execute launcher to get physical region
+    prs[i]  = LW.legion_inline_launcher_execute(legion_env.runtime,
+                                                legion_env.ctx, ils[i])
+  end
+
+  -- get field data pointers, strides
+  local index_space = LW.legion_physical_region_get_logical_region(prs[1]).index_space
+  local domain = LW.legion_index_space_get_domain(legion_env.runtime,
+                                                  legion_env.ctx,
+                                                  index_space)
+  if is_grid then
+    local ndims = #dims
+    local rect = LW.LegionGetRectFromDom[ndims](domain)
+    for d = 1, ndims do
+      assert(dims[d] == (rect.hi.x[d-1] - rect.lo.x[d-1] + 1))
+    end
+    local subrect = terralib.new((LW.LegionRect[ndims])[1])
+    local stride = terralib.new(LW.legion_byte_offset_t[ndims])
+    for i, field in ipairs(params.fields) do
+      accs[i] = LW.legion_physical_region_get_field_accessor_generic(prs[i], field.fid)
+      ptrs[i] = terralib.cast(&uint8,
+                              LW.LegionRawPtrFromAcc[ndims](accs[i], rect, subrect, stride))
+      local s = {}
+      strides[i] = s
+      for d = 1, ndims do
+        s[d] = stride[d-1].offset
+      end
+      offsets[i] = 0
+      LW.legion_accessor_generic_destroy(accs[i])
+    end
+  else
+    local base = terralib.new((&opaque)[1])
+    local stride = terralib.new(uint64[1])
+    for i, field in ipairs(params.fields) do
+      accs[i] = LW.legion_physical_region_get_field_accessor_generic(prs[i], field.fid)
+      LW.legion_accessor_generic_get_soa_parameters(accs[i], base, stride)
+      ptrs[i]    = terralib.cast(&uint8, base[0])
+      strides[i] = { stride[0] }
+      offsets[i] = 0
+      LW.legion_accessor_generic_destroy(accs[i])
+    end
+  end
+
+  local iprs = setmetatable({
+    inline_launchers  = ils,
+    physical_regions  = prs,
+    is_grid           = is_grid,
+    dims              = dims,
+    data_ptrs         = ptrs,
+    strides           = strides,
+    offsets           = offsets
+  }, LW.InlinePhysicalRegion)
+
+  return iprs
+end
+
+function InlinePhysicalRegion:GetDataPointers()
+  return self.data_ptrs
+end
+
+function InlinePhysicalRegion:GetDimensions()
+  return self.dims
+end
+
+function InlinePhysicalRegion:GetStrides()
+  return self.strides
+end
+
+function InlinePhysicalRegion:GetOffsets()
+  return self.offsets
+end
+
+function InlinePhysicalRegion:Destroy()
+  for i = 1, #self.inline_launchers do
+      local il = self.inline_launchers[i]
+      local pr = self.physical_regions[i]
+
+      LW.legion_runtime_unmap_region(legion_env.runtime, legion_env.ctx, pr)
+      LW.legion_physical_region_destroy(pr)
+      LW.legion_inline_launcher_destroy(il)
+  end
+end
+
 
 -------------------------------------------------------------------------------
 --[[  Methods for Introspecting on the Machine we're running on            ]]--
 -------------------------------------------------------------------------------
-
 
 
 function LW.GetMachineData ()
@@ -538,42 +654,49 @@ end
 ]]
 
 
-
-
-
-
--------------------------------------------------------------------------------
---[[                    Privilege and coherence values                     ]]--
--------------------------------------------------------------------------------
-
--- There are more privileges in Legion, like write discard. We should separate
--- exclusive into read_write and write_discard for better performance.
-LW.privilege = {
-  EXCLUSIVE           = LW.READ_WRITE,
-  READ                = LW.READ_ONLY,
-  READ_OR_EXCLUSIVE   = LW.READ_WRITE,
-  REDUCE              = LW.REDUCE,
-  REDUCE_OR_EXCLUSIVE = LW.REDUCE,
-}
-
--- TODO: How should we use this? Right now, read/ exclusive use EXCLUSIVE,
--- reduction uses ATOMIC.
-LW.coherence = {
-  EXCLUSIVE           = LW.EXCLUSIVE,
-  READ                = LW.EXCLUSIVE,
-  READ_OR_EXCLUSIVE   = LW.EXCLUSIVE,
-  REDUCE              = LW.REDUCE,
-  REDUCE_OR_EXCLUSIVE = LW.REDUCE,
-}
-
-
-
-
-
 ---------------------)(Q#$&Y@)#*$(*&_)@----------------------------------------
 --[[         GILBERT added this to make field loading work.                ]]--
 --[[           Think of this as a workspace, not final organization        ]]--
 -----------------------------------------)(Q#$&Y@)#*$(*&_)@--------------------
+
+
+local function iterate1d(n)
+  local i = -1
+  return function()
+    i = i+1
+    if i>= n then return nil end
+    return i
+  end
+end
+local function iterate2d(nx,ny)
+  local xi = -1
+  local yi = 0
+  return function()
+    xi = xi+1
+    if xi >= nx then xi = 0; yi = yi + 1 end
+    if yi >= ny then return nil end
+    return xi, yi
+  end
+end
+local function iterate3d(nx,ny,nz)
+  local xi = -1
+  local yi = 0
+  local zi = 0
+  return function()
+    xi = xi+1
+    if xi >= nx then xi = 0; yi = yi + 1 end
+    if yi >= ny then yi = 0; zi = zi + 1 end
+    if zi >= nz then return nil end
+    return xi, yi, zi
+  end
+end
+local function linid(ids,dims)
+      if #dims == 1 then return ids[1]
+  elseif #dims == 2 then return ids[1] + dims[1] * ids[2]
+  elseif #dims == 3 then return ids[1] + dims[1] * (ids[2] + dims[2]*ids[3])
+  else error('INTERNAL > 3 dimensional address???') end
+end
+
 
 function LW.heavyweightBarrier()
   LW.legion_runtime_issue_execution_fence(legion_env.runtime, legion_env.ctx)

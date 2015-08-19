@@ -37,12 +37,9 @@ return {
   zBCRightVel = {0.0, 0.0, 0.0},
   zBCRightTemp = 0.0,
   
-  -- Spatial Integration Options --
-  spatialOrder = 2, -- 2 or 6
-  
   --Time Integration Options --
   final_time            = 2000.00001,
-  max_iter              = 50000,
+  max_iter              = 5000,
   cfl                   = 2.5, -- Negative CFL implies that we will used fixed delta T
   delta_time            = 1e-4,
   
@@ -56,7 +53,7 @@ return {
   restartEveryTimeSteps = 1000,
   headerFrequency       = 20,
   outputFormat = 'Tecplot', --Tecplot or Python
-  outputDirectory = '../soleilOutput/', -- relative to the liszt-in-terra home directory
+  outputDirectory = '../Desktop/soleilOutput/', -- relative to the liszt-in-terra home directory
   
   -- Fluid Options --
   gasConstant = 200.0,

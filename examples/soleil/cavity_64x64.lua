@@ -37,9 +37,6 @@ return {
   zBCRightVel = {0.0, 0.0, 0.0},
   zBCRightTemp = 0.0,
   
-  -- Spatial Integration Options --
-  spatialOrder = 2, -- 2 or 6
-  
   --Time Integration Options --
   final_time            = 2000.00001,
   max_iter              = 50000,
@@ -55,7 +52,7 @@ return {
   outputEveryTimeSteps  = 1000,
   restartEveryTimeSteps = 1000,
   headerFrequency       = 20,
-  outputFormat = 'Tecplot', --Tecplot or Python
+  outputFormat = 'Tecplot', -- Only 'Tecplot' is currently available
   outputDirectory = '../soleilOutput/', -- relative to the liszt-in-terra home directory
   
   -- Fluid Options --

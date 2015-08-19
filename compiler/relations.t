@@ -73,9 +73,13 @@ local function linid(ids,dims)
   else error('INTERNAL > 3 dimensional address???') end
 end
 
+
 -------------------------------------------------------------------------------
---[[ LRelation methods                                                     ]]--
 -------------------------------------------------------------------------------
+--[[  LRelation methods                                                    ]]--
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+
 
 -- A Relation can be in at most one of the following MODES
 --    PLAIN
@@ -178,7 +182,6 @@ function L.NewRelation(params)
     rel._is_live_mask:Load(true)
 
   elseif use_legion then
-    --error('TEMPORARY RELATIONS ARE BROKEN FOR LEGION')
     -- create a logical region.
     if mode == 'GRID' then
       rawset(rel, '_logical_region_wrapper', LW.NewGridLogicalRegion {
@@ -360,10 +363,6 @@ function L.LRelation:GroupBy(keyf_name)
           "prohibited.", 2)
   end
 
-  --if use_legion then
-  --  error('GroupBy(): Grouping unimplemented for Legion currently', 2)
-  --end
-
   -- In the below, we use the following convention
   --  SRC is the relation referred to by the key field
   --  DST is 'self' here, the relation which is actively being grouped
@@ -483,9 +482,10 @@ end
 
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
---[[ Indices:                                                              ]]--
+--[[  Indices:                                                             ]]--
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
+
 
 function L.LIndex.New(params)
   if not L.is_relation(params.owner) or
@@ -545,11 +545,13 @@ function L.LIndex:Release()
   end
 end
 
+
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
---[[ Subsets:                                                              ]]--
+--[[  Subsets:                                                             ]]--
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
+
 
 function L.LSubset:foreach(user_func, ...)
   if not L.is_function(user_func) then
@@ -651,9 +653,10 @@ end
 
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
---[[ Fields:                                                               ]]--
+--[[  Fields:                                                              ]]--
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
+
 
 -- Client code should never call this constructor
 -- For internal use only.  Does not install on relation...
@@ -783,7 +786,6 @@ function L.LField:MoveTo( proc )
 end
 
 function L.LRelation:Swap( f1_name, f2_name )
-  --if use_legion then error('No Swap() using legion') end
   local f1 = self[f1_name]
   local f2 = self[f2_name]
   if not L.is_field(f1) then
@@ -816,7 +818,6 @@ function L.LRelation:Swap( f1_name, f2_name )
 end
 
 function L.LRelation:Copy( p )
-  --if use_legion then error('No Copy() using legion') end
   if type(p) ~= 'table' or not p.from or not p.to then
     error("relation:Copy() should be called using the form\n"..
           "  relation:Copy{from='f1',to='f2'}", 2)
@@ -857,6 +858,15 @@ function L.LRelation:Copy( p )
 end
 
 
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+--[[  Loading and I/O                                                      ]]--
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+
+
+--[[  Loading                                                              ]]--
+
 function L.LField:LoadFunction(lua_callback)
   if self.owner:isFragmented() then
     error('cannot load into fragmented relation', 2)
@@ -894,6 +904,98 @@ function L.LField:LoadFunction(lua_callback)
       end
     end) -- write_ptr
   end
+end
+
+-- To load fields using terra callback. Terra callback gets a list of dlds.
+--   callback([dlds])
+function L.LRelation:LoadJointTerraFunction(terra_callback, fields_arg, opt_args)
+  if not terralib.isfunction(terra_callback) then
+    error('LoadJointTerraFunction.. should be used with terra callback')
+  end
+  if self:isFragmented() then
+    error('cannot load to fragmented relation', 2)
+  elseif type(fields_arg) ~= 'table' or #fields_arg == 0 then
+    error('LoadJointTerraFunction(): Expects a list of fields as its first argument', 2)
+  end
+  local fields = {}
+  for i,f in ipairs(fields_arg) do
+    if type(f) == 'string' then f = self[f] end
+    if not L.is_field(f) then
+      error('LoadJointTerraFunction(): list entry '..tostring(i)..' was either '..
+            'not a field or not the name of a field in '..
+            'relation '..self:Name(),2)
+    end
+    if f.owner ~= self then
+      error('LoadJointTerraFunction(): list entry '..tostring(i)..', field '..
+            f:FullName()..' is not a field of relation '..self:Name(), 2)
+    end
+    fields[i] = f
+  end
+  local nfields = #fields
+
+  local dld_array = terralib.new(DLD.ctype[nfields])
+  if use_single then
+    local cpu_buf = {}
+    for i = 1, nfields do
+      local dld = fields[i]:GetDLD()
+      if dld.location == 'GPU' then
+        cpu_buf[i]    = DynamicArray.New {
+            processor = L.CPU,
+            size      = self:ConcreteSize(),
+            type      = fields[i]:Type():terraType()
+        }
+        dld.address   = cpu_buf[i]:ptr()
+        dld.location  = 'CPU'
+      else
+        cpu_buf[i] = nil
+      end
+      dld_array[i-1] = dld:Compile()
+    end
+    if opt_args then
+      terra_callback(dld_array, unpack(opt_args))
+    else
+      terra_callback(dld_array)
+    end
+    for i = 1, nfields do
+      if cpu_buf[i] then
+        fields[i].array:copy(cpu_buf[i])
+        cpu_buf[i]:free()
+      end
+    end
+  elseif use_legion then
+    -- TODO(Chinmayee): check if it is better to do a separate physical region
+    -- for each field
+    local params = { relation = self, fields = fields, privilege = LW.WRITE_ONLY }
+    local region = LW.NewInlinePhysicalRegion(params)
+    local data_ptrs = region:GetDataPointers()
+    local dims      = self:Dims()
+    local strides   = region:GetStrides()
+    local offsets   = region:GetOffsets()
+    for i = 1, nfields do
+      local dld = fields[i]:GetDLD()
+      dld:SetDataPointer(data_ptrs[i])
+      dld:SetDims(dims)
+      dld:SetStride(strides[i])
+      dld:SetOffset(offsets[i])
+      dld_array[i-1] = dld:Compile()
+    end
+    if opt_args then
+      terra_callback(dld_array, unpack(opt_args))
+    else
+      terra_callback(dld_array)
+    end
+    region:Destroy()
+  end
+end
+
+-- Load a single field using a terra callback
+-- callback accepts argument dld
+--   callback(dld)
+function L.LField:LoadTerraFunction(terra_callback, opt_args)
+  if not terralib.isfunction(terra_callback) then
+    error('LoadTerraFunction should be used with terra callback')
+  end
+  self.owner:LoadJointTerraFunction(terra_callback, {self}, opt_args)
 end
 
 function L.LField:LoadList(tbl)
@@ -985,9 +1087,24 @@ function L.LField:LoadConstant(constant)
     error('cannot load into fragmented relation', 2)
   end
 
-  self:LoadFunction(function()
-    return constant
-  end)
+  local ttype = self.type:terraType()
+
+  local terra LoadConstantFunction(darray : &DLD.ctype)
+    var d = darray[0]
+    var c : ttype = [T.luaToLisztVal(constant, self.type)]
+    var b = d.dims
+    var s = d.stride
+    for i = 0, b[0] do
+      for j = 0, b[1] do
+        for k = 0, b[2] do
+          var ptr = [&uint8](d.address) + i*s[0] + j*s[1] + k*s[2]
+          C.memcpy(ptr, &c, d.type.size_bytes)
+        end
+      end
+    end
+  end
+
+  self:LoadTerraFunction(LoadConstantFunction)
 end
 
 -- generic dispatch function for loads
@@ -996,31 +1113,39 @@ function L.LField:Load(arg)
     error('cannot load into fragmented relation', 2)
   end
   -- load from lua callback
-  if      type(arg) == 'function' then
+  -- TODO(Chinmayee): deprecate this
+  if type(arg) == 'function' then
     return self:LoadFunction(arg)
   elseif  type(arg) == 'cdata' then
     if use_legion then
       error('Load from memory while using Legion is unimplemented', 2)
     end
     local typ = terralib.typeof(arg)
+
     if typ and typ:ispointer() then
       return self:LoadFromMemory(arg)
     end
   elseif  type(arg) == 'table' then
-    if (self.type:isScalarKey() and #arg == self.type.ndims) or
+    -- terra function
+    if (terralib.isfunction(arg)) then
+      return self:LoadTerraFunction(arg)
+    -- scalars, vectors and matrices
+    elseif (self.type:isScalarKey() and #arg == self.type.ndims) or
        (self.type:isVector() and #arg == self.type.N) or
-       (self.type:isMatrix() and #arg == self.type.Nrow) 
+       (self.type:isMatrix() and #arg == self.type.Nrow)
     then
       return self:LoadConstant(arg)
     else
+      -- default tables to try loading as Lua lists
       return self:LoadList(arg)
     end
   end
-  -- default to trying to load as a constant
+  -- default to try loading as constants
   return self:LoadConstant(arg)
 end
 
 
+--[[  Dumping                                                               ]]--
 
 -- helper to dump multiple fields jointly
 function L.LRelation:DumpJoint(fields_arg, lua_callback)
@@ -1143,6 +1268,99 @@ function L.LField:DumpToList()
   return arr
 end
 
+-- To dump fields using terra callback. Terra callback gets a list of dlds.
+--   callback([dlds])
+function L.LRelation:DumpJointTerraFunction(terra_callback, fields_arg, opt_args)
+  if not terralib.isfunction(terra_callback) then
+    error('DumpJointTerraFunction.. should be used with terra callback')
+  end
+  if self:isFragmented() then
+    error('cannot dump from fragmented relation', 2)
+  elseif type(fields_arg) ~= 'table' or #fields_arg == 0 then
+    error('DumpJointTerraFunction(): Expects a list of fields as its first argument', 2)
+  end
+  local fields = {}
+  for i,f in ipairs(fields_arg) do
+    if type(f) == 'string' then f = self[f] end
+    if not L.is_field(f) then
+      error('DumpJointTerraFunction(): list entry '..tostring(i)..' was either '..
+            'not a field or not the name of a field in '..
+            'relation '..self:Name(),2)
+    end
+    if f.owner ~= self then
+      error('DumpJointFunction(): list entry '..tostring(i)..', field '..
+            f:FullName()..' is not a field of relation '..self:Name(), 2)
+    end
+    fields[i] = f
+  end
+  local nfields = #fields
+
+  local dld_array = terralib.new(DLD.ctype[nfields])
+  if use_single then
+    local cpu_buf = {}
+    for i = 1, nfields do
+      local dld = fields[i]:GetDLD()
+        if dld.location == 'GPU' then
+          cpu_buf[i]  = DynamicArray.New {
+            processor = L.CPU,
+            size      = self:ConcreteSize(),
+            type      = fields[i]:Type():terraType()
+          }
+          cpu_buf[i]:copy(fields[i].array)
+          dld.address = cpu_buf[i]:ptr()
+          dld.location = 'CPU'
+        else
+          cpu_buf[i] = nil
+        end
+      dld_array[i-1] = dld:Compile()
+    end
+    if opt_args then
+      terra_callback(dld_array, unpack(opt_args))
+    else
+      terra_callback(dld_array)
+    end
+    for i = 1, nfields do
+      if cpu_buf[i] then cpu_buf[i]:free() end
+    end
+  elseif use_legion then
+    -- TODO(Chinmayee): check if it is better to do a separate physical region
+    -- for each field
+    local params = { relation = self, fields = fields, privilege = LW.READ_ONLY }
+    local region = LW.NewInlinePhysicalRegion(params)
+    local data_ptrs = region:GetDataPointers()
+    local dims      = self:Dims()
+    local strides   = region:GetStrides()
+    local offsets   = region:GetOffsets()
+    for i = 1, nfields do
+      local dld = fields[i]:GetDLD()
+      dld:SetDataPointer(data_ptrs[i])
+      dld:SetDims(dims)
+      dld:SetStride(strides[i])
+      dld:SetOffset(offsets[i])
+      dld_array[i-1] = dld:Compile()
+    end
+    if opt_args then
+      terra_callback(dld_array, unpack(opt_args))
+    else
+      terra_callback(dld_array)
+    end
+    region:Destroy()
+  end
+end
+
+-- Dump a single field using a terra callback
+-- callback accepts argument dld
+--   callback(dld)
+function L.LField:DumpTerraFunction(terra_callback, opt_args)
+  if not terralib.isfunction(terra_callback) then
+    error('DumpTerraFunction should be used with terra callback')
+  end
+  self.owner:DumpJointTerraFunction(terra_callback, {self}, opt_args)
+end
+
+
+--[[  I/O: Load from/ save to files, print to stdout                        ]]--
+
 function L.LField:print()
   print(self.name..": <" .. tostring(self.type:terraType()) .. '>')
   if use_single and not self.array then
@@ -1204,49 +1422,175 @@ function L.LField:print()
   end)
 end
 
+-- load/ save field from file (very basic error handling right now)
 
--------------------------------------------------------------------------------
--------------------------------------------------------------------------------
---[[ Data Sharing Hooks                                                    ]]--
--------------------------------------------------------------------------------
--------------------------------------------------------------------------------
-
-
-function L.LField:getDLD()
-  error("DLD NEEDS REVISION FOR MODES")
+function L.LField:LoadFromCSV(filename)
   if self.owner:isFragmented() then
-    error('cannot get DLD from fragmented relation', 2)
+    error('cannot load into fragmented relation', 2)
   end
-  if not self.type:baseType():isPrimitive() then
-    error('Can only return DLDs for fields with primitive base type')
+  if type(filename) ~= 'string' then
+    error('LoadFromCSV expected a string argument')
   end
-
-  local terra_type = self.type:terraBaseType()
-  local dims = {}
-  if self.type:isVector() then
-    dims = {self.type.N}
-  elseif self.type:isMatrix() then
-    dims = {self.type.Nrow, self.type.Ncol}
+  local fp = C.fopen(filename, 'r')
+  if fp == nil then
+    error('Cannot read file ' .. filename)
   end
 
-  local dld = DLD.new({
-    location        = tostring(self.array:location()),
-    type            = terra_type,
-    type_dims       = dims,
-    logical_size    = self.owner:ConcreteSize(),
-    data            = self:DataPtr(),
-    compact         = true,
-  })
-  return dld
+  local btype = self.type:terraBaseType()
+  local typeformat = ""
+  if btype == int then
+    typeformat = "%d"
+  elseif btype == uint64 then
+    typeformat = "%u"
+  elseif btype == bool then
+    typeformat = "%d"
+  elseif btype == float then
+    typeformat = "%f"
+  elseif btype == double then
+    typeformat = "%lf"
+  end
+  local terra LoadCSVFunction(darray : &DLD.ctype)
+    var d    = darray[0]
+    var s    = d.stride
+    var st   = d.type.stride
+    var dim  = d.dims
+    var dimt = d.type.dims
+    var bt  : btype    -- base type
+    var c   : int8     -- delimiter in csv, comma
+    var ptr : &uint8   -- data ptr
+    for i = 0, dim[0] do
+      for j = 0, dim[1] do
+        for k = 0, dim[2] do
+          for it = 0, dimt[0] do
+            for jt = 0, dimt[1] do
+              ptr = [&uint8](d.address) + i*s[0] + j*s[1] + k*s[2]
+              ptr = [&uint8](ptr) + it*st[0] + jt*st[1]
+              C.assert(C.fscanf(fp, typeformat, &bt) == 1)
+              C.assert(C.ferror(fp) == 0 and C.feof(fp) == 0)
+              C.memcpy(ptr, &bt, d.type.base_bytes)
+              if (it ~= dimt[0]-1 or jt ~= dimt[1]-1) then
+                c = 0
+                while (c ~= 44) do
+                  c = C.fgetc(fp)
+                  C.assert ((c == 32 or c == 44) and C.ferror(fp) == 0 and C.feof(fp) == 0,
+                            "Expected a comma or a space in CSV file")
+                end
+              end
+            end
+          end
+        end
+      end
+    end
+    c = 0
+    while (C.feof(fp) == 0) do
+      c = C.fgetc(fp)
+      if (c > 0 and (c < 9 or (c > 13 and c ~= 32))) then
+        C.printf("CSV file %s longer than expected. Expected space or end of file.\n", filename)
+        C.exit(-1)
+      end
+    end
+  end
+  self:LoadTerraFunction(LoadCSVFunction)
+  C.fclose(fp)
+end
+
+function L.LField:SaveToCSV(filename, args)
+  if self.owner:isFragmented() then
+    error('cannot save a fragmented relation', 2)
+  end
+  if type(filename) ~= 'string' then
+    error('SaveToCSV expected a string argument')
+  end
+  local fp = C.fopen(filename, 'w')
+  if fp == nil then
+    error('Cannot write to file ' .. filename)
+  end
+  local precision_str = ""
+  if args and args.precision then precision_str = "." .. tostring(args.precision) end
+
+  local btype = self.type:terraBaseType()
+  local btype = self.type:terraBaseType()
+  local typeformat = ""
+  if btype == int then
+    typeformat = "%d"
+  elseif btype == uint64 then
+    typeformat = "%u"
+  elseif btype == bool then
+    typeformat = "%d"
+  elseif btype == float then
+    typeformat = "%" .. precision_str .. "f"
+  elseif btype == double then
+    typeformat = "%" .. precision_str .. "lf"
+  end
+  local terra SaveCSVFunction(darray : &DLD.ctype)
+    var d    = darray[0]
+    var s    = d.stride
+    var st   = d.type.stride
+    var dim  = d.dims
+    var dimt = d.type.dims
+    var bt  : btype    -- base type
+    var ptr : &uint8   -- data ptr
+    for i = 0, dim[0] do
+      for j = 0, dim[1] do
+        for k = 0, dim[2] do
+          for it = 0, dimt[0] do
+            for jt = 0, dimt[1] do
+              ptr = [&uint8](d.address) + i*s[0] + j*s[1] + k*s[2]
+              ptr = [&uint8](ptr) + it*st[0] + jt*st[1]
+              C.memcpy(&bt, ptr, d.type.base_bytes)
+              C.assert(C.fprintf(fp, typeformat, bt) > 0)
+              if (it ~= dimt[0]-1 or jt ~= dimt[1]-1) then
+                C.assert(C.fprintf(fp, ", ") > 0)
+              end
+            end
+          end
+          C.assert(C.fprintf(fp, "\n") > 0)
+        end
+      end
+    end
+  end
+  self:LoadTerraFunction(SaveCSVFunction)
+  C.fclose(fp)
 end
 
 
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+--[[  Data Sharing Hooks                                                   ]]--
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+
+
+function L.LField:GetDLD()
+  if self.owner:isFragmented() then
+    error('Cannot get DLD from fragmented relation', 2)
+  end
+
+  -- TODO(Chinmayee): use concrete size here?
+  if use_single then
+    local dld = DLD.new({
+      address         = self:DataPtr(),
+      location        = tostring(self.array:location()),
+      type            = self.type,
+      dims            = self.owner:Dims(),
+      compact         = true,
+    })
+    return dld
+  elseif use_legion then
+    local dld = DLD.new({
+      type = self.type,
+    })
+    return dld
+  end
+end
+
 
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
---[[                          ELASTIC RELATIONS                            ]]--
+--[[  ELASTIC RELATIONS                                                    ]]--
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
+
 
 function L.LRelation:_INTERNAL_Resize(new_concrete_size, new_logical)
   if not self:isElastic() then
@@ -1263,7 +1607,7 @@ function L.LRelation:_INTERNAL_Resize(new_concrete_size, new_logical)
 end
 
 -------------------------------------------------------------------------------
---[[ Insert / Delete                                                       ]]--
+--[[  Insert / Delete                                                      ]]--
 -------------------------------------------------------------------------------
 
 -- returns a useful error message 
@@ -1292,7 +1636,7 @@ end
 
 
 -------------------------------------------------------------------------------
---[[ Defrag                                                                ]]--
+--[[  Defrag                                                               ]]--
 -------------------------------------------------------------------------------
 
 function L.LRelation:_INTERNAL_MarkFragmented()

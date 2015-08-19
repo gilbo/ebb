@@ -240,7 +240,7 @@ local function terraIterNd(keytyp, dims, func)
       [func(addr)]
     end
     for drev=1,#dims do
-      local d = #dims-drev + 1 -- flip loop order of dimensions
+      local d = drev -- using column major
       local lo = 0
       local hi = dims[d]
       if type(dims[d]) == 'table' and dims[d].lo then
