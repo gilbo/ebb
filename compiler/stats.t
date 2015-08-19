@@ -80,16 +80,13 @@ function Timer.__add(lhs, rhs)
 end
 
 function Timer:start(timestamp_in_ms)
-  if not STATS_ON then return timestamp_in_ms end
   if not timestamp_in_ms then
     timestamp_in_ms = terralib.currenttimeinseconds() * 1.0e3
   end
   self._start = timestamp_in_ms
   return timestamp_in_ms
 end
-
 function Timer:stop(timestamp_in_ms)
-  if not STATS_ON then return timestamp_in_ms end
   if not timestamp_in_ms then
     timestamp_in_ms = terralib.currenttimeinseconds() * 1.0e3
   end
@@ -107,7 +104,6 @@ end
 
 -- Bulk routines for convenience
 function Stats.StopAndStart(stop_counters, start_counters)
-  if not STATS_ON then return end
   local timestamp_in_ms = terralib.currenttimeinseconds() * 1.0e3
   for _,timer in ipairs(stop_counters) do
     timer:stop(timestamp_in_ms)
@@ -122,6 +118,12 @@ function Stats.Start(counters)
 end
 function Stats.Stop(counters)
   return Stats.StopAndStart(counters,{})
+end
+
+if not STATS_ON then
+function Timer:start() end
+function Timer:stop() end
+function Stats.StopAndStart() end
 end
 
 

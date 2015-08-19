@@ -21,3 +21,6 @@ function run_test()
 end
 
 run_test()
+
+--RunRed:getCompileTime():print()
+--RunRed:getExecutionTime():print()
