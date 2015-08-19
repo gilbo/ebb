@@ -3376,159 +3376,164 @@ function IO.WriteFlowRestart(timeStep)
   
 end
 
--- terra callback to jointly dump multiple fields. Here, we use the
--- function to write our Tecplot output (ASCII) for the flow phase.
+-- Terra callback function to jointly dump multiple fields. Here, we use
+-- it to write our Tecplot output (ASCII) for the flow phase.
 -- Callback can dump fields to stdout/ err/ any kind of file.
 -- Callback has read only access to requested fields.
-local terra FlowTecplotTerra(dldarray : &dld.ctype)
+local terra FlowTecplotTerra(dldarray : &dld.ctype, filename : &int8,
+                             timeStep : uint8, timePhys : double,
+                             nX : uint8, nY : uint8, nZ : uint8,
+                             originX:double, originY:double, originZ:double,
+                             dX : double, dY : double, dZ : double)
 
--- Access the density, velocity, pressure, and temperature
--- fields and set the appropriate dimensions and strides.
+  -- Access the density, velocity, pressure, and temperature
+  -- fields and set the appropriate dimensions and strides.
 
-var rho = dldarray[0]
-var s_r = rho.stride
-var dim = rho.dims
+  var rho = dldarray[0]
+  var s_r = rho.stride
+  var dim = rho.dims
 
-var velocity = dldarray[1]
-var s_v      = velocity.stride
-var s_vec_v  = velocity.type.stride
+  var velocity = dldarray[1]
+  var s_v      = velocity.stride
+  var s_vec_v  = velocity.type.stride
 
-var pressure = dldarray[2]
-var s_p = pressure.stride
+  var pressure = dldarray[2]
+  var s_p = pressure.stride
 
-var temperature = dldarray[3]
-var s_t = temperature.stride
+  var temperature = dldarray[3]
+  var s_t = temperature.stride
 
--- Create one pointer that we will use repeatedly to access the
--- data in the current sell based on our strides.
+  -- Create one pointer that we will use repeatedly to access the
+  -- data in the current sell based on our strides.
 
-var value : &double
+  var value : &double
 
--- Unpack all of the additional options that we input to the
--- callback in order to complete the file writing.
+  -- Get a file pointer and open up the Tecplot file for writing.
 
-var filename = "flow.plt"
-var timeStep = 0
-var timePhys = 0.0
-var nX = 32
-var nY = 32
-var nZ = 1
+  var fp : &C.FILE
+  fp = C.fopen(filename, "w")
 
-var dX = 1.0/32.0
-var dY = 1.0/32.0
-var dZ = 1.0/32.0
+  -- Write the Tecplot header for a cell-centered data file.
 
-var originX = 0.0
-var originY = 0.0
-var originZ = 0.0
+  C.fprintf(fp,"%s",'TITLE = "Soleil-X Flow Solution"\n')
+  C.fprintf(fp,"%s %s",'VARIABLES = "X", "Y", "Z", "Density", "X-Velocity",',
+            ' "Y-Velocity", "Z-Velocity", "Pressure", "Temperature"\n')
+  C.fprintf(fp,"%s %d %s %f %s %d %s %d %s %d %s",'ZONE STRANDID=', timeStep+1,
+            ' SOLUTIONTIME=', timePhys, ' I=', nX+1, ' J=', nY+1, ' K=', nZ+1,
+            ' DATAPACKING=BLOCK VARLOCATION=([4-9]=CELLCENTERED)\n')
 
--- Get a file pointer and open up the Tecplot file for writing.
+  -- First, write the x, y, and z coords for the vertices. Note that
+  -- we are currently computing these on the fly to avoid issues with
+  -- halo layers/periodic boundaries, etc.
 
-var fp : &C.FILE
-fp = C.fopen(filename, "w")
-
--- Write the Tecplot header for a cell-centered data file.
-
-C.fprintf(fp,"%s",'TITLE = "Soleil-X Flow Solution"\n')
-C.fprintf(fp,"%s %s",'VARIABLES = "X", "Y", "Z", "Density", "X-Velocity",',
-          ' "Y-Velocity", "Z-Velocity", "Pressure", "Temperature"\n')
-C.fprintf(fp,"%s %d %s %f %s %d %s %d %s %d %s",'ZONE STRANDID=', timeStep+1,
-          ' SOLUTIONTIME=', timePhys, ' I=', nX+1, ' J=', nY+1, ' K=', nZ+1,
-          ' DATAPACKING=BLOCK VARLOCATION=([4-9]=CELLCENTERED)\n')
-
--- First, write the x, y, and z coords for the vertices. Note that
--- we are currently computing these on the fly to avoid issues with
--- halo layers/periodic boundaries, etc.
-
--- X Coordinates
-for k = 1, nZ+2 do
-  for j = 1, nY+2 do
-    for i = 1, nX+2 do
-      C.fprintf(fp," %.16f ", originX + (dX * (i-1)))
-    end
-    C.fprintf(fp,"%s","\n")
-  end
-end
-
--- Y Coordinates
-for k = 1, nZ+2 do
-  for j = 1, nY+2 do
-    for i = 1, nX+2 do
-      C.fprintf(fp," %.16f ", originY + (dY * (j-1)))
-    end
-    C.fprintf(fp,"%s","\n")
-  end
-end
-
--- Z Coordinates
-for k = 1, nZ+2 do
-  for j = 1, nY+2 do
-    for i = 1, nX+2 do
-      C.fprintf(fp," %.16f ", originZ + (dZ * (k-1)))
-    end
-    C.fprintf(fp,"%s","\n")
-  end
-end
-
--- Density
-for k = 1, nZ+1 do
-  for j = 1, nY+1 do
-    for i = 1, nX+1 do
-      value = [&double]([&uint8](rho.address) + i*s_r[0] + j*s_r[1] + k*s_r[2])
-      C.fprintf(fp," %.16f ",@value)
-    end
-    C.fprintf(fp,"%s","\n")
-  end
-end
-
--- Velocity (i_vec = 0)
-for i_vec = 0,3 do
-  for k = 1, nZ+1 do
-    for j = 1, nY+1 do
-      for i = 1, nX+1 do
-        value = [&double]([&uint8](velocity.address) + i*s_v[0] + j*s_v[1] + k*s_v[2] + i_vec*s_vec_v[0])
-        C.fprintf(fp," %.16f ", @value)
+  -- X Coordinates
+  for k = 1, nZ+2 do
+    for j = 1, nY+2 do
+      for i = 1, nX+2 do
+        C.fprintf(fp," %.16f ", originX + (dX * (i-1)))
       end
       C.fprintf(fp,"%s","\n")
     end
   end
-end
 
--- Pressure
-for k = 1, nZ+1 do
-  for j = 1, nY+1 do
-    for i = 1, nX+1 do
-      value = [&double]([&uint8](pressure.address) + (i)*s_p[0] + (j)*s_p[1] + (k)*s_p[2])
-      C.fprintf(fp," %.16f ",@value)
+  -- Y Coordinates
+  for k = 1, nZ+2 do
+    for j = 1, nY+2 do
+      for i = 1, nX+2 do
+        C.fprintf(fp," %.16f ", originY + (dY * (j-1)))
+      end
+      C.fprintf(fp,"%s","\n")
     end
-    C.fprintf(fp,"%s","\n")
   end
-end
 
--- Temperature
-for k = 1, nZ+1 do
-  for j = 1, nY+1 do
-    for i = 1, nX+1 do
-      value = [&double]([&uint8](temperature.address) + (i)*s_t[0] + (j)*s_t[1] + (k)*s_t[2])
-      C.fprintf(fp," %.16f ",@value)
+  -- Z Coordinates
+  for k = 1, nZ+2 do
+    for j = 1, nY+2 do
+      for i = 1, nX+2 do
+        C.fprintf(fp," %.16f ", originZ + (dZ * (k-1)))
+      end
+      C.fprintf(fp,"%s","\n")
     end
-    C.fprintf(fp,"%s","\n")
   end
-end
 
--- Close the Tecplot file
-C.fclose(fp)
+  -- Density
+  for k = 1, nZ+1 do
+    for j = 1, nY+1 do
+      for i = 1, nX+1 do
+        value = [&double]([&uint8](rho.address) + i*s_r[0] + j*s_r[1] +
+                          k*s_r[2])
+        C.fprintf(fp," %.16f ",@value)
+      end
+      C.fprintf(fp,"%s","\n")
+    end
+  end
+
+  -- Velocity (i_vec = 0)
+  for i_vec = 0,3 do
+    for k = 1, nZ+1 do
+      for j = 1, nY+1 do
+        for i = 1, nX+1 do
+          value = [&double]([&uint8](velocity.address) + i*s_v[0] + j*s_v[1] +
+                            k*s_v[2] + i_vec*s_vec_v[0])
+          C.fprintf(fp," %.16f ", @value)
+        end
+        C.fprintf(fp,"%s","\n")
+      end
+    end
+  end
+
+  -- Pressure
+  for k = 1, nZ+1 do
+    for j = 1, nY+1 do
+      for i = 1, nX+1 do
+        value = [&double]([&uint8](pressure.address) + i*s_p[0] + j*s_p[1] +
+                          k*s_p[2])
+        C.fprintf(fp," %.16f ",@value)
+      end
+      C.fprintf(fp,"%s","\n")
+    end
+  end
+
+  -- Temperature
+  for k = 1, nZ+1 do
+    for j = 1, nY+1 do
+      for i = 1, nX+1 do
+        value = [&double]([&uint8](temperature.address) + i*s_t[0] + j*s_t[1] +
+                          k*s_t[2])
+        C.fprintf(fp," %.16f ",@value)
+      end
+      C.fprintf(fp,"%s","\n")
+    end
+  end
+
+  -- Close the Tecplot file
+  C.fclose(fp)
 
 end
 
 function IO.WriteFlowTecplotTerra(timeStep)
   
-  -- Use the terra callback to write the file (avoids Lua).
-  grid.cells:DumpJointTerraFunction(FlowTecplotTerra, {'rho','velocity','pressure','temperature'})
-
-
+  -- Check if it is time to output to file
+  if (timeStep % TimeIntegrator.outputEveryTimeSteps == 0 and
+      IO.wrtVolumeSolution == ON) then
+      
+      -- Tecplot ASCII format
+      local outputFileName = IO.outputFileNamePrefix .. "flow_" ..
+      tostring(timeStep) .. ".dat"
+      
+      -- Use the terra callback to write the file (avoids Lua).
+      grid.cells:DumpJointTerraFunction(FlowTecplotTerra,
+                                        {'rho','velocity','pressure','temperature'},
+                                        {outputFileName, timeStep, TimeIntegrator.simTime:get(),
+                                        grid_options.xnum, grid_options.ynum, grid_options.znum,
+                                        gridOriginInteriorX, gridOriginInteriorY, gridOriginInteriorZ,
+                                        grid_options.xWidth / grid_options.xnum,
+                                        grid_options.yWidth / grid_options.ynum,
+                                        grid_options.zWidth / grid_options.znum})
+                                        
+  end
+  
 end
-
 
 function IO.WriteFlowTecplotLua(timeStep)
 
@@ -3704,7 +3709,89 @@ function IO.WriteParticleRestart(timeStep)
 
 end
 
-function IO.WriteParticleTecplot(timeStep)
+-- terra callback to jointly dump multiple fields. Here, we use the
+-- function to write our Tecplot output (ASCII) for the particle phase.
+local terra ParticleTecplotTerra(dldarray : &dld.ctype, filename : &int8,
+                                 timePhys : double)
+
+  -- Access the density, velocity, pressure, and temperature
+  -- fields and set the appropriate dimensions and strides.
+
+  var position = dldarray[0]
+  var s_p      = position.stride
+  var dim      = position.dims
+  var s_vec_p  = position.type.stride
+
+  var velocity = dldarray[1]
+  var s_v      = velocity.stride
+  var s_vec_v  = velocity.type.stride
+
+  var temperature = dldarray[2]
+  var s_t = temperature.stride
+
+  var diameter = dldarray[3]
+  var s_d = diameter.stride
+
+  -- Create one pointer that we will use repeatedly to access the
+  -- data in the current sell based on our strides.
+
+  var value : &double
+
+  -- Get a file pointer and open up the Tecplot file for writing.
+
+  var fp : &C.FILE
+  fp = C.fopen(filename, "w")
+
+  -- Write the Tecplot header for a cell-centered data file.
+
+  C.fprintf(fp,"%s %s",'VARIABLES = "X", "Y", "Z", "X-Velocity",',
+            ' "Y-Velocity", "Z-Velocity", "Temperature", "Diamter"\n')
+  C.fprintf(fp,"%s %f %s",'ZONE SOLUTIONTIME=', timePhys, '\n')
+
+  -- Write the position, velocity, temperature, and diameter for
+  -- each particle on successive lines in order.
+
+  for i = 0,dim[0] do
+    for i_vec = 0,3 do
+      value = [&double]([&uint8](position.address)+i*s_p[0]+i_vec*s_vec_p[0])
+      C.fprintf(fp," %.16f ",@value)
+    end
+    for i_vec = 0,3 do
+      value = [&double]([&uint8](velocity.address)+i*s_v[0]+i_vec*s_vec_v[0])
+      C.fprintf(fp," %.16f ",@value)
+    end
+    value = [&double]([&uint8](temperature.address)+i*s_t[0])
+    C.fprintf(fp," %.16f ",@value)
+    value = [&double]([&uint8](diameter.address)+i*s_d[0])
+    C.fprintf(fp," %.16f ",@value)
+    C.fprintf(fp,"%s","\n")
+  end
+
+  -- Close the Tecplot file
+  C.fclose(fp)
+
+end
+
+function IO.WriteParticleTecplotTerra(timeStep)
+  
+  -- Check if it is time to output to file
+  if (timeStep % TimeIntegrator.outputEveryTimeSteps == 0 and
+      IO.wrtVolumeSolution == ON) then
+      
+      -- Write a file for the particle positions
+      local particleFileName = IO.outputFileNamePrefix .. "particles_" ..
+      tostring(timeStep) .. ".dat"
+      
+      -- Use the terra callback to write the file (avoids Lua).
+      particles:DumpJointTerraFunction(ParticleTecplotTerra,
+                                        {'position','velocity','temperature','diameter'},
+                                        {particleFileName, TimeIntegrator.simTime:get()})
+                                        
+  end
+  
+end
+
+function IO.WriteParticleTecplotLua(timeStep)
   
   -- Check if it is time to output to file
   if (timeStep % TimeIntegrator.outputEveryTimeSteps == 0 and
@@ -3719,10 +3806,9 @@ function IO.WriteParticleTecplot(timeStep)
   local particleFile = io.output(particleFileName)
 
   -- Compute the number of vertices to be written
-
   -- Write header
-  --io.write('TITLE = "Data"\n')
-  io.write('VARIABLES = "X", "Y", "Z", "X-Velocity", "Y-Velocity", "Z-Velocity", "Temperature", "Diameter"\n')
+  io.write('VARIABLES = "X", "Y", "Z", "X-Velocity", "Y-Velocity", ',
+           '"Z-Velocity", "Temperature", "Diameter"\n')
   io.write('ZONE SOLUTIONTIME=', TimeIntegrator.simTime:get(), '\n')
 
   local veclen = particles.position:Type().N
@@ -3736,28 +3822,7 @@ function IO.WriteParticleTecplot(timeStep)
     io.write("", s)
   end)
 
-  --values = particles.position:DumpToList()
-  --N      = particles.position:Size()
-  --veclen = particles.position:Type().N
-  --local p_velocity = particles.velocity:DumpToList()
-  --local diameter  = particles.diameter:DumpToList()
-  --local particleT = particles.temperature:DumpToList()
-  --for i=1,N do
-  --  s = ''
-  --  for j=1,veclen do
-  --    local t = tostring(values[i][j]):gsub('ULL',' ')
-  --    s = s .. ' ' .. t .. ''
-  --  end
-  --  for j=1,veclen do
-  --    local t = tostring(p_velocity[i][j]):gsub('ULL',' ')
-  --    s = s .. ' ' .. t .. ''
-  --  end
-  --  local temp = tostring(particleT[i]):gsub('ULL',' ')
-  --  local diam = tostring(diameter[i]):gsub('ULL',' ')
-  --  s = s .. ' ' .. temp .. ' ' .. diam .. '\n'
-  --  io.write("", s)
-  --end
-
+  -- Close the file.
   io.close()
 
   end
@@ -4009,8 +4074,9 @@ function IO.WriteOutput(timeStep)
 
   if IO.outputFormat == IO.Tecplot then
     IO.WriteFlowTecplotTerra(timeStep)
-    IO.WriteFlowTecplotLua(timeStep)
-    IO.WriteParticleTecplot(timeStep)
+    --IO.WriteFlowTecplotLua(timeStep)
+    IO.WriteParticleTecplotTerra(timeStep)
+    --IO.WriteParticleTecplotLua(timeStep)
   else
     print("Output format not defined. No output written to disk.")
   end
