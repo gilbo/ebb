@@ -22,7 +22,7 @@ cells:NewField('y', L.mat2x3i)
 -- callback can load field x by performing computation or
 -- reading unsupported file formats
 -- callback has write only access to requested field
-local terra LoadX(dldarray : &dld.ctype)
+local terra LoadX(dldarray : &dld.ctype, t : int, str : &int8)
   var d    = dldarray[0]
   var s    = d.stride
   var dim  = d.dims
@@ -34,14 +34,15 @@ local terra LoadX(dldarray : &dld.ctype)
       for k = 0, dim[2] do
         ptr = [&float]([&uint8](d.address) + i*s[0] + j*s[1] + k*s[2])
         @[ptr] = y
-        y = y + 0.01
+        y = y + t
       end
     end
   end
+  C.printf("%s\n", str)
 end
 
 -- invoke LoadX callback
-cells.x:LoadTerraFunction(LoadX)
+cells.x:LoadTerraFunction(LoadX, {0.02, "hello"})
 
 print("Loaded x values:")
 cells:foreach(dump, 'x')
@@ -112,7 +113,7 @@ cells.x:DumpTerraFunction(DumpX)
 -- terra callback to jointly dump x and y
 -- callback can dump field x and y (to stdout/ err/ any kind of file)
 -- callback has read only access to requested fields
-local terra DumpXY(dldarray : &dld.ctype)
+local terra DumpXY(dldarray : &dld.ctype, str : &int8)
   var d0   = dldarray[0]
   var s    = d0.stride
   var dim  = d0.dims
@@ -139,8 +140,9 @@ local terra DumpXY(dldarray : &dld.ctype)
       C.printf("\n")
     end
   end
+  C.printf("%s\n", str)
 end
 
 -- invoke DumpXY callback
 print("Dump x, y:")
-cells:DumpJointTerraFunction(DumpXY, {'x', 'y'})
+cells:DumpJointTerraFunction(DumpXY, {'x', 'y'}, {"a string"})
