@@ -22,7 +22,7 @@ cells:NewField('y', L.mat2x3i)
 -- callback can load field x by performing computation or
 -- reading unsupported file formats
 -- callback has write only access to requested field
-local terra LoadX(dldarray : &dld.ctype)
+local terra LoadX(dldarray : &dld.ctype, t : float, str : &int8)
   var d    = dldarray[0]
   var s    = d.stride
   var dim  = d.dims
@@ -34,14 +34,15 @@ local terra LoadX(dldarray : &dld.ctype)
       for k = 0, dim[2] do
         ptr = [&float]([&uint8](d.address) + i*s[0] + j*s[1] + k*s[2])
         @[ptr] = y
-        y = y + 0.01
+        y = y + t
       end
     end
   end
+  C.printf("%s\n", str)
 end
 
 -- invoke LoadX callback
-cells.x:LoadTerraFunction(LoadX)
+cells.x:LoadTerraFunction(LoadX, {0.02, "hello"})
 
 print("Loaded x values:")
 cells:foreach(dump, 'x')
@@ -112,11 +113,12 @@ cells.x:DumpTerraFunction(DumpX)
 -- terra callback to jointly dump x and y
 -- callback can dump field x and y (to stdout/ err/ any kind of file)
 -- callback has read only access to requested fields
-local terra DumpXY(dldarray : &dld.ctype)
+local terra DumpXY(dldarray : &dld.ctype, str : &int8)
   var d0   = dldarray[0]
-  var s    = d0.stride
+  var s0   = d0.stride
   var dim  = d0.dims
   var d1   = dldarray[1]
+  var s1   = d1.stride
   var st   = d1.type.stride
 
   var ptr0 : &float   -- data ptr
@@ -124,13 +126,13 @@ local terra DumpXY(dldarray : &dld.ctype)
   for i = 0, dim[0] do
     for j = 0, dim[1] do
       for k = 0, dim[2] do
-        ptr0 = [&float]([&uint8](d0.address) + i*s[0] + j*s[1] + k*s[2])
+        ptr0 = [&float]([&uint8](d0.address) + i*s0[0] + j*s0[1] + k*s0[2])
         C.printf("{ %i, %i, %i } : %f, ", i, j, k, @ptr0)
           for it = 0, 2 do
             C.printf("{")
             for jt = 0, 3 do
               ptr1 = [&int]([&uint8](d1.address) +
-                             i*s[0] + j*s[1] + k*s[2] + it*st[0] + jt*st[1])
+                             i*s1[0] + j*s1[1] + k*s1[2] + it*st[0] + jt*st[1])
               C.printf(" %i ", @ptr1)
             end
             C.printf("} ")
@@ -139,8 +141,9 @@ local terra DumpXY(dldarray : &dld.ctype)
       C.printf("\n")
     end
   end
+  C.printf("%s\n", str)
 end
 
 -- invoke DumpXY callback
 print("Dump x, y:")
-cells:DumpJointTerraFunction(DumpXY, {'x', 'y'})
+cells:DumpJointTerraFunction(DumpXY, {'x', 'y'}, {"a string"})
