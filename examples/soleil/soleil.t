@@ -3690,19 +3690,19 @@ function IO.WriteParticleRestart(timeStep)
     -- Write the restart CSV files for density, pressure, and velocity
 
     local fileName = IO.outputFileNamePrefix .. 'restart_particle_position_' ..
-    config.restartParticleIter .. '.csv'
+    tostring(timeStep) .. '.csv'
     particles.position:SaveToCSV(fileName,{precision=16})
 
     fileName = IO.outputFileNamePrefix .. 'restart_particle_velocity_' ..
-    config.restartParticleIter .. '.csv'
+    tostring(timeStep) .. '.csv'
     particles.velocity:SaveToCSV(fileName,{precision=16})
 
     fileName = IO.outputFileNamePrefix .. 'restart_particle_temperature_' ..
-    config.restartParticleIter .. '.csv'
+    tostring(timeStep) .. '.csv'
     particles.temperature:SaveToCSV(fileName,{precision=16})
 
     fileName = IO.outputFileNamePrefix .. 'restart_particle_diameter_' ..
-    config.restartParticleIter .. '.csv'
+    tostring(timeStep) .. '.csv'
     particles.diameter:SaveToCSV(fileName,{precision=16})
 
   end
