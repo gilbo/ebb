@@ -497,6 +497,42 @@ end
 
 
 
+B.rand = Builtin.new()
+function B.rand.check(ast, ctxt)
+    local args = ast.params
+    if #args ~= 0 then
+        ctxt:error(ast, "rand expects 0 arguments")
+        return L.error
+    else
+        return L.double
+    end
+end
+local cpu_randinitialized = false
+function B.rand.codegen(ast, ctxt)
+    local rand
+    local RAND_MAX
+    if ctxt:onGPU() then
+        -- GPU_util makes sure we're seeded for us
+        rand = `G.rand([ctxt:gid()])
+        RAND_MAX = G.RAND_MAX
+    else
+        -- make sure we're seeded
+        if not cpu_randinitialized then
+            cpu_randinitialized = true
+            C.srand(0) --cmath.time(nil)
+        end
+        rand = `C.rand()
+        RAND_MAX = C.RAND_MAX
+    end
+
+    -- reciprocal
+    --local reciprocal = terralib.constant(double, 1/(1.0e32-1.0))
+    return `[double](rand) / RAND_MAX
+end
+-- SHOULD expose some randomness controls here...
+
+
+
 B.dot = Builtin.new()
 function B.dot.check(ast, ctxt)
     local args = ast.params
@@ -932,6 +968,7 @@ L.Where  = B.Where
 L.Affine = B.Affine
 L.print  = B.print
 L.assert = B.assert
+L.rand   = B.rand
 L.dot    = B.dot
 L.cross  = B.cross
 L.length = B.length

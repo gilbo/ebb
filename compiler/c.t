@@ -27,6 +27,7 @@ local enum_list = {
   {str="DBL_MIN",ctype='double',ttype=double},
   {str="DBL_MAX",ctype='double',ttype=double},
   {str="STDERR_FILENO",ctype='int',ttype=int},
+  {str="RAND_MAX",ctype='double',ttype=double},
 }
 
 
