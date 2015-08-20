@@ -1132,6 +1132,8 @@ io.stdout:write(" Output format: ", config.outputFormat, "\n")
 io.stdout:write(" Output directory: ", config.outputDirectory, "\n")
 print("")
 print("--------------------------- Start Solver ----------------------------")
+print("")
+
 
 -----------------------------------------------------------------------------
 --[[                       USER DEFINED FUNCTIONS                        ]]--
@@ -3403,10 +3405,15 @@ local terra FlowTecplotTerra(dldarray : &dld.ctype, filename : &int8,
   var temperature = dldarray[3]
   var s_t = temperature.stride
 
+  var halo_layer = dldarray[4]
+  var s_h = halo_layer.stride
+
   -- Create one pointer that we will use repeatedly to access the
   -- data in the current sell based on our strides.
 
   var value : &double
+  var halo  : &int
+  var write : bool
 
   -- Get a file pointer and open up the Tecplot file for writing.
 
@@ -3430,9 +3437,8 @@ local terra FlowTecplotTerra(dldarray : &dld.ctype, filename : &int8,
   for k = 1, nZ+2 do
     for j = 1, nY+2 do
       for i = 1, nX+2 do
-        C.fprintf(fp," %.16f ", originX + (dX * (i-1)))
+        C.fprintf(fp,"%.16f\n", originX + (dX * (i-1)))
       end
-      C.fprintf(fp,"%s","\n")
     end
   end
 
@@ -3440,9 +3446,8 @@ local terra FlowTecplotTerra(dldarray : &dld.ctype, filename : &int8,
   for k = 1, nZ+2 do
     for j = 1, nY+2 do
       for i = 1, nX+2 do
-        C.fprintf(fp," %.16f ", originY + (dY * (j-1)))
+        C.fprintf(fp,"%.16f\n", originY + (dY * (j-1)))
       end
-      C.fprintf(fp,"%s","\n")
     end
   end
 
@@ -3450,59 +3455,74 @@ local terra FlowTecplotTerra(dldarray : &dld.ctype, filename : &int8,
   for k = 1, nZ+2 do
     for j = 1, nY+2 do
       for i = 1, nX+2 do
-        C.fprintf(fp," %.16f ", originZ + (dZ * (k-1)))
+        C.fprintf(fp,"%.16f\n", originZ + (dZ * (k-1)))
       end
-      C.fprintf(fp,"%s","\n")
     end
   end
 
   -- Density
-  for k = 1, nZ+1 do
-    for j = 1, nY+1 do
-      for i = 1, nX+1 do
+  for k = 0, dim[2] do
+    for j = 0, dim[1] do
+      for i = 0, dim[0] do
+        halo  = [&int]([&uint8](halo_layer.address) + i*s_h[0] + j*s_h[1] +
+                          k*s_h[2])
         value = [&double]([&uint8](rho.address) + i*s_r[0] + j*s_r[1] +
                           k*s_r[2])
-        C.fprintf(fp," %.16f ",@value)
+        if (@halo == 0) then
+          C.fprintf(fp,"%.16f\n",@value)
+          write = true
+        else write = false end
       end
-      C.fprintf(fp,"%s","\n")
     end
   end
 
   -- Velocity (i_vec = 0)
   for i_vec = 0,3 do
-    for k = 1, nZ+1 do
-      for j = 1, nY+1 do
-        for i = 1, nX+1 do
+    for k = 0, dim[2] do
+      for j = 0, dim[1] do
+        for i = 0, dim[0] do
+          halo  = [&int]([&uint8](halo_layer.address) + i*s_h[0] + j*s_h[1] +
+                         k*s_h[2])
           value = [&double]([&uint8](velocity.address) + i*s_v[0] + j*s_v[1] +
                             k*s_v[2] + i_vec*s_vec_v[0])
-          C.fprintf(fp," %.16f ", @value)
+          if (@halo == 0) then
+            C.fprintf(fp,"%.16f\n",@value)
+            write = true
+          else write = false end
         end
-        C.fprintf(fp,"%s","\n")
       end
     end
   end
 
   -- Pressure
-  for k = 1, nZ+1 do
-    for j = 1, nY+1 do
-      for i = 1, nX+1 do
+  for k = 0, dim[2] do
+    for j = 0, dim[1] do
+      for i = 0, dim[0] do
+        halo  = [&int]([&uint8](halo_layer.address) + i*s_h[0] + j*s_h[1] +
+                       k*s_h[2])
         value = [&double]([&uint8](pressure.address) + i*s_p[0] + j*s_p[1] +
                           k*s_p[2])
-        C.fprintf(fp," %.16f ",@value)
+        if (@halo == 0) then
+          C.fprintf(fp,"%.16f\n",@value)
+          write = true
+        else write = false end
       end
-      C.fprintf(fp,"%s","\n")
     end
   end
 
   -- Temperature
-  for k = 1, nZ+1 do
-    for j = 1, nY+1 do
-      for i = 1, nX+1 do
+  for k = 0, dim[2] do
+    for j = 0, dim[1] do
+      for i = 0, dim[0] do
+        halo  = [&int]([&uint8](halo_layer.address) + i*s_h[0] + j*s_h[1] +
+                       k*s_h[2])
         value = [&double]([&uint8](temperature.address) + i*s_t[0] + j*s_t[1] +
                           k*s_t[2])
-        C.fprintf(fp," %.16f ",@value)
+        if (@halo == 0) then
+          C.fprintf(fp,"%.16f\n",@value)
+          write = true
+        else write = false end
       end
-      C.fprintf(fp,"%s","\n")
     end
   end
 
@@ -3523,7 +3543,7 @@ function IO.WriteFlowTecplotTerra(timeStep)
       
       -- Use the terra callback to write the file (avoids Lua).
       grid.cells:DumpJointTerraFunction(FlowTecplotTerra,
-                                        {'rho','velocity','pressure','temperature'},
+                                        {'rho','velocity','pressure','temperature','cellRindLayer'},
                                         {outputFileName, timeStep, TimeIntegrator.simTime:get(),
                                         grid_options.xnum, grid_options.ynum, grid_options.znum,
                                         gridOriginInteriorX, gridOriginInteriorY, gridOriginInteriorZ,
@@ -3745,7 +3765,7 @@ local terra ParticleTecplotTerra(dldarray : &dld.ctype, filename : &int8,
   -- Write the Tecplot header for a cell-centered data file.
 
   C.fprintf(fp,"%s %s",'VARIABLES = "X", "Y", "Z", "X-Velocity",',
-            ' "Y-Velocity", "Z-Velocity", "Temperature", "Diamter"\n')
+            ' "Y-Velocity", "Z-Velocity", "Temperature", "Diameter"\n')
   C.fprintf(fp,"%s %f %s",'ZONE SOLUTIONTIME=', timePhys, '\n')
 
   -- Write the position, velocity, temperature, and diameter for
