@@ -152,6 +152,11 @@ function Context:bid()
   return self._bid
 end
 
+function Context:gid()
+  if not self._gid then self._gid = symbol(uint32) end
+  return self._gid
+end
+
 function Context:gpuNumBlocks(args_ptr)
   return self.ufv:_numGPUBlocks(args_ptr)
 end
@@ -445,6 +450,7 @@ function Codegen.codegen (ufunc_ast, ufunc_version)
       body = quote
         var [ctxt:tid()] = G.thread_id()
         var [ctxt:bid()] = G.block_id()
+        var [ctxt:gid()] = G.global_tid()
         var [linid]      = [ctxt:bid()] * [ctxt:gpuBlockSize()] + [ctxt:tid()]
 
         [body]
