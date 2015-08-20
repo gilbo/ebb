@@ -231,6 +231,12 @@ function L.NewUFVersion(ufunc, signature)
   return version
 end
 
+UFVersion._total_function_launch_count =
+  Stats.NewCounter('total_function_launch_count')
+function L.PrintStats()
+  UFVersion._total_function_launch_count:print()
+end
+
 -- Use the following to produce
 -- deterministic order of table entries
 -- From the Lua Documentation
@@ -405,7 +411,6 @@ function L.LUserFunc:Compile(relset, ...)
   version:Compile()
 end
 
-EXEC_TIMER = 0
 function L.LUserFunc:doForEach(relset, ...)
   self:_doForEach(relset, ...)
 end

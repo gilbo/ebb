@@ -17,16 +17,17 @@ float rand_float()
       return r;
 }
 ]]
-cmath.srand(cmath.time(nil));
-local rand_float = cmath.rand_float
-if L.default_processor == L.GPU then
-    rand_float = terra() return 0.5f end
-end
+--cmath.srand(cmath.time(nil));
+--local rand_float = cmath.rand_float
+local rand_float = L.rand
+--if L.default_processor == L.GPU then
+--    rand_float = terra() return 0.5f end
+--end
 local vdb   = L.require 'lib.vdb'
 
 local N = 150
 local PERIODIC = true
-local INSERT_DELETE = false -- exercise these features in periodic mode...
+local INSERT_DELETE = true -- exercise these features in periodic mode...
 local period = {false,false}
 local origin = {-N/2.0, -1.0}
 if PERIODIC then
@@ -468,10 +469,10 @@ end
 
 local STEPS = 500 -- use 500 on my local machine
 for i = 0, STEPS-1 do
+    print(i)
     if math.floor(i / 70) % 2 == 0 then
         grid.cells:foreach(source_velocity)
     end
-
     diffuse_velocity(grid)
     project_velocity(grid)
 
@@ -482,8 +483,7 @@ for i = 0, STEPS-1 do
     particles:foreach(update_particle_pos)
     particles:foreach(locate_particles)
 
-
-    if i % 5 == 0 then
+    if L.default_processor == L.CPU and i % 5 == 0 then
         vdb.vbegin()
             vdb.frame()
             --grid.cells:foreach(draw_grid)

@@ -79,12 +79,10 @@ function test.meq(a,...)
 	end
 end
 
--- WARNING: This will cause trouble on Windows possibly
--- Cross Platform timing is a bit tricky and worth reading about.
 function test.time(fn)
-    local s = os.clock()
+    local s = terralib.currenttimeinseconds()
     fn()
-    local e = os.clock()
+    local e = terralib.currenttimeinseconds()
     return e - s
 end
 

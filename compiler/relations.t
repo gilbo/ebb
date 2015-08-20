@@ -908,7 +908,7 @@ end
 
 -- To load fields using terra callback. Terra callback gets a list of dlds.
 --   callback([dlds])
-function L.LRelation:LoadJointTerraFunction(terra_callback, fields_arg)
+function L.LRelation:LoadJointTerraFunction(terra_callback, fields_arg, opt_args)
   if not terralib.isfunction(terra_callback) then
     error('LoadJointTerraFunction.. should be used with terra callback')
   end
@@ -951,7 +951,11 @@ function L.LRelation:LoadJointTerraFunction(terra_callback, fields_arg)
       end
       dld_array[i-1] = dld:Compile()
     end
-    terra_callback(dld_array)
+    if opt_args then
+      terra_callback(dld_array, unpack(opt_args))
+    else
+      terra_callback(dld_array)
+    end
     for i = 1, nfields do
       if cpu_buf[i] then
         fields[i].array:copy(cpu_buf[i])
@@ -975,7 +979,11 @@ function L.LRelation:LoadJointTerraFunction(terra_callback, fields_arg)
       dld:SetOffset(offsets[i])
       dld_array[i-1] = dld:Compile()
     end
-    terra_callback(dld_array)
+    if opt_args then
+      terra_callback(dld_array, unpack(opt_args))
+    else
+      terra_callback(dld_array)
+    end
     region:Destroy()
   end
 end
@@ -983,11 +991,11 @@ end
 -- Load a single field using a terra callback
 -- callback accepts argument dld
 --   callback(dld)
-function L.LField:LoadTerraFunction(terra_callback)
+function L.LField:LoadTerraFunction(terra_callback, opt_args)
   if not terralib.isfunction(terra_callback) then
     error('LoadTerraFunction should be used with terra callback')
   end
-  self.owner:LoadJointTerraFunction(terra_callback, {self})
+  self.owner:LoadJointTerraFunction(terra_callback, {self}, opt_args)
 end
 
 function L.LField:LoadList(tbl)
@@ -1262,7 +1270,7 @@ end
 
 -- To dump fields using terra callback. Terra callback gets a list of dlds.
 --   callback([dlds])
-function L.LRelation:DumpJointTerraFunction(terra_callback, fields_arg)
+function L.LRelation:DumpJointTerraFunction(terra_callback, fields_arg, opt_args)
   if not terralib.isfunction(terra_callback) then
     error('DumpJointTerraFunction.. should be used with terra callback')
   end
@@ -1306,7 +1314,11 @@ function L.LRelation:DumpJointTerraFunction(terra_callback, fields_arg)
         end
       dld_array[i-1] = dld:Compile()
     end
-    terra_callback(dld_array)
+    if opt_args then
+      terra_callback(dld_array, unpack(opt_args))
+    else
+      terra_callback(dld_array)
+    end
     for i = 1, nfields do
       if cpu_buf[i] then cpu_buf[i]:free() end
     end
@@ -1327,7 +1339,11 @@ function L.LRelation:DumpJointTerraFunction(terra_callback, fields_arg)
       dld:SetOffset(offsets[i])
       dld_array[i-1] = dld:Compile()
     end
-    terra_callback(dld_array)
+    if opt_args then
+      terra_callback(dld_array, unpack(opt_args))
+    else
+      terra_callback(dld_array)
+    end
     region:Destroy()
   end
 end
@@ -1335,11 +1351,11 @@ end
 -- Dump a single field using a terra callback
 -- callback accepts argument dld
 --   callback(dld)
-function L.LField:DumpTerraFunction(terra_callback)
+function L.LField:DumpTerraFunction(terra_callback, opt_args)
   if not terralib.isfunction(terra_callback) then
     error('DumpTerraFunction should be used with terra callback')
   end
-  self.owner:DumpJointTerraFunction(terra_callback, {self})
+  self.owner:DumpJointTerraFunction(terra_callback, {self}, opt_args)
 end
 
 
