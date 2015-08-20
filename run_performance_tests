@@ -1,0 +1,101 @@
+#!./terra/terra
+local ffi = require "ffi"
+
+local USE_LEGION = false
+local USE_GPU    = false
+local ONE_LINE_ERR = false
+
+if #arg > 0 then
+  for i=1,#arg do
+    if arg[i] == '-legion' or arg[i] == '--legion' then
+      USE_LEGION = true
+    end
+    if arg[i] == '-gpu' or arg[i] == '--gpu' then
+      USE_GPU = true
+    end
+    if arg[i] == '-h' or arg[i] == '--help' then
+      print("Usage : run_tests [options]")
+      print("Options:")
+      print("  -h, --help             show this help message and exit")
+      print("  -legion, --legion      run tests with legion")
+      print("  -gpu, --gpu            run tests on the GPU")
+      os.exit(0)
+    end
+  end
+end
+
+local lscmd = "find examples/performance_tests/"
+
+local passed     = {}
+local bad_passed = {}
+local failed     = {}
+local disabled   = {}
+
+local disable_str = '--DISABLE-TEST'
+local function str_starts_with(str, prefix)
+  return string.sub(str,1,#prefix) == prefix
+end
+local function is_disabled (filename)
+  local h = io.open(filename, "r")
+  local line = h:read()
+  io.close(h)
+  local disabled_test = false
+  if line then
+    disabled_test  = disabled_test or str_starts_with(line, disable_str)
+  end
+  return disabled_test
+end
+
+print("===============================")
+print("= Running performance tests...")
+print("===============================")
+for line in io.popen(lscmd):lines() do
+  local file = line:match("^(examples/performance_tests/.*%.t)$")
+  if file then
+    local stats = file:gsub("/(.-)%.t$", "/%1.stats")
+    if is_disabled(file) then
+      table.insert(disabled, file)
+    else
+      print(file)
+      local cpu_time = 0
+      local gpu_time = 0
+      local legion_cpu_time = 0
+      local legion_gpu_time = 0
+      print("Executing on CPU ...")
+      local start_time = terralib.currenttimeinseconds()
+      os.execute("./liszt " .. file)
+      local end_time = terralib.currenttimeinseconds()
+      cpu_time = end_time - start_time
+      if USE_GPU then
+        print("Executing on GPU ...")
+        local start_time = terralib.currenttimeinseconds()
+        os.execute("./liszt --gpu " .. file)
+        local end_time = terralib.currenttimeinseconds()
+        gpu_time = end_time - start_time
+      end
+      if USE_LEGION then
+        print("Executing on CPU with Legion...")
+        local start_time = terralib.currenttimeinseconds()
+        os.execute("./liszt --legion --nodebug " .. file)
+        local end_time = terralib.currenttimeinseconds()
+        legion_cpu_time = end_time - start_time
+        if USE_GPU then
+          print("Executing on GPU with Legion...")
+          local start_time = terralib.currenttimeinseconds()
+          os.execute("./liszt --legion --nodebug --gpu " .. file)
+          local end_time = terralib.currenttimeinseconds()
+          legion_gpu_time = end_time - start_time
+        end
+      end
+      print("Current execution time (seconds)")
+      local curr_time = ""
+      curr_time = curr_time .. string.format("cpu : %3i", cpu_time)
+      curr_time = curr_time .. string.format(" , gpu : %3i", gpu_time)
+      curr_time = curr_time .. string.format(" , legion_cpu : %3i", legion_cpu_time)
+      curr_time = curr_time .. string.format(" , legion_gpu : %3i", legion_gpu_time)
+      print(curr_time)
+      print("Expected execution time (seconds)")
+      os.execute("cat " .. stats)
+    end
+  end
+end
