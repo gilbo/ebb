@@ -1549,7 +1549,7 @@ function L.LField:SaveToCSV(filename, args)
       end
     end
   end
-  self:LoadTerraFunction(SaveCSVFunction)
+  self:DumpTerraFunction(SaveCSVFunction)
   C.fclose(fp)
 end
 
