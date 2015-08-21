@@ -426,8 +426,6 @@ spatial_stencil = {
   interpolateCoeffs = L.Constant(L.vec2d, {0, 0.5}),
   numFirstDerivativeCoeffs = 2,
   firstDerivativeCoeffs = L.Constant(L.vec2d, {0, 0.5}),
-  firstDerivativeModifiedWaveNumber = 1.0,
-  secondDerivativeModifiedWaveNumber = 4.0,
 }
 
 -- Time integrator options
@@ -2276,12 +2274,12 @@ local dXYZInverseSquare = L.Constant(L.double,
                                      1.0/grid_dz:get() * 1.0/grid_dz:get())
 local liszt calculateConvectiveSpectralRadius     ( c : grid.cells )
   -- Convective spectral radii
+  -- WARNING: uniform grid assumption
   c.convectiveSpectralRadius = 
    (L.fabs(c.velocity[0])/grid_dx  +
     L.fabs(c.velocity[1])/grid_dy  +
     L.fabs(c.velocity[2])/grid_dz  +
-    GetSoundSpeed(c.temperature) * L.sqrt(dXYZInverseSquare)) *
-   spatial_stencil.firstDerivativeModifiedWaveNumber
+    GetSoundSpeed(c.temperature) * L.sqrt(dXYZInverseSquare))
 
   maxConvectiveSpectralRadius max= c.convectiveSpectralRadius    
 end
@@ -2289,26 +2287,23 @@ local liszt calculateViscousSpectralRadius        ( c : grid.cells )
   -- Viscous spectral radii (including sgs model component)
   var dynamicViscosity = GetDynamicViscosity(c.temperature)
   var eddyViscosity = c.sgsEddyViscosity
-  c.viscousSpectralRadius = 
+  c.viscousSpectralRadius =
    (2.0 * ( dynamicViscosity + eddyViscosity ) /
-    c.rho * dXYZInverseSquare) *
-   spatial_stencil.secondDerivativeModifiedWaveNumber
+    c.rho * dXYZInverseSquare) * 4.0
 
   maxViscousSpectralRadius max= c.viscousSpectralRadius       
 end
 local liszt calculateHeatConductionSpectralRadius ( c : grid.cells )
   var dynamicViscosity  = GetDynamicViscosity(c.temperature)
 
-  -- Heat conduction spectral radii (including sgs model 
-  -- component)
-  var cv = fluid_options.gasConstant / 
-           (fluid_options.gamma - 1.0)
+  -- Heat conduction spectral radii (including sgs model component)
+  var cv = fluid_options.gasConstant / (fluid_options.gamma - 1.0)
   var cp = fluid_options.gamma * cv
+
   var kappa = cp / fluid_options.prandtl *  dynamicViscosity
   
   c.heatConductionSpectralRadius = 
-     ((kappa + c.sgsEddyKappa) / (cv * c.rho) * dXYZInverseSquare) *
-     spatial_stencil.secondDerivativeModifiedWaveNumber
+     ((kappa + c.sgsEddyKappa) / (cv * c.rho) * dXYZInverseSquare) * 4.0
   maxHeatConductionSpectralRadius max= c.heatConductionSpectralRadius
 end
 function Flow.CalculateSpectralRadii(cells)
