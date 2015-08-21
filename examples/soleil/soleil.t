@@ -419,11 +419,6 @@ local spatial_stencil = {}
 spatial_stencil = {
   --  Splitting parameter
   split = 0.5,
-  --  Order 2
-  order = 2,
-  size = 2,
-  numInterpolateCoeffs = 2,
-  interpolateCoeffs = L.Constant(L.vec2d, {0, 0.5}),
   numFirstDerivativeCoeffs = 2,
   firstDerivativeCoeffs = L.Constant(L.vec2d, {0, 0.5}),
 }
@@ -731,8 +726,10 @@ else
 end
 
 -- Declare and initialize grid and related fields
-
-local bnum = spatial_stencil.order/2
+-- As we are second-order, we will initialize the grid
+-- with a single layer of halo cells (unless running a
+-- periodic case, which is natively handled w/out halos).
+local bnum = 1
 if xBCPeriodic then
   xBnum = 0
 else
@@ -2144,40 +2141,19 @@ end
 -- Velocity gradients
 ---------------------
 
+-- WARNING: non-uniform grid assumption
 liszt Flow.ComputeVelocityGradientX (c : grid.cells)
-    var numFirstDerivativeCoeffs = spatial_stencil.numFirstDerivativeCoeffs
-    var firstDerivativeCoeffs    = spatial_stencil.firstDerivativeCoeffs
-    var tmp = L.vec3d({0.0, 0.0, 0.0})
-    for ndx = 1, numFirstDerivativeCoeffs do
-      tmp += firstDerivativeCoeffs[ndx] * 
-              ( c(ndx,0,0).velocity -
-                c(-ndx,0,0).velocity )
-    end
-    c.velocityGradientX = tmp / grid_dx
+  c.velocityGradientX = 0.5*(c(1,0,0).velocity - c(-1,0,0).velocity)/grid_dx
 end
 
+-- WARNING: non-uniform grid assumption
 liszt Flow.ComputeVelocityGradientY (c : grid.cells)
-    var numFirstDerivativeCoeffs = spatial_stencil.numFirstDerivativeCoeffs
-    var firstDerivativeCoeffs    = spatial_stencil.firstDerivativeCoeffs
-    var tmp = L.vec3d({0.0, 0.0, 0.0})
-    for ndx = 1, numFirstDerivativeCoeffs do
-      tmp += firstDerivativeCoeffs[ndx] * 
-              ( c(0,ndx,0).velocity -
-                c(0,-ndx,0).velocity )
-    end
-    c.velocityGradientY = tmp / grid_dy
+  c.velocityGradientY = 0.5*(c(0,1,0).velocity - c(0,-1,0).velocity)/grid_dy
 end
 
+-- WARNING: non-uniform grid assumption
 liszt Flow.ComputeVelocityGradientZ (c : grid.cells)
-    var numFirstDerivativeCoeffs = spatial_stencil.numFirstDerivativeCoeffs
-    var firstDerivativeCoeffs    = spatial_stencil.firstDerivativeCoeffs
-    var tmp = L.vec3d({0.0, 0.0, 0.0})
-    for ndx = 1, numFirstDerivativeCoeffs do
-      tmp += firstDerivativeCoeffs[ndx] * 
-              ( c(0,0,ndx).velocity -
-                c(0,0,-ndx).velocity )
-    end
-    c.velocityGradientZ = tmp / grid_dz
+  c.velocityGradientZ = 0.5*(c(0,0,1).velocity - c(0,0,-1).velocity)/grid_dz
 end
 
 liszt Flow.UpdateGhostVelocityGradientStep1 (c : grid.cells)
