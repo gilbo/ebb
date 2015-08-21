@@ -172,19 +172,9 @@ local xSignX, xSignY, xSignZ
 local xBCLeftVelX, xBCLeftVelY, xBCLeftVelZ
 local xBCRightVelX, xBCRightVelY, xBCRightVelZ
 local xBCLeftTemp, xBCRightTemp
--- Offset liszt functions
-local liszt XOffsetPeriodic(boundaryPointDepth)
-  return 0
-end
-local liszt XOffsetDummyPeriodic(boundaryPointDepth)
-  return grid_options.xnum
-end
-local liszt XOffsetSymmetry(boundaryPointDepth)
-  return 2*boundaryPointDepth-1
-end
+
 if grid_options.xBCLeft  == "periodic" and 
    grid_options.xBCRight == "periodic" then
-  XOffset = XOffsetPeriodic
   xSignX = 1
   xSignY = 1
   xSignZ = 1
@@ -200,7 +190,6 @@ if grid_options.xBCLeft  == "periodic" and
   grid_options.xBCRightParticles = Particles.Permeable
 elseif grid_options.xBCLeft == "symmetry" and
        grid_options.xBCRight == "symmetry" then
-  XOffset = XOffsetSymmetry
   xSignX = -1
   xSignY = 1
   xSignZ = 1
@@ -216,7 +205,6 @@ elseif grid_options.xBCLeft == "symmetry" and
   grid_options.xBCRightParticles = Particles.Solid
 elseif grid_options.xBCLeft  == "adiabatic_wall" and
        grid_options.xBCRight == "adiabatic_wall" then
-  XOffset = XOffsetSymmetry
   xSignX = -1
   xSignY = -1
   xSignZ = -1
@@ -232,7 +220,6 @@ elseif grid_options.xBCLeft  == "adiabatic_wall" and
   grid_options.xBCRightParticles = Particles.Solid
 elseif grid_options.xBCLeft  == "isothermal_wall" and
        grid_options.xBCRight == "isothermal_wall" then
-  XOffset = XOffsetSymmetry
   xSignX = -1
   xSignY = -1
   xSignZ = -1
@@ -256,15 +243,9 @@ local ySignX, ySignY, ySignZ
 local yBCLeftVelX, yBCLeftVelY, yBCLeftVelZ
 local yBCRightVelX, yBCRightVelY, yBCRightVelZ
 local yBCLeftTemp, yBCRightTemp
-local liszt YOffsetDummyPeriodic(boundaryPointDepth)
-  return 0
-end
-local liszt YOffsetSymmetry(boundaryPointDepth)
-  return 2*boundaryPointDepth-1
-end
+
 if grid_options.yBCLeft  == "periodic" and 
    grid_options.yBCRight == "periodic" then
-  YOffset = YOffsetDummyPeriodic
   ySignX = 1
   ySignY = 1
   ySignZ = 1
@@ -280,7 +261,6 @@ if grid_options.yBCLeft  == "periodic" and
   grid_options.yBCRightParticles = Particles.Permeable
 elseif grid_options.yBCLeft  == "symmetry" and
        grid_options.yBCRight == "symmetry" then
-  YOffset = YOffsetSymmetry
   ySignX = 1
   ySignY = -1
   ySignZ = 1
@@ -296,7 +276,6 @@ elseif grid_options.yBCLeft  == "symmetry" and
   grid_options.yBCRightParticles = Particles.Solid
 elseif grid_options.yBCLeft  == "adiabatic_wall" and
        grid_options.yBCRight == "adiabatic_wall" then
-  YOffset = YOffsetSymmetry
   ySignX = -1
   ySignY = -1
   ySignZ = -1
@@ -312,7 +291,6 @@ elseif grid_options.yBCLeft  == "adiabatic_wall" and
   grid_options.yBCRightParticles = Particles.Solid
 elseif grid_options.yBCLeft  == "isothermal_wall" and
        grid_options.yBCRight == "isothermal_wall" then
-  YOffset = YOffsetSymmetry
   ySignX = -1
   ySignY = -1
   ySignZ = -1
@@ -336,19 +314,9 @@ local zSignX, zSignY, zSignZ
 local zBCLeftVelX, zBCLeftVelY, zBCLeftVelZ
 local zBCRightVelX, zBCRightVelY, zBCRightVelZ
 local zBCLeftTemp, zBCRightTemp
--- Offset liszt functions
-local liszt ZOffsetPeriodic(boundaryPointDepth)
-  return 0
-end
-local liszt ZOffsetDummyPeriodic(boundaryPointDepth)
-  return 0
-end
-local liszt ZOffsetSymmetry(boundaryPointDepth)
-  return 2*boundaryPointDepth-1
-end
+
 if grid_options.zBCLeft  == "periodic" and 
    grid_options.zBCRight == "periodic" then
-  ZOffset = ZOffsetPeriodic
   zSignX = 1
   zSignY = 1
   zSignZ = 1
@@ -364,7 +332,6 @@ if grid_options.zBCLeft  == "periodic" and
   grid_options.zBCRightParticles = Particles.Permeable
 elseif grid_options.zBCLeft == "symmetry" and
        grid_options.zBCRight == "symmetry" then
-  ZOffset = ZOffsetSymmetry
   zSignX = 1
   zSignY = 1
   zSignZ = -1
@@ -380,7 +347,6 @@ elseif grid_options.zBCLeft == "symmetry" and
   grid_options.zBCRightParticles = Particles.Solid
 elseif grid_options.zBCLeft  == "adiabatic_wall" and
        grid_options.zBCRight == "adiabatic_wall" then
-  ZOffset = ZOffsetSymmetry
   zSignX = -1
   zSignY = -1
   zSignZ = -1
@@ -396,7 +362,6 @@ elseif grid_options.zBCLeft  == "adiabatic_wall" and
   grid_options.zBCRightParticles = Particles.Solid
 elseif grid_options.zBCLeft  == "isothermal_wall" and
        grid_options.zBCRight == "isothermal_wall" then
-  ZOffset = ZOffsetSymmetry
   zSignX = -1
   zSignY = -1
   zSignZ = -1
@@ -418,9 +383,7 @@ end
 local spatial_stencil = {}
 spatial_stencil = {
   --  Splitting parameter
-  split = 0.5,
-  numFirstDerivativeCoeffs = 2,
-  firstDerivativeCoeffs = L.Constant(L.vec2d, {0, 0.5}),
+  split = 0.5
 }
 
 -- Time integrator options
@@ -873,10 +836,18 @@ particles:NewField('diameter', L.double)
 --   - a particle already collected has a state = 2
 particles:NewField('state', L.int)
 if particles_options.initParticles == Particles.Restart then
-  particles.position:LoadFromCSV(IO.outputFileNamePrefix .. 'restart_particle_position_' .. config.restartParticleIter .. '.csv')
-  particles.velocity:LoadFromCSV(IO.outputFileNamePrefix .. 'restart_particle_velocity_' .. config.restartParticleIter .. '.csv')
-  particles.temperature:LoadFromCSV(IO.outputFileNamePrefix .. 'restart_particle_temperature_' .. config.restartParticleIter .. '.csv')
-  particles.diameter:LoadFromCSV(IO.outputFileNamePrefix .. 'restart_particle_diameter_' .. config.restartParticleIter .. '.csv')
+  particles.position:LoadFromCSV(IO.outputFileNamePrefix ..
+                                 'restart_particle_position_' ..
+                                 config.restartParticleIter .. '.csv')
+  particles.velocity:LoadFromCSV(IO.outputFileNamePrefix ..
+                                 'restart_particle_velocity_' ..
+                                 config.restartParticleIter .. '.csv')
+  particles.temperature:LoadFromCSV(IO.outputFileNamePrefix ..
+                                    'restart_particle_temperature_' ..
+                                    config.restartParticleIter .. '.csv')
+  particles.diameter:LoadFromCSV(IO.outputFileNamePrefix ..
+                                 'restart_particle_diameter_' ..
+                                 config.restartParticleIter .. '.csv')
   particles.state         :Load(1)
 else
 particles.position      :Load({0, 0, 0})
@@ -1325,7 +1296,7 @@ liszt Flow.InitializePrimitives (c : grid.cells)
       c.velocity[1] = flow_options.initParams[3]
       c.velocity[2] = flow_options.initParams[4]
     elseif flow_options.initCase == Flow.Restart then
-     -- Do nothing here, since we have initialized above.
+     -- Do nothing here, since we have initialized using CSV restarts.
     end
 end
 
@@ -1559,7 +1530,7 @@ liszt Flow.AddViscousGetFluxX (c : grid.cells)
         velocityZ_XFace   = 0.5*( c(1,0,0).velocity[2] - c(0,0,0).velocity[2] )
         temperature_XFace = 0.5*( c(1,0,0).temperature - c(0,0,0).temperature )
        
-        -- Half cell size due to the 0.5 in firstDerivativeCoeffs[ndx] above
+        -- Half cell size due to the 0.5 above
         velocityX_XFace   /= (grid_dx*0.5)
         velocityY_XFace   /= (grid_dx*0.5)
         velocityZ_XFace   /= (grid_dx*0.5)
@@ -1623,7 +1594,7 @@ liszt Flow.AddViscousGetFluxY (c : grid.cells)
         velocityZ_YFace   = 0.5*( c(0,1,0).velocity[2] - c(0,0,0).velocity[2] )
         temperature_YFace = 0.5*( c(0,1,0).temperature - c(0,0,0).temperature )
        
-        -- Half cell size due to the 0.5 in firstDerivativeCoeffs[ndx] above
+        -- Half cell size due to the 0.5 above
         velocityX_YFace   /= (grid_dy*0.5)
         velocityY_YFace   /= (grid_dy*0.5)
         velocityZ_YFace   /= (grid_dy*0.5)
@@ -1687,7 +1658,7 @@ liszt Flow.AddViscousGetFluxZ (c : grid.cells)
         velocityZ_ZFace   = 0.5*( c(0,0,1).velocity[2] - c(0,0,0).velocity[2] )
         temperature_ZFace = 0.5*( c(0,0,1).temperature - c(0,0,0).temperature )
        
-        -- Half cell size due to the 0.5 in firstDerivativeCoeffs[ndx] above
+        -- Half cell size due to the 0.5 above
         velocityX_ZFace   /= (grid_dz*0.5)
         velocityZ_ZFace   /= (grid_dz*0.5)
         velocityZ_ZFace   /= (grid_dz*0.5)
@@ -1884,37 +1855,37 @@ local liszt UpdateGhostFieldsHelper(c_bnd, c_int,
 end
 liszt Flow.UpdateGhostFieldsStep1 (c : grid.cells)
     if c.xneg_depth > 0 then
-        UpdateGhostFieldsHelper(c, c(XOffset(c.xneg_depth),0,0),
+        UpdateGhostFieldsHelper(c, c(1,0,0),
                                 xSignX, xSignY, xSignZ,
                                 xBCLeftVelX, xBCLeftVelY, xBCLeftVelZ,
                                 xBCLeftTemp)
     end
     if c.xpos_depth > 0 then
-        UpdateGhostFieldsHelper(c, c(-XOffset(c.xpos_depth),0,0),
+        UpdateGhostFieldsHelper(c, c(-1,0,0),
                                 xSignX, xSignY, xSignZ,
                                 xBCRightVelX, xBCRightVelY, xBCRightVelZ,
                                 xBCRightTemp)
     end
     if c.yneg_depth > 0 then
-        UpdateGhostFieldsHelper(c, c(0,YOffset(c.yneg_depth),0),
+        UpdateGhostFieldsHelper(c, c(0,1,0),
                                 ySignX, ySignY, ySignZ,
                                 yBCLeftVelX, yBCLeftVelY, yBCLeftVelZ,
                                 yBCLeftTemp)
     end
     if c.ypos_depth > 0 then
-        UpdateGhostFieldsHelper(c, c(0,-YOffset(c.ypos_depth),0),
+        UpdateGhostFieldsHelper(c, c(0,-1,0),
                                 ySignX, ySignY, ySignZ,
                                 yBCRightVelX, yBCRightVelY, yBCRightVelZ,
                                 yBCRightTemp)
     end
     if c.zneg_depth > 0 then
-        UpdateGhostFieldsHelper(c, c(0,0,ZOffset(c.zneg_depth)),
+        UpdateGhostFieldsHelper(c, c(0,0,1),
                                 zSignX, zSignY, zSignZ,
                                 zBCLeftVelX, zBCLeftVelY, zBCLeftVelZ,
                                 zBCLeftTemp)
     end
     if c.zpos_depth > 0 then
-        UpdateGhostFieldsHelper(c, c(0,0,-ZOffset(c.zpos_depth)),
+        UpdateGhostFieldsHelper(c, c(0,0,-1),
                                 zSignX, zSignY, zSignZ,
                                 zBCRightVelX, zBCRightVelY, zBCRightVelZ,
                                 zBCRightTemp)
@@ -1953,27 +1924,27 @@ local liszt UpdateGhostThermodynamicsHelper (c_bnd, c_int, BCTemp)
 end
 liszt Flow.UpdateGhostThermodynamicsStep1 (c : grid.cells)
   if c.xneg_depth > 0 then
-    UpdateGhostThermodynamicsHelper(c, c(XOffset(c.xneg_depth),0,0),
+    UpdateGhostThermodynamicsHelper(c, c(1,0,0),
                                     xBCLeftTemp)
   end
   if c.xpos_depth > 0 then
-    UpdateGhostThermodynamicsHelper(c, c(-XOffset(c.xpos_depth),0,0),
+    UpdateGhostThermodynamicsHelper(c, c(-1,0,0),
                                     xBCRightTemp)
   end
   if c.yneg_depth > 0 then
-    UpdateGhostThermodynamicsHelper(c, c(0,YOffset(c.yneg_depth),0),
+    UpdateGhostThermodynamicsHelper(c, c(0,1,0),
                                     yBCLeftTemp)
   end
   if c.ypos_depth > 0 then
-    UpdateGhostThermodynamicsHelper(c, c(0,-YOffset(c.ypos_depth),0),
+    UpdateGhostThermodynamicsHelper(c, c(0,-1,0),
                                     yBCRightTemp)
   end
   if c.zneg_depth > 0 then
-    UpdateGhostThermodynamicsHelper(c, c(0,0,ZOffset(c.zneg_depth)),
+    UpdateGhostThermodynamicsHelper(c, c(0,0,1),
                                     zBCLeftTemp)
   end
   if c.zpos_depth > 0 then
-    UpdateGhostThermodynamicsHelper(c, c(0,0,-ZOffset(c.zpos_depth)),
+    UpdateGhostThermodynamicsHelper(c, c(0,0,-1),
                                     zBCRightTemp)
   end
 end
@@ -2001,32 +1972,32 @@ local liszt UpdateGhostVelocityHelper (c_bnd, c_int,
 end
 liszt Flow.UpdateGhostVelocityStep1 (c : grid.cells)
   if c.xneg_depth > 0 then
-    UpdateGhostVelocityHelper(c, c(XOffset(c.xneg_depth),0,0),
+    UpdateGhostVelocityHelper(c, c(1,0,0),
                               xSignX, xSignY, xSignZ,
                               xBCLeftVelX, xBCLeftVelY, xBCLeftVelZ)
   end
   if c.xpos_depth > 0 then
-    UpdateGhostVelocityHelper(c, c(-XOffset(c.xpos_depth),0,0),
+    UpdateGhostVelocityHelper(c, c(-1,0,0),
                               xSignX, xSignY, xSignZ,
                               xBCRightVelX, xBCRightVelY, xBCRightVelZ)
   end
   if c.yneg_depth > 0 then
-    UpdateGhostVelocityHelper(c, c(0,YOffset(c.yneg_depth),0),
+    UpdateGhostVelocityHelper(c, c(0,1,0),
                               ySignX, ySignY, ySignZ,
                               yBCLeftVelX, yBCLeftVelY, yBCLeftVelZ)
   end
   if c.ypos_depth > 0 then
-    UpdateGhostVelocityHelper(c, c(0,-YOffset(c.ypos_depth),0),
+    UpdateGhostVelocityHelper(c, c(0,-1,0),
                               ySignX, ySignY, ySignZ,
                               yBCRightVelX, yBCRightVelY, yBCRightVelZ)
   end
   if c.zneg_depth > 0 then
-    UpdateGhostVelocityHelper(c, c(0,0,ZOffset(c.zneg_depth)),
+    UpdateGhostVelocityHelper(c, c(0,0,1),
                               zSignX, zSignY, zSignZ,
                               zBCLeftVelX, zBCLeftVelY, zBCLeftVelZ)
   end
   if c.zpos_depth > 0 then
-    UpdateGhostVelocityHelper(c, c(0,0,-ZOffset(c.zpos_depth)),
+    UpdateGhostVelocityHelper(c, c(0,0,-1),
                               zSignX, zSignY, zSignZ,
                               zBCRightVelX, zBCRightVelY, zBCRightVelZ)
   end
@@ -2082,37 +2053,37 @@ local liszt UpdateGhostConservedHelper (c_bnd, c_int,
 end
 liszt Flow.UpdateGhostConservedStep1 (c : grid.cells)
   if c.xneg_depth > 0 then
-    UpdateGhostConservedHelper(c, c(XOffset(c.xneg_depth),0,0),
+    UpdateGhostConservedHelper(c, c(1,0,0),
                                xSignX, xSignY, xSignZ,
                                xBCLeftVelX, xBCLeftVelY, xBCLeftVelZ,
                                xBCLeftTemp)
   end
   if c.xpos_depth > 0 then
-    UpdateGhostConservedHelper(c, c(-XOffset(c.xpos_depth),0,0),
+    UpdateGhostConservedHelper(c, c(-1,0,0),
                                xSignX, xSignY, xSignZ,
                                xBCRightVelX, xBCRightVelY, xBCRightVelZ,
                                xBCRightTemp)
   end
   if c.yneg_depth > 0 then
-    UpdateGhostConservedHelper(c, c(0,YOffset(c.yneg_depth),0),
+    UpdateGhostConservedHelper(c, c(0,1,0),
                                ySignX, ySignY, ySignZ,
                                yBCLeftVelX, yBCLeftVelY, yBCLeftVelZ,
                                yBCLeftTemp)
   end
   if c.ypos_depth > 0 then
-    UpdateGhostConservedHelper(c, c(0,-YOffset(c.ypos_depth),0),
+    UpdateGhostConservedHelper(c, c(0,-1,0),
                                ySignX, ySignY, ySignZ,
                                yBCRightVelX, yBCRightVelY, yBCRightVelZ,
                                yBCRightTemp)
   end
   if c.zneg_depth > 0 then
-    UpdateGhostConservedHelper(c, c(0,0,ZOffset(c.zneg_depth)),
+    UpdateGhostConservedHelper(c, c(0,0,1),
                                zSignX, zSignY, zSignZ,
                                zBCLeftVelX, zBCLeftVelY, zBCLeftVelZ,
                                zBCLeftTemp)
   end
   if c.zpos_depth > 0 then
-    UpdateGhostConservedHelper(c, c(0,0,-ZOffset(c.zpos_depth)),
+    UpdateGhostConservedHelper(c, c(0,0,-1),
                                zSignX, zSignY, zSignZ,
                                zBCRightVelX, zBCRightVelY, zBCRightVelZ,
                                zBCRightTemp)
@@ -2158,76 +2129,70 @@ end
 
 liszt Flow.UpdateGhostVelocityGradientStep1 (c : grid.cells)
     if c.xneg_depth > 0 then
-        var xoffset = XOffset(c.xneg_depth)
-        c.velocityGradientXBoundary[0] = xSignX * c(xoffset,0,0).velocityGradientX[0]
-        c.velocityGradientXBoundary[1] = xSignY * c(xoffset,0,0).velocityGradientX[1]
-        c.velocityGradientXBoundary[2] = xSignZ * c(xoffset,0,0).velocityGradientX[2]
-        c.velocityGradientYBoundary[0] = xSignX * c(xoffset,0,0).velocityGradientY[0]
-        c.velocityGradientYBoundary[1] = xSignY * c(xoffset,0,0).velocityGradientY[1]
-        c.velocityGradientYBoundary[2] = xSignZ * c(xoffset,0,0).velocityGradientY[2]
-        c.velocityGradientZBoundary[0] = xSignX * c(xoffset,0,0).velocityGradientZ[0]
-        c.velocityGradientZBoundary[1] = xSignY * c(xoffset,0,0).velocityGradientZ[1]
-        c.velocityGradientZBoundary[2] = xSignZ * c(xoffset,0,0).velocityGradientZ[2]
+        c.velocityGradientXBoundary[0] = xSignX * c(1,0,0).velocityGradientX[0]
+        c.velocityGradientXBoundary[1] = xSignY * c(1,0,0).velocityGradientX[1]
+        c.velocityGradientXBoundary[2] = xSignZ * c(1,0,0).velocityGradientX[2]
+        c.velocityGradientYBoundary[0] = xSignX * c(1,0,0).velocityGradientY[0]
+        c.velocityGradientYBoundary[1] = xSignY * c(1,0,0).velocityGradientY[1]
+        c.velocityGradientYBoundary[2] = xSignZ * c(1,0,0).velocityGradientY[2]
+        c.velocityGradientZBoundary[0] = xSignX * c(1,0,0).velocityGradientZ[0]
+        c.velocityGradientZBoundary[1] = xSignY * c(1,0,0).velocityGradientZ[1]
+        c.velocityGradientZBoundary[2] = xSignZ * c(1,0,0).velocityGradientZ[2]
     end
     if c.xpos_depth > 0 then
-        var xoffset = XOffset(c.xpos_depth)
-        c.velocityGradientXBoundary[0] = xSignX * c(-xoffset,0,0).velocityGradientX[0]
-        c.velocityGradientXBoundary[1] = xSignY * c(-xoffset,0,0).velocityGradientX[1]
-        c.velocityGradientXBoundary[2] = xSignZ * c(-xoffset,0,0).velocityGradientX[2]
-        c.velocityGradientYBoundary[0] = xSignX * c(-xoffset,0,0).velocityGradientY[0]
-        c.velocityGradientYBoundary[1] = xSignY * c(-xoffset,0,0).velocityGradientY[1]
-        c.velocityGradientYBoundary[2] = xSignZ * c(-xoffset,0,0).velocityGradientY[2]
-        c.velocityGradientZBoundary[0] = xSignX * c(-xoffset,0,0).velocityGradientZ[0]
-        c.velocityGradientZBoundary[1] = xSignY * c(-xoffset,0,0).velocityGradientZ[1]
-        c.velocityGradientZBoundary[2] = xSignZ * c(-xoffset,0,0).velocityGradientZ[2]
+        c.velocityGradientXBoundary[0] = xSignX * c(-1,0,0).velocityGradientX[0]
+        c.velocityGradientXBoundary[1] = xSignY * c(-1,0,0).velocityGradientX[1]
+        c.velocityGradientXBoundary[2] = xSignZ * c(-1,0,0).velocityGradientX[2]
+        c.velocityGradientYBoundary[0] = xSignX * c(-1,0,0).velocityGradientY[0]
+        c.velocityGradientYBoundary[1] = xSignY * c(-1,0,0).velocityGradientY[1]
+        c.velocityGradientYBoundary[2] = xSignZ * c(-1,0,0).velocityGradientY[2]
+        c.velocityGradientZBoundary[0] = xSignX * c(-1,0,0).velocityGradientZ[0]
+        c.velocityGradientZBoundary[1] = xSignY * c(-1,0,0).velocityGradientZ[1]
+        c.velocityGradientZBoundary[2] = xSignZ * c(-1,0,0).velocityGradientZ[2]
     end
     if c.yneg_depth > 0 then
-        var yoffset = YOffset(c.yneg_depth)
-        c.velocityGradientXBoundary[0] = ySignX * c(0,yoffset,0).velocityGradientX[0]
-        c.velocityGradientXBoundary[1] = ySignY * c(0,yoffset,0).velocityGradientX[1]
-        c.velocityGradientXBoundary[2] = ySignZ * c(0,yoffset,0).velocityGradientX[2]
-        c.velocityGradientYBoundary[0] = ySignX * c(0,yoffset,0).velocityGradientY[0]
-        c.velocityGradientYBoundary[1] = ySignY * c(0,yoffset,0).velocityGradientY[1]
-        c.velocityGradientYBoundary[2] = ySignZ * c(0,yoffset,0).velocityGradientY[2]
-        c.velocityGradientZBoundary[0] = ySignX * c(0,yoffset,0).velocityGradientZ[0]
-        c.velocityGradientZBoundary[1] = ySignY * c(0,yoffset,0).velocityGradientZ[1]
-        c.velocityGradientZBoundary[2] = ySignZ * c(0,yoffset,0).velocityGradientZ[2]
+        c.velocityGradientXBoundary[0] = ySignX * c(0,1,0).velocityGradientX[0]
+        c.velocityGradientXBoundary[1] = ySignY * c(0,1,0).velocityGradientX[1]
+        c.velocityGradientXBoundary[2] = ySignZ * c(0,1,0).velocityGradientX[2]
+        c.velocityGradientYBoundary[0] = ySignX * c(0,1,0).velocityGradientY[0]
+        c.velocityGradientYBoundary[1] = ySignY * c(0,1,0).velocityGradientY[1]
+        c.velocityGradientYBoundary[2] = ySignZ * c(0,1,0).velocityGradientY[2]
+        c.velocityGradientZBoundary[0] = ySignX * c(0,1,0).velocityGradientZ[0]
+        c.velocityGradientZBoundary[1] = ySignY * c(0,1,0).velocityGradientZ[1]
+        c.velocityGradientZBoundary[2] = ySignZ * c(0,1,0).velocityGradientZ[2]
     end
     if c.ypos_depth > 0 then
-        var yoffset = YOffset(c.ypos_depth)
-        c.velocityGradientXBoundary[0] = ySignX * c(0,-yoffset,0).velocityGradientX[0]
-        c.velocityGradientXBoundary[1] = ySignY * c(0,-yoffset,0).velocityGradientX[1]
-        c.velocityGradientXBoundary[2] = ySignZ * c(0,-yoffset,0).velocityGradientX[2]
-        c.velocityGradientYBoundary[0] = ySignX * c(0,-yoffset,0).velocityGradientY[0]
-        c.velocityGradientYBoundary[1] = ySignY * c(0,-yoffset,0).velocityGradientY[1]
-        c.velocityGradientYBoundary[2] = ySignZ * c(0,-yoffset,0).velocityGradientY[2]
-        c.velocityGradientZBoundary[0] = ySignX * c(0,-yoffset,0).velocityGradientZ[0]
-        c.velocityGradientZBoundary[1] = ySignY * c(0,-yoffset,0).velocityGradientZ[1]
-        c.velocityGradientZBoundary[2] = ySignZ * c(0,-yoffset,0).velocityGradientZ[2]
+        c.velocityGradientXBoundary[0] = ySignX * c(0,-1,0).velocityGradientX[0]
+        c.velocityGradientXBoundary[1] = ySignY * c(0,-1,0).velocityGradientX[1]
+        c.velocityGradientXBoundary[2] = ySignZ * c(0,-1,0).velocityGradientX[2]
+        c.velocityGradientYBoundary[0] = ySignX * c(0,-1,0).velocityGradientY[0]
+        c.velocityGradientYBoundary[1] = ySignY * c(0,-1,0).velocityGradientY[1]
+        c.velocityGradientYBoundary[2] = ySignZ * c(0,-1,0).velocityGradientY[2]
+        c.velocityGradientZBoundary[0] = ySignX * c(0,-1,0).velocityGradientZ[0]
+        c.velocityGradientZBoundary[1] = ySignY * c(0,-1,0).velocityGradientZ[1]
+        c.velocityGradientZBoundary[2] = ySignZ * c(0,-1,0).velocityGradientZ[2]
     end
     if c.zneg_depth > 0 then
-        var zoffset = ZOffset(c.zneg_depth)
-        c.velocityGradientXBoundary[0] = zSignX * c(0,0,zoffset).velocityGradientX[0]
-        c.velocityGradientXBoundary[1] = zSignY * c(0,0,zoffset).velocityGradientX[1]
-        c.velocityGradientXBoundary[2] = zSignZ * c(0,0,zoffset).velocityGradientX[2]
-        c.velocityGradientYBoundary[0] = zSignX * c(0,0,zoffset).velocityGradientY[0]
-        c.velocityGradientYBoundary[1] = zSignY * c(0,0,zoffset).velocityGradientY[1]
-        c.velocityGradientYBoundary[2] = zSignZ * c(0,0,zoffset).velocityGradientY[2]
-        c.velocityGradientZBoundary[0] = zSignX * c(0,0,zoffset).velocityGradientZ[0]
-        c.velocityGradientZBoundary[1] = zSignY * c(0,0,zoffset).velocityGradientZ[1]
-        c.velocityGradientZBoundary[2] = zSignZ * c(0,0,zoffset).velocityGradientZ[2]
+        c.velocityGradientXBoundary[0] = zSignX * c(0,0,1).velocityGradientX[0]
+        c.velocityGradientXBoundary[1] = zSignY * c(0,0,1).velocityGradientX[1]
+        c.velocityGradientXBoundary[2] = zSignZ * c(0,0,1).velocityGradientX[2]
+        c.velocityGradientYBoundary[0] = zSignX * c(0,0,1).velocityGradientY[0]
+        c.velocityGradientYBoundary[1] = zSignY * c(0,0,1).velocityGradientY[1]
+        c.velocityGradientYBoundary[2] = zSignZ * c(0,0,1).velocityGradientY[2]
+        c.velocityGradientZBoundary[0] = zSignX * c(0,0,1).velocityGradientZ[0]
+        c.velocityGradientZBoundary[1] = zSignY * c(0,0,1).velocityGradientZ[1]
+        c.velocityGradientZBoundary[2] = zSignZ * c(0,0,1).velocityGradientZ[2]
     end
     if c.zpos_depth > 0 then
-        var zoffset = ZOffset(c.zpos_depth)
-        c.velocityGradientXBoundary[0] = zSignX * c(0,0,-zoffset).velocityGradientX[0]
-        c.velocityGradientXBoundary[1] = zSignY * c(0,0,-zoffset).velocityGradientX[1]
-        c.velocityGradientXBoundary[2] = zSignZ * c(0,0,-zoffset).velocityGradientX[2]
-        c.velocityGradientYBoundary[0] = zSignX * c(0,0,-zoffset).velocityGradientY[0]
-        c.velocityGradientYBoundary[1] = zSignY * c(0,0,-zoffset).velocityGradientY[1]
-        c.velocityGradientYBoundary[2] = zSignZ * c(0,0,-zoffset).velocityGradientY[2]
-        c.velocityGradientZBoundary[0] = zSignX * c(0,0,-zoffset).velocityGradientZ[0]
-        c.velocityGradientZBoundary[1] = zSignY * c(0,0,-zoffset).velocityGradientZ[1]
-        c.velocityGradientZBoundary[2] = zSignZ * c(0,0,-zoffset).velocityGradientZ[2]
+        c.velocityGradientXBoundary[0] = zSignX * c(0,0,-1).velocityGradientX[0]
+        c.velocityGradientXBoundary[1] = zSignY * c(0,0,-1).velocityGradientX[1]
+        c.velocityGradientXBoundary[2] = zSignZ * c(0,0,-1).velocityGradientX[2]
+        c.velocityGradientYBoundary[0] = zSignX * c(0,0,-1).velocityGradientY[0]
+        c.velocityGradientYBoundary[1] = zSignY * c(0,0,-1).velocityGradientY[1]
+        c.velocityGradientYBoundary[2] = zSignZ * c(0,0,-1).velocityGradientY[2]
+        c.velocityGradientZBoundary[0] = zSignX * c(0,0,-1).velocityGradientZ[0]
+        c.velocityGradientZBoundary[1] = zSignY * c(0,0,-1).velocityGradientZ[1]
+        c.velocityGradientZBoundary[2] = zSignZ * c(0,0,-1).velocityGradientZ[2]
     end
 end
 liszt Flow.UpdateGhostVelocityGradientStep2 (c : grid.cells)
