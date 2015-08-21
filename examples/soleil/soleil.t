@@ -168,69 +168,54 @@ local grid_options = {
 
 -- Define offsets, signs, and velocities for the x BCs
 
-local xSignX, xSignY, xSignZ
-local xBCLeftVelX, xBCLeftVelY, xBCLeftVelZ
-local xBCRightVelX, xBCRightVelY, xBCRightVelZ
-local xBCLeftTemp, xBCRightTemp
+x_sign = L.Global(L.vec3d,{1.0,1.0,1.0})
+xpos_velocity    = L.Global(L.vec3d,{0.0,0.0,0.0})
+xneg_velocity    = L.Global(L.vec3d,{0.0,0.0,0.0})
+xpos_temperature = L.Global(L.double,-1.0)
+xneg_temperature = L.Global(L.double,-1.0)
 
 if grid_options.xBCLeft  == "periodic" and 
    grid_options.xBCRight == "periodic" then
-  xSignX = 1
-  xSignY = 1
-  xSignZ = 1
-  xBCLeftVelX  = 0.0
-  xBCLeftVelY  = 0.0
-  xBCLeftVelZ  = 0.0
-  xBCRightVelX = 0.0
-  xBCRightVelY = 0.0
-  xBCRightVelZ = 0.0
-  xBCLeftTemp  = -1.0
-  xBCRightTemp = -1.0
+  x_sign:set({1.0,1.0,1.0})
+  xpos_velocity:set({0.0,0.0,0.0})
+  xneg_velocity:set({0.0,0.0,0.0})
+  xpos_temperature:set(-1.0)
+  xneg_temperature:set(-1.0)
   grid_options.xBCLeftParticles  = Particles.Permeable
   grid_options.xBCRightParticles = Particles.Permeable
 elseif grid_options.xBCLeft == "symmetry" and
        grid_options.xBCRight == "symmetry" then
-  xSignX = -1
-  xSignY = 1
-  xSignZ = 1
-  xBCLeftVelX  = 0.0
-  xBCLeftVelY  = 0.0
-  xBCLeftVelZ  = 0.0
-  xBCRightVelX = 0.0
-  xBCRightVelY = 0.0
-  xBCRightVelZ = 0.0
-  xBCLeftTemp  = -1.0
-  xBCRightTemp = -1.0
+  x_sign:set({-1.0,1.0,1.0})
+  xpos_velocity:set({0.0,0.0,0.0})
+  xneg_velocity:set({0.0,0.0,0.0})
+  xpos_temperature:set(-1.0)
+  xneg_temperature:set(-1.0)
   grid_options.xBCLeftParticles  = Particles.Solid
   grid_options.xBCRightParticles = Particles.Solid
 elseif grid_options.xBCLeft  == "adiabatic_wall" and
        grid_options.xBCRight == "adiabatic_wall" then
-  xSignX = -1
-  xSignY = -1
-  xSignZ = -1
-  xBCLeftVelX  = 2.0*grid_options.xBCLeftVel[1]
-  xBCLeftVelY  = 2.0*grid_options.xBCLeftVel[2]
-  xBCLeftVelZ  = 2.0*grid_options.xBCLeftVel[3]
-  xBCRightVelX = 2.0*grid_options.xBCRightVel[1]
-  xBCRightVelY = 2.0*grid_options.xBCRightVel[2]
-  xBCRightVelZ = 2.0*grid_options.xBCRightVel[3]
-  xBCLeftTemp  = -1.0
-  xBCRightTemp = -1.0
+  x_sign:set({-1.0,-1.0,-1.0})
+  xpos_velocity:set({2.0*grid_options.xBCRightVel[1],
+                    2.0*grid_options.xBCRightVel[2],
+                    2.0*grid_options.xBCRightVel[3]})
+  xneg_velocity:set({2.0*grid_options.xBCLeftVel[1],
+                    2.0*grid_options.xBCLeftVel[2],
+                    2.0*grid_options.xBCLeftVel[3]})
+  xpos_temperature:set(-1.0)
+  xneg_temperature:set(-1.0)
   grid_options.xBCLeftParticles  = Particles.Solid
   grid_options.xBCRightParticles = Particles.Solid
 elseif grid_options.xBCLeft  == "isothermal_wall" and
        grid_options.xBCRight == "isothermal_wall" then
-  xSignX = -1
-  xSignY = -1
-  xSignZ = -1
-  xBCLeftVelX  = 2.0*grid_options.xBCLeftVel[1]
-  xBCLeftVelY  = 2.0*grid_options.xBCLeftVel[2]
-  xBCLeftVelZ  = 2.0*grid_options.xBCLeftVel[3]
-  xBCRightVelX = 2.0*grid_options.xBCRightVel[1]
-  xBCRightVelY = 2.0*grid_options.xBCRightVel[2]
-  xBCRightVelZ = 2.0*grid_options.xBCRightVel[3]
-  xBCLeftTemp  = grid_options.xBCLeftTemp
-  xBCRightTemp = grid_options.xBCRightTemp
+  x_sign:set({-1.0,-1.0,-1.0})
+  xpos_velocity:set({2.0*grid_options.xBCRightVel[1],
+                    2.0*grid_options.xBCRightVel[2],
+                    2.0*grid_options.xBCRightVel[3]})
+  xneg_velocity:set({2.0*grid_options.xBCLeftVel[1],
+                     2.0*grid_options.xBCLeftVel[2],
+                     2.0*grid_options.xBCLeftVel[3]})
+  xpos_temperature:set(grid_options.xBCRightTemp)
+  xneg_temperature:set(grid_options.xBCLeftTemp)
   grid_options.xBCLeftParticles  = Particles.Solid
   grid_options.xBCRightParticles = Particles.Solid
 else
@@ -239,69 +224,54 @@ end
 
 -- Define offsets, signs, and velocities for the y BCs
 
-local ySignX, ySignY, ySignZ
-local yBCLeftVelX, yBCLeftVelY, yBCLeftVelZ
-local yBCRightVelX, yBCRightVelY, yBCRightVelZ
-local yBCLeftTemp, yBCRightTemp
+y_sign = L.Global(L.vec3d,{1.0,1.0,1.0})
+ypos_velocity    = L.Global(L.vec3d,{0.0,0.0,0.0})
+yneg_velocity    = L.Global(L.vec3d,{0.0,0.0,0.0})
+ypos_temperature = L.Global(L.double,-1.0)
+yneg_temperature = L.Global(L.double,-1.0)
 
 if grid_options.yBCLeft  == "periodic" and 
    grid_options.yBCRight == "periodic" then
-  ySignX = 1
-  ySignY = 1
-  ySignZ = 1
-  yBCLeftVelX  = 0.0
-  yBCLeftVelY  = 0.0
-  yBCLeftVelZ  = 0.0
-  yBCRightVelX = 0.0
-  yBCRightVelY = 0.0
-  yBCRightVelZ = 0.0
-  yBCLeftTemp  = -1.0
-  yBCRightTemp = -1.0
+  y_sign:set({1.0,1.0,1.0})
+  ypos_velocity:set({0.0,0.0,0.0})
+  yneg_velocity:set({0.0,0.0,0.0})
+  ypos_temperature:set(-1.0)
+  yneg_temperature:set(-1.0)
   grid_options.yBCLeftParticles  = Particles.Permeable
   grid_options.yBCRightParticles = Particles.Permeable
 elseif grid_options.yBCLeft  == "symmetry" and
        grid_options.yBCRight == "symmetry" then
-  ySignX = 1
-  ySignY = -1
-  ySignZ = 1
-  yBCLeftVelX  = 0.0
-  yBCLeftVelY  = 0.0
-  yBCLeftVelZ  = 0.0
-  yBCRightVelX = 0.0
-  yBCRightVelY = 0.0
-  yBCRightVelZ = 0.0
-  yBCLeftTemp  = -1.0
-  yBCRightTemp = -1.0
+  y_sign:set({1.0,-1.0,1.0})
+  ypos_velocity:set({0.0,0.0,0.0})
+  yneg_velocity:set({0.0,0.0,0.0})
+  ypos_temperature:set(-1.0)
+  yneg_temperature:set(-1.0)
   grid_options.yBCLeftParticles  = Particles.Solid
   grid_options.yBCRightParticles = Particles.Solid
 elseif grid_options.yBCLeft  == "adiabatic_wall" and
        grid_options.yBCRight == "adiabatic_wall" then
-  ySignX = -1
-  ySignY = -1
-  ySignZ = -1
-  yBCLeftVelX  = 2.0*grid_options.yBCLeftVel[1]
-  yBCLeftVelY  = 2.0*grid_options.yBCLeftVel[2]
-  yBCLeftVelZ  = 2.0*grid_options.yBCLeftVel[3]
-  yBCRightVelX = 2.0*grid_options.yBCRightVel[1]
-  yBCRightVelY = 2.0*grid_options.yBCRightVel[2]
-  yBCRightVelZ = 2.0*grid_options.yBCRightVel[3]
-  yBCLeftTemp  = -1.0
-  yBCRightTemp = -1.0
+  y_sign:set({-1.0,-1.0,-1.0})
+  ypos_velocity:set({2.0*grid_options.yBCRightVel[1],
+                    2.0*grid_options.yBCRightVel[2],
+                    2.0*grid_options.yBCRightVel[3]})
+  yneg_velocity:set({2.0*grid_options.yBCLeftVel[1],
+                     2.0*grid_options.yBCLeftVel[2],
+                     2.0*grid_options.yBCLeftVel[3]})
+  ypos_temperature:set(-1.0)
+  yneg_temperature:set(-1.0)
   grid_options.yBCLeftParticles  = Particles.Solid
   grid_options.yBCRightParticles = Particles.Solid
 elseif grid_options.yBCLeft  == "isothermal_wall" and
        grid_options.yBCRight == "isothermal_wall" then
-  ySignX = -1
-  ySignY = -1
-  ySignZ = -1
-  yBCLeftVelX  = 2.0*grid_options.yBCLeftVel[1]
-  yBCLeftVelY  = 2.0*grid_options.yBCLeftVel[2]
-  yBCLeftVelZ  = 2.0*grid_options.yBCLeftVel[3]
-  yBCRightVelX = 2.0*grid_options.yBCRightVel[1]
-  yBCRightVelY = 2.0*grid_options.yBCRightVel[2]
-  yBCRightVelZ = 2.0*grid_options.yBCRightVel[3]
-  yBCLeftTemp  = grid_options.yBCLeftTemp
-  yBCRightTemp = grid_options.yBCRightTemp
+  y_sign:set({-1.0,-1.0,-1.0})
+  ypos_velocity:set({2.0*grid_options.yBCRightVel[1],
+                    2.0*grid_options.yBCRightVel[2],
+                    2.0*grid_options.yBCRightVel[3]})
+  yneg_velocity:set({2.0*grid_options.yBCLeftVel[1],
+                     2.0*grid_options.yBCLeftVel[2],
+                     2.0*grid_options.yBCLeftVel[3]})
+  ypos_temperature:set(grid_options.yBCRightTemp)
+  yneg_temperature:set(grid_options.yBCLeftTemp)
   grid_options.yBCLeftParticles  = Particles.Solid
   grid_options.yBCRightParticles = Particles.Solid
 else
@@ -310,69 +280,54 @@ end
 
 -- Define offsets, signs, and velocities for the z BCs
 
-local zSignX, zSignY, zSignZ
-local zBCLeftVelX, zBCLeftVelY, zBCLeftVelZ
-local zBCRightVelX, zBCRightVelY, zBCRightVelZ
-local zBCLeftTemp, zBCRightTemp
+z_sign = L.Global(L.vec3d,{1.0,1.0,1.0})
+zpos_velocity    = L.Global(L.vec3d,{0.0,0.0,0.0})
+zneg_velocity    = L.Global(L.vec3d,{0.0,0.0,0.0})
+zpos_temperature = L.Global(L.double,-1.0)
+zneg_temperature = L.Global(L.double,-1.0)
 
 if grid_options.zBCLeft  == "periodic" and 
    grid_options.zBCRight == "periodic" then
-  zSignX = 1
-  zSignY = 1
-  zSignZ = 1
-  zBCLeftVelX  = 0.0
-  zBCLeftVelY  = 0.0
-  zBCLeftVelZ  = 0.0
-  zBCRightVelX = 0.0
-  zBCRightVelY = 0.0
-  zBCRightVelZ = 0.0
-  zBCLeftTemp  = -1.0
-  zBCRightTemp = -1.0
+  z_sign:set({1.0,1.0,1.0})
+  zpos_velocity:set({0.0,0.0,0.0})
+  zneg_velocity:set({0.0,0.0,0.0})
+  zpos_temperature:set(-1.0)
+  zneg_temperature:set(-1.0)
   grid_options.zBCLeftParticles  = Particles.Permeable
   grid_options.zBCRightParticles = Particles.Permeable
 elseif grid_options.zBCLeft == "symmetry" and
        grid_options.zBCRight == "symmetry" then
-  zSignX = 1
-  zSignY = 1
-  zSignZ = -1
-  zBCLeftVelX = 0.0
-  zBCLeftVelY = 0.0
-  zBCLeftVelZ = 0.0
-  zBCRightVelX = 0.0
-  zBCRightVelY = 0.0
-  zBCRightVelZ = 0.0
-  zBCLeftTemp  = -1.0
-  zBCRightTemp = -1.0
+  z_sign:set({1.0,1.0,-1.0})
+  zpos_velocity:set({0.0,0.0,0.0})
+  zneg_velocity:set({0.0,0.0,0.0})
+  zpos_temperature:set(-1.0)
+  zneg_temperature:set(-1.0)
   grid_options.zBCLeftParticles  = Particles.Solid
   grid_options.zBCRightParticles = Particles.Solid
 elseif grid_options.zBCLeft  == "adiabatic_wall" and
        grid_options.zBCRight == "adiabatic_wall" then
-  zSignX = -1
-  zSignY = -1
-  zSignZ = -1
-  zBCLeftVelX  = 2.0*grid_options.zBCLeftVel[1]
-  zBCLeftVelY  = 2.0*grid_options.zBCLeftVel[2]
-  zBCLeftVelZ  = 2.0*grid_options.zBCLeftVel[3]
-  zBCRightVelX = 2.0*grid_options.zBCRightVel[1]
-  zBCRightVelY = 2.0*grid_options.zBCRightVel[2]
-  zBCRightVelZ = 2.0*grid_options.zBCRightVel[3]
-  zBCLeftTemp  = -1.0
-  zBCRightTemp = -1.0
+  z_sign:set({-1.0,-1.0,-1.0})
+  zpos_velocity:set({2.0*grid_options.zBCRightVel[1],
+                    2.0*grid_options.zBCRightVel[2],
+                    2.0*grid_options.zBCRightVel[3]})
+  zneg_velocity:set({2.0*grid_options.zBCLeftVel[1],
+                     2.0*grid_options.zBCLeftVel[2],
+                     2.0*grid_options.zBCLeftVel[3]})
+  zpos_temperature:set(-1.0)
+  zneg_temperature:set(-1.0)
   grid_options.zBCLeftParticles  = Particles.Solid
   grid_options.zBCRightParticles = Particles.Solid
 elseif grid_options.zBCLeft  == "isothermal_wall" and
        grid_options.zBCRight == "isothermal_wall" then
-  zSignX = -1
-  zSignY = -1
-  zSignZ = -1
-  zBCLeftVelX  = 2.0*grid_options.zBCLeftVel[1]
-  zBCLeftVelY  = 2.0*grid_options.zBCLeftVel[2]
-  zBCLeftVelZ  = 2.0*grid_options.zBCLeftVel[3]
-  zBCRightVelX = 2.0*grid_options.zBCRightVel[1]
-  zBCRightVelY = 2.0*grid_options.zBCRightVel[2]
-  zBCRightVelZ = 2.0*grid_options.zBCRightVel[3]
-  zBCLeftTemp  = grid_options.zBCLeftTemp
-  zBCRightTemp = grid_options.zBCRightTemp
+  z_sign:set({-1.0,-1.0,-1.0})
+  zpos_velocity:set({2.0*grid_options.zBCRightVel[1],
+                    2.0*grid_options.zBCRightVel[2],
+                    2.0*grid_options.zBCRightVel[3]})
+  zneg_velocity:set({2.0*grid_options.zBCLeftVel[1],
+                    2.0*grid_options.zBCLeftVel[2],
+                    2.0*grid_options.zBCLeftVel[3]})
+  zpos_temperature:set(grid_options.zBCRightTemp)
+  zneg_temperature:set(grid_options.zBCLeftTemp)
   grid_options.zBCLeftParticles  = Particles.Solid
   grid_options.zBCRightParticles = Particles.Solid
 else
@@ -415,7 +370,6 @@ fluid_options.gamma                      = config.gamma
 fluid_options.dynamic_viscosity_ref      = config.dynamic_viscosity_ref
 fluid_options.dynamic_viscosity_temp_ref = config.dynamic_viscosity_temp_ref
 fluid_options.prandtl                    = config.prandtl
-
 
 local flow_options = {}
 if config.initCase == 'Uniform' then
@@ -693,24 +647,12 @@ end
 -- with a single layer of halo cells (unless running a
 -- periodic case, which is natively handled w/out halos).
 local bnum = 1
-if xBCPeriodic then
-  xBnum = 0
-else
-  xBnum = bnum
-end
-if yBCPeriodic then
-  yBnum = 0
-else
-  yBnum = bnum
-end
-if zBCPeriodic then
-  zBnum = 0
-else
-  zBnum = bnum
-end
-local xBw   = grid_options.xWidth/grid_options.xnum * xBnum
-local yBw   = grid_options.yWidth/grid_options.ynum * yBnum
-local zBw   = grid_options.zWidth/grid_options.znum * zBnum
+if xBCPeriodic then xBnum = 0 else xBnum = bnum end
+if yBCPeriodic then yBnum = 0 else yBnum = bnum end
+if zBCPeriodic then zBnum = 0 else zBnum = bnum end
+local xBw = grid_options.xWidth/grid_options.xnum * xBnum
+local yBw = grid_options.yWidth/grid_options.ynum * yBnum
+local zBw = grid_options.zWidth/grid_options.znum * zBnum
 local gridOriginInteriorX = grid_options.origin[1]
 local gridOriginInteriorY = grid_options.origin[2]
 local gridOriginInteriorZ = grid_options.origin[3]
@@ -1809,13 +1751,10 @@ liszt Flow.UpdateAuxiliaryVelocity (c : grid.cells)
 end
 
 -- Helper function for updating the ghost fields to minimize repeated code
-local liszt UpdateGhostFieldsHelper(c_bnd, c_int,
-                                    SignX, SignY, SignZ,
-                                    BCVelX, BCVelY, BCVelZ,
-                                    BCTemp)
+local liszt UpdateGhostFieldsHelper(c_bnd, c_int, sign, bnd_velocity, bnd_temperature)
 
   -- Temporary variables for computing new halo state
-  var rho = L.double(0.0)
+  var rho         = L.double(0.0)
   var temp_wall   = L.double(0.0)
   var temperature = L.double(0.0)
   var velocity    = L.vec3d({0.0, 0.0, 0.0})
@@ -1824,14 +1763,14 @@ local liszt UpdateGhostFieldsHelper(c_bnd, c_int,
   var cv = fluid_options.gasConstant / (fluid_options.gamma - 1.0)
 
   -- Compute the new velocity (including any wall conditions)
-  velocity[0] = c_int.rhoVelocity[0]/c_int.rho * SignX + BCVelX
-  velocity[1] = c_int.rhoVelocity[1]/c_int.rho * SignY + BCVelY
-  velocity[2] = c_int.rhoVelocity[2]/c_int.rho * SignZ + BCVelZ
+  for i = 0,3 do
+    velocity[i] = c_int.rhoVelocity[i]/c_int.rho * sign[i] + bnd_velocity[i]
+  end
 
   -- Compute the temperature for the halo cell (possibly adiabatic/isothermal)
   temp_wall = c_int.temperature
-  if BCTemp > 0.0 then
-    temp_wall = BCTemp
+  if bnd_temperature > 0.0 then
+    temp_wall = bnd_temperature
   end
   temperature = 2.0*temp_wall - c_int.temperature
 
@@ -1840,55 +1779,33 @@ local liszt UpdateGhostFieldsHelper(c_bnd, c_int,
   rho = c_int.pressure / ( fluid_options.gasConstant * temperature )
 
   -- Update the boundary cell based on the values in the matching interior cell
-  c_bnd.rhoBoundary            =  rho
-  c_bnd.rhoVelocityBoundary[0] =  rho*velocity[0]
-  c_bnd.rhoVelocityBoundary[1] =  rho*velocity[1]
-  c_bnd.rhoVelocityBoundary[2] =  rho*velocity[2]
-  c_bnd.rhoEnergyBoundary      =  rho * (cv * temperature +
-                                              0.5*L.dot(velocity,velocity))
-  c_bnd.velocityBoundary[0]    =  velocity[0]
-  c_bnd.velocityBoundary[1]    =  velocity[1]
-  c_bnd.velocityBoundary[2]    =  velocity[2]
-  c_bnd.pressureBoundary       =  c_int.pressure
-  c_bnd.temperatureBoundary    =  temperature
+  c_bnd.rhoBoundary         =  rho
+  c_bnd.rhoVelocityBoundary =  rho*velocity
+  c_bnd.rhoEnergyBoundary   =  rho * (cv * temperature +
+                                      0.5*L.dot(velocity,velocity))
+  c_bnd.velocityBoundary    =  velocity
+  c_bnd.pressureBoundary    =  c_int.pressure
+  c_bnd.temperatureBoundary =  temperature
 
 end
 liszt Flow.UpdateGhostFieldsStep1 (c : grid.cells)
     if c.xneg_depth > 0 then
-        UpdateGhostFieldsHelper(c, c(1,0,0),
-                                xSignX, xSignY, xSignZ,
-                                xBCLeftVelX, xBCLeftVelY, xBCLeftVelZ,
-                                xBCLeftTemp)
+        UpdateGhostFieldsHelper(c, c( 1,0,0), x_sign, xneg_velocity, xneg_temperature)
     end
     if c.xpos_depth > 0 then
-        UpdateGhostFieldsHelper(c, c(-1,0,0),
-                                xSignX, xSignY, xSignZ,
-                                xBCRightVelX, xBCRightVelY, xBCRightVelZ,
-                                xBCRightTemp)
+        UpdateGhostFieldsHelper(c, c(-1,0,0), x_sign, xpos_velocity, xpos_temperature)
     end
     if c.yneg_depth > 0 then
-        UpdateGhostFieldsHelper(c, c(0,1,0),
-                                ySignX, ySignY, ySignZ,
-                                yBCLeftVelX, yBCLeftVelY, yBCLeftVelZ,
-                                yBCLeftTemp)
+        UpdateGhostFieldsHelper(c, c(0, 1,0), y_sign, yneg_velocity, yneg_temperature)
     end
     if c.ypos_depth > 0 then
-        UpdateGhostFieldsHelper(c, c(0,-1,0),
-                                ySignX, ySignY, ySignZ,
-                                yBCRightVelX, yBCRightVelY, yBCRightVelZ,
-                                yBCRightTemp)
+        UpdateGhostFieldsHelper(c, c(0,-1,0), y_sign, ypos_velocity, ypos_temperature)
     end
     if c.zneg_depth > 0 then
-        UpdateGhostFieldsHelper(c, c(0,0,1),
-                                zSignX, zSignY, zSignZ,
-                                zBCLeftVelX, zBCLeftVelY, zBCLeftVelZ,
-                                zBCLeftTemp)
+        UpdateGhostFieldsHelper(c, c(0,0, 1), z_sign, zneg_velocity, zneg_temperature)
     end
     if c.zpos_depth > 0 then
-        UpdateGhostFieldsHelper(c, c(0,0,-1),
-                                zSignX, zSignY, zSignZ,
-                                zBCRightVelX, zBCRightVelY, zBCRightVelZ,
-                                zBCRightTemp)
+        UpdateGhostFieldsHelper(c, c(0,0,-1), z_sign, zpos_velocity, zpos_temperature)
     end
 end
 liszt Flow.UpdateGhostFieldsStep2 (c : grid.cells)
@@ -1904,7 +1821,7 @@ function Flow.UpdateGhost()
 end
 
 -- Helper function for updating the ghost fields to minimize repeated code
-local liszt UpdateGhostThermodynamicsHelper (c_bnd, c_int, BCTemp)
+local liszt UpdateGhostThermodynamicsHelper (c_bnd, c_int, bnd_temperature)
 
   -- Temporary variables for computing new halo state
   var temp_wall   = L.double(0.0)
@@ -1912,8 +1829,8 @@ local liszt UpdateGhostThermodynamicsHelper (c_bnd, c_int, BCTemp)
 
   -- Compute the temperature for the halo cell (possibly adiabatic/isothermal)
   temp_wall = c_int.temperature
-  if BCTemp > 0.0 then
-    temp_wall = BCTemp
+  if bnd_temperature > 0.0 then
+    temp_wall = bnd_temperature
   end
   temperature = 2.0*temp_wall - c_int.temperature
 
@@ -1924,28 +1841,22 @@ local liszt UpdateGhostThermodynamicsHelper (c_bnd, c_int, BCTemp)
 end
 liszt Flow.UpdateGhostThermodynamicsStep1 (c : grid.cells)
   if c.xneg_depth > 0 then
-    UpdateGhostThermodynamicsHelper(c, c(1,0,0),
-                                    xBCLeftTemp)
+    UpdateGhostThermodynamicsHelper(c, c( 1,0,0), xneg_temperature)
   end
   if c.xpos_depth > 0 then
-    UpdateGhostThermodynamicsHelper(c, c(-1,0,0),
-                                    xBCRightTemp)
+    UpdateGhostThermodynamicsHelper(c, c(-1,0,0), xpos_temperature)
   end
   if c.yneg_depth > 0 then
-    UpdateGhostThermodynamicsHelper(c, c(0,1,0),
-                                    yBCLeftTemp)
+    UpdateGhostThermodynamicsHelper(c, c(0, 1,0), yneg_temperature)
   end
   if c.ypos_depth > 0 then
-    UpdateGhostThermodynamicsHelper(c, c(0,-1,0),
-                                    yBCRightTemp)
+    UpdateGhostThermodynamicsHelper(c, c(0,-1,0), ypos_temperature)
   end
   if c.zneg_depth > 0 then
-    UpdateGhostThermodynamicsHelper(c, c(0,0,1),
-                                    zBCLeftTemp)
+    UpdateGhostThermodynamicsHelper(c, c(0,0, 1), zneg_temperature)
   end
   if c.zpos_depth > 0 then
-    UpdateGhostThermodynamicsHelper(c, c(0,0,-1),
-                                    zBCRightTemp)
+    UpdateGhostThermodynamicsHelper(c, c(0,0,-1), zpos_temperature)
   end
 end
 liszt Flow.UpdateGhostThermodynamicsStep2 (c : grid.cells)
@@ -1960,46 +1871,32 @@ function Flow.UpdateGhostThermodynamics()
 end
 
 -- Helper function for updating the ghost fields to minimize repeated code
-local liszt UpdateGhostVelocityHelper (c_bnd, c_int,
-                                                 SignX, SignY, SignZ,
-                                                 BCVelX, BCVelY, BCVelZ)
+local liszt UpdateGhostVelocityHelper (c_bnd, c_int, sign, bnd_velocity)
 
   -- Update the boundary cell based on the values in the matching interior cell
-  c_bnd.velocityBoundary[0] =   c_int.velocity[0] * SignX + BCVelX
-  c_bnd.velocityBoundary[1] =   c_int.velocity[1] * SignY + BCVelY
-  c_bnd.velocityBoundary[2] =   c_int.velocity[2] * SignZ + BCVelZ
+  for i = 0,3 do
+    c_bnd.velocityBoundary[i] = c_int.velocity[i] * sign[i] + bnd_velocity[i]
+  end
 
 end
 liszt Flow.UpdateGhostVelocityStep1 (c : grid.cells)
   if c.xneg_depth > 0 then
-    UpdateGhostVelocityHelper(c, c(1,0,0),
-                              xSignX, xSignY, xSignZ,
-                              xBCLeftVelX, xBCLeftVelY, xBCLeftVelZ)
+    UpdateGhostVelocityHelper(c, c( 1,0,0), x_sign, xneg_velocity)
   end
   if c.xpos_depth > 0 then
-    UpdateGhostVelocityHelper(c, c(-1,0,0),
-                              xSignX, xSignY, xSignZ,
-                              xBCRightVelX, xBCRightVelY, xBCRightVelZ)
+    UpdateGhostVelocityHelper(c, c(-1,0,0), x_sign, xpos_velocity)
   end
   if c.yneg_depth > 0 then
-    UpdateGhostVelocityHelper(c, c(0,1,0),
-                              ySignX, ySignY, ySignZ,
-                              yBCLeftVelX, yBCLeftVelY, yBCLeftVelZ)
+    UpdateGhostVelocityHelper(c, c(0, 1,0), y_sign, yneg_velocity)
   end
   if c.ypos_depth > 0 then
-    UpdateGhostVelocityHelper(c, c(0,-1,0),
-                              ySignX, ySignY, ySignZ,
-                              yBCRightVelX, yBCRightVelY, yBCRightVelZ)
+    UpdateGhostVelocityHelper(c, c(0,-1,0), y_sign, ypos_velocity)
   end
   if c.zneg_depth > 0 then
-    UpdateGhostVelocityHelper(c, c(0,0,1),
-                              zSignX, zSignY, zSignZ,
-                              zBCLeftVelX, zBCLeftVelY, zBCLeftVelZ)
+    UpdateGhostVelocityHelper(c, c(0,0, 1), z_sign, zneg_velocity)
   end
   if c.zpos_depth > 0 then
-    UpdateGhostVelocityHelper(c, c(0,0,-1),
-                              zSignX, zSignY, zSignZ,
-                              zBCRightVelX, zBCRightVelY, zBCRightVelZ)
+    UpdateGhostVelocityHelper(c, c(0,0,-1), z_sign, zpos_velocity)
   end
 end
 liszt Flow.UpdateGhostVelocityStep2 (c : grid.cells)
@@ -2011,13 +1908,11 @@ function Flow.UpdateGhostVelocity()
 end
 
 -- Helper function for updating the conservatives to minimize repeated code
-local liszt UpdateGhostConservedHelper (c_bnd, c_int,
-                                        SignX, SignY, SignZ,
-                                        BCVelX, BCVelY, BCVelZ,
-                                        BCTemp)
+local liszt UpdateGhostConservedHelper (c_bnd, c_int, sign, bnd_velocity,
+                                        bnd_temperature)
 
   -- Temporary variables for computing new halo state
-  var rho = L.double(0.0)
+  var rho         = L.double(0.0)
   var temp_wall   = L.double(0.0)
   var temperature = L.double(0.0)
   var velocity    = L.vec3d({0.0, 0.0, 0.0})
@@ -2027,14 +1922,14 @@ local liszt UpdateGhostConservedHelper (c_bnd, c_int,
 
   -- Compute the new velocity (including any wall conditions)
   var velocity = L.vec3d({0.0, 0.0, 0.0})
-  velocity[0] = c_int.rhoVelocity[0]/c_int.rho * SignX + BCVelX
-  velocity[1] = c_int.rhoVelocity[1]/c_int.rho * SignY + BCVelY
-  velocity[2] = c_int.rhoVelocity[2]/c_int.rho * SignZ + BCVelZ
+  for i = 0,3 do
+    velocity[i] = c_int.rhoVelocity[i]/c_int.rho * sign[i] + bnd_velocity[i]
+  end
 
   -- Compute the temperature for the halo cell (possibly adiabatic/isothermal)
   temp_wall = c_int.temperature
-  if BCTemp > 0.0 then
-    temp_wall = BCTemp
+  if bnd_temperature > 0.0 then
+    temp_wall = bnd_temperature
   end
   temperature = 2.0*temp_wall - c_int.temperature
 
@@ -2043,50 +1938,30 @@ local liszt UpdateGhostConservedHelper (c_bnd, c_int,
   rho = c_int.pressure / ( fluid_options.gasConstant * temperature )
 
   -- Update the boundary cell based on the values in the matching interior cell
-  c_bnd.rhoBoundary            =   rho
-  c_bnd.rhoVelocityBoundary[0] =   rho*velocity[0]
-  c_bnd.rhoVelocityBoundary[1] =   rho*velocity[1]
-  c_bnd.rhoVelocityBoundary[2] =   rho*velocity[2]
-  c_bnd.rhoEnergyBoundary      =   rho * (cv * temperature +
-                                                0.5*L.dot(velocity,velocity))
+  c_bnd.rhoBoundary         = rho
+  c_bnd.rhoVelocityBoundary = rho*velocity
+  c_bnd.rhoEnergyBoundary   = rho * (cv * temperature +
+                                     0.5*L.dot(velocity,velocity))
 
 end
 liszt Flow.UpdateGhostConservedStep1 (c : grid.cells)
   if c.xneg_depth > 0 then
-    UpdateGhostConservedHelper(c, c(1,0,0),
-                               xSignX, xSignY, xSignZ,
-                               xBCLeftVelX, xBCLeftVelY, xBCLeftVelZ,
-                               xBCLeftTemp)
+    UpdateGhostConservedHelper(c, c( 1,0,0), x_sign, xneg_velocity, xneg_temperature)
   end
   if c.xpos_depth > 0 then
-    UpdateGhostConservedHelper(c, c(-1,0,0),
-                               xSignX, xSignY, xSignZ,
-                               xBCRightVelX, xBCRightVelY, xBCRightVelZ,
-                               xBCRightTemp)
+    UpdateGhostConservedHelper(c, c(-1,0,0), x_sign, xpos_velocity, xpos_temperature)
   end
   if c.yneg_depth > 0 then
-    UpdateGhostConservedHelper(c, c(0,1,0),
-                               ySignX, ySignY, ySignZ,
-                               yBCLeftVelX, yBCLeftVelY, yBCLeftVelZ,
-                               yBCLeftTemp)
+    UpdateGhostConservedHelper(c, c(0, 1,0), y_sign, yneg_velocity, yneg_temperature)
   end
   if c.ypos_depth > 0 then
-    UpdateGhostConservedHelper(c, c(0,-1,0),
-                               ySignX, ySignY, ySignZ,
-                               yBCRightVelX, yBCRightVelY, yBCRightVelZ,
-                               yBCRightTemp)
+    UpdateGhostConservedHelper(c, c(0,-1,0), y_sign, ypos_velocity, ypos_temperature)
   end
   if c.zneg_depth > 0 then
-    UpdateGhostConservedHelper(c, c(0,0,1),
-                               zSignX, zSignY, zSignZ,
-                               zBCLeftVelX, zBCLeftVelY, zBCLeftVelZ,
-                               zBCLeftTemp)
+    UpdateGhostConservedHelper(c, c(0,0, 1), z_sign, zneg_velocity, zneg_temperature)
   end
   if c.zpos_depth > 0 then
-    UpdateGhostConservedHelper(c, c(0,0,-1),
-                               zSignX, zSignY, zSignZ,
-                               zBCRightVelX, zBCRightVelY, zBCRightVelZ,
-                               zBCRightTemp)
+    UpdateGhostConservedHelper(c, c(0,0,-1), z_sign, zpos_velocity, zpos_temperature)
   end
 end
 liszt Flow.UpdateGhostConservedStep2 (c : grid.cells)
@@ -2100,12 +1975,10 @@ function Flow.UpdateGhostConserved()
 end
 
 liszt Flow.UpdateAuxiliaryThermodynamics (c : grid.cells)
-  var kineticEnergy =
-    0.5 * c.rho * L.dot(c.velocity,c.velocity)
-  var pressure = (fluid_options.gamma - 1.0) *
-                 ( c.rhoEnergy - kineticEnergy )
-  c.pressure = pressure 
-  c.temperature =  pressure / ( fluid_options.gasConstant * c.rho)
+  var kineticEnergy = 0.5 * c.rho * L.dot(c.velocity,c.velocity)
+  var pressure  = (fluid_options.gamma - 1.0) *( c.rhoEnergy - kineticEnergy )
+  c.pressure    = pressure
+  c.temperature = pressure / ( fluid_options.gasConstant * c.rho )
 end
 
 ---------------------
@@ -2127,72 +2000,35 @@ liszt Flow.ComputeVelocityGradientZ (c : grid.cells)
   c.velocityGradientZ = 0.5*(c(0,0,1).velocity - c(0,0,-1).velocity)/grid_dz
 end
 
+-- Helper function for updating the boundary gradients to minimize repeated code
+local liszt UpdateGhostVelocityGradientHelper (c_bnd, c_int, sign)
+
+  -- Apply sign change and copy gradients from interior to boundary
+  for i = 0,3 do
+    c_bnd.velocityGradientXBoundary[i] = sign[i] * c_int.velocityGradientX[i]
+    c_bnd.velocityGradientYBoundary[i] = sign[i] * c_int.velocityGradientY[i]
+    c_bnd.velocityGradientZBoundary[i] = sign[i] * c_int.velocityGradientZ[i]
+  end
+
+end
 liszt Flow.UpdateGhostVelocityGradientStep1 (c : grid.cells)
     if c.xneg_depth > 0 then
-        c.velocityGradientXBoundary[0] = xSignX * c(1,0,0).velocityGradientX[0]
-        c.velocityGradientXBoundary[1] = xSignY * c(1,0,0).velocityGradientX[1]
-        c.velocityGradientXBoundary[2] = xSignZ * c(1,0,0).velocityGradientX[2]
-        c.velocityGradientYBoundary[0] = xSignX * c(1,0,0).velocityGradientY[0]
-        c.velocityGradientYBoundary[1] = xSignY * c(1,0,0).velocityGradientY[1]
-        c.velocityGradientYBoundary[2] = xSignZ * c(1,0,0).velocityGradientY[2]
-        c.velocityGradientZBoundary[0] = xSignX * c(1,0,0).velocityGradientZ[0]
-        c.velocityGradientZBoundary[1] = xSignY * c(1,0,0).velocityGradientZ[1]
-        c.velocityGradientZBoundary[2] = xSignZ * c(1,0,0).velocityGradientZ[2]
+      UpdateGhostVelocityGradientHelper(c, c( 1,0,0), x_sign)
     end
     if c.xpos_depth > 0 then
-        c.velocityGradientXBoundary[0] = xSignX * c(-1,0,0).velocityGradientX[0]
-        c.velocityGradientXBoundary[1] = xSignY * c(-1,0,0).velocityGradientX[1]
-        c.velocityGradientXBoundary[2] = xSignZ * c(-1,0,0).velocityGradientX[2]
-        c.velocityGradientYBoundary[0] = xSignX * c(-1,0,0).velocityGradientY[0]
-        c.velocityGradientYBoundary[1] = xSignY * c(-1,0,0).velocityGradientY[1]
-        c.velocityGradientYBoundary[2] = xSignZ * c(-1,0,0).velocityGradientY[2]
-        c.velocityGradientZBoundary[0] = xSignX * c(-1,0,0).velocityGradientZ[0]
-        c.velocityGradientZBoundary[1] = xSignY * c(-1,0,0).velocityGradientZ[1]
-        c.velocityGradientZBoundary[2] = xSignZ * c(-1,0,0).velocityGradientZ[2]
+      UpdateGhostVelocityGradientHelper(c, c(-1,0,0), x_sign)
     end
     if c.yneg_depth > 0 then
-        c.velocityGradientXBoundary[0] = ySignX * c(0,1,0).velocityGradientX[0]
-        c.velocityGradientXBoundary[1] = ySignY * c(0,1,0).velocityGradientX[1]
-        c.velocityGradientXBoundary[2] = ySignZ * c(0,1,0).velocityGradientX[2]
-        c.velocityGradientYBoundary[0] = ySignX * c(0,1,0).velocityGradientY[0]
-        c.velocityGradientYBoundary[1] = ySignY * c(0,1,0).velocityGradientY[1]
-        c.velocityGradientYBoundary[2] = ySignZ * c(0,1,0).velocityGradientY[2]
-        c.velocityGradientZBoundary[0] = ySignX * c(0,1,0).velocityGradientZ[0]
-        c.velocityGradientZBoundary[1] = ySignY * c(0,1,0).velocityGradientZ[1]
-        c.velocityGradientZBoundary[2] = ySignZ * c(0,1,0).velocityGradientZ[2]
+      UpdateGhostVelocityGradientHelper(c, c(0, 1,0), y_sign)
     end
     if c.ypos_depth > 0 then
-        c.velocityGradientXBoundary[0] = ySignX * c(0,-1,0).velocityGradientX[0]
-        c.velocityGradientXBoundary[1] = ySignY * c(0,-1,0).velocityGradientX[1]
-        c.velocityGradientXBoundary[2] = ySignZ * c(0,-1,0).velocityGradientX[2]
-        c.velocityGradientYBoundary[0] = ySignX * c(0,-1,0).velocityGradientY[0]
-        c.velocityGradientYBoundary[1] = ySignY * c(0,-1,0).velocityGradientY[1]
-        c.velocityGradientYBoundary[2] = ySignZ * c(0,-1,0).velocityGradientY[2]
-        c.velocityGradientZBoundary[0] = ySignX * c(0,-1,0).velocityGradientZ[0]
-        c.velocityGradientZBoundary[1] = ySignY * c(0,-1,0).velocityGradientZ[1]
-        c.velocityGradientZBoundary[2] = ySignZ * c(0,-1,0).velocityGradientZ[2]
+      UpdateGhostVelocityGradientHelper(c, c(0,-1,0), y_sign)
     end
     if c.zneg_depth > 0 then
-        c.velocityGradientXBoundary[0] = zSignX * c(0,0,1).velocityGradientX[0]
-        c.velocityGradientXBoundary[1] = zSignY * c(0,0,1).velocityGradientX[1]
-        c.velocityGradientXBoundary[2] = zSignZ * c(0,0,1).velocityGradientX[2]
-        c.velocityGradientYBoundary[0] = zSignX * c(0,0,1).velocityGradientY[0]
-        c.velocityGradientYBoundary[1] = zSignY * c(0,0,1).velocityGradientY[1]
-        c.velocityGradientYBoundary[2] = zSignZ * c(0,0,1).velocityGradientY[2]
-        c.velocityGradientZBoundary[0] = zSignX * c(0,0,1).velocityGradientZ[0]
-        c.velocityGradientZBoundary[1] = zSignY * c(0,0,1).velocityGradientZ[1]
-        c.velocityGradientZBoundary[2] = zSignZ * c(0,0,1).velocityGradientZ[2]
+      UpdateGhostVelocityGradientHelper(c, c(0,0, 1), z_sign)
     end
     if c.zpos_depth > 0 then
-        c.velocityGradientXBoundary[0] = zSignX * c(0,0,-1).velocityGradientX[0]
-        c.velocityGradientXBoundary[1] = zSignY * c(0,0,-1).velocityGradientX[1]
-        c.velocityGradientXBoundary[2] = zSignZ * c(0,0,-1).velocityGradientX[2]
-        c.velocityGradientYBoundary[0] = zSignX * c(0,0,-1).velocityGradientY[0]
-        c.velocityGradientYBoundary[1] = zSignY * c(0,0,-1).velocityGradientY[1]
-        c.velocityGradientYBoundary[2] = zSignZ * c(0,0,-1).velocityGradientY[2]
-        c.velocityGradientZBoundary[0] = zSignX * c(0,0,-1).velocityGradientZ[0]
-        c.velocityGradientZBoundary[1] = zSignY * c(0,0,-1).velocityGradientZ[1]
-        c.velocityGradientZBoundary[2] = zSignZ * c(0,0,-1).velocityGradientZ[2]
+      UpdateGhostVelocityGradientHelper(c, c(0,0,-1), z_sign)
     end
 end
 liszt Flow.UpdateGhostVelocityGradientStep2 (c : grid.cells)
@@ -2204,9 +2040,9 @@ liszt Flow.UpdateGhostVelocityGradientStep2 (c : grid.cells)
 end
 
 -- Calculation of spectral radii for clf-based delta time
-local maxConvectiveSpectralRadius = L.Global(L.double, 0)
-local maxViscousSpectralRadius  = L.Global(L.double, 0)
-local maxHeatConductionSpectralRadius  = L.Global(L.double, 0)
+local maxConvectiveSpectralRadius     = L.Global(L.double, 0.0)
+local maxViscousSpectralRadius        = L.Global(L.double, 0.0)
+local maxHeatConductionSpectralRadius = L.Global(L.double, 0.0)
 
 -- WARNING: update cellVolume computation for non-uniform grids
 local dXYZInverseSquare = L.Constant(L.double,
