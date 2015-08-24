@@ -15,6 +15,8 @@ local APIblob = terralib.includecstring([[
 ]])
 for k,v in pairs(APIblob) do LW[k] = v end
 
+local VERBOSE = false
+
 
 -------------------------------------------------------------------------------
 --[[  Legion environment                                                   ]]--
@@ -103,6 +105,11 @@ LW.TaskLauncher.__index = LW.TaskLauncher
 LW.SimpleTaskPtrType = { LW.TaskArgs } -> {}
 LW.FutureTaskPtrType = { LW.TaskArgs } -> LW.legion_task_result_t
 
+local USED_SIMPLE_CPU = 0
+local USED_SIMPLE_GPU = 0
+local USED_FUTURE_CPU = 0
+local USED_FUTURE_GPU = 0
+
 function LW.NewTaskLauncher(params)
   if not terralib.isfunction(params.taskfunc) then
     error('must provide Terra function as "taskfunc" argument', 2)
@@ -112,19 +119,45 @@ function LW.NewTaskLauncher(params)
   local TID
   local taskfuncptr = C.safemalloc( taskptrtype )
   taskfuncptr[0]    = taskfunc:getdefinitions()[1]:getpointer()
+  local task_ids          = params.task_ids
 
-  if     taskptrtype == LW.SimpleTaskPtrType then
-    TID = LW.TID_SIMPLE_CPU
-    if params.gpu then TID = LW.TID_SIMPLE_GPU end
-  elseif taskptrtype == LW.FutureTaskPtrType then
-    TID = LW.TID_FUTURE_CPU
-    if params.gpu then TID = LW.TID_FUTURE_GPU end
-  else
-    error('The supplied function had ptr type\n'..
-          '  '..tostring(taskptrtype)..'\n'..
-          'Was expecting one of the following types\n'..
-          '  '..tostring(LW.SimpleTaskPtrType)..'\n'..
-          '  '..tostring(LW.FutureTaskPtrType)..'\n', 2)
+  TID = params.gpu and params.task_ids.gpu or params.task_ids.cpu
+
+  if not TID then
+    if     taskptrtype == LW.SimpleTaskPtrType then
+      if params.gpu then
+        assert(USED_SIMPLE_GPU < LW.NUM_TASKS, "Task overflow")
+        TID = LW.TID_SIMPLE_GPU[USED_SIMPLE_GPU + 1]
+        task_ids.gpu = TID
+        USED_SIMPLE_GPU = USED_SIMPLE_GPU + 1
+      else
+        assert(USED_SIMPLE_CPU < LW.NUM_TASKS, "Task overflow")
+        TID = LW.TID_SIMPLE_CPU[USED_SIMPLE_CPU + 1]
+        task_ids.cpu = TID
+        USED_SIMPLE_CPU = USED_SIMPLE_CPU + 1
+      end
+    elseif taskptrtype == LW.FutureTaskPtrType then
+      if params.gpu then
+        assert(USED_FUTURE_GPU < LW.NUM_TASKS, "Task overflow")
+        TID = LW.TID_FUTURE_GPU[USED_FUTURE_GPU + 1]
+        task_ids.gpu = TID
+        USED_FUTURE_GPU = USED_FUTURE_GPU + 1
+      else
+        assert(USED_FUTURE_CPU < LW.NUM_TASKS, "Task overflow")
+        TID = LW.TID_FUTURE_CPU[USED_FUTURE_CPU + 1]
+        task_ids.cpu = TID
+        USED_FUTURE_CPU = USED_FUTURE_CPU + 1
+      end
+    else
+      error('The supplied function had ptr type\n'..
+            '  '..tostring(taskptrtype)..'\n'..
+            'Was expecting one of the following types\n'..
+            '  '..tostring(LW.SimpleTaskPtrType)..'\n'..
+            '  '..tostring(LW.FutureTaskPtrType)..'\n', 2)
+    end
+    if VERBOSE then
+      print("Liszt LOG: task id " .. tostring(taskfunc.name) .. " = " .. tostring(TID))
+    end
   end
 
   -- By looking carefully at the legion_c wrapper
@@ -189,6 +222,7 @@ function LW.TaskLauncher:Execute(runtime, ctx)
   return LW.legion_task_launcher_execute(runtime, ctx, self._launcher)
 end
 
+
 -------------------------------------------------------------------------------
 --[[  Legion Tasks                                                         ]]--
 -------------------------------------------------------------------------------
@@ -196,6 +230,8 @@ end
 --   is a task that returns a Legion future, or return value.
 --]]--
 
+
+LW.NUM_TASKS = 100
 
 terra LW.simple_task(
   task        : LW.legion_task_t,
@@ -210,8 +246,12 @@ terra LW.simple_task(
   taskfunc( LW.TaskArgs { task, regions, num_regions, ctx, runtime } )
 end
 
-LW.TID_SIMPLE_CPU = 200
-LW.TID_SIMPLE_GPU = 250
+LW.TID_SIMPLE_CPU = {}
+LW.TID_SIMPLE_GPU = {}
+for i = 1, LW.NUM_TASKS do
+    LW.TID_SIMPLE_CPU[i] = 99+i
+    LW.TID_SIMPLE_GPU[i] = 199+i
+end
 
 terra LW.future_task(
   task        : LW.legion_task_t,
@@ -229,8 +269,12 @@ terra LW.future_task(
   return result
 end
 
-LW.TID_FUTURE_CPU = 300
-LW.TID_FUTURE_GPU = 350
+LW.TID_FUTURE_CPU = {}
+LW.TID_FUTURE_GPU = {}
+for i = 1, LW.NUM_TASKS do
+    LW.TID_FUTURE_CPU[i] = 299+i
+    LW.TID_FUTURE_GPU[i] = 399+i
+end
 
 
 -------------------------------------------------------------------------------

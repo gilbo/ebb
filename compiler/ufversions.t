@@ -970,8 +970,9 @@ end
 function UFVersion:_CreateLegionTaskLauncher(task_func)
 
   local task_launcher = LW.NewTaskLauncher {
-    taskfunc = task_func,
-    gpu      = self:isOnGPU(),
+    taskfunc  = task_func,
+    gpu       = self:isOnGPU(),
+    task_ids  = self._task_ids
   }
 
   -- ADD EACH REGION to the launcher as a requirement
@@ -1002,6 +1003,7 @@ end
 -- Launches Legion task and returns.
 function UFVersion:_CreateLegionLauncher(task_func)
   local ufv = self
+  ufv._task_ids = {}
   --local task_launcher = ufv:_CreateLegionTaskLauncher(task_func)
   if ufv:UsesGlobalReduce() then
     return function(leg_args)
