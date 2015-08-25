@@ -57,10 +57,14 @@ return {
   -- Fluid Options --
   gasConstant = 287.058,
   gamma = 1.4,
-  viscosity_model = 'Sutherland', -- Constant, PowerLaw, Sutherland
-  dynamic_viscosity_ref = 1.716E-5, --Sutherland's
-  dynamic_viscosity_temp_ref = 273.15, --Sutherland's
   prandtl = 0.72,
+  viscosity_model = 'Sutherland', -- 'Constant', 'PowerLaw', or 'Sutherland'
+  constant_visc = 0.1,          -- Value for a constant viscosity [kg/m/s]
+  powerlaw_visc_ref = 0.001,    -- Power-law reference viscosity [kg/m/s]
+  powerlaw_temp_ref = 273.0,    -- Power-law reference temperature [K]
+  suth_visc_ref = 1.716E-5,     -- Sutherland's Law reference viscosity [kg/m/s]
+  suth_temp_ref = 273.15,       -- Sutherland's Law referene temperature [K]
+  suth_s_ref = 110.4,           -- Sutherland's Law S constant [K]
   
   -- Particle Options --
   initParticles = 'Random', -- 'Random' or 'Restart'
@@ -82,8 +86,6 @@ return {
   -- Radiation Options --
   radiationType = 'ON',
   radiationIntensity = 10.0,
-  zeroAvgHeatSource = 'OFF',
-
-  -- vdb visualization --
-  visualize = 'OFF', -- ON or OFF
+  zeroAvgHeatSource = 'OFF'
+  
 }

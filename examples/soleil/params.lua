@@ -1,30 +1,28 @@
--- This is a Lua config file for the Soleil code.
 
--- This case defines the Poiseuille Flow problem
+-- This is a Lua config file for the Soleil-X code. The options (and comments)
+-- here are intended to be a template configuration file that can be reused
+-- for new cases by changing the desired options. This 'master' config will
+-- always be kept up to date with the latest version of the code.
+
 return {
   
-  -- Flow Initialization  Options --
-  initCase     = 'Uniform', -- Uniform, Restart, TaylorGreen2DVortex, TaylorGreen3DVortex
-  initParams = {1.0,100000.0,1.0,0.0,0.0}, -- necessary input conditions
-  bodyForce = {1.2,0.0,0}, -- body force in x, y, z
-  restartIter = 0,
-  
-  -- Grid Options --
-  xnum = 32, -- number of cells in the x-direction
-  ynum = 32, -- number of cells in the y-direction
-  znum = 1,  -- number of cells in the z-direction
-  origin = {0.0, 0.0, 0.0}, -- spatial origin of the computational domain
-  xWidth = 1.0,
-  yWidth = 1.0,
-  zWidth = 1.0,
-  -- BCs: 'periodic,' 'symmetry,' 'adiabatic_wall,' or 'isothermal_wall'
-  xBCLeft  = 'periodic',
-  xBCLeftVel = {0.0, 0.0, 0.0},
-  xBCLeftTemp = 0.0,
-  xBCRight = 'periodic',
-  xBCRightVel = {0.0, 0.0, 0.0},
-  xBCRightTemp = 0.0,
-  yBCLeft  = 'adiabatic_wall',
+  -----------------------------------------------------------------------------
+  --[[                            GRID OPTIONS                             ]]--
+  -----------------------------------------------------------------------------
+  xnum = 32,                -- Number of internal cells in the x-direction
+  ynum = 32,                -- Number of internal cells in the y-direction
+  znum = 1,                 -- Number of internal cells in the z-direction
+  origin = {0.0, 0.0, 0.0}, -- Spatial origin of the computational domain
+  xWidth = 1.0,             -- Physical length of the domain in the x-dir. [m]
+  yWidth = 1.0,             -- Physical length of the domain in the y-dir. [m]
+  zWidth = 1.0,             -- Physical length of the domain in the z-dir. [m]
+  xBCLeft  = 'periodic',         -- Boundary conditions on each boundary face.
+  xBCLeftVel = {0.0, 0.0, 0.0},  -- Opposite faces must match. Options are
+  xBCLeftTemp = 0.0,             -- 'periodic', 'symmetry', 'adiabatic_wall', or
+  xBCRight = 'periodic',         -- 'isothermal_wall'. Each BC can also have a
+  xBCRightVel = {0.0, 0.0, 0.0}, -- prescribed wall velocity {u,v,w}, which is
+  xBCRightTemp = 0.0,            -- always applied, and a wall temperature that
+  yBCLeft  = 'adiabatic_wall',   -- is ignored unless if is an isothermal wall.
   yBCLeftVel = {0.0, 0.0, 0.0},
   yBCLeftTemp = 0.0,
   yBCRight = 'adiabatic_wall',
@@ -37,54 +35,83 @@ return {
   zBCRightVel = {0.0, 0.0, 0.0},
   zBCRightTemp = 0.0,
   
-  --Time Integration Options --
-  final_time            = 2000.00001,
-  max_iter              = 5000,
-  cfl                   = 2.5, -- Negative CFL implies that we will used fixed delta T
-  delta_time            = 1e-4,
+  -----------------------------------------------------------------------------
+  --[[                        FLUID PHASE OPTIONS                          ]]--
+  -----------------------------------------------------------------------------
+  initCase = 'Uniform',         -- 'Uniform', 'Restart', 'TaylorGreen2DVortex',
+                                -- or 'TaylorGreen3DVortex'
+  restartIter = 0,              -- Starting iteration number for flow restart
+  initParams = {1.0,100000.0,1.0,0.0,0.0}, -- Input flow conditions.
+                                -- Uniform: {density, pressure, u, v, w}
+                                -- Restart: unused
+                                -- TGV 2D: {density, pressure, vel, null, null}
+                                -- TGV 3D: {density, pressure, vel, null, null}
+  bodyForce = {1.2,0.0,0},      -- Body force (acceleration) in x, y, z
+  gasConstant = 200.0,          -- Ideal gas constant, R = cp - cv [J/kg/K]
+  gamma = 1.25,                 -- Ratio of specific heats, gamma = cp/cv
+  viscosity_model = 'Constant', -- 'Constant', 'PowerLaw', or 'Sutherland'
+  constant_visc = 0.1,          -- Value for a constant viscosity [kg/m/s]
+  powerlaw_visc_ref = 0.001,    -- Power-law reference viscosity [kg/m/s]
+  powerlaw_temp_ref = 273.0,    -- Power-law reference temperature [K]
+  suth_visc_ref = 1.68e-5,      -- Sutherland's Law reference viscosity [kg/m/s]
+  suth_temp_ref = 273.0,        -- Sutherland's Law referene temperature [K]
+  suth_s_ref = 110.5,           -- Sutherland's Law S constant [K]
+  prandtl = 1.0,                -- Prandtl number, Pr
+                                -- Note: thermal conductivity, k = cp*visc/Pr
   
-  --- File Output Options --
-  wrtRestart = 'ON',
-  wrtVolumeSolution = 'ON',
-  wrt1DSlice = 'ON',
-  wrtParticleEvolution = 'OFF',
-  particleEvolutionIndex = 0,
-  outputEveryTimeSteps  = 1000,
-  restartEveryTimeSteps = 1000,
-  headerFrequency       = 20,
-  outputFormat = 'Tecplot', --Tecplot or Python
-  outputDirectory = '../Desktop/soleilOutput/', -- relative to the liszt-in-terra home directory
+  -----------------------------------------------------------------------------
+  --[[                       PARTICLE PHASE OPTIONS                        ]]--
+  -----------------------------------------------------------------------------
+  initParticles = 'Random',        -- Particle init: 'Random' or 'Restart'
+  restartParticleIter = 0,         -- Starting iteration for particle restart
+  particleType = 'Fixed',          -- Particle can be 'Fixed' or 'Free' to move
+  twoWayCoupling = 'OFF',          -- Enable two-way coupling with fluid.
+                                   -- 'ON' is two-way, 'OFF' is fluid->particle
+  num = 1000.0,                    -- Prescribe the total number of particles
+  restitutionCoefficient = 1.0,    -- Restitution coeff. for wall collisions
+  convectiveCoefficient = 20000.0, -- Convective heat transfer coeff. [W/m^2/K]
+  heatCapacity = 1000.0,           -- Particle heat capacity,h [J/kg/K]
+                                   -- Note: Nusselt = h*Dp/k
+  absorptivity = 1.0,              -- Radiation absorption coeff., 0.0 <-> 1.0
+  initialTemperature = 500.0,      -- Initial temperature [K]
+  density = 9e3,                   -- Particle density [kg/m^3]
+  diameter_mean = 1e-2,            -- Mean value for stochastic diameter, Dp [m]
+  diameter_maxDeviation = 0.0,     -- Maximum deviation for stochastic diameter
+  bodyForceParticles = {0.0,-1.0,0}, -- Constant body force (acceleration)
+                                   -- on particles in the {x,y,z} directions
   
-  -- Fluid Options --
-  gasConstant = 200.0,
-  gamma = 1.25,
-  viscosity_model = 'Constant', -- Constant, PowerLaw, Sutherland
-  dynamic_viscosity_ref = 0.1, -- constant value
-  dynamic_viscosity_temp_ref = 273.15, --Sutherland's
-  prandtl = 1.0,
-
-  -- Particle Options --
-  initParticles = 'Random', -- 'Random' or 'Restart'
-  restartParticleIter = 0,
-  particleType = 'Fixed', -- Fixed or Free
-  twoWayCoupling = 'OFF',
-  num = 1000.0,
-  restitutionCoefficient = 1.0,
-  convectiveCoefficient = 20000.0, -- W m^-2 K^-1
-  heatCapacity = 1000.0, -- J Kg^-1 K^-1
-  initialTemperature = 500.0, -- K
-  density = 9e3,
-  diameter_mean = 1e-2,
-  diameter_maxDeviation = 0.0,
-  bodyForceParticles = {0.0,-1.0,0},
-  absorptivity = 1.0, -- Equal to emissivity in thermal equilibrium
-  -- (Kirchhoff law of thermal radiation)
-
-  -- Radiation Options --
-  radiationType = 'OFF',
-  radiationIntensity = 3e6,
-  zeroAvgHeatSource = 'OFF',
-
-  -- vdb visualization --
-  visualize = 'OFF', -- ON or OFF
+  -----------------------------------------------------------------------------
+  --[[                         RADIATION OPTIONS                           ]]--
+  -----------------------------------------------------------------------------
+  radiationType = 'OFF',     -- Enable algebraic radiation model, 'ON' or 'OFF'
+  radiationIntensity = 3e6,  -- Radiation intensity as a heat flux [W/m^2]
+                             -- Note:
+  zeroAvgHeatSource = 'OFF', -- Subtract the average heat addition due to
+                             -- from all cells to enable a steady problem
+                             -- when radiation is applied.
+  
+  -----------------------------------------------------------------------------
+  --[[                      TIME INTEGRATION OPTIONS                       ]]--
+  -----------------------------------------------------------------------------
+  final_time = 2000.00001, -- Maximum physical time for the simulation [s]
+  max_iter = 5000,         -- Maximum number of iterations
+  cfl = 2.5,               -- CFL condition. Setting this to a negative value
+                           -- imposes a fixed time step that is given by
+                           -- the 'delta_time' config option.
+  delta_time = 1e-4,       -- Fixed time step [s], ignored if CFL > 0.0
+  
+  -----------------------------------------------------------------------------
+  --[[                          FILE I/O OPTIONS                           ]]--
+  -----------------------------------------------------------------------------
+  wrtRestart = 'ON',            -- Enable restart file output, 'ON' or 'OFF'
+  wrtVolumeSolution = 'ON',     -- Enable volume solution output
+  outputFormat = 'Tecplot',     -- Volume solution format, 'Tecplot' only
+  wrt1DSlice = 'ON',            -- Enable CSV slices at centerlines
+  wrtParticleEvolution = 'OFF', -- Enable tracking of a single particle
+  particleEvolutionIndex = 0,   -- Index of particle to be tracked
+  outputEveryTimeSteps  = 1000, -- Iterations between writing solutions
+  restartEveryTimeSteps = 1000, -- Iterations between writing restarts
+  headerFrequency       = 20,   -- Iterations between console output headers
+  outputDirectory = '../soleilOutput/' -- Relative to the liszt root dir
+  
 }
