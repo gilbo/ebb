@@ -18,7 +18,7 @@ local terra dereference_legion_runtime(runtime : &LW.legion_runtime_t)
 end
 
 -- Top level task
-TID_TOP_LEVEL = 100
+TID_TOP_LEVEL = 50
 
 -- Error handler to display stack trace
 local function top_level_err_handler(errobj)
@@ -128,6 +128,10 @@ end
 
 -- Main function that launches Legion runtime
 local terra main()
+  var ids_simple_cpu = arrayof(LW.legion_task_id_t, [LW.TID_SIMPLE_CPU])
+  var ids_simple_gpu = arrayof(LW.legion_task_id_t, [LW.TID_SIMPLE_GPU])
+  var ids_future_cpu = arrayof(LW.legion_task_id_t, [LW.TID_FUTURE_CPU])
+  var ids_future_gpu = arrayof(LW.legion_task_id_t, [LW.TID_FUTURE_GPU])
   LW.legion_runtime_register_task_void(
     TID_TOP_LEVEL, LW.LOC_PROC, true, false, 1,
     LW.legion_task_config_options_t {
@@ -136,35 +140,37 @@ local terra main()
       idempotent = false },
     'top_level_task', top_level_task)
 
-  LW.legion_runtime_register_task_void(
-    LW.TID_SIMPLE_CPU, LW.LOC_PROC, true, false, 1,
-    LW.legion_task_config_options_t {
-      leaf = true,
-      inner = false,
-      idempotent = false },
-    'simple_task_cpu', LW.simple_task)
-  LW.legion_runtime_register_task_void(
-    LW.TID_SIMPLE_GPU, LW.TOC_PROC, true, false, 1,
-    LW.legion_task_config_options_t {
-      leaf = true,
-      inner = false,
-      idempotent = false },
-    'simple_task_gpu', LW.simple_task)
+  for i = 0, LW.NUM_TASKS do
+    LW.legion_runtime_register_task_void(
+      ids_simple_cpu[i], LW.LOC_PROC, true, false, 1,
+      LW.legion_task_config_options_t {
+        leaf = true,
+        inner = false,
+        idempotent = false },
+      'simple_task_cpu', LW.simple_task)
+    LW.legion_runtime_register_task_void(
+      ids_simple_gpu[i], LW.TOC_PROC, true, false, 1,
+      LW.legion_task_config_options_t {
+        leaf = true,
+        inner = false,
+        idempotent = false },
+      'simple_task_gpu', LW.simple_task)
 
-  LW.legion_runtime_register_task(
-    LW.TID_FUTURE_CPU, LW.LOC_PROC, true, false, 1,
-    LW.legion_task_config_options_t {
-      leaf = true,
-      inner = false,
-      idempotent = false },
-    'future_task_cpu', LW.future_task)
-  LW.legion_runtime_register_task(
-    LW.TID_FUTURE_GPU, LW.TOC_PROC, true, false, 1,
-    LW.legion_task_config_options_t {
-      leaf = true,
-      inner = false,
-      idempotent = false },
-    'future_task_gpu', LW.future_task)
+    LW.legion_runtime_register_task(
+      ids_future_cpu[i], LW.LOC_PROC, true, false, 1,
+      LW.legion_task_config_options_t {
+        leaf = true,
+        inner = false,
+        idempotent = false },
+      'future_task_cpu', LW.future_task)
+    LW.legion_runtime_register_task(
+      ids_future_gpu[i], LW.TOC_PROC, true, false, 1,
+      LW.legion_task_config_options_t {
+        leaf = true,
+        inner = false,
+        idempotent = false },
+      'future_task_gpu', LW.future_task)
+  end
 
   LW.legion_runtime_set_top_level_task_id(TID_TOP_LEVEL)
 
