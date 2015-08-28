@@ -151,6 +151,7 @@ function L.NewRelation(params)
     _functions = terralib.newlist(),
 
     _incoming_refs = {}, -- used for walking reference graph
+    _disjoint_partition = nil
   },
   L.LRelation)
   relation_uid = relation_uid + 1 -- increment unique id counter
@@ -415,10 +416,9 @@ function L.LRelation:GroupBy(keyf_name)
     local dims      = srcrel:Dims()
 
     local src_scanner = LW.NewControlScanner {
-      logical_region = srcrel._logical_region_wrapper.handle,
-      dimensions     = srcrel:Dims(),
-      privilege      = LW.WRITE_ONLY,
-      fields         = {offset_f.fid, length_f.fid},
+      relation       = srcrel,
+      fields         = { offset_f, length_f },
+      privilege      = LW.WRITE_ONLY
     }
     local dst_i, prev_src = 0,0
     for ids, ptrs in src_scanner:ScanThenClose() do
@@ -441,6 +441,7 @@ function L.LRelation:GroupBy(keyf_name)
       end
       lenptr[0] = count
     end
+    assert(dst_i == n_dst)
     assert(dst_i == n_dst)
   else
     error("INTERNAL: must use either single or legion...")
@@ -873,12 +874,14 @@ function L.LField:LoadFunction(lua_callback)
   end
 
   if use_legion then
+    if self.owner:isPlain() then
+      -- error("LoadList for unstructured relations is broken with legion")
+    end
     -- Ok, we need to map some stuff down here
     local scanner = LW.NewControlScanner {
-      logical_region = self.owner._logical_region_wrapper.handle,
-      dimensions     = self.owner:Dims(),
-      privilege      = LW.WRITE_ONLY,
-      fields         = {self.fid},
+      relation       = self.owner,
+      fields         = { self },
+      privilege      = LW.WRITE_ONLY
     }
     for ids, ptrs in scanner:ScanThenClose() do
       local lval = lua_callback(unpack(ids))
@@ -998,6 +1001,7 @@ function L.LField:LoadTerraFunction(terra_callback, opt_args)
   self.owner:LoadJointTerraFunction(terra_callback, {self}, opt_args)
 end
 
+-- this is broken for unstructured relations with legion
 function L.LField:LoadList(tbl)
   if self.owner:isFragmented() then
     error('cannot load into fragmented relation', 2)
@@ -1171,19 +1175,16 @@ function L.LRelation:DumpJoint(fields_arg, lua_callback)
   end
 
   if use_legion then
-    local fids = {}
     local typs = {}
     for k=1,#fields do
       local f = fields[k]
-      fids[k] = f.fid
       typs[k] = f.type
     end
 
     local scanner = LW.NewControlScanner {
-      logical_region = self._logical_region_wrapper.handle,
-      dimensions     = self:Dims(),
-      privilege      = LW.READ_ONLY,
-      fields         = fids,
+      relation  = self,
+      fields    = fields,
+      privilege = LW.READ_ONLY
     }
     for ids, ptrs in scanner:ScanThenClose() do
       local vals = {}
@@ -1768,4 +1769,78 @@ function L.LRelation:Defrag()
   rawset(self, '_is_fragmented', false)
   TOTAL_DEFRAG_TIME = TOTAL_DEFRAG_TIME +
                       (terralib.currenttimeinseconds() - start_time)
+end
+
+
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+--[[  Partitioning relations                                               ]]--
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+
+
+function L.LRelation:SetNumPartitions(num_partitions)
+  if self:isGrid() then
+    error("Partitioning not implemented for grids yet")
+  end
+  assert(type(num_partitions) == 'number', "Number of partitions should be a number")
+  rawset(self, '_num_partitions', num_partitions)
+  self._num_partitions = num_partitions
+end
+
+function L.LRelation:NumPartitions()
+  return self._num_partitions
+end
+
+local ColorPlainIndexSpaceDisjoint = nil
+if use_legion then
+  ColorPlainIndexSpaceDisjoint = terra(darray : &DLD.ctype, num_colors : uint)
+    var d = darray[0]
+    var b = d.dims[0]
+    var s = d.stride[0]
+    var partn_size = b / num_colors
+    if num_colors * partn_size < b then partn_size = partn_size + 1 end
+    for i = 0, b do
+      var ptr = [&LW.legion_color_t]([&uint8](d.address) + i*s)
+      @ptr = i / partn_size
+    end
+  end
+end
+
+-- creates a disjoint partitioning on the relation
+function L.LRelation:CreateDisjointPartitioning()
+  if self:isGrid() then
+    error("Partitioning not implemented for grids yet")
+  end
+  -- check if there is a disjoint partition
+  if self._disjoint_partitioning then
+    return self._disjoint_partitioning
+  end
+  -- add a coloring field to logical region
+  assert(not self._disjoint_coloring, "INTERNAL ERROR: a disjoint coloring already exists")
+  rawset(self, '_disjoint_coloring',
+         L.LField.New(self, '_disjoint_coloring', L.color_type))
+  -- set the coloring field
+  self._disjoint_coloring:LoadTerraFunction(ColorPlainIndexSpaceDisjoint,
+                                            { self._num_partitions })
+  -- create index partition using the coloring field and save it
+  local partn = 
+    self._logical_region_wrapper:CreatePartitionByField(self._disjoint_coloring)
+  rawset(self, '_disjoint_partitioning', partn)
+  return partn
+end
+
+function L.LRelation:GetPartitioning(ufversion)
+  if self._partitionings and self._partitionings[ufversion] then
+    return self._partitionings[ufversion]
+  else
+    return self._logical_region_wrapper
+  end
+end
+
+function L.LRelation:SetPartitioning(ufversion, partn)
+  if not self._partitionings then
+    rawset(self, '_partitionings', {})
+  end
+  self._partitionings[ufversion] = partn
 end

@@ -10,11 +10,12 @@ local G   = require "compiler.gpu_util"
 
 local codegen         = require "compiler.codegen"
 local codesupport     = require "compiler.codegen_support"
-local LE, legion_env, LW
+local LE, legion_env, LW, run_config
 if use_legion then
   LE = rawget(_G, '_legion_env')
   legion_env = LE.legion_env[0]
   LW = require 'compiler.legionwrap'
+  run_config = rawget(_G, '_run_config')
 end
 local DataArray       = require('compiler.rawdata').DataArray
 
@@ -969,17 +970,33 @@ end
 -- Creates a task launcher with task region requirements.
 function UFVersion:_CreateLegionTaskLauncher(task_func)
 
+  local use_partitioning = use_legion and run_config.use_partitioning
+
+  local prim_reg   = self:_getPrimaryRegionData()
+  local prim_partn = prim_reg.wrapper.relation:GetPartitioning(self)
+
   local task_launcher = LW.NewTaskLauncher {
     taskfunc  = task_func,
     gpu       = self:isOnGPU(),
-    task_ids  = self._task_ids
+    task_ids  = self._task_ids,
+    use_index_launch = use_partitioning,
+    domain           = use_partitioning and prim_partn:Domain()
   }
 
   -- ADD EACH REGION to the launcher as a requirement
   -- WITH THE appropriate permissions set
   -- NOTE: Need to make sure to do this in the right order
   for ri, datum in pairs(self._sorted_region_data) do
-    local reg_req = task_launcher:AddRegionReq(datum.wrapper,
+    local reg_parent = datum.wrapper
+    local reg_partn  = reg_parent
+    -- use entire logical region for non-centered accesses
+    -- only centered accesses have read/ write permission
+    if use_partitioning and datum.privilege == LW.READ_WRITE then
+      assert(datum.wrapper == prim_reg.wrapper)
+      reg_partn = prim_partn
+    end
+    local reg_req = task_launcher:AddRegionReq(reg_partn,
+                                               reg_parent,
                                                datum.privilege,
                                                datum.coherence)
     assert(reg_req == ri)
@@ -1004,6 +1021,18 @@ end
 function UFVersion:_CreateLegionLauncher(task_func)
   local ufv = self
   ufv._task_ids = {}
+
+  local use_partitioning = use_legion and run_config.use_partitioning
+
+  local prim_reg = ufv:_getPrimaryRegionData()
+  local prim_rel = prim_reg.wrapper.relation
+  local prim_partn = nil
+  if use_partitioning then
+    prim_rel:SetNumPartitions(run_config.num_cpus)
+    prim_partn = prim_rel:CreateDisjointPartitioning()
+    prim_rel:SetPartitioning(ufv, prim_partn)
+  end
+
   --local task_launcher = ufv:_CreateLegionTaskLauncher(task_func)
   if ufv:UsesGlobalReduce() then
     return function(leg_args)
@@ -1055,6 +1084,10 @@ function UFVersion:_GenerateUnpackLegionTaskArgs(argsym, task_args)
 
       emit quote
         var [physical_reg]  = [task_args].regions[ri]
+      end
+
+      -- structured case
+      if reg_dim then emit quote
         var index_space     =
           LW.legion_physical_region_get_logical_region(
                                            physical_reg).index_space
@@ -1062,33 +1095,10 @@ function UFVersion:_GenerateUnpackLegionTaskArgs(argsym, task_args)
           LW.legion_index_space_get_domain([task_args].lg_runtime,
                                            [task_args].lg_ctx,
                                            index_space)
-      end
-      -- structured case
-      if reg_dim then emit quote
         var [rect]          = rectFromDom([domain])
       end end
     end end
 
-    -- UNPACK PRIMARY REGION BOUNDS RECTANGLE
-    escape
-      local ri    = ufv:_getPrimaryRegionData().num
-      local rect  = region_temporaries[ri].rect
-      -- structured
-      if rect then
-        local ndims = region_temporaries[ri].reg_dim
-        for i=1,ndims do emit quote
-          [argsym].bounds[i-1].lo = rect.lo.x[i-1]
-          [argsym].bounds[i-1].hi = rect.hi.x[i-1]
-        end end
-      -- unstructured
-      else emit quote
-        -- TODO(chinmayee): how do we get the number of rows for unstructured
-        -- case?
-        [argsym].bounds[0].lo = 0
-        [argsym].bounds[0].hi = [ufv:_getPrimaryRegionData().wrapper.live_rows] - 1 -- bound is 1 off: the actual highest index value
-      end end
-    end
-    
     -- UNPACK FIELDS
     escape for field, farg_name in pairs(ufv._field_ids) do
       local rtemp         = region_temporaries[ufv:_getRegionData(field).num]
@@ -1113,9 +1123,8 @@ function UFVersion:_GenerateUnpackLegionTaskArgs(argsym, task_args)
         var field_accessor =
           LW.legion_physical_region_get_field_accessor_generic(
                                               physical_reg, [field.fid])
-        var base : &opaque
-        -- TODO(chinmayee): size_t in terra?
-        var stride_val : uint64 = 0
+        var base : &opaque = nil
+        var stride_val : C.size_t = 0
         var ok = LW.legion_accessor_generic_get_soa_parameters(
           field_accessor, &base, &stride_val)
         var strides : LW.legion_byte_offset_t[1]
@@ -1123,6 +1132,29 @@ function UFVersion:_GenerateUnpackLegionTaskArgs(argsym, task_args)
         [argsym].[farg_name] = [ LW.FieldAccessor[1] ] { [&uint8](base), strides }
       end end
     end end
+
+    -- UNPACK PRIMARY REGION BOUNDS RECTANGLE FOR STRUCTURED
+    -- FOR UNSTRUCTURED, CORRECT INITIALIZATION IS POSPONED TO LATER
+    -- FOR UNSRRUCTURED, BOUNDS INITIALIZED TO TOTAL ROWS HERE
+    escape
+      local ri    = ufv:_getPrimaryRegionData().num
+      local rect  = region_temporaries[ri].rect
+      -- structured
+      if rect then
+        local ndims = region_temporaries[ri].reg_dim
+        for i=1,ndims do emit quote
+          [argsym].bounds[i-1].lo = rect.lo.x[i-1]
+          [argsym].bounds[i-1].hi = rect.hi.x[i-1]
+        end end
+      -- unstructured
+      else emit quote
+        -- initialize to total relation rows here, which would work without
+        -- partitions
+        [argsym].bounds[0].lo = 0
+        [argsym].bounds[0].hi = [ufv:_getPrimaryRegionData().wrapper.live_rows] - 1 -- bound is 1 off: the actual highest index value
+      end end
+    end
+    
     end -- closing do started before unpacking the regions
 
     -- UNPACK FUTURES

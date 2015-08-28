@@ -413,7 +413,7 @@ end
 
 -- Primitives
 local terraprimitive_to_liszt = {}
-local primitives = {"int","uint64","bool","float","double"}
+local primitives = {"int","uint", "uint64","bool","float","double"}
 for i=1,#primitives do
   local p = primitives[i]
   local t = Type:new("primitive")
@@ -422,6 +422,10 @@ for i=1,#primitives do
   L[p] = t
   terraprimitive_to_liszt[t.terratype] = t
   primitives[i] = t
+end
+L.color_type = L.uint
+if use_legion then
+  assert(uint == LW.legion_color_t)
 end
 
 -- Complex type constructors

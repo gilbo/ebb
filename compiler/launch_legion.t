@@ -4,6 +4,12 @@
 rawset(_G, '_legion_env', {})
 local LE = rawget(_G, '_legion_env')
 
+-- set up a global structure to stash cluster information into
+rawset(_G, '_run_config', { use_partitioning = false,
+                            num_cpus = 0,  -- 0 indicates auomatically find the number of cpus
+                          })
+local run_config = rawget(_G, '_run_config')
+
 local C = require "compiler.c"
 
 -- Legion library
@@ -67,16 +73,19 @@ local function exec(cmd)
   return out
 end
 
-local os_type = exec('uname')
-local n_cpu   = 1
-
-if os_type == 'Darwin' then
-  n_cpu = tonumber(exec("sysctl -n hw.ncpu"))
-elseif os_type == 'Linux' then
-  n_cpu = tonumber(exec("nproc"))
-else
-  error('unrecognized operating system: '..os_type..'\n'..
-        ' Contact Developers for Support')
+if run_config.num_cpus == 0 then
+  local os_type = exec('uname')
+  local n_cpu   = 1
+  
+  if os_type == 'Darwin' then
+    n_cpu = tonumber(exec("sysctl -n hw.ncpu"))
+  elseif os_type == 'Linux' then
+    n_cpu = tonumber(exec("nproc"))
+  else
+    error('unrecognized operating system: '..os_type..'\n'..
+          ' Contact Developers for Support')
+  end
+  run_config.num_cpus = n_cpu
 end
 
 local use_legion_spy  = rawget(_G, 'LISZT_LEGION_USE_SPY')
@@ -98,7 +107,7 @@ table.insert(legion_args, "-level")
 table.insert(legion_args, tostring(logging_level))
 -- # of cpus
 table.insert(legion_args, "-ll:cpu")
-table.insert(legion_args, tostring(n_cpu))
+table.insert(legion_args, tostring(run_config.num_cpus))
 -- cpu memory
 --table.insert(legion_args, "-ll:csize")
 --table.insert(legion_args, "512") -- MB

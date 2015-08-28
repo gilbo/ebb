@@ -12,9 +12,10 @@ local L   = require 'compiler.lisztlib'
 local G   = require 'compiler.gpu_util'
 local Support = require 'compiler.codegen_support'
 
-local LW
+local LW, run_config
 if use_legion then
   LW = require "compiler.legionwrap"
+  run_config = rawget(_G, '_run_config')
 end
 
 L._INTERNAL_DEV_OUTPUT_PTX = false
@@ -71,6 +72,14 @@ function Context:isInSubset(param_var)
   local boolmask_field = self.ufv._subset._boolmask
   local boolmask_ptr   = self:FieldElemPtr(boolmask_field, param_var)
   return `@boolmask_ptr
+end
+
+function Context:isPlainRelation()
+  return self.ufv._relation:isPlain()
+end
+
+function Context:isGridRelation()
+  return self.ufv._relation:isGrid()
 end
 
 -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
@@ -209,15 +218,6 @@ function Context:reserveInsertIndex()
 
   end
 end
-
-
-
-
-
-
-
-
-
 
 
 --[[--------------------------------------------------------------------]]--
@@ -512,11 +512,21 @@ function Codegen.codegen (ufunc_ast, ufunc_version)
 
   -- OPTIONALLY WRAP UP AS A LEGION TASK
   if use_legion then
+    if run_config.use_partitioning and ctxt:isGridRelation() then
+      error("INTERNAL: launches over structured relations not yet supported with partitioning")
+    elseif
+      run_config.use_partitioning and ctxt:onGPU() then
+      error("INTERNAL: gpus with partitioning not supported yet")
+    end
     local generate_output_future = quote end
     if ctxt:hasGlobalReduce() then
       local globl             = next(ctxt.ufv._global_reductions)
       local gtyp              = globl.type:terraType()
       local gptr              = ctxt.ufv:_getLegionGlobalTempSymbol(globl)
+
+      if run_config.use_partitioning then
+        error("INTERNAL: reductions with partitioning not supported yet")
+      end
 
       if next(ctxt.ufv._global_reductions, globl) then
         error("INTERNAL: More than 1 global reduction at a time unsupported")
@@ -539,14 +549,38 @@ function Codegen.codegen (ufunc_ast, ufunc_version)
     launcher = terra (task_args : LW.TaskArgs)
       var [ctxt:argsym()]
       [ ctxt.ufv:_GenerateUnpackLegionTaskArgs(ctxt:argsym(), task_args) ]
-      [bd_decl] -- MUST come after task arg unpacking
 
-      basic_launcher(&[ctxt:argsym()])
+      escape
+        if (not ctxt:isGridRelation()) and run_config.use_partitioning then
+          local pnum = ctxt.ufv:_getPrimaryRegionData().num
+          emit quote
+            var lg_index_space =
+              LW.legion_physical_region_get_logical_region(task_args.regions[pnum]).index_space
+            var lg_it = LW.legion_index_iterator_create(task_args.lg_runtime,
+                                                        task_args.lg_ctx,
+                                                        lg_index_space)
+            while LW.legion_index_iterator_has_next(lg_it) do
+              do
+                 var count : C.size_t = 0
+                 var base = LW.legion_index_iterator_next_span([lg_it], &count, -1).value
+                 [ctxt:argsym()].bounds[0].lo = base
+                 [ctxt:argsym()].bounds[0].hi = base + count - 1
+               end
+               basic_launcher(&[ctxt:argsym()])
+            end
+          end
+        else
+          emit quote
+            basic_launcher(&[ctxt:argsym()])
+          end
+        end
+      end -- End escape
 
       [generate_output_future]
-    end
+    end -- Launcher done
+
     launcher:setname(ufunc_name)
-  end -- Legion Launcher end
+  end -- Legion branch end
 
   return launcher
 

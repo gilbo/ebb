@@ -167,45 +167,99 @@ function LW.NewTaskLauncher(params)
   argstruct.args    = taskfuncptr -- taskptrtype*
   argstruct.arglen  = terralib.sizeof(taskptrtype)
 
-  local launcher = LW.legion_task_launcher_create(
-    TID,
-    argstruct[0],
-    LW.legion_predicate_true(),
-    0,
-    0
-  )
+  local launcher
+  if params.use_index_launch then
+    assert(params.domain)
+    -- we (caller) are responsible for argmap
+    local argmap = LW.legion_argument_map_create()
+    launcher = LW.legion_index_launcher_create(
+      TID,
+      params.domain,
+      argstruct[0],
+      argmap,
+      LW.legion_predicate_true(),
+      false,
+      0,
+      0
+    )
+    LW.legion_argument_map_destroy(argmap)
+  else
+    launcher = LW.legion_task_launcher_create(
+      TID,
+      argstruct[0],
+      LW.legion_predicate_true(),
+      0,
+      0
+    )
+  end
+
+
 
   return setmetatable({
     _taskfunc     = taskfunc,     -- important to prevent garbage collection
     _taskfuncptr  = taskfuncptr,  -- important to prevent garbage collection
     _TID          = TID,
     _launcher     = launcher,
+    _index_launch = params.use_index_launch
   }, LW.TaskLauncher)
 end
 
 function LW.TaskLauncher:Destroy()
   self._taskfunc = nil
   self._taskfuncptr = nil
-  LW.legion_task_launcher_destroy(self._launcher)
+  local DestroyVariant = self._index_launch and
+    LW.legion_index_launcher_destroy or
+    LW.legion_task_launcher_destroy
+  DestroyVariant(self._launcher)
   self._launcher = nil
 end
 
-function LW.TaskLauncher:AddRegionReq(lr, permission, coherence)
-  local reg_req =
-  LW.legion_task_launcher_add_region_requirement_logical_region(
-    self._launcher,
-    lr.handle,
-    permission,
-    coherence,
-    lr.handle, -- superfluous parent ?
-    0,
-    false
-  )
+function LW.TaskLauncher:AddRegionReq(reg_partn, parent, permission, coherence)
+  local reg_req
+  if self._index_launch then
+    if reg_partn == parent then
+      reg_req = LW.legion_index_launcher_add_region_requirement_logical_region(
+        self._launcher,
+        reg_partn.handle,
+        0,
+        permission,
+        coherence,
+        parent.handle, 
+        0,
+        false
+      )
+    else
+      reg_req = LW.legion_index_launcher_add_region_requirement_logical_partition(
+        self._launcher,
+        reg_partn.handle,
+        0,
+        permission,
+        coherence,
+        parent.handle,
+        0,
+        false
+      )
+    end
+  else
+    assert(reg_partn == parent)
+    reg_req = LW.legion_task_launcher_add_region_requirement_logical_region(
+      self._launcher,
+      reg_partn.handle,
+      permission,
+      coherence,
+      parent.handle, -- superfluous parent ?
+      0,
+      false
+    )
+  end
   return reg_req
 end
 
 function LW.TaskLauncher:AddField(reg_req, fid)
-  LW.legion_task_launcher_add_field(
+  local AddFieldVariant = self._index_launch and
+    LW.legion_index_launcher_add_field or
+    LW.legion_task_launcher_add_field
+  AddFieldVariant(
     self._launcher,
     reg_req,
     fid,
@@ -214,12 +268,18 @@ function LW.TaskLauncher:AddField(reg_req, fid)
 end
 
 function LW.TaskLauncher:AddFuture(future)
-  LW.legion_task_launcher_add_future(self._launcher, future)
+  local AddFutureVariant = self._index_launch and
+    LW.legion_index_launcher_add_future or
+    LW.legion_task_launcher_add_future
+  AddFutureVariant(self._launcher, future)
 end
 
 -- If there's a future it will be returned
 function LW.TaskLauncher:Execute(runtime, ctx)
-  return LW.legion_task_launcher_execute(runtime, ctx, self._launcher)
+  local ExecuteVariant = self._index_launch and
+    LW.legion_index_launcher_execute or
+    LW.legion_task_launcher_execute
+  return ExecuteVariant(runtime, ctx, self._launcher)
 end
 
 
@@ -499,7 +559,7 @@ end
 --[[  Physical Region Methods                                              ]]--
 -------------------------------------------------------------------------------
 
-
+-- Inline physical region for entire relation, not just a part of it
 function LW.NewInlinePhysicalRegion(params)
   if not params.relation then
     error('Expects relation argument', 2)
@@ -573,6 +633,8 @@ function LW.NewInlinePhysicalRegion(params)
     local stride = terralib.new(uint64[1])
     for i, field in ipairs(params.fields) do
       accs[i] = LW.legion_physical_region_get_field_accessor_generic(prs[i], field.fid)
+      base[0] = nil
+      stride[0] = 0
       LW.legion_accessor_generic_get_soa_parameters(accs[i], base, stride)
       ptrs[i]    = terralib.cast(&uint8, base[0])
       strides[i] = { stride[0] }
@@ -618,6 +680,55 @@ function InlinePhysicalRegion:Destroy()
       LW.legion_runtime_unmap_region(legion_env.runtime, legion_env.ctx, pr)
       LW.legion_physical_region_destroy(pr)
       LW.legion_inline_launcher_destroy(il)
+  end
+end
+
+
+-------------------------------------------------------------------------------
+--[[  Partitioning logical regions                                         ]]--
+-------------------------------------------------------------------------------
+
+local LogicalPartition = {}
+LogicalPartition.__index = LogicalPartition
+
+function LogicalPartition:ColoringField()
+  return self.color_field
+end
+
+function LogicalPartition:ColorSpace()
+  return self.color_space
+end
+
+function LogicalPartition:Domain()
+  return self.color_space
+end
+
+local terra CreateColorSpace(num_colors : LW.legion_color_t)
+  var lo = LW.legion_point_1d_t({arrayof(int, 0)})
+  var hi = LW.legion_point_1d_t({arrayof(int, num_colors - 1)})
+  return LW.legion_domain_from_rect_1d(LW.legion_rect_1d_t({lo, hi}))
+end
+
+function LogicalRegion:CreatePartitionByField(rfield)
+  if self.relation:isGrid() then
+    error("Partitioning not implemented for grids yet")
+  else
+    local color_space = CreateColorSpace(self.relation:NumPartitions())
+    local partn = LW.legion_index_partition_create_by_field(
+      legion_env.runtime, legion_env.ctx,
+      self.handle, self.handle, rfield.fid,
+      color_space,
+      100, false)
+    local lp = LW.legion_logical_partition_create(
+      legion_env.runtime, legion_env.ctx, self.handle, partn)
+    local lp = {
+                 color_field = rfield,
+                 color_space = color_space,
+                 handle      = lp,
+                 index_partn = partn
+               }
+    setmetatable(lp, LogicalPartition)
+    return lp
   end
 end
 
@@ -698,50 +809,6 @@ end
 ]]
 
 
----------------------)(Q#$&Y@)#*$(*&_)@----------------------------------------
---[[         GILBERT added this to make field loading work.                ]]--
---[[           Think of this as a workspace, not final organization        ]]--
------------------------------------------)(Q#$&Y@)#*$(*&_)@--------------------
-
-
-local function iterate1d(n)
-  local i = -1
-  return function()
-    i = i+1
-    if i>= n then return nil end
-    return i
-  end
-end
-local function iterate2d(nx,ny)
-  local xi = -1
-  local yi = 0
-  return function()
-    xi = xi+1
-    if xi >= nx then xi = 0; yi = yi + 1 end
-    if yi >= ny then return nil end
-    return xi, yi
-  end
-end
-local function iterate3d(nx,ny,nz)
-  local xi = -1
-  local yi = 0
-  local zi = 0
-  return function()
-    xi = xi+1
-    if xi >= nx then xi = 0; yi = yi + 1 end
-    if yi >= ny then yi = 0; zi = zi + 1 end
-    if zi >= nz then return nil end
-    return xi, yi, zi
-  end
-end
-local function linid(ids,dims)
-      if #dims == 1 then return ids[1]
-  elseif #dims == 2 then return ids[1] + dims[1] * ids[2]
-  elseif #dims == 3 then return ids[1] + dims[1] * (ids[2] + dims[2]*ids[3])
-  else error('INTERNAL > 3 dimensional address???') end
-end
-
-
 function LW.heavyweightBarrier()
   LW.legion_runtime_issue_execution_fence(legion_env.runtime, legion_env.ctx)
 end
@@ -802,149 +869,86 @@ function LW.CopyField (params)
 end
 
 
-
-
-
 -- The ControlScanner lets the top-level/control task
 -- scan any logical region in order to load or extract data from fields
 LW.ControlScanner         = {}
 LW.ControlScanner.__index = LW.ControlScanner
 
 function LW.NewControlScanner(params)
-  if not params.logical_region then
-    error('Expects logical_region argument', 2)
-  elseif not params.privilege then
-    error('Expects privilege argument', 2)
-  elseif not params.fields then
-    error('Expects fields list argument', 2)
-  end
-  if not params.dimensions then
-    error('Expects dimensions argument', 2)
-  end
-
-  local ils   = {}
-  local prs   = {}
-  local fids  = {}
-
-  for i,fid in ipairs(params.fields) do
-    fids[i] = fid
-    -- create inline launcher
-    ils[i]  = LW.legion_inline_launcher_create_logical_region(
-      params.logical_region,  -- legion_logical_region_t handle
-      params.privilege,       -- legion_privilege_mode_t
-      LW.EXCLUSIVE,           -- legion_coherence_property_t
-      params.logical_region,  -- legion_logical_region_t parent
-      0,                      -- legion_mapping_tag_id_t region_tag /* = 0 */
-      false,                  -- bool verified /* = false*/
-      0,                      -- legion_mapper_id_t id /* = 0 */
-      0                       -- legion_mapping_tag_id_t launcher_tag /* = 0 */
-    )
-    -- add field to launcher
-    LW.legion_inline_launcher_add_field(ils[i], fids[i], true)
-    -- execute launcher to get physical region
-    prs[i]  = LW.legion_inline_launcher_execute(legion_env.runtime,
-                                                legion_env.ctx, ils[i])
-  end
-
-  local launchobj = setmetatable({
-    inline_launchers  = ils,
-    physical_regions  = prs,
-    fids              = fids,
-    dimensions        = params.dimensions,
-  }, LW.ControlScanner)
+  -- create inline launcher
+  local ilps  = LW.NewInlinePhysicalRegion(
+    { relation   = params.relation,
+      fields     = params.fields,
+      privilege  = params.privilege
+    } )
+  local launchobj = setmetatable(
+    {
+      inline_physical_regions = ilps,
+      relation                = params.relation
+    }, LW.ControlScanner)
 
   return launchobj
 end
 
 function LW.ControlScanner:ScanThenClose()
-  local dims = self.dimensions
-  local accs = {}
-  local offs = {}
-  local ptrs = {}
 
-  -- initialize field-independent data for iteration
-  local subrect
-  local rect
-  local get_raw_rect_ptr
-  if #dims == 1 then
-    subrect            = C.safemalloc( LW.legion_rect_1d_t )
-    rect               = C.safemalloc( LW.legion_rect_1d_t )
-    get_raw_rect_ptr   = LW.legion_accessor_generic_raw_rect_ptr_1d
-  elseif #dims == 2 then
-    subrect            = C.safemalloc( LW.legion_rect_2d_t )
-    rect               = C.safemalloc( LW.legion_rect_2d_t )
-    get_raw_rect_ptr   = LW.legion_accessor_generic_raw_rect_ptr_2d
-  elseif #dims == 3 then
-    subrect            = C.safemalloc( LW.legion_rect_3d_t )
-    rect               = C.safemalloc( LW.legion_rect_3d_t )
-    get_raw_rect_ptr   = LW.legion_accessor_generic_raw_rect_ptr_3d
-  else
-    error('INTERNAL n_dimensions > 3')
-  end
-  for d=1,#dims do
-    rect.lo.x[d-1] = 0
-    rect.hi.x[d-1] = dims[d]-1
-  end
-
-  -- initialize field-dependent data for iteration
-  for k,fid in ipairs(self.fids) do
-    local pr  = self.physical_regions[k]
-    accs[k]   = LW.legion_physical_region_get_field_accessor_generic(pr, fid)
-    local offtemp = C.safemalloc(LW.legion_byte_offset_t[#dims])
-    ptrs[k] = terralib.cast(&int8, get_raw_rect_ptr(
-                accs[k], rect[0], subrect,
-                terralib.cast(&LW.legion_byte_offset_t, offtemp)
-              ))
-    offs[k] = {}
-    for d=1,#dims do
-      offs[k][d] = offtemp[0][d-1].offset
-    end
-  end
+  local dims = self.relation:Dims()
+  local ptrs = self.inline_physical_regions:GetDataPointers()
+  local strides = self.inline_physical_regions:GetStrides()
 
   -- define what to do when the iteration terminates
   local function close_up()
-    for k=1,#self.fids do
-      LW.legion_accessor_generic_destroy(accs[k])
-    end
     self:close()
     return nil
   end
 
   -- define an iterator/generator
   if #dims == 1 then
-    local iter = iterate1d(dims[1])
+    assert(not self.relation:isGrid())
+    local nx = dims[1]
+    local xi = -1
     return function()
-      local i = iter()
-      if i == nil then return close_up() end
-
+      xi = xi+1
+      if xi>= nx then return close_up() end
       local callptrs = {}
-      for fi=1,#self.fids do 
-        callptrs[fi] = ptrs[fi] + i*offs[fi][1]
+      for i = 1, #ptrs do
+        callptrs[i] = ptrs[i] + 
+                      xi*strides[i][1]
       end
-      return {i}, callptrs
+      return {xi}, callptrs
     end
   elseif #dims == 2 then
-    local iter = iterate2d(dims[1], dims[2])
+    local nx = dims[1]
+    local ny = dims[2]
+    local xi = -1
+    local yi = 0
     return function()
-      local xi,yi = iter()
-      if xi == nil then return close_up() end
-
+      xi = xi+1
+      if xi >= nx then xi = 0; yi = yi + 1 end
+      if yi >= ny then return close_up() end
       local callptrs = {}
-      for fi=1,#self.fids do 
-        callptrs[fi] = ptrs[fi] + yi*offs[fi][2] + xi*offs[fi][1]
+      for i = 1, #ptrs do
+        callptrs[i] = ptrs[i] + 
+                      yi*strides[i][2] + xi*strides[i][1]
       end
       return {xi,yi}, callptrs
     end
   elseif #dims == 3 then
-    local iter = iterate3d(dims[1], dims[2], dims[3])
+    local xi = -1
+    local yi = 0
+    local zi = 0
+    local nx = dims[1]
+    local ny = dims[2]
+    local nz = dims[3]
     return function()
-      local xi,yi,zi = iter()
-      if xi == nil then return close_up() end
-
+      xi = xi+1
+      if xi >= nx then xi = 0; yi = yi + 1 end
+      if yi >= ny then yi = 0; zi = zi + 1 end
+      if zi >= nz then return close_up() end
       local callptrs = {}
-      for fi=1,#self.fids do 
-        callptrs[fi] = ptrs[fi] +
-                       zi*offs[fi][3] + yi*offs[fi][2] + xi*offs[fi][1]
+      for i = 1, #ptrs do
+        callptrs[i] = ptrs[i] + 
+                      zi*strides[i][3] + yi*strides[i][2] + xi*strides[i][1]
       end
       return {xi,yi,zi}, callptrs
     end
@@ -953,17 +957,5 @@ end
 
 
 function LW.ControlScanner:close()
-  for i=1,#self.fids do
-    local il  = self.inline_launchers[i]
-    local pr  = self.physical_regions[i]
-
-    LW.legion_runtime_unmap_region(legion_env.runtime, legion_env.ctx, pr)
-    LW.legion_physical_region_destroy(pr)
-    LW.legion_inline_launcher_destroy(il)
-  end
+  self.inline_physical_regions:Destroy()
 end
-
-
-
-
-

@@ -4,106 +4,35 @@
 print("* This is a Liszt application *")
 
 import "compiler.liszt"
-local g_scal = L.Global(L.int, 4)
+local DLD = require "compiler.dld"
+
+local C = terralib.includecstring([[ #include <stdio.h> ]])
 
 -- Create relations and fields
 
 local cells = L.NewRelation { name = 'cells_1d', size = 4 }
-local dual_cells = L.NewRelation { name = 'dual_cells_1d', size = 5 }
-cells:NewField('dual_left', dual_cells):Load({0, 1, 2, 3})
-cells:NewField('dual_right', dual_cells):Load({1, 2, 3, 4})
-cells:NewSubsetFromFunction('interior',
-                            function(x)
-                              return (x > 0 and x < 3) end)
 
--- local cells = L.NewRelation { name = 'cells_2d', dims = {4,1} }
--- local dual_cells = L.NewRelation { name = 'dual_cells_2d', dims = {5,1} }
--- cells:NewField('dual_left', dual_cells):Load({{{0, 0},  {1, 0}, {2, 0}, {0, 0}}})
--- cells:NewField('dual_right', dual_cells):Load({{{1, 0}, {2, 0}, {3, 0}, {4, 0}}})
+cells:NewField('mass', L.float):Load({1.2, 1.4, 2.1, 3.2})
 
-cells:NewField('x', L.int)
-cells:NewField('y', L.double)
-
-dual_cells:NewField('a', L.double)
-
--- Globals
-local g_scal = L.Global(L.int, 4)
-local g_vec  = L.Global(L.vec2d, {0, 0})
--- THIS FAILS RIGHT NOW BECAUSE OF TYPE CHECKING ERRORS
--- local g_mat  = L.Global(L.mat3i, { {10, 2, 3}, {4, 50, 6}, {7, 8, 100} })
-
-local liszt CenteredReads(c : cells)
-  L.print(c.x)
-  L.print(c.y)
+local liszt InitMass(c)
+  L.print(c.mass)
 end
 
-local liszt CenteredWrite(c : cells)
-  c.x = 1
+cells:foreach(InitMass)
+
+local terra Printer(darray : &DLD.ctype)
+  var d = darray[0]
+  var c : float
+  var b = d.dims
+  var s = d.stride
+  for i = 0, b[0] do
+    for j = 0, b[1] do
+      for k = 0, b[2] do
+        var ptr = [&uint8](d.address) + i*s[0] + j*s[1] + k*s[2]
+        C.printf("Value = %f\n", @[&float](ptr))
+      end
+    end
+  end
 end
 
-local liszt CenteredMul(c : cells)
-  c.y = 0.2 * c.x
-end
-
-local liszt ReduceField(c : cells)
-  c.y += 0.1
-end
-
-local liszt ReduceGlobalVec(c : cells)
-  c.y += 0.3
-  g_vec += L.vec2d({0.2, 0.1})
-end
-
-local liszt InitDual(d : dual_cells)
-  d.a = 0.1
-end
-
-local liszt InitCells(c : cells)
-  c.x = 3
-  c.y = 0.45
-end
-
-local liszt CollectDual(c : cells)
-  L.print(c.dual_left)
-  c.y += c.dual_left.a
-  c.y += c.dual_right.a
-end
-
--- global and field reads, writes, reduction
-local function test_accesses()
-  print(g_scal:get())
-  terralib.tree.printraw(g_vec:get())
-  cells:foreach(CenteredWrite)
-  cells:foreach(CenteredMul)
-  cells:foreach(CenteredReads)
-  cells:foreach(ReduceField)
-  cells:foreach(ReduceGlobalVec)
-  cells:foreach(CenteredReads)
-  terralib.tree.printraw(g_vec:get())
-end
-test_accesses()
-
--- keyfield functionality
-local function test_keyfields()
-  dual_cells:foreach(InitDual)
-  cells:foreach(InitCells)
-  cells:foreach(CenteredReads)
-  cells:foreach(CollectDual)
-  cells:foreach(CenteredReads)
-end
-test_keyfields()
-
--- subset functionality
-local function test_subsets()
-  cells.interior:foreach(InitCells)
-  cells.interior:foreach(CenteredReads)
-  cells:foreach(CenteredReads)
-end
-test_subsets()
-
-local verts = L.NewRelation { name = 'verts', size = 8 }
-verts:NewField('t', L.float):Load(0)
-verts:NewField('pos', L.vec3d):Load({1,2,3})
-
-local grid = L.NewRelation { name = 'cells', dims = {4,3,2} }
-grid:NewField('p', L.double):Load(0)
+cells.mass:DumpTerraFunction(Printer)
