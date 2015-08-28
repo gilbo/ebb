@@ -26,7 +26,7 @@ return {
   yBCLeftVel = {0.0, 0.0, 0.0},
   yBCLeftTemp = 0.0,
   yBCRight = 'adiabatic_wall',
-  yBCRightVel = {0.0, 0.0, 0.0},
+  yBCRightVel = {1.0, 0.0, 0.0},
   yBCRightTemp = 0.0,
   zBCLeft  = 'symmetry',
   zBCLeftVel = {0.0, 0.0, 0.0},
@@ -41,22 +41,22 @@ return {
   initCase = 'Uniform',         -- 'Uniform', 'Restart', 'TaylorGreen2DVortex',
                                 -- or 'TaylorGreen3DVortex'
   restartIter = 0,              -- Starting iteration number for flow restart
-  initParams = {1.0,100000.0,1.0,0.0,0.0}, -- Input flow conditions.
+  initParams = {1.0,71.42857142857143,1.0,0.0,0.0}, -- Input flow conditions.
                                 -- Uniform: {density, pressure, u, v, w}
                                 -- Restart: unused
                                 -- TGV 2D: {density, pressure, vel, null, null}
                                 -- TGV 3D: {density, pressure, vel, null, null}
-  bodyForce = {1.2,0.0,0},      -- Body force (acceleration) in x, y, z
-  gasConstant = 200.0,          -- Ideal gas constant, R = cp - cv [J/kg/K]
-  gamma = 1.25,                 -- Ratio of specific heats, gamma = cp/cv
+  bodyForce = {0.0,0.0,0},      -- Body force (acceleration) in x, y, z
+  gasConstant = 287.058,          -- Ideal gas constant, R = cp - cv [J/kg/K]
+  gamma = 1.4,                 -- Ratio of specific heats, gamma = cp/cv
   viscosity_model = 'Constant', -- 'Constant', 'PowerLaw', or 'Sutherland'
-  constant_visc = 0.1,          -- Value for a constant viscosity [kg/m/s]
+  constant_visc = 1.0e-03,          -- Value for a constant viscosity [kg/m/s]
   powerlaw_visc_ref = 0.001,    -- Power-law reference viscosity [kg/m/s]
   powerlaw_temp_ref = 273.0,    -- Power-law reference temperature [K]
   suth_visc_ref = 1.68e-5,      -- Sutherland's Law reference viscosity [kg/m/s]
   suth_temp_ref = 273.0,        -- Sutherland's Law referene temperature [K]
   suth_s_ref = 110.5,           -- Sutherland's Law S constant [K]
-  prandtl = 1.0,                -- Prandtl number, Pr
+  prandtl = 0.72,                -- Prandtl number, Pr
                                 -- Note: thermal conductivity, k = cp*visc/Pr
   
   -----------------------------------------------------------------------------
@@ -69,23 +69,22 @@ return {
                                    -- 'ON' is two-way, 'OFF' is fluid->particle
   num = 1000.0,                    -- Prescribe the total number of particles
   restitutionCoefficient = 1.0,    -- Restitution coeff. for wall collisions
-  convectiveCoefficient = 20000.0, -- Convective heat transfer coeff. [W/m^2/K]
-  heatCapacity = 1000.0,           -- Particle heat capacity,h [J/kg/K]
+  convectiveCoefficient = 0.7, -- Convective heat transfer coeff. [W/m^2/K]
+  heatCapacity = 0.7,           -- Particle heat capacity,h [J/kg/K]
                                    -- Note: Nusselt = h*Dp/k
   absorptivity = 1.0,              -- Radiation absorption coeff., 0.0 <-> 1.0
-  initialTemperature = 500.0,      -- Initial temperature [K]
-  density = 9e3,                   -- Particle density [kg/m^3]
-  diameter_mean = 1e-2,            -- Mean value for stochastic diameter, Dp [m]
+  initialTemperature = 0.248830,      -- Initial temperature [K]
+  density = 8900,                   -- Particle density [kg/m^3]
+  diameter_mean = 1e-3,            -- Mean value for stochastic diameter, Dp [m]
   diameter_maxDeviation = 0.0,     -- Maximum deviation for stochastic diameter
-  bodyForceParticles = {0.0,-1.0,0}, -- Constant body force (acceleration)
+  bodyForceParticles = {0.0,0.0,0}, -- Constant body force (acceleration)
                                    -- on particles in the {x,y,z} directions
   
   -----------------------------------------------------------------------------
   --[[                         RADIATION OPTIONS                           ]]--
   -----------------------------------------------------------------------------
   radiationType = 'OFF',     -- Enable algebraic radiation model, 'ON' or 'OFF'
-  radiationIntensity = 3e6,  -- Radiation intensity as a heat flux [W/m^2]
-                             -- Note:
+  radiationIntensity = 1e1,  -- Radiation intensity as a heat flux [W/m^2]
   zeroAvgHeatSource = 'OFF', -- Subtract the average heat addition due to
                              -- from all cells to enable a steady problem
                              -- when radiation is applied.
@@ -94,7 +93,7 @@ return {
   --[[                      TIME INTEGRATION OPTIONS                       ]]--
   -----------------------------------------------------------------------------
   final_time = 2000.00001, -- Maximum physical time for the simulation [s]
-  max_iter = 5000,         -- Maximum number of iterations
+  max_iter = 50000,         -- Maximum number of iterations
   cfl = 2.5,               -- CFL condition. Setting this to a negative value
                            -- imposes a fixed time step that is given by
                            -- the 'delta_time' config option.

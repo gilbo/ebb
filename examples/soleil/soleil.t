@@ -365,11 +365,15 @@ elseif config.viscosity_model  == 'Sutherland' then
 else
   error("Viscosity model not defined")
 end
-fluid_options.gasConstant                = config.gasConstant
-fluid_options.gamma                      = config.gamma
-fluid_options.dynamic_viscosity_ref      = config.dynamic_viscosity_ref
-fluid_options.dynamic_viscosity_temp_ref = config.dynamic_viscosity_temp_ref
-fluid_options.prandtl                    = config.prandtl
+fluid_options.gasConstant        = config.gasConstant
+fluid_options.gamma              = config.gamma
+fluid_options.prandtl            = config.prandtl
+fluid_options.constant_visc      = config.constant_visc
+fluid_options.powerlaw_visc_ref  = config.powerlaw_visc_ref
+fluid_options.powerlaw_temp_ref  = config.powerlaw_temp_ref
+fluid_options.suth_visc_ref      = config.suth_visc_ref
+fluid_options.suth_temp_ref      = config.suth_temp_ref
+fluid_options.suth_s_ref         = config.suth_s_ref
 
 local flow_options = {}
 if config.initCase == 'Uniform' then
@@ -531,16 +535,10 @@ IO.particleEvolutionIndex = config.particleEvolutionIndex
 -- Store the directory for all output files from the config
 IO.outputFileNamePrefix = config.outputDirectory
 
--- VDB options
--- Check whether VDB is requested or not
+-- VDB options. For now, disable VDB (can add back in config.visualize later)
 local vdb_options = {}
-if config.visualize == 'ON' then
-  vdb_options.visualize = ON
-elseif config.visualize == 'OFF' then
-  vdb_options.visualize = OFF
-else
-  error("VDB visualization not defined (ON or OFF)")
-end
+vdb_options.visualize = OFF
+
 
 -----------------------------------------------------------------------------
 --[[                       Load Data for a Restart                       ]]--
@@ -954,10 +952,22 @@ io.stdout:write(" Gas constant: ",
 io.stdout:write(" Ratio of spcific heats: ",
                 string.format(" %f",fluid_options.gamma), "\n")
 io.stdout:write(" Viscosity model: ", config.viscosity_model, "\n")
-io.stdout:write(" Constant viscosity or reference value: ",
-                string.format(" %f",fluid_options.dynamic_viscosity_ref), "\n")
-io.stdout:write(" Reference temp for Sutherland's law: ",
-                string.format(" %f",fluid_options.dynamic_viscosity_temp_ref), "\n")
+if fluid_options.viscosity_model == Viscosity.Constant then
+  io.stdout:write(" Constant viscosity value: ",
+                  string.format(" %f",fluid_options.constant_visc), "\n")
+elseif fluid_options.viscosity_model == Viscosity.PowerLaw then
+  io.stdout:write(" Power law reference viscosity value: ",
+                string.format(" %f",fluid_options.powerlaw_visc_ref), "\n")
+  io.stdout:write(" Power law reference temperature value: ",
+                string.format(" %f",fluid_options.powerlaw_temp_ref), "\n")
+elseif fluid_options.viscosity_model == Viscosity.Sutherland then
+  io.stdout:write(" Sutherland's law reference viscosity value: ",
+                string.format(" %f",fluid_options.suth_visc_ref), "\n")
+  io.stdout:write(" Sutherland's law reference temperature value: ",
+                string.format(" %f",fluid_options.suth_temp_ref), "\n")
+  io.stdout:write(" Sutherland's law reference S value: ",
+                string.format(" %f",fluid_options.suth_s_ref), "\n")
+end
 io.stdout:write(" Fluid init. type: ", config.initCase, "\n")
 if flow_options.initCase == Flow.Restart then
   io.stdout:write(" Restarting from iteration: ",
@@ -1054,23 +1064,22 @@ end
 
 -- Compute fluid dynamic viscosity from fluid temperature
 local liszt GetDynamicViscosity (temperature)
-  var viscosity = fluid_options.dynamic_viscosity_ref
+  var viscosity = L.double(0.0)
   if fluid_options.viscosity_model == Viscosity.Constant then
     -- Constant
-    viscosity = fluid_options.dynamic_viscosity_ref
+    viscosity = fluid_options.constant_visc
   elseif fluid_options.viscosity_model == Viscosity.PowerLaw then
     -- Power Law
-    viscosity = fluid_options.dynamic_viscosity_ref *
-        L.pow(temperature/fluid_options.dynamic_viscosity_temp_ref, 0.75)
+    viscosity = fluid_options.powerlaw_visc_ref *
+        L.pow(temperature/fluid_options.powerlaw_temp_ref, 0.75)
   elseif fluid_options.viscosity_model == Viscosity.Sutherland then
     -- Sutherland's Law
-    viscosity = fluid_options.dynamic_viscosity_ref *
-    L.pow((temperature/fluid_options.dynamic_viscosity_temp_ref),(3.0/2.0))*
-    ((fluid_options.dynamic_viscosity_temp_ref + 110.4)/
-     (temperature + 110.4))
+    viscosity = fluid_options.suth_visc_ref *
+    L.pow((temperature/fluid_options.suth_temp_ref),(3.0/2.0))*
+    ((fluid_options.suth_temp_ref + fluid_options.suth_s_ref)/
+     (temperature + fluid_options.suth_s_ref))
   end
   return viscosity
-
 end
 
 -- Compute fluid flow sound speed based on temperature (a = sqrt(gamma*R*T))
@@ -1696,12 +1705,13 @@ end
 --------------
 
 liszt Flow.AddBodyForces (c : grid.cells)
-    -- Add body forces to the momentum
+
+    -- Add body forces (accelerations) to the momentum
     c.rhoVelocity_t += c.rho * flow_options.bodyForce
 
     -- Body force contribution to energy equations
-    --c.rhoEnergy_t += c.rho * L.dot(flow_options.bodyForce,c.velocity)
-    --Flow.averageHeatSource += -c.rho * L.dot(flow_options.bodyForce,c.velocity)
+    c.rhoEnergy_t += c.rho * L.dot(flow_options.bodyForce,c.velocity)
+    Flow.averageHeatSource += -c.rho * L.dot(flow_options.bodyForce,c.velocity)
 end
 
 -------------------
