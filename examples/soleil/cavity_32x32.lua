@@ -7,6 +7,8 @@ return {
   initCase    = 'Uniform', -- Uniform, Restart, TaylorGreen2DVortex, TaylorGreen3DVortex
   initParams  = {0.000525805,43.4923,0.0,0.0,0.0}, -- necessary input conditions
   bodyForce   = {0,0.0,0}, -- body force in x, y, z
+  turbForceCoeff = 0.0,    -- Turbulent linear forcing coefficient (f = A*rho*u)
+
   restartIter = 110000,
   
   -- Grid Options --

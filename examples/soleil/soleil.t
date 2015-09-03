@@ -387,9 +387,9 @@ elseif config.initCase == 'TaylorGreen3DVortex' then
 else
   error("Flow initialization type not defined")
 end
-flow_options.initParams = L.Global(L.vector(L.double,5), config.initParams)
-flow_options.bodyForce = L.Global(L.vec3d, config.bodyForce)
-
+flow_options.initParams     = L.Global(L.vector(L.double,5), config.initParams)
+flow_options.bodyForce      = L.Global(L.vec3d, config.bodyForce)
+flow_options.turbForceCoeff = L.Global(L.double, config.turbForceCoeff)
 
 local particles_options = {
     -- Feeder is defined by a type and a set of parameters
@@ -984,6 +984,8 @@ io.stdout:write(" Fluid body force: (",
                 string.format("%1.3f",config.bodyForce[1]), ",",
                 string.format("%1.3f",config.bodyForce[2]), ",",
                 string.format("%1.3f",config.bodyForce[3]), ")\n")
+io.stdout:write(" Linearly forced isotropic turbulence coefficient: ",
+                string.format(" %f",config.turbForceCoeff), "\n")
 print("")
 print("------------------------- Particle Options --------------------------")
 io.stdout:write(" Particle init. type: ", config.initParticles, "\n")
@@ -1708,6 +1710,9 @@ liszt Flow.AddBodyForces (c : grid.cells)
 
     -- Add body forces (accelerations) to the momentum
     c.rhoVelocity_t += c.rho * flow_options.bodyForce
+
+    -- Add source for forced isotropic turbulence (linear in velocity)
+    c.rhoVelocity_t += c.rho * flow_options.turbForceCoeff * c.velocity
 
     -- Body force contribution to energy equations
     c.rhoEnergy_t += c.rho * L.dot(flow_options.bodyForce,c.velocity)

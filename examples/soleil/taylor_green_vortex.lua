@@ -7,6 +7,7 @@ return {
   initCase     = 'TaylorGreen3DVortex', -- Uniform, Restart, TaylorGreen2DVortex, TaylorGreen3DVortex
   initParams = {1,100,2,0.0,0.0}, -- for TGV: first three are density, pressure, velocity
   bodyForce = {0,0.0,0}, -- body force in x, y, z
+  turbForceCoeff = 0.0,         -- Turbulent linear forcing coefficient (f = A*rho*u)
   restartIter = 10000,
   
   -- Grid Options -- PERIODICITY
@@ -64,7 +65,7 @@ return {
   powerlaw_visc_ref = 0.00044,    -- Power-law reference viscosity [kg/m/s]
   powerlaw_temp_ref = 1.0,    -- Power-law reference temperature [K]
   suth_visc_ref = 1.716E-5,     -- Sutherland's Law reference viscosity [kg/m/s]
-  suth_temp_ref = 273.15,       -- Sutherland's Law referene temperature [K]
+  suth_temp_ref = 273.15,       -- Sutherland's Law reference temperature [K]
   suth_s_ref = 110.4,           -- Sutherland's Law S constant [K]
   
   -- Particle Options --
