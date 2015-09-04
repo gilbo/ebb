@@ -81,6 +81,7 @@ Flow.Uniform             = L.Global(L.int, 0)
 Flow.TaylorGreen2DVortex = L.Global(L.int, 1)
 Flow.TaylorGreen3DVortex = L.Global(L.int, 2)
 Flow.Restart             = L.Global(L.int, 3)
+Flow.Perturbed           = L.Global(L.int, 4)
 
 -- Viscosity Model
 Viscosity.Constant   = L.Global(L.int, 0)
@@ -380,6 +381,8 @@ if config.initCase == 'Uniform' then
   flow_options.initCase = Flow.Uniform
 elseif config.initCase == 'Restart' then
   flow_options.initCase = Flow.Restart
+elseif config.initCase == 'Perturbed' then
+  flow_options.initCase = Flow.Perturbed
 elseif config.initCase == 'TaylorGreen2DVortex' then
   flow_options.initCase = Flow.TaylorGreen2DVortex
 elseif config.initCase == 'TaylorGreen3DVortex' then
@@ -1248,6 +1251,15 @@ liszt Flow.InitializePrimitives (c : grid.cells)
       c.velocity[0] = flow_options.initParams[2]
       c.velocity[1] = flow_options.initParams[3]
       c.velocity[2] = flow_options.initParams[4]
+      
+    elseif flow_options.initCase == Flow.Perturbed then
+      -- This initialization imposes a small random perturbation in 
+      -- the density field used to start up forced turbulence cases
+      c.rho         = flow_options.initParams[0]
+      c.pressure    = flow_options.initParams[1]
+      c.velocity[0] = flow_options.initParams[2] + (C.rand_unity()*1e-4)
+      c.velocity[1] = flow_options.initParams[3] + (C.rand_unity()*1e-4)
+      c.velocity[2] = flow_options.initParams[4] + (C.rand_unity()*1e-4)
     elseif flow_options.initCase == Flow.Restart then
      -- Do nothing here, since we have initialized using CSV restarts.
     end
