@@ -70,7 +70,7 @@ local c_blob = terralib.includecstring(
 cuda_include ..
 [[
 
-#include "runtime/src/lmeshloader.h"
+#include "deprecated_runtime/src/lmeshloader.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>

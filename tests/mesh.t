@@ -1,3 +1,4 @@
+--DISABLE-TEST
 --DISABLE-ON-LEGION
 import "compiler.liszt"
 

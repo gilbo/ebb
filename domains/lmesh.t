@@ -2,7 +2,8 @@ local LMesh = {}
 package.loaded["domains.lmesh"] = LMesh
 local L = require "compiler.lisztlib"
 local PN = require "lib.pathname"
-local lisztlibrary = tostring(PN.liszt_root()..'runtime/libsingle_runtime.so')
+local lisztlibrary =
+    tostring(PN.liszt_root()..'deprecated_runtime/libsingle_runtime.so')
 terralib.linklibrary(lisztlibrary)
 
 local C = require "compiler.c"

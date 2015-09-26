@@ -57,7 +57,7 @@ if USE_LEGION then
   -- Here, make sure that the legion library is loaded.
   local legion_dir    = './legion'
   local bindings_dir  = legion_dir..'/bindings/terra'
-  local runtime_dir   = legion_dir..'/runtime'
+  local runtime_dir   = legion_dir..'/deprecated_runtime'
 
   -- Link in a particular library
   if NO_DEBUG then

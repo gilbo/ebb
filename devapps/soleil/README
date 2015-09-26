@@ -1,0 +1,46 @@
+This directory contains a Liszt implementation of the radiative particle-laden
+compressible flow solver on three-dimensional structured grids
+code provided originally at:
+https://github.com/ibermejomoreno/soleil.
+
+In addition, a postprocessing tool written in Python is also contained in this
+directory that can read the files written during the execution of the soleil.t
+program.
+
+To run the code (for example, from the liszt-in-terra/ directory):
+./liszt devapps/soleil/soleil.t
+
+The visual debugger vdb can be used to visually monitor the simulation at
+runtime. It needs to be launched in advance of the execution of the soleil
+program:
+../vdb/vdb &
+
+The postprocessing tool can be run on a time series of output files by using the
+following Bash script:
+-------------------------------------------------------------------------------
+timeStepMin=100 # Initial time step to process
+timeStepMax=20000 # Last time step to process
+timeStepDelta=100 # Process every given number of time steps
+fieldName=temperature # Flow field to plot in the background
+fieldMin=auto # Min value of field to plot (auto will scale automatically)
+fieldMax=auto # Max value of field to plot (auto will scale automatically)
+sliceIndex=6 # For 3D fields, take a given slice in the Z coordinate
+particlesSizeFactor=100 # Factor to multiply particles diameter for plotting
+particlesArrowFactor=100 # Inverse factor to scale arrows (particle velocity)
+histogramsBinSize=30 # Number of bins in x-based and y-based pdfs added to plots
+for timeStep in `seq $timeStepMin $timeStepDelta $timeStepMax`;
+do
+  python ../liszt-in-terra/devapps/soleil/postprocessSoleil.py \
+    output ${timeStep} \
+    $fieldName\
+    $sliceIndex \
+    $particlesSizeFactor \
+    $particlesArrowFactor \
+    $fieldMin $fieldMax \
+    $histogramsBinSize \
+    plot
+done
+-------------------------------------------------------------------------------
+The flow field will be plotted in the background, with the particles
+superimposed on it represented by circles, and arrows showing the velocity of
+particles

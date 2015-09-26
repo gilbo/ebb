@@ -5,12 +5,13 @@ legion
 *.bc
 *.dylib
 *.txt
+*.log
 .metadata
 build
 
-examples/gpu/cudaatomic.t
-examples/gpu/cudamath.t
-examples/gpu/red_ops.t
+devapps/gpu/cudaatomic.t
+devapps/gpu/cudamath.t
+devapps/gpu/red_ops.t
 
 local_files
 

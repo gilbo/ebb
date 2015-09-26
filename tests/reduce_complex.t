@@ -1,13 +1,13 @@
 import "compiler.liszt"
 require "tests/test"
 
-local Tetmesh = L.require 'examples.fem.tetmesh'
-local VEGFileIO = L.require 'examples.fem.vegfileio'
+local Tetmesh = L.require 'devapps.fem.tetmesh'
+local VEGFileIO = L.require 'devapps.fem.vegfileio'
 local PN = L.require 'lib.pathname'
-local U = L.require 'examples.fem.utils'
+local U = L.require 'devapps.fem.utils'
 
 
-local mesh   = VEGFileIO.LoadTetmesh('examples/fem/turtle-volumetric-homogeneous.veg')
+local mesh   = VEGFileIO.LoadTetmesh('devapps/fem/turtle-volumetric-homogeneous.veg')
 
 mesh.density = 1000
 mesh.E = 250000
