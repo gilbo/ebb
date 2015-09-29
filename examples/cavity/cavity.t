@@ -24,7 +24,7 @@ local PN = L.require 'lib.pathname'
 -- have multiple config files available in other locations, and copy them
 -- to this location with the name params.lua before running.
 
-local filename = './examples/soleil/params.lua'
+local filename = './examples/cavity/params.lua'
 local config = loadfile(filename)()
 
 -- Immediately check that the output directory exists. Throw an error if not.
