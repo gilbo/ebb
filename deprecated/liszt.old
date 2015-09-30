@@ -1,4 +1,4 @@
-#!terra/bin/terra -mg
+#!bin/terraliszt -mg
 
 -- unfortunately, this script will only work when invoked from the
 -- directory in which it's located.  =(  The tricky part is that

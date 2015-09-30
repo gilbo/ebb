@@ -9,6 +9,10 @@ legion
 .metadata
 build
 
+bin/
+liszt
+ebb
+
 devapps/gpu/cudaatomic.t
 devapps/gpu/cudamath.t
 devapps/gpu/red_ops.t

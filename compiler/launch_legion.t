@@ -38,7 +38,7 @@ end
 
 -- Launch Liszt application
 function load_liszt()
-  local script_filename = arg[1]
+  local script_filename = arg[0]
   local success = xpcall( function ()
     assert(terralib.loadfile(script_filename))()
     LW.heavyweightBarrier()
@@ -186,7 +186,7 @@ local terra main()
   -- arguments
   var n_args  = [1 + #legion_args]
   var args    = arrayof(rawstring,
-    [arg[0]..' '..arg[1]], -- include the Liszt invocation here;
+    [arg[0]], -- include the Liszt invocation here;
                            -- doesn't matter though
     [legion_args]
   )

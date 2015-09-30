@@ -20,7 +20,7 @@ local function top_level_err_handler ( errobj )
   os.exit(1)
 end
 
-script_filename = arg[1]
+script_filename = arg[0]
 
 exit_code = xpcall( function ()
   assert(terralib.loadfile(script_filename))()
