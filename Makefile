@@ -114,12 +114,14 @@ ifeq ($(PLATFORM),Linux)
 else
   LFLAGS += -Wl,-force_load,$(LIBTERRA)
 endif
-ifeq ($(shell nm $(DYNLIBTERRA) | grep setupterm 2>&1 >/dev/null; echo $$?), 0)
-  LFLAGS += -lcurses 
-endif
-ifeq ($(shell nm $(DYNLIBTERRA) | grep compress2 2>&1 >/dev/null; echo $$?), 0)
-  LFLAGS += -lz
-endif
+# Can we always add these for safety?
+LFLAGS += -lcurses -lz
+#ifeq ($(shell nm $(DYNLIBTERRA) | grep setupterm 2>&1 >/dev/null; echo $$?), 0)
+#  LFLAGS += -lcurses 
+#endif
+#ifeq ($(shell nm $(DYNLIBTERRA) | grep compress2 2>&1 >/dev/null; echo $$?), 0)
+#  LFLAGS += -lz
+#endif
 
 
 # # ----------------------------------------------------------------------- # #
@@ -215,7 +217,7 @@ endif
 #     Cleanup
 
 clean:
-	make -C runtime clean
+	make -C deprecated_runtime clean
 	-rm -r bin
 	-rm -r build
 ifdef LEGION_SYMLINK_EXISTS # don't try to recursively call into nowhere
