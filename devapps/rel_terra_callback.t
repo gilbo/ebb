@@ -1,5 +1,5 @@
-import 'compiler.liszt'
-local dld  = L.require 'compiler.dld'
+import 'ebb.liszt'
+local dld  = require 'ebb.src.dld'
 local C = terralib.includecstring([[
 #include <stdio.h>
   ]])

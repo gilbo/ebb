@@ -1,4 +1,4 @@
-import "compiler.liszt"
+import "ebb.liszt"
 
 local R = L.NewRelation { size = 4, name = 'relation' }
 R:NewField("result", L. uint64)

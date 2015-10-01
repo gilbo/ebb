@@ -1,9 +1,9 @@
-import "compiler.liszt"
+import "ebb.liszt"
 
 -- dld for terra callbacks (Tecplot output)
-local dld  = L.require 'compiler.dld'
+local dld  = require 'ebb.src.dld'
 
-local Grid  = L.require 'domains.grid' 
+local Grid  = require 'ebb.domains.grid' 
 local C = terralib.includecstring [[
 #include <math.h> 
 #include <stdlib.h> 
@@ -23,11 +23,11 @@ double rand_unity() {
 ]]
 
 C.srand(C.time(nil));
-local vdb = L.require 'lib.vdb'
+local vdb = require 'ebb.lib.vdb'
 
 -- Load the pathname library, which just provides a couple of 
 -- convenience functions for manipulating filesystem paths.
-local PN = L.require 'lib.pathname'
+local PN = require 'ebb.lib.pathname'
 
 -----------------------------------------------------------------------------
 --[[                       LOAD THE CONFIG FILE                          ]]--

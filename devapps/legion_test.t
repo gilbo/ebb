@@ -3,8 +3,8 @@
 
 print("* This is a Liszt application *")
 
-import "compiler.liszt"
-local DLD = require "compiler.dld"
+import "ebb.liszt"
+local DLD = require "ebb.src.dld"
 
 local C = terralib.includecstring([[ #include <stdio.h> ]])
 

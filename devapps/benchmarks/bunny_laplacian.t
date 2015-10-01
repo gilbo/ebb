@@ -1,12 +1,12 @@
-import "compiler.liszt" -- Every Liszt File should start with this command
+import "ebb.liszt" -- Every Liszt File should start with this command
 
 -- This line includes the trimesh.t file.
 -- As a result, the table 'Trimesh' defined in that file is bound to
 -- the variable Trimesh declared right here.
-local Trimesh = L.require 'devapps.benchmarks.trimesh'
+local Trimesh = require 'devapps.benchmarks.trimesh'
 
 -- PN (Pathname) is a convenience library for working with paths
-local PN = L.require 'lib.pathname'
+local PN = require 'ebb.lib.pathname'
 
 -- include C math functions
 local cmath = terralib.includecstring '#include <math.h>'
@@ -101,7 +101,7 @@ end
 local sqrt3 = math.sqrt(3)
 
 -- EXTRA: (optional.  It demonstrates the use of VDB, a visual debugger)
-local vdb = L.require('lib.vdb')
+local vdb = require('ebb.lib.vdb')
 local liszt debug_tri_draw ( t : bunny.triangles )
   -- Spoof a really simple directional light
   -- with a cos diffuse term determining the triangle gray scale

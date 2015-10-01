@@ -1,6 +1,6 @@
-import "compiler.liszt"
-local PN = L.require 'lib.pathname'
-local U = L.require 'devapps.fem.utils'
+import "ebb.liszt"
+local PN = require 'ebb.lib.pathname'
+local U = require 'devapps.fem.utils'
 
 local S = {}
 S.__index = S

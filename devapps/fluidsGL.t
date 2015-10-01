@@ -1,4 +1,4 @@
-import 'compiler.liszt'
+import 'ebb.liszt'
 
 local useGPU = true
 if useGPU then
@@ -11,8 +11,8 @@ end
 -- Constants
 --
 
-local PN    = L.require 'lib.pathname'
-local Grid  = L.require 'domains.grid'
+local PN    = require 'ebb.lib.pathname'
+local Grid  = require 'ebb.domains.grid'
 
 local C = terralib.includecstring [[
 #include <math.h>

@@ -1,11 +1,11 @@
-import "compiler.liszt"
+import "ebb.liszt"
 
 local VEGFileIO = {}
 VEGFileIO.__index = VEGFileIO
 package.loaded["devapps.fem.vegfileio"] = VEGFileIO
 
 
-local Tetmesh = L.require 'devapps.fem.tetmesh'
+local Tetmesh = require 'devapps.fem.tetmesh'
 
 
 ------------------------------------------------------------------------------

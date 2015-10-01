@@ -1,4 +1,4 @@
-import "compiler.liszt"
+import "ebb.liszt"
 require "tests/test"
 
 

@@ -1,5 +1,5 @@
-import "compiler.liszt"
-local Grid  = L.require 'domains.grid'
+import "ebb.liszt"
+local Grid  = require 'ebb.domains.grid'
 
 -- parameters
 local N = 140

@@ -1,7 +1,7 @@
-import "compiler.liszt"
+import "ebb.liszt"
 
-local ioOff = L.require 'domains.ioOff'
-local PN    = L.require 'lib.pathname'
+local ioOff = require 'ebb.domains.ioOff'
+local PN    = require 'ebb.lib.pathname'
 local cmath = terralib.includecstring '#include <math.h>'
 
 local tri_mesh_filename = PN.scriptdir() .. 'bunny.off'

@@ -1,5 +1,5 @@
 --DISABLE-ON-GPU  (b/c standard lib functions can't be embedded in CUDA code)
-import "compiler.liszt"
+import "ebb.liszt"
 
 local assert = L.assert
 local R = L.NewRelation { name="R", size=6 }

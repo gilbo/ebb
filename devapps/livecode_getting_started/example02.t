@@ -1,6 +1,6 @@
-import "compiler.liszt"
+import "ebb.liszt"
 
-local ioOff = L.require 'domains.ioOff'
+local ioOff = require 'ebb.domains.ioOff'
 local mesh  = ioOff.LoadTrimesh(
   'devapps/livecode_getting_started/octa.off')
 --local mesh  = ioOff.LoadTrimesh(
@@ -12,7 +12,7 @@ local mesh  = ioOff.LoadTrimesh(
 -- We created a simple Liszt wrapper around VDB so it's easy to use.
 -- We can load this wrapper like any other library.
 
-local vdb   = L.require('lib.vdb')
+local vdb   = require('ebb.lib.vdb')
 
 --[[---------------------------
 

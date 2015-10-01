@@ -1,10 +1,10 @@
-import 'compiler.liszt'
-local vdb = L.require 'lib.vdb'
+import 'ebb.liszt'
+local vdb = require 'ebb.lib.vdb'
 
-local Tetmesh = L.require 'devapps.fem.tetmesh'
-local VEGFileIO = L.require 'devapps.fem.vegfileio'
-local PN = L.require 'lib.pathname'
-local U = L.require 'devapps.fem.utils'
+local Tetmesh = require 'devapps.fem.tetmesh'
+local VEGFileIO = require 'devapps.fem.vegfileio'
+local PN = require 'ebb.lib.pathname'
+local U = require 'devapps.fem.utils'
 
 --------------------------------------------------------------------------------
 --[[                  Setup mesh, simulation paramters etc                  ]]--
@@ -101,11 +101,11 @@ mesh.vertices:NewField('internal_forces', L.vec3d):Load({0, 0, 0})
 local F = nil
 local outDirName = nil
 if forceModel == 'stvk' then
-  F = L.require 'devapps.fem.stvk'
+  F = require 'devapps.fem.stvk'
   outDirName = 'liszt_output/stvk-out'
   os.execute('mkdir -p devapps/fem/' .. outDirName)
 else
-  F = L.require 'devapps.fem.neohookean'
+  F = require 'devapps.fem.neohookean'
   outDirName = 'liszt_output/nh-out'
   os.execute('mkdir -p devapps/fem/' .. outDirName)
 end

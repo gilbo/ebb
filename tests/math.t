@@ -1,4 +1,4 @@
-import 'compiler.liszt'
+import 'ebb.liszt'
 
 local R = L.NewRelation  { size = 32, name = 'R' }
 R:NewField('sqrt', L.double):Load(0.0)

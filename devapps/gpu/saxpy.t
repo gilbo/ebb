@@ -1,4 +1,4 @@
-import 'compiler.liszt'
+import 'ebb.liszt'
 
 local tid_x   = cudalib.nvvm_read_ptx_sreg_tid_x
 local b_dim_x = cudalib.nvvm_read_ptx_sreg_ntid_x

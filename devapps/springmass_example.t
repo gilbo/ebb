@@ -1,7 +1,7 @@
 error('Do not run this file.  Written for didactic reasons '..
       '(in a publication) only')
 
-local Trimesh = L.require 'domains.trimesh'
+local Trimesh = require 'ebb.domains.trimesh'
 local cmath   = L.includecstring '#include <math.h>'
 
 local bunny   = Trimesh.Load('bunny.off')

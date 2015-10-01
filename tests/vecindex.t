@@ -1,8 +1,8 @@
-import "compiler.liszt"
+import "ebb.liszt"
 local test = require "tests/test"
 
 
-local ioOff = L.require 'domains.ioOff'
+local ioOff = require 'ebb.domains.ioOff'
 local mesh  = ioOff.LoadTrimesh('tests/octa.off')
 
 ------------------

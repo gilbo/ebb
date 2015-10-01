@@ -177,18 +177,18 @@ build/%.o:  src_interpreter/%.cpp terra
 	mkdir -p build
 	$(CXX) $(FLAGS) $(CPPFLAGS) $< -c -o $@
 
-bin/$(EXECUTABLE): $(addprefix build/, $(EXEC_OBJS)) terra
-	mkdir -p bin
+release/bin/$(EXECUTABLE): $(addprefix build/, $(EXEC_OBJS)) terra
+	mkdir -p release/bin
 	$(CXX) $(addprefix build/, $(EXEC_OBJS)) -o $@ $(LFLAGS)
 
-$(EXECUTABLE): bin/$(EXECUTABLE)
-	ln -s bin/$(EXECUTABLE) $(EXECUTABLE)
+$(EXECUTABLE): release/bin/$(EXECUTABLE)
+	ln -s release/bin/$(EXECUTABLE) $(EXECUTABLE)
 
-bin/$(EXECUTABLE_CP): bin/$(EXECUTABLE)
-	ln -s bin/$(EXECUTABLE) bin/$(EXECUTABLE_CP)
+release/bin/$(EXECUTABLE_CP): release/bin/$(EXECUTABLE)
+	ln -s release/bin/$(EXECUTABLE) release/bin/$(EXECUTABLE_CP)
 
-$(EXECUTABLE_CP): bin/$(EXECUTABLE)
-	ln -s bin/$(EXECUTABLE) $(EXECUTABLE_CP)
+$(EXECUTABLE_CP): release/bin/$(EXECUTABLE)
+	ln -s release/bin/$(EXECUTABLE) $(EXECUTABLE_CP)
 
 # # ----------------------------------------------------------------------- # #
 #     Legion Rules

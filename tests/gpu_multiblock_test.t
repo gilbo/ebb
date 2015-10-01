@@ -1,14 +1,14 @@
 
 -- This test actually doesn't need to run on the GPU,
 -- it's just designed to stress test GPU execution in particular
-import 'compiler.liszt'
+import 'ebb.liszt'
 
 -- A 17x17 grid will, at current settings,
 -- will force liszt to run the generated kernel
 -- on multiple GPU blocks
 local N=17
 
-local Grid  = L.require 'domains.grid'
+local Grid  = require 'ebb.domains.grid'
 local grid = Grid.NewGrid2d{size           = {N, N},
                             origin         = {0, 0},
                             width          = {1, 1},

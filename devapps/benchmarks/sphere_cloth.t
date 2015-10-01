@@ -1,9 +1,11 @@
-import "compiler.liszt" -- Every Liszt File should start with this command
+import "ebb.liszt" -- Every Liszt File should start with this command
 
-local Grid  = L.require 'domains.grid'
-local PN    = L.require 'lib.pathname'
+error("OUT OF DATE EXAMPLE")
+
+local Grid  = require 'ebb.domains.grid'
+local PN    = require 'ebb.lib.pathname'
 local cmath = terralib.includecstring '#include <math.h>'
-local vdb   = L.require 'lib.vdb'
+local vdb   = require 'ebb.lib.vdb'
 
 
 local N = 40

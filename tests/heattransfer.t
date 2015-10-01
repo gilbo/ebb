@@ -1,4 +1,4 @@
-import 'compiler.liszt'
+import 'ebb.liszt'
 
 local M     = {
   vertices  = L.NewRelation { name="vertices",  size=8  },

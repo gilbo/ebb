@@ -1,9 +1,9 @@
-import "compiler.liszt"
+import "ebb.liszt"
 require 'tests/test'
---local types = require "compiler.types"
+--local types = require "ebb.src.types"
 
 
-local ioOff = L.require 'domains.ioOff'
+local ioOff = require 'ebb.domains.ioOff'
 local mesh  = ioOff.LoadTrimesh('tests/octa.off')
 
 mesh.vertices:NewField('tensor_pos', L.mat3d)

@@ -1,7 +1,8 @@
-import "compiler.liszt"
+import "ebb.liszt"
 --L.default_processor = L.GPU
+error("OUT OF DATE EXAMPLE")
 
-local Grid  = L.require 'domains.grid'
+local Grid  = require 'ebb.domains.grid'
 local cmath = terralib.includecstring [[
 #include <math.h>
 #include <stdlib.h>
@@ -18,7 +19,7 @@ float rand_float()
 }
 ]]
 cmath.srand(cmath.time(nil));
-local vdb   = L.require 'lib.vdb'
+local vdb   = require 'ebb.lib.vdb'
 
 local N = 32
 local width = N

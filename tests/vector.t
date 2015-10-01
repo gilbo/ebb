@@ -1,7 +1,7 @@
 package.path = package.path .. ";./tests/?.lua;?.lua"
 local test = require "test"
-import "compiler.liszt"
-local types = require "compiler.types"
+import "ebb.liszt"
+local types = require "ebb.src.types"
 
 
 local a  = L.Constant(L.vec3f, {1,     2, 3.29})
@@ -11,7 +11,7 @@ local a4 = L.Constant(L.vec4f, {3.4, 4.3, 5, 6.153})
 local ai = L.Constant(L.vec3i, {2, 3, 4})
 local ab = L.Constant(L.vec3b, {true, false, true})
 
-local ioOff = L.require 'domains.ioOff'
+local ioOff = require 'ebb.domains.ioOff'
 local mesh  = ioOff.LoadTrimesh('tests/octa.off')
 
 ------------------

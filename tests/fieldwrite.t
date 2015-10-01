@@ -1,4 +1,4 @@
-import "compiler.liszt"
+import "ebb.liszt"
 
 local R = L.NewRelation { name="R", size=5 }
 R:NewField('position', L.vec3d):Load({0,0,0})

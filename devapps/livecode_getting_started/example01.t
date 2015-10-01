@@ -1,6 +1,6 @@
-import "compiler.liszt"
+import "ebb.liszt"
 
-local ioOff = L.require 'domains.ioOff'
+local ioOff = require 'ebb.domains.ioOff'
 local mesh  = ioOff.LoadTrimesh(
   'devapps/livecode_getting_started/octa.off')
 

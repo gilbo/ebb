@@ -2,7 +2,7 @@ if not terralib.cudacompile then
   print("This simulation requires CUDA support; exiting...")
   return
 end
-import 'compiler.liszt'
+import 'ebb.liszt'
 
 L.default_processor = L.GPU
 --------------------------------------------------------------------------------
@@ -21,8 +21,8 @@ local aadd  = terralib.intrinsic("llvm.nvvm.atomic.load.add.f32.p0f32", {&float,
 --------------------------------------------------------------------------------
 --[[ Read in mesh relation, initialize fields                               ]]--
 --------------------------------------------------------------------------------
-local PN    = require 'lib.pathname'
-local LMesh = require "domains.lmesh"
+local PN    = require 'ebb.lib.pathname'
+local LMesh = require "ebb.domains.lmesh"
 local M     = LMesh.Load(PN.scriptdir():concat("rmesh.lmesh"):tostring())
 
 local function init_temp (i)

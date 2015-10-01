@@ -1,10 +1,10 @@
-import "compiler.liszt" -- Every Liszt File should start with this command
+import "ebb.liszt" -- Every Liszt File should start with this command
 
 -- The first thing we do in most Liszt simulations is to load
 -- a geometric domain library.  The standard library comes with a
 -- couple of basic domains and code for loading from some simple file
 -- formats.  Here we load a Trimesh from an OFF file.
-local ioOff = L.require 'domains.ioOff'
+local ioOff = require 'ebb.domains.ioOff'
 
 -- As we move into more advanced tutorials, we'll learn how to build our
 -- own geometric domain libraries or modify existing ones,
@@ -13,7 +13,7 @@ local ioOff = L.require 'domains.ioOff'
 -- While we're loading in libraries, let's also grab the pathname
 -- library, which just provides a couple of convenience functions
 -- for manipulating filesystem paths.
-local PN = L.require 'lib.pathname'
+local PN = require 'ebb.lib.pathname'
 
 -- (In case you're wondering, those dots '.' in the middle of the
 --  library filenames are specifying subdirectories.  i.e. the last
@@ -144,7 +144,7 @@ end
 -- the results of the heat diffusion using an external visual debugging tool
 -- called VDB.  Please see the special VDB tutorial if you want
 -- to learn how the following code works.
-local vdb  = L.require('lib.vdb')
+local vdb  = require('ebb.lib.vdb')
 local cold = L.Constant(L.vec3f,{0.5,0.5,0.5})
 local hot  = L.Constant(L.vec3f,{1.0,0.0,0.0})
 local liszt debug_tri_draw ( t : bunny.triangles )

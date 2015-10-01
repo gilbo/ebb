@@ -1,5 +1,5 @@
-import "compiler.liszt"
-local PN = L.require 'lib.pathname'
+import "ebb.liszt"
+local PN = require 'ebb.lib.pathname'
 
 local Tetmesh = {}
 Tetmesh.__index = Tetmesh

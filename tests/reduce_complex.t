@@ -1,10 +1,10 @@
-import "compiler.liszt"
-require "tests/test"
+import "ebb.liszt"
+require "tests.test"
 
-local Tetmesh = L.require 'devapps.fem.tetmesh'
-local VEGFileIO = L.require 'devapps.fem.vegfileio'
-local PN = L.require 'lib.pathname'
-local U = L.require 'devapps.fem.utils'
+local Tetmesh = require 'devapps.fem.tetmesh'
+local VEGFileIO = require 'devapps.fem.vegfileio'
+local PN = require 'ebb.lib.pathname'
+local U = require 'devapps.fem.utils'
 
 
 local mesh   = VEGFileIO.LoadTetmesh('devapps/fem/turtle-volumetric-homogeneous.veg')

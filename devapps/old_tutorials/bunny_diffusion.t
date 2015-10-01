@@ -1,4 +1,4 @@
-import "compiler.liszt" -- Every Liszt File should start with this command
+import "ebb.liszt" -- Every Liszt File should start with this command
 
 -- Single line comments in Lua look like this
 
@@ -16,7 +16,7 @@ this
 
 
 -- PN (Pathname) is a convenience library for working with paths
-local PN = L.require 'lib.pathname'
+local PN = require 'ebb.lib.pathname'
 
 -- here's the path object for our .OFF file we want to read in.
 -- Notice that the path is relative to this script's location on
@@ -92,7 +92,7 @@ off_in:close()
 
 -- Now We want to construct the Liszt relations
 -- The 'L' namespace is available because of the
--- initial 'import "compiler.liszt"' statement at the top of this file
+-- initial 'import "ebb.liszt"' statement at the top of this file
 
 local triangles = L.NewRelation { size = n_tris, name = 'triangles' }
 local vertices  = L.NewRelation { size = n_verts, name = 'vertices' }
@@ -375,7 +375,7 @@ end
 
 -- EXTRA: (This is optional.  It demonstrates the use of VDB,
 --         a visual debugger)
-local vdb = require('lib.vdb')
+local vdb = require('ebb.lib.vdb')
 -- The idea here is that we're going to draw all of the triangles
 -- in the mesh with a color proportional to their current
 -- temperature.  When we view this data in VDB, we'll see the

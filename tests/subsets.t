@@ -1,4 +1,4 @@
-import "compiler.liszt"
+import "ebb.liszt"
 require "tests/test"
 
 -- Need a high N to test the index-based representation as well as boolmask

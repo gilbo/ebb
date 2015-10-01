@@ -1,4 +1,4 @@
-import "compiler.liszt"
+import "ebb.liszt"
 
 
 -- In this tutorial, we're going to write heat diffusion yet again.
@@ -6,7 +6,7 @@ import "compiler.liszt"
 -- The basic structure will be the same, but we'll get to see
 -- a pretty different data structure this time around.
 
-local Grid = L.require 'domains.grid'
+local Grid = require 'ebb.domains.grid'
 local cmath = terralib.includecstring '#include <math.h>'
 
 -- We don't have to load grid data from a file.
@@ -80,7 +80,7 @@ grid.cells.boundary:foreach(dirichlet_condition)
 
 
 -- WARNING / EXTRA VDB
-local vdb  = L.require('lib.vdb')
+local vdb  = require('ebb.lib.vdb')
 local cold = L.Constant(L.vec3f,{0.5,0.5,0.5})
 local hot  = L.Constant(L.vec3f,{1.0,0.0,0.0})
 local liszt debug_quad_draw ( c : grid.cells )

@@ -1,8 +1,8 @@
 --------------------------------------------------------------------------------
 --[[ Test implementation of type system for consistency                     ]]--
 --------------------------------------------------------------------------------
-local L = require "compiler.liszt"
-local T = require "compiler.types"
+local L = require "ebb.liszt"
+local T = require "ebb.src.types"
 require "tests.test"
 
 local ptypes = { [int]   = L.int, 

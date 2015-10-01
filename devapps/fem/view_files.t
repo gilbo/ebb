@@ -1,9 +1,9 @@
-import 'compiler.liszt'
-local vdb = L.require 'lib.vdb'
+import 'ebb.liszt'
+local vdb = require 'ebb.lib.vdb'
 
-local Tetmesh = L.require 'devapps.fem.tetmesh'
-local VEGFileIO = L.require 'devapps.fem.vegfileio'
-local PN = L.require 'lib.pathname'
+local Tetmesh = require 'devapps.fem.tetmesh'
+local VEGFileIO = require 'devapps.fem.vegfileio'
+local PN = require 'ebb.lib.pathname'
 
 
 --------------------------------------------------------------------------------

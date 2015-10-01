@@ -1,8 +1,8 @@
 --DISABLE-TEST
-import "compiler.liszt"
+import "ebb.liszt"
 require "tests/test"
 
-local Grid = L.require 'domains.grid'
+local Grid = require 'ebb.domains.grid'
 
 local N = 4
 local grid = Grid.NewGrid2d {

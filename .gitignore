@@ -7,11 +7,11 @@ legion
 *.txt
 *.log
 .metadata
-build
+build/
 
 bin/
-liszt
-ebb
+/liszt
+/ebb
 
 devapps/gpu/cudaatomic.t
 devapps/gpu/cudamath.t

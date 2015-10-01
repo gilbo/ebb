@@ -1,7 +1,7 @@
-import "compiler.liszt"
+import "ebb.liszt"
 --L.default_processor = L.GPU
 
-local Grid  = L.require 'domains.grid'
+local Grid  = require 'ebb.domains.grid'
 local cmath = terralib.includecstring [[
 #include <math.h>
 #include <stdlib.h>
@@ -18,7 +18,7 @@ float rand_float()
 }
 ]]
 cmath.srand(cmath.time(nil));
-local vdb   = L.require 'lib.vdb'
+local vdb   = require 'ebb.lib.vdb'
 
 local N = 128
 local PERIODIC = true
@@ -53,7 +53,7 @@ grid.cells.velocity_prev:Load({0,0})
 --[[                        MULTI-GRID DOMAIN                            ]]--
 -----------------------------------------------------------------------------
 
-local MultiGrid = L.require 'domains.multigrid'
+local MultiGrid = require 'ebb.domains.multigrid'
 local pyramid = MultiGrid.NewMultiGrid2d {
     base_rel = grid.cells,
     top_resolution = 16,

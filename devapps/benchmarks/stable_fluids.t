@@ -1,7 +1,7 @@
-import "compiler.liszt"
+import "ebb.liszt"
 --L.default_processor = L.GPU
 
-local Grid  = L.require 'domains.grid'
+local Grid  = require 'ebb.domains.grid'
 local cmath = terralib.includecstring [[
 #include <math.h>
 #include <stdlib.h>
@@ -23,7 +23,7 @@ local rand_float = L.rand
 --if L.default_processor == L.GPU then
 --    rand_float = terra() return 0.5f end
 --end
-local vdb   = L.require 'lib.vdb'
+local vdb   = require 'ebb.lib.vdb'
 
 local N = 150
 local PERIODIC = true
@@ -469,7 +469,7 @@ end
 
 local STEPS = 500 -- use 500 on my local machine
 for i = 0, STEPS-1 do
-    print(i)
+    --print(i)
     if math.floor(i / 70) % 2 == 0 then
         grid.cells:foreach(source_velocity)
     end

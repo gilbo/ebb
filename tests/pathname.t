@@ -1,8 +1,8 @@
-import "compiler.liszt"
+import "ebb.liszt"
 
 local test = require('tests.test')
 
-local PN = require('lib.pathname')
+local PN = require('ebb.lib.pathname')
 local Pathname = PN.Pathname
 
 local testdir = Pathname.new('pathname_testdir')

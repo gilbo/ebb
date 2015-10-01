@@ -1,7 +1,7 @@
-import "compiler.liszt"
+import "ebb.liszt"
 --L.default_processor = L.GPU
 
-local Grid  = L.require 'domains.grid'
+local Grid  = require 'ebb.domains.grid'
 local cmath = terralib.includecstring [[
 #include <math.h>
 #include <stdlib.h>
@@ -18,7 +18,7 @@ float rand_float()
 }
 ]]
 cmath.srand(cmath.time(nil));
-local vdb   = L.require 'lib.vdb'
+local vdb   = require 'ebb.lib.vdb'
 
 local N = 32
 local PERIODIC = false
@@ -419,9 +419,9 @@ local source_velocity = liszt (c : grid.cells)
        cmath.fabs(c.center[2]) < 1.75
     then
         if not c.in_boundary then
-            c.velocity += L.float(dt) * source_strength * { 0.0, 1.0, 0.0 }
+            c.velocity += L.float(dt) * source_strength * {0.0f, 1.0f, 0.0f}
         else
-            c.velocity += L.float(dt) * source_strength * { 0.0, -1.0, 0.0 }
+            c.velocity += L.float(dt) * source_strength * {0.0f, -1.0f, 0.0f}
         end
     end
 end
@@ -432,7 +432,7 @@ if PERIODIC then
            cmath.fabs(c.center[1]) < 1.75 and
            cmath.fabs(c.center[2]) < 1.75
         then
-            c.velocity += L.float(dt) * source_strength * { 0.0, 1.0, 0.0 }
+            c.velocity += L.float(dt) * source_strength * {0.0f, 1.0f, 0.0f}
         end
     end
 end

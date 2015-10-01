@@ -1,6 +1,6 @@
 --DISABLE-ON-LEGION
 
-import "compiler.liszt"
+import "ebb.liszt"
 require "tests/test"
 
 local Ncell = 1000

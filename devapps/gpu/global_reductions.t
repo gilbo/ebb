@@ -26,7 +26,7 @@ to global memory.  We do this twice to get a single result.
 -------------------------------------------------------------------------------
 -- Imports                                                                   -- 
 -------------------------------------------------------------------------------
-import "compiler.liszt"
+import "ebb.liszt"
 
 local tid = cudalib.nvvm_read_ptx_sreg_tid_x
 local bid_x = cudalib.nvvm_read_ptx_sreg_ctaid_x
@@ -36,7 +36,7 @@ local g_dim_x = cudalib.nvvm_read_ptx_sreg_nctaid_x
 local g_dim_y = cudalib.nvvm_read_ptx_sreg_nctaid_y
 local g_dim_z = cudalib.nvvm_read_ptx_sreg_nctaid_z
 
-local C = L.require 'compiler.c'
+local C = require 'compiler.c'
 
 -------------------------------------------------------------------------------
 -- Global Parameters                                                         -- 

@@ -1,4 +1,4 @@
-import "compiler.liszt" -- Every Liszt File should start with this command
+import "ebb.liszt" -- Every Liszt File should start with this command
 
 
 -- Declare a table named Trimesh

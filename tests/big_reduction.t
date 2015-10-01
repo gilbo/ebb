@@ -1,5 +1,5 @@
 
-import 'compiler.liszt'
+import 'ebb.liszt'
 require 'tests.test'
 
 local N = 1000000

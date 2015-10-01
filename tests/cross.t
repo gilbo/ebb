@@ -1,4 +1,4 @@
-import "compiler.liszt"
+import "ebb.liszt"
 
 local assert = L.assert
 local cross  = L.cross

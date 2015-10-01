@@ -1,4 +1,4 @@
-import "compiler.liszt"
+import "ebb.liszt"
 
 
 -- In this tutorial, we're going to write a spring-mass simulation
@@ -7,8 +7,8 @@ import "compiler.liszt"
 
 -- Now, instead of using OFF files and Trimesh,
 -- we'll use VEG files and Tetmesh; otherwise, it'll be very similar
-local ioVeg = L.require 'domains.ioVeg'
-local PN    = L.require 'lib.pathname'
+local ioVeg = require 'ebb.domains.ioVeg'
+local PN    = require 'ebb.lib.pathname'
 local cmath = terralib.includecstring '#include <math.h>'
 
 local tet_mesh_filename = PN.scriptdir() .. 'dragon.veg'
@@ -18,7 +18,7 @@ local dragon = ioVeg.LoadTetmesh(tet_mesh_filename)
 ------------------------------------------------------------------------------
 
 -- Load and prepare the render mesh
-local ioOff           = L.require 'domains.ioOff'
+local ioOff           = require 'ebb.domains.ioOff'
 local rendermesh_file = PN.scriptdir() .. 'hires_render.off'
 local coupling_file   = PN.scriptdir() .. 'hires_coupling.data'
 local renderrate      = 300
@@ -134,7 +134,7 @@ end
 
 -- START EXTRA VDB CODE
 local sqrt3 = math.sqrt(3)
-local vdb   = L.require('lib.vdb')
+local vdb   = require('ebb.lib.vdb')
 local liszt compute_normal ( t )--t : dragon.triangles )
   var p0  = t.v[0].pos
   var p1  = t.v[1].pos

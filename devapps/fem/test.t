@@ -1,4 +1,4 @@
-import 'compiler.liszt'
+import 'ebb.liszt'
 
 function split_on_spaces(str)
   local a = {}
@@ -26,8 +26,8 @@ end
 
 --dump_list(split_on_spaces("asdf"))
 
-local Tetmesh = L.require 'devapps.fem.tetmesh'
-local VEGFileIO = L.require 'devapps.fem.vegfileio'
+local Tetmesh = require 'devapps.fem.tetmesh'
+local VEGFileIO = require 'devapps.fem.vegfileio'
 
 local turtle = VEGFileIO.LoadTetmesh
   'devapps/fem/turtle-volumetric-homogeneous.veg'
@@ -85,7 +85,7 @@ end
 local lightdir = L.Constant(L.vec3f,{sqrt3,sqrt3,sqrt3})
 
 -- EXTRA: (optional.  It demonstrates the use of VDB, a visual debugger)
-local vdb = L.require('lib.vdb')
+local vdb = require('ebb.lib.vdb')
 local visualize = liszt ( t : turtle.tetrahedra )
   var p0 = L.vec3f(t.v0.pos)
   var p1 = L.vec3f(t.v1.pos)

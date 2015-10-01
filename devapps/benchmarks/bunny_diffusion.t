@@ -1,12 +1,12 @@
-import "compiler.liszt" -- Every Liszt File should start with this command
+import "ebb.liszt" -- Every Liszt File should start with this command
 
 -- This line includes the trimesh.t file.
 -- As a result, the table 'Trimesh' defined in that file is bound to
 -- the variable Trimesh declared right here.
-local Trimesh = L.require 'devapps.benchmarks.trimesh'
+local Trimesh = require 'devapps.benchmarks.trimesh'
 
 -- PN (Pathname) is a convenience library for working with paths
-local PN = L.require 'lib.pathname'
+local PN = require 'ebb.lib.pathname'
 
 -- include C math functions
 local cmath = terralib.includecstring '#include <math.h>'
@@ -65,7 +65,7 @@ end
 
 
 -- EXTRA: (optional.  It demonstrates the use of VDB, a visual debugger)
-local vdb  = L.require('lib.vdb')
+local vdb  = require('ebb.lib.vdb')
 local cold = L.Constant(L.vec3f,{0.5,0.5,0.5})
 local hot  = L.Constant(L.vec3f,{1.0,0.0,0.0})
 local liszt debug_tri_draw ( t : bunny.triangles )
@@ -90,7 +90,6 @@ end
 -- Execute 300 iterations of the diffusion
 
 for i = 1,300 do
-  print('aaa', i)
   --compute_diffusion(bunny.vertices)
   bunny.vertices:foreach(compute_diffusion)
 

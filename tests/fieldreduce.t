@@ -1,6 +1,6 @@
-import "compiler.liszt"
+import "ebb.liszt"
 
-local ioOff = L.require 'domains.ioOff'
+local ioOff = require 'ebb.domains.ioOff'
 local M = ioOff.LoadTrimesh('tests/octa.off')
 
 local V = M.vertices

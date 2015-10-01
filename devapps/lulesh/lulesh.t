@@ -1,9 +1,9 @@
-import 'compiler.liszt'
+import 'ebb.liszt'
 
 --L.default_processor = L.GPU
 
-local PN    = L.require 'lib.pathname'
-local Grid  = L.require "domains.grid"
+local PN    = require 'ebb.lib.pathname'
+local Grid  = require "ebb.domains.grid"
 
 
 local N = 45

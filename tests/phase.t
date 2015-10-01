@@ -1,7 +1,7 @@
-import "compiler.liszt"
+import "ebb.liszt"
 local test  = require "tests/test"
 
-local ioOff = L.require 'domains.ioOff'
+local ioOff = require 'ebb.domains.ioOff'
 local M     = ioOff.LoadTrimesh('tests/octa.off')
 
 M.vertices:NewField('field1', L.float):LoadConstant(0)

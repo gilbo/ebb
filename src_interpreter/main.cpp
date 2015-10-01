@@ -157,21 +157,30 @@ void setupebb(lua_State * L, ebb_Options * ebboptions) {
         errquit(L, "ERROR: Failed to retreive path to this executable.\n");
     }
 
-    if (ebboptions->uselegion) {
-        char buffer[MAX_PATH_LEN]; // plenty of room
-        size_t bufsize = MAX_PATH_LEN;
+    char buffer[MAX_PATH_LEN]; // plenty of room
+    size_t bufsize = MAX_PATH_LEN;
 
+    // Make sure we can find the Terra files
+    snprintf(buffer, bufsize,
+      "package.terrapath = package.terrapath..';%s/../?.t;'",
+      bindir);
+    if (terra_dostring(L, buffer))
+        doerror(L);
+
+    if (ebboptions->uselegion) {
         // extend the Terra include path
         snprintf(buffer, bufsize,
-          "terralib.includepath = terralib.includepath..';"
-          "%s/../legion/deprecated_runtime;%s/../legion/bindings/terra",
+          "terralib.includepath = terralib.includepath.."
+          "';%s/../../legion/runtime;"
+          "%s/../../legion/bindings/terra'",
           bindir, bindir);
         if (terra_dostring(L, buffer))
             doerror(L);
 
         // extend the Lua include path
         //snprintf(buffer, bufsize,
-        //  "package.path = package.path..';%s/../legion/bindings/terra/?.t",
+        //  "package.path = package.path.."
+        //  "';%s/../../legion/bindings/terra/?.t'",
         //  bindir);
         //if (terra_dostring(L, buffer))
         //    doerror(L);
@@ -179,13 +188,13 @@ void setupebb(lua_State * L, ebb_Options * ebboptions) {
         // Link the Legion Shared Library into Terra
         if (ebboptions->ndebug) {
             snprintf(buffer, bufsize,"terralib.linklibrary("
-              "'%s/../legion/bindings/terra/liblegion_terra_release.so')",
+              "'%s/../../legion/bindings/terra/liblegion_terra_release.so')",
               bindir);
             if (terra_dostring(L, buffer))
                 doerror(L);
         } else {
             snprintf(buffer, bufsize,"terralib.linklibrary("
-              "'%s/../legion/bindings/terra/liblegion_terra_debug.so')",
+              "'%s/../../legion/bindings/terra/liblegion_terra_debug.so')",
               bindir);
             if (terra_dostring(L, buffer))
                 doerror(L);
@@ -216,9 +225,9 @@ int load_launchscript( lua_State * L, ebb_Options * ebboptions ) {
     size_t bufsize = MAX_PATH_LEN;
 
     if (ebboptions->uselegion) {
-        snprintf(buffer, bufsize, "%s/../compiler/launch_legion.t", bindir);
+        snprintf(buffer, bufsize, "%s/../ebb/src/launch_legion.t", bindir);
     } else {
-        snprintf(buffer, bufsize, "%s/../compiler/launch_script.t", bindir);
+        snprintf(buffer, bufsize, "%s/../ebb/src/launch_script.t", bindir);
     }
     return terra_loadfile(L,buffer);
 }
