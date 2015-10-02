@@ -1,4 +1,4 @@
--- This is a Lua config file for the pressure-based Liszt cavity code.
+-- This is a Lua config file for the pressure-based Ebb cavity code.
 
 return {
 
@@ -38,7 +38,7 @@ converged = 1.0e-8,
 -- linear solver, either 'jacobi' or 'gauss_seidel'
 linearSolver = 'gauss_seidel', 
 
--- Output location relative to the liszt-in-terra home directory
+-- Output location relative to the liszt-ebb home directory
 outputDirectory = '../cavityOutput/',
 
 -- Output frequency (number of iterations between writing files)

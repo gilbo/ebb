@@ -1,8 +1,8 @@
-import "compiler.liszt"
+import "ebb"
 
 -- Load the grid library for structured grids.
 
-local Grid  = L.require 'domains.grid'
+local Grid  = require 'ebb.domains.grid'
 
 -- We can import the C math library through terra.
 
@@ -13,7 +13,7 @@ local cmath = terralib.includecstring [[
 -- Load the pathname library, which just provides a couple of
 -- convenience functions for manipulating filesystem paths.
 
-local PN = L.require 'lib.pathname'
+local PN = require 'ebb.lib.pathname'
 
 
 --------------------------------------------------------------------------------
@@ -24,7 +24,7 @@ local PN = L.require 'lib.pathname'
 -- have multiple config files available in other locations, and copy them
 -- to this location with the name params.lua before running.
 
-local filename = './examples/cavity/params.lua'
+local filename = './devapps/cavity/params.lua'
 local config = loadfile(filename)()
 
 -- Immediately check that the output directory exists. Throw an error if not.
@@ -217,7 +217,7 @@ if PERIODIC then
   period = {true,true}
 end
 
--- Create the Liszt grid object from the above inputs. Once the grid is
+-- Create the Ebb grid object from the above inputs. Once the grid is
 -- initialized, we will have a number of relations available to us,
 -- including cells, dual cells, and vertices.
 
@@ -229,20 +229,20 @@ local grid = Grid.NewGrid2d {
   periodic_boundary = period
 }
 
--- Define origin as Liszt globals for use in kernels.
+-- Define origin as Ebb globals for use in kernels.
 
 local grid_originX = L.Global(L.double, grid:xOrigin())
 local grid_originY = L.Global(L.double, grid:yOrigin())
 
 -- Create a field for the cell vertices for uniform/chebyshev. This is
 -- the first instance of creating a field on the grid.cells relation.
--- We also define our first Liszt kernel (to be called below) that will
+-- We also define our first Ebb kernel (to be called below) that will
 -- populate our fields for the x and y coordinates for the vertices.
 -- Note that we are using the cell id here, which may be unsafe.
 
 grid.cells:NewField('x', L.double):Load(0.0)
 grid.cells:NewField('y', L.double):Load(0.0)
-local liszt init_vertices (c : grid.cells)
+local ebb init_vertices (c : grid.cells)
   var xid = L.double(L.xid(c))
   var yid = L.double(L.yid(c))
   var nx  = L.double(config.nx)
@@ -264,13 +264,13 @@ grid.cells:NewField('xc',L.double):Load(0.0)
 grid.cells:NewField('yc',L.double):Load(0.0)
 grid.cells:NewField('xc_temp',L.double):Load(0.0)
 grid.cells:NewField('yc_temp',L.double):Load(0.0)
-local liszt init_interior_centroids (c : grid.cells)
+local ebb init_interior_centroids (c : grid.cells)
   if c.in_interior then
     c.xc = 0.5*(c.x+c(-1,0).x)
     c.yc = 0.5*(c.y+c(0,-1).y)
   end
 end
-local liszt init_boundary_centroids (c : grid.cells)
+local ebb init_boundary_centroids (c : grid.cells)
   if c.xneg_depth > 0 then
     c.xc_temp = c.x - (c(1,0).xc - c.x)
     c.yc_temp = c(1,0).yc
@@ -288,7 +288,7 @@ local liszt init_boundary_centroids (c : grid.cells)
     c.xc_temp = c(0,-1).xc
   end
 end
-local liszt update_boundary_centroids (c : grid.cells)
+local ebb update_boundary_centroids (c : grid.cells)
   if c.xneg_depth > 0 or c.xpos_depth > 0 or
      c.yneg_depth > 0 or c.ypos_depth > 0 then
     c.xc = c.xc_temp
@@ -316,7 +316,7 @@ end
 
 grid.cells:NewField('fx',L.double):Load(0.0)
 grid.cells:NewField('fy',L.double):Load(0.0)
-local liszt init_weights (c : grid.cells)
+local ebb init_weights (c : grid.cells)
   c.fx  = (c.x - c.xc)/(c(1,0).xc - c.xc)
   c.fy  = (c.y - c.yc)/(c(0,1).yc - c.yc)
 end
@@ -325,7 +325,7 @@ end
 -- This is purely for visualization purposes.
 
 grid.cells:NewField('halo_layer', L.int):Load(1)
-local liszt init_halo_layer(c : grid.cells)
+local ebb init_halo_layer(c : grid.cells)
   if c.in_interior then
     c.halo_layer = 0
   end
@@ -413,9 +413,9 @@ grid.cells:NewField('f_temp', L.double):Load(0.0) -- scratch space
 grid.cells:NewField('dpx',    L.double):Load(0.0)
 grid.cells:NewField('dpy',    L.double):Load(0.0)
 
--- Several auxiliary Liszt globals that we need for tracking quantities,
+-- Several auxiliary Ebb globals that we need for tracking quantities,
 -- such as heat flux through walls. By initializing them
--- as Liszt globals, they will be accessible within Liszt kernels.
+-- as Ebb globals, they will be accessible within Ebb kernels.
 
 qwall_n = L.Global(L.double,0.0)
 qwall_s = L.Global(L.double,0.0)
@@ -458,7 +458,7 @@ eps = L.Global(L.double,0.0)
 
 -- Set pressure and temp. All other fields have been initialized to zero.
 
-local liszt set_initial_conditions(c : grid.cells)
+local ebb set_initial_conditions(c : grid.cells)
   c.f1  = L.double(0.0)
   c.f2  = L.double(0.0)
   c.u   = L.double(0.0)
@@ -477,12 +477,12 @@ end
 -- Update the solution for dual time stepping in all cells by pushing
 -- the solution back to time levels n-1 and n.
 
-local liszt update_level00(c: grid.cells)
+local ebb update_level00(c: grid.cells)
   c.T00 = c.T0
   c.u00 = c.u0
   c.v00 = c.v0
 end
-local liszt update_level0(c: grid.cells)
+local ebb update_level0(c: grid.cells)
   c.T0 = c.T
   c.u0 = c.u
   c.v0 = c.v
@@ -494,7 +494,7 @@ end
 
 -- A simple print kernel that is useful for debugging.
 
-local liszt output_p (c : grid.cells)
+local ebb output_p (c : grid.cells)
   L.print(L.xid(c), L.yid(c), c.x, c.y, c.xc, c.yc, c.fx,
           c.fy, c.pp, c.su, c.sv, c.ap, c.ae, c.apu, c.apv,
           c.aw, c.an, c.as, c.f1, c.f2)
@@ -509,10 +509,10 @@ end
 -- (b) can be used as input. The number of sweeps and convergence tolerence
 -- are defined for each system at the top of the file.
 
-local liszt jacobi_update (c, x, x_temp)
+local ebb jacobi_update (c, x, x_temp)
   c[x] = c[x_temp]
 end
-local liszt jacobi_step (c, x, x_temp, b)
+local ebb jacobi_step (c, x, x_temp, b)
   var sum = c.aw*c(-1,0)[x] + c.ae*c(1,0)[x] + c.as*c(0,-1)[x] + c.an*c(0,1)[x]
   res += cmath.fabs(c[b] - sum - c.ap*c[x])
   c[x_temp] = (c[b] - sum) / (c.ap)
@@ -532,17 +532,17 @@ end
 -- Red-black Gauss-Seidel iterative linear solver. Any solution vector 
 -- field (x) and r.h.s. (b) can be used as input. The number of sweeps 
 -- and convergence tolerence are defined for each system at the top of 
--- the file. Due to the data access restrictions in Liszt, the red-black 
+-- the file. Due to the data access restrictions in Ebb, the red-black 
 -- coloring is required to break the dependency. In that way, we can 
 -- perform the step and update in separate passes.
 
-local liszt red_update (c, x, x_temp)
+local ebb red_update (c, x, x_temp)
   if ((0+L.xid(c))%2 == 0 and (1+L.yid(c))%2 == 0) or
      ((1+L.xid(c))%2 == 0 and (0+L.yid(c))%2 == 0) then
     c[x] = c[x_temp]
   end
 end
-local liszt red_step (c, x, x_temp, b)
+local ebb red_step (c, x, x_temp, b)
   if ((0+L.xid(c))%2 == 0 and (1+L.yid(c))%2 == 0) or
      ((1+L.xid(c))%2 == 0 and (0+L.yid(c))%2 == 0) then
     var sum = c.aw*c(-1,0)[x]+c.ae*c(1,0)[x]+c.as*c(0,-1)[x]+c.an*c(0,1)[x]
@@ -550,13 +550,13 @@ local liszt red_step (c, x, x_temp, b)
     c[x_temp] = (c[b] - sum) / (c.ap)
   end
 end
-local liszt black_update (c, x, x_temp)
+local ebb black_update (c, x, x_temp)
   if ((0+L.xid(c))%2 == 0 and (0+L.yid(c))%2 == 0) or
      ((1+L.xid(c))%2 == 0 and (1+L.yid(c))%2 == 0) then
     c[x] = c[x_temp]
   end
 end
-local liszt black_step (c, x, x_temp, b)
+local ebb black_step (c, x, x_temp, b)
   if ((0+L.xid(c))%2 == 0 and (0+L.yid(c))%2 == 0) or
      ((1+L.xid(c))%2 == 0 and (1+L.yid(c))%2 == 0) then
     var sum = c.aw*c(-1,0)[x]+c.ae*c(1,0)[x]+c.as*c(0,-1)[x]+c.an*c(0,1)[x]
@@ -585,7 +585,7 @@ end
 
 -- These fields are zeroed at the start of each momentum inner iteration.
 
-local liszt init_momentum_fields (c : grid.cells)
+local ebb init_momentum_fields (c : grid.cells)
   c.su  = L.double(0.0)
   c.sv  = L.double(0.0)
   c.apu = L.double(0.0)
@@ -599,9 +599,9 @@ end
 -- to extrapolate the delta pressure to the boundaries before correction.
 -- Therefore, either the 'p' or the 'pp' field will be input as 'phi'.
 -- This is also the first time that we see the typical 'update' and
--- 'copy' kernels using scratch space to obey Liszt's data access rules.
+-- 'copy' kernels using scratch space to obey Ebb's data access rules.
 
-local liszt phi_halo_update (c, phi, phi_temp)
+local ebb phi_halo_update (c, phi, phi_temp)
   if c.xneg_depth > 0 then
     c[phi_temp] = c(1,0)[phi]  + ((c(1,0)[phi] - c(2,0)[phi])*
                                   ((c(1,0).xc-c.xc)/(c(2,0).xc-c(1,0).xc)))
@@ -616,7 +616,7 @@ local liszt phi_halo_update (c, phi, phi_temp)
                                   ((c.yc-c(0,-1).yc)/(c(0,-1).yc-c(0,-2).yc)))
   end
 end
-local liszt phi_copy_update (c, phi, phi_temp)
+local ebb phi_copy_update (c, phi, phi_temp)
   c[phi] = c[phi_temp]
 end
 local function phibc (cells, phi, phi_temp)
@@ -631,7 +631,7 @@ end
 -- West / East boundary:   wall, shear force in y-dir, du/dx=0
 -- South / North boundary: wall, shear force in x-dir, dv/dy=0
 
-local liszt uv_halo_update (c : grid.cells)
+local ebb uv_halo_update (c : grid.cells)
   if c.xneg_depth > 0 then     -- west boundary
     c.u_temp = -c( 1,0).u
     --c.v_temp = -c( 1,0).v + config.westVel
@@ -650,7 +650,7 @@ local liszt uv_halo_update (c : grid.cells)
     c.v_temp = -c(0,-1).v
   end
 end
-local liszt uv_copy_update (c : grid.cells) -- copy from temporary field
+local ebb uv_copy_update (c : grid.cells) -- copy from temporary field
   c.u = c.u_temp
   c.v = c.v_temp
 end
@@ -660,7 +660,7 @@ end
 -- In the future, we hope to remove the need for this by extending 
 -- the main flux loops to include the halos.
 
-local liszt uv_weak_bc (c : grid.cells)
+local ebb uv_weak_bc (c : grid.cells)
   if c.in_interior then
     var d = L.double(0.0)
     if c(0,-1).yneg_depth > 0 then -- south boundary
@@ -701,7 +701,7 @@ end
 -- second kernel over interior control volumes and stored in the proper data
 -- arrays that will be used for the linear solve.
 
-local liszt momentum_flux_x (c : grid.cells)
+local ebb momentum_flux_x (c : grid.cells)
   if c.in_interior and c(1,0).xpos_depth ~= 1 then
     
     var dxpe = c(1,0).xc - c.xc
@@ -734,7 +734,7 @@ local liszt momentum_flux_x (c : grid.cells)
     
   end
 end
-local liszt add_momentum_flux_x (c : grid.cells)
+local ebb add_momentum_flux_x (c : grid.cells)
   if c.in_interior then
     if c(1, 0).xpos_depth ~= 1 then
       c.su += c.sul
@@ -752,7 +752,7 @@ end
 -- Compute the momentum flux in the y-direction. Same for the x-direction
 -- above, except now we treat the northern face.
 
-local liszt momentum_flux_y (c : grid.cells)
+local ebb momentum_flux_y (c : grid.cells)
   if c.in_interior and c(0,1).ypos_depth ~= 1 then
     
     var dypn = c(0,1).yc - c.yc
@@ -785,7 +785,7 @@ local liszt momentum_flux_y (c : grid.cells)
     
   end
 end
-local liszt add_momentum_flux_y (c : grid.cells)
+local ebb add_momentum_flux_y (c : grid.cells)
   if c.in_interior then
     if c(0, 1).ypos_depth ~= 1 then
       c.su += c.sul
@@ -813,7 +813,7 @@ end
 -- Source terms for the momentum equations. This includes the gravity and
 -- buoyancy terms.
 
-local liszt uvrhs (c : grid.cells)
+local ebb uvrhs (c : grid.cells)
 
   var dx  = c.x - c(-1,0).x
   var dy  = c.y - c(0,-1).y
@@ -837,7 +837,7 @@ end
 -- Additional source terms due to the discretization of the time derivative.
 -- If gamt = 0: backward implicit. If gamt = non-zero: 3-level scheme.
 
-local liszt time_discretization_uv (c : grid.cells)
+local ebb time_discretization_uv (c : grid.cells)
 
   var dx  = c.x - c(-1,0).x
   var dy  = c.y - c(0,-1).y
@@ -855,11 +855,11 @@ end
 -- Apply an under-relaxation for the x-momentum equation. Here, we modify
 -- the residual (r.h.s.) and Jacobian before smoothing the system.
 
-local liszt relax_update_u (c : grid.cells)
+local ebb relax_update_u (c : grid.cells)
   c.su  += (1.0 - urf_mom)*c.ap*c.u
   c.apu  = 1.0 / c.ap
 end
-local liszt relax_factor_u (c : grid.cells)
+local ebb relax_factor_u (c : grid.cells)
   c.ap  = (c.apu - c.ae - c.aw - c.an - c.as)/urf_mom
 end
 local function under_relaxation_u (cells)
@@ -870,11 +870,11 @@ end
 -- Apply an under-relaxation for the y-momentum equation. Here, we modify
 -- the residual (r.h.s.) and Jacobian before smoothing the system.
 
-local liszt relax_update_v (c : grid.cells)
+local ebb relax_update_v (c : grid.cells)
   c.sv  += (1.0 - urf_mom)*c.ap*c.v
   c.apv  = 1.0 / c.ap
 end
-local liszt relax_factor_v (c : grid.cells)
+local ebb relax_factor_v (c : grid.cells)
   c.ap = (c.apv - c.ae - c.aw - c.an - c.as)/urf_mom
 end
 local function under_relaxation_v (cells)
@@ -928,7 +928,7 @@ end
 -- of the face (f_temp, ae) and to the eastern cell (f_temp, aw). These 
 -- fluxes are then scattered/stored in a second kernel.
 
-local liszt pressure_flux_x (c : grid.cells)
+local ebb pressure_flux_x (c : grid.cells)
   if c.in_interior and c.xpos_depth ~= 1 then
 
     var dxpe = c(1,0).xc - c.xc
@@ -956,7 +956,7 @@ local liszt pressure_flux_x (c : grid.cells)
     
   end
 end
-local liszt add_pressure_flux_x (c : grid.cells)
+local ebb add_pressure_flux_x (c : grid.cells)
   if c.in_interior then
      if c(1, 0).xpos_depth ~= 1 and c.xneg_depth ~= 1 then c.f1 = c.f_temp end
      if c( 1,0).xpos_depth ~= 1 then c.ae = c.al       end
@@ -967,7 +967,7 @@ end
 -- Compute the pressure flux in the y-direction. Same as for the x-direction
 -- above, except now we treat the northern face.
 
-local liszt pressure_flux_y (c : grid.cells)
+local ebb pressure_flux_y (c : grid.cells)
   if c.in_interior and c.ypos_depth ~= 1 then
     
     var dypn = c(0,1).yc - c.yc
@@ -995,7 +995,7 @@ local liszt pressure_flux_y (c : grid.cells)
     
   end
 end
-local liszt add_pressure_flux_y (c : grid.cells)
+local ebb add_pressure_flux_y (c : grid.cells)
   if c.in_interior then
     if c(0, 1).ypos_depth ~= 1 and c.yneg_depth ~= 1 then c.f2 = c.f_temp end
     if c(0, 1).ypos_depth ~= 1 then c.an = c.al end
@@ -1016,7 +1016,7 @@ end
 -- Initial the pressure system variables and set the delta pressure to zero
 -- as our initial guess for the system solve.
 
-local liszt init_pressure_system (c : grid.cells)
+local ebb init_pressure_system (c : grid.cells)
   var rhs = c(-1,0).f1 - c.f1 + c(0,-1).f2 - c.f2
   c.su = rhs
   sum += rhs
@@ -1053,7 +1053,7 @@ end
 -- We are only concerned with the gradient of the pressure, so we grab
 -- a reference pressure value from a "random" internal cell.
 
-local liszt set_reference_pp (c : grid.cells)
+local ebb set_reference_pp (c : grid.cells)
   if L.xid(c) == 2 and L.yid(c) == 2 then
     ppo += c.pp
   end
@@ -1061,7 +1061,7 @@ end
 
 -- Correct the mass fluxes using the results of the pressure poisson solve.
 
-local liszt correct_mass_fluxes (c : grid.cells)
+local ebb correct_mass_fluxes (c : grid.cells)
   if c.in_interior and c(1,0).xpos_depth ~= 1 then
     c.f1 += c.ae*(c(1,0).pp - c.pp)
   end
@@ -1073,7 +1073,7 @@ end
 -- Correct the cell center velocity and pressure using the results of 
 -- the pressure poisson solve.
 
-local liszt correct_vel_p (c : grid.cells)
+local ebb correct_vel_p (c : grid.cells)
   if c.in_interior then
     
     var dx  = c.x - c(-1,0).x
@@ -1107,7 +1107,7 @@ end
 
 -- Zero out the r.h.s. and main Jacobian diagonal for the energy eqn.
 
-local liszt init_temperature_fields (c : grid.cells)
+local ebb init_temperature_fields (c : grid.cells)
   c.su  = L.double(0.0)
   c.ap  = L.double(0.0)
 end
@@ -1117,7 +1117,7 @@ end
 -- South / North boundary: adiabatic wall, dt/dy=0, zero flux
 
 -- Helper function for updating the temp fields to minimize repeated code.
-local liszt temperature_helper (c_bnd, c_int, BCTemp)
+local ebb temperature_helper (c_bnd, c_int, BCTemp)
 
   -- Temporary variables for computing new halo state
   var temp_wall   = L.double(0.0)
@@ -1134,7 +1134,7 @@ local liszt temperature_helper (c_bnd, c_int, BCTemp)
   c_bnd.T_temp = temperature
 
 end
-local liszt temperature_halo_update (c : grid.cells)
+local ebb temperature_halo_update (c : grid.cells)
   if c.xneg_depth > 0 then     -- west boundary
     temperature_helper(c, c( 1,0), config.westTemp)
   elseif c.xpos_depth > 0 then -- east boundary
@@ -1145,14 +1145,14 @@ local liszt temperature_halo_update (c : grid.cells)
     temperature_helper(c, c(0,-1), config.northTemp)
   end
 end
-local liszt temperature_copy_update (c : grid.cells)
+local ebb temperature_copy_update (c : grid.cells)
   c.T = c.T_temp
 end
 
 -- This is an update to the r.h.s./Jacobian in the first interior cell
 -- along the east and west walls where a non-zero diffusive flux occurs.
 
-local liszt temperature_weak_bc (c : grid.cells)
+local ebb temperature_weak_bc (c : grid.cells)
   var d = L.double(0.0)
   if c(-1,0).xneg_depth > 0 and isothermal_westBC then
     d = config.visc/config.prm*(c.y - c(0,-1).y)/(c.xc - c(-1,0).xc)
@@ -1191,7 +1191,7 @@ end
 -- second kernel over interior control volumes and stored in the proper data
 -- arrays that will be used for the linear solve.
 
-local liszt energy_flux_x (c : grid.cells)
+local ebb energy_flux_x (c : grid.cells)
   if c.in_interior or c.xpos_depth ~= 1 then
     
     var dxpe = c(1,0).xc - c.xc
@@ -1220,7 +1220,7 @@ local liszt energy_flux_x (c : grid.cells)
     
   end
 end
-local liszt add_energy_flux_x (c : grid.cells)
+local ebb add_energy_flux_x (c : grid.cells)
   if c.in_interior then
     if c(1, 0).xpos_depth ~= 1 then
       c.su += c.sul
@@ -1236,7 +1236,7 @@ end
 -- Compute the energy flux in the y-direction. Same as for the x-direction
 -- above, except now we treat the northern face.
 
-local liszt energy_flux_y (c : grid.cells)
+local ebb energy_flux_y (c : grid.cells)
   if c.in_interior or c.ypos_depth ~= 1 then
     
     var dypn = c(0,1).yc - c.yc
@@ -1265,7 +1265,7 @@ local liszt energy_flux_y (c : grid.cells)
     
   end
 end
-local liszt add_energy_flux_y (c : grid.cells)
+local ebb add_energy_flux_y (c : grid.cells)
   if c.in_interior then
     if c(0, 1).ypos_depth ~= 1 then
       c.su += c.sul
@@ -1291,7 +1291,7 @@ end
 -- Additional source terms due to the discretization of the time derivative.
 -- If gamt = 0: backward implicit. If gamt = non-zero: 3-level scheme.
 
-local liszt time_discretization_T (c : grid.cells)
+local ebb time_discretization_T (c : grid.cells)
   if c.in_interior then
     
     var dx  = c.x - c(-1,0).x
@@ -1308,13 +1308,13 @@ end
 -- Apply an under-relaxation for the energy equation. Here, we modify
 -- the residual (r.h.s.) and Jacobian before smoothing the system.
 
-local liszt relax_update_T (c : grid.cells)
+local ebb relax_update_T (c : grid.cells)
   if c.in_interior then
     c.su  += (1.0 - urf_temp)*c.ap_temp*c.T
     c.ap   = c.ap_temp
   end
 end
-local liszt relax_factor_T (c : grid.cells)
+local ebb relax_factor_T (c : grid.cells)
   if c.in_interior then
     c.ap_temp = (c.ap - c.ae - c.aw - c.an - c.as)/urf_temp
   end
@@ -1354,28 +1354,28 @@ end
 
 -- Kernels to compute the heat flux through four walls.
 
-local liszt heat_flux_north(c : grid.cells)
+local ebb heat_flux_north(c : grid.cells)
   var d = L.double(0.0)
   if c.in_interior and c(0,1).ypos_depth > 0 then
     d = config.visc/config.prm*(c.x - c(-1,0).x)/(c(0,1).yc - c.yc)
     qwall_n += d*(c(0,1).T - c.T)
   end
 end
-local liszt heat_flux_south(c : grid.cells)
+local ebb heat_flux_south(c : grid.cells)
   var d = L.double(0.0)
   if c.in_interior and c(0,-1).yneg_depth > 0 then
     d = config.visc/config.prm*(c.x - c(-1,0).x)/(c.yc - c(0,-1).yc)
     qwall_s += d*(c.T - c(0,-1).T)
   end
 end
-local liszt heat_flux_east(c : grid.cells)
+local ebb heat_flux_east(c : grid.cells)
   var d = L.double(0.0)
   if c.in_interior and c(1,0).xpos_depth > 0 then
     d = config.visc/config.prm*(c.y - c(0,-1).y)/(c(1,0).xc - c.xc)
     qwall_e += d*(c(1,0).T - c.T)
   end
 end
-local liszt heat_flux_west(c : grid.cells)
+local ebb heat_flux_west(c : grid.cells)
   var d = L.double(0.0)
   if c.in_interior and c(-1,0).xneg_depth > 0 then
     d = config.visc/config.prm*(c.y - c(0,-1).y)/(c.xc - c(-1,0).xc)
@@ -1385,7 +1385,7 @@ end
 
 -- Compute and store the maximum velocity magnitude in the interior.
 
-local liszt velocity_magnitude_max(c : grid.cells)
+local ebb velocity_magnitude_max(c : grid.cells)
   if c.in_interior then
     c.vmag = c.u * c.u + c.v * c.v
     vmagmax max= c.vmag
