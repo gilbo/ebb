@@ -1,4 +1,4 @@
-import "ebb.liszt"
+import "ebb"
 
 
 -- In this tutorial, we're going to write a spring-mass simulation
@@ -41,7 +41,7 @@ print('read file')
 rendermesh.vertices:NewField('tet', dragon.tetrahedra):Load(tets)
 rendermesh.vertices:NewField('interp', L.vec4d):Load(interps)
 
-local liszt update_rendermesh( rv : rendermesh.vertices )
+local ebb update_rendermesh( rv : rendermesh.vertices )
   var pos : L.vec3d = { 0.0, 0.0, 0.0 }
   for k=0,4 do
     pos += rv.interp[k] * rv.tet.v[k].pos
@@ -73,12 +73,12 @@ dragon.vertices:NewField('inv_mass', L.double)  :Load(1)
 dragon.edges:NewField('rest_len', L.double)     :Load(0)
 
 -- We'll initialize the mass and resting length using parallel functions
-local liszt init_rest_len ( e : dragon.edges )
+local ebb init_rest_len ( e : dragon.edges )
   var diff = e.head.pos - e.tail.pos
   e.rest_len = L.length(diff)
 end
 -- (hacky choice of mass to produce a diagonally dominant system)
-local liszt init_mass ( v : dragon.vertices )
+local ebb init_mass ( v : dragon.vertices )
   v.mass = 1.0e-3
   for e in v.edges do
     v.mass += e.rest_len
@@ -91,7 +91,7 @@ dragon.vertices:foreach(init_mass)
 
 -- Also, let's translate the dragon up above the y=0 plane
 -- so we can drop it onto the ground
-local liszt lift_dragon ( v : dragon.vertices )
+local ebb lift_dragon ( v : dragon.vertices )
   v.pos += {0,2.3,0}
 end
 dragon.vertices:foreach(lift_dragon)
@@ -101,7 +101,7 @@ dragon.vertices:foreach(lift_dragon)
 -- Now let's define functions to perform the basic updates in our simualtion
 -- We're going to use a simple forward Euler integration scheme here.
 
-local liszt compute_acceleration ( v : dragon.vertices )
+local ebb compute_acceleration ( v : dragon.vertices )
   -- Force due to gravitational acceleration
   var force = gravity * v.mass
 
@@ -121,7 +121,7 @@ local liszt compute_acceleration ( v : dragon.vertices )
   v.acc = force * v.inv_mass
 end
 
-local liszt update_vel_pos ( v : dragon.vertices )
+local ebb update_vel_pos ( v : dragon.vertices )
   v.pos += timestep * v.vel + 0.5 * timestep * timestep * v.acc
   v.vel = (1.0 - damping * timestep) * v.vel
           + (timestep * v.acc)
@@ -135,7 +135,7 @@ end
 -- START EXTRA VDB CODE
 local sqrt3 = math.sqrt(3)
 local vdb   = require('ebb.lib.vdb')
-local liszt compute_normal ( t )--t : dragon.triangles )
+local ebb compute_normal ( t )--t : dragon.triangles )
   var p0  = t.v[0].pos
   var p1  = t.v[1].pos
   var p2  = t.v[2].pos
@@ -144,7 +144,7 @@ local liszt compute_normal ( t )--t : dragon.triangles )
   if len < 1.0e-6 then len = 1.0e6 else len = 1.0/len end -- invert len
   return n * len
 end
-local liszt debug_tri_draw ( t )--t : dragon.triangles )
+local ebb debug_tri_draw ( t )--t : dragon.triangles )
   -- Spoof a really simple directional light with a cos diffuse term
   var d = - L.dot({1/sqrt3, -1/sqrt3, 1/sqrt3}, compute_normal(t))
   if d > 1.0 then d = 1.0 end

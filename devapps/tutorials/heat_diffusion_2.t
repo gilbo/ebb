@@ -1,4 +1,4 @@
-import "ebb.liszt"
+import "ebb"
 
 local ioOff = require 'ebb.domains.ioOff'
 local PN    = require 'ebb.lib.pathname'
@@ -10,7 +10,7 @@ local bunny = ioOff.LoadTrimesh(tri_mesh_filename)
 -- Let's try writing the previous heat diffusion example a couple of
 -- different ways.  We'll see some ways that don't work and
 -- some that do.  In the process we'll learn a bit more about
--- how Liszt works and different ways of defining Liszt simulations.
+-- how Ebb works and different ways of defining Ebb simulations.
 
 ------------------------------------------------------------------------------
 
@@ -32,7 +32,7 @@ bunny.vertices:NewField('d_temperature', L.double):Load(0.0)
 -- To start with, let's re-define the original 
 -- computation's functions.
 
-local liszt compute_update ( v : bunny.vertices )
+local ebb compute_update ( v : bunny.vertices )
   var sum_t : L.double = 0.0
   var count            = 0
 
@@ -46,37 +46,37 @@ local liszt compute_update ( v : bunny.vertices )
   v.d_temperature = timestep * conduction * diff_t
 end
 
-local liszt apply_update ( v : bunny.vertices )
+local ebb apply_update ( v : bunny.vertices )
   v.temperature += v.d_temperature
 end
 
 ------------------------------------------------------------------------------
 
--- Let's take a second to talk about how Liszt compiles.  As you may have
--- noticed, Liszt is a Lua-embedded DSL.  That means that the bulk of this
--- file is just Lua code.  When we define a Liszt function using the
--- `liszt` command, then all of a sudden we switch from Lua into
--- Liszt code.  Instead of declaring variables with `local` we use
+-- Let's take a second to talk about how Ebb compiles.  As you may have
+-- noticed, Ebb is a Lua-embedded DSL.  That means that the bulk of this
+-- file is just Lua code.  When we define an Ebb function using the
+-- `ebb` command, then all of a sudden we switch from Lua into
+-- Ebb code.  Instead of declaring variables with `local` we use
 -- `var`, and a number of other changes (e.g. explicitly typed variables)
 
 -- Lua is an interpreted and dynamically typed language,
 -- which means each line of the program is executed as you encounter it
 -- and any type-errors won't be discovered until you execute the code.
 
--- Liszt is a compiled and statically typed language,
--- which means that Liszt functions are passed through a compiler (LLVM)
+-- Ebb is a compiled and statically typed language,
+-- which means that Ebb functions are passed through a compiler (LLVM)
 -- in order to generate high performance code.  Also, any type errors
--- in Liszt code will be reported when its type-checked and then all
+-- in Ebb code will be reported when its type-checked and then all
 -- of then we know the compiled version won't have any trivial type
 -- errors in it.
 
 -- How the heck do these two languages interact?
 
--- The basic idea is that Liszt is JiT (Just in Time) compiled using a
+-- The basic idea is that Ebb is JiT (Just in Time) compiled using a
 -- two-stage model (similar to Terra)
 --    Stage 1: (aka. Definition-Time)
 --        Whenever the thread of control in the Lua interpreter
---        reaches a Liszt function declaration, *specialization* occurs.
+--        reaches an Ebb function declaration, *specialization* occurs.
 --    Stage 2: (aka. Compile-Time)
 --        Whenever the function is first used, we compile it.
 --        At this point, *typechecking*, and *compilation* occur
@@ -104,22 +104,22 @@ bunny.vertices:foreach(apply_update)
 -- both `compute_update` and for `apply_update`.
 
 -- Great, now that we've got that straight, let's look at
--- how Liszt prevents parallel races using the typechecker.
+-- how Ebb prevents parallel races using the typechecker.
 
 ------------------------------------------------------------------------------
 
--- Liszt functions can call each other (non-recursively).
+-- Ebb functions can call each other (non-recursively).
 -- So we might rationally think
 --  "Hmmm, why are we mapping two functions,
 --    when we could be mapping just one?"
 -- Good question.  Let's try defining an aggregate function
 
-local liszt compute_and_apply_update( v : bunny.vertices )
+local ebb compute_and_apply_update( v : bunny.vertices )
   compute_update(v)
   apply_update(v)
 end
 
--- Remember, at this point Liszt hasn't yet tried to typecheck
+-- Remember, at this point Ebb hasn't yet tried to typecheck
 -- `compute_and_apply_update`.  To see what happens, uncomment the
 -- following line.
 
@@ -146,21 +146,21 @@ end
 -- the parallel computation might happen in different orders.  This is
 -- what we would normally call a race condition.
 
--- Liszt prevents programmers from running code with potential races
+-- Ebb prevents programmers from running code with potential races
 -- regardless of whether the programmer is running code on their
--- laptop's CPU, a GPU or a supercomputer.  As a result, Liszt can
+-- laptop's CPU, a GPU or a supercomputer.  As a result, Ebb can
 -- guarantee that code developed on one machine is safe to port to
 -- a different, parallel machine without introducing race conditions.
 
--- Inside a Liszt function, each Field and Global variable is accessed
+-- Inside an Ebb function, each Field and Global variable is accessed
 -- in some combination of the 3 basic Phases:
 --    * READ
 --    * WRITE
 --    * REDUCE(operator)   (e.g. operator = + or *)
 --
--- Additionally, Liszt will notice if all Field accesses are done
+-- Additionally, Ebb will notice if all Field accesses are done
 -- through the "centered" element.  The element passed in as the main
--- argument of a Liszt function; the element from the relation that
+-- argument of an Ebb function; the element from the relation that
 -- the function is being mapped over is called the centered element,
 -- the centered key or the centered row.  If a field is accessed
 -- exclusively through this centered element, then we say the field
@@ -177,7 +177,7 @@ end
 -- instead of one.  We need to use some kind of buffering trick
 -- in order to execute safely on parallel machines.  If you stop and
 -- think about this, it becomes clear that this is a fundamental
--- constraint of parallel processing that Liszt is exposing to you.
+-- constraint of parallel processing that Ebb is exposing to you.
 
 ------------------------------------------------------------------------------
 
@@ -187,14 +187,14 @@ end
 -- update one of these from the either.
 
 -- This solution would normally involve a lot of bookkeeping, but since
--- it's so common of a pattern, Liszt provides us with some helpful
+-- it's so common of a pattern, Ebb provides us with some helpful
 -- functions to make it easier to write.
 
 -- First, let's create our secondary buffer of temperatures
 bunny.vertices:NewField('temp_temperature', L.double):Load(0.0)
 
 -- Now, we'll define the single compute function
-local liszt compute_with_temp ( v : bunny.vertices )
+local ebb compute_with_temp ( v : bunny.vertices )
   var sum_t : L.double = 0.0
   var count            = 0
 
@@ -234,7 +234,7 @@ bunny.vertices:Swap('temperature', 'temp_temperature')
 -- that on the fly before, but it'll be easier to cache it now.
 bunny.vertices:NewField('degree', L.int):Load(0)
 
-local liszt compute_degree ( v : bunny.vertices )
+local ebb compute_degree ( v : bunny.vertices )
   for e in v.edges do
     v.degree += 1
   end
@@ -246,7 +246,7 @@ bunny.vertices:foreach(compute_degree)
 -- At this point we should note that Trimesh provides directed edges,
 -- so we'll get one computation for each edge direction.
 
-local liszt compute_edge_update ( e : bunny.edges )
+local ebb compute_edge_update ( e : bunny.edges )
   var ht = e.head.temperature
   var tt = e.tail.temperature
   var dt = ht - tt
@@ -260,13 +260,13 @@ end
 -- rather than a gather computation.
 
 -- We'll need some way to zero out the `d_temperature` field
-local liszt zero_d_temperature ( v : bunny.vertices )
+local ebb zero_d_temperature ( v : bunny.vertices )
   v.d_temperature = 0
 end
 
 -- Then, we can define a way to apply the update.  For convenience,
 -- we'll go ahead and zero out the temperature after we read it.
-local liszt apply_edge_update ( v : bunny.vertices )
+local ebb apply_edge_update ( v : bunny.vertices )
   v.temperature += v.d_temperature
   zero_d_temperature(v)
 end
@@ -291,13 +291,13 @@ bunny.vertices:foreach(apply_edge_update)
 
 -- Great, let's summarize what we learned in this tutorial real quick
 
--- 1) We learned about Liszt's execution model
---      - Liszt specializes code at Definition-Time
---      - Liszt typechecks code at Compile-Time
---      - Liszt waits until the first time
+-- 1) We learned about Ebb's execution model
+--      - Ebb specializes code at Definition-Time
+--      - Ebb typechecks code at Compile-Time
+--      - Ebb waits until the first time
 --          a function is executed to compile it
 
--- 2) We learned about how Liszt uses Phases to ensure safe and portable
+-- 2) We learned about how Ebb uses Phases to ensure safe and portable
 --      parallel code.
 
 -- 3) We learned that we can `Swap` fields, which can help us manage

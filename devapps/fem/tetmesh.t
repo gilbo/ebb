@@ -1,4 +1,4 @@
-import "ebb.liszt"
+import "ebb"
 local PN = require 'ebb.lib.pathname'
 
 local Tetmesh = {}
@@ -53,15 +53,15 @@ local function build_element_edges(mesh, elements)
   -- index the edges
   mesh.edges:GroupBy('tail')
   mesh.vertices:NewFieldMacro('edges', L.NewMacro(function(v)
-    return liszt ` L.Where(mesh.edges.tail, v)
+    return ebb ` L.Where(mesh.edges.tail, v)
   end))
   mesh.vertices:NewFieldMacro('neighbors', L.NewMacro(function(v)
-    return liszt ` L.Where(mesh.edges.tail, v).head
+    return ebb ` L.Where(mesh.edges.tail, v).head
   end))
 
   -- set up pointers from tetrahedra to edges
   mesh.tetrahedra:NewField('e', L.matrix(mesh.edges, 4, 4))
-  local liszt compute_tet_edges (t : mesh.tetrahedra)
+  local ebb compute_tet_edges (t : mesh.tetrahedra)
     for i = 0,4 do
       for e in t.v[i].edges do
         for j = 0,4 do
@@ -74,7 +74,7 @@ local function build_element_edges(mesh, elements)
 
   -- set up pointers from vertices to self edges
   mesh.vertices:NewField('diag', mesh.edges)
-  local liszt compute_self_edges (v : mesh.vertices)
+  local ebb compute_self_edges (v : mesh.vertices)
     for e in v.edges do
       if e.head == v then
         v.diag = e
@@ -142,7 +142,7 @@ function Tetmesh.LoadFromLists(vertices, elements)
 
   -- get determintant for tetreahedron
   mesh.tetrahedra:NewFieldMacro('elementDet', L.NewMacro(function(t)
-      return liszt quote
+      return ebb quote
           var a = t.v[0].pos
           var b = t.v[1].pos
           var c = t.v[2].pos
@@ -154,14 +154,14 @@ function Tetmesh.LoadFromLists(vertices, elements)
 
   -- element density
   mesh.tetrahedra:NewFieldMacro('density', L.NewMacro(function(t)
-    return liszt `mesh.density end ))
+    return ebb `mesh.density end ))
 
   -- lame constants
   mesh.tetrahedra:NewFieldMacro('lambdaLame', L.NewMacro(function(t)
-    return liszt `L.double(mesh.lambdaLame)
+    return ebb `L.double(mesh.lambdaLame)
   end ))
   mesh.tetrahedra:NewFieldMacro('muLame', L.NewMacro(function(t)
-    return liszt `L.double(mesh.muLame)
+    return ebb `L.double(mesh.muLame)
   end ))
 
   -- and return the resulting mesh
@@ -199,8 +199,8 @@ end
 
 function Tetmesh:dumpTetFieldToFile(field, file_name)
   local field_list = self.tetrahedra[field]:DumpToList()
-  local field_liszt = PN.scriptdir() .. file_name
-  local out = io.open(tostring(field_liszt), 'w')
+  local field_file = PN.scriptdir() .. file_name
+  local out = io.open(tostring(field_file), 'w')
   for i = 1, #field_list do
     out:write(fieldToString(field_list[i]) .. "\n" )
   end
@@ -211,8 +211,8 @@ function Tetmesh:dumpEdgeFieldToFile(field, file_name)
   local field_list = self.edges[field]:DumpToList()
   local tail_list = self.edges.tail:DumpToList()
   local head_list = self.edges.head:DumpToList()
-  local field_liszt = PN.scriptdir() .. file_name
-  local out = io.open(tostring(field_liszt), 'w')
+  local field_file = PN.scriptdir() .. file_name
+  local out = io.open(tostring(field_file), 'w')
   for i = 1, #field_list do
     out:write( tostring(tail_list[i]) .. "  " ..
                tostring(head_list[i]) .. "  " ..
@@ -223,8 +223,8 @@ end
 
 function Tetmesh:dumpVertFieldToFile(field, file_name)
   local field_list = self.vertices[field]:DumpToList()
-  local field_liszt = PN.scriptdir() .. file_name
-  local out = io.open(tostring(field_liszt), 'w')
+  local field_file = PN.scriptdir() .. file_name
+  local out = io.open(tostring(field_file), 'w')
   for i = 1, #field_list do
     out:write(fieldToString(field_list[i]) .. "\n" )
   end
@@ -234,8 +234,8 @@ end
 function Tetmesh:dumpDeformationToFile(file_name)
   local pos = self.vertices.pos:DumpToList()
   local d = self.vertices.q:DumpToList()
-  local field_liszt = PN.scriptdir() .. file_name
-  local out = io.open(tostring(field_liszt), 'w')
+  local field_file = PN.scriptdir() .. file_name
+  local out = io.open(tostring(field_file), 'w')
   for i = 1, #pos do
     out:write(tostring(pos[i][1] + d[i][1]) .. ", " ..
               tostring(pos[i][2] + d[i][2]) .. ", " ..

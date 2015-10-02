@@ -1,4 +1,4 @@
-import "ebb.liszt"
+import "ebb"
 
 local print, assert, dot, cross, length =
   L.print, L.assert, L.dot, L.cross, L.length
@@ -8,7 +8,7 @@ local R = L.NewRelation { name="R", size=6 }
 local v1 = L.Constant(L.vec3f, {1, 2, 3})
 local v2 = L.Constant(L.vec3f, {5, 7, 11})
 
-R:foreach(liszt(r : R)
+R:foreach(ebb(r : R)
     assert(true)
     print(42)
     assert(dot(v1, v2) == 52)

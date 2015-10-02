@@ -1,10 +1,10 @@
-import "ebb.liszt"
+import "ebb"
 
 local R = L.NewRelation { name="R", size=5 }
 R:NewField('position', L.vec3d):Load({0,0,0})
 
 function shift(x,y,z)
-  local liszt pass_func (r : R)
+  local ebb pass_func (r : R)
       r.position = {x,y,z}
   end
   R:foreach(pass_func)

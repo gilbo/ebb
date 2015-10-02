@@ -1,4 +1,4 @@
-import "ebb.liszt"
+import "ebb"
 
 local ioOff = require 'ebb.domains.ioOff'
 --local mesh  = ioOff.LoadTrimesh(
@@ -16,12 +16,12 @@ local time = L.Global(L.double, 0)
 mesh.vertices:NewField('q', L.vec3d):Load({0,0,0})
 mesh.vertices:NewField('t', L.double):Load(0)       -- <-------------
 
-local liszt set_oscillation ( v : mesh.vertices )
+local ebb set_oscillation ( v : mesh.vertices )
   v.q = 0.5*( L.sin(time) + 1) * v.pos
   v.t = 0.5*( L.sin(time) + 1)      -- <-------------
 end
 
-local liszt visualize ( v : mesh.vertices )
+local ebb visualize ( v : mesh.vertices )
   vdb.color({v.t,v.t,0})            -- <-------------
   vdb.point(v.q)
 end
@@ -51,7 +51,7 @@ end
 mesh.vertices.t:Load(init_temperature)
 
 
-local liszt compute_update ( v : mesh.vertices )
+local ebb compute_update ( v : mesh.vertices )
   var sum_t : L.double = 0.0
   var count            = 0
 
@@ -66,7 +66,7 @@ local liszt compute_update ( v : mesh.vertices )
 end
 
 
-local liszt visualize ( v : mesh.vertices )
+local ebb visualize ( v : mesh.vertices )
   vdb.color({ 0.5 * v.t + 0.5, 0.5-v.t, 0.5-v.t })
   vdb.point(v.pos)
 end
@@ -98,7 +98,7 @@ end
 mesh.vertices.t:Load(init_temperature)
 
 
-local liszt compute_update ( v : mesh.vertices )
+local ebb compute_update ( v : mesh.vertices )
   var sum_t : L.double = 0.0
   var count            = 0
 
@@ -112,12 +112,12 @@ local liszt compute_update ( v : mesh.vertices )
   v.d_t = timestep * conduction * diff_t
 end
 
-local liszt apply_update ( v : mesh.vertices )
+local ebb apply_update ( v : mesh.vertices )
   v.t += v.d_t
 end
 
 
-local liszt visualize ( v : mesh.vertices )
+local ebb visualize ( v : mesh.vertices )
   vdb.color({ 0.5 * v.t + 0.5, 0.5-v.t, 0.5-v.t })
   vdb.point(v.pos)
 end

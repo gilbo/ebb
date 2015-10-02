@@ -1,4 +1,4 @@
-import "ebb.liszt"
+import "ebb"
 
 local R = L.NewRelation { name="R", size=6 }
 
@@ -14,7 +14,7 @@ local vv = L.Constant(L.vec3i, {1,2,3})
 
 local luavalue_true = true
 
-local liszt test_bool (r : R)
+local ebb test_bool (r : R)
     var q = true
     var x = q  -- Also, test re-declaring variables (symbols for 'x' should now be different)
     var z = not q
@@ -31,7 +31,7 @@ local liszt test_bool (r : R)
 end
 R:foreach(test_bool)
 
-local liszt test_decls (r : R)
+local ebb test_decls (r : R)
     -- DeclStatement tests --
     var c : L.int
     c = 12
@@ -63,7 +63,7 @@ end
 R:foreach(test_decls)
 
 
-local liszt test_conditionals (r : R)
+local ebb test_conditionals (r : R)
     -- IfStatement tests
     var q = true
     var x = 3
@@ -112,7 +112,7 @@ end
 
 R:foreach(test_conditionals)
 
-local liszt test_arith(r : R)
+local ebb test_arith(r : R)
     -- BinaryOp, UnaryOp, InitStatement, Number, Bool, and RValue codegen tests
     var x = 9
     lassert(x == 9)
@@ -157,7 +157,7 @@ local liszt test_arith(r : R)
 end
 R:foreach(test_arith)
 
-local liszt test_while (r : R)
+local ebb test_while (r : R)
     -- While Statement tests --
     -- if either of these while statements doesn't terminate, then our codegen scoping is wrong!
     var a = true
@@ -174,7 +174,7 @@ end
 R:foreach(test_while)
 
 
-local liszt test_do (r : R)
+local ebb test_do (r : R)
     var b = false
     var x = true
     var y = 3
@@ -195,7 +195,7 @@ end
 R:foreach(test_do)
 
 
-local liszt test_repeat (r : R)
+local ebb test_repeat (r : R)
     -- RepeatStatement tests -- 
     var x = 0
     var y = 0
@@ -215,7 +215,7 @@ end
 R:foreach(test_repeat)
 
 
-local liszt test_for (r : R)
+local ebb test_for (r : R)
     -- Numeric for tests: --
     var x = true
     for i = 1, 5 do

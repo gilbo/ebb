@@ -1,4 +1,4 @@
-import "ebb.liszt"
+import "ebb"
 
 local assert = L.assert
 local cross  = L.cross
@@ -11,7 +11,7 @@ local v2 = L.Constant(L.vec3f, {5, 7, 11})
 local v3 = L.Constant(L.vec3i, {1, 2, 3})
 local v4 = L.Constant(L.vec3i, {5, 7, 11})
 
-local test_cross = liszt(r : R)
+local test_cross = ebb(r : R)
     assert(cross(v1, v2) == {1, 4, -3}) -- simple test
     assert(cross(v3, v4) == {1, 4, -3}) -- int only
     assert(cross(v1, v4) == {1, 4, -3}) -- cross types

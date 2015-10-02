@@ -1,4 +1,4 @@
-import "ebb.liszt"
+import "ebb"
 local Grid  = require 'ebb.domains.grid'
 
 -- parameters
@@ -71,11 +71,11 @@ timer_exec:Start()
 end
 
 -- empty kernel
-local liszt empty(c)
+local ebb empty(c)
 end
 
 -- scatter field 'field' from 'from' relation to 'to' relation
-local liszt Scatter(from, to, field)
+local ebb Scatter(from, to, field)
   from[to](-1,-1,-1)[field] += from[field]/L.float(8)
   from[to](-1,-1, 1)[field] += from[field]/L.float(8)
   from[to](-1, 1,-1)[field] += from[field]/L.float(8)
@@ -87,7 +87,7 @@ local liszt Scatter(from, to, field)
 end
 
 -- copy field x to y, to test for task parallelism
-local liszt Update(rel, field1, field2)
+local ebb Update(rel, field1, field2)
   rel[field2] = (L.float(1.2)*rel(-1, -1, -1)[field1] +
                  L.float(2.7)*rel(1, 1, 1)[field1])/L.float(3.1)
 end

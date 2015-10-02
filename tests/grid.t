@@ -1,4 +1,4 @@
-import "ebb.liszt"
+import "ebb"
 require "tests/test"
 
 --error('NEED TO WRITE GRID TESTS; DO WHILE REWRITING GRID DOMAIN')
@@ -49,7 +49,7 @@ test.rec_aeq(rel3.f3:DumpToList(),tbl3)
 rel3:NewField('f3func',L.double):Load(function(x,y,z)
   return 6*z + 3*y + x + 1
 end)
-local liszt f3consistency( r : rel3 )
+local ebb f3consistency( r : rel3 )
   L.assert(r.f3 == r.f3func)
 end
 rel3:foreach(f3consistency)
@@ -68,7 +68,7 @@ end)
 rel1:GroupBy('r2')
 
 -- and test that we can use the grouping in a function
-local liszt group_k ( r2 : rel2 )
+local ebb group_k ( r2 : rel2 )
   for r1 in L.Where(rel1.r2, r2) do
     L.assert(2*L.double(L.int(r1.v1) % 2) == r2.v2[0])
     L.assert(  L.double(L.int(r1.v1) / 2) == r2.v2[1])
@@ -84,13 +84,13 @@ end)
 rel3:NewField('a3',L.double):Load(function(x,y,z)
   return 3*x + 5*y
 end)
-local liszt affinetest3to2 ( r3 : rel3 )
+local ebb affinetest3to2 ( r3 : rel3 )
   var r2 = L.Affine(rel2, {{0,1,0,0},
                            {1,0,0,0}}, r3)
   L.assert(r3.a3 == r2.a2)
 end
 rel3:foreach(affinetest3to2)
-local liszt affinetest2to3 ( r2 : rel2 )
+local ebb affinetest2to3 ( r2 : rel2 )
   var r3 = L.Affine(rel3, {{0,1,0},
                            {1,0,0},
                            {0,0,0}}, r2)
@@ -98,7 +98,7 @@ local liszt affinetest2to3 ( r2 : rel2 )
 end
 rel2:foreach(affinetest2to3)
 -- this one shouldn't match almost at all
-local liszt scramble2to3 ( r2 : rel2 )
+local ebb scramble2to3 ( r2 : rel2 )
   var r3 = L.Affine(rel3, {{1,0,0},
                            {0,0,0},
                            {0,1,0}}, r2)
@@ -114,7 +114,7 @@ local prel2 = L.NewRelation {
   periodic={true,true}
 }
 prel2:NewField('cid', L.vec2i):Load(function(x,y) return {x,y} end)
-local liszt test_wrap ( r : prel2 )
+local ebb test_wrap ( r : prel2 )
   var off = L.Affine(prel2, {{1,0,1},
                              {0,1,1}}, r)
   L.assert( (r.cid[0]+1) % 3 == off.cid[0] and

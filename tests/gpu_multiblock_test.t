@@ -1,10 +1,10 @@
 
 -- This test actually doesn't need to run on the GPU,
 -- it's just designed to stress test GPU execution in particular
-import 'ebb.liszt'
+import 'ebb'
 
 -- A 17x17 grid will, at current settings,
--- will force liszt to run the generated kernel
+-- will force ebb to run the generated kernel
 -- on multiple GPU blocks
 local N=17
 
@@ -20,7 +20,7 @@ function main ()
 	local com = L.Global(L.vector(L.float, 2), {0, 0})
 
 	-- compute centroid
-	local sum_pos = liszt(c : grid.cells)
+	local sum_pos = ebb(c : grid.cells)
 		com += c.center
 	end
 	grid.cells:foreach(sum_pos)

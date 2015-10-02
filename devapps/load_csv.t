@@ -1,4 +1,4 @@
-import 'ebb.liszt'
+import 'ebb'
 
 -- local cells = L.NewRelation{ name = 'cells', size = 8 }
 -- local cells = L.NewRelation{ name = 'cells', dims = {2,4} }
@@ -6,7 +6,7 @@ import 'ebb.liszt'
 -- local cells = L.NewRelation{ name = 'cells', dims = {1,8,1} }
 local cells = L.NewRelation{ name = 'cells', dims = {2,2,2} }
 
-local liszt dump(c, field)
+local ebb dump(c, field)
   L.print(c[field])
 end
 

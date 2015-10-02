@@ -1,4 +1,4 @@
-import 'ebb.liszt'
+import 'ebb'
 
 local tid_x   = cudalib.nvvm_read_ptx_sreg_tid_x
 local b_dim_x = cudalib.nvvm_read_ptx_sreg_ntid_x
@@ -7,12 +7,12 @@ local bid_x   = cudalib.nvvm_read_ptx_sreg_ctaid_x
 local N = 100000
 
 
---------------------------------------------------------------------------------
---[[                             liszt saxpy                                ]]--
---------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+--[[                              ebb saxpy                                ]]--
+-------------------------------------------------------------------------------
 L.default_processor = L.GPU
 
-function run_liszt_saxpy (tests)
+function run_ebb_saxpy (tests)
 	local R = L.NewRelation { size = N, name = 'R' }
 	R:NewField("x", L.float):Load(function(i) return i   end)
 	R:NewField("y", L.float):Load(function(i) return i*i end)
@@ -20,19 +20,19 @@ function run_liszt_saxpy (tests)
 
 	local a = L.Global(L.float, 3.49230)
 
-	local liszt liszt_saxpy (r : R)
+	local ebb ebb_saxpy (r : R)
 		r.z = a * r.x + r.y
 	end
 	
 	for i = 1, tests do
-		R:foreach(liszt_saxpy)
+		R:foreach(ebb_saxpy)
 	end
 end
 
 
---------------------------------------------------------------------------------
---[[                             terra saxpy                                ]]--
---------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+--[[                              terra saxpy                              ]]--
+-------------------------------------------------------------------------------
 local terra terra_saxpy (n : int, a : float , x : &float, y : &float, z : &float)
 	var id = tid_x() + b_dim_x() * bid_x()
 	if id < n then
@@ -65,9 +65,9 @@ function run_terra_saxpy (tests)
 end
 
 
---------------------------------------------------------------------------------
---[[                              execute                                   ]]--
---------------------------------------------------------------------------------
-run_liszt_saxpy(1)
+-------------------------------------------------------------------------------
+--[[                               execute                                 ]]--
+-------------------------------------------------------------------------------
+run_ebb_saxpy(1)
 run_terra_saxpy(1)
 

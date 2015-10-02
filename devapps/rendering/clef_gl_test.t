@@ -1,4 +1,4 @@
-import "ebb.liszt"
+import "ebb"
 
 --[[
 
@@ -76,7 +76,7 @@ end)
 
 
 -----------------------------------------------------------------------------
---[[                Setup Liszt Relations & init GClef                   ]]--
+--[[                 Setup Ebb Relations & init GClef                    ]]--
 -----------------------------------------------------------------------------
 
 local triangles = L.NewRelation { size = 1, name = 'triangles' }
@@ -236,18 +236,18 @@ end
 
 
 
--- Liszt Mumbo Jumbo
+-- Ebb Mumbo Jumbo
 
 local time_global = L.Global(L.float, 0)
 vertices:NewField('pos_temp', L.vector(L.float, 4)):Load({0,0,0,0})
-local liszt update_pos1 (v : vertices)
+local ebb update_pos1 (v : vertices)
     var y = v.pos[1]
     if y > 0 then
         y = L.float(0.5 + 0.4 * C.cos(3*time_global))
     end
     v.pos_temp = { v.pos[0], y, v.pos[2], v.pos[3] }
 end
-local liszt update_pos2 (v : vertices)
+local ebb update_pos2 (v : vertices)
     var pos = v.pos_temp
     v.pos = pos
     vdb.color(v.color)

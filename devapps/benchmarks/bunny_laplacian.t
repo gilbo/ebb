@@ -1,4 +1,4 @@
-import "ebb.liszt" -- Every Liszt File should start with this command
+import "ebb" -- Every Ebb File should start with this command
 
 -- This line includes the trimesh.t file.
 -- As a result, the table 'Trimesh' defined in that file is bound to
@@ -26,7 +26,7 @@ local bunny = Trimesh.LoadFromOFF(tri_mesh_filename)
 
 
 bunny.triangles:NewField('area_normal', L.vec3d):Load({0,0,0})
-local liszt compute_area_normals( t : bunny.triangles )
+local ebb compute_area_normals( t : bunny.triangles )
   var p0 = t.v[0].pos
   var p1 = t.v[1].pos
   var p2 = t.v[2].pos
@@ -37,11 +37,11 @@ end
 
 bunny.edges:NewField('laplacian', L.double):Load(0)
 bunny.vertices:NewField('laplacian_diag', L.double):Load(0)
-local liszt zero_laplacian_edge(e : bunny.edges)
+local ebb zero_laplacian_edge(e : bunny.edges)
   e.laplacian = 0 end
-local liszt zero_laplacian_vert(v : bunny.vertices)
+local ebb zero_laplacian_vert(v : bunny.vertices)
   v.laplacian_diag = 0 end
-local liszt build_laplacian(t : bunny.triangles)
+local ebb build_laplacian(t : bunny.triangles)
   var area : L.double = L.length(t.area_normal) / 2
   if area < 0.00001 then area = 0.00001 end
 
@@ -76,11 +76,11 @@ end
 local timestep = L.Global(L.double, 0.1)
 
 bunny.vertices:NewField('d_pos', L.vec3d):Load({0,0,0})
-local liszt zero_d_pos ( v : bunny.vertices )
+local ebb zero_d_pos ( v : bunny.vertices )
   v.d_pos = {0,0,0}
 end
 
-local liszt compute_diffusion ( v : bunny.vertices )
+local ebb compute_diffusion ( v : bunny.vertices )
   var acc : L.vec3d = {0,0,0}
   for e in v.edges do
     acc += e.laplacian * (e.head.pos - v.pos)
@@ -89,7 +89,7 @@ local liszt compute_diffusion ( v : bunny.vertices )
   v.d_pos = timestep * acc / v.laplacian_diag
 end
 
-local liszt apply_diffusion ( v : bunny.vertices )
+local ebb apply_diffusion ( v : bunny.vertices )
   v.pos += v.d_pos
 end
 
@@ -102,7 +102,7 @@ local sqrt3 = math.sqrt(3)
 
 -- EXTRA: (optional.  It demonstrates the use of VDB, a visual debugger)
 local vdb = require('ebb.lib.vdb')
-local liszt debug_tri_draw ( t : bunny.triangles )
+local ebb debug_tri_draw ( t : bunny.triangles )
   -- Spoof a really simple directional light
   -- with a cos diffuse term determining the triangle gray scale
   var d = L.dot({1/sqrt3, 1/sqrt3, 1/sqrt3},

@@ -1,6 +1,6 @@
 --DISABLE-TEST
 --DISABLE-ON-LEGION
-import "ebb.liszt"
+import "ebb"
 
 local LMesh = require "ebb.domains.lmesh"
 local M = LMesh.Load("examples/mesh.lmesh")

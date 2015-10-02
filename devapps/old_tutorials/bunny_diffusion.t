@@ -1,4 +1,4 @@
-import "ebb.liszt" -- Every Liszt File should start with this command
+import "ebb" -- Every Ebb File should start with this command
 
 -- Single line comments in Lua look like this
 
@@ -90,9 +90,9 @@ off_in:close()
 
 ------------------------------------------------------------------------------
 
--- Now We want to construct the Liszt relations
+-- Now We want to construct the Ebb relations
 -- The 'L' namespace is available because of the
--- initial 'import "ebb.liszt"' statement at the top of this file
+-- initial 'import "ebb"' statement at the top of this file
 
 local triangles = L.NewRelation { size = n_tris, name = 'triangles' }
 local vertices  = L.NewRelation { size = n_verts, name = 'vertices' }
@@ -144,7 +144,7 @@ triangles.v3:Load(v3_data_array)
 -- should be at least 0 and less than (vertices:Size() - 1).
 
 -- WARNING: If you try to load Row fields with new data after the simulation
---    begins, you may get undefined behavior.  Liszt reserves the right
+--    begins, you may get undefined behavior.  Ebb reserves the right
 --    to arbitrarily re-order the rows during execution.  This may happen
 --    to improve data access patterns, due to the creation or destruction
 --    of data, or any other number of contingencies!
@@ -174,7 +174,7 @@ vertices.nTriangles:Load(0)
 ------------------------------------------------------------------------------
 
 -- In addition to Fields, we can also define Globals.
--- A Liszt Global is a kind of "global" variable that's useful for
+-- An Ebb Global is a kind of "global" variable that's useful for
 -- controlling time-step behavior or computing simple summary statistics
 -- Unlike Fields, which have a different value for each entry/row in the
 -- relation, Globals have exactly one value visible to all rows.
@@ -198,12 +198,12 @@ local avg_temp_change = L.Global(L.double, 0.0)
 ------------------------------------------------------------------------------
 
 -- Before we launch into the full computation, we'll take a second
--- here to compute the triangles' areas.  We can do this in Liszt.
+-- here to compute the triangles' areas.  We can do this in Ebb.
 -- Let's see how...
 
--- This first line declares that we're defining a new Liszt function.
+-- This first line declares that we're defining a new Ebb function.
 --  (You can think of this function as the body of a parallel-for loop!)
-local liszt compute_tri_area ( t : triangles )
+local ebb compute_tri_area ( t : triangles )
 -- We specify that the function will be mapped over rows from the 'triangles'
 -- relation, and that we'll refer to rows using the variable name 't'.
 
@@ -236,7 +236,7 @@ triangles:map(compute_tri_area)
 
 -- We can compute the number of triangles touching each vertex
 -- using another function
-local liszt compute_n_triangles ( t : triangles )
+local ebb compute_n_triangles ( t : triangles )
   t.v1.nTriangles += 1
   t.v2.nTriangles += 1
   t.v3.nTriangles += 1
@@ -251,7 +251,7 @@ triangles:map(compute_n_triangles)
 local conduction = L.Constant(L.double, 1.0)
 
 -- Note that we didn't define conduction as a Global.  As a result, it will
--- be compiled into the Liszt function.  If we later change the value of
+-- be compiled into the Ebb function.  If we later change the value of
 -- conduction, by assigning a different constant to the name 'conduction'
 -- it will have no effect.  If we wanted to change the conduction over
 -- the course of the simulation, then we should have created a Global.
@@ -268,13 +268,13 @@ local cmath = terralib.includecstring [[
 
 
 -- Let's first look at one way we could try writing heat diffusion
--- as a single Liszt function.  It turns out it will produce compiler
+-- as a single Ebb function.  It turns out it will produce compiler
 -- errors if we try to execute it.
 -- ( TRY IT OUT!  Just uncomment the code below, and you should
 --        get a compiler error when you try to execute this file. )
 
 --[[
-local liszt temp_update_fail ( t : triangles )
+local ebb temp_update_fail ( t : triangles )
   -- We should compute edge coefficients to account for different
   -- geometries, but for simplicity right now, we'll just give
   -- each edge weight 1
@@ -308,7 +308,7 @@ end
 
 -- Why won't the code above work?
 
--- Remember when we said you can think of a Liszt function as the body of a
+-- Remember when we said you can think of an Ebb function as the body of a
 -- parallel-for loop?  Suppose we looped over the triangles in two different
 -- ways: front-to-back and back-to-front.  Would the result of the loop be
 -- the same?  No, because each loop iteration both READs from the
@@ -325,7 +325,7 @@ vertices.d_temperature:Load(0.0)
 
 -- Ok, this is mostly the same as above, except we're writing the
 -- resutls to a temporary field
-local liszt compute_diffusion ( t : triangles )
+local ebb compute_diffusion ( t : triangles )
   -- We should compute edge coefficients to account for different
   -- geometries, but for simplicity right now, we'll just give
   -- each edge weight 1
@@ -357,7 +357,7 @@ local liszt compute_diffusion ( t : triangles )
 end
 
 -- Now, we can actually apply the change
-local liszt apply_diffusion ( v : vertices )
+local ebb apply_diffusion ( v : vertices )
   var d_temp = v.d_temperature
   -- adjust the temperature by the computed change
   v.temperature += d_temp
@@ -369,7 +369,7 @@ local liszt apply_diffusion ( v : vertices )
 end
 
 -- And we can clear out the temporary field once we've applied the change
-local liszt clear_temporary ( v : vertices )
+local ebb clear_temporary ( v : vertices )
   v.d_temperature = 0.0
 end
 
@@ -382,7 +382,7 @@ local vdb = require('ebb.lib.vdb')
 -- heat diffusing across the surface of the bunny model.
 local cold = L.Constant(L.vec3f,{0.5,0.5,0.5})
 local hot  = L.Constant(L.vec3f,{1.0,0.0,0.0})
-local liszt debug_tri_draw ( t : triangles )
+local ebb debug_tri_draw ( t : triangles )
   -- color a triangle with the average temperature of its vertices
   var avg_temp =
     (t.v1.temperature + t.v2.temperature + t.v3.temperature) / 3.0
@@ -419,7 +419,7 @@ end
 ------------------------------------------------------------------------------
 
 -- We can also dump data out of the relational storage.
--- BEWARE: Liszt may re-order your data however it chooses.
+-- BEWARE: Ebb may re-order your data however it chooses.
 -- This means that you need to dump out everything, not just
 -- a single field.
 

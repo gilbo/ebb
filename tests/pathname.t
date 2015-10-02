@@ -1,4 +1,4 @@
-import "ebb.liszt"
+import "ebb"
 
 local test = require('tests.test')
 
@@ -11,7 +11,7 @@ local testdir = Pathname.new('pathname_testdir')
 test.eq(Pathname.root:is_absolute(), true)
 test.eq(Pathname.root:is_root(), true)
 test.eq(Pathname.pwd:is_absolute(), true)
-test.eq(Pathname.liszt_root:is_absolute(), true)
+test.eq(Pathname.ebb_root:is_absolute(), true)
 
 test.eq(Pathname.root:basename(), '')
 

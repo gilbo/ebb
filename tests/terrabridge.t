@@ -1,5 +1,5 @@
 --DISABLE-ON-GPU  (b/c standard lib functions can't be embedded in CUDA code)
-import "ebb.liszt"
+import "ebb"
 
 local assert = L.assert
 local R = L.NewRelation { name="R", size=6 }
@@ -22,7 +22,7 @@ local terra square(val : int)
   return val * val
 end
 
-local test_terra = liszt(r : R)
+local test_terra = ebb(r : R)
   assert(square(5) == 25) -- call a user-defined Terra function
   assert(sqrt(5) == ans) -- call a built-in C function
 

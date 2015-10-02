@@ -1,4 +1,4 @@
-import "ebb.liszt"
+import "ebb"
 
 -- dld for terra callbacks (Tecplot output)
 local dld  = require 'ebb.src.dld'
@@ -867,7 +867,7 @@ print("|   ____) | | |__| | | |__  | |__   _| |_  | |__       /  /\\  \\     |")
 print("|  |_____/   \\____/  |____| |____| |_____| |____|     /__/  \\__\\    |")
 print("|                                                                   |")
 print("| Soleil-X is a turbulence/particle/radiation solver written in     |")
-print("| the Liszt DSL for execution with the Legion runtime.              |")
+print("| the Liszt-Ebb DSL for execution with the Legion runtime.          |")
 print("|                                                                   |")
 print("---------------------------------------------------------------------")
 print("|                                                                   |")
@@ -1063,12 +1063,12 @@ print("")
 -----------------------------------------------------------------------------
 
 -- Norm of a vector
-local liszt norm (v)
+local ebb norm (v)
     return L.sqrt(L.dot(v, v))
 end
 
 -- Compute fluid dynamic viscosity from fluid temperature
-local liszt GetDynamicViscosity (temperature)
+local ebb GetDynamicViscosity (temperature)
   var viscosity = L.double(0.0)
   if fluid_options.viscosity_model == Viscosity.Constant then
     -- Constant
@@ -1088,29 +1088,29 @@ local liszt GetDynamicViscosity (temperature)
 end
 
 -- Compute fluid flow sound speed based on temperature (a = sqrt(gamma*R*T))
-local liszt GetSoundSpeed (temperature)
+local ebb GetSoundSpeed (temperature)
     return L.sqrt(fluid_options.gamma * fluid_options.gasConstant * temperature)
 end
 
 -- Function to retrieve particle area, volume and mass
--- These are Liszt user-defined functions that behave like a field
-particles:NewFieldFunction('cross_section_area', liszt(p)
+-- These are Ebb user-defined functions that behave like a field
+particles:NewFieldFunction('cross_section_area', ebb(p)
     return pi * L.pow(p.diameter, 2) / 4.0
 end)
-particles:NewFieldFunction('volume', liszt(p)
+particles:NewFieldFunction('volume', ebb(p)
     return pi * L.pow(p.diameter, 3) / 6.0
 end)
-particles:NewFieldFunction('mass', liszt(p)
+particles:NewFieldFunction('mass', ebb(p)
     return p.volume * p.density
 end)
 
 -----------------------------------------------------------------------------
---[[                             LISZT MACROS                            ]]--
+--[[                              EBB MACROS                             ]]--
 -----------------------------------------------------------------------------
 
 
 local function GenerateTrilinearInterpolation(field_name)
-  return liszt(dc, xyz)
+  return ebb(dc, xyz)
     var c000 = dc.vertex.cell(-1, -1, -1)
     var c100 = dc.vertex.cell( 0, -1, -1)
     var c010 = dc.vertex.cell(-1,  0, -1)
@@ -1160,7 +1160,7 @@ local InterpolateTriVelocity = GenerateTrilinearInterpolation('velocity')
 local InterpolateTriTemperature = GenerateTrilinearInterpolation('temperature')
 
 -----------------------------------------------------------------------------
---[[                           LISZT FUNCTIONS                           ]]--
+--[[                            EBB FUNCTIONS                            ]]--
 -----------------------------------------------------------------------------
 
 -------
@@ -1172,30 +1172,30 @@ local InterpolateTriTemperature = GenerateTrilinearInterpolation('temperature')
 -- Here, we use a field for convenience when outputting to file, but this is
 -- to be removed after grid outputing is well defined from within the grid.t 
 -- module. Similar story with the vertex coordinates (output only).
-liszt Flow.InitializeCenterCoordinates (c : grid.cells)
+ebb Flow.InitializeCenterCoordinates (c : grid.cells)
     var xy = c.center
     c.centerCoordinates = L.vec3d({xy[0], xy[1], xy[2]})
 end
 
-liszt Flow.InitializeCellRindLayer (c : grid.cells)
+ebb Flow.InitializeCellRindLayer (c : grid.cells)
     c.cellRindLayer = 0
 end
 
 -- Hard coding the vertices until we have access in grid.t
 -- WARNING: Here, I am using the id numbers, but this is unsafe!
-liszt Flow.InitializeVertexCoordinates (v : grid.vertices)
+ebb Flow.InitializeVertexCoordinates (v : grid.vertices)
     var x = grid_originX + grid_dx * (L.double(L.xid(v)))
     var y = grid_originY + grid_dy * (L.double(L.yid(v)))
     var z = grid_originZ + grid_dz * (L.double(L.zid(v)))
     v.centerCoordinates = L.vec3d({x, y, z})
 end
 
-liszt Flow.InitializeVertexRindLayer (v : grid.vertices)
+ebb Flow.InitializeVertexRindLayer (v : grid.vertices)
     v.vertexRindLayer = 0
 end
 
 
-liszt Flow.InitializePrimitives (c : grid.cells)
+ebb Flow.InitializePrimitives (c : grid.cells)
     if flow_options.initCase == Flow.TaylorGreen2DVortex then
       -- Define Taylor Green Vortex
       var taylorGreenDensity  = flow_options.initParams[0]
@@ -1265,7 +1265,7 @@ liszt Flow.InitializePrimitives (c : grid.cells)
     end
 end
 
-liszt Flow.UpdateConservedFromPrimitive (c : grid.cells)
+ebb Flow.UpdateConservedFromPrimitive (c : grid.cells)
 
     -- Equation of state: T = p / ( R * rho )
     var tmpTemperature = c.pressure / (fluid_options.gasConstant * c.rho)
@@ -1284,7 +1284,7 @@ liszt Flow.UpdateConservedFromPrimitive (c : grid.cells)
 end
 
 -- Initialize temporaries
-liszt Flow.InitializeTemporaries (c : grid.cells)
+ebb Flow.InitializeTemporaries (c : grid.cells)
     c.rho_old         = c.rho
     c.rhoVelocity_old = c.rhoVelocity
     c.rhoEnergy_old   = c.rhoEnergy
@@ -1294,7 +1294,7 @@ liszt Flow.InitializeTemporaries (c : grid.cells)
 end
 
 -- Initialize derivatives
-liszt Flow.InitializeTimeDerivatives (c : grid.cells)
+ebb Flow.InitializeTimeDerivatives (c : grid.cells)
     c.rho_t         = L.double(0.0)
     c.rhoVelocity_t = L.vec3d({0.0, 0.0, 0.0})
     c.rhoEnergy_t   = L.double(0.0)
@@ -1305,7 +1305,7 @@ end
 -----------
 
 -- Initialize enthalpy and derivatives
-liszt Flow.AddInviscidInitialize (c : grid.cells)
+ebb Flow.AddInviscidInitialize (c : grid.cells)
     c.rhoEnthalpy = c.rhoEnergy + c.pressure
 end
 
@@ -1313,7 +1313,7 @@ end
 -- any two adjacent cells with a centered scheme. The left cell (c_l),
 -- right cell (c_r), and coordinate direction (x = 0, y = 1, or z = 2)
 -- are the inputs.
-liszt Flow.CenteredInviscidFlux (c_l, c_r, direction)
+ebb Flow.CenteredInviscidFlux (c_l, c_r, direction)
 
     -- Diagonal terms of inviscid flux
     var rhoFactorDiagonal         = L.double(0.0)
@@ -1373,7 +1373,7 @@ end
 
 -- Compute inviscid fluxes in X direction. Include the first boundary
 -- cell (c.xneg_depth == 1) to define left flux on first interior cell.
-liszt Flow.AddInviscidGetFluxX (c : grid.cells)
+ebb Flow.AddInviscidGetFluxX (c : grid.cells)
     if c.in_interior or c.xneg_depth == 1 then
       
       -- Compute the inviscid flux with a centered scheme.
@@ -1391,7 +1391,7 @@ end
 
 -- Compute inviscid fluxes in Y direction. Include the first boundary
 -- cell (c.yneg_depth == 1) to define left flux on first interior cell.
-liszt Flow.AddInviscidGetFluxY (c : grid.cells)
+ebb Flow.AddInviscidGetFluxY (c : grid.cells)
     if c.in_interior or c.yneg_depth == 1 then
       
       -- Compute the inviscid flux with a centered scheme.
@@ -1409,7 +1409,7 @@ end
 
 -- Compute inviscid fluxes in Z direction. Include the first boundary
 -- cell (c.zneg_depth == 1) to define left flux on first interior cell.
-liszt Flow.AddInviscidGetFluxZ (c : grid.cells)
+ebb Flow.AddInviscidGetFluxZ (c : grid.cells)
     if c.in_interior or c.zneg_depth == 1 then
       
       -- Compute the inviscid flux with a centered scheme.
@@ -1431,7 +1431,7 @@ end
 -- (grid_dx, grid_dy, grid_dz) are not appropriate and should be changed
 -- to reflect those expressed in the Python prototype code
 -- WARNING_END
-liszt Flow.AddInviscidUpdateUsingFluxX (c : grid.cells)
+ebb Flow.AddInviscidUpdateUsingFluxX (c : grid.cells)
     c.rho_t += -(c( 0,0,0).rhoFlux -
                  c(-1,0,0).rhoFlux)/grid_dx
     c.rhoVelocity_t += -(c( 0,0,0).rhoVelocityFlux -
@@ -1439,7 +1439,7 @@ liszt Flow.AddInviscidUpdateUsingFluxX (c : grid.cells)
     c.rhoEnergy_t += -(c( 0,0,0).rhoEnergyFlux -
                        c(-1,0,0).rhoEnergyFlux)/grid_dx
 end
-liszt Flow.AddInviscidUpdateUsingFluxY (c : grid.cells)
+ebb Flow.AddInviscidUpdateUsingFluxY (c : grid.cells)
     c.rho_t += -(c(0, 0,0).rhoFlux -
                  c(0,-1,0).rhoFlux)/grid_dy
     c.rhoVelocity_t += -(c(0, 0,0).rhoVelocityFlux -
@@ -1447,7 +1447,7 @@ liszt Flow.AddInviscidUpdateUsingFluxY (c : grid.cells)
     c.rhoEnergy_t += -(c(0, 0,0).rhoEnergyFlux -
                        c(0,-1,0).rhoEnergyFlux)/grid_dy
 end
-liszt Flow.AddInviscidUpdateUsingFluxZ (c : grid.cells)
+ebb Flow.AddInviscidUpdateUsingFluxZ (c : grid.cells)
     c.rho_t += -(c(0,0, 0).rhoFlux -
                  c(0,0,-1).rhoFlux)/grid_dz
     c.rhoVelocity_t += -(c(0,0, 0).rhoVelocityFlux -
@@ -1461,7 +1461,7 @@ end
 ----------
 
 -- Compute viscous fluxes in X direction
-liszt Flow.AddViscousGetFluxX (c : grid.cells)
+ebb Flow.AddViscousGetFluxX (c : grid.cells)
     -- Consider first boundary element (c.xneg_depth == 1) to define left flux
     -- on first interior cell
     if c.in_interior or c.xneg_depth == 1 then
@@ -1525,7 +1525,7 @@ liszt Flow.AddViscousGetFluxX (c : grid.cells)
 end
 
 -- Compute viscous fluxes in Y direction
-liszt Flow.AddViscousGetFluxY (c : grid.cells)
+ebb Flow.AddViscousGetFluxY (c : grid.cells)
     -- Consider first boundary element (c.yneg_depth == 1) to define down flux
     -- on first interior cell
     if c.in_interior or c.yneg_depth == 1 then
@@ -1589,7 +1589,7 @@ liszt Flow.AddViscousGetFluxY (c : grid.cells)
 end
 
 -- Compute viscous fluxes in Z direction
-liszt Flow.AddViscousGetFluxZ (c : grid.cells)
+ebb Flow.AddViscousGetFluxZ (c : grid.cells)
     -- Consider first boundary element (c.zneg_depth == 1) to define down flux
     -- on first interior cell
     if c.in_interior or c.zneg_depth == 1 then
@@ -1652,21 +1652,21 @@ liszt Flow.AddViscousGetFluxZ (c : grid.cells)
     end
 end
 
-liszt Flow.AddViscousUpdateUsingFluxX (c : grid.cells)
+ebb Flow.AddViscousUpdateUsingFluxX (c : grid.cells)
     c.rhoVelocity_t += (c( 0,0,0).rhoVelocityFlux -
                         c(-1,0,0).rhoVelocityFlux)/grid_dx
     c.rhoEnergy_t   += (c( 0,0,0).rhoEnergyFlux -
                         c(-1,0,0).rhoEnergyFlux)/grid_dx
 end
 
-liszt Flow.AddViscousUpdateUsingFluxY (c : grid.cells)
+ebb Flow.AddViscousUpdateUsingFluxY (c : grid.cells)
     c.rhoVelocity_t += (c(0, 0,0).rhoVelocityFlux -
                         c(0,-1,0).rhoVelocityFlux)/grid_dy
     c.rhoEnergy_t   += (c(0, 0,0).rhoEnergyFlux -
                         c(0,-1,0).rhoEnergyFlux)/grid_dy
 end
 
-liszt Flow.AddViscousUpdateUsingFluxZ (c : grid.cells)
+ebb Flow.AddViscousUpdateUsingFluxZ (c : grid.cells)
     c.rhoVelocity_t += (c(0,0, 0).rhoVelocityFlux -
                         c(0,0,-1).rhoVelocityFlux)/grid_dz
     c.rhoEnergy_t   += (c(0,0, 0).rhoEnergyFlux -
@@ -1677,7 +1677,7 @@ end
 -- Particles coupling
 ---------------------
 
-liszt Flow.AddParticlesCoupling (p : particles)
+ebb Flow.AddParticlesCoupling (p : particles)
     if p.state == 1  and particles_options.twoWayCoupling == ON then
         -- WARNING: Assumes that deltaVelocityOverRelaxationTime and 
         -- deltaTemperatureTerm have been computed previously 
@@ -1706,7 +1706,7 @@ end
 -- Holding Temperature Fixed in the presence of Radiation
 --------------
 
-liszt Flow.AddEnergySource (c : grid.cells)
+ebb Flow.AddEnergySource (c : grid.cells)
   if radiation_options.zeroAvgHeatSource == ON then
     -- Remove a constant heat flux in all cells to balance with radiation.
     -- Note that this has been pre-computed before reaching this kernel (above).
@@ -1718,7 +1718,7 @@ end
 -- Body Forces
 --------------
 
-liszt Flow.AddBodyForces (c : grid.cells)
+ebb Flow.AddBodyForces (c : grid.cells)
 
     -- Add body forces (accelerations) to the momentum
     c.rhoVelocity_t += c.rho * flow_options.bodyForce
@@ -1743,7 +1743,7 @@ function Flow.GenerateUpdateFunctions(relation, stage)
     local coeff_time = TimeIntegrator.coeff_time[stage]
     local deltaTime  = TimeIntegrator.deltaTime
     if stage <= 3 then
-        return liszt(r : relation)
+        return ebb(r : relation)
             r.rho_new  += coeff_fun * deltaTime * r.rho_t
             r.rho       = r.rho_old +
               coeff_time * deltaTime * r.rho_t
@@ -1757,7 +1757,7 @@ function Flow.GenerateUpdateFunctions(relation, stage)
               coeff_time * deltaTime * r.rhoEnergy_t
         end
     elseif stage == 4 then
-        return liszt(r : relation)
+        return ebb(r : relation)
             r.rho = r.rho_new +
                coeff_fun * deltaTime * r.rho_t
             r.rhoVelocity = r.rhoVelocity_new +
@@ -1771,14 +1771,14 @@ for sdx = 1, 4 do
     Flow.UpdateFunctions[sdx] = Flow.GenerateUpdateFunctions(grid.cells, sdx)
 end
 
-liszt Flow.UpdateAuxiliaryVelocity (c : grid.cells)
+ebb Flow.UpdateAuxiliaryVelocity (c : grid.cells)
     var velocity = c.rhoVelocity / c.rho
     c.velocity = velocity
     c.kineticEnergy = 0.5 *  L.dot(velocity,velocity)
 end
 
 -- Helper function for updating the ghost fields to minimize repeated code
-local liszt UpdateGhostFieldsHelper(c_bnd, c_int, sign, bnd_velocity, bnd_temperature)
+local ebb UpdateGhostFieldsHelper(c_bnd, c_int, sign, bnd_velocity, bnd_temperature)
 
   -- Temporary variables for computing new halo state
   var rho         = L.double(0.0)
@@ -1815,7 +1815,7 @@ local liszt UpdateGhostFieldsHelper(c_bnd, c_int, sign, bnd_velocity, bnd_temper
   c_bnd.temperatureBoundary =  temperature
 
 end
-liszt Flow.UpdateGhostFieldsStep1 (c : grid.cells)
+ebb Flow.UpdateGhostFieldsStep1 (c : grid.cells)
     if c.xneg_depth > 0 then
         UpdateGhostFieldsHelper(c, c( 1,0,0), x_sign, xneg_velocity, xneg_temperature)
     end
@@ -1835,7 +1835,7 @@ liszt Flow.UpdateGhostFieldsStep1 (c : grid.cells)
         UpdateGhostFieldsHelper(c, c(0,0,-1), z_sign, zpos_velocity, zpos_temperature)
     end
 end
-liszt Flow.UpdateGhostFieldsStep2 (c : grid.cells)
+ebb Flow.UpdateGhostFieldsStep2 (c : grid.cells)
     c.rho         = c.rhoBoundary
     c.rhoVelocity = c.rhoVelocityBoundary
     c.rhoEnergy   = c.rhoEnergyBoundary
@@ -1848,7 +1848,7 @@ function Flow.UpdateGhost()
 end
 
 -- Helper function for updating the ghost fields to minimize repeated code
-local liszt UpdateGhostThermodynamicsHelper (c_bnd, c_int, bnd_temperature)
+local ebb UpdateGhostThermodynamicsHelper (c_bnd, c_int, bnd_temperature)
 
   -- Temporary variables for computing new halo state
   var temp_wall   = L.double(0.0)
@@ -1866,7 +1866,7 @@ local liszt UpdateGhostThermodynamicsHelper (c_bnd, c_int, bnd_temperature)
   c_bnd.temperatureBoundary = temperature
 
 end
-liszt Flow.UpdateGhostThermodynamicsStep1 (c : grid.cells)
+ebb Flow.UpdateGhostThermodynamicsStep1 (c : grid.cells)
   if c.xneg_depth > 0 then
     UpdateGhostThermodynamicsHelper(c, c( 1,0,0), xneg_temperature)
   end
@@ -1886,7 +1886,7 @@ liszt Flow.UpdateGhostThermodynamicsStep1 (c : grid.cells)
     UpdateGhostThermodynamicsHelper(c, c(0,0,-1), zpos_temperature)
   end
 end
-liszt Flow.UpdateGhostThermodynamicsStep2 (c : grid.cells)
+ebb Flow.UpdateGhostThermodynamicsStep2 (c : grid.cells)
     if c.in_boundary then
         c.pressure    = c.pressureBoundary
         c.temperature = c.temperatureBoundary
@@ -1898,7 +1898,7 @@ function Flow.UpdateGhostThermodynamics()
 end
 
 -- Helper function for updating the ghost fields to minimize repeated code
-local liszt UpdateGhostVelocityHelper (c_bnd, c_int, sign, bnd_velocity)
+local ebb UpdateGhostVelocityHelper (c_bnd, c_int, sign, bnd_velocity)
 
   -- Update the boundary cell based on the values in the matching interior cell
   for i = 0,3 do
@@ -1906,7 +1906,7 @@ local liszt UpdateGhostVelocityHelper (c_bnd, c_int, sign, bnd_velocity)
   end
 
 end
-liszt Flow.UpdateGhostVelocityStep1 (c : grid.cells)
+ebb Flow.UpdateGhostVelocityStep1 (c : grid.cells)
   if c.xneg_depth > 0 then
     UpdateGhostVelocityHelper(c, c( 1,0,0), x_sign, xneg_velocity)
   end
@@ -1926,7 +1926,7 @@ liszt Flow.UpdateGhostVelocityStep1 (c : grid.cells)
     UpdateGhostVelocityHelper(c, c(0,0,-1), z_sign, zpos_velocity)
   end
 end
-liszt Flow.UpdateGhostVelocityStep2 (c : grid.cells)
+ebb Flow.UpdateGhostVelocityStep2 (c : grid.cells)
     c.velocity = c.velocityBoundary
 end
 function Flow.UpdateGhostVelocity()
@@ -1935,7 +1935,7 @@ function Flow.UpdateGhostVelocity()
 end
 
 -- Helper function for updating the conservatives to minimize repeated code
-local liszt UpdateGhostConservedHelper (c_bnd, c_int, sign, bnd_velocity,
+local ebb UpdateGhostConservedHelper (c_bnd, c_int, sign, bnd_velocity,
                                         bnd_temperature)
 
   -- Temporary variables for computing new halo state
@@ -1971,7 +1971,7 @@ local liszt UpdateGhostConservedHelper (c_bnd, c_int, sign, bnd_velocity,
                                      0.5*L.dot(velocity,velocity))
 
 end
-liszt Flow.UpdateGhostConservedStep1 (c : grid.cells)
+ebb Flow.UpdateGhostConservedStep1 (c : grid.cells)
   if c.xneg_depth > 0 then
     UpdateGhostConservedHelper(c, c( 1,0,0), x_sign, xneg_velocity, xneg_temperature)
   end
@@ -1991,7 +1991,7 @@ liszt Flow.UpdateGhostConservedStep1 (c : grid.cells)
     UpdateGhostConservedHelper(c, c(0,0,-1), z_sign, zpos_velocity, zpos_temperature)
   end
 end
-liszt Flow.UpdateGhostConservedStep2 (c : grid.cells)
+ebb Flow.UpdateGhostConservedStep2 (c : grid.cells)
     c.rho         = c.rhoBoundary
     c.rhoVelocity = c.rhoVelocityBoundary
     c.rhoEnergy   = c.rhoEnergyBoundary
@@ -2001,7 +2001,7 @@ function Flow.UpdateGhostConserved()
     grid.cells.boundary:foreach(Flow.UpdateGhostConservedStep2)
 end
 
-liszt Flow.UpdateAuxiliaryThermodynamics (c : grid.cells)
+ebb Flow.UpdateAuxiliaryThermodynamics (c : grid.cells)
   var kineticEnergy = 0.5 * c.rho * L.dot(c.velocity,c.velocity)
   var pressure  = (fluid_options.gamma - 1.0) *( c.rhoEnergy - kineticEnergy )
   c.pressure    = pressure
@@ -2013,22 +2013,22 @@ end
 ---------------------
 
 -- WARNING: non-uniform grid assumption
-liszt Flow.ComputeVelocityGradientX (c : grid.cells)
+ebb Flow.ComputeVelocityGradientX (c : grid.cells)
   c.velocityGradientX = 0.5*(c(1,0,0).velocity - c(-1,0,0).velocity)/grid_dx
 end
 
 -- WARNING: non-uniform grid assumption
-liszt Flow.ComputeVelocityGradientY (c : grid.cells)
+ebb Flow.ComputeVelocityGradientY (c : grid.cells)
   c.velocityGradientY = 0.5*(c(0,1,0).velocity - c(0,-1,0).velocity)/grid_dy
 end
 
 -- WARNING: non-uniform grid assumption
-liszt Flow.ComputeVelocityGradientZ (c : grid.cells)
+ebb Flow.ComputeVelocityGradientZ (c : grid.cells)
   c.velocityGradientZ = 0.5*(c(0,0,1).velocity - c(0,0,-1).velocity)/grid_dz
 end
 
 -- Helper function for updating the boundary gradients to minimize repeated code
-local liszt UpdateGhostVelocityGradientHelper (c_bnd, c_int, sign)
+local ebb UpdateGhostVelocityGradientHelper (c_bnd, c_int, sign)
 
   -- Apply sign change and copy gradients from interior to boundary
   for i = 0,3 do
@@ -2038,7 +2038,7 @@ local liszt UpdateGhostVelocityGradientHelper (c_bnd, c_int, sign)
   end
 
 end
-liszt Flow.UpdateGhostVelocityGradientStep1 (c : grid.cells)
+ebb Flow.UpdateGhostVelocityGradientStep1 (c : grid.cells)
     if c.xneg_depth > 0 then
       UpdateGhostVelocityGradientHelper(c, c( 1,0,0), x_sign)
     end
@@ -2058,7 +2058,7 @@ liszt Flow.UpdateGhostVelocityGradientStep1 (c : grid.cells)
       UpdateGhostVelocityGradientHelper(c, c(0,0,-1), z_sign)
     end
 end
-liszt Flow.UpdateGhostVelocityGradientStep2 (c : grid.cells)
+ebb Flow.UpdateGhostVelocityGradientStep2 (c : grid.cells)
     if c.in_boundary then
         c.velocityGradientX = c.velocityGradientXBoundary
         c.velocityGradientY = c.velocityGradientYBoundary
@@ -2076,7 +2076,7 @@ local dXYZInverseSquare = L.Constant(L.double,
                                      1.0/grid_dx:get() * 1.0/grid_dx:get() +
                                      1.0/grid_dy:get() * 1.0/grid_dy:get() +
                                      1.0/grid_dz:get() * 1.0/grid_dz:get())
-local liszt calculateConvectiveSpectralRadius     ( c : grid.cells )
+local ebb calculateConvectiveSpectralRadius     ( c : grid.cells )
   -- Convective spectral radii
   -- WARNING: uniform grid assumption
   c.convectiveSpectralRadius = 
@@ -2087,7 +2087,7 @@ local liszt calculateConvectiveSpectralRadius     ( c : grid.cells )
 
   maxConvectiveSpectralRadius max= c.convectiveSpectralRadius    
 end
-local liszt calculateViscousSpectralRadius        ( c : grid.cells )
+local ebb calculateViscousSpectralRadius        ( c : grid.cells )
   -- Viscous spectral radii (including sgs model component)
   var dynamicViscosity = GetDynamicViscosity(c.temperature)
   var eddyViscosity = c.sgsEddyViscosity
@@ -2097,7 +2097,7 @@ local liszt calculateViscousSpectralRadius        ( c : grid.cells )
 
   maxViscousSpectralRadius max= c.viscousSpectralRadius       
 end
-local liszt calculateHeatConductionSpectralRadius ( c : grid.cells )
+local ebb calculateHeatConductionSpectralRadius ( c : grid.cells )
   var dynamicViscosity  = GetDynamicViscosity(c.temperature)
 
   -- Heat conduction spectral radii (including sgs model component)
@@ -2124,25 +2124,25 @@ end
 -- WARNING: update cellVolume computation for non-uniform grids
 local cellVolume = L.Constant(L.double,
                               grid_dx:get() * grid_dy:get() * grid_dz:get())
-local liszt numberOfInteriorCells ( c : grid.cells )
+local ebb numberOfInteriorCells ( c : grid.cells )
   Flow.numberOfInteriorCells    += 1
 end
-local liszt areaInterior          ( c : grid.cells )
+local ebb areaInterior          ( c : grid.cells )
   Flow.areaInterior             += cellVolume
 end
-local liszt averagePressure       ( c : grid.cells )
+local ebb averagePressure       ( c : grid.cells )
   Flow.averagePressure          += c.pressure * cellVolume
 end
-local liszt averageTemperature    ( c : grid.cells )
+local ebb averageTemperature    ( c : grid.cells )
   Flow.averageTemperature       += c.temperature * cellVolume
 end
-local liszt averageKineticEnergy  ( c : grid.cells )
+local ebb averageKineticEnergy  ( c : grid.cells )
   Flow.averageKineticEnergy     += c.kineticEnergy * cellVolume
 end
-local liszt minTemperature        ( c : grid.cells )
+local ebb minTemperature        ( c : grid.cells )
   Flow.minTemperature         min= c.temperature
 end
-local liszt maxTemperature        ( c : grid.cells )
+local ebb maxTemperature        ( c : grid.cells )
   Flow.maxTemperature         max= c.temperature
 end
 function Flow.IntegrateQuantities(cells)
@@ -2184,7 +2184,7 @@ end
 ----------------
 
 -- functions to draw particles and velocity for debugging purpose
-liszt Flow.DrawFunction (c : grid.cells)
+ebb Flow.DrawFunction (c : grid.cells)
     --var xMax = L.double(grid_options.xWidth)
     --var yMax = L.double(grid_options.yWidth)
     --var zMax = L.double(grid_options.zWidth)
@@ -2274,12 +2274,12 @@ end
 ------------
 
 -- Locate particles in dual cells
-liszt Particles.Locate (p : particles)
+ebb Particles.Locate (p : particles)
     p.dual_cell = grid.dual_locate(p.position)
 end
 
 -- Initialize temporaries for time stepper
-liszt Particles.InitializeTemporaries (p : particles)
+ebb Particles.InitializeTemporaries (p : particles)
     if p.state == 1 then
         p.position_old    = p.position
         p.velocity_old    = p.velocity
@@ -2295,7 +2295,7 @@ end
 ----------------
 
 -- Initialize time derivative for each stage of time stepper
-liszt Particles.InitializeTimeDerivatives (p : particles)
+ebb Particles.InitializeTimeDerivatives (p : particles)
     if p.state == 1 then
         p.position_t = L.vec3d({0, 0, 0})
         p.velocity_t = L.vec3d({0, 0, 0})
@@ -2304,7 +2304,7 @@ liszt Particles.InitializeTimeDerivatives (p : particles)
 end
 
 -- Update particle fields based on flow fields
-liszt Particles.AddFlowCoupling (p: particles)
+ebb Particles.AddFlowCoupling (p: particles)
   if p.state == 1 then
     
     -- Locate the dual cell within which this particle is located
@@ -2354,7 +2354,7 @@ end
 -- Body forces
 --------------
 
-liszt Particles.AddBodyForces (p : particles)
+ebb Particles.AddBodyForces (p : particles)
     if p.state == 1 and particles_options.particleType == Particles.Free then
         p.velocity_t += particles_options.bodyForce
     end
@@ -2364,7 +2364,7 @@ end
 -- Radiation
 ------------
 
-liszt Particles.AddRadiation (p : particles)
+ebb Particles.AddRadiation (p : particles)
     if p.state == 1 and radiation_options.radiationType == ON then
         -- Calculate absorbed radiation intensity considering optically thin
         -- particles, for a collimated radiation source with negligible 
@@ -2380,7 +2380,7 @@ liszt Particles.AddRadiation (p : particles)
 end
 
 -- Set particle velocities to underlying flow velocity for initialization
-liszt Particles.SetVelocitiesToFlow (p: particles)
+ebb Particles.SetVelocitiesToFlow (p: particles)
 
     -- Locate the dual cell within which this particle is located
     p.dual_cell = grid.dual_locate(p.position)
@@ -2413,7 +2413,7 @@ function Particles.GenerateUpdateFunctions(relation, stage)
     local coeff_time = TimeIntegrator.coeff_time[stage]
     local deltaTime  = TimeIntegrator.deltaTime
     if stage <= 3 then
-        return liszt(r : relation)
+        return ebb(r : relation)
             if r.state == 1 then
               r.position_new += 
                  coeff_fun * deltaTime * r.position_t
@@ -2430,7 +2430,7 @@ function Particles.GenerateUpdateFunctions(relation, stage)
             end
         end
     elseif stage == 4 then
-        return liszt(r : relation)
+        return ebb(r : relation)
             if r.state == 1 then
               r.position = r.position_new +
                  coeff_fun * deltaTime * r.position_t
@@ -2447,7 +2447,7 @@ for i = 1, 4 do
         Particles.GenerateUpdateFunctions(particles, i)
 end
 
-liszt Particles.UpdateAuxiliaryStep1 (p : particles)
+ebb Particles.UpdateAuxiliaryStep1 (p : particles)
     if p.state == 1 then
 
         -- Initialize position and velocity before we check for wall collisions
@@ -2632,7 +2632,7 @@ liszt Particles.UpdateAuxiliaryStep1 (p : particles)
         
     end
 end
-liszt Particles.UpdateAuxiliaryStep2 (p : particles)
+ebb Particles.UpdateAuxiliaryStep2 (p : particles)
     if p.state == 1 then
         p.position   = p.position_ghost
         p.velocity   = p.velocity_ghost
@@ -2645,7 +2645,7 @@ end
 ---------
 
 -- Particles feeder
-liszt Particles.Feed(p: particles)
+ebb Particles.Feed(p: particles)
 
     if p.state == 0 then
 
@@ -2784,7 +2784,7 @@ end
 ------------
 
 -- Particles collector 
-liszt Particles.Collect (p: particles)
+ebb Particles.Collect (p: particles)
 
     if p.state == 1 then
 
@@ -2818,7 +2818,7 @@ end
 -- Statistics
 -------------
 
-liszt Particles.IntegrateQuantities (p : particles)
+ebb Particles.IntegrateQuantities (p : particles)
     if p.state == 1 then
         Particles.averageTemperature += p.temperature
     end
@@ -2829,7 +2829,7 @@ end
 -- Visualization
 ----------------
 
-liszt Particles.DrawFunction (p : particles)
+ebb Particles.DrawFunction (p : particles)
     --var xMax = L.double(grid_options.xWidth)
     --var yMax = L.double(grid_options.yWidth)
     --var zMax = L.double(grid_options.zWidth)

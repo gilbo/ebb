@@ -1,4 +1,4 @@
-import "ebb.liszt"
+import "ebb"
 local PN = require 'ebb.lib.pathname'
 local U = require 'devapps.fem.utils'
 
@@ -9,7 +9,7 @@ N.profile = false
 
 
 --------------------------------------------------------------------------------
--- All Liszt kernels go here. These are wrapped into Lua function calls (at the
+-- All Ebb kernels go here. These are wrapped into Lua function calls (at the
 -- end of the file) which are called by any code external to this module.
 --
 -- This code is based on the Matlab implementation of neohookean model by
@@ -44,7 +44,7 @@ function N:setupFieldsFunctions(mesh)
   -- Compute B and W (similar computation, hence in one kernel)
   -- For corresponding Matlab code, see module computeB/ siggraph notes
   -- algorithm 1
-  liszt self.computeBAndW(t : mesh.tetrahedra)
+  ebb self.computeBAndW(t : mesh.tetrahedra)
     var Dm : L.mat3d
     var x4 : L.vec3d = t.v[3].pos
     for j = 0,3  do
@@ -66,7 +66,7 @@ function N:setupFieldsFunctions(mesh)
   -- For corresponding Matlab code, see module PK1/ siggraph notes
   -- u = t.muLame, l = t.lambdaLame (should be this, but u in the Matlab code is
   -- slightly different)
-  liszt self.PK1(t)
+  ebb self.PK1(t)
     var F     = t.F
     var FinvT = t.FinvT
     var PP    = t.muLame * (t.F - FinvT) + (t.lambdaLame * L.log(t.Fdet)) * FinvT
@@ -77,7 +77,7 @@ function N:setupFieldsFunctions(mesh)
   -- For corresponding Matlab code, see module dPdF/ siggraph notes page 24/ 32
   -- u = t.muLame, l = t.lambdaLame (should be this, but u in the Matlab code is
   -- slightly different)
-  liszt self.dPdF(t, dF)
+  ebb self.dPdF(t, dF)
     var dFT      = U.transposeMatrix3(dF)
     var FinvT    = t.FinvT
     var c1       = t.muLame - t.lambdaLame * L.log(t.Fdet)
@@ -93,7 +93,7 @@ function N:setupFieldsFunctions(mesh)
   -- For corresponding code, see Matlab code fem.m/ siggraph notes algorithm 1
   -- Reset internal forces and stiffness matrix
 
-  liszt self.recomputeAndResetTetTemporaries(t : mesh.tetrahedra)
+  ebb self.recomputeAndResetTetTemporaries(t : mesh.tetrahedra)
    -- recompute
     var Ds : L.mat3d  = { { 0, 0, 0 }, { 0, 0, 0 }, { 0, 0, 0 } }
     var x4 = t.v[3].pos + t.v[3].q
@@ -111,11 +111,11 @@ function N:setupFieldsFunctions(mesh)
     t.Fdet   = L.fabs(U.detMatrix3d(F))
   end
 
-  liszt self.recomputeAndResetEdgeTemporaries(e : mesh.edges)
+  ebb self.recomputeAndResetEdgeTemporaries(e : mesh.edges)
     e.stiffness = { { 0, 0, 0 }, { 0, 0, 0 }, { 0, 0, 0 } }
   end
 
-  liszt self.recomputeAndResetVertexTemporaries(v : mesh.vertices)
+  ebb self.recomputeAndResetVertexTemporaries(v : mesh.vertices)
     v.internal_forces = { 0, 0, 0 }
   end
 
@@ -125,7 +125,7 @@ function N:setupFieldsFunctions(mesh)
   -- algorithm 1
   -- u = t.muLame, l = t.lambdaLame (should be this, but u in the Matlab code is
   -- slightly different)
-  liszt self.computeInternalForces(t : mesh.tetrahedra)
+  ebb self.computeInternalForces(t : mesh.tetrahedra)
     var  P  : L.mat3d = self.PK1(t)
     var BmT : L.mat3d = U.transposeMatrix3(t.Bm)
     var rhs : L.mat3d = U.multiplyMatrices3d(P, BmT)
@@ -143,7 +143,7 @@ function N:setupFieldsFunctions(mesh)
   -- ~ siggraph notes algorithm 2 (I couldn't translate the algorithm)
   -- u = t.muLame, l = t.lambdaLame (should be this, but u in the Matlab code is
   -- slightly different)
-  liszt self.computeStiffnessMatrix(t : mesh.tetrahedra)
+  ebb self.computeStiffnessMatrix(t : mesh.tetrahedra)
     var Bm  : L.mat3d = t.Bm
     var BmT : L.mat3d = U.transposeMatrix3(t.Bm)
     var dFRow : L.mat4x3d = { { 0, 0, 0 }, { 0, 0, 0 }, { 0, 0, 0 }, { 0, 0, 0 } }
@@ -207,11 +207,11 @@ function N.computeInternalForcesAndStiffnessMatrix(mesh)
   mesh.tetrahedra:foreach(N.computeInternalForces)
   local t_if = timer:Stop() * 1E6
   print("Time to assemble force is "..(t_if).." us")
-  -- mesh:dumpVertFieldToFile('internal_forces', "liszt_output/nh-out/internal_forces_"..tostring(ts))
+  -- mesh:dumpVertFieldToFile('internal_forces', "ebb_output/nh-out/internal_forces_"..tostring(ts))
   timer:Start()
   mesh.tetrahedra:foreach(N.computeStiffnessMatrix)
   local t_stiff = timer:Stop() * 1E6
   print("Time to assemble stiffness matrix is "..(t_stiff).." us")
-  -- mesh:dumpEdgeFieldToFile('stiffness', "liszt_output/nh-out/stiffness_"..tostring(ts))
+  -- mesh:dumpEdgeFieldToFile('stiffness', "ebb_output/nh-out/stiffness_"..tostring(ts))
   print("Time to assemble force and stiffness matrix is "..(t_if + t_stiff).." us")
 end

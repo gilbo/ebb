@@ -1,5 +1,5 @@
 --DISABLE-TEST
-import "ebb.liszt"
+import "ebb"
 require "tests/test"
 
 local R = L.NewRelation { name="R", size=5 }

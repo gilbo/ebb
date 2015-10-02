@@ -1,4 +1,4 @@
-import "ebb.liszt"
+import "ebb"
 --L.default_processor = L.GPU
 
 local Grid  = require 'ebb.domains.grid'
@@ -51,7 +51,7 @@ grid.cells:NewField('velocity_prev', L.vec3f):Load({0,0,0})
 
 grid.cells:NewField('vel_shadow', L.vec3f):Load({0,0,0})
 
-local liszt neumann_shadow_update (c : grid.cells)
+local ebb neumann_shadow_update (c : grid.cells)
         if c.xneg_depth > 0 then
         var v = c(1,0,0).velocity
         c.vel_shadow = { -v[0],  v[1],  v[2] }
@@ -72,7 +72,7 @@ local liszt neumann_shadow_update (c : grid.cells)
         c.vel_shadow = {  v[0],  v[1], -v[2] }
     end
 end
-local liszt neumann_cpy_update (c : grid.cells)
+local ebb neumann_cpy_update (c : grid.cells)
     c.velocity = c.vel_shadow
 end
 local function vel_neumann_bnd(cells)
@@ -89,7 +89,7 @@ local diffuse_diagonal = L.Global(L.float, 0.0)
 local diffuse_edge     = L.Global(L.float, 0.0)
 
 -- One Jacobi-Iteration
-local liszt diffuse_lin_solve_jacobi_step (c : grid.cells)
+local ebb diffuse_lin_solve_jacobi_step (c : grid.cells)
     var edge_sum = diffuse_edge * ( c(-1,0,0).velocity + c(1,0,0).velocity +
                                     c(0,-1,0).velocity + c(0,1,0).velocity +
                                     c(0,0,-1).velocity + c(0,0,1).velocity )
@@ -142,7 +142,7 @@ local min_y = grid:yOrigin() + ycwidth/2 + epsilon
 local max_y = grid:yOrigin() + grid:yWidth() - ycwidth/2 - epsilon
 local min_z = grid:zOrigin() + zcwidth/2 + epsilon
 local max_z = grid:zOrigin() + grid:zWidth() - zcwidth/2 - epsilon
-local liszt wrap(val, lower, upper)
+local ebb wrap(val, lower, upper)
     var diff : L.float = upper - lower
     var temp = L.float(cmath.fmod(val - lower, diff))
     if temp < 0 then
@@ -150,13 +150,13 @@ local liszt wrap(val, lower, upper)
     end
     return temp + lower
 end
-local liszt clamp(val, lower, upper)
+local ebb clamp(val, lower, upper)
     var result : L.float = val
     result max= L.float(lower)
     result min= L.float(upper)
     return result
 end
-local snap_to_grid = liszt(p)
+local snap_to_grid = ebb(p)
     var pxyz : L.vec3f = p
     pxyz[0] = clamp(pxyz[0], min_x, max_x)
     pxyz[1] = clamp(pxyz[1], min_y, max_y)
@@ -170,7 +170,7 @@ if PERIODIC then
     max_y = grid:yOrigin() + grid:yWidth()
     min_z = grid:zOrigin()
     max_z = grid:zOrigin() + grid:zWidth()
-    snap_to_grid = liszt(p)
+    snap_to_grid = ebb(p)
         var pxyz : L.vec3f = p
         pxyz[0] = wrap(pxyz[0], min_x, max_x)
         pxyz[1] = wrap(pxyz[1], min_y, max_y)
@@ -179,17 +179,17 @@ if PERIODIC then
     end
 end
 
-local liszt advect_where_from (c : grid.cells)
+local ebb advect_where_from (c : grid.cells)
     var offset      = - c.velocity_prev
     -- Make sure all our lookups are appropriately confined
     c.lookup_pos    = snap_to_grid(c.center + advect_dt * offset)
 end
 
-local liszt advect_point_locate (c : grid.cells)
+local ebb advect_point_locate (c : grid.cells)
     c.lookup_from   = grid.dual_locate(c.lookup_pos)
 end
 
-local liszt advect_interpolate_velocity (c : grid.cells)
+local ebb advect_interpolate_velocity (c : grid.cells)
     var dc      = c.lookup_from
 
     -- figure out fractional position in the dual cell in range [0.0, 1.0]
@@ -245,7 +245,7 @@ grid.cells:NewField('divergence', L.float):Load(0)
 grid.cells:NewField('p', L.float):Load(0)
 grid.cells:NewField('p_temp', L.float):Load(0)
 
-local liszt project_lin_solve_jacobi_step (c : grid.cells)
+local ebb project_lin_solve_jacobi_step (c : grid.cells)
     var edge_sum = project_edge * ( c(-1,0,0).p + c(1,0,0).p +
                                     c(0,-1,0).p + c(0,1,0).p +
                                     c(0,0,-1).p + c(0,0,1).p )
@@ -253,7 +253,7 @@ local liszt project_lin_solve_jacobi_step (c : grid.cells)
 end
 
 -- Neumann condition
-local liszt pressure_shadow_update (c : grid.cells)
+local ebb pressure_shadow_update (c : grid.cells)
         if c.xneg_depth > 0 then
         c.p_temp = c(1,0,0).p
     elseif c.xpos_depth > 0 then
@@ -268,7 +268,7 @@ local liszt pressure_shadow_update (c : grid.cells)
         c.p_temp = c(0,0,-1).p
     end
 end
-local pressure_cpy_update = liszt (c : grid.cells)
+local pressure_cpy_update = ebb (c : grid.cells)
     c.p = c.p_temp
 end
 local function pressure_neumann_bnd(cells)
@@ -294,7 +294,7 @@ local function project_lin_solve(edge, diagonal)
     end
 end
 
-local liszt compute_divergence (c : grid.cells)
+local ebb compute_divergence (c : grid.cells)
     -- why the factor of N?
     var vx_dx = c(1,0,0).velocity[0] - c(-1,0,0).velocity[0]
     var vy_dy = c(0,1,0).velocity[1] - c(0,-1,0).velocity[1]
@@ -302,7 +302,7 @@ local liszt compute_divergence (c : grid.cells)
     c.divergence = L.float(-(0.5/N)*(vx_dx + vy_dy + vz_dz))
 end
 
-local liszt compute_projection (c : grid.cells)
+local ebb compute_projection (c : grid.cells)
     var grad = L.vec3f(0.5 * N * { c(1,0,0).p - c(-1,0,0).p,
                                    c(0,1,0).p - c(0,-1,0).p,
                                    c(0,0,1).p - c(0,0,-1).p })
@@ -365,16 +365,16 @@ end)
 
 particles:NewField('next_pos', L.vec3f):Load({0,0,0})
 particles:NewField('pos', L.vec3f):Load({0,0,0})
-particles:foreach(liszt (p : particles) -- init...
+particles:foreach(ebb (p : particles) -- init...
     p.pos = p.dual_cell.vertex.cell(-1,-1,-1).center +
             L.vec3f({xcwidth/2.0, ycwidth/2.0, zcwidth/2.0})
 end)
 
-local liszt locate_particles (p : particles)
+local ebb locate_particles (p : particles)
     p.dual_cell = grid.dual_locate(p.pos)
 end
 
-local liszt compute_particle_velocity (p : particles)
+local ebb compute_particle_velocity (p : particles)
     var dc      = p.dual_cell
 
     -- figure out fractional position in the dual cell in range [0.0, 1.0]
@@ -395,7 +395,7 @@ local liszt compute_particle_velocity (p : particles)
     end end end
 end
 
-local liszt update_particle_pos (p : particles)
+local ebb update_particle_pos (p : particles)
     var r = L.vec3f({
         cmath.rand_float() - 0.5,
         cmath.rand_float() - 0.5,
@@ -413,7 +413,7 @@ end
 --grid.cells:print()
 
 local source_strength = 100.0
-local source_velocity = liszt (c : grid.cells)
+local source_velocity = ebb (c : grid.cells)
     if cmath.fabs(c.center[0]) < 1.75 and
        cmath.fabs(c.center[1]) < 1.75 and
        cmath.fabs(c.center[2]) < 1.75
@@ -427,7 +427,7 @@ local source_velocity = liszt (c : grid.cells)
 end
 if PERIODIC then
     source_strength = 10.0
-    source_velocity = liszt (c : grid.cells)
+    source_velocity = ebb (c : grid.cells)
         if cmath.fabs(c.center[0]) < 1.75 and
            cmath.fabs(c.center[1]) < 1.75 and
            cmath.fabs(c.center[2]) < 1.75
@@ -437,7 +437,7 @@ if PERIODIC then
     end
 end
 
-local liszt draw_grid (c : grid.cells)
+local ebb draw_grid (c : grid.cells)
     var color = {1.0, 1.0, 1.0}
     vdb.color(color)
     var p : L.vec3f = c.center
@@ -446,7 +446,7 @@ local liszt draw_grid (c : grid.cells)
     vdb.line(p, p+v*N*10)
 end
 
-local liszt draw_particles (p : particles)
+local ebb draw_particles (p : particles)
     var color = {1.0,1.0,0.0}
     vdb.color(color)
     var pos : L.vec3f = p.pos

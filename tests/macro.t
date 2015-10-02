@@ -1,11 +1,11 @@
-import "ebb.liszt"
+import "ebb"
 
 local R = L.NewRelation { size = 4, name = 'relation' }
 R:NewField("result", L. uint64)
 
 -- This macro emits a side effect every time it is evaluated
 local side_effect = L.NewMacro(function(x)
-	return liszt quote
+	return ebb quote
 		L.print(L.id(x))
 	in
 		x
@@ -13,10 +13,10 @@ local side_effect = L.NewMacro(function(x)
 end)
 
 local test_macro = L.NewMacro(function (y)
-	return liszt `L.id(y)+ L.id(y)
+	return ebb `L.id(y)+ L.id(y)
 end)
 
-local liszt test (r : R)
+local ebb test (r : R)
 	--side effect should only be evaluated once!
 	r.result = test_macro(side_effect(r))
 

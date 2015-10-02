@@ -1,4 +1,4 @@
-import "ebb.liszt" -- Every Liszt File should start with this command
+import "ebb" -- Every Ebb File should start with this command
 
 -- This line includes the trimesh.t file.
 -- As a result, the table 'Trimesh' defined in that file is bound to
@@ -45,21 +45,21 @@ bunny.vertices.d_temperature:Load(0.0)
 -- we define the basic computation functions here:
 
 -- This could also be written as a function over the edges...
-local liszt compute_diffusion ( v : bunny.vertices )
+local ebb compute_diffusion ( v : bunny.vertices )
   for nv in v.neighbors do
     v.d_temperature += timestep * conduction *
       (nv.temperature - v.temperature)
   end
 end
 
-local liszt apply_diffusion ( v : bunny.vertices )
+local ebb apply_diffusion ( v : bunny.vertices )
   var d_temp = v.d_temperature / v.degree
   v.temperature += d_temp
 
   avg_temp_change += cmath.fabs(d_temp)
 end
 
-local liszt clear_temporary ( v : bunny.vertices )
+local ebb clear_temporary ( v : bunny.vertices )
   v.d_temperature = 0.0
 end
 
@@ -68,7 +68,7 @@ end
 local vdb  = require('ebb.lib.vdb')
 local cold = L.Constant(L.vec3f,{0.5,0.5,0.5})
 local hot  = L.Constant(L.vec3f,{1.0,0.0,0.0})
-local liszt debug_tri_draw ( t : bunny.triangles )
+local ebb debug_tri_draw ( t : bunny.triangles )
   -- color a triangle with the average temperature of its vertices
   var avg_temp =
     (t.v[0].temperature + t.v[1].temperature + t.v[2].temperature) / 3.0

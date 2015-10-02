@@ -1,4 +1,4 @@
-import 'ebb.liszt'
+import 'ebb'
 
 local useGPU = true
 if useGPU then
@@ -117,7 +117,7 @@ grid.cells:NewField('advectFrom', grid.dual_cells):Load(0)
 -- Helper functions
 --
 
-local liszt wrapFunc(val, lower, upper)
+local ebb wrapFunc(val, lower, upper)
     var diff    = upper - lower
     var temp    = val - lower
     --temp        = L.float(C.fmod(temp, diff))
@@ -128,7 +128,7 @@ local liszt wrapFunc(val, lower, upper)
     return temp + lower
 end
 
-local liszt snapToGrid(p)
+local ebb snapToGrid(p)
     var pxy : L.vec2f
     pxy[0] = L.float(wrapFunc(p[0], min_x, max_x))
     pxy[1] = L.float(wrapFunc(p[1], min_y, max_y))
@@ -139,15 +139,15 @@ end
 -- Advection Functions
 --
 
-local liszt advectWhereFrom (c : grid.cells)
+local ebb advectWhereFrom (c : grid.cells)
     c.advectPos = snapToGrid(c.center + dt * N * -c.dv)
 end
 
-local liszt advectPointLocate (c : grid.cells)
+local ebb advectPointLocate (c : grid.cells)
     c.advectFrom = grid.dual_locate(c.advectPos)
 end
 
-local liszt advectInterpolateVelocity (c : grid.cells)
+local ebb advectInterpolateVelocity (c : grid.cells)
     -- lookup cell (this is the bottom left corner)
     var dc      = c.advectFrom
 
@@ -182,7 +182,7 @@ end
 -- Diffusion Function
 --
 
-local liszt diffuseProjectFFT (c : gridFFT.cells)
+local ebb diffuseProjectFFT (c : gridFFT.cells)
 	var xIndex = L.float(c.xid)
 	var yIndex = L.float(c.yid)
 	var xFFT = c.vx
@@ -221,7 +221,7 @@ local liszt diffuseProjectFFT (c : gridFFT.cells)
     c.vy = yFFT
 end
 
-local liszt updateVelocity (c : grid.cells)
+local ebb updateVelocity (c : grid.cells)
     var scale = 1.0f / (N * N)
     c.dv[0] = c.vx[0] * scale
     c.dv[1] = c.vy[0] * scale
@@ -307,16 +307,16 @@ end)
 
 particles:NewField('nextPos', L.vec2f):Load({0,0})
 particles:NewField('pos', L.vec2f):Load({0,0})
-particles:foreach(liszt (p : particles) -- init...
+particles:foreach(ebb (p : particles) -- init...
     p.pos = p.dual_cell.vertex.cell(-1,-1).center +
             L.vec2f({cell_w/2.0, cell_h/2.0})
 end)
 
-local liszt locateParticles (p : particles)
+local ebb locateParticles (p : particles)
     p.dual_cell = grid.dual_locate(p.pos)
 end
 
-local liszt computeParticleVelocity (p : particles)
+local ebb computeParticleVelocity (p : particles)
     -- lookup cell (this is the bottom left corner)
     var dc      = p.dual_cell
 
@@ -339,7 +339,7 @@ local liszt computeParticleVelocity (p : particles)
         + x1 * y1 * lc(1,1).dv )
 end
 
-local liszt updateParticlePos (p : particles)
+local ebb updateParticlePos (p : particles)
     --var r = L.vec2f({ C.randFloat() - 0.5, C.randFloat() - 0.5 })
 	var r = L.vec2f({ 0.0, 0.0 })
     var pos = p.nextPos + L.float(dt) * r

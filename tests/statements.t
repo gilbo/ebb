@@ -1,4 +1,4 @@
-import "ebb.liszt"
+import "ebb"
 require "tests/test"
 
 local R = L.NewRelation { name="R", size=6 }
@@ -8,7 +8,7 @@ R.val:LoadConstant(1)
 red = L.Global(L.float, 0.0)
 
 -- checking decl statement, if statement, proper scoping
-local l = liszt (v : R)
+local l = ebb (v : R)
   var y : L.float
   if v.val == 1.0f then
     y = 1.0f

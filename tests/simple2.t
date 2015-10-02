@@ -1,4 +1,4 @@
-import "ebb.liszt"
+import "ebb"
 require "tests/test"
 
 local ioOff = require 'ebb.domains.ioOff'
@@ -7,7 +7,7 @@ local com   = L.Global(L.vector(L.float, 3), {0, 0, 0})
 
 function center_of_mass ()
 	com:set({0,0,0})
-	local sum_pos = liszt (v : mesh.vertices)
+	local sum_pos = ebb (v : mesh.vertices)
 		com += L.vec3f(v.pos)
 	end
 	mesh.vertices:foreach(sum_pos)
@@ -18,7 +18,7 @@ end
 
 local function displace_mesh (delta_x, delta_y, delta_z)
 	local d = L.Constant(L.vec3d, {delta_x, delta_y, delta_z})
-	local dk = liszt (v : mesh.vertices)
+	local dk = ebb (v : mesh.vertices)
 		v.pos += d
 	end
 	mesh.vertices:foreach(dk)

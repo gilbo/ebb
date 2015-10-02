@@ -1,4 +1,4 @@
-import "ebb.liszt" -- Every Liszt File should start with this command
+import "ebb" -- Every Ebb File should start with this command
 
 
 -- Declare a table named Trimesh
@@ -150,7 +150,7 @@ function Trimesh:ComputeVertexDegree()
   self.vertices:NewField('degree', L.int)
   self.vertices.degree:Load(0)
 
-  local liszt compute_degrees ( tri : self.triangles )
+  local ebb compute_degrees ( tri : self.triangles )
     tri.v1.degree += 1
     tri.v2.degree += 1
     tri.v3.degree += 1

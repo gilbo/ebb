@@ -1,4 +1,4 @@
-import "ebb.liszt"
+import "ebb"
 require "tests/test"
 
 local lassert, lprint = L.assert, L.print
@@ -44,7 +44,7 @@ a.b.c.d = 4
 -------------------------------
 -- Should fail b/c checkthis1 is not a global
 test.fail_function(function()
- 	local liszt t(cell : R)
+ 	local ebb t(cell : R)
 		checkthis1 = cell.f1
 	end
 	R:foreach(t)
@@ -53,7 +53,7 @@ end, "Illegal assignment: left hand side cannot be assigned")
 -- Should fail when we re-assign a new value to x, since it originally
 -- refers to a topological element
 test.fail_function(function()
-	local liszt t(cell : R)
+	local ebb t(cell : R)
 		var x = cell
   	  	x = cell
 	end
@@ -63,7 +63,7 @@ end, "Illegal assignment: variables of key type cannot be re%-assigned")
 -- Should fail because we do not allow assignments to fields
 -- (only to indexed fields, globals, and local vars)
 test.fail_function(function()
-	local fail3 = liszt(cell : R)
+	local fail3 = ebb(cell : R)
 		R.f1 = 5
 	end
 	R:foreach(fail3)
@@ -72,14 +72,14 @@ end, "Illegal assignment: left hand side cannot be assigned")
 -- Should fail because we do not allow the user to alias fields,
 -- or any other entity that would confuse stencil generation, in the function
 test.fail_function(function()
-	local liszt t(cell : R)
+	local ebb t(cell : R)
 		var z = R.f1
 	end
 	R:foreach(t)
 end, "can only assign")
 
 test.fail_function(function()
- 	local liszt t(cell : R)
+ 	local ebb t(cell : R)
 		undefined = 3
 	end
 	R:foreach(t)
@@ -88,7 +88,7 @@ end, "variable 'undefined' is not defined")
 -- Can't assign a value of a different type to a variable that has already
 -- been initialized
 test.fail_function(function()
-	local liszt t(cell : R)
+	local ebb t(cell : R)
 		var floatvar = 2 + 3.3
 		floatvar = true
 	end
@@ -97,7 +97,7 @@ end, "Could not coerce expression of type 'bool' into type 'double'")
 
 -- local8 is not in scope in the while loop
 test.fail_function(function()
-	local liszt t(cell : R)
+	local ebb t(cell : R)
 		var local7 = 2.0
 		do
 			var local8 = 2
@@ -113,7 +113,7 @@ test.fail_function(function()
 end, "variable 'local8' is not defined")
 
 test.fail_function(function()
-	local liszt t(cell : R)
+	local ebb t(cell : R)
 		if 4 < 2 then
 			var local8 = true
 		-- Should fail here, since local8 is not defined in this scope
@@ -129,7 +129,7 @@ test.fail_function(function()
 end, "variable 'local8' is not defined")
 
 test.fail_function(function()
-	local liszt t(cell : R)
+	local ebb t(cell : R)
 		var local1 = 3.4
 		do
 			var local1 = true
@@ -140,7 +140,7 @@ test.fail_function(function()
 end, "Could not coerce expression of type 'double' into type 'bool'")
 
 test.fail_function(function()
-	local liszt t(cell : R)
+	local ebb t(cell : R)
 		lassert(4 == true) -- binary op will fail here, type mismatch
 	end
 	R:foreach(t)
@@ -148,21 +148,21 @@ end, "incompatible types: int and bool")
 
 local v = L.Constant(L.vec3f, {1, 1, 1})
 test.fail_function(function()
-	local liszt t(cell : R)
+	local ebb t(cell : R)
 		lassert(v) -- assert fail, comparison returns a vector of bools
 	end
 	R:foreach(t)
 end, "expected a boolean")
 
 test.fail_function(function()
-	local liszt t(cell : R)
+	local ebb t(cell : R)
 		a.b = 12
 	end
 	R:foreach(t)
 end, "Illegal assignment: left hand side cannot be assigned")
 
 test.fail_function(function()
-	local liszt t(cell : R)
+	local ebb t(cell : R)
 		var v : L.bool
 		if false then
 			v = true
@@ -174,21 +174,21 @@ end, "Could not coerce expression of type 'int' into type 'bool'")
 
 local tbl = {}
 test.fail_function(function()
-	local liszt t(cell : R)
+	local ebb t(cell : R)
 		var x = 3 + tbl
 	end
 	R:foreach(t)
 end, "invalid types")
 
 test.fail_function(function()
-	local liszt t(cell : R)
+	local ebb t(cell : R)
 		var x = tbl
 	end
 	R:foreach(t)
 end, "can only assign")
 
 test.fail_function(function()
-	local liszt t(cell : R)
+	local ebb t(cell : R)
 		tbl.x = 4
 	end
 	R:foreach(t)
@@ -196,7 +196,7 @@ end, "lua table does not have member 'x'")
 
 local tbl = {x={}}
 test.fail_function(function()
-	local liszt t(cell : R)
+	local ebb t(cell : R)
 		tbl.x.y = 4
 	end
 	R:foreach(t)
@@ -204,14 +204,14 @@ end, "lua table does not have member 'y'")
 
 tbl.x.z = 4
 test.fail_function(function()
-	local liszt t(cell : R)
+	local ebb t(cell : R)
 		var x = tbl.x
 	end
 	R:foreach(t)
 end, "can only assign")
 
 test.fail_function(function()
-	local liszt t(cell : R)
+	local ebb t(cell : R)
 		for i = 1, 4, 1 do
 			var x = 3
 		end
@@ -222,14 +222,14 @@ end, "variable 'i' is not defined")
 
 
 test.fail_function(function()
-	local liszt badrel( cell : R )
+	local ebb badrel( cell : R )
 		cell.f1 = 2
 	end
 	otherR:foreach(badrel) -- should complain
 end, "The supplied relation did not match the parameter annotation")
 
 -- Nothing should fail in this function:
-local good = liszt (cell : R)
+local good = ebb (cell : R)
     cell.f1 = 3
     var lc = 4.0
 

@@ -1,4 +1,4 @@
-import "ebb.liszt" -- Every Liszt File should start with this command
+import "ebb" -- Every Ebb File should start with this command
 
 error("OUT OF DATE EXAMPLE")
 
@@ -43,7 +43,7 @@ grid.vertices:NewField('dpos_temp', L.vec3d):Load({0,0,0})
 --grid.edges:NewField('J_z', L.vec3d):Load({0,0,0})
 grid.vertices:NewField('J_diag', L.vec3d):Load({0,0,0})
 
-local init_fields = liszt (v : grid.vertices)
+local init_fields = ebb (v : grid.vertices)
   var i = L.int(v.xid)
   var j = L.int(v.yid)
 
@@ -67,13 +67,13 @@ local FRICTION = 2.0
 
 local dt = L.Global(L.double, 0.00005)
 
-local liszt spring_dvel(dir)
+local ebb spring_dvel(dir)
   var dir_len = L.length(dir)
   var stretch = (IDEAL_LEN - dir_len) / dir_len
   return SPRING_K * stretch * dir
 end
 
-local accel_interior = liszt (v : grid.vertices)
+local accel_interior = ebb (v : grid.vertices)
   v.dvel = { 0, 0, 0 }
   v.dpos = v.vel
 
@@ -88,7 +88,7 @@ local accel_interior = liszt (v : grid.vertices)
     spring_dvel(v.pos - v(0, 1).pos)
 end
 
-local accel_boundary = liszt (v : grid.vertices)
+local accel_boundary = ebb (v : grid.vertices)
   v.dvel = { 0, 0, 0 }
   v.dpos = v.vel
 
@@ -110,7 +110,7 @@ local accel_boundary = liszt (v : grid.vertices)
   end
 end
 
-local accel_collisions = liszt (v : grid.vertices)
+local accel_collisions = ebb (v : grid.vertices)
   -- collision penalty
   --var dir = v.pos - sphere_center
   --var lendir = L.length(dir)
@@ -152,7 +152,7 @@ local accel_collisions = liszt (v : grid.vertices)
   v.vel += dt * v.dvel
 end
 
-local compute_acceleration = liszt (v : grid.vertices)
+local compute_acceleration = ebb (v : grid.vertices)
   var dvel : L.vec3d = { 0, 0, 0 }
   var dpos : L.vec3d = v.vel
 
@@ -218,7 +218,7 @@ local compute_acceleration = liszt (v : grid.vertices)
 end
 
 
-local apply_update = liszt (v : grid.vertices)
+local apply_update = ebb (v : grid.vertices)
   v.pos += v.dpos
   v.vel += v.dvel
 end
@@ -227,7 +227,7 @@ end
 
 
 local sqrt3 = math.sqrt(3)
-local draw_cloth = liszt  (v : grid.vertices)
+local ebb draw_cloth(v : grid.vertices)
   
   if v.xpos_depth == 0 and v.ypos_depth == 0 then
     var p00 = v(0,0).pos

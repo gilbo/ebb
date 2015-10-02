@@ -1,9 +1,9 @@
--- This file is to test integration of Liszt with Legion. Add code to test
+-- This file is to test integration of Ebb with Legion. Add code to test
 -- features as they are implemented.
 
-print("* This is a Liszt application *")
+print("* This is an Ebb application *")
 
-import "ebb.liszt"
+import "ebb"
 local DLD = require "ebb.src.dld"
 
 local C = terralib.includecstring([[ #include <stdio.h> ]])
@@ -14,7 +14,7 @@ local cells = L.NewRelation { name = 'cells_1d', size = 4 }
 
 cells:NewField('mass', L.float):Load({1.2, 1.4, 2.1, 3.2})
 
-local liszt InitMass(c)
+local ebb InitMass(c)
   L.print(c.mass)
 end
 

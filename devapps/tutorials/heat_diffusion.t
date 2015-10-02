@@ -1,6 +1,6 @@
-import "ebb.liszt" -- Every Liszt File should start with this command
+import "ebb" -- Every Ebb File should start with this command
 
--- The first thing we do in most Liszt simulations is to load
+-- The first thing we do in most Ebb simulations is to load
 -- a geometric domain library.  The standard library comes with a
 -- couple of basic domains and code for loading from some simple file
 -- formats.  Here we load a Trimesh from an OFF file.
@@ -18,9 +18,9 @@ local PN = require 'ebb.lib.pathname'
 -- (In case you're wondering, those dots '.' in the middle of the
 --  library filenames are specifying subdirectories.  i.e. the last
 --  library load said "pull in the pathname library from subdirectory lib".
---  The actual file is LISZT_ROOT/lib/pathname.t on disk.)
+--  The actual file is EBB_RELEASE/ebb/lib/pathname.t on disk.)
 
--- Since Liszt is built on top of Terra, we can use Terra's
+-- Since Ebb is built on top of Terra, we can use Terra's
 -- capabilities to quickly pull in C code.  The following line
 -- loads the standard math library.
 local cmath = terralib.includecstring '#include <math.h>'
@@ -39,31 +39,31 @@ local bunny = ioOff.LoadTrimesh(tri_mesh_filename)
 
 ------------------------------------------------------------------------------
 
--- Liszt allows us to define two special kinds of variables
+-- Ebb allows us to define two special kinds of variables
 -- independently from the geometric domain: Globals and Constants
 
 -- Globals are values that do not vary over the geometric domain,
--- nor are they local to a particular Liszt function.
+-- nor are they local to a particular Ebb function.
 -- You can think of them as analogous to Globals in C/C++.
 
--- Notice that we explicitly provide a Liszt type for each global
+-- Notice that we explicitly provide a Ebb type for each global
 -- value when we create it.
 local timestep = L.Global(L.double, 0.45)
 
 -- Constants are just like Globals, except we can't change their values
--- Of course, this allows the Liszt compiler to handle Constants more
+-- Of course, this allows the Ebb compiler to handle Constants more
 -- efficiently, so make sure to choose appropriately which kind of
 -- value you want to use.
 local conduction = L.Constant(L.double, 1.0)
 
 ------------------------------------------------------------------------------
 
--- However, most of the data in a Liszt simulation is
+-- However, most of the data in an Ebb simulation is
 -- not stored in Globals and Constants.
 -- It occurs in Fields, which are defined over different elements
 -- in the geometric domain.
 
--- Liszt calls these sets of elements in the domain 'Relations'.
+-- Ebb calls these sets of elements in the domain 'Relations'.
 -- For instance, the Trimesh domain defines 3 basic relations:
 --    * vertices
 --    * edges (directed)
@@ -94,7 +94,7 @@ bunny.vertices.temperature:Load(initial_temperature)
 bunny.vertices:NewField('d_temperature', L.double):Load(0.0)
 
 -- Notice how we just appended the load to the end of the NewField()
--- function.  Liszt returns the Field object as the result of
+-- function.  Ebb returns the Field object as the result of
 -- the NewField call in order to make it more convenient to
 -- intialize fields as you define them.
 
@@ -103,18 +103,18 @@ bunny.vertices:NewField('d_temperature', L.double):Load(0.0)
 -- At this point, we've successfully loaded the mesh into our
 -- Geometric domain, defined some useful variables and
 -- set up some fields.  Now we're going to define the
--- Liszt functions that will actually compute the simulation timesteps
+-- Ebb functions that will actually compute the simulation timesteps
 
 -- Think of this as the body of a parallel for loop.
 -- For instance, in `compute_update` below, we're defining a
 -- parallel computation to be performed for each vertex of the mesh.
 
--- The 'liszt' keyword here tells us that we're defining
--- a Liszt function, with name compute_update and one argument
+-- The 'ebb' keyword here tells us that we're defining
+-- an Ebb function, with name compute_update and one argument
 -- a vertex from bunny.vertices
-local liszt compute_update ( v : bunny.vertices )
+local ebb compute_update ( v : bunny.vertices )
   -- Here we define some local variables.
-  -- If no explicit type is annotated, Liszt tries to infer one
+  -- If no explicit type is annotated, Ebb tries to infer one
   var sum_t : L.double = 0.0
   var count            = 0
 
@@ -132,7 +132,7 @@ local liszt compute_update ( v : bunny.vertices )
 end
 
 -- Now, let's define a second function that applies the update
-local liszt apply_update ( v : bunny.vertices )
+local ebb apply_update ( v : bunny.vertices )
   v.temperature += v.d_temperature
 end
 
@@ -147,7 +147,7 @@ end
 local vdb  = require('ebb.lib.vdb')
 local cold = L.Constant(L.vec3f,{0.5,0.5,0.5})
 local hot  = L.Constant(L.vec3f,{1.0,0.0,0.0})
-local liszt debug_tri_draw ( t : bunny.triangles )
+local ebb debug_tri_draw ( t : bunny.triangles )
   var avg_temp = 0.0
   for i=0,3 do avg_temp += t.v[i].temperature end
   avg_temp = avg_temp / 3.0
@@ -166,7 +166,7 @@ end
 -- Ok, Let's recap.  We 
 --    1) Loaded the mesh
 --    2) Defined data (Globals, Constants, Fields)
---    3) Defined computations (Liszt functions)
+--    3) Defined computations (Ebb functions)
 -- Now, we're going to tie everything together by running a simulation
 -- loop.  This loop is going to run in Lua and sequentially launch
 -- data parallel computations over the relations of the domain.

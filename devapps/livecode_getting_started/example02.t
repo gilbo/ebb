@@ -1,4 +1,4 @@
-import "ebb.liszt"
+import "ebb"
 
 local ioOff = require 'ebb.domains.ioOff'
 local mesh  = ioOff.LoadTrimesh(
@@ -9,14 +9,14 @@ local mesh  = ioOff.LoadTrimesh(
 
 -- Ok, let's try to get some visual output.
 -- I usually use VDB while developing to do this.
--- We created a simple Liszt wrapper around VDB so it's easy to use.
+-- We created a simple Ebb wrapper around VDB so it's easy to use.
 -- We can load this wrapper like any other library.
 
 local vdb   = require('ebb.lib.vdb')
 
 --[[---------------------------
 
-local liszt visualize ( v : mesh.vertices )
+local ebb visualize ( v : mesh.vertices )
   vdb.point(v.pos)
 end
 
@@ -24,7 +24,7 @@ mesh.vertices:foreach(visualize)
 
 -----------------------------
 
-local liszt visualize ( v : mesh.vertices )
+local ebb visualize ( v : mesh.vertices )
   vdb.color({1,1,0})
   vdb.point(v.pos)
 end
@@ -40,7 +40,7 @@ mesh.vertices:foreach(visualize)
 
 mesh.vertices:NewField('q', L.vec3d):Load({0,0,0})
 
-local liszt set_oscillation ( v : mesh.vertices )
+local ebb set_oscillation ( v : mesh.vertices )
   v.q = v.pos
 end
 
@@ -51,7 +51,7 @@ mesh.vertices:foreach(set_oscillation)
 
 
 -- Ok, but how do we get this to change over time...?
--- Liszt supports global variables that are not fields
+-- Ebb supports global variables that are not fields
 -- so let's set up a global variable to represent time
 
 local time = L.Global(L.double, 0)
@@ -60,13 +60,13 @@ local time = L.Global(L.double, 0)
 
 mesh.vertices:NewField('q', L.vec3d):Load({0,0,0})
 
-local liszt set_oscillation ( v : mesh.vertices )
+local ebb set_oscillation ( v : mesh.vertices )
   v.q = 0.5*( L.sin(time) + 1) * v.pos
 end
 
 mesh.vertices:foreach(set_oscillation)
 
-local liszt visualize ( v : mesh.vertices )
+local ebb visualize ( v : mesh.vertices )
   vdb.color({1,1,0})
   vdb.point(v.q)
 end

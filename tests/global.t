@@ -1,4 +1,4 @@
-import "ebb.liszt"
+import "ebb"
 require "tests/test"
 
 local R = L.NewRelation { name="R", size=5 }
@@ -20,13 +20,13 @@ vb  = L.Constant(L.vector(L.bool, 5),  {true, false, true, false, true})
 local two = 2
 
 -- test vector codegen:
-local f1 = liszt (r : R) sf3 +=   vf    end
-local f2 = liszt (r : R) si4 +=   -vi   end
-local f3 = liszt (r : R) sb5 and= vb    end
-local f4 = liszt (r : R) sf  +=   1     end
-local f5 = liszt (r : R) si  +=   -two  end
-local f6 = liszt (r : R) sb  and= false end
---local f7 = liszt (r : R) sd  /=   2.0   end
+local f1 = ebb (r : R) sf3 +=   vf    end
+local f2 = ebb (r : R) si4 +=   -vi   end
+local f3 = ebb (r : R) sb5 and= vb    end
+local f4 = ebb (r : R) sf  +=   1     end
+local f5 = ebb (r : R) si  +=   -two  end
+local f6 = ebb (r : R) sb  and= false end
+--local f7 = ebb (r : R) sd  /=   2.0   end
 
 R:foreach(f1)
 test.fuzzy_aeq(sf3:get(), {nr, 2*nr, 3*nr})

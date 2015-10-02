@@ -1,4 +1,4 @@
-import "ebb.liszt"
+import "ebb"
 
 local VEGFileIO = {}
 VEGFileIO.__index = VEGFileIO

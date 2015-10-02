@@ -1,4 +1,4 @@
-import "ebb.liszt"
+import "ebb"
 
 local ioOff = require 'ebb.domains.ioOff'
 local M = ioOff.LoadTrimesh('tests/octa.off')
@@ -9,7 +9,7 @@ local P = V.pos
 local loc_data = P:DumpToList()
 
 function shift(x,y,z)
-  local liszt shift_func (v : M.vertices)
+  local ebb shift_func (v : M.vertices)
       v.pos += {x,y,z}
   end
   M.vertices:foreach(shift_func)
@@ -44,14 +44,14 @@ local T = M.triangles
 
 T:NewField("mat", L.mat3d)
 
-local liszt m_set(t : T)
+local ebb m_set(t : T)
   var d = L.double(L.id(t))
   t.mat = {{d, 0.0, 0.0},
              {0.0, d, 0.0},
              {0.0, 0.0, d}}
 end
 
-local liszt m_reduce_centered (t : T)
+local ebb m_reduce_centered (t : T)
   t.mat += {
     {.11, .11, .11},
     {.22, .22, .22},
@@ -73,13 +73,13 @@ local E = M.edges
 
 V:NewField("mat", L.mat3d)
 
-local liszt m_set_v(v : V)
+local ebb m_set_v(v : V)
   var d = L.double(L.id(v))
   v.mat = {{d, 0.0, 0.0},
              {0.0, d, 0.0},
              {0.0, 0.0, d}}
 end
-local liszt m_reduce_uncentered (e : E)
+local ebb m_reduce_uncentered (e : E)
   e.head.mat += .5*{
     {.11, .11, .11},
     {.22, .22, .22},

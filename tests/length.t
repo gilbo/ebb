@@ -1,4 +1,4 @@
-import "ebb.liszt"
+import "ebb"
 
 local assert = L.assert
 local dot = L.dot
@@ -15,7 +15,7 @@ local sqrt = terralib.includec('math.h').sqrt
 local ans1 = sqrt(1 + 4 + 9)
 local ans2 = sqrt(4 + 16 + 36)
 
-local liszt test_dot (r : R)
+local ebb test_dot (r : R)
     assert(length(v1) == ans1) -- float(3)
     assert(length(v2) == ans1) -- int(3)
     assert(length(v3) == 7) -- float(1)

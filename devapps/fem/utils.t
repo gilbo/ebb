@@ -1,4 +1,4 @@
-import "ebb.liszt"
+import "ebb"
 local PN = require 'ebb.lib.pathname'
 
 local U = {}
@@ -55,17 +55,17 @@ end
 --------------------------------------------------------------------------------
 
 -- Identity matrix
-liszt U.getId3()
+ebb U.getId3()
   return { { 1, 0, 0 }, { 0, 1, 0 }, { 0, 0, 1 } }
 end
 
 -- Diagonals
-liszt U.diagonalMatrix(a)
+ebb U.diagonalMatrix(a)
     return { { a, 0, 0 }, { 0, a, 0 }, { 0, 0, a } }
 end
 
 -- Tensor product of 2 vectors
-liszt U.tensor3(a, b)
+ebb U.tensor3(a, b)
   var result = { { a[0] * b[0], a[0] * b[1], a[0] * b[2] },
                  { a[1] * b[0], a[1] * b[1], a[1] * b[2] },
                  { a[2] * b[0], a[2] * b[1], a[2] * b[2] } }
@@ -73,17 +73,17 @@ liszt U.tensor3(a, b)
 end
 
 -- Matrix vector product
-liszt U.multiplyMatVec3(M, x)
+ebb U.multiplyMatVec3(M, x)
   return  { M[0, 0]*x[0] + M[0, 1]*x[1] + M[0, 2]*x[2],
             M[1, 0]*x[0] + M[1, 1]*x[1] + M[1, 2]*x[2],
             M[2, 0]*x[0] + M[2, 1]*x[1] + M[2, 2]*x[2] }
 end
-liszt U.multiplyVectors(x, y)
+ebb U.multiplyVectors(x, y)
   return { x[0]*y[0], x[1]*y[1], x[2]*y[2]  }
 end
 
 -- Matrix matrix product
-liszt U.multiplyMatrices3d(A, B)
+ebb U.multiplyMatrices3d(A, B)
   var res : L.mat3d = { { 0, 0, 0 }, { 0, 0, 0 }, { 0, 0, 0 } }
   for i = 0, 3 do
     for j = 0, 3 do
@@ -94,7 +94,7 @@ liszt U.multiplyMatrices3d(A, B)
 end
 
 -- Determinant of 3X3 matrix
-liszt U.detMatrix3d(M)
+ebb U.detMatrix3d(M)
   var res = ( M[0,0] * ( M[1,1] * M[2,2] - M[1,2] * M[2,1] ) +
               M[0,1] * ( M[1,2] * M[2,0] - M[2,2] * M[1,0] ) +
               M[0,2] * ( M[1,0] * M[2,1] - M[1,1] * M[2,0] )
@@ -103,7 +103,7 @@ liszt U.detMatrix3d(M)
 end
 
 -- Invert 3X3 matrix
-liszt U.invertMatrix3d(M)
+ebb U.invertMatrix3d(M)
   var det  = U.detMatrix3d(M)
   var invdet = 1.0/det
   var res  = { { (M[1,1] * M[2,2] - M[1,2] * M[2,1]) * invdet,
@@ -119,7 +119,7 @@ liszt U.invertMatrix3d(M)
 end
 
 -- Transpose of a matrix
-liszt U.transposeMatrix3(M)
+ebb U.transposeMatrix3(M)
   var res = { { M[0,0], M[1,0], M[2,0] },
               { M[0,1], M[1,1], M[2,1] },
               { M[0,2], M[1,2], M[2,2] } } 

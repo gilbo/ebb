@@ -1,9 +1,9 @@
-import "ebb.liszt"
+import "ebb"
 require "tests/test"
 
 local R = L.NewRelation { name="R", size=5 }
 
-local liszt pass(r : R)
+local ebb pass(r : R)
     L.assert(L.any({true}))
     L.assert(not L.any({false}))
     L.assert(L.any({true, true, true}))

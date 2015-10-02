@@ -162,7 +162,7 @@ void setupebb(lua_State * L, ebb_Options * ebboptions) {
 
     // Make sure we can find the Terra files
     snprintf(buffer, bufsize,
-      "package.terrapath = package.terrapath..';%s/../?.t;'",
+      "package.terrapath = package.terrapath..';%s/../include/?.t;'",
       bindir);
     if (terra_dostring(L, buffer))
         doerror(L);
@@ -202,17 +202,17 @@ void setupebb(lua_State * L, ebb_Options * ebboptions) {
 
         if (ebboptions->legionspy) {
             lua_pushboolean(L, true);
-            lua_setglobal(L, "LISZT_LEGION_USE_SPY");
+            lua_setglobal(L, "EBB_LEGION_USE_SPY");
         }
         if (ebboptions->legionprof) {
             lua_pushboolean(L, true);
-            lua_setglobal(L, "LISZT_LEGION_USE_PROF");
+            lua_setglobal(L, "EBB_LEGION_USE_PROF");
         }
     }
 
     if (ebboptions->usegpu) {
         lua_pushboolean(L, true);
-        lua_setglobal(L, "LISZT_USE_GPU_SIGNAL");
+        lua_setglobal(L, "EBB_USE_GPU_SIGNAL");
     }
 }
 int load_launchscript( lua_State * L, ebb_Options * ebboptions ) {
@@ -225,9 +225,11 @@ int load_launchscript( lua_State * L, ebb_Options * ebboptions ) {
     size_t bufsize = MAX_PATH_LEN;
 
     if (ebboptions->uselegion) {
-        snprintf(buffer, bufsize, "%s/../ebb/src/launch_legion.t", bindir);
+        snprintf(buffer, bufsize,
+                 "%s/../include/ebb/src/launch_legion.t", bindir);
     } else {
-        snprintf(buffer, bufsize, "%s/../ebb/src/launch_script.t", bindir);
+        snprintf(buffer, bufsize,
+                 "%s/../include/ebb/src/launch_script.t", bindir);
     }
     return terra_loadfile(L,buffer);
 }
@@ -286,7 +288,7 @@ static void print_welcome();
 void usage() {
     print_welcome();
     printf(
-      "liszt [OPTIONS] [source-file] [arguments-to-source-file]\n"
+      "ebb [OPTIONS] [source-file] [arguments-to-source-file]\n"
       "    -v enable verbose debugging output\n"
       "    -d enable debugging symbols\n"
       "    -h print this help message\n"
@@ -547,7 +549,7 @@ static int docall (lua_State *L, int narg, int clear) {
 }
 static void print_welcome() {
     printf("\n"
-           "Liszt/Ebb -- A Language for Physical Simulation\n"
+           "Liszt-Ebb -- A Language for Physical Simulation\n"
            "  (built w/ Terra)\n"
            "\n"
            "Stanford University\n"

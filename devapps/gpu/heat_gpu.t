@@ -2,7 +2,7 @@ if not terralib.cudacompile then
   print("This simulation requires CUDA support; exiting...")
   return
 end
-import 'ebb.liszt'
+import 'ebb'
 
 L.default_processor = L.GPU
 --------------------------------------------------------------------------------

@@ -1,4 +1,4 @@
-import "ebb.liszt"
+import "ebb"
 
 local ioOff = require 'ebb.domains.ioOff'
 --local mesh  = ioOff.LoadTrimesh(
@@ -25,24 +25,24 @@ local function init_temperature(idx)
 end
 mesh.vertices.t:Load(init_temperature)
 
-local liszt compute_degree (e : mesh.edges)
+local ebb compute_degree (e : mesh.edges)
   e.tail.degree += 1
 end
 mesh.edges:foreach(compute_degree)
 
-local liszt compute_update (e : mesh.edges )
+local ebb compute_update (e : mesh.edges )
   var diff_t = e.head.t - e.tail.t
 
   e.head.d_t += - timestep * conduction * diff_t / e.head.degree
   e.tail.d_t +=   timestep * conduction * diff_t / e.tail.degree
 end
 
-local liszt apply_update (v : mesh.vertices)
+local ebb apply_update (v : mesh.vertices)
   v.t += v.d_t
   v.d_t = 0
 end
 
-local liszt visualize ( v : mesh.vertices )
+local ebb visualize ( v : mesh.vertices )
   vdb.color({ 0.5 * v.t + 0.5, 0.5-v.t, 0.5-v.t })
   vdb.point(v.pos)
 end

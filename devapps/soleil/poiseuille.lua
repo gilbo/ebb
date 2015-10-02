@@ -112,6 +112,6 @@ return {
   outputEveryTimeSteps  = 1000, -- Iterations between writing solutions
   restartEveryTimeSteps = 1000, -- Iterations between writing restarts
   headerFrequency       = 20,   -- Iterations between console output headers
-  outputDirectory = '../soleilOutput/' -- Relative to the liszt root dir
+  outputDirectory = '../soleilOutput/' -- Relative to the ebb root dir
   
 }

@@ -1,4 +1,4 @@
-import "ebb.liszt"
+import "ebb"
 require "tests/test"
 
 local cells = L.NewRelation { size = 10, name = 'cells' }
@@ -6,14 +6,14 @@ local cells = L.NewRelation { size = 10, name = 'cells' }
 cells:NewField('f1', L.double):Load(0)
 cells:NewField('f2', L.double):Load(0)
 
-local setup = liszt ( c : cells )
+local setup = ebb ( c : cells )
   c.f1 = 5
 end
 cells:foreach(setup)
 
 cells:Swap('f1','f2')
 
-local check1 = liszt ( c : cells )
+local check1 = ebb ( c : cells )
   L.assert(c.f2 == 5)
   L.assert(c.f1 == 0)
 end
@@ -21,7 +21,7 @@ cells:foreach(check1)
 
 cells:Copy{to='f1',from='f2'}
 
-local check2 = liszt ( c : cells )
+local check2 = ebb ( c : cells )
   L.assert(c.f2 == 5)
   L.assert(c.f1 == 5)
 end

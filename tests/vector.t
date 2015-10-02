@@ -1,6 +1,6 @@
 package.path = package.path .. ";./tests/?.lua;?.lua"
 local test = require "test"
-import "ebb.liszt"
+import "ebb"
 local types = require "ebb.src.types"
 
 
@@ -17,7 +17,7 @@ local mesh  = ioOff.LoadTrimesh('tests/octa.off')
 ------------------
 -- Should pass: --
 ------------------
-local k = liszt (v : mesh.vertices)
+local k = ebb (v : mesh.vertices)
 	var x       = {5, 5, 5}
 	v.pos += x + {0, 1, 1}
 end
@@ -26,7 +26,7 @@ mesh.vertices:foreach(k)
 --[[
 -- Additive reduction over doubles currently unsupported
 local s = L.Global(L.vector(L.double, 3), {0.0, 0.0, 0.0})
-local sum_pos = liszt(v : mesh.vertices)
+local sum_pos = ebb(v : mesh.vertices)
 	s += v.pos
 end
 mesh.vertices:foreach(sum_pos)
@@ -40,7 +40,7 @@ test.fuzzy_aeq(f.data, {5, 6, 6})
 ------------------
 
 test.fail_function(function()
-	local liszt t(v : mesh.vertices)
+	local ebb t(v : mesh.vertices)
 		var v3 = L.vec3f({1.1, 2.2, 3.3})
 		var v2 = L.vec2f(v3)
 	end

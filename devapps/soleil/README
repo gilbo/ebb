@@ -1,4 +1,4 @@
-This directory contains a Liszt implementation of the radiative particle-laden
+This directory contains an Ebb implementation of the radiative particle-laden
 compressible flow solver on three-dimensional structured grids
 code provided originally at:
 https://github.com/ibermejomoreno/soleil.
@@ -7,8 +7,8 @@ In addition, a postprocessing tool written in Python is also contained in this
 directory that can read the files written during the execution of the soleil.t
 program.
 
-To run the code (for example, from the liszt-in-terra/ directory):
-./liszt devapps/soleil/soleil.t
+To run the code (for example, from the liszt-ebb/ directory):
+./ebb devapps/soleil/soleil.t
 
 The visual debugger vdb can be used to visually monitor the simulation at
 runtime. It needs to be launched in advance of the execution of the soleil
@@ -30,7 +30,7 @@ particlesArrowFactor=100 # Inverse factor to scale arrows (particle velocity)
 histogramsBinSize=30 # Number of bins in x-based and y-based pdfs added to plots
 for timeStep in `seq $timeStepMin $timeStepDelta $timeStepMax`;
 do
-  python ../liszt-in-terra/devapps/soleil/postprocessSoleil.py \
+  python ../liszt-ebb/devapps/soleil/postprocessSoleil.py \
     output ${timeStep} \
     $fieldName\
     $sliceIndex \

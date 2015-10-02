@@ -1,2 +1,2 @@
-This directory holds code for the Liszt comparisons to VEGA FEM
+This directory holds code for the Ebb comparisons to VEGA FEM
 

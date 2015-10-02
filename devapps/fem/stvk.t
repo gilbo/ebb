@@ -1,4 +1,4 @@
-import "ebb.liszt"
+import "ebb"
 local PN = require 'ebb.lib.pathname'
 local U = require 'devapps.fem.utils'
 
@@ -9,7 +9,7 @@ S.profile = false
 
 
 --------------------------------------------------------------------------------
--- All Liszt kernels go here. These are wrapped into Lua function calls (at the
+-- All Ebb kernels go here. These are wrapped into Lua function calls (at the
 -- end of the file) which are called by any code external to this module.
 --------------------------------------------------------------------------------
 
@@ -23,7 +23,7 @@ function S:setupFieldsFunctions(mesh)
   
   -- Here, we precompute PhiG which is used to compute and cache dots, and
   -- compute A, b, C, and D as required, on a per element basis.
-  liszt self.precomputeStVKIntegrals (t : mesh.tetrahedra)
+  ebb self.precomputeStVKIntegrals (t : mesh.tetrahedra)
     var det = t.elementDet
     for i = 0,4 do
       for j = 0,3 do
@@ -62,7 +62,7 @@ function S:setupFieldsFunctions(mesh)
   -- The VEGA Code seems to compute the dots matrix once, and then
   -- cache it for the duration of a per-tet computation rather than
   -- allocate disk space
-  liszt self.tetDots(Phig)
+  ebb self.tetDots(Phig)
     var dots : L.mat4d
     for i=0,4 do
       var Phigi : L.vec3d = { Phig[i, 0], Phig[i, 1], Phig[i, 2] }
@@ -74,22 +74,22 @@ function S:setupFieldsFunctions(mesh)
     return dots
   end
   
-  liszt self.tetCoefA(volume, phi, i, j)
+  ebb self.tetCoefA(volume, phi, i, j)
     return ( volume * U.tensor3( { phi[i, 0], phi[i, 1], phi[i, 2] },
                                  { phi[j, 0], phi[j, 1], phi[j, 2] } ) )
   end
   
-  liszt self.tetCoefB(volume, dots, i, j)
+  ebb self.tetCoefB(volume, dots, i, j)
     return volume * dots[i, j]
   end
   
-  liszt self.tetCoefC(volume, phi, dots, i, j, k)
+  ebb self.tetCoefC(volume, phi, dots, i, j, k)
     var res : L.vec3d = volume * dots[j, k] * 
                         { phi[i, 0], phi[i, 1], phi[i, 2] }
     return res
   end
   
-  liszt self.tetCoefD(volume, dots, i, j, k, l)
+  ebb self.tetCoefD(volume, dots, i, j, k, l)
     return ( volume * dots[i, j] * dots[k, l] )
   end
   
@@ -103,7 +103,7 @@ function S:setupFieldsFunctions(mesh)
   -- Result is stored as a 3D vector field over all the vertices.
   
   -- Linear contributions to internal internal_forces
-  liszt self.addIFLinearTerms (t : mesh.tetrahedra)
+  ebb self.addIFLinearTerms (t : mesh.tetrahedra)
     var phi = t.Phig
     var dots = self.tetDots(phi)
     var lambda = t.lambdaLame
@@ -128,7 +128,7 @@ function S:setupFieldsFunctions(mesh)
   end
   
   -- Quadratic contributions to internal internal_forces
-  liszt self.addIFQuadraticTerms (t : mesh.tetrahedra)
+  ebb self.addIFQuadraticTerms (t : mesh.tetrahedra)
     var phi = t.Phig
     var dots = self.tetDots(phi)
     var lambda = t.lambdaLame
@@ -158,7 +158,7 @@ function S:setupFieldsFunctions(mesh)
   end
   
   -- Cubic contributions to internal internal_forces
-  liszt self.addIFCubicTerms (t : mesh.tetrahedra)
+  ebb self.addIFCubicTerms (t : mesh.tetrahedra)
     var phi = t.Phig
     var dots = self.tetDots(phi)
     var lambda = t.lambdaLame
@@ -187,7 +187,7 @@ function S:setupFieldsFunctions(mesh)
     end
   end
   
-  liszt self.resetInternalForces (v : mesh.vertices)
+  ebb self.resetInternalForces (v : mesh.vertices)
     v.internal_forces = {0, 0, 0}
   end
 
@@ -210,7 +210,7 @@ function S:setupFieldsFunctions(mesh)
   -- against scatter from tetrahedra.
   
   -- Linear contributions to stiffness matrix
-  liszt self.addStiffLinearTerms (t : mesh.tetrahedra)
+  ebb self.addStiffLinearTerms (t : mesh.tetrahedra)
     var phi = t.Phig
     var dots = self.tetDots(phi)
     var lambda = t.lambdaLame
@@ -229,7 +229,7 @@ function S:setupFieldsFunctions(mesh)
   end
   
   -- Quadratic contributions to stiffness matrix
-  liszt self.addStiffQuadraticTerms (t : mesh.tetrahedra)
+  ebb self.addStiffQuadraticTerms (t : mesh.tetrahedra)
     var phi = t.Phig
     var dots = self.tetDots(phi)
     var lambda = t.lambdaLame
@@ -261,7 +261,7 @@ function S:setupFieldsFunctions(mesh)
   end
   
   -- Cubic contributions to stiffness matrix
-  liszt self.addStiffCubicTerms (t : mesh.tetrahedra)
+  ebb self.addStiffCubicTerms (t : mesh.tetrahedra)
     var phi = t.Phig
     var dots = self.tetDots(phi)
     var lambda = t.lambdaLame
@@ -290,7 +290,7 @@ function S:setupFieldsFunctions(mesh)
     end
   end
   
-  liszt self.resetStiffnessMatrix (e : mesh.edges)
+  ebb self.resetStiffnessMatrix (e : mesh.edges)
     e.stiffness = { { 0, 0, 0 }, { 0, 0, 0 }, { 0, 0, 0 } }
   end
 
@@ -366,8 +366,8 @@ function S.computeInternalForcesAndStiffnessMatrix(mesh)
   local timer = U.Timer.New()
   timer:Start()
   computeInternalForces(mesh)
-  -- mesh:dumpVertFieldToFile('internal_forces', "liszt_output/stvk-out/internal_forces_"..tostring(ts))
+  -- mesh:dumpVertFieldToFile('internal_forces', "ebb_output/stvk-out/internal_forces_"..tostring(ts))
   computeStiffnessMatrix(mesh)
-  -- mesh:dumpEdgeFieldToFile('stiffness', "liszt_output/stvk-out/stiffness_"..tostring(ts))
+  -- mesh:dumpEdgeFieldToFile('stiffness', "ebb_output/stvk-out/stiffness_"..tostring(ts))
   print("Time to assemble force and stiffness matrix is "..(timer:Stop()*1E6).." us")
 end

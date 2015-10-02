@@ -1,4 +1,4 @@
-import 'ebb.liszt'
+import 'ebb'
 
 local M     = {
   vertices  = L.NewRelation { name="vertices",  size=8  },
@@ -34,7 +34,7 @@ M.vertices:NewField('flux',        L.float):Load(0)
 M.vertices:NewField('jacobistep',  L.float):Load(0)
 M.vertices:NewField('temperature', L.float):Load(init_temp)
 
-local liszt compute_step (e : M.edges)
+local ebb compute_step (e : M.edges)
   var v1   = e.head
   var v2   = e.tail
   var dp   = L.vec3f(v1.position - v2.position)
@@ -48,11 +48,11 @@ local liszt compute_step (e : M.edges)
   v2.jacobistep += step
 end
 
-local liszt propagate_temp (p : M.vertices)
+local ebb propagate_temp (p : M.vertices)
   p.temperature += L.float(.01) * p.flux / p.jacobistep
 end
 
-local liszt clear (p : M.vertices)
+local ebb clear (p : M.vertices)
   p.flux       = 0
   p.jacobistep = 0
 end

@@ -1,7 +1,7 @@
 --------------------------------------------------------------------------------
 --[[ Test implementation of type system for consistency                     ]]--
 --------------------------------------------------------------------------------
-local L = require "ebb.liszt"
+local L = require "ebb"
 local T = require "ebb.src.types"
 require "tests.test"
 
@@ -18,7 +18,7 @@ for ttype, ltype in pairs(ptypes) do
 	-- verify runtime type enum conversions
 	assert(ltype:terraType() == ttype)
 
-	assert(T.terraToLisztType(ttype) == ltype)
+	assert(T.terraToEbbType(ttype) == ltype)
 	--------------------------------
 	--[[ Test vector types:     ]]--
 	--------------------------------
@@ -37,7 +37,7 @@ for ttype, ltype in pairs(ptypes) do
 		assert(vtype:baseType()      == ltype)
 		assert(vtype:terraBaseType() == ttype)
 		assert(vtype:terraType()     == vector(ttype,i))
-		assert(T.terraToLisztType(vector(ttype, i)) == vtype)
+		assert(T.terraToEbbType(vector(ttype, i)) == vtype)
 
 		-- cannot call type constructor with a terra type
 		local function fn()
@@ -45,7 +45,7 @@ for ttype, ltype in pairs(ptypes) do
 		end
 		test.fail_function(fn, 'invalid type')
 
-		-- user-exposed type constructor should return the correct liszt type
+		-- user-exposed type constructor should return the correct ebb type
 		assert(L.vector(ltype,i) == T.t.vector(ltype,i))
 	end
 end

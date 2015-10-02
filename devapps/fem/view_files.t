@@ -1,4 +1,4 @@
-import 'ebb.liszt'
+import 'ebb'
 local vdb = require 'ebb.lib.vdb'
 
 local Tetmesh = require 'devapps.fem.tetmesh'
@@ -11,7 +11,7 @@ local PN = require 'ebb.lib.pathname'
 --------------------------------------------------------------------------------
 
 if not arg[2] or arg[2] == "-h" or arg[2] == "--help" then
-  print("Usage : ./liszt devapps/fem/view-files.t path_to_dir_with_sim_output")
+  print("Usage : ./ebb devapps/fem/view-files.t path_to_dir_with_sim_output")
   os.exit(1)
 end
 
@@ -68,7 +68,7 @@ end
 
 local sqrt3 = math.sqrt(3)
 
-local liszt tet_volume(p0,p1,p2,p3)
+local ebb tet_volume(p0,p1,p2,p3)
   var d1 = p0-p3
   var d2 = p1-p3
   var d3 = p2-p3
@@ -76,7 +76,7 @@ local liszt tet_volume(p0,p1,p2,p3)
   -- triple product
   return L.dot(L.cross(d1,d2),d3)
 end
-local liszt trinorm(p0,p1,p2)
+local ebb trinorm(p0,p1,p2)
   var d1 = p1-p0
   var d2 = p2-p0
   var n  = L.cross(d1,d2)
@@ -84,7 +84,7 @@ local liszt trinorm(p0,p1,p2)
   if len < 1e-10 then len = L.float(1e-10) end
   return n/len
 end
-local liszt dot_to_color(d)
+local ebb dot_to_color(d)
   var val = d * 0.5 + 0.5
   var col = L.vec3f({val,val,val})
   return col
@@ -92,7 +92,7 @@ end
 
 local lightdir = L.Constant(L.vec3f,{sqrt3,sqrt3,sqrt3})
 
-local liszt visualizeDeformation ( t : mesh.tetrahedra )
+local ebb visualizeDeformation ( t : mesh.tetrahedra )
   var p0 = L.vec3f(t.v[0].pos)
   var p1 = L.vec3f(t.v[1].pos)
   var p2 = L.vec3f(t.v[2].pos)

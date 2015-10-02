@@ -26,7 +26,7 @@ to global memory.  We do this twice to get a single result.
 -------------------------------------------------------------------------------
 -- Imports                                                                   -- 
 -------------------------------------------------------------------------------
-import "ebb.liszt"
+import "ebb"
 
 local tid = cudalib.nvvm_read_ptx_sreg_tid_x
 local bid_x = cudalib.nvvm_read_ptx_sreg_ctaid_x

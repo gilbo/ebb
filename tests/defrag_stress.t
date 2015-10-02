@@ -1,6 +1,6 @@
 --DISABLE-ON-LEGION
 
-import "ebb.liszt"
+import "ebb"
 require "tests/test"
 
 local Ncell = 1000
@@ -20,21 +20,21 @@ particles:NewField('cell', cells):Load(0)
 
 
 
-local seed_particles = liszt( c : cells )
+local seed_particles = ebb( c : cells )
   insert { cell = c } into particles
 end
 
-local liszt delete_even ( p : particles )
+local ebb delete_even ( p : particles )
   if L.id(p.cell) % 2 == 0 then
     delete p
   end
 end
-local liszt delete_odd ( p : particles )
+local ebb delete_odd ( p : particles )
   if L.id(p.cell) % 2 == 1 then
     delete p
   end
 end
-local liszt delete_third ( p : particles )
+local ebb delete_third ( p : particles )
   if L.id(p.cell) % 3 == 0 then
     delete p
   end

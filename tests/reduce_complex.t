@@ -1,4 +1,4 @@
-import "ebb.liszt"
+import "ebb"
 require "tests.test"
 
 local Tetmesh = require 'devapps.fem.tetmesh'
@@ -26,7 +26,7 @@ mesh.tetrahedra:NewField('F',     L.mat3d):Load({ {0, 0, 0}, {0, 0, 0}, {0, 0, 0
 mesh.tetrahedra:NewField('FinvT', L.mat3d):Load({ {0, 0, 0}, {0, 0, 0}, {0, 0, 0} })      
 mesh.tetrahedra:NewField('Fdet',  L.double):Load(0)
 
-liszt ComputeBAndW(t : mesh.tetrahedra)
+local ebb ComputeBAndW(t : mesh.tetrahedra)
   var Dm : L.mat3d
   var x4 : L.vec3d = t.v[3].pos
   for j = 0,3  do
@@ -40,7 +40,7 @@ liszt ComputeBAndW(t : mesh.tetrahedra)
   t.Bm = U.invertMatrix3d(Dm)
 end
 
-liszt RecomputeAndResetTetTemporaries(t : mesh.tetrahedra)
+local ebb RecomputeAndResetTetTemporaries(t : mesh.tetrahedra)
  -- recompute
   var Ds : L.mat3d  = { { 0, 0, 0 }, { 0, 0, 0 }, { 0, 0, 0 } }
   var x4 = t.v[3].pos + t.v[3].q
@@ -58,7 +58,7 @@ liszt RecomputeAndResetTetTemporaries(t : mesh.tetrahedra)
   t.Fdet   = L.fabs(U.detMatrix3d(F))
 end
 
-local liszt dPdF(t, dF)
+local ebb dPdF(t, dF)
   var dFT      = U.transposeMatrix3(dF)
   var FinvT    = t.FinvT
   var c1       = t.muLame - t.lambdaLame * L.log(t.Fdet)
@@ -69,7 +69,7 @@ local liszt dPdF(t, dF)
   return dP
 end
 
-liszt ComputeStiffnessMatrix(t : mesh.tetrahedra)
+local ebb ComputeStiffnessMatrix(t : mesh.tetrahedra)
   var Bm  : L.mat3d = t.Bm
   var BmT : L.mat3d = U.transposeMatrix3(t.Bm)
   var dFRow : L.mat4x3d = { { 0, 0, 0 }, { 0, 0, 0 }, { 0, 0, 0 }, { 0, 0, 0 } }
@@ -99,7 +99,7 @@ liszt ComputeStiffnessMatrix(t : mesh.tetrahedra)
   end
 end
 
-liszt ReduceStiffnessPrecision(e : mesh.edges)
+local ebb ReduceStiffnessPrecision(e : mesh.edges)
   for i = 0,3 do
     for j = 0,3 do
       e.stiffrp[i,j] = L.floor(e.stiffness[i,j]/1000)

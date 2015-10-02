@@ -1,4 +1,4 @@
-import "ebb.liszt" -- Every Liszt File should start with this command
+import "ebb" -- Every Ebb File should start with this command
 
 
 -- Declare a table named Trimesh
@@ -58,10 +58,10 @@ local function build_edges(mesh, vs) --v1s, v2s, v3s)
   -- index the edges
   mesh.edges:GroupBy('tail')
   mesh.vertices:NewFieldMacro('edges', L.NewMacro(function(v)
-    return liszt ` L.Where(mesh.edges.tail, v)
+    return ebb ` L.Where(mesh.edges.tail, v)
   end))
   mesh.vertices:NewFieldMacro('neighbors', L.NewMacro(function(v)
-    return liszt ` L.Where(mesh.edges.tail, v).head
+    return ebb ` L.Where(mesh.edges.tail, v).head
   end))
 
   -- set up the pointers from triangles to edges
@@ -71,7 +71,7 @@ local function build_edges(mesh, vs) --v1s, v2s, v3s)
   mesh.triangles:NewField('e31', mesh.edges):Load(0)
   mesh.triangles:NewField('e23', mesh.edges):Load(0)
   mesh.triangles:NewField('e32', mesh.edges):Load(0)
-  local liszt compute_tri_pointers ( t : mesh.triangles )
+  local ebb compute_tri_pointers ( t : mesh.triangles )
     for e in t.v[0].edges do
       if e.head == t.v[1] then t.e12 = e end
       if e.head == t.v[2] then t.e13 = e end

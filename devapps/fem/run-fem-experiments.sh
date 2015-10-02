@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # NOTE: To run this script, need to move it to/ make a symlink in project root
-# directory, that is, liszt-in-terra. Also, the models in the config files that
+# directory, that is, liszt-ebb. Also, the models in the config files that
 # this script uses are only on lightroast, so will need to update the config
 # files to run this elsewhere.
 
@@ -19,7 +19,7 @@
 
 steps=5
 
-outdir="liszt_times"
+outdir="ebb_times"
 mkdir -p $outdir
 
 for model in "turtle" "dragon" "hose" # stvk
@@ -31,12 +31,12 @@ do
     outfile="${outdir}/log_${model}_${force}_cpu"
     rm -rf $outfile
     echo "Running $config  with $force force model, $steps steps, cpu ..."
-    command=`./liszt devapps/fem/sim_main.t -config  $config -force $force -steps $steps >> ${outfile}`
+    command=`./ebb devapps/fem/sim_main.t -config  $config -force $force -steps $steps >> ${outfile}`
     $command
     outfile="${outdir}/log_${model}_${force}_gpu"
     rm -rf $outfile
     echo "Running $config  with $force force model, $steps steps, gpu ..."
-    command=`./liszt --gpu devapps/fem/sim_main.t -config  $config -force $force -steps $steps >> ${outfile}`
+    command=`./ebb --gpu devapps/fem/sim_main.t -config  $config -force $force -steps $steps >> ${outfile}`
     $command
   done
 done

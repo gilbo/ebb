@@ -1,4 +1,4 @@
-import "ebb.liszt"
+import "ebb"
 
 
 -- In this tutorial, we're going to write heat diffusion yet again.
@@ -33,7 +33,7 @@ grid.cells:NewField('d_temperature', L.double)  :Load(0)
 ------------------------------------------------------------------------------
 
 -- Here we define the compute kernels again.
-local liszt compute_update ( c : grid.cells )
+local ebb compute_update ( c : grid.cells )
   -- Notice that now, instead of a for loop to loop over edges/neighbors,
   -- we're using relative offsets from the "centered" cell.
   -- This expression sums the temperatures in cells to the
@@ -44,7 +44,7 @@ local liszt compute_update ( c : grid.cells )
   c.d_temperature = timestep * conduction * (avg_t - c.temperature)
 end
 
-local liszt apply_update ( c : grid.cells )
+local ebb apply_update ( c : grid.cells )
   c.temperature += c.d_temperature
 end
 
@@ -56,13 +56,13 @@ end
 -- over the "interior" cells, and then impose a boundary condition
 -- on the remaining "boundary" cells.
 
--- To handle boundary conditions in Liszt, we use subsets
+-- To handle boundary conditions in Ebb, we use subsets
 -- Our grid has two subsets: `interior` and `boundary`
 
 -- Let's define a Dirichlet boundary condition that will
 -- create a sinusoidal heat pattern
 local PI_N = 4.0 * math.pi / N
-local liszt dirichlet_condition ( c : grid.cells )
+local ebb dirichlet_condition ( c : grid.cells )
   -- c.center is the position of the cell center
   -- using the coordinate system we defined when we created
   -- the grid.
@@ -83,7 +83,7 @@ grid.cells.boundary:foreach(dirichlet_condition)
 local vdb  = require('ebb.lib.vdb')
 local cold = L.Constant(L.vec3f,{0.5,0.5,0.5})
 local hot  = L.Constant(L.vec3f,{1.0,0.0,0.0})
-local liszt debug_quad_draw ( c : grid.cells )
+local ebb debug_quad_draw ( c : grid.cells )
   var scale = L.float(0.5 * c.temperature)
   var pos   = c.center
 

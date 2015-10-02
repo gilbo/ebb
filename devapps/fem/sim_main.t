@@ -1,4 +1,4 @@
-import 'ebb.liszt'
+import 'ebb'
 local vdb = require 'ebb.lib.vdb'
 
 local Tetmesh = require 'devapps.fem.tetmesh'
@@ -11,7 +11,7 @@ local U = require 'devapps.fem.utils'
 --------------------------------------------------------------------------------
 
 local function printUsageAndExit()
-  print("Usage : ./liszt [-gpu] devapps/fem/view-files.t <options>")
+  print("Usage : ./ebb [-gpu] devapps/fem/view-files.t <options>")
   print("          -config <config file with additional information> (** required **)")
   print("          -force <stvk or nh>")
   print("          -steps <number of time steps>")
@@ -102,11 +102,11 @@ local F = nil
 local outDirName = nil
 if forceModel == 'stvk' then
   F = require 'devapps.fem.stvk'
-  outDirName = 'liszt_output/stvk-out'
+  outDirName = 'ebb_output/stvk-out'
   os.execute('mkdir -p devapps/fem/' .. outDirName)
 else
   F = require 'devapps.fem.neohookean'
-  outDirName = 'liszt_output/nh-out'
+  outDirName = 'ebb_output/nh-out'
   os.execute('mkdir -p devapps/fem/' .. outDirName)
 end
 F.profile = false  -- measure and print out detailed timing?
@@ -133,7 +133,7 @@ function computeMassMatrix(mesh)
   -- Q: Is inflate3Dim flag on?
   -- A: Yes.  This means we want the full mass matrix,
   --    not just a uniform scalar per-vertex
-  local liszt buildMassMatrix (t : mesh.tetrahedra)
+  local ebb buildMassMatrix (t : mesh.tetrahedra)
     var tet_vol = L.fabs(t.elementDet)/6
     var factor = tet_vol * t.density/ 20
     for i = 0,4 do
@@ -202,100 +202,100 @@ function ImplicitBackwardEulerIntegrator:setupFieldsFunctions(mesh)
   self.alpha = L.Global(L.double, 0)
   self.beta = L.Global(L.double, 0)
 
-  liszt self.initializeQFields (v : mesh.vertices)
+  ebb self.initializeQFields (v : mesh.vertices)
     v.q_1 = v.q
     v.qvel_1 = v.qvel
     v.qaccel = { 0, 0, 0 }
     v.qaccel_1 = { 0, 0, 0 }
   end
 
-  liszt self.initializeqvdelta (v : mesh.vertices)
+  ebb self.initializeqvdelta (v : mesh.vertices)
     v.qvdelta = v.qresidual
   end
 
-  liszt self.scaleInternalForces (v : mesh.vertices)
+  ebb self.scaleInternalForces (v : mesh.vertices)
     v.internal_forces = self.internalForcesScalingFactor * v.internal_forces
   end
 
-  liszt self.scaleStiffnessMatrix (e : mesh.edges)
+  ebb self.scaleStiffnessMatrix (e : mesh.edges)
     e.stiffness = self.internalForcesScalingFactor * e.stiffness
   end
 
   if self.useDamp then
-    liszt self.createRayleighDampMatrix (e : mesh.edges)
+    ebb self.createRayleighDampMatrix (e : mesh.edges)
       e.raydamp = self.dampingStiffnessCoef * e.stiffness +
                   U.diagonalMatrix(self.dampingMassCoef * e.mass)
     end
   else
-    liszt self.createRayleighDampMatrix (e : mesh.edhes)
+    ebb self.createRayleighDampMatrix (e : mesh.edhes)
     end
   end
 
-  liszt self.updateqresidual1 (v : mesh.vertices)
+  ebb self.updateqresidual1 (v : mesh.vertices)
     for e in v.edges do
       v.qresidual += U.multiplyMatVec3(e.stiffness, (e.head.q_1 - e.head.q))
     end
   end
 
-  liszt self.updateqresidual2 (v : mesh.vertices)
+  ebb self.updateqresidual2 (v : mesh.vertices)
     for e in v.edges do
       v.qresidual += U.multiplyMatVec3(e.stiffness, e.head.qvel)
     end
   end
 
-  liszt self.updateqresidual3 (v : mesh.vertices)
+  ebb self.updateqresidual3 (v : mesh.vertices)
     v.qresidual += (v.internal_forces - v.external_forces)
     v.qresidual = - ( self.timestep * v.qresidual )
   end
 
-  liszt self.updateqresidual4 (v : mesh.vertices)
+  ebb self.updateqresidual4 (v : mesh.vertices)
     for e in v.edges do
       v.qresidual += e.mass * (e.head.qvel_1 - e.head.qvel)
     end
   end
 
   if self.useDamp then
-    liszt self.updateStiffness1 (e : mesh.edges)
+    ebb self.updateStiffness1 (e : mesh.edges)
       e.stiffness = self.timestep * e.stiffness
       e.stiffness += e.raydamp
     end
   else
-    liszt self.updateStiffness1 (e : mesh.edges)
+    ebb self.updateStiffness1 (e : mesh.edges)
       e.stiffness = self.timestep * e.stiffness
     end
   end
 
-  liszt self.updateStiffness11 (e : mesh.edges)
+  ebb self.updateStiffness11 (e : mesh.edges)
     e.stiffness = self.timestep * e.stiffness
   end
 
   if self.useDamp then
-    liszt self.updateStiffness12 (e : mesh.edges)
+    ebb self.updateStiffness12 (e : mesh.edges)
       e.stiffness += e.raydamp
     end
   else
-    liszt self.updateStiffness12 (e : mesh.edges)
+    ebb self.updateStiffness12 (e : mesh.edges)
     end
   end
 
-  liszt self.updateStiffness2 (e : mesh.edges)
+  ebb self.updateStiffness2 (e : mesh.edges)
     e.stiffness = self.timestep * e.stiffness
     e.stiffness += U.diagonalMatrix(e.mass)
   end
 
-  liszt self.getError (v : mesh.vertices)
+  ebb self.getError (v : mesh.vertices)
     var qd = v.qvdelta
     var err = L.dot(qd, qd)
     self.err += err
   end
 
-  liszt self.pcgCalculatePreconditioner (v : mesh.vertices)
+  ebb self.pcgCalculatePreconditioner (v : mesh.vertices)
     var stiff = v.diag.stiffness
     var diag = { stiff[0,0], stiff[1,1], stiff[2,2] }
     v.precond = { 1.0/diag[0], 1.0/diag[1], 1.0/diag[2] }
   end
 
-  liszt self.pcgCalculateExactResidual (v : mesh.vertices)
+  ebb self.pcgCalculateExactResidual (v : mesh.vertices)
     v.r = { 0, 0, 0 }
     for e in v.edges do
       v.r += U.multiplyMatVec3(e.stiffness, e.head.x)
@@ -303,15 +303,15 @@ function ImplicitBackwardEulerIntegrator:setupFieldsFunctions(mesh)
     v.r = v.qvdelta - v.r
   end
 
-  liszt self.pcgCalculateNormResidual (v : mesh.vertices)
+  ebb self.pcgCalculateNormResidual (v : mesh.vertices)
     self.normRes += L.dot(U.multiplyVectors(v.r, v.precond), v.r)
   end
 
-  liszt self.pcgInitialize (v : mesh.vertices)
+  ebb self.pcgInitialize (v : mesh.vertices)
     v.p = U.multiplyVectors(v.r, v.precond)
   end
 
-  liszt self.pcgComputeAp (v : mesh.vertices)
+  ebb self.pcgComputeAp (v : mesh.vertices)
     var Ap : L.vec3d = { 0, 0, 0 }
     for e in v.edges do
       var A = e.stiffness
@@ -321,23 +321,23 @@ function ImplicitBackwardEulerIntegrator:setupFieldsFunctions(mesh)
     v.Ap = Ap
   end
 
-  liszt self.pcgComputeAlphaDenom (v : mesh.vertices)
+  ebb self.pcgComputeAlphaDenom (v : mesh.vertices)
     self.alphaDenom += L.dot(v.p, v.Ap)
   end
 
-  liszt self.pcgUpdateX (v : mesh.vertices)
+  ebb self.pcgUpdateX (v : mesh.vertices)
     v.x += self.alpha * v.p
   end
 
-  liszt self.pcgUpdateResidual (v : mesh.vertices)
+  ebb self.pcgUpdateResidual (v : mesh.vertices)
     v.r -= self.alpha * v.Ap
   end
 
-  liszt self.pcgUpdateP (v : mesh.vertices)
+  ebb self.pcgUpdateP (v : mesh.vertices)
     v.p = self.beta * v.p + U.multiplyVectors(v.precond, v.r)
   end
 
-  liszt self.updateAfterSolve (v : mesh.vertices)
+  ebb self.updateAfterSolve (v : mesh.vertices)
     v.qvdelta = v.x
     v.qvel += v.qvdelta
     -- TODO: subtracting q from q?
@@ -489,12 +489,12 @@ end
 
 local setExternalForces = nil
 
-local liszt setExternalForcesStvk (v : mesh.vertices)
+local ebb setExternalForcesStvk (v : mesh.vertices)
   var pos = v.pos
   v.external_forces = { 10.0, -0.8*pos[1], 0 }
 end
 
-local liszt setExternalForcesNh (v : mesh.vertices)
+local ebb setExternalForcesNh (v : mesh.vertices)
     v.external_forces = { 5.0, 0, 0 }
 end
 

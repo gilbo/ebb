@@ -1,4 +1,4 @@
-import "ebb.liszt"
+import "ebb"
 
 local ioOff = require 'ebb.domains.ioOff'
 local mesh  = ioOff.LoadTrimesh(
@@ -22,7 +22,7 @@ mesh.triangles.v:print()
 
 -- Then, let's try translating the mesh vertices
 
-local liszt translate ( v : mesh.vertices )
+local ebb translate ( v : mesh.vertices )
   v.pos += {1,0,0}
 end
 

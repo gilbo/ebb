@@ -1,4 +1,4 @@
-import "ebb.liszt"
+import "ebb"
 require "tests/test"
 
 -- Need a high N to test the index-based representation as well as boolmask
@@ -23,11 +23,11 @@ cells:NewSubsetFromFunction('interior', function(i)
 end)
 
 
-local test_boundary = liszt ( c : cells )
+local test_boundary = ebb ( c : cells )
   L.assert(c.value == 0)
 end
 
-local test_interior = liszt ( c : cells )
+local test_interior = ebb ( c : cells )
   L.assert(c.value == 1)
 end
 
@@ -55,10 +55,10 @@ gridcells:NewSubsetFromFunction('interior', function(xi,yi)
   return not(xi == 0 or xi == N-1 or yi == 0 or yi == N-1)
 end)
 
-local liszt grid_test_boundary ( c : gridcells )
+local ebb grid_test_boundary ( c : gridcells )
   L.assert(c.value == 0)
 end
-local liszt grid_test_interior ( c : gridcells )
+local ebb grid_test_interior ( c : gridcells )
   L.assert(c.value == 1)
 end
 

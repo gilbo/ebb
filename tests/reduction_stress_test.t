@@ -1,5 +1,5 @@
 
-import 'ebb.liszt'
+import 'ebb'
 require 'tests.test'
 
 local N = 10000
@@ -8,7 +8,7 @@ local T = 5000
 local vertices = L.NewRelation { size = N, name = 'vertices' }
 local gerr = L.Global(L.double, 0)
 
-local liszt RunRed(v : vertices)
+local ebb RunRed(v : vertices)
   gerr += 1
 end
 

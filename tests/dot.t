@@ -1,4 +1,4 @@
-import "ebb.liszt"
+import "ebb"
 require "tests/test"
 
 local assert, dot = L.assert, L.dot
@@ -14,7 +14,7 @@ local v4 = L.Constant(L.vector(L.int, 1), {0})
 local v5 = L.Constant(L.vec3i, {1, 2, 3})
 local v6 = L.Constant(L.vec3i, {5, 7, 11})
 
-local test_dot = liszt(r : R)
+local test_dot = ebb(r : R)
     assert(dot(v1, v2) == 52) -- simple test
     assert(dot(v3, v4) == 0) -- type conversion, length-1
     assert(dot(v1, v1) == 14) -- vector with itself
@@ -29,7 +29,7 @@ R:foreach(test_dot)
 
 
 test.fail_function(function()
-  local liszt t(r : R)
+  local ebb t(r : R)
     assert(dot(v1, v3) == 7)
   end
   R:foreach(t)
@@ -37,7 +37,7 @@ end, "must have equal dimensions")
 
 local vb = L.Constant(L.vec3b, {true, true, false})
 test.fail_function(function()
-  local liszt t(r : R)
+  local ebb t(r : R)
     assert(dot(v1, vb) == 52)
   end
   R:foreach(t)

@@ -1,4 +1,4 @@
-import 'ebb.liszt'
+import 'ebb'
 local dld  = require 'ebb.src.dld'
 local C = terralib.includecstring([[
 #include <stdio.h>
@@ -7,7 +7,7 @@ local C = terralib.includecstring([[
 local cells = L.NewRelation{ name = 'cells', dims = {2,3,1} }
 
 -- print fields
-local liszt dump(c, field)
+local ebb dump(c, field)
   L.print(c[field])
 end
 

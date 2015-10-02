@@ -114,6 +114,6 @@ return {
   outputEveryTimeSteps  = 10000, -- Iterations between writing solutions
   restartEveryTimeSteps = 10000, -- Iterations between writing restarts
   headerFrequency       = 20,   -- Iterations between console output headers
-  outputDirectory = '../forced_turbulence/' -- Relative to the liszt root dir
+  outputDirectory = '../forced_turbulence/' -- Relative to the ebb root dir
   
 }
