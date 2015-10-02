@@ -5,6 +5,7 @@
 #include <string.h>
 #include <signal.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <string.h>
 #ifdef _WIN32
 #error Currently Broken on Windows (Complain to Developers)
@@ -95,8 +96,8 @@ char * getexec_dirpath() {
     if(getexec_initialized) return exec_dir_path_cache; 
 
     char        buf[MAX_PATH_LEN];
-    uint32_t    maxbufsize  = MAX_PATH_LEN;
-    uint32_t    bufsize     = maxbufsize;
+    int         maxbufsize  = MAX_PATH_LEN;
+    int         bufsize     = maxbufsize;
 #ifdef __APPLE__
     if (_NSGetExecutablePath(buf, &bufsize) != 0) {
         return NULL; // error
@@ -104,7 +105,7 @@ char * getexec_dirpath() {
 #else
 #ifdef _WIN32
     #error Implementation is Almost Certainly Broken here
-    uint32_t retval = GetModuleFileName(NULL, buf, *bufsize);
+    int retval = GetModuleFileName(NULL, buf, bufsize);
     if (retval == 0) {
         return NULL;
     } else {
@@ -112,7 +113,7 @@ char * getexec_dirpath() {
     }
 #else // Linux
     // NOTE: does not append a null byte
-    ssize_t retval = readlink("/proc/self/exe", buf, *bufsize);
+    int retval = readlink("/proc/self/exe", buf, bufsize);
     if (retval < 0) {
         return NULL;
     } else {
@@ -121,10 +122,10 @@ char * getexec_dirpath() {
 #endif
     // BOTH Linux and Windows, not Apple
     // make sure the string fits and is null-terminated
-    if (*bufsize == maxbufsize) {
+    if (bufsize == maxbufsize) {
         return NULL;
     } else {
-        buf[*bufsize] = '\0'; // ensure there's a null terminator
+        buf[bufsize] = '\0'; // ensure there's a null terminator
     }
 #endif
 
