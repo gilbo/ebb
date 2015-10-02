@@ -99,8 +99,11 @@ char * getexec_dirpath() {
     int         maxbufsize  = MAX_PATH_LEN;
     int         bufsize     = maxbufsize;
 #ifdef __APPLE__
-    if (_NSGetExecutablePath(buf, &bufsize) != 0) {
+    uint32_t bufsize_tmp = bufsize;
+    if (_NSGetExecutablePath(buf, &bufsize_tmp) != 0) {
         return NULL; // error
+    } else {
+      bufsize = bufsize_tmp;
     }
 #else
 #ifdef _WIN32
