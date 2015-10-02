@@ -108,7 +108,7 @@ LFLAGS = -g
 ifeq ($(PLATFORM),OSX)
   LFLAGS += -pagezero_size 10000 -image_base 100000000 
 endif
-ifeq ($(PLATFORM),Linux)
+ifeq ($(PLATFORM),LINUX)
   LFLAGS += -Wl,-export-dynamic -Wl,--whole-archive $(LIBTERRA) -Wl,--no-whole-archive
   LFLAGS += -ldl -pthread
 else

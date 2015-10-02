@@ -60,6 +60,7 @@ cuda_include ..
 [[
 
 //#include "../deprecated_runtime/src/lmeshloader.h"
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
