@@ -1,4 +1,4 @@
-#!/usr/bin/env terra
+#!./bin/ebb
 local ffi = require "ffi"
 
 local USE_LEGION = false
