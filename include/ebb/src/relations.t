@@ -1779,17 +1779,38 @@ end
 -------------------------------------------------------------------------------
 
 
-function L.LRelation:SetNumPartitions(num_partitions)
-  if self:isGrid() then
-    error("Partitioning not implemented for grids yet")
+function L.LRelation:SetPartitions(num_partitions)
+  if self._total_partitions ~= nil then
+    error("Partitioning for " .. self._name .. " is already set", 2)
   end
-  assert(type(num_partitions) == 'number', "Number of partitions should be a number")
-  rawset(self, '_num_partitions', num_partitions)
-  self._num_partitions = num_partitions
+  local ndims = self:nDims()
+  local num_partitions_table = num_partitions
+  if type(num_partitions) == 'number' then
+    num_partitions_table = { num_partitions }
+  end
+  if ndims ~= #num_partitions_table then
+    error("Need number of partitions for " .. tostring(ndims) ..
+          " dimensions " .. " but got " .. tostring(#num_partitions_table) ..
+          " dimensions", 2)
+  end
+  local total_partitions = 1
+  for d = 1, ndims do
+    total_partitions = total_partitions * num_partitions_table[d]
+  end
+  rawset(self, '_total_partitions', total_partitions)
+  rawset(self, '_num_partitions', num_partitions_table)
+end
+
+function L.LRelation:TotalPartitions()
+  return self._total_partitions
 end
 
 function L.LRelation:NumPartitions()
   return self._num_partitions
+end
+
+function L.LRelation:IsPartitioningSet()
+  return (self._total_partitions ~= nil)
 end
 
 local ColorPlainIndexSpaceDisjoint = nil
@@ -1808,39 +1829,29 @@ if use_legion then
 end
 
 -- creates a disjoint partitioning on the relation
-function L.LRelation:CreateDisjointPartitioning()
-  if self:isGrid() then
-    error("Partitioning not implemented for grids yet")
-  end
+function L.LRelation:GetOrCreateDisjointPartitioning()
   -- check if there is a disjoint partition
   if self._disjoint_partitioning then
     return self._disjoint_partitioning
   end
-  -- add a coloring field to logical region
-  assert(not self._disjoint_coloring, "INTERNAL ERROR: a disjoint coloring already exists")
-  rawset(self, '_disjoint_coloring',
-         L.LField.New(self, '_disjoint_coloring', L.color_type))
-  -- set the coloring field
-  self._disjoint_coloring:LoadTerraFunction(ColorPlainIndexSpaceDisjoint,
-                                            { self._num_partitions })
-  -- create index partition using the coloring field and save it
-  local partn = 
-    self._logical_region_wrapper:CreatePartitionByField(self._disjoint_coloring)
+  -- else creaate disjoint partition
+  local partn = nil
+  if self:isGrid() then
+    -- STRUCTURED GRIDS
+    -- create block partition
+    partn = self._logical_region_wrapper:CreatBlockPartitions()
+  else
+    -- PLAIN/ GROUPED/ ELASTIC
+    -- add a coloring field to logical region
+    rawset(self, '_disjoint_coloring',
+           L.LField.New(self, '_disjoint_coloring', L.color_type))
+    -- set the coloring field
+    self._disjoint_coloring:LoadTerraFunction(ColorPlainIndexSpaceDisjoint,
+                                              { self._num_partitions })
+    -- create index partition using the coloring field and save it
+    partn = 
+      self._logical_region_wrapper:CreatePartitionsByField(self._disjoint_coloring)
+  end
   rawset(self, '_disjoint_partitioning', partn)
   return partn
-end
-
-function L.LRelation:GetPartitioning(ufversion)
-  if self._partitionings and self._partitionings[ufversion] then
-    return self._partitionings[ufversion]
-  else
-    return self._logical_region_wrapper
-  end
-end
-
-function L.LRelation:SetPartitioning(ufversion, partn)
-  if not self._partitionings then
-    rawset(self, '_partitionings', {})
-  end
-  self._partitionings[ufversion] = partn
 end

@@ -66,12 +66,20 @@ for d = 1, 3 do
     function() return 'FieldAccessor_'..tostring(d) end
 end
 
+local LegionPoint = {}
+LW.LegionPoint = LegionPoint
 local LegionRect = {}
 LW.LegionRect = LegionRect
 local LegionGetRectFromDom = {}
 LW.LegionGetRectFromDom = LegionGetRectFromDom
+local LegionDomFromRect = {}
+LW.LegionDomFromRect = LegionDomFromRect
 local LegionRawPtrFromAcc = {}
 LW.LegionRawPtrFromAcc = LegionRawPtrFromAcc
+
+LegionPoint[1] = LW.legion_point_1d_t
+LegionPoint[2] = LW.legion_point_2d_t
+LegionPoint[3] = LW.legion_point_3d_t
 
 LegionRect[1] = LW.legion_rect_1d_t
 LegionRect[2] = LW.legion_rect_2d_t
@@ -80,6 +88,10 @@ LegionRect[3] = LW.legion_rect_3d_t
 LegionGetRectFromDom[1] = LW.legion_domain_get_rect_1d
 LegionGetRectFromDom[2] = LW.legion_domain_get_rect_2d
 LegionGetRectFromDom[3] = LW.legion_domain_get_rect_3d
+
+LegionDomFromRect[1] = LW.legion_domain_from_rect_1d
+LegionDomFromRect[2] = LW.legion_domain_from_rect_2d
+LegionDomFromRect[3] = LW.legion_domain_from_rect_3d
 
 LegionRawPtrFromAcc[1] = LW.legion_accessor_generic_raw_rect_ptr_1d
 LegionRawPtrFromAcc[2] = LW.legion_accessor_generic_raw_rect_ptr_2d
@@ -171,6 +183,8 @@ function LW.NewTaskLauncher(params)
   local launcher
   if params.use_index_launch then
     assert(params.domain)
+    -- index launches need argmap that contain local arguments
+    -- we do not have any arguments and so we pass an empty argmap
     -- we (caller) are responsible for argmap
     local argmap = LW.legion_argument_map_create()
     launcher = LW.legion_index_launcher_create(
@@ -218,6 +232,8 @@ end
 function LW.TaskLauncher:AddRegionReq(reg_partn, parent, permission, coherence)
   local reg_req
   if self._index_launch then
+    -- Two versions for transitioning. We should finally switch to logical
+    -- partitions for all cases.
     if reg_partn == parent then
       reg_req = LW.legion_index_launcher_add_region_requirement_logical_region(
         self._launcher,
@@ -692,45 +708,147 @@ end
 local LogicalPartition = {}
 LogicalPartition.__index = LogicalPartition
 
+-- method used to create logical partition
+function LogicalPartition:IsPartitionedByField()
+  self.ptype = 'FIELD'
+end
+function LogicalPartition:IsPartitionedBlock()
+  self.ptype = 'BLOCK'
+end
+
+-- coloring field used to create this logical partition
 function LogicalPartition:ColoringField()
   return self.color_field
 end
 
-function LogicalPartition:ColorSpace()
-  return self.color_space
-end
-
-function LogicalPartition:Domain()
-  return self.color_space
-end
-
+-- create a color space with num_colors number of colors
+-- this corresponds to the number of partitions
 local terra CreateColorSpace(num_colors : LW.legion_color_t)
   var lo = LW.legion_point_1d_t({arrayof(int, 0)})
   var hi = LW.legion_point_1d_t({arrayof(int, num_colors - 1)})
-  return LW.legion_domain_from_rect_1d(LW.legion_rect_1d_t({lo, hi}))
+  var bounds = LW.legion_rect_1d_t({lo, hi})
+  return LW.legion_domain_from_rect_1d(bounds)
 end
 
-function LogicalRegion:CreatePartitionByField(rfield)
-  if self.relation:isGrid() then
-    error("Partitioning not implemented for grids yet")
-  else
-    local color_space = CreateColorSpace(self.relation:NumPartitions())
-    local partn = LW.legion_index_partition_create_by_field(
-      legion_env.runtime, legion_env.ctx,
-      self.handle, self.handle, rfield.fid,
-      color_space,
-      100, false)
-    local lp = LW.legion_logical_partition_create(
-      legion_env.runtime, legion_env.ctx, self.handle, partn)
-    local lp = {
-                 color_field = rfield,
-                 color_space = color_space,
-                 handle      = lp,
-                 index_partn = partn
-               }
-    setmetatable(lp, LogicalPartition)
-    return lp
+-- create partition by coloring field
+function LogicalRegion:CreatePartitionsByField(rfield)
+  local color_space = CreateColorSpace(self.relation:TotalPartitions())
+  local partn = LW.legion_index_partition_create_by_field(
+    legion_env.runtime, legion_env.ctx,
+    self.handle, self.handle, rfield.fid,
+    color_space,
+    100, false)
+  local lp = LW.legion_logical_partition_create(
+    legion_env.runtime, legion_env.ctx, self.handle, partn)
+  local lp = {
+               color_field = rfield,
+               handle      = lp,
+               index_partn = partn,
+               ptype       = 'FIELD'
+             }
+  setmetatable(lp, LogicalPartition)
+  return lp
+end
+
+-- block partition helpers
+local AddDomainColor = {}
+for d = 1, 3 do
+  AddDomainColor[d] = terra(coloring : LW.legion_domain_coloring_t,
+                            color : LW.legion_color_t,
+                            lo    : int[d],
+                            hi    : int[d]
+                            )
+    var lo_pt = [LegionPoint[d]](lo)
+    var hi_pt = [LegionPoint[d]](lo)
+    var domain = [LegionDomFromRect[d]]([LegionRect[d]]({ lo_pt, hi_pt }))
+    LW.legion_domain_coloring_color_domain(coloring, color, domain)
+  end  -- terra function
+end  -- for loop
+
+-- create block partitions
+function LogicalRegion:CreateBlockPartitions() 
+  local num_partitions = self.relation:NumPartitions()
+  local dims = self.relation:Dims()
+  local ndims = #ndims
+  -- check if number of elements along each dimension is a multiple of number
+  -- of partitions
+  local divisible = {}
+  local elems_lo = {}
+  local elems_hi = {}
+  local num_lo   = {}
+  for d = 1, ndims do
+    local num_elems = dims[d]
+    local num_partns = num_partitions[d]
+    divisible[d] = (num_elems % num_partns == 0)
+    elems_lo[d] = math.floor(num_elems/num_partns)
+    elems_hi[d] = math.ceil(num_elems/num_partns)
+    num_lo[d]   = num_partns - (num_elems % num_subregions)
   end
+  -- color space
+  local total_partitions = self.relation:TotalPartitions()
+  local color_space = CreateColorSpace(total_partitions)
+  local coloring = LW.legion_domain_coloring_create();
+  -- determine number of elements in each partition/ color and create logical partition
+  local color = 0
+  if ndims == 1 then
+    local lo = 0
+    local hi = -1
+    for p1 = 1, num_partitions[1] do
+      local elems1 = (p1 > num_lo[1] and elems_hi[1]) or elems_lo[1]
+      lo = hi + 1
+      hi = lo + elems1 - 1
+      AddDomainColor[1](coloring, color, lo, hi)
+      color = color + 1
+    end
+  elseif ndims == 2 then
+    local lo = {0, 0}
+    local hi = {-1, -1}
+    for p1 = 1, num_partitions[1] do
+      local elems1 = (p1 > num_lo[1] and elems_hi[1]) or elems_lo[1]
+      lo[1] = hi[1] + 1
+      hi[1] = lo[1] + elems1 - 1
+      hi[2] = -1
+      for p2 = 1, num_partitions[2] do
+        local elems2 = (p2 > num_lo[2] and elems_hi[2]) or elems_lo[2]
+        lo[2] = hi[2] + 1
+        hi[2] = lo[2] + elems2 - 1
+        AddDomainColor[2](coloring, color, lo, hi)
+        color = color + 1
+      end
+    end
+  elseif ndims == 3 then
+    for p1 = 1, num_partitions[1] do
+      local elems1 = (p1 > num_lo[1] and elems_hi[1]) or elems_lo[1]
+      lo[1] = hi[1] + 1
+      hi[1] = lo[1] + elems1 - 1
+      hi[2] = -1
+      for p2 = 1, num_partitions[2] do
+        local elems2 = (p2 > num_lo[2] and elems_hi[2]) or elems_lo[2]
+        lo[2] = hi[2] + 1
+        hi[2] = lo[2] + elems2 - 1
+        hi[3] = -1
+        for p3 = 1, num_partitions[3] do
+          local elems3 = (p3 > num_lo[3] and elems_hi[3]) or elems_lo[3]
+          lo[3] = hi[3] + 1
+          hi[3] = lo[3] + elems3 - 1
+          AddDomainColor[3](coloring, color, lo, hi)
+          color = color + 1
+        end
+      end
+    end
+  end
+  -- create logical partition with the coloring
+  local partn = LW.legion_index_partition_create_domain_coloring(
+    legion_env.runtime, legion_env.ctx, self.handle, color_space, coloring, true, -1)
+  local lp = LW.legion_logical_partition_create(
+    legion_env.runtime, legion_env.ctx, self.handle, partn)
+  local lp = {
+    handle      = lp,
+    index_partn = partn,
+    ptype       = 'BLOCK'
+  }
+  setmetatable(lp, LogicalPartition)
+  return lp
 end
 
 

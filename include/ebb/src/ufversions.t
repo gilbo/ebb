@@ -17,6 +17,7 @@ if use_legion then
   LW = require 'ebb.src.legionwrap'
   run_config = rawget(_G, '_run_config')
 end
+local use_partitioning = use_legion and run_config.use_partitioning
 local DataArray       = require('ebb.src.rawdata').DataArray
 
 local UFunc     = L.UserFunction
@@ -50,6 +51,11 @@ function UFVersion:Execute()
   -- all of the relevant data does in fact exist, and that any invariants
   -- we assumed when the UFunc was compiled and cached are still true.
   self:_DynamicChecks()
+
+  -- Next, we partition the primary relation and other relations that are
+  -- referenced fro UFunc. Separating this out from Launch will keep the record
+  -- phase for stencil analysis separate from actual function code.
+  self:_PartitionData()
 
   -- Next, we bind all the necessary data into the version.
   -- This involves looking up appropriate pointers, argument values,
@@ -415,6 +421,24 @@ function UFVersion:_DynamicChecks()
   if self:UsesInsert()  then  self:_DynamicInsertChecks()  end
   if self:UsesDelete()  then  self:_DynamicDeleteChecks()  end
 end
+
+
+-------------------------------------------------------------------------------
+--[[ Ufversion Data Partitioning                                           ]]--
+-------------------------------------------------------------------------------
+
+function UFVersion:_PartitionData()
+  if not use_legion then return end
+  self:_addPrimaryPartition()
+  for field, _ in pairs(self._field_use) do
+    self:_addRegionPartition(field)
+  end
+  if self:isOverSubset() then
+    assert(self._subset._boolmask)
+    self:_addRegionPartition(self._subset._boolmask)
+  end
+end
+
 
 --                  ---------------------------------------                  --
 --[[ UFVersion Data Binding                                                ]]--
@@ -969,11 +993,8 @@ end
 
 -- Creates a task launcher with task region requirements.
 function UFVersion:_CreateLegionTaskLauncher(task_func)
-
-  local use_partitioning = use_legion and run_config.use_partitioning
-
   local prim_reg   = self:_getPrimaryRegionData()
-  local prim_partn = prim_reg.wrapper.relation:GetPartitioning(self)
+  local prim_partn = prim_reg._partition
 
   local task_launcher = LW.NewTaskLauncher {
     taskfunc  = task_func,
@@ -988,13 +1009,7 @@ function UFVersion:_CreateLegionTaskLauncher(task_func)
   -- NOTE: Need to make sure to do this in the right order
   for ri, datum in pairs(self._sorted_region_data) do
     local reg_parent = datum.wrapper
-    local reg_partn  = reg_parent
-    -- use entire logical region for non-centered accesses
-    -- only centered accesses have read/ write permission
-    if use_partitioning and datum.privilege == LW.READ_WRITE then
-      assert(datum.wrapper == prim_reg.wrapper)
-      reg_partn = prim_partn
-    end
+    local reg_partn  = datum.partition
     local reg_req = task_launcher:AddRegionReq(reg_partn,
                                                reg_parent,
                                                datum.privilege,
@@ -1022,18 +1037,9 @@ function UFVersion:_CreateLegionLauncher(task_func)
   local ufv = self
   ufv._task_ids = {}
 
-  local use_partitioning = use_legion and run_config.use_partitioning
-
-  local prim_reg = ufv:_getPrimaryRegionData()
-  local prim_rel = prim_reg.wrapper.relation
-  local prim_partn = nil
-  if use_partitioning then
-    prim_rel:SetNumPartitions(run_config.num_cpus)
-    prim_partn = prim_rel:CreateDisjointPartitioning()
-    prim_rel:SetPartitioning(ufv, prim_partn)
-  end
-
-  --local task_launcher = ufv:_CreateLegionTaskLauncher(task_func)
+  -- NOTE: Instead of creating Legion task launcher every time
+  -- within the returned function, why not create it once and then reuse the
+  -- task launcher?
   if ufv:UsesGlobalReduce() then
     return function(leg_args)
       local task_launcher = ufv:_CreateLegionTaskLauncher(task_func)
@@ -1334,7 +1340,40 @@ function ArgLayout:isCompiled()
 end
 
 
+-------------------------------------------------------------------------------
+--[[  UFVersion Interface for Partitions                                   ]]--
+--[[  Should run only when running over partitioned data in Legion         ]]--
+-------------------------------------------------------------------------------
 
+function UFVersion:_addPrimaryPartition()
+  local prim_rel = self._relation
+  local sig = tostring(prim_rel:_INTERNAL_UID())
+  local datum = self._region_data[sig]
+  if not datum.partition then
+    -- once partitioning works, change this to single partition and remove the
+    -- branch
+    local prim_partn = datum.wrapper
+    if use_partitioning then
+      -- create a disjoint partition on the relation
+      prim_partn = prim_rel:GetOrCreateDisjointPartitioning()
+    end
+    datum.partition = prim_partn
+  end
+end
 
-
-
+function UFVersion:_addRegionPartition(field)
+  local rel = field:Relation()
+  local sig = tostring(rel:_INTERNAL_UID()) .. '_' .. tostring(field.fid)
+  local datum = self._region_data[sig]
+  if not datum.partition then
+    -- once partitioning works, change this to single partition with legion, no
+    -- partitioning, and stencil analysis with partitioning
+    local prim_partn = datum.wrapper
+    if use_partitioning and self._field_use[field]:requriesExclusive() then
+      -- Not checking that rel == primary_relation since that would have been
+      -- necessary to pass phase checking any ways
+      prim_partn = rel:GetOrCreateDisjointPartitioning()
+    end
+    datum.partition = prim_partn
+  end
+end
