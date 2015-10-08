@@ -3,7 +3,7 @@ import 'ebb'
 local vdb = {}
 package.loaded["ebb.lib.vdb"] = vdb
 
-local L = require "ebb.ebblib"
+local L = require "ebblib"
 local T = require "ebb.src.types"
 
 local Pathname  = (require "ebb.lib.pathname").Pathname
@@ -14,7 +14,7 @@ local VDB_C     = terralib.includecstring([[
 
 local function check_vec(vec, errmsg)
   if not vec or
-     not T.isEbbType(vec.node_type) or
+     not T.istype(vec.node_type) or
      not vec.node_type:isVector() or
      not vec.node_type:isNumeric() or
      vec.node_type.N < 3
