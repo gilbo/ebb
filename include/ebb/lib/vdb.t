@@ -3,7 +3,7 @@ import 'ebb'
 local vdb = {}
 package.loaded["ebb.lib.vdb"] = vdb
 
-local L = require "ebb.src.ebblib"
+local L = require "ebb.ebblib"
 local T = require "ebb.src.types"
 
 local Pathname  = (require "ebb.lib.pathname").Pathname
