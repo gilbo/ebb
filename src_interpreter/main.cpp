@@ -36,6 +36,8 @@ struct ebb_Options {
   int ndebug;
   int legionspy;
   int legionprof;
+  int logebb;
+  int loglegion;
 };
 
 static void errquit(lua_State * L, const char *fmt, ...) {
@@ -212,11 +214,19 @@ void setupebb(lua_State * L, ebb_Options * ebboptions) {
             lua_pushboolean(L, true);
             lua_setglobal(L, "EBB_LEGION_USE_PROF");
         }
+	if (ebboptions->loglegion) {
+            lua_pushboolean(L, true);
+            lua_setglobal(L, "EBB_LEGION_LOG_LEGION");
+	}
     }
 
     if (ebboptions->usegpu) {
         lua_pushboolean(L, true);
         lua_setglobal(L, "EBB_USE_GPU_SIGNAL");
+    }
+    if (ebboptions->logebb) {
+        lua_pushboolean(L, true);
+        lua_setglobal(L, "EBB_LEGION_LOG_EBB");
     }
 }
 int load_launchscript( lua_State * L, ebb_Options * ebboptions ) {
@@ -293,7 +303,7 @@ void usage() {
     print_welcome();
     printf(
       "ebb [OPTIONS] [source-file] [arguments-to-source-file]\n"
-      "    -v enable verbose debugging output\n"
+      "    -v=terra,ebb,legion enable verbose debugging output for one or more of terra, ebb and legion\n"
       "    -d enable debugging symbols\n"
       "    -h print this help message\n"
       "    -i enter the REPL after processing source files\n"
@@ -312,24 +322,31 @@ void parse_args(
 ) {
     int ch;
     static struct option longopts[] = {
-        { "help",           0,     NULL,           'h' },
-        { "verbose",        0,     NULL,           'v' },
-        { "debugsymbols",   0,     NULL,           'd' },
-        { "interactive",    0,     NULL,           'i' },
-        { "gpu",            0,     NULL,           'g' },
-        { "legion",         0,     NULL,           'l' },
-        { "ndebug",         0,     NULL,           'n' },
-        { "spy",            0,     NULL,           's' },
-        { "prof",           0,     NULL,           'p' },
-        { NULL,             0,     NULL,            0  }
+        { "help",           no_argument,          NULL,           'h' },
+        { "verbose",        optional_argument,    NULL,           'v' },
+        { "debugsymbols",   no_argument,          NULL,           'd' },
+        { "interactive",    no_argument,          NULL,           'i' },
+        { "gpu",            no_argument,          NULL,           'g' },
+        { "legion",         no_argument,          NULL,           'l' },
+        { "ndebug",         no_argument,          NULL,           'n' },
+        { "spy",            no_argument,          NULL,           's' },
+        { "prof",           no_argument,          NULL,           'p' },
+        { NULL,             no_argument,          NULL,            0  }
     };
     /*  Parse commandline options  */
     opterr = 0;
-    while ((ch = getopt_long(argc, argv, "+hvidglnsp:",
+    while ((ch = getopt_long(argc, argv, "+hv::idglnsp",
                              longopts, NULL)) != -1) {
         switch (ch) {
             case 'v':
-                options->verbose++;
+	        if (optarg) {
+		  if (strstr(optarg, "terra"))
+		    options->verbose++;
+		  if (strstr(optarg, "ebb"))
+		    ebboptions->logebb = 1;
+		  if (strstr(optarg, "legion"))
+		    ebboptions->loglegion = 1;
+		}
                 break;
             case 'i':
                 *interactive = true;

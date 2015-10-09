@@ -23,6 +23,8 @@ local DataArray       = require('ebb.src.rawdata').DataArray
 local UFunc     = L.UserFunction
 local UFVersion = L.UFVersion
 
+local VERBOSE = rawget(_G, 'EBB_LEGION_LOG_EBB')
+
 -- Create a Lua Object that generates the needed Terra structure to pass
 -- fields, globals and temporary allocated memory to the function as arguments
 local ArgLayout = {}
@@ -499,6 +501,15 @@ end
 --                  ---------------------------------------                  --
 
 function UFVersion:_Launch()
+  if VERBOSE then
+    local data_deps = "Ebb LOG: function " .. self._ufunc._name .. " accesses"
+    for field, use in pairs(self._field_use) do
+      data_deps = data_deps .. " relation " .. field:Relation():Name()
+      data_deps = data_deps .. " field " .. field:Name() .. " in phase "
+      data_deps = data_deps .. tostring(use) .. " ,"
+    end
+    print(data_deps)
+  end
   if use_legion then
     self._executable({ ctx = legion_env.ctx, runtime = legion_env.runtime })
   else
