@@ -15,7 +15,7 @@ local APIblob = terralib.includecstring([[
 ]])
 for k,v in pairs(APIblob) do LW[k] = v end
 
-local VERBOSE = rawget(_G, 'EBB_LEGION_LOG_LEGION')
+local VERBOSE = rawget(_G, 'EBB_LOG_LEGION')
 
 
 -------------------------------------------------------------------------------

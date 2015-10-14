@@ -16,6 +16,9 @@ if use_legion then
   legion_env    = LE.legion_env[0]
   LW            = require 'ebb.src.legionwrap'
 end
+
+local VERBOSE = rawget(_G, 'EBB_LOG_EBB')
+
 -------------------------------------------------------------------------------
 --[[ Ebb modules:                                                          ]]--
 -------------------------------------------------------------------------------
@@ -98,6 +101,12 @@ end
 function LGlobal:set(val)
   if not T.luaValConformsToType(val, self.type) then error("value does not conform to type of global: " .. self.type:toString(), 2) end
 
+  if VERBOSE then
+    local data_deps = "Ebb LOG: function global-set accesses"
+    data_deps = data_deps .. " global " .. tostring(self) .. " in phase EXCLUSIVE ,"
+    print(data_deps)
+  end
+
   if use_single then
     self.data:write_ptr(function(ptr)
         ptr[0] = T.luaToEbbVal(val, self.type)
@@ -121,6 +130,12 @@ end
 
 function LGlobal:get()
   local value
+
+  if VERBOSE then
+    local data_deps = "Ebb LOG: function global-get accesses"
+    data_deps = data_deps .. " global " .. tostring(self) .. " in phase READ ,"
+    print(data_deps)
+  end
 
   if use_single then
     self.data:read_ptr(function(ptr)

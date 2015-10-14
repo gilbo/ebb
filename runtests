@@ -106,7 +106,7 @@ for line in io.popen(lscmd):lines() do
       local should_fail = (file:match("fails/") ~= nil)
       local execstring = "./liszt "
       if USE_LEGION then
-        execstring = execstring .. " --legion "
+        execstring = execstring .. " --legion -n "
       end
       if USE_GPU then
         execstring = execstring .. " --gpu "

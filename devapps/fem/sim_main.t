@@ -24,10 +24,10 @@ local forceModel = 'stvk'
 local numTimeSteps = 5
 local cudaProfile = false
 
-if #arg < 3 then
+if #arg < 2 then
   printUsageAndExit()
 else
-  for i=2,#arg,2 do
+  for i=1,#arg,2 do
     if arg[i] == '-config' then
       configFileName = arg[i+1]
     elseif arg[i] == '-force' then
