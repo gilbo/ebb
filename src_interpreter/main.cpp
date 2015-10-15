@@ -216,7 +216,7 @@ void setupebb(lua_State * L, ebb_Options * ebboptions) {
         }
 	if (ebboptions->loglegion) {
             lua_pushboolean(L, true);
-            lua_setglobal(L, "EBB_LEGION_LOG_LEGION");
+            lua_setglobal(L, "EBB_LOG_LEGION");
 	}
     }
 
@@ -226,7 +226,7 @@ void setupebb(lua_State * L, ebb_Options * ebboptions) {
     }
     if (ebboptions->logebb) {
         lua_pushboolean(L, true);
-        lua_setglobal(L, "EBB_LEGION_LOG_EBB");
+        lua_setglobal(L, "EBB_LOG_EBB");
     }
 }
 int load_launchscript( lua_State * L, ebb_Options * ebboptions ) {

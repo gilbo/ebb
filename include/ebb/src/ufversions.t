@@ -23,7 +23,7 @@ local DataArray       = require('ebb.src.rawdata').DataArray
 local UFunc     = L.UserFunction
 local UFVersion = L.UFVersion
 
-local VERBOSE = rawget(_G, 'EBB_LEGION_LOG_EBB')
+local VERBOSE = rawget(_G, 'EBB_LOG_EBB')
 
 -- Create a Lua Object that generates the needed Terra structure to pass
 -- fields, globals and temporary allocated memory to the function as arguments
@@ -506,6 +506,10 @@ function UFVersion:_Launch()
     for field, use in pairs(self._field_use) do
       data_deps = data_deps .. " relation " .. field:Relation():Name()
       data_deps = data_deps .. " field " .. field:Name() .. " in phase "
+      data_deps = data_deps .. tostring(use) .. " ,"
+    end
+    for global, use in pairs(self._global_use) do
+      data_deps = data_deps .. " global " .. tostring(global) .. " in phase "
       data_deps = data_deps .. tostring(use) .. " ,"
     end
     print(data_deps)
