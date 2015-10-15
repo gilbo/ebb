@@ -1,0 +1,16 @@
+# Site navigation links
+
+- title: Getting Started
+  url: /getting_started/
+
+- title: Examples
+  url: /examples/
+
+- title: Manual
+  url: /manual/
+
+- title: Publications
+  url: /publications/
+
+- title: Download
+  url: http://www.github.com/gilbo/liszt-ebb
