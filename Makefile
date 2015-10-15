@@ -142,7 +142,7 @@ all: $(ALL_DEP)
 
 # This is a deprecated legacy build
 lmesh:
-	make -C deprecated_runtime
+	$(MAKE) -C deprecated_runtime
 
 # auto-download rule, or make symlink to local copy rule
 terra:
@@ -195,7 +195,7 @@ $(EXECUTABLE_CP): bin/$(EXECUTABLE)
 
 ifdef LEGION_INSTALLED
 #legion_refresh:
-#	$(SET_ENV_VAR) make -C $(LEGION_BIND_DIR)
+#	$(SET_ENV_VAR) $(MAKE) -C $(LEGION_BIND_DIR)
 #	mv $(LIBLEGION_TERRA) $(LIBLEGION_TERRA_DEBUG)
 
 legion:
@@ -203,13 +203,13 @@ legion:
 
 # this is a target to build only those parts of legion we need
 $(LIBLEGION_TERRA_RELEASE): terra legion $(LIBLEGION_TERRA_DEBUG)
-	$(SET_ENV_VAR) make -C $(LEGION_BIND_DIR) clean
-	$(SET_ENV_VAR) DEBUG=0 make -C $(LEGION_BIND_DIR)
+	$(SET_ENV_VAR) $(MAKE) -C $(LEGION_BIND_DIR) clean
+	$(SET_ENV_VAR) DEBUG=0 $(MAKE) -C $(LEGION_BIND_DIR)
 	mv $(LIBLEGION_TERRA) $(LIBLEGION_TERRA_RELEASE)
 
 $(LIBLEGION_TERRA_DEBUG): terra legion
-	$(SET_ENV_VAR) make -C $(LEGION_BIND_DIR) clean
-	$(SET_ENV_VAR) CC_FLAGS=-DLEGION_SPY make -C $(LEGION_BIND_DIR)
+	$(SET_ENV_VAR) $(MAKE) -C $(LEGION_BIND_DIR) clean
+	$(SET_ENV_VAR) CC_FLAGS=-DLEGION_SPY $(MAKE) -C $(LEGION_BIND_DIR)
 	mv $(LIBLEGION_TERRA) $(LIBLEGION_TERRA_DEBUG)
 endif
 
@@ -217,11 +217,11 @@ endif
 #     Cleanup
 
 clean:
-	make -C deprecated_runtime clean
+	$(MAKE) -C deprecated_runtime clean
 	-rm -r bin
 	-rm -r build
 ifdef LEGION_SYMLINK_EXISTS # don't try to recursively call into nowhere
-	$(SET_ENV_VAR) make -C $(LEGION_BIND_DIR) clean
+	$(SET_ENV_VAR) $(MAKE) -C $(LEGION_BIND_DIR) clean
 	-rm $(LIBLEGION_TERRA_RELEASE)
 	-rm $(LIBLEGION_TERRA_DEBUG)
 	-rm legion
