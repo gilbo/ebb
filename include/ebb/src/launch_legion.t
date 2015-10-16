@@ -150,20 +150,28 @@ local terra main()
     'top_level_task', top_level_task)
 
   for i = 0, LW.NUM_TASKS do
+    var simple_cpu : int8[25]
+    var simple_gpu : int8[25]
+    var future_cpu : int8[25]
+    var future_gpu : int8[25]
+    C.sprintf(simple_cpu, "simple_task_cpu_%d", ids_simple_cpu[i])
+    C.sprintf(simple_gpu, "simple_task_gpu_%d", ids_simple_gpu[i])
+    C.sprintf(future_cpu, "future_task_cpu_%d", ids_future_cpu[i])
+    C.sprintf(future_gpu, "future_task_gpu_%d", ids_future_gpu[i])
     LW.legion_runtime_register_task_void(
       ids_simple_cpu[i], LW.LOC_PROC, true, false, 1,
       LW.legion_task_config_options_t {
         leaf = true,
         inner = false,
         idempotent = false },
-      'simple_task_cpu', LW.simple_task)
+      simple_cpu, LW.simple_task)
     LW.legion_runtime_register_task_void(
       ids_simple_gpu[i], LW.TOC_PROC, true, false, 1,
       LW.legion_task_config_options_t {
         leaf = true,
         inner = false,
         idempotent = false },
-      'simple_task_gpu', LW.simple_task)
+      simple_gpu, LW.simple_task)
 
     LW.legion_runtime_register_task(
       ids_future_cpu[i], LW.LOC_PROC, true, false, 1,
@@ -171,14 +179,14 @@ local terra main()
         leaf = true,
         inner = false,
         idempotent = false },
-      'future_task_cpu', LW.future_task)
+      future_cpu, LW.future_task)
     LW.legion_runtime_register_task(
       ids_future_gpu[i], LW.TOC_PROC, true, false, 1,
       LW.legion_task_config_options_t {
         leaf = true,
         inner = false,
         idempotent = false },
-      'future_task_gpu', LW.future_task)
+      future_gpu, LW.future_task)
   end
 
   LW.legion_runtime_set_top_level_task_id(TID_TOP_LEVEL)
