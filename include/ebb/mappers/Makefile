@@ -25,11 +25,9 @@ SHARED_LOWLEVEL?=1	       # Use the shared low level
 #ALT_MAPPERS=1		         # Compile the alternative mappers
 
 # Put the binary file name here
-SO_FILE   := liszt_mapper.so
-OUTFILE		:= liszt_mapper.o
+OUTFILE   := libmapper.so
 # List all the application source files here
-GEN_SRC		:= liszt_mapper.cc		# .cc files
-GEN_GPU_SRC	:=				# .cu files
+GEN_SRC	  := ebb_mapper.cc  # .cc files
 
 CC_FLAGS += -fPIC
 NVCC_FLAGS ?=
@@ -45,5 +43,5 @@ endif
 
 include $(LG_RT_DIR)/runtime.mk
 
-$(SO_FILE) : $(OUTFILE) $(LIBLEGION)
-	$(GCC) -o $(SO_FILE) $(OUTFILE) $(LIBLEGION) $(LD_FLAGS)
+$(OUTFILE) : $(GEN_OBJS) $(LIBLEGION)
+	$(GCC) -o $(OUTFILE) $(GEN_OBJS) $(LIBLEGION) $(LD_FLAGS)

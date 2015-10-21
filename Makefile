@@ -68,6 +68,7 @@ endif
 ifdef LEGION_INSTALLED
   REAL_TERRA_DIR:=$(realpath $(TERRA_ROOT_DIR))
   REAL_LEGION_DIR:=$(realpath $(LEGION_DIR))
+  MAPPER_DIR:=include/ebb/mappers
 
   # Determine whether or not CUDA is available and visible to Legion
   USE_CUDA=0
@@ -84,6 +85,9 @@ ifdef LEGION_INSTALLED
   LIBLEGION_TERRA:=$(LEGION_BIND_DIR)/liblegion_terra.so
   LIBLEGION_TERRA_RELEASE:=$(LEGION_BIND_DIR)/liblegion_terra_release.so
   LIBLEGION_TERRA_DEBUG:=$(LEGION_BIND_DIR)/liblegion_terra_debug.so
+  LIBMAPPER:=$(MAPPER_DIR)/libmapper.so
+  LIBMAPPER_RELEASE:=$(MAPPER_DIR)/libmapper_release.so
+  LIBMAPPER_DEBUG:=$(MAPPER_DIR)/libmapper_debug.so
   # environment variables to be set for recursive call to Legion build
   SET_ENV_VAR:=LUAJIT_DIR=$(LUAJIT_DIR) TERRA_DIR=$(REAL_TERRA_DIR) \
     SHARED_LOWLEVEL=0 USE_GASNET=0 USE_CUDA=$(USE_CUDA)
@@ -134,6 +138,7 @@ LFLAGS += -lcurses -lz
 ALL_DEP:= terra $(EXECUTABLE) $(EXECUTABLE_CP)
 ifdef LEGION_INSTALLED
 ALL_DEP:=$(ALL_DEP) legion $(LIBLEGION_TERRA_RELEASE) $(LIBLEGION_TERRA_DEBUG)
+ALL_DEP+=$(ALL_DEP) $(LIBMAPPER_RELEASE) $(LIBMAPPER_DEBUG)
 endif
 
 .PHONY: all clean test lmesh
@@ -202,17 +207,26 @@ legion:
 	ln -s $(LEGION_DIR) legion
 
 # this is a target to build only those parts of legion we need
+
 $(LIBLEGION_TERRA_RELEASE): terra legion $(LIBLEGION_TERRA_DEBUG)
 	$(SET_ENV_VAR) $(MAKE) -C $(LEGION_BIND_DIR) clean
 	$(SET_ENV_VAR) DEBUG=0 $(MAKE) -C $(LEGION_BIND_DIR)
 	mv $(LIBLEGION_TERRA) $(LIBLEGION_TERRA_RELEASE)
-	$(SET_ENV_VAR) LIBLEGION_TERRA_RELEASE=$(LIBLEGION_TERRA_RELEASE) DEBUG=0 $(MAKE) -C include/ebb/mappers
 
 $(LIBLEGION_TERRA_DEBUG): terra legion
 	$(SET_ENV_VAR) $(MAKE) -C $(LEGION_BIND_DIR) clean
 	$(SET_ENV_VAR) CC_FLAGS=-DLEGION_SPY $(MAKE) -C $(LEGION_BIND_DIR)
 	mv $(LIBLEGION_TERRA) $(LIBLEGION_TERRA_DEBUG)
-	$(SET_ENV_VAR) LIBLEGION_TERRA_DEBUG=$(LIBLEGION_TERRA_DEBUG) $(MAKE) -C include/ebb/mappers
+
+$(LIBMAPPER_RELEASE): $(LIBLEGION_TERRA_RELEASE) $(LIBMAPPER_DEBUG) $(MAPPER_DIR)/*.cc
+	$(SET_ENV_VAR) $(MAKE) -C $(MAPPER_DIR) clean
+	$(SET_ENV_VAR) LIBLEGION_TERRA_RELEASE=$(LIBLEGION_TERRA_RELEASE) DEBUG=0 $(MAKE) -C $(MAPPER_DIR)
+	mv $(LIBMAPPER) $(LIBMAPPER_RELEASE)
+
+$(LIBMAPPER_DEBUG): $(LIBLEGION_TERRA_DEBUG) $(MAPPER_DIR)/*.cc
+	$(SET_ENV_VAR) $(MAKE) -C $(MAPPER_DIR) clean
+	$(SET_ENV_VAR) LIBLEGION_TERRA_DEBUG=$(LIBLEGION_TERRA_DEBUG) $(MAKE) -C $(MAPPER_DIR)
+	mv $(LIBMAPPER) $(LIBMAPPER_DEBUG)
 endif
 
 # # ----------------------------------------------------------------------- # #
@@ -224,6 +238,7 @@ clean:
 	-rm -r build
 ifdef LEGION_SYMLINK_EXISTS # don't try to recursively call into nowhere
 	$(SET_ENV_VAR) $(MAKE) -C $(LEGION_BIND_DIR) clean
+	$(SET_ENV_VAR) $(MAKE) -C $(MAPPER_DIR) clean
 	-rm $(LIBLEGION_TERRA_RELEASE)
 	-rm $(LIBLEGION_TERRA_DEBUG)
 	-rm legion

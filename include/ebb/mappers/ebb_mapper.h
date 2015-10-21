@@ -13,21 +13,19 @@
  * limitations under the License.
  */
 
-#ifndef __LISZT_MAPPER_H__
-#define __LISZT_MAPPER_H__
-
-//#include <stdbool.h>
-//#include <stddef.h>
-//#include <stdint.h>
+#ifndef __EBB_MAPPER_H__
+#define __EBB_MAPPER_H__
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-void register_liszt_mapper();
+#include "legion_c.h"
+
+void register_ebb_mappers();
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif // __LISZT_MAPPER_H__
+#endif // __EBB_MAPPER_H__

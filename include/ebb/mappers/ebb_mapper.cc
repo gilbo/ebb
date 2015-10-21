@@ -1,4 +1,5 @@
 /* Copyright 2015 Stanford University
+  iirtual bool map_inline(Inline *inline_operation);
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,20 +16,17 @@
 
 
 #include "default_mapper.h"
-#include "liszt_mapper.h"
+#include "ebb_mapper.h"
 
 using namespace LegionRuntime::HighLevel;
 
 // legion logger
 LegionRuntime::Logger::Category log_mapper("mapper");
 
-class LisztMapper : public DefaultMapper {
+class EbbMapper : public DefaultMapper {
 public:
-  LisztMapper(Machine machine, HighLevelRuntime *rt, Processor local);
+  EbbMapper(Machine machine, HighLevelRuntime *rt, Processor local);
   virtual void select_task_options(Task *task);
-  virtual void select_task_variant(Task *task);
-  virtual bool map_task(Task *task);
-  virtual bool map_inline(Inline *inline_operation);
   virtual void notify_mapping_failed(const Mappable *mappable);
   virtual bool rank_copy_targets(const Mappable *mappable,
                                  LogicalRegion rebuild_region,
@@ -44,10 +42,10 @@ private:
   Memory local_gpumem;
   std::set<Processor> local_cpu_procs;
   std::set<Processor> local_gpu_procs;
-};  // class LisztMapper
+};  // class EbbMapper
 
-// LisztMapper constructor
-LisztMapper::LisztMapper(Machine machine, HighLevelRuntime *rt, Processor local)
+// EbbMapper constructor
+EbbMapper::EbbMapper(Machine machine, HighLevelRuntime *rt, Processor local)
   : DefaultMapper(machine, rt, local) {
   // local system memory
   local_sysmem =
@@ -70,10 +68,17 @@ LisztMapper::LisztMapper(Machine machine, HighLevelRuntime *rt, Processor local)
   std::set<Processor> all_procs;
   machine.get_all_processors(all_procs);
 
-  if ((*(all_procs.begin())) == local_proc) {
+  Processor first_loc(*all_procs.begin());
+  for (std::set<Processor>::const_iterator it = all_procs.begin();
+       it != all_procs.end(); it++) {
+    if (it->kind() == Processor::LOC_PROC) {
+      first_loc = *it;
+      break;
+    }
+  }
+  if (first_loc == local_proc) {
 
     // processors
-    printf("There are %ld processors:\n", all_procs.size());
     for (std::set<Processor>::const_iterator it = all_procs.begin();
           it != all_procs.end(); it++) {
       // For every processor there is an associated kind
@@ -189,12 +194,12 @@ LisztMapper::LisztMapper(Machine machine, HighLevelRuntime *rt, Processor local)
   }
 }
 
-void LisztMapper::select_task_options(Task *task) {
+void EbbMapper::select_task_options(Task *task) {
   DefaultMapper::select_task_options(task);
   task->additional_procs = local_cpu_procs;
 }
 
-void LisztMapper::notify_mapping_failed(const Mappable *mappable) {
+void EbbMapper::notify_mapping_failed(const Mappable *mappable) {
   switch (mappable->get_mappable_kind()) {
   case Mappable::TASK_MAPPABLE:
     {
@@ -234,7 +239,7 @@ void LisztMapper::notify_mapping_failed(const Mappable *mappable) {
   assert(0 && "mapping failed");
 }
 
-bool LisztMapper::rank_copy_targets(const Mappable *mappable,
+bool EbbMapper::rank_copy_targets(const Mappable *mappable,
                                       LogicalRegion rebuild_region,
                                       const std::set<Memory> &current_instances,
                                       bool complete,
@@ -261,11 +266,12 @@ static void create_mappers(Machine machine,
     it != local_procs.end();
     it++) {
     runtime->replace_default_mapper(
-      new LisztMapper(machine, runtime, *it), *it
+      new EbbMapper(machine, runtime, *it), *it
     );
   }
 }
 
-void register_liszt_mapper() {
+void register_ebb_mappers() {
+  printf("WARNING: Using custom ebb mapper. This is in development phase.\n");
   HighLevelRuntime::set_registration_callback(create_mappers);
 }

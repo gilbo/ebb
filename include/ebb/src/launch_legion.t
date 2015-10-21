@@ -5,7 +5,9 @@ rawset(_G, '_legion_env', {})
 local LE = rawget(_G, '_legion_env')
 
 -- set up a global structure to stash cluster information into
-rawset(_G, '_run_config', { use_partitioning = false,
+rawset(_G, '_run_config', {
+                            use_ebb_mapper = false,
+                            use_partitioning = false,
                             num_cpus = 0,  -- 0 indicates auomatically find the number of cpus
                           })
 local run_config = rawget(_G, '_run_config')
@@ -199,7 +201,10 @@ local terra main()
     [legion_args]
   )
 
-  --LW.register_ebb_gpu_mapper()
+  if run_config.use_ebb_mapper then
+    LW.register_ebb_mappers()
+  end
+
   LW.legion_runtime_start(n_args, args, false)
 end
 

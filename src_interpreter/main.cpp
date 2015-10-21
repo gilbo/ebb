@@ -177,16 +177,17 @@ void setupebb(lua_State * L, ebb_Options * ebboptions) {
         // extend the Terra include path
         snprintf(buffer, bufsize,
           "terralib.includepath = terralib.includepath.."
-          "';%s/../../legion/runtime;"
-          "%s/../../legion/bindings/terra'",
-          bindir, bindir);
+          "';%s/../legion/runtime;"
+          "%s/../include/ebb/mappers;"
+          "%s/../legion/bindings/terra'",
+          bindir, bindir, bindir);
         if (terra_dostring(L, buffer))
             doerror(L);
 
         // extend the Lua include path
         //snprintf(buffer, bufsize,
         //  "package.path = package.path.."
-        //  "';%s/../../legion/bindings/terra/?.t'",
+        //  "';%s/../legion/bindings/terra/?.t'",
         //  bindir);
         //if (terra_dostring(L, buffer))
         //    doerror(L);
@@ -194,13 +195,23 @@ void setupebb(lua_State * L, ebb_Options * ebboptions) {
         // Link the Legion Shared Library into Terra
         if (ebboptions->ndebug) {
             snprintf(buffer, bufsize,"terralib.linklibrary("
-              "'%s/../../legion/bindings/terra/liblegion_terra_release.so')",
+              "'%s/../legion/bindings/terra/liblegion_terra_release.so')",
+              bindir);
+            if (terra_dostring(L, buffer))
+                doerror(L);
+            snprintf(buffer, bufsize,"terralib.linklibrary("
+              "'%s/../include/ebb/mappers/libmapper_release.so')",
               bindir);
             if (terra_dostring(L, buffer))
                 doerror(L);
         } else {
             snprintf(buffer, bufsize,"terralib.linklibrary("
-              "'%s/../../legion/bindings/terra/liblegion_terra_debug.so')",
+              "'%s/../legion/bindings/terra/liblegion_terra_debug.so')",
+              bindir);
+            if (terra_dostring(L, buffer))
+                doerror(L);
+            snprintf(buffer, bufsize,"terralib.linklibrary("
+              "'%s/../include/ebb/mappers/libmapper_debug.so')",
               bindir);
             if (terra_dostring(L, buffer))
                 doerror(L);
