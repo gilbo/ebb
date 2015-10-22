@@ -178,7 +178,7 @@ void setupebb(lua_State * L, ebb_Options * ebboptions) {
         snprintf(buffer, bufsize,
           "terralib.includepath = terralib.includepath.."
           "';%s/../legion/runtime;"
-          "%s/../include/ebb/mappers;"
+          "%s/../mappers;"
           "%s/../legion/bindings/terra'",
           bindir, bindir, bindir);
         if (terra_dostring(L, buffer))
@@ -200,7 +200,7 @@ void setupebb(lua_State * L, ebb_Options * ebboptions) {
             if (terra_dostring(L, buffer))
                 doerror(L);
             snprintf(buffer, bufsize,"terralib.linklibrary("
-              "'%s/../include/ebb/mappers/libmapper_release.so')",
+              "'%s/../mappers/libmapper_release.so')",
               bindir);
             if (terra_dostring(L, buffer))
                 doerror(L);
@@ -211,7 +211,7 @@ void setupebb(lua_State * L, ebb_Options * ebboptions) {
             if (terra_dostring(L, buffer))
                 doerror(L);
             snprintf(buffer, bufsize,"terralib.linklibrary("
-              "'%s/../include/ebb/mappers/libmapper_debug.so')",
+              "'%s/../mappers/libmapper_debug.so')",
               bindir);
             if (terra_dostring(L, buffer))
                 doerror(L);

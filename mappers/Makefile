@@ -22,26 +22,34 @@ endif
 DEBUG?=1                   # Include debugging symbols
 OUTPUT_LEVEL?=LEVEL_DEBUG  # Compile time print level
 SHARED_LOWLEVEL?=1	       # Use the shared low level
-#ALT_MAPPERS=1		         # Compile the alternative mappers
 
 # Put the binary file name here
 OUTFILE   := libmapper.so
 # List all the application source files here
 GEN_SRC	  := ebb_mapper.cc  # .cc files
+GEN_OBJS  := $(GEN_SRC:.cc=.o)
 
 CC_FLAGS += -fPIC
-NVCC_FLAGS ?=
-INC_FLAGS	?=
-LD_FLAGS ?=
+INC_FLAGS += -I$(LG_RT_DIR) -I$(LG_RT_DIR)/realm
 
-CC_FLAGS += -fPIC
+LD_FLAGS += -L$(LEGION_BIND_DIR)
 ifeq ($(shell uname), Darwin)
 	LD_FLAGS += -dynamiclib -single_module -undefined dynamic_lookup -fPIC
+	LD_FLAGS += -lrt lpthread
 else
+	LD_FLAGS += -Wl,-rpath=$(LEGION_BIND_DIR)
 	LD_FLAGS += -shared
+	LD_FLAGS += -lpthread
 endif
+LD_FLAGS += -ldl -rdynamic
 
-include $(LG_RT_DIR)/runtime.mk
+all: $(OUTFILE)
 
-$(OUTFILE) : $(GEN_OBJS) $(LIBLEGION)
-	$(GCC) -o $(OUTFILE) $(GEN_OBJS) $(LIBLEGION) $(LD_FLAGS)
+$(OUTFILE) : $(GEN_OBJS)
+	$(CC) -o $(OUTFILE) $(GEN_OBJS) $(LD_FLAGS) $(LIBLEGION)
+
+$(GEN_OBJS) : %.o : %.cc
+	$(CC) -o $@ -c $< $(INC_FLAGS) $(CC_FLAGS)
+
+clean:
+	-rm *.o *.so
