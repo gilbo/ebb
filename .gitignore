@@ -9,6 +9,12 @@ legion
 .metadata
 build/
 
+coverageinfo.lua
+coverage_src/
+vdb
+vdb-src/
+vdb-win/
+
 bin/
 /liszt
 /ebb

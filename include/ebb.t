@@ -2,6 +2,9 @@
 --the ebb language
 --use it like: import "ebb"
 
+-- shim in the coverage analysis
+--require 'ebb.src.coverage'
+
 local P = require "ebb.src.parser"
 
 local ebblib = require "ebblib"
