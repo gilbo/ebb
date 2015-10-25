@@ -264,6 +264,7 @@ end
 function Pathname:tostring()
   local str = ''
   if self:is_absolute() then str = '/' end
+  if #self.tokens == 0 then return '.' end
 
   if #self.tokens > 0 then str = str..self.tokens[1] end
   for i = 2,#self.tokens do
@@ -550,7 +551,13 @@ end
 -- but will also happily create any necessary
 -- intermediary directories along the path...
 function Pathname:mkpath()
-  error("UNIMPLEMENTED")
+  local exists = self:exists()
+  if #self.tokens > 0 and not self:exists() then
+    local success = self:parent():mkpath()
+    if not success then return success end
+    return self:mkdir()
+  end
+  return true -- success
 end
 
 

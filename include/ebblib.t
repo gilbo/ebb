@@ -108,9 +108,9 @@ function LGlobal:set(val)
   end
 
   if use_single then
-    self.data:write_ptr(function(ptr)
-        ptr[0] = T.luaToEbbVal(val, self.type)
-    end)
+    local ptr = self.data:open_write_ptr()
+    ptr[0] = T.luaToEbbVal(val, self.type)
+    self.data:close_write_ptr()
 
   elseif use_legion then
     local typ    = self.type
@@ -138,9 +138,9 @@ function LGlobal:get()
   end
 
   if use_single then
-    self.data:read_ptr(function(ptr)
-        value = T.ebbToLuaVal(ptr[0], self.type)
-    end)
+    local ptr = self.data:open_read_ptr()
+    value = T.ebbToLuaVal(ptr[0], self.type)
+    self.data:close_read_ptr()
 
   elseif use_legion then
     local tt = self.type:terraType()
@@ -170,7 +170,7 @@ end
 --end
 
 function LGlobal:DataPtr()
-    return self.data:ptr()
+    return self.data:_raw_ptr()
 end
 
 function LGlobal:Type()

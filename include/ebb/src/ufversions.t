@@ -358,14 +358,14 @@ function UFVersion:_setFieldPtr(field)
     error('INTERNAL: Do not call setFieldPtr() when using Legion') end
   local id = self:_getFieldId(field)
   local dataptr = field:DataPtr()
-  self._args:ptr()[id] = dataptr
+  self._args:_raw_ptr()[id] = dataptr
 end
 function UFVersion:_setGlobalPtr(global)
   if use_legion then
     error('INTERNAL: Do not call setGlobalPtr() when using Legion') end
   local id = self:_getGlobalId(global)
   local dataptr = global:DataPtr()
-  self._args:ptr()[id] = dataptr
+  self._args:_raw_ptr()[id] = dataptr
 end
 
 function UFVersion:_getLegionGlobalTempSymbol(global)
@@ -462,7 +462,7 @@ function UFVersion:_bindFieldGlobalSubsetArgs()
   -- to handle that a different way anyways
   if use_legion then return end
 
-  local argptr    = self._args:ptr()
+  local argptr    = self._args:_raw_ptr()
 
   -- Case 1: subset indirection index
   if self._subset and self._subset._index then
@@ -517,7 +517,7 @@ function UFVersion:_Launch()
   if use_legion then
     self._executable({ ctx = legion_env.ctx, runtime = legion_env.runtime })
   else
-    self._executable(self._args:ptr())
+    self._executable(self._args:_raw_ptr())
   end
 end
 

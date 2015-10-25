@@ -35,11 +35,18 @@ If you are working on multiple DSLs using Terra and want to avoid a redundant Te
 
 You will still need to run `make` even if you already have your own Terra install.  Doing so will build the Ebb interpreter, which is needed to run Ebb programs.
 
-
 ### Legion Setup
 
 If you need to run Ebb on Legion, then please contact the developers directly.  The feature is currently under development.
 
+
+## VDB Setup
+
+We use a simple tool called VDB to do lightweight visualization during development of Ebb programs.  You can download this tool separately, but to simplify things, we've included a Makefile rule to download and build VDB for you.  Just run:
+
+```
+make vdb
+```
 
 
 ## More Details
