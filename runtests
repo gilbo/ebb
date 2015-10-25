@@ -104,7 +104,7 @@ for line in io.popen(lscmd):lines() do
     else
       print(file)
       local should_fail = (file:match("fails/") ~= nil)
-      local execstring = "./liszt "
+      local execstring = "./ebb "
       if USE_LEGION then
         execstring = execstring .. " --legion -n "
       end

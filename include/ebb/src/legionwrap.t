@@ -11,7 +11,7 @@ local C = require "ebb.src.c"
 -- have this module expose the full C-API.  Then, we'll augment it below.
 local APIblob = terralib.includecstring([[
 #include "legion_c.h"
-//#include "ebb_gpu_mapper.h"
+#include "ebb_mapper.h"
 ]])
 for k,v in pairs(APIblob) do LW[k] = v end
 
@@ -853,84 +853,8 @@ end
 
 
 -------------------------------------------------------------------------------
---[[  Methods for Introspecting on the Machine we're running on            ]]--
+--[[  Methods for copying fields and scanning through fields/ regions       ]]--
 -------------------------------------------------------------------------------
-
-
-function LW.GetMachineData ()
-end
---[[
-
-  void
-  legion_machine_get_all_processors(
-    legion_machine_t machine,
-    legion_processor_t *processors,
-    unsigned processors_size);
-
-  /**
-   * @see LegionRuntime::LowLevel::Machine::get_all_processors()
-   */
-  unsigned
-  legion_machine_get_all_processors_size(legion_machine_t machine);
-
-
-  // -----------------------------------------------------------------------
-  // Processor Operations
-  // -----------------------------------------------------------------------
-
-  /**
-   * @see LegionRuntime::LowLevel::Processor::kind()
-   */
-  legion_processor_kind_t
-  legion_processor_kind(legion_processor_t proc_);
-
-  // -----------------------------------------------------------------------
-  // Memory Operations
-  // -----------------------------------------------------------------------
-
-  /**
-   * @see LegionRuntime::LowLevel::Memory::kind()
-   */
-  legion_memory_kind_t
-  legion_memory_kind(legion_memory_t proc_);
-
-
-  // -----------------------------------------------------------------------
-  // Machine Query Interface Operations
-  // -----------------------------------------------------------------------
-
-  /**
-   * @return Caller takes ownership of return value.
-   *
-   * @see LegionRuntime::HighLevel::MappingUtilities::MachineQueryInterface()
-   */
-  legion_machine_query_interface_t
-  legion_machine_query_interface_create(legion_machine_t machine);
-
-  /**
-   * @param handle Caller must have ownership of parameter `handle`.
-   *
-   * @see LegionRuntime::HighLevel::MappingUtilities::~MachineQueryInterface()
-   */
-  void
-  legion_machine_query_interface_destroy(
-    legion_machine_query_interface_t handle);
-
-  /**
-   * @see LegionRuntime::HighLevel::MappingUtilities
-   *                   ::MachineQueryInterface::find_memory_kind()
-   */
-  legion_memory_t
-  legion_machine_query_interface_find_memory_kind(
-    legion_machine_query_interface_t handle,
-    legion_processor_t proc,
-    legion_memory_kind_t kind);
-]]
-
-
-function LW.heavyweightBarrier()
-  LW.legion_runtime_issue_execution_fence(legion_env.runtime, legion_env.ctx)
-end
 
 function LW.CopyField (params)
   if not params.region  then error('Needs region argument', 2) end
@@ -1077,4 +1001,13 @@ end
 
 function LW.ControlScanner:close()
   self.inline_physical_regions:Destroy()
+end
+
+
+-------------------------------------------------------------------------------
+--[[  Miscellaneous methods                                                ]]--
+-------------------------------------------------------------------------------
+
+function LW.heavyweightBarrier()
+  LW.legion_runtime_issue_execution_fence(legion_env.runtime, legion_env.ctx)
 end
