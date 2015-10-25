@@ -173,6 +173,33 @@ test: all
 # # ----------------------------------------------------------------------- # #
 #     Interpreter Rules
 
+# Rules to download and build the visualization tool
+vdb-win:
+	wget -O vdb-win.zip https://github.com/zdevito/vdb/blob/binaries/vdb-win.zip?raw=true
+	unzip vdb-win.zip
+	rm vdb-win.zip
+
+vdb-src:
+	wget -O vdb-src.zip https://github.com/zdevito/vdb/archive/ec461393b22c0e2f7fdce4c2d4f410f8cc671c80.zip
+	unzip vdb-src.zip
+	mv vdb-ec461393b22c0e2f7fdce4c2d4f410f8cc671c80 vdb-src
+	rm vdb-src.zip
+	make -C vdb-src
+	ln -s vdb-src/vdb vdb
+
+ifeq ($(PLATFORM),OSX)
+vdb: vdb-src
+endif
+ifeq ($(PLATFORM),LINUX)
+vdb: vdb-src
+endif
+ifeq ($(PLATFORM),WINDOWS)
+vdb: vdb-win
+endif
+
+# # ----------------------------------------------------------------------- # #
+#     Interpreter Rules
+
 build/%.o:  src_interpreter/%.cpp terra
 	mkdir -p build
 	$(CXX) $(FLAGS) $(CPPFLAGS) $< -c -o $@
@@ -218,6 +245,7 @@ endif
 
 clean:
 	make -C deprecated_runtime clean
+	-rm -r vdb*
 	-rm -r bin
 	-rm -r build
 ifdef LEGION_SYMLINK_EXISTS # don't try to recursively call into nowhere
