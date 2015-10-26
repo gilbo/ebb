@@ -76,6 +76,7 @@ EbbMapper::EbbMapper(Machine machine, HighLevelRuntime *rt, Processor local)
       break;
     }
   }
+#if 0
   if (first_loc == local_proc) {
 
     // processors
@@ -192,6 +193,7 @@ EbbMapper::EbbMapper(Machine machine, HighLevelRuntime *rt, Processor local)
               it->id, affinities[0].bandwidth, affinities[0].latency);
     }
   }
+#endif
 }
 
 void EbbMapper::select_task_options(Task *task) {
@@ -272,6 +274,5 @@ static void create_mappers(Machine machine,
 }
 
 void register_ebb_mappers() {
-  printf("WARNING: Using custom ebb mapper. This is in development phase.\n");
   HighLevelRuntime::set_registration_callback(create_mappers);
 }

@@ -6,7 +6,7 @@ local LE = rawget(_G, '_legion_env')
 
 -- set up a global structure to stash cluster information into
 rawset(_G, '_run_config', {
-                            use_ebb_mapper = false,
+                            use_ebb_mapper = true,
                             use_partitioning = false,
                             num_cpus = 0,  -- 0 indicates auomatically find the number of cpus
                           })
