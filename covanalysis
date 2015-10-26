@@ -1,0 +1,104 @@
+#!/usr/bin/env terra
+
+local ffi = require 'ffi'
+package.terrapath = package.terrapath .. ";include/?.t"
+local PN  = require 'ebb.lib.pathname'
+
+local SCAN_DIR      = PN.Pathname.new 'include'
+SCAN_DIR            = tostring(SCAN_DIR:abspath():cleanpath())
+local ANALYSIS_DIR  = PN.Pathname.new 'coverage_src'
+ANALYSIS_DIR        = tostring(ANALYSIS_DIR:abspath():cleanpath())
+
+if ffi.os == 'Windows' then
+  print('TODO windows')
+end
+local lscmd     = "find "..SCAN_DIR
+
+-- load info
+local covinfo = loadfile("coverageinfo.lua")()
+-- rewrite the keys for covinfo
+local copytbl = covinfo
+covinfo       = {}
+for path,lines in pairs(copytbl) do
+  path = PN.Pathname.new(path:sub(2)):abspath():cleanpath():tostring()
+  covinfo[path] = lines
+end
+
+
+local function genReport(filename, lineinfo)
+  local srcfilename = filename
+  if filename:sub(1,#SCAN_DIR) ~= SCAN_DIR then error('bad prefix dir') end
+  local suffix = filename:sub(#SCAN_DIR + 1)
+  local dstfilename = ANALYSIS_DIR..suffix
+
+  -- use this line instead of rest of function to debug changes to
+  -- filepath mangling without accidentally damaging files on disk
+  --print('from/to', srcfilename..'\n', dstfilename)
+
+  -- make sure destination directory exists
+  assert(PN.Pathname.new(dstfilename):dirpath():mkpath(),
+         'failed to make path')
+
+  local srcfile = io.open(srcfilename, 'r')
+  local dstfile = io.open(dstfilename, 'w')
+
+  local linenum = 1
+  for line in srcfile:lines() do
+    local nvisits = lineinfo[linenum]
+    linenum = linenum + 1
+
+    -- If we visited this line, then output count
+    if nvisits then
+      dstfile:write(string.format("%5d:  ",nvisits))
+    -- Filter out lines we couldn't possibly visit
+    elseif
+      string.match(line,"^ *%-%-")    or -- comments
+      string.match(line,"^ *$")       or -- blank lines
+      -- token only lines
+      string.match(line,"^ *end *$")  or
+      string.match(line,"^ *} *$")  or
+      string.match(line,"^ *then *$") or
+      string.match(line,"^ *else *$") or
+      string.match(line,"^ *local function") or
+      -- tokens with comments
+      string.match(line,"^ *end *%-%-$")  or
+      string.match(line,"^ *} *%-%-")  or
+      string.match(line,"^ *then *%-%-") or
+      string.match(line,"^ *else *%-%-")
+      -- random other lines
+      --string.match(line,"^ *end%) *$")
+    then
+      dstfile:write("     :  ")
+    else
+      dstfile:write("#####:  ")
+    end
+
+    dstfile:write(line)
+    dstfile:write("\n")
+  end
+
+  srcfile:close()
+  dstfile:close()
+end
+
+-- Scan all the source files
+for line in io.popen(lscmd):lines() do
+  if ffi.os == "Windows" then error('TODO windows') end
+  local filename = line
+
+  -- filter out some files
+  if filename and filename:match('coverage%.t') then filename = nil end
+  if filename and filename:sub(-2) ~= '.t' then filename = nil end
+
+  if filename then
+    local lookupname = filename --'@./'..filename
+    local lineinfo = covinfo[lookupname]
+    if lineinfo then
+      genReport(filename, lineinfo)
+    else
+      print('NO COVERAGE INFO FOR '..filename)
+    end
+  end
+end
+
+

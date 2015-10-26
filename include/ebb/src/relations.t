@@ -384,9 +384,12 @@ function L.LRelation:GroupBy(keyf_name)
   if use_single then
     -- NOTE: THIS IMPLEMENTATION HEAVILY ASSUMES THAT A GRID IS LINEARIZED
     -- IN ROW-MAJOR ORDER
-    offset_f.array:write_ptr(function(offptr)
-    length_f.array:write_ptr(function(lenptr)
-    key_field.array:read_ptr(function(keyptr)
+    local offptr = offset_f.array:open_write_ptr()
+    local lenptr = length_f.array:open_write_ptr()
+    local keyptr = key_field.array:open_read_ptr()
+    --offset_f.array:write_ptr(function(offptr)
+    --length_f.array:write_ptr(function(lenptr)
+    --key_field.array:read_ptr(function(keyptr)
       local dims = srcrel:Dims()
 
       local dst_i, prev_src = 0,0
@@ -407,9 +410,12 @@ function L.LRelation:GroupBy(keyf_name)
         lenptr[src_i] = count -- # of rows
       end
       assert(dst_i == n_dst)
-    end) -- key_field read
-    end) -- length_f write
-    end) -- offset_f write
+    --end) -- key_field read
+    --end) -- length_f write
+    --end) -- offset_f write
+    key_field.array:close_read_ptr()
+    length_f.array:close_write_ptr()
+    offset_f.array:close_write_ptr()
   elseif use_legion then
 
     local keyf_list = key_field:DumpToList()
@@ -508,20 +514,22 @@ function L.LIndex.New(params)
   }
 
   if params.data then
-    index._array:write_ptr(function(ptr)
+    local ptr = index._array:open_write_ptr()
+    --index._array:write_ptr(function(ptr)
       for i=1,#params.data do
         for k=1,params.ndims do
           ptr[i-1]['a'..tostring(k-1)] = params.data[i][k]
         end
       end
-    end) -- write_ptr
+    --end) -- write_ptr
+    index._array:close_write_ptr()
   end
 
   return index
 end
 
 function L.LIndex:DataPtr()
-  return self._array:ptr()
+  return self._array:_raw_ptr()
 end
 function L.LIndex:Size()
   return self._array:size()
@@ -692,7 +700,7 @@ function L.LField:Type()
 end
 function L.LField:DataPtr()
   if use_legion then error('DataPtr() unsupported using legion') end
-  return self.array:ptr()
+  return self.array:_raw_ptr()
 end
 function L.LField:Relation()
   return self.owner
@@ -896,7 +904,8 @@ function L.LField:LoadFunction(lua_callback)
     self:Allocate()
 
     local dims = self.owner:Dims()
-    self.array:write_ptr(function(dataptr)
+    local dataptr = self.array:open_write_ptr()
+    --self.array:write_ptr(function(dataptr)
       for lin,ids in self.owner:_INTERNAL_iter_gen() do
         local val = lua_callback(unpack(ids))
         if not T.luaValConformsToType(val, self.type) then
@@ -905,7 +914,8 @@ function L.LField:LoadFunction(lua_callback)
         end
         dataptr[lin] = T.luaToEbbVal(val, self.type)
       end
-    end) -- write_ptr
+    --end) -- write_ptr
+    self.array:close_write_ptr()
   end
 end
 
@@ -947,7 +957,7 @@ function L.LRelation:LoadJointTerraFunction(terra_callback, fields_arg, opt_args
             size      = self:ConcreteSize(),
             type      = fields[i]:Type():terraType()
         }
-        dld.address   = cpu_buf[i]:ptr()
+        dld.address   = cpu_buf[i]:_raw_ptr()
         dld.location  = 'CPU'
       else
         cpu_buf[i] = nil
@@ -1216,10 +1226,12 @@ function L.LRelation:DumpJoint(fields_arg, lua_callback)
       typs[k]     = f.type
       local loopcapture = loop -- THIS IS NEEDED TO STOP INF. RECURSION
       local outerloop = function()
-        f.array:read_ptr(function(dataptr)
+        local dataptr = f.array:open_read_ptr()
+        --f.array:read_ptr(function(dataptr)
           ptrs[k] = dataptr
           loopcapture()
-        end)
+        --end)
+        f.array:close_read_ptr()
       end
       loop = outerloop
     end
@@ -1308,7 +1320,7 @@ function L.LRelation:DumpJointTerraFunction(terra_callback, fields_arg, opt_args
             type      = fields[i]:Type():terraType()
           }
           cpu_buf[i]:copy(fields[i].array)
-          dld.address = cpu_buf[i]:ptr()
+          dld.address = cpu_buf[i]:_raw_ptr()
           dld.location = 'CPU'
         else
           cpu_buf[i] = nil

@@ -104,7 +104,7 @@ for line in io.popen(lscmd):lines() do
     else
       print(file)
       local should_fail = (file:match("fails/") ~= nil)
-      local execstring = "./liszt "
+      local execstring = "./ebb "
       if USE_LEGION then
         execstring = execstring .. " --legion -n "
       end
@@ -140,6 +140,14 @@ for line in io.popen(lscmd):lines() do
       end
     end
   end
+end
+
+-- test whether the coverageanalysis exists
+local coverage_on = os.execute('test -f coverageinfo.lua') == 0
+if coverage_on then
+  print('-- Assembling Coverage Analysis Report --')
+  os.execute('./covanalysis')
+  os.execute('rm coverageinfo.lua')
 end
 
 -- cleanup temp files if they exist

@@ -68,7 +68,6 @@ endif
 ifdef LEGION_INSTALLED
   REAL_TERRA_DIR:=$(realpath $(TERRA_ROOT_DIR))
   REAL_LEGION_DIR:=$(realpath $(LEGION_DIR))
-  MAPPER_DIR:=mappers
 
   # Determine whether or not CUDA is available and visible to Legion
   USE_CUDA=0
@@ -82,16 +81,13 @@ ifdef LEGION_INSTALLED
   # Locations of various directories needed for the Legion build
   LUAJIT_DIR:=$(REAL_TERRA_DIR)/build/LuaJIT-2.0.3
   LEGION_BIND_DIR:=$(REAL_LEGION_DIR)/bindings/terra
+  LEGION_RUNTIME_DIR:=$(REAL_LEGION_DIR)/runtime
   LIBLEGION_TERRA:=$(LEGION_BIND_DIR)/liblegion_terra.so
   LIBLEGION_TERRA_RELEASE:=$(LEGION_BIND_DIR)/liblegion_terra_release.so
   LIBLEGION_TERRA_DEBUG:=$(LEGION_BIND_DIR)/liblegion_terra_debug.so
-  LIBMAPPER:=$(MAPPER_DIR)/libmapper.so
-  LIBMAPPER_RELEASE:=$(MAPPER_DIR)/libmapper_release.so
-  LIBMAPPER_DEBUG:=$(MAPPER_DIR)/libmapper_debug.so
   # environment variables to be set for recursive call to Legion build
   SET_ENV_VAR:=LUAJIT_DIR=$(LUAJIT_DIR) TERRA_DIR=$(REAL_TERRA_DIR) \
-    SHARED_LOWLEVEL=0 USE_GASNET=0 USE_CUDA=$(USE_CUDA) \
-    LEGION_BIND_DIR=$(LEGION_BIND_DIR)
+    SHARED_LOWLEVEL=0 USE_GASNET=0 USE_CUDA=$(USE_CUDA)
 endif # LEGION_INSTALLED
 
 # # ----------------------------------------------------------------------- # #
@@ -101,33 +97,50 @@ DYNLIBTERRA=terra/libterra.so
 LIBTERRA=terra/lib/libterra.a
 
 EXECUTABLE=ebb
-EXECUTABLE_CP=liszt
 EXEC_OBJS = main.o linenoise.o
 # Use default CXX
 
-FLAGS = -Wall -g -fPIC
-FLAGS += -I build -I src_interpreter -I terra/include/terra
-FLAGS += -D_GNU_SOURCE -D__STDC_CONSTANT_MACROS -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -O0 -fno-rtti -fno-common -Woverloaded-virtual -Wcast-qual -fvisibility-inlines-hidden
+INTERP_CFLAGS = -Wall -g -fPIC
+INTERP_CFLAGS += -I build -I src_interpreter -I terra/include/terra
+INTERP_CFLAGS += -D_GNU_SOURCE -D__STDC_CONSTANT_MACROS -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -O0 -fno-rtti -fno-common -Woverloaded-virtual -Wcast-qual -fvisibility-inlines-hidden
 
-LFLAGS = -g
+INTERP_LFLAGS = -g
 ifeq ($(PLATFORM),OSX)
-  LFLAGS += -pagezero_size 10000 -image_base 100000000 
+  INTERP_LFLAGS += -pagezero_size 10000 -image_base 100000000
 endif
 ifeq ($(PLATFORM),LINUX)
-  LFLAGS += -Wl,-export-dynamic -Wl,--whole-archive $(LIBTERRA) -Wl,--no-whole-archive
-  LFLAGS += -ldl -pthread
+  INTERP_LFLAGS += -Wl,-export-dynamic -Wl,--whole-archive $(LIBTERRA) -Wl,--no-whole-archive
+  INTERP_LFLAGS += -ldl -pthread
 else
-  LFLAGS += -Wl,-force_load,$(LIBTERRA)
+  INTERP_LFLAGS += -Wl,-force_load,$(LIBTERRA)
 endif
 # Can we always add these for safety?
-LFLAGS += -lcurses -lz
-#ifeq ($(shell nm $(DYNLIBTERRA) | grep setupterm 2>&1 >/dev/null; echo $$?), 0)
-#  LFLAGS += -lcurses 
-#endif
-#ifeq ($(shell nm $(DYNLIBTERRA) | grep compress2 2>&1 >/dev/null; echo $$?), 0)
-#  LFLAGS += -lz
-#endif
+INTERP_LFLAGS += -lcurses -lz
 
+# # ----------------------------------------------------------------------- # #
+#     Legion Mapper
+
+ifdef LEGION_INSTALLED
+
+  MAPPER_OBJS := mappers/ebb_mapper.o
+  LIBMAPPER:=mappers/libmapper.so
+  LIBMAPPER_RELEASE:=mappers/libmapper_release.so
+  LIBMAPPER_DEBUG:=mappers/libmapper_debug.so
+
+  MAPPER_CFLAGS:=-fPIC
+  MAPPER_CFLAGS+=-I$(LEGION_RUNTIME_DIR)
+
+  MAPPER_LFLAGS:=-L$(LEGION_BIND_DIR)
+  ifeq ($(PLATFORM),OSX)
+    MAPPER_LFLAGS += -dynamiclib -single_module -undefined dynamic_lookup -fPIC
+  endif
+  ifeq ($(PLATFORM),LINUX)
+    MAPPER_LFLAGS += -Wl,-rpath=$(LEGION_BIND_DIR)
+    MAPPER_LFLAGS += -shared
+  endif
+  MAPPER_LFLAGS += -ldl -lpthread -rdynamic
+
+endif # LEGION_INSTALLED
 
 # # ----------------------------------------------------------------------- # #
 # # ----------------------------------------------------------------------- # #
@@ -138,8 +151,8 @@ LFLAGS += -lcurses -lz
 # set of build dependencies
 ALL_DEP:= terra $(EXECUTABLE) $(EXECUTABLE_CP)
 ifdef LEGION_INSTALLED
-ALL_DEP:=$(ALL_DEP) legion $(LIBLEGION_TERRA_RELEASE) $(LIBLEGION_TERRA_DEBUG)
-ALL_DEP+=$(ALL_DEP) $(LIBMAPPER_RELEASE) $(LIBMAPPER_DEBUG)
+ALL_DEP += legion $(LIBLEGION_TERRA_RELEASE) $(LIBLEGION_TERRA_DEBUG)
+ALL_DEP += $(LIBMAPPER_RELEASE) $(LIBMAPPER_DEBUG)
 endif
 
 .PHONY: all clean test lmesh
@@ -177,24 +190,45 @@ test: all
 	@echo "\n** Please call the test script directly **\n"
 
 # # ----------------------------------------------------------------------- # #
+#     VDB Rules
+
+# Rules to download and build the visualization tool
+vdb-win:
+	wget -O vdb-win.zip https://github.com/zdevito/vdb/blob/binaries/vdb-win.zip?raw=true
+	unzip vdb-win.zip
+	rm vdb-win.zip
+
+vdb-src:
+	wget -O vdb-src.zip https://github.com/zdevito/vdb/archive/ec461393b22c0e2f7fdce4c2d4f410f8cc671c80.zip
+	unzip vdb-src.zip
+	mv vdb-ec461393b22c0e2f7fdce4c2d4f410f8cc671c80 vdb-src
+	rm vdb-src.zip
+	make -C vdb-src
+	ln -s vdb-src/vdb vdb
+
+ifeq ($(PLATFORM),OSX)
+vdb: vdb-src
+endif
+ifeq ($(PLATFORM),LINUX)
+vdb: vdb-src
+endif
+ifeq ($(PLATFORM),WINDOWS)
+vdb: vdb-win
+endif
+
+# # ----------------------------------------------------------------------- # #
 #     Interpreter Rules
 
 build/%.o:  src_interpreter/%.cpp terra
 	mkdir -p build
-	$(CXX) $(FLAGS) $(CPPFLAGS) $< -c -o $@
+	$(CXX) $(INTERP_CFLAGS) $< -c -o $@
 
 bin/$(EXECUTABLE): $(addprefix build/, $(EXEC_OBJS)) terra
 	mkdir -p bin
-	$(CXX) $(addprefix build/, $(EXEC_OBJS)) -o $@ $(LFLAGS)
+	$(CXX) $(addprefix build/, $(EXEC_OBJS)) -o $@ $(INTERP_LFLAGS)
 
 $(EXECUTABLE): bin/$(EXECUTABLE)
 	ln -sf bin/$(EXECUTABLE) $(EXECUTABLE)
-
-bin/$(EXECUTABLE_CP): bin/$(EXECUTABLE)
-	ln -sf bin/$(EXECUTABLE) bin/$(EXECUTABLE_CP)
-
-$(EXECUTABLE_CP): bin/$(EXECUTABLE)
-	ln -sf bin/$(EXECUTABLE) $(EXECUTABLE_CP)
 
 # # ----------------------------------------------------------------------- # #
 #     Legion Rules
@@ -219,25 +253,46 @@ $(LIBLEGION_TERRA_DEBUG): terra legion
 	$(SET_ENV_VAR) CC_FLAGS=-DLEGION_SPY $(MAKE) -C $(LEGION_BIND_DIR)
 	mv $(LIBLEGION_TERRA) $(LIBLEGION_TERRA_DEBUG)
 
-$(LIBMAPPER_RELEASE): $(LIBLEGION_TERRA_RELEASE) $(LIBMAPPER_DEBUG) $(MAPPER_DIR)/*.cc
-	$(SET_ENV_VAR) LIBLEGION=-llegion_terra_release DEBUG=0 $(MAKE) -C $(MAPPER_DIR)
-	mv $(LIBMAPPER) $(LIBMAPPER_RELEASE)
+endif
 
-$(LIBMAPPER_DEBUG): $(LIBLEGION_TERRA_DEBUG) $(MAPPER_DIR)/*.cc
-	$(SET_ENV_VAR) LIBLEGION=-llegion_terra_debug $(MAKE) -C $(MAPPER_DIR)
-	mv $(LIBMAPPER) $(LIBMAPPER_DEBUG)
+# # ----------------------------------------------------------------------- # #
+#     Mapper (Legion) Rules
+
+ifdef LEGION_INSTALLED
+
+mappers/%.o: mappers/%.cc mappers/%.h
+	echo $(MAPPER_CFLAGS)
+	$(CXX) $(MAPPER_CFLAGS) $< -c -o $@
+
+$(LIBMAPPER_RELEASE): $(LIBLEGION_TERRA_RELEASE) $(LIBMAPPER_DEBUG) $(MAPPER_OBJS)
+	#$(SET_ENV_VAR) LIBLEGION=-llegion_terra_release DEBUG=0 $(MAKE) -C mappers
+	#mv $(LIBMAPPER) $(LIBMAPPER_RELEASE)
+	DEBUG=0 $(CXX) $(MAPPER_OBJS) -o $@ $(MAPPER_LFLAGS)
+
+$(LIBMAPPER_DEBUG): $(LIBLEGION_TERRA_DEBUG) $(MAPPER_OBJS)
+	#$(SET_ENV_VAR) LIBLEGION=-llegion_terra_debug $(MAKE) -C mappers
+	#mv $(LIBMAPPER) $(LIBMAPPER_DEBUG)
+	$(CXX) $(MAPPER_OBJS) -o $@ $(MAPPER_LFLAGS)
+
 endif
 
 # # ----------------------------------------------------------------------- # #
 #     Cleanup
 
-clean:
+mapperclean:
+ifdef LEGION_SYMLINK_EXISTS # don't try to recursively call into nowhere
+	-rm mappers/*.o
+	-rm $(LIBMAPPER_DEBUG)
+	-rm $(LIBMAPPER_RELEASE)
+endif
+
+clean: mapperclean
 	$(MAKE) -C deprecated_runtime clean
+	-rm -r vdb*
 	-rm -r bin
 	-rm -r build
 ifdef LEGION_SYMLINK_EXISTS # don't try to recursively call into nowhere
 	$(SET_ENV_VAR) $(MAKE) -C $(LEGION_BIND_DIR) clean
-	$(SET_ENV_VAR) $(MAKE) -C $(MAPPER_DIR) clean
 	-rm $(LIBLEGION_TERRA_RELEASE)
 	-rm $(LIBLEGION_TERRA_DEBUG)
 	-rm legion

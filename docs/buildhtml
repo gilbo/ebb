@@ -1,0 +1,25 @@
+#!/usr/bin/env terra
+
+local whichhandle = io.popen('which pandoc')
+local whichoutput = whichhandle:read("*a")
+whichhandle:close()
+local pandoc_exists = #whichoutput > 0
+
+if not pandoc_exists then
+print([[
+  Could not build html documentation because pandoc is not installed.
+]])
+return -- early exit this script
+end
+
+
+os.execute("pandoc manual.md -o manual.html"..
+" -f markdown -t html"..
+" --standalone --table-of-contents --toc-depth=3"..
+" --title-prefix='Ebb Manual' "..
+" -c style.css"..
+" --template=template.html"
+)
+
+
+

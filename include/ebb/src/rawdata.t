@@ -49,7 +49,7 @@ function DataArray.Wrap(params)
 end
 
 
-function DataArray:ptr()
+function DataArray:_raw_ptr()
   return self._data
 end
 
@@ -140,13 +140,13 @@ function DataArray:copy(src, size)
   local byte_size = size * terralib.sizeof(src._type)
 
   if     dst._processor == L.CPU and src._processor == L.CPU then
-    cpu_cpu_copy( dst:ptr(), src:ptr(), byte_size )
+    cpu_cpu_copy( dst:_raw_ptr(), src:_raw_ptr(), byte_size )
   elseif dst._processor == L.CPU and src._processor == L.GPU then
-    cpu_gpu_copy( dst:ptr(), src:ptr(), byte_size )
+    cpu_gpu_copy( dst:_raw_ptr(), src:_raw_ptr(), byte_size )
   elseif dst._processor == L.GPU and src._processor == L.CPU then
-    gpu_cpu_copy( dst:ptr(), src:ptr(), byte_size )
+    gpu_cpu_copy( dst:_raw_ptr(), src:_raw_ptr(), byte_size )
   elseif dst._processor == L.GPU and src._processor == L.GPU then
-    gpu_gpu_copy( dst:ptr(), src:ptr(), byte_size )
+    gpu_gpu_copy( dst:_raw_ptr(), src:_raw_ptr(), byte_size )
   else
     error('unsupported processor')
   end
@@ -189,23 +189,74 @@ function DataArray:resize(new_size)
   self:reallocate{ processor = self._processor, size = new_size }
 end
 
+
+function DataArray:open_write_ptr()
+  if self:location() == L.CPU then
+    return self:_raw_ptr()
+  else
+    self._write_ptr_buf = DataArray.New {
+      processor = L.CPU,
+      size      = self:size(),
+      type      = self._type,
+    }
+    return self._write_ptr_buf:_raw_ptr()
+  end
+end
+function DataArray:close_write_ptr()
+  if self._write_ptr_buf then
+    self:copy(self._write_ptr_buf)
+    self._write_ptr_buf:free()
+    self._write_ptr_buf = nil
+  end
+end
+function DataArray:open_read_ptr()
+  if self:location() == L.CPU then
+    return self:_raw_ptr()
+  else
+    self._read_ptr_buf = DataArray.New {
+      processor = L.CPU,
+      size      = self:size(),
+      type      = self._type,
+    }
+    self._read_ptr_buf:copy(self)
+    return self:_raw_ptr()
+  end
+end
+function DataArray:close_read_ptr()
+  if self._read_ptr_buf then
+    self._read_ptr_buf:free()
+    self._read_ptr_buf = nil
+  end
+end
+
+function DataArray:open_readwrite_ptr()
+  self._readwrite_original_location = self:location()
+  self:moveto(L.CPU)
+  return self:_raw_ptr()
+end
+function DataArray:close_readwrite_ptr()
+  self:moveto(self._readwrite_original_location)
+  self._readwrite_original_location = nil
+end
+
+--[[
 function DataArray:write_ptr(f)
   if self:location() == L.CPU then
-    f(self:ptr())
+    f(self:_raw_ptr())
   else
     local buf = DataArray.New {
       processor = L.CPU,
       size = self:size(),
       type = self._type
     }
-    f(buf:ptr())
+    f(buf:_raw_ptr())
     self:copy(buf)
     buf:free()
   end
 end
 function DataArray:read_ptr(f)
   if self:location() == L.CPU then
-    f(self:ptr())
+    f(self:_raw_ptr())
   else
     local buf = DataArray.New {
       processor = L.CPU,
@@ -213,17 +264,17 @@ function DataArray:read_ptr(f)
       type = self._type
     }
     buf:copy(self)
-    f(buf:ptr())
+    f(buf:_raw_ptr())
     buf:free()
   end
 end
 function DataArray:readwrite_ptr(f)
   local loc = self:location()
   self:moveto(L.CPU)
-  f(self:ptr())
+  f(self:_raw_ptr())
   self:moveto(loc)
 end
-
+--]]
 
 
 -------------------------------------------------------------------------------
@@ -263,8 +314,8 @@ function DynamicArray.Wrap(params)
   return dyn
 end
 
-function DynamicArray:ptr()
-  return self._data_array:ptr()
+function DynamicArray:_raw_ptr()
+  return self._data_array:_raw_ptr()
 end
 
  -- These do not check allocation
@@ -303,14 +354,34 @@ function DynamicArray:resize(new_size)
   self._used_size = new_size
 end
 
-function DynamicArray:write_ptr(f)
-  self._data_array:write_ptr(f)
+
+function DynamicArray:open_write_ptr()
+  return self._data_array:open_write_ptr()
 end
-function DynamicArray:read_ptr(f)
-  self._data_array:read_ptr(f)
+function DynamicArray:close_write_ptr()
+  self._data_array:close_write_ptr()
 end
-function DynamicArray:readwrite_ptr(f)
-  self._data_array:readwrite_ptr(f)
+function DynamicArray:open_read_ptr()
+  return self._data_array:open_read_ptr()
 end
+function DynamicArray:close_read_ptr()
+  self._data_array:close_read_ptr()
+end
+function DynamicArray:open_readwrite_ptr()
+  return self._data_array:open_readwrite_ptr()
+end
+function DynamicArray:close_readwrite_ptr()
+  self._data_array:close_readwrite_ptr()
+end
+
+--function DynamicArray:write_ptr(f)
+--  self._data_array:write_ptr(f)
+--end
+--function DynamicArray:read_ptr(f)
+--  self._data_array:read_ptr(f)
+--end
+--function DynamicArray:readwrite_ptr(f)
+--  self._data_array:readwrite_ptr(f)
+--end
 
 
