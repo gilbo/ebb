@@ -721,6 +721,11 @@ function LogicalPartition:ColoringField()
   return self.color_field
 end
 
+-- color space (partition domain)
+function LogicalPartition:Domain()
+  return self.domain
+end
+
 -- create a color space with num_colors number of colors
 -- this corresponds to the number of partitions
 local terra CreateColorSpace(num_colors : LW.legion_color_t)
@@ -741,10 +746,11 @@ function LogicalRegion:CreatePartitionsByField(rfield)
   local lp = LW.legion_logical_partition_create(
     legion_env.runtime, legion_env.ctx, self.handle, partn)
   local lp = {
-               color_field = rfield,
-               handle      = lp,
-               index_partn = partn,
-               ptype       = 'FIELD'
+               ptype       = 'FIELD',  -- partition type (by field or block)
+               color_field = rfield,   -- field used to generate the partition
+               domain      = color_space,  -- partition domain (color space)
+               index_partn = partn,    -- legion index partition handle
+               handle      = lp,       -- legion logical partition handle
              }
   setmetatable(lp, LogicalPartition)
   return lp

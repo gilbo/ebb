@@ -1859,7 +1859,7 @@ function L.LRelation:GetOrCreateDisjointPartitioning()
            L.LField.New(self, '_disjoint_coloring', L.color_type))
     -- set the coloring field
     self._disjoint_coloring:LoadTerraFunction(ColorPlainIndexSpaceDisjoint,
-                                              { self._num_partitions })
+                                              { self:TotalPartitions() })
     -- create index partition using the coloring field and save it
     partn = 
       self._logical_region_wrapper:CreatePartitionsByField(self._disjoint_coloring)
