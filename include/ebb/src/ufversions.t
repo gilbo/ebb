@@ -195,7 +195,6 @@ function UFVersion:_CompileFieldsGlobalsSubsets(phase_data)
     self._n_futures    = 0
 
     local reg_data = self:_getPrimaryRegionData()
-    record_read(reg_data)
   end
 
   -- reserve ids
@@ -272,6 +271,8 @@ local function get_region_data(ufv, relation, field)
       wrapper   = relation._logical_region_wrapper,
       num       = ufv._n_regions,
       --relation  = relation,
+      privilege = LW.NO_ACCESS,
+      coherence = LW.EXCLUSIVE
     }
     ufv._n_regions = ufv._n_regions + 1
 
