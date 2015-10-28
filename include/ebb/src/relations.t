@@ -1851,7 +1851,7 @@ function L.LRelation:GetOrCreateDisjointPartitioning()
   if self:isGrid() then
     -- STRUCTURED GRIDS
     -- create block partition
-    partn = self._logical_region_wrapper:CreatBlockPartitions()
+    partn = self._logical_region_wrapper:CreateBlockPartitions()
   else
     -- PLAIN/ GROUPED/ ELASTIC
     -- add a coloring field to logical region

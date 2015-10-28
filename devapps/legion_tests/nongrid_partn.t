@@ -14,12 +14,12 @@ print("***************************************************")
 -- When using partitioning, this example should throw errors when:
 --   - reducing fields
 --   - reducing globals
+local do_global_reduction = false
+local do_field_reduction  = false
 
 -- includes
-local DLD = require "ebb.src.dld"
 local PN = require 'ebb.lib.pathname'
 local ioOff = require 'ebb.domains.ioOff'
-local C = terralib.includecstring([[ #include <stdio.h> ]])
 
 -- mesh
 local mesh_filename = PN.scriptdir() .. 'octa.off'
@@ -62,12 +62,14 @@ V:foreach(InitCurPos)
 E:foreach(PrintField, 'rest_len')
 V:foreach(PrintField, 'pos')
 
+-- globals and constants
+local K  = L.Constant(L.double, 10)
+local dt = L.Global(L.double, 0.1)
+local sum_delta = L.Global(L.double, 0)
+
 -------------------------------------------------------------------------------
 --  Compute new positions                                                    --
 -------------------------------------------------------------------------------
-
-local K  = L.Constant(L.double, 10)
-local dt = L.Global(L.double, 0.1)
 
 local ebb ComputeDelta(e)  -- positive delta means elongation => pull vertices
   var vec_edge   = e.head.cur_pos - e.tail.cur_pos
@@ -76,10 +78,17 @@ local ebb ComputeDelta(e)  -- positive delta means elongation => pull vertices
   e.unit_edge = vec_edge/new_length
 end
 
+local ebb SumDelta(e)
+  sum_delta += e.delta
+end
+
 local ebb GatherForce(v)
   for e in v.edges do
     v.f += K * e.delta * e.unit_edge
   end
+end
+local ebb ResetForce(v)
+  v.f = {0, 0, 0}
 end
 local ebb ScatterForce(e)
   e.tail.f += K * e.delta * e.unit_edge
@@ -93,12 +102,23 @@ end
 
 -- loop/ main sim
 for iter = 1, 4 do
+  sum_delta:set(0)
   E:foreach(ComputeDelta)
+  -- Sum delta should throw error with multiple partitions till we use Legion's
+  -- reduction API.
+  if do_global_reduction then
+    E:foreach(SumDelta)
+  end
   -- Scatter should not work with multiple partitions till we use Legion's
   -- recution API.
-  V:foreach(GatherForce)
-  -- E:foreach(ScatterForce)
+  V:foreach(ResetForce)
+  if do_field_reduction then
+    E:foreach(ScatterForce)
+  else
+    V:foreach(GatherForce)
+  end
   V:foreach(UpdateKinematics)
   V:foreach(PrintField, 'cur_pos')
-  -- V:foreach(PrintField, 'f')
+  V:foreach(PrintField, 'f')
+  print("Sum of deltas = " .. tostring(sum_delta:get()) .. " in iteration " .. tostring(iter))
 end

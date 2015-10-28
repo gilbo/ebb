@@ -59,63 +59,49 @@ local ebb PrintField(r, field)
 end
 
 -- invoke initialization
-local LW = require "ebb.src.legionwrap"
-LW.heavyweightBarrier()
-print("Invoking initialization of cells")
 C:foreach(InitCellVal)
-LW.heavyweightBarrier()
---print("Invoking initialization of vertices")
---V:foreach(InitVertexVal)
---LW.heavyweightBarrier()
---print("Invoking print")
---C:foreach(PrintField, 'value')
---LW.heavyweightBarrier()
+V:foreach(InitVertexVal)
+C:foreach(PrintField, 'value')
 
 -------------------------------------------------------------------------------
 --  Diffuse values                                                           --
 -------------------------------------------------------------------------------
 
--- local ebb GatherAtVerts(v)
---   v.value += v.cell(-1,  1).value + v.cell(1, -1).value
---   v.value += v.cell(-1, -1).value + v.cell(1,  1).value
---   v.value *= (d/4)
--- end
--- 
--- local ebb ScatterToVerts(c)
---   c.vertex(-1,  1).value += (d/4) * c.value
---   c.vertex( 1, -1).value += (d/4) * c.value
---   c.vertex(-1, -1).value += (d/4) * c.value
---   c.vertex( 1,  1).value += (d/4) * c.value
--- end
--- 
--- local ebb GatherAtCells(c)
---   c.value += c.vertex(-1,  1).value + c.vertex(1, -1).value
---   c.value += c.vertex(-1, -1).value + c.vertex(1,  1).value
---   c.value *= (d/4)
--- end
--- 
--- local ebb SumValue(c)
---   sum_val += c.value
--- end
--- 
--- -- loop/ main
--- for iter = 1, 4 do
---     sum_val:set(0)
---     LW.heavyweightBarrier()
---     print("Invoking diffuse to vertices", iter)
---     if do_field_reduction then
---         C:foreach(ScatterToVerts)
---     else
---         V:foreach(GatherAtVerts)
---     end
---     LW.heavyweightBarrier()
---     print("Invoking diffuse to cells", iter)
---     C:foreach(GatherAtCells)
---     if do_global_reduction then
---         C:foreach(SumValue)
---     end
---     LW.heavyweightBarrier()
---     print("Invoking print", iter)
---     C:foreach(PrintField, 'value')
---     print("Sum of values at cells = " .. tostring(sum_val:get()))
--- end
+local ebb GatherAtVerts(v)
+  v.value += v.cell(-1,  1).value + v.cell(1, -1).value
+  v.value += v.cell(-1, -1).value + v.cell(1,  1).value
+  v.value *= (d/4)
+end
+
+local ebb ScatterToVerts(c)
+  c.vertex(-1,  1).value += (d/4) * c.value
+  c.vertex( 1, -1).value += (d/4) * c.value
+  c.vertex(-1, -1).value += (d/4) * c.value
+  c.vertex( 1,  1).value += (d/4) * c.value
+end
+
+local ebb GatherAtCells(c)
+  c.value += c.vertex(-1,  1).value + c.vertex(1, -1).value
+  c.value += c.vertex(-1, -1).value + c.vertex(1,  1).value
+  c.value *= (d/4)
+end
+
+local ebb SumValue(c)
+  sum_val += c.value
+end
+
+-- loop/ main
+for iter = 1, 4 do
+    sum_val:set(0)
+    if do_field_reduction then
+        C:foreach(ScatterToVerts)
+    else
+        V:foreach(GatherAtVerts)
+    end
+    C:foreach(GatherAtCells)
+    if do_global_reduction then
+        C:foreach(SumValue)
+    end
+    C:foreach(PrintField, 'value')
+    print("Sum of values at cells = " .. tostring(sum_val:get()))
+end

@@ -270,7 +270,7 @@ local function get_region_data(ufv, relation, field)
     local reg_data = {
       wrapper   = relation._logical_region_wrapper,
       num       = ufv._n_regions,
-      --relation  = relation,
+      relation  = relation,
       privilege = LW.NO_ACCESS,
       coherence = LW.EXCLUSIVE
     }
@@ -284,7 +284,8 @@ end
 
 function UFVersion:_getPrimaryRegionData()
   if use_single then error("INTERNAL: Cannot use regions w/o Legion") end
-  return get_region_data(self, self._relation)
+  self._primary_region = get_region_data(self, self._relation)
+  return self._primary_region
 end
 
 function UFVersion:_getRegionData(field)
@@ -1138,7 +1139,12 @@ function UFVersion:_GenerateUnpackLegionTaskArgs(argsym, task_args)
         var base = [&uint8](
           [ LW.LegionRawPtrFromAcc[reg_dim] ](
                               field_accessor, rect, &subrect, strides))
-        [argsym].[farg_name] = [ LW.FieldAccessor[reg_dim] ] { base, strides }
+        var offset : int = 0
+        for d = 0, reg_dim do
+          offset = offset + [rect].lo.x[d] * strides[d].offset 
+        end
+        base = base - offset
+        [argsym].[farg_name] = [ LW.FieldAccessor[reg_dim] ] { base, strides, field_accessor }
       end
       -- unstructured
       else emit quote
@@ -1151,7 +1157,7 @@ function UFVersion:_GenerateUnpackLegionTaskArgs(argsym, task_args)
           field_accessor, &base, &stride_val)
         var strides : LW.legion_byte_offset_t[1]
         strides[0].offset = (stride_val)
-        [argsym].[farg_name] = [ LW.FieldAccessor[1] ] { [&uint8](base), strides }
+        [argsym].[farg_name] = [ LW.FieldAccessor[1] ] { [&uint8](base), strides, field_accessor }
       end end
     end end
 
@@ -1218,7 +1224,16 @@ function UFVersion:_GenerateUnpackLegionTaskArgs(argsym, task_args)
   return code
 end
 
-
+function UFVersion:_CleanLegionTask(argsym)
+  local ufv = self
+  local code = quote
+    escape for field, farg_name in pairs(ufv._field_ids) do
+      emit quote LW.legion_accessor_generic_destroy([argsym].[farg_name].handle)
+      end end  -- for emit quote
+    end  -- escape
+  end -- quote
+  return code
+end
 
 function UFVersion:_CompileLegion(typed_ast)
   local task_function     = codegen.codegen(typed_ast, self)
@@ -1400,7 +1415,7 @@ function UFVersion:_addRegionPartition(field)
     -- Non-centered reductions are not supported yet with partitions.
     elseif use_partitioning and self._field_use[field]:isReduce() and
       not self._field_use[field]:isCentered() then
-      error("Non-centered field reduction with partitioning not supported yet.")
+      error("INTERNAL: Non-centered field reduction with partitioning not supported yet.")
     -- (not is centered) and (requires exclusive) is a phase error
     end
     datum.partition = prim_partn
