@@ -576,7 +576,8 @@ function Codegen.codegen (ufunc_ast, ufunc_version)
 
       [generate_output_future]
 
-      -- [ ctxt.ufv:_CleanLegionTask(ctxt:argsym()) ]
+      [ ctxt.ufv:_CleanLegionTask(ctxt:argsym()) ]
+
     end -- Launcher done
 
     launcher:setname(ufunc_name)
