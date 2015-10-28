@@ -249,12 +249,6 @@ bool EbbMapper::rank_copy_targets(const Mappable *mappable,
                                       std::vector<Memory> &to_create,
                                       bool &create_one,
                                       size_t &blocking_factor) {
-  DefaultMapper::rank_copy_targets(mappable, rebuild_region, current_instances,
-                                   complete, max_blocking_factor, to_reuse,
-                                   to_create, create_one, blocking_factor);
-  if (create_one) {
-    blocking_factor = max_blocking_factor;
-  }
   return true;
 }
 
