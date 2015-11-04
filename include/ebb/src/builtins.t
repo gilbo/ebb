@@ -56,7 +56,7 @@ local function id_checks(fname, ast, ctxt, args)
         return false
     end
 
-    if not args[1].node_type:isScalarKey() then
+    if not args[1].node_type:isscalarkey() then
         ctxt:error(ast, "expected a relational key as the argument for "..
                         fname.."()")
         return false
@@ -153,13 +153,13 @@ function B.Affine.check(ast, ctxt)
     local ret_type      = nil
 
     -- check that the first and last arg are actually relations
-    if not dst_rel_arg.node_type:isInternal() or
+    if not dst_rel_arg.node_type:isinternal() or
        not L.is_relation(dst_rel_arg.node_type.value)
     then
         ctxt:error(ast[1], "Affine expects a relation as the 1st argument")
         return L.error
     end
-    if not key_arg.node_type:isScalarKey() then
+    if not key_arg.node_type:isscalarkey() then
         ctxt:error(ast[3], "Affine expects a key as the 3rd argument")
         return L.error
     end
@@ -182,7 +182,7 @@ function B.Affine.check(ast, ctxt)
     local src_dims = src_rel:Dims()
 
     -- now check the matrix argument type
-    if not matrix.node_type:isMatrix() or
+    if not matrix.node_type:ismatrix() or
        matrix.node_type.Nrow ~= #dst_dims or
        matrix.node_type.Ncol ~= #src_dims + 1
     then
@@ -191,11 +191,11 @@ function B.Affine.check(ast, ctxt)
             tostring(#dst_dims).."-by-"..tostring(#src_dims + 1))
         return L.error
     end
-    --if not matrix.node_type:isIntegral() then
+    --if not matrix.node_type:isintegral() then
     --    ctxt:error(ast[2], "Affine expects a matrix of integral values")
     --    return L.error
     --end
-    if not matrix.node_type:isNumeric() then
+    if not matrix.node_type:isnumeric() then
         ctxt:error(ast[2], "Affine expects a matrix of numeric values")
         return L.error
     end
@@ -228,9 +228,9 @@ function B.Affine.codegen(ast, ctxt)
     local nrow      = args[2].node_type.Nrow
     local ncol      = args[2].node_type.Ncol
 
-    local srckey    = symbol(args[3].node_type:terraType())
-    local mat       = symbol(args[2].node_type:terraType())
-    local dsttype   = L.key(dst_rel):terraType()
+    local srckey    = symbol(args[3].node_type:terratype())
+    local mat       = symbol(args[2].node_type:terratype())
+    local dsttype   = L.key(dst_rel):terratype()
     local results   = {}
 
     -- matrix multiply build
@@ -274,7 +274,7 @@ function B.UNSAFE_ROW.check(ast, ctxt)
 
     local addr_type = args[1].node_type
     local rel_type = args[2].node_type
-    if not rel_type:isInternal() or not L.is_relation(rel_type.value) then
+    if not rel_type:isinternal() or not L.is_relation(rel_type.value) then
         ctxt:error(ast, "UNSAFE_ROW expected a relation as the second arg")
         ret_type = L.error
     end
@@ -301,7 +301,7 @@ end
 function B.UNSAFE_ROW.codegen(ast, ctxt)
     local rel = ast.params[2].node_type.value
     local ndim = rel:nDims()
-    local addrtype = L.key(rel):terraType()
+    local addrtype = L.key(rel):terratype()
     if ndim == 1 then
         return `[addrtype]({ [ast.params[1]:codegen(ctxt)] })
     else
@@ -329,7 +329,7 @@ function B.assert.check(ast, ctxt)
 
     local test = args[1]
     local test_type = test.node_type
-    if test_type:isVector() then test_type = test_type:baseType() end
+    if test_type:isvector() then test_type = test_type:basetype() end
     if test_type ~= L.error and test_type ~= L.bool then
         ctxt:error(ast, "expected a boolean or vector of booleans as the test for assert statement")
     end
@@ -337,7 +337,7 @@ end
 
 local terra ebbAssert(test : bool, file : rawstring, line : int)
     if not test then
-        C.fprintf(C.get_stderr(), "%s:%d: assertion failed!\n", file, line)
+        C.fprintf(C.stderr, "%s:%d: assertion failed!\n", file, line)
         C.exit(1)
     end
 end
@@ -363,9 +363,9 @@ function B.assert.codegen(ast, ctxt)
     local tassert = ebbAssert
     if ctxt:onGPU() then tassert = gpuAssert end
 
-    if test.node_type:isVector() then
+    if test.node_type:isvector() then
         local N      = test.node_type.N
-        local vec    = symbol(test.node_type:terraType())
+        local vec    = symbol(test.node_type:terratype())
 
         local all    = `true
         for i = 0, N-1 do
@@ -389,7 +389,7 @@ function B.print.check(ast, ctxt)
     for i,output in ipairs(args) do
         local outtype = output.node_type
         if outtype ~= L.error and
-           not outtype:isValueType() and not outtype:isKey()
+           not outtype:isvalue() and not outtype:iskey()
         then
             ctxt:error(ast, "only numbers, bools, vectors, matrices and keys can be printed")
         end
@@ -410,19 +410,19 @@ local function printSingle (bt, exp, elemQuotes)
         table.insert(elemQuotes, `terralib.select([exp], "true", "false"))
         return "%s"
     else
-        error('Unrecognized type in print: ' .. bt:toString() .. ' ' .. tostring(bt:terraType()))
+        error('Unrecognized type in print: ' .. bt:toString() .. ' ' .. tostring(bt:terratype()))
     end
 end
 
 local function buildPrintSpec(ctxt, output, printSpec, elemQuotes, definitions)
     local lt   = output.node_type
-    local tt   = lt:terraType()
+    local tt   = lt:terratype()
     local code = output:codegen(ctxt)
 
-    if lt:isVector() then
+    if lt:isvector() then
         printSpec = printSpec .. "{"
         local sym = symbol()
-        local bt = lt:baseType()
+        local bt = lt:basetype()
         definitions = quote
             [definitions]
             var [sym] : tt = [code]
@@ -433,10 +433,10 @@ local function buildPrintSpec(ctxt, output, printSpec, elemQuotes, definitions)
         end
         printSpec = printSpec .. " }"
 
-    elseif lt:isMatrix() then
+    elseif lt:ismatrix() then
         printSpec = printSpec .. '{'
         local sym = symbol()
-        local bt = lt:baseType()
+        local bt = lt:basetype()
         definitions = quote
             [definitions]
             var [sym] : tt = [code]
@@ -450,12 +450,12 @@ local function buildPrintSpec(ctxt, output, printSpec, elemQuotes, definitions)
             printSpec = printSpec .. ' }'
         end
         printSpec = printSpec .. ' }'
-    elseif lt:isScalarKey() then
+    elseif lt:isscalarkey() then
         if lt.ndims == 1 then
             printSpec = printSpec ..
                         printSingle(L.uint64, `code.a0, elemQuotes)
         else
-            local sym = symbol(lt:terraType())
+            local sym = symbol(lt:terratype())
             definitions = quote
                 [definitions]
                 var [sym] = [code]
@@ -468,7 +468,7 @@ local function buildPrintSpec(ctxt, output, printSpec, elemQuotes, definitions)
             end
             printSpec = printSpec .. ' }'
         end
-    elseif lt:isValueType() then
+    elseif lt:isvalue() then
         printSpec = printSpec .. printSingle(lt, code, elemQuotes)
     else
         assert(false and "printed object should always be number, bool, or vector")
@@ -547,14 +547,14 @@ function B.dot.check(ast, ctxt)
 
     local numvec_err = 'arguments to dot product must be numeric vectors'
     local veclen_err = 'vectors in dot product must have equal dimensions'
-    if not lt1:isVector()  or not lt2:isVector() or
-       not lt1:isNumeric() or not lt2:isNumeric()
+    if not lt1:isvector()  or not lt2:isvector() or
+       not lt1:isnumeric() or not lt2:isnumeric()
     then
         ctxt:error(ast, numvec_err)
     elseif lt1.N ~= lt2.N then
         ctxt:error(ast, veclen_err)
     else
-        return T.type_join(lt1:baseType(), lt2:baseType())
+        return T.type_join(lt1:basetype(), lt2:basetype())
     end
 
     return L.error
@@ -564,8 +564,8 @@ function B.dot.codegen(ast, ctxt)
     local args = ast.params
 
     local N     = args[1].node_type.N
-    local lhtyp = args[1].node_type:terraType()
-    local rhtyp = args[2].node_type:terraType()
+    local lhtyp = args[1].node_type:terratype()
+    local rhtyp = args[2].node_type:terratype()
     local lhe   = args[1]:codegen(ctxt)
     local rhe   = args[2]:codegen(ctxt)
 
@@ -602,8 +602,8 @@ function B.cross.check(ast, ctxt)
 
     local numvec_err = 'arguments to cross product must be numeric vectors'
     local veclen_err = 'vectors in cross product must be 3 dimensional'
-    if not lt1:isVector()  or not lt2:isVector() or
-       not lt1:isNumeric() or not lt2:isNumeric()
+    if not lt1:isvector()  or not lt2:isvector() or
+       not lt1:isnumeric() or not lt2:isnumeric()
     then
         ctxt:error(ast, numvec_err)
     elseif lt1.N ~= 3 or lt2.N ~= 3 then
@@ -618,8 +618,8 @@ end
 function B.cross.codegen(ast, ctxt)
     local args = ast.params
 
-    local lhtyp = args[1].node_type:terraType()
-    local rhtyp = args[2].node_type:terraType()
+    local lhtyp = args[1].node_type:terratype()
+    local rhtyp = args[2].node_type:terratype()
     local lhe   = args[1]:codegen(ctxt)
     local rhe   = args[2]:codegen(ctxt)
 
@@ -629,7 +629,7 @@ function B.cross.codegen(ast, ctxt)
         var lhval : lhtyp = [lhe]
         var rhval : rhtyp = [rhe]
     in 
-        [typ:terraType()]({ arrayof( [typ:terraBaseType()],
+        [typ:terratype()]({ arrayof( [typ:terrabasetype()],
             lhval.d[1] * rhval.d[2] - lhval.d[2] * rhval.d[1],
             lhval.d[2] * rhval.d[0] - lhval.d[0] * rhval.d[2],
             lhval.d[0] * rhval.d[1] - lhval.d[1] * rhval.d[0]
@@ -647,14 +647,14 @@ function B.length.check(ast, ctxt)
         return L.error
     end
     local lt = args[1].node_type
-    if not lt:isVector() then
+    if not lt:isvector() then
         ctxt:error(args[1], "argument to length must be a vector")
         return L.error
     end
-    if not lt:baseType():isNumeric() then
+    if not lt:basetype():isnumeric() then
         ctxt:error(args[1], "length expects vectors of numeric type")
     end
-    if lt:baseType() == L.float then return L.float
+    if lt:basetype() == L.float then return L.float
                                 else return L.double end
 end
 
@@ -662,7 +662,7 @@ function B.length.codegen(ast, ctxt)
     local args = ast.params
 
     local N      = args[1].node_type.N
-    local typ    = args[1].node_type:terraType()
+    local typ    = args[1].node_type:terratype()
     local exp    = args[1]:codegen(ctxt)
 
     local vec    = symbol(typ)
@@ -696,10 +696,10 @@ function Builtin.newDoubleFunction(name)
             return L.error
         end
         local lt = args[1].node_type
-        if not lt:isNumeric() then
+        if not lt:isnumeric() then
             ctxt:error(args[1], "argument to "..name.." must be numeric")
         end
-        if lt:isVector() then
+        if lt:isvector() then
             ctxt:error(args[1], "argument to "..name.." must be a scalar")
             return L.error
         end
@@ -765,14 +765,14 @@ function L.pow.check (ast, ctxt)
     end
     for i = 1, #args do
         local lt = args[i].node_type
-        if not lt:isNumeric() then
+        if not lt:isnumeric() then
             ctxt:error(args[i], "argument "..i.." to pow must be numeric")
             return L.error
         end
     end
     for i = 1, #args do
         local lt = args[i].node_type
-        if not lt:isScalar() then
+        if not lt:isscalar() then
             ctxt:error(args[i], "argument "..i.." to pow must be a scalar")
             return L.error
         end
@@ -797,14 +797,14 @@ function L.fmod.check (ast, ctxt)
     end
     for i = 1, #args do
         local lt = args[i].node_type
-        if not lt:isNumeric() then
+        if not lt:isnumeric() then
             ctxt:error(args[i], "argument "..i.." to fmod must be numeric")
             return L.error
         end
     end
     for i = 1, #args do
         local lt = args[i].node_type
-        if not lt:isScalar() then
+        if not lt:isscalar() then
             ctxt:error(args[i], "argument "..i.." to fmod must be a scalar")
             return L.error
         end
@@ -831,7 +831,7 @@ function B.all.check(ast, ctxt)
         return L.error
     end
     local lt = args[1].node_type
-    if not lt:isVector() then
+    if not lt:isvector() then
         ctxt:error(args[1], "argument to all must be a vector")
         return L.error
     end
@@ -842,7 +842,7 @@ function B.all.codegen(ast, ctxt)
     local args = ast.params
 
     local N      = args[1].node_type.N
-    local typ    = args[1].node_type:terraType()
+    local typ    = args[1].node_type:terratype()
     local exp    = args[1]:codegen(ctxt)
 
     local val    = symbol(typ)
@@ -869,7 +869,7 @@ function B.any.check(ast, ctxt)
         return L.error
     end
     local lt = args[1].node_type
-    if not lt:isVector() then
+    if not lt:isvector() then
         ctxt:error(args[1], "argument to any must be a vector")
         return L.error
     end
@@ -880,7 +880,7 @@ function B.any.codegen(ast, ctxt)
     local args   = ast.params
 
     local N      = args[1].node_type.N
-    local typ    = args[1].node_type:terraType()
+    local typ    = args[1].node_type:terratype()
     local exp    = args[1]:codegen(ctxt)
 
     local val    = symbol(typ)
@@ -909,7 +909,7 @@ end
 
 local function GetTypedSymbol(arg)
     
-    return symbol(arg.node_type:terraType())
+    return symbol(arg.node_type:terratype())
 end
 
 local function TerraCheck(func)

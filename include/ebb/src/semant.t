@@ -123,7 +123,7 @@ function ast.WhileStatement:check(ctxt)
     local condtype = whilestmt.cond.node_type
     if condtype ~= L.error and condtype ~= L.bool then
         ctxt:error(self, "expected bool expression but found " ..
-                         condtype:toString())
+                         tostring(condtype) )
     end
 
     ctxt:enterblock()
@@ -156,7 +156,7 @@ function ast.RepeatStatement:check(ctxt)
 
     if condtype ~= L.error and condtype ~= L.bool then
         ctxt:error(self, "expected bool expression but found " ..
-                         condtype:toString())
+                         tostring(condtype) )
     end
     ctxt:leaveloop()
     ctxt:leaveblock()
@@ -223,7 +223,7 @@ function check_reduce(node, ctxt)
 
     if op == nil then return end
 
-    local reductions = reductions_by_type[ltype:baseType()]
+    local reductions = reductions_by_type[ltype:basetype()]
     if not reductions or not reductions[op] then
         ctxt:error(node, 'Reduce operator "'..op..'" for type '..
         '"'..tostring(ltype)..'" is not currently supported.')
@@ -256,7 +256,7 @@ function ast.Assignment:check(ctxt)
                                 "be assigned")
         return node
     -- How should we restrict assignments to keys?
-    elseif node.lvalue.node_type:isKey() and
+    elseif node.lvalue.node_type:iskey() and
            ( not ( node.lvalue:is(ast.FieldAccess) or
                    ( node.lvalue:is(ast.FieldAccessIndex) and
                      node.lvalue.base and
@@ -323,12 +323,12 @@ function ast.DeclStatement:check(ctxt)
         -- if the rhs is a centered key, try to propagate that information
         -- NOTE: this pseudo-constant propagation is sound b/c
         -- we don't allow re-assignment of key-type variables
-        if exptyp:isScalarKey() and decl.initializer.is_centered then
+        if exptyp:isscalarkey() and decl.initializer.is_centered then
             ctxt:recordcenter(decl.name)
         end
     end
 
-    if decl.node_type ~= L.error and not decl.node_type:isFieldType() then
+    if decl.node_type ~= L.error and not decl.node_type:isfieldvalue() then
         ctxt:error(self,"can only assign numbers, bools, "..
                         "or keys to local temporaries")
     end
@@ -341,11 +341,11 @@ end
 function ast.NumericFor:check(ctxt)
     local node = self
     local function check_num_type(tp)
-        if tp ~= L.error and not tp:isIntegral() then
+        if tp ~= L.error and not tp:isintegral() then
             ctxt:error(node,
                 "expected an integer-type expression to define the "..
                              "iterator bounds/step (found "..
-                             tp:toString()..")")
+                             tostring(tp)..")")
         end
     end
 
@@ -387,7 +387,7 @@ function ast.GenericFor:check(ctxt)
     local r = self:clone()
     r.name  = self.name
     r.set   = self.set:check(ctxt)
-    if not r.set.node_type:isQuery() then
+    if not r.set.node_type:isquery() then
         ctxt:error(self,"for statement expects a query but found type ",r.set.node_type)
         return r
     end
@@ -423,7 +423,7 @@ function ast.InsertStatement:check(ctxt)
     -- check relation
     insert.relation     = self.relation:check(ctxt)
     local reltyp        = insert.relation.node_type
-    local rel           = reltyp:isInternal() and reltyp.value
+    local rel           = reltyp:isinternal() and reltyp.value
     if not rel or not L.is_relation(rel) then
         ctxt:error(self,"Expected a relation to insert into")
         return insert
@@ -472,7 +472,7 @@ function ast.DeleteStatement:check(ctxt)
     delete.key   = self.key:check(ctxt)
     local keytyp = delete.key.node_type
 
-    if not keytyp:isScalarKey() or not delete.key.is_centered then
+    if not keytyp:isscalarkey() or not delete.key.is_centered then
         ctxt:error(self,"Only centered keys may be deleted")
         return delete
     end
@@ -486,7 +486,7 @@ function ast.CondBlock:check(ctxt)
     local condtype  = new_node.cond.node_type
     if condtype ~= L.error and condtype ~= L.bool then
         ctxt:error(self, "conditional expression type should be "..
-                         "boolean (found " .. condtype:toString() .. ")")
+                         "boolean (found " .. tostring(condtype) .. ")")
     end
 
     ctxt:enterblock()
@@ -515,10 +515,10 @@ local is_ord_op = {
 }
 
 local function matching_type_dims(t1, t2)
-  if t1:isScalar() and t2:isScalar() then return true end
-  if t1:isVector() and t2:isVector() then
+  if t1:isscalar() and t2:isscalar() then return true end
+  if t1:isvector() and t2:isvector() then
     return t1.N == t2.N
-  elseif t1:isMatrix() and t2:isMatrix() then
+  elseif t1:ismatrix() and t2:ismatrix() then
     return t1.Nrow == t2.Nrow and t1.Ncol == t2.Ncol
   end
   return false
@@ -535,12 +535,12 @@ end
 -- whether or not the coercion is type-safe
 local function coerce_base(btyp, node)
   local ntyp = node.node_type
-  if btyp == ntyp:baseType() then return node end
+  if btyp == ntyp:basetype() then return node end
 
   local cast = ast.Cast:DeriveFrom(node)
-  if ntyp:isScalar()   then  cast.node_type = btyp end
-  if ntyp:isVector()      then  cast.node_type = L.vector(btyp, ntyp.N) end
-  if ntyp:isMatrix() then
+  if ntyp:isscalar()   then  cast.node_type = btyp end
+  if ntyp:isvector()      then  cast.node_type = L.vector(btyp, ntyp.N) end
+  if ntyp:ismatrix() then
     cast.node_type = L.matrix(btyp, ntyp.Nrow, ntyp.Ncol)
   end
   cast.value = node
@@ -548,8 +548,8 @@ local function coerce_base(btyp, node)
 end
 -- Will coerce base type but not the underlying 
 local function try_bin_coerce(binop, errf)
-  local join = T.type_join(binop.lhs.node_type:baseType(),
-                           binop.rhs.node_type:baseType())
+  local join = T.type_join(binop.lhs.node_type:basetype(),
+                           binop.rhs.node_type:basetype())
   if join == L.error then return errf() end
 
   binop.lhs = coerce_base(join, binop.lhs)
@@ -565,8 +565,8 @@ local function try_bin_coerce_bool(binop, errf)
   return node
 end
 local function try_mat_prod_coerce(binop, errf, N, M)
-  local join = T.type_join(binop.lhs.node_type:baseType(),
-                           binop.rhs.node_type:baseType())
+  local join = T.type_join(binop.lhs.node_type:basetype(),
+                           binop.rhs.node_type:basetype())
   if join == L.error then return errf() end
   binop.lhs = coerce_base(join, binop.lhs)
   binop.rhs = coerce_base(join, binop.rhs)
@@ -589,16 +589,16 @@ function ast.BinaryOp:check(ctxt)
 
   -- error messages
   local function type_err()
-    return err(binop, ctxt, 'incompatible types: ' .. lt:toString() ..
-                            ' and ' .. rt:toString())
+    return err(binop, ctxt, 'incompatible types: ' .. tostring(lt) ..
+                            ' and ' .. tostring(rt))
   end
   local function op_err()
     return err(binop, ctxt, 'invalid types for operator \'' .. binop.op ..
-                '\': ' .. lt:toString() .. ' and ' .. rt:toString())
+                '\': ' .. tostring(lt) .. ' and ' .. tostring(rt) )
   end
 
   -- special case for key types
-  if lt:isKey() and rt:isKey() and (op == '==' or op == '~=') then
+  if lt:iskey() and rt:iskey() and (op == '==' or op == '~=') then
     if lt ~= rt then return type_err() end
     binop.node_type = L.bool
     return binop
@@ -610,7 +610,7 @@ function ast.BinaryOp:check(ctxt)
   end
 
   -- Now make sure we have value types
-  if not lt:isValueType() or not rt:isValueType() then
+  if not lt:isvalue() or not rt:isvalue() then
     return op_err()
   end
 
@@ -635,7 +635,7 @@ function ast.BinaryOp:check(ctxt)
       -- BASETYPE L/R: Logical
         -- OK, return Copy type
   if op == 'and' or op == 'or' then
-    if not lt:isLogical() or not rt:isLogical() then return op_err() end
+    if not lt:islogical() or not rt:islogical() then return op_err() end
     if not matching_type_dims(lt,rt) then return type_err() end
     binop.node_type = lt
     return binop
@@ -646,8 +646,8 @@ function ast.BinaryOp:check(ctxt)
       -- BASETYPE L/R: Numeric
         -- COERCE, return BOOL
   if is_ord_op[op] then
-    if not (lt:isNumeric() and lt:isPrimitive() and
-            rt:isNumeric() and rt:isPrimitive()) then return op_err() end
+    if not (lt:isnumeric() and lt:isprimitive() and
+            rt:isnumeric() and rt:isprimitive()) then return op_err() end
     return try_bin_coerce_bool(binop, type_err)
   end
 
@@ -656,8 +656,8 @@ function ast.BinaryOp:check(ctxt)
       -- BASETYPE L/R: Integral
         -- COERCE, return coercion
   if op == '%' then
-    if not (lt:isIntegral() and lt:isPrimitive() and
-            rt:isIntegral() and rt:isPrimitive()) then return op_err() end
+    if not (lt:isintegral() and lt:isprimitive() and
+            rt:isintegral() and rt:isprimitive()) then return op_err() end
     return try_bin_coerce(binop, type_err)
   end
 
@@ -675,7 +675,7 @@ function ast.BinaryOp:check(ctxt)
       -- BASETYPE: Numeric
         -- COERCE, return coerced type
   if op == '+' or op == '-' then
-    if not lt:isNumeric() or not rt:isNumeric() then return op_err() end
+    if not lt:isnumeric() or not rt:isnumeric() then return op_err() end
     if not matching_type_dims(lt,rt) then return type_err() end
     return try_bin_coerce(binop, type_err)
   end
@@ -690,17 +690,17 @@ function ast.BinaryOp:check(ctxt)
       -- DIM: Matrix(_,m) Matrix(m,_)
         -- COERCE, BUT return correctly dimensioned type
   if op == '*' then
-    if not lt:isNumeric() or not rt:isNumeric() then return op_err() end
-    if lt:isPrimitive() or rt:isPrimitive() then
+    if not lt:isnumeric() or not rt:isnumeric() then return op_err() end
+    if lt:isprimitive() or rt:isprimitive() then
       return try_bin_coerce(binop, type_err)
 
---    elseif lt:isVector() and rt:isMatrix() and lt.N == rt.Nrow then
+--    elseif lt:isvector() and rt:ismatrix() and lt.N == rt.Nrow then
 --      return try_mat_prod_coerce(binop, type_err, rt.Ncol, nil)
 --
---    elseif lt:isMatrix() and rt:isVector() and lt.Ncol == rt.N then
+--    elseif lt:ismatrix() and rt:isvector() and lt.Ncol == rt.N then
 --      return try_mat_prod_coerce(binop, type_err, lt.Nrow, nil)
 --
---    elseif lt:isMatrix() and rt:isMatrix() and lt.Ncol == rt.Nrow
+--    elseif lt:ismatrix() and rt:ismatrix() and lt.Ncol == rt.Nrow
 --    then
 --      return try_mat_prod_coerce(binop, type_err, lt.Nrow, rt.Ncol)
 
@@ -714,8 +714,8 @@ function ast.BinaryOp:check(ctxt)
       -- DIM: _ Scalar
         -- COERCE, return coerced type
   if op == '/' then
-    if not lt:isNumeric() or not rt:isNumeric() then return op_err() end
-    if not rt:isPrimitive()                     then return op_err() end
+    if not lt:isnumeric() or not rt:isnumeric() then return op_err() end
+    if not rt:isprimitive()                     then return op_err() end
 
     return try_bin_coerce(binop, type_err)
   end
@@ -732,13 +732,13 @@ function ast.UnaryOp:check(ctxt)
     unop.node_type = L.error -- default
 
     if unop.op == 'not' then
-        if exptype:isLogical() then
+        if exptype:islogical() then
             unop.node_type = exptype
         else
             ctxt:error(self, "unary \"not\" expects a boolean operand")
         end
     elseif unop.op == '-' then
-        if exptype:isNumeric() then
+        if exptype:isnumeric() then
             unop.node_type = exptype
         else
             ctxt:error(self, "unary minus expects a numeric operand")
@@ -836,24 +836,24 @@ function convert_to_matrix_literal(literal, ctxt)
     local vecs = literal.elems
     matlit.n   = #vecs
     matlit.m   = #(vecs[1].elems)
-    local max_type = vecs[1].node_type:baseType()
+    local max_type = vecs[1].node_type:basetype()
 
     -- take max type
     for i=2,matlit.n do
         local tp = vecs[i].node_type
-        if not tp:isVector() then return err(literal, ctxt, tp_error) end
+        if not tp:isvector() then return err(literal, ctxt, tp_error) end
         if tp.N ~= matlit.m  then return err(literal, ctxt, dim_error) end
 
-        if max_type:isCoercableTo(tp:baseType()) then
-            max_type = tp:baseType()
-        elseif not tp:baseType():isCoercableTo(max_type) then
+        if max_type:isCoercableTo(tp:basetype()) then
+            max_type = tp:basetype()
+        elseif not tp:basetype():isCoercableTo(max_type) then
             return err(literal, ctxt, mt_error)
         end
     end
 
     -- if the type was explicitly provided...
     if literal.node_type then
-        max_type = literal.node_type:baseType()
+        max_type = literal.node_type:basetype()
     end
 
     -- coerce and re-marshall the entries
@@ -884,19 +884,19 @@ function ast.VectorLiteral:check(ctxt)
 
     -- check if matrix applies...
     local max_type  = veclit.elems[1].node_type
-    if max_type:isVector() then
+    if max_type:isvector() then
         if self.node_type then veclit.node_type = self.node_type end
         -- SPECIAL CASE: a vector of vectors is a matrix and
         --               needs to be treated specially
         return convert_to_matrix_literal(veclit, ctxt)
-    elseif not max_type:isScalar() then
+    elseif not max_type:isscalar() then
         return err(self, ctxt, tp_error)
     end
 
     -- compute a max type
     for i = 2, #self.elems do
         local tp = veclit.elems[i].node_type
-        if not tp:isScalar() then
+        if not tp:isscalar() then
             return err(self, ctxt, tp_error)
         end
 
@@ -909,7 +909,7 @@ function ast.VectorLiteral:check(ctxt)
 
     -- If the type was explicitly provided...
     if self.node_type then
-        max_type = self.node_type:baseType()
+        max_type = self.node_type:basetype()
     end
 
     -- now coerce all of the entries into the max type
@@ -1048,7 +1048,7 @@ local function RunMacro(ctxt,src_node,the_macro,params)
     for i, p_ast in ipairs(params) do
         local ptype     = p_ast.node_type
         -- exception for strings
-        if ptype:isInternal() and type(ptype.value) == 'string' then
+        if ptype:isinternal() and type(ptype.value) == 'string' then
             param_syms[i]   = ptype.value
         else
             local decl       = ast.DeclStatement:DeriveFrom(src_node)
@@ -1118,7 +1118,7 @@ local function InlineUserFunc(ctxt, src_node, the_func, param_asts)
         -- exception for strings
         local ptype     = param_asts[i].node_type
         local argname   = f.params[i]
-        if ptype:isInternal() and type(ptype.value) == 'string' then
+        if ptype:isinternal() and type(ptype.value) == 'string' then
             string_literals[argname] = ptype
         else
             local decl = ast.DeclStatement:DeriveFrom(src_node)
@@ -1180,7 +1180,7 @@ function ast.TableLookup:check(ctxt)
         return err(self, ctxt)
     end
 
-    if ttype:isScalarKey() then
+    if ttype:isscalarkey() then
         local luaval = ttype.relation[member]
 
         -- create a field access normally
@@ -1208,7 +1208,7 @@ function ast.TableLookup:check(ctxt)
                                    " does not have field or macro-field "..
                                    "'"..member.."'")
         end
-    elseif ttype:isQuery() then
+    elseif ttype:isquery() then
         local rel = ttype.relation
         local ct  = tab:clone()
         for k,v in pairs(tab) do ct[k] = v end
@@ -1229,7 +1229,7 @@ function ast.TableLookup:check(ctxt)
     else
         return err(self, ctxt, "select operator not "..
                                "supported for "..
-                               ttype:toString())
+                               tostring(ttype))
     end
 
 end
@@ -1261,8 +1261,8 @@ local function SqIdxVecMat(self, base, ctxt)
         return sqidx
     end
 
-    if not ityp:isIntegral() then return err(idx, ctxt, 'expected an '..
-        'integer index, but found '..ityp:toString()) end
+    if not ityp:isintegral() then return err(idx, ctxt, 'expected an '..
+        'integer index, but found '..tostring(ityp)) end
 
     -- matrix case
     if self.index2 then
@@ -1275,19 +1275,19 @@ local function SqIdxVecMat(self, base, ctxt)
             return sqidx
         end
 
-        if not ityp:isIntegral() then return err(idx2, ctxt, 'expected an '..
-            'integer index, but found '..i2typ:toString()) end
-        if not btyp:isMatrix() then return err(base, ctxt, 'expected '..
-            'small matrix to index into, not '.. btyp:toString()) end
+        if not ityp:isintegral() then return err(idx2, ctxt, 'expected an '..
+            'integer index, but found '..tostring(i2typ)) end
+        if not btyp:ismatrix() then return err(base, ctxt, 'expected '..
+            'small matrix to index into, not '.. tostring(btyp)) end
     -- vector case
     else
-        if not btyp:isVector() then return err(base, ctxt, 'expected '..
-            'vector to index into, not '..btyp:toString()) end
+        if not btyp:isvector() then return err(base, ctxt, 'expected '..
+            'vector to index into, not '..tostring(btyp)) end
     end
 
     -- is an lvalue only when the base is
     if base.is_lvalue then sqidx.is_lvalue = true end
-    sqidx.node_type = btyp:baseType()
+    sqidx.node_type = btyp:basetype()
     return sqidx
 end
 
@@ -1298,7 +1298,7 @@ local function SqIdxKey(self, base, ctxt)
     -- make sure we have a string we're indexing with
     local stringobj = self.index:check(ctxt)
     local stype     = stringobj.node_type
-    if not stype:isInternal() or type(stype.value) ~= 'string' then
+    if not stype:isinternal() or type(stype.value) ~= 'string' then
         ctxt:error(self.index, 'Expecting string literal to index key')
         lookup.node_type = L.error
         return lookup
@@ -1316,12 +1316,12 @@ function ast.SquareIndex:check(ctxt)
     --  2. accessing fields from a key using a string literal
     
     local base  = self.base:check(ctxt)
-    if base.node_type:isMatrix() or base.node_type:isVector() then
+    if base.node_type:ismatrix() or base.node_type:isvector() then
         return SqIdxVecMat(self, base, ctxt)
-    elseif base.node_type:isScalarKey() then
+    elseif base.node_type:isscalarkey() then
         return SqIdxKey(self, base, ctxt)
     else
-        ctxt:error(base, 'type '..base.node_type:toString()..
+        ctxt:error(base, 'type '..tostring(base.node_type)..
                     ' does not support indexing with square brackets []')
         local errnode = ast.SquareIndex:DeriveFrom(self)
         errnode.node_type = L.error
@@ -1340,7 +1340,7 @@ function ast.Call:check(ctxt)
         call.params[i] = p:check(ctxt)
     end
 
-    local v = func.node_type:isInternal() and func.node_type.value
+    local v = func.node_type:isinternal() and func.node_type.value
     if v and L.is_builtin(v) then
         -- check the built-in.  If an ast is returned,
         -- then we assume the built-in is functioning as an internal macro
@@ -1357,10 +1357,10 @@ function ast.Call:check(ctxt)
         call = RunMacro(ctxt, self, v, call.params)
     elseif v and L.is_function(v) then
         call = InlineUserFunc(ctxt, self, v, call.params)
-    elseif v and T.istype(v) and v:isValueType() then
+    elseif v and T.istype(v) and v:isvalue() then
         local params = call.params
         if #params ~= 1 then
-            ctxt:error(self, "Cast to " .. v:toString() ..
+            ctxt:error(self, "Cast to " .. tostring(v) ..
                     " expects exactly 1 argument (instead got " .. #params ..
                     ")")
         else
@@ -1379,7 +1379,7 @@ function ast.Call:check(ctxt)
             end
         end
     -- __apply_macro  i.e.  c(1,0)  for offsetting in a grid
-    elseif func.node_type:isScalarKey() then
+    elseif func.node_type:isscalarkey() then
         local apply_macro = func.node_type.relation.__apply_macro
         if L.is_macro(apply_macro) then
             local params = {func}
@@ -1390,7 +1390,7 @@ function ast.Call:check(ctxt)
                              " does not have an __apply_macro"..
                              " macro defined; cannot call key.")
         end
-    elseif func.node_type:isError() then
+    elseif func.node_type:iserror() then
         -- fall through
         -- (do not print error messages for errors already reported)
     else
@@ -1443,7 +1443,7 @@ function ast.FieldAccess:check(ctxt)
 end
 
 function ast.LuaObject:check(ctxt)
-    assert(self.node_type and self.node_type:isInternal())
+    assert(self.node_type and self.node_type:isinternal())
     return self
 end
 function ast.Where:check(ctxt)
@@ -1451,7 +1451,7 @@ function ast.Where:check(ctxt)
     --      so its fields are already type-checked
     local fieldobj = self.field.node_type
     local keytype  = self.key.node_type
-    if not fieldobj:isInternal() or not L.is_field(fieldobj.value) then
+    if not fieldobj:isinternal() or not L.is_field(fieldobj.value) then
         ctxt:error(self,"Expected a field as the first argument but found "
                    ,fieldobj)
     end
@@ -1483,7 +1483,7 @@ function ast.UserFunction:check(ctxt)
     local ufunc                 = self:clone()
     local keyparam              = self.params[1]
     local keytype               = self.ptypes[1]
-    if not keytype:isScalarKey() then
+    if not keytype:isscalarkey() then
         ctxt:error(self, 'First argument to function must have key type')
         return self
     end
@@ -1494,7 +1494,7 @@ function ast.UserFunction:check(ctxt)
     for i=2,#self.params do
         local pname = self.params[i]
         local ptype = self.ptypes[i]
-        if not ptype:isInternal() or type(ptype.value) ~= 'string' then
+        if not ptype:isinternal() or type(ptype.value) ~= 'string' then
             ctxt:error(self, 'Expected secondary arguments to be strings')
             ptype = L.error
         end

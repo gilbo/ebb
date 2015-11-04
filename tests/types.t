@@ -13,10 +13,10 @@ for ttype, ltype in pairs(ptypes) do
 	--------------------------------
 	--[[ Test primitives types: ]]--
 	--------------------------------
-	assert(ltype:isPrimitive())
+	assert(ltype:isprimitive())
 
 	-- verify runtime type enum conversions
-	assert(ltype:terraType() == ttype)
+	assert(ltype:terratype() == ttype)
 
 	assert(T.terraToEbbType(ttype) == ltype)
 	--------------------------------
@@ -32,11 +32,11 @@ for ttype, ltype in pairs(ptypes) do
 		assert(accum[vtype] == nil)
 		accum[vtype] = true
 
-		assert(vtype:isVector())
+		assert(vtype:isvector())
 
-		assert(vtype:baseType()      == ltype)
-		assert(vtype:terraBaseType() == ttype)
-		assert(vtype:terraType()     == vector(ttype,i))
+		assert(vtype:basetype()      == ltype)
+		assert(vtype:terrabasetype() == ttype)
+		assert(vtype:terratype()     == vector(ttype,i))
 		assert(T.terraToEbbType(vector(ttype, i)) == vtype)
 
 		-- cannot call type constructor with a terra type

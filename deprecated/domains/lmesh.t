@@ -39,7 +39,7 @@ local mesh_rels_topo = {
 local function initFieldViaCopy(field, src)
     assert(field.data == nil)
 
-    local ftype = field.type:terraType()
+    local ftype = field.type:terratype()
 
     field:LoadFunction(function(i) return src[i] end)
 end
@@ -57,7 +57,7 @@ local function row32_copy_callback(srcmem, stride, offset)
     end
 end
 local function initRowFromMemory32(field, srcmem, stride, offset)
-    if not field.type:isKey() then
+    if not field.type:iskey() then
         error('can only call initRowFromMemory32 on key fields', 2)
     end
 
@@ -106,7 +106,7 @@ local function initMeshRelations(mesh)
         local n_rows       = tonumber(mesh["n"..name])
         relations[name]    = L.NewRelation { size = n_rows, name = name }
         --relations[name]:NewField('value', REF_TYPE)
-        --local terra init (mem: &REF_TYPE:terraType(), i : int)
+        --local terra init (mem: &REF_TYPE:terratype(), i : int)
         --    mem[0] = i
         --end
         --t.value:LoadFromCallback(init)
@@ -207,8 +207,8 @@ function LMesh.Load(filename)
         if nelems > 1 then
             typ = L.vector(typ,nelems)
         end
-        local elemtypt = elemtyp:terraType()
-        local typt = typ:terraType()
+        local elemtypt = elemtyp:terratype()
+        local typt = typ:terratype()
         local tdata = terralib.cast(&elemtypt,f.data)
         name = sanitizeName(name)
         relation:NewField(name,typ)

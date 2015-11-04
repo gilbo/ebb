@@ -4,7 +4,7 @@ local ioOff = require 'ebb.domains.ioOff'
 local mesh  = ioOff.LoadTrimesh('tests/octa.off')
 
 mesh.vertices:NewField('count', L.float)
-mesh.vertices.count:LoadConstant(0)
+mesh.vertices.count:Load(0)
 
 
 local sum_count = ebb (e : mesh.edges)

@@ -6,7 +6,8 @@
 local LW = {}
 package.loaded["ebb.src.legionwrap"] = LW
 
-local C = require "ebb.src.c"
+local C     = require "ebb.src.c"
+local DLD   = require "ebb.src.dld"
 
 -- have this module expose the full C-API.  Then, we'll augment it below.
 local APIblob = terralib.includecstring([[
@@ -385,7 +386,7 @@ function LW.AssignFutureBlobFromFuture(global, legion_future)
 end
 
 function LW.AssignFutureBlobFromValue(global, cdata)
-  local ttype = global:Type():terraType()
+  local ttype = global:Type():terratype()
   local tsize = terralib.sizeof(ttype)
   local data_blob = terralib.cast(&ttype, C.malloc(tsize))
   data_blob[0] = cdata
@@ -405,7 +406,7 @@ end
 function LW.AssignFutureBlobFromCollection(globals)
   local blob_size = 0
   for _, g in pairs(globals) do
-    blob_size = blob_size + terralib.sizeof(g:Type():terraType())
+    blob_size = blob_size + terralib.sizeof(g:Type():terratype())
   end
   local data_blob = terralib.cast(&uint8, C.malloc(blob_size))
   local f = { ref_count = 0 }
@@ -413,7 +414,7 @@ function LW.AssignFutureBlobFromCollection(globals)
   local offset = 0
   for _, g in pairs(globals) do
     local old_future = g:Data()
-    local tsize = terralib.sizeof(g:Type():terraType())
+    local tsize = terralib.sizeof(g:Type():terratype())
     C.memcpy(data_blob[offset], old_future:GetResult(g), tsize)
     local old_future = g:Data()
     if old_future then
@@ -429,7 +430,7 @@ function LW.AssignFutureBlobFromCollection(globals)
 end
 
 function FutureBlob:GetResult(global)
-  local ttype = global:Type():terraType()
+  local ttype = global:Type():terratype()
   local leg_result = LW.legion_future_get_result(self.legion_future)
   local offset = global:Offset()
   local d = terralib.cast(&uint8, leg_result.value)
@@ -640,7 +641,7 @@ function LW.NewInlinePhysicalRegion(params)
       local s = {}
       strides[i] = s
       for d = 1, ndims do
-        s[d] = stride[d-1].offset
+        s[d] = tonumber(stride[d-1].offset)
       end
       offsets[i] = 0
       LW.legion_accessor_generic_destroy(accs[i])
@@ -654,7 +655,7 @@ function LW.NewInlinePhysicalRegion(params)
       stride[0] = 0
       LW.legion_accessor_generic_get_soa_parameters(accs[i], base, stride)
       ptrs[i]    = terralib.cast(&uint8, base[0])
-      strides[i] = { stride[0] }
+      strides[i] = { tonumber(stride[0]) }
       offsets[i] = 0
       LW.legion_accessor_generic_destroy(accs[i])
     end
@@ -667,7 +668,8 @@ function LW.NewInlinePhysicalRegion(params)
     dims              = dims,
     data_ptrs         = ptrs,
     strides           = strides,
-    offsets           = offsets
+    offsets           = offsets,
+    fields            = params.fields,
   }, LW.InlinePhysicalRegion)
 
   return iprs
@@ -687,6 +689,44 @@ end
 
 function InlinePhysicalRegion:GetOffsets()
   return self.offsets
+end
+
+function InlinePhysicalRegion:GetLuaDLDs()
+  local dld_list = {}
+  for i,f in ipairs(self.fields) do
+    local typ       = f:Type()
+    local typdim    = { typ.N or typ.Nrow or 1, typ.Ncol or 1 }
+    local dims      = { self.dims[1] or 1, self.dims[2] or 1,
+                                           self.dims[3] or 1 }
+    local typstride = sizeof(typ:terrabasetype())
+    local strides   = {}
+    local elemsize  = typstride*typdim[1]*typdim[2]
+    for k,s_bytes in ipairs(self.strides[i]) do
+      assert(s_bytes % elemsize == 0, 'unexpected type stride')
+      strides[k] = s_bytes / elemsize
+    end
+    if not strides[2] then strides[2] = strides[1] end
+    if not strides[3] then strides[3] = strides[2] end
+    assert(self.offsets[i] == 0, 'expecting 0 offsets from legion')
+    dld_list[i] = DLD.NewDLD {
+      base_type       = typ:basetype():DLDEnum(),
+      location        = DLD.CPU,
+      type_stride     = sizeof(typ:terratype()),
+      type_dims       = typdim,
+
+      address         = self.data_ptrs[i],
+      dim_size        = dims,
+      dim_stride      = strides,
+    }
+  end
+  return dld_list
+end
+
+function InlinePhysicalRegion:GetTerraDLDs()
+  local dld_list  = self:GetLuaDLDs()
+  local dld_array = C.safemalloc(DLD.C_DLD, #dld_list)
+  for i,dld in ipairs(dld_list) do dld_array[i-1] = dld:toTerra() end
+  return dld_array
 end
 
 function InlinePhysicalRegion:Destroy()

@@ -198,7 +198,7 @@ function fieldToString(x)
 end
 
 function Tetmesh:dumpTetFieldToFile(field, file_name)
-  local field_list = self.tetrahedra[field]:DumpToList()
+  local field_list = self.tetrahedra[field]:Dump({})
   local field_file = PN.scriptdir() .. file_name
   local out = io.open(tostring(field_file), 'w')
   for i = 1, #field_list do
@@ -208,9 +208,9 @@ function Tetmesh:dumpTetFieldToFile(field, file_name)
 end
 
 function Tetmesh:dumpEdgeFieldToFile(field, file_name)
-  local field_list = self.edges[field]:DumpToList()
-  local tail_list = self.edges.tail:DumpToList()
-  local head_list = self.edges.head:DumpToList()
+  local field_list = self.edges[field]:Dump({})
+  local tail_list = self.edges.tail:Dump({})
+  local head_list = self.edges.head:Dump({})
   local field_file = PN.scriptdir() .. file_name
   local out = io.open(tostring(field_file), 'w')
   for i = 1, #field_list do
@@ -222,7 +222,7 @@ function Tetmesh:dumpEdgeFieldToFile(field, file_name)
 end
 
 function Tetmesh:dumpVertFieldToFile(field, file_name)
-  local field_list = self.vertices[field]:DumpToList()
+  local field_list = self.vertices[field]:Dump({})
   local field_file = PN.scriptdir() .. file_name
   local out = io.open(tostring(field_file), 'w')
   for i = 1, #field_list do
@@ -232,8 +232,8 @@ function Tetmesh:dumpVertFieldToFile(field, file_name)
 end
 
 function Tetmesh:dumpDeformationToFile(file_name)
-  local pos = self.vertices.pos:DumpToList()
-  local d = self.vertices.q:DumpToList()
+  local pos = self.vertices.pos:Dump({})
+  local d = self.vertices.q:Dump({})
   local field_file = PN.scriptdir() .. file_name
   local out = io.open(tostring(field_file), 'w')
   for i = 1, #pos do

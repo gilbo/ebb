@@ -56,7 +56,7 @@ function Context:dims()
 end
 
 function Context:argKeyTerraType()
-  return L.key(self.ufv._relation):terraType()
+  return L.key(self.ufv._relation):terratype()
 end
 
 -- This one is the odd one out, generates some code
@@ -131,7 +131,7 @@ function Context:FieldElemPtr(field, key)
     local ptr       = farg
     return `(ptr + key:terraLinearize())
   elseif use_legion then
-    local ftyp      = field:Type():terraType()
+    local ftyp      = field:Type():terratype()
     local ptr       = `farg.ptr
     return `[&ftyp](ptr + key:legionTerraLinearize(farg.strides))
   end
@@ -521,7 +521,7 @@ function Codegen.codegen (ufunc_ast, ufunc_version)
     local generate_output_future = quote end
     if ctxt:hasGlobalReduce() then
       local globl             = next(ctxt.ufv._global_reductions)
-      local gtyp              = globl.type:terraType()
+      local gtyp              = globl.type:terratype()
       local gptr              = ctxt.ufv:_getLegionGlobalTempSymbol(globl)
 
       if run_config.use_partitioning then
@@ -718,28 +718,28 @@ end
 
 function ast.Cast:codegen(ctxt)
   local typ = self.node_type
-  local bt  = typ:terraBaseType()
+  local bt  = typ:terrabasetype()
   local valuecode = self.value:codegen(ctxt)
 
-  if typ:isPrimitive() then
-    return `[typ:terraType()](valuecode)
+  if typ:isprimitive() then
+    return `[typ:terratype()](valuecode)
 
-  elseif typ:isVector() then
-    local vec = symbol(self.value.node_type:terraType())
+  elseif typ:isvector() then
+    local vec = symbol(self.value.node_type:terratype())
     return quote var [vec] = valuecode in
       [ Support.vec_mapgen(typ, function(i)
           return `[bt](vec.d[i])
       end) ] end
 
-  elseif typ:isMatrix() then
-    local mat = symbol(self.value.node_type:terraType())
+  elseif typ:ismatrix() then
+    local mat = symbol(self.value.node_type:terratype())
     return quote var [mat] = valuecode in
       [ Support.mat_mapgen(typ, function(i,j)
           return `[bt](mat.d[i][j])
       end) ] end
 
   else
-    error("Internal Error: Type unrecognized "..typ:toString())
+    error("Internal Error: Type unrecognized "..tostring(typ))
   end
 end
 
@@ -751,7 +751,7 @@ end
 
 function ast.DeclStatement:codegen (ctxt)
   local varname = self.name
-  local tp      = self.node_type:terraType()
+  local tp      = self.node_type:terratype()
   local varsym  = symbol(tp)
 
   if self.initializer then
@@ -835,7 +835,7 @@ function ast.GenericFor:codegen (ctxt)
     local dstrel    = self.set.node_type.relation
     -- the key being used to drive the where query should
     -- come from a grouped relation, which is necessarily 1d
-    local projected = `[L.key(dstrel):terraType()]( { iter } )
+    local projected = `[L.key(dstrel):terratype()]( { iter } )
 
     for i,p in ipairs(self.set.node_type.projections) do
         local field = dstrel[p]
@@ -844,7 +844,7 @@ function ast.GenericFor:codegen (ctxt)
         dstrel      = field.type.relation
         assert(dstrel)
     end
-    local sym = symbol(L.key(dstrel):terraType())
+    local sym = symbol(L.key(dstrel):terratype())
     ctxt:enterblock()
         ctxt:localenv()[self.name] = sym
         local body = self.body:codegen(ctxt)
@@ -897,7 +897,7 @@ end
 function ast.Where:codegen(ctxt)
   --if use_legion then error("LEGION UNSUPPORTED TODO") end
   local key       = self.key:codegen(ctxt)
-  local sType     = self.node_type:terraType()
+  local sType     = self.node_type:terratype()
 
   local dstrel    = self.relation
   local off_field = dstrel:_INTERNAL_GroupedOffset()
@@ -1017,7 +1017,7 @@ function ast.InsertStatement:codegen (ctxt)
   local insert_rel = self.relation.node_type.value -- to insert into
 
   -- index to write to
-  local i_type = L.key(insert_rel):terraType()
+  local i_type = L.key(insert_rel):terratype()
   local i_addr = symbol(i_type)
   local write_code = quote
     var [i_addr] = [i_type]( { [ctxt:reserveInsertIndex()] } )

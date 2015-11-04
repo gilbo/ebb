@@ -6,7 +6,7 @@ local M = ioOff.LoadTrimesh('tests/octa.off')
 local V = M.vertices
 local P = V.pos
 
-local loc_data = P:DumpToList()
+local loc_data = P:Dump({})
 
 function shift(x,y,z)
   local ebb shift_func (v : M.vertices)
@@ -14,7 +14,7 @@ function shift(x,y,z)
   end
   M.vertices:foreach(shift_func)
 
-  local Pdata = P:DumpToList()
+  local Pdata = P:Dump({})
   for i = 1, V:Size() do
     local v = Pdata[i]
     local d = loc_data[i]

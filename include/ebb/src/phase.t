@@ -43,12 +43,12 @@ function PhaseType:isCentered()
   return self.centered
 end
 
-function PhaseType:isError()
+function PhaseType:iserror()
   return not self.centered and self:requiresExclusive()
 end
 
 function PhaseType:__tostring()
-  if self:isError() then return 'ERROR' end
+  if self:iserror() then return 'ERROR' end
   if self:requiresExclusive() then return 'EXCLUSIVE' end
 
   local centered = ''
@@ -116,8 +116,8 @@ local function log_helper(ctxt, is_field, f_or_g, phase_type, node)
   local lookup = cache[f_or_g]
 
   -- if this access was an error and is the first error
-  if phase_type:isError() then
-    if not (lookup and lookup.phase_type:isError()) then
+  if phase_type:iserror() then
+    if not (lookup and lookup.phase_type:iserror()) then
       ctxt:error(node, 'Non-Exclusive WRITE')
     end
   end
@@ -146,8 +146,8 @@ local function log_helper(ctxt, is_field, f_or_g, phase_type, node)
   else
     local join_type = lookup.phase_type:join(phase_type)
     -- if first error, then...
-    if join_type:isError() and
-       not (phase_type:isError() or lookup.phase_type:isError())
+    if join_type:iserror() and
+       not (phase_type:iserror() or lookup.phase_type:iserror())
     then
       local lastfile = lookup.last_access.filename
       local lastline = lookup.last_access.linenumber
@@ -431,7 +431,7 @@ end
 
 function ast.GenericFor:phasePass(ctxt)
   self.set:phasePass(ctxt)
-  -- assert(self.set.node_type:isQuery())
+  -- assert(self.set.node_type:isquery())
 
   -- deal with any field accesses implied by projection
   local rel = self.set.node_type.relation

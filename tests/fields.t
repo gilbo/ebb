@@ -1,6 +1,8 @@
---[[ Note: this test file is not at all comprehensive for making sure that field reads/writes
-   translate correctly to terra code.  Right now, all it does it make sure that the codegen
-   produces something that can compile.
+--[[
+  Note: this test file is not at all comprehensive for making sure
+        that field reads/writes translate correctly to terra code.
+        Right now, all it does it make sure that the codegen
+        produces something that can compile.
 ]]
 
 import "ebb"
@@ -36,11 +38,11 @@ T:NewField('field3', L.float)
 T:NewField('field4', L.bool)
 T:NewField('field5', L.vector(L.float, 4))
 
-T.field1:LoadConstant(1)
-T.field2:LoadConstant(2.5)
-T.field3:LoadConstant(6)
-T.field4:LoadConstant(false)
-T.field5:LoadConstant({ 0, 0, 0, 0 })
+T.field1:Load(1)
+T.field2:Load(2.5)
+T.field3:Load(6)
+T.field4:Load(false)
+T.field5:Load({ 0, 0, 0, 0 })
 
 
 -----------------

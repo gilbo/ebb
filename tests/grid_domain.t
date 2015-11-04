@@ -34,6 +34,13 @@ test.eq(g2d:yBoundaryDepth(), 1)
 test.eq(g2d:xUsePeriodic(), false)
 test.eq(g2d:yUsePeriodic(), false)
 
+test.aeq(g2d:Size(),          {3,2})
+test.aeq(g2d:Origin(),        {1,4})
+test.aeq(g2d:Width(),         {0.9,1.0})
+test.aeq(g2d:CellWidth(),     {0.3,0.5})
+test.aeq(g2d:BoundaryDepth(), {1,1})
+test.aeq(g2d:UsePeriodic(),   {false,false})
+
 
 test.eq(g3d:xSize(), 3)
 test.eq(g3d:ySize(), 2)
@@ -59,21 +66,90 @@ test.eq(g3d:xUsePeriodic(), false)
 test.eq(g3d:yUsePeriodic(), false)
 test.eq(g3d:zUsePeriodic(), false)
 
+test.aeq(g3d:Size(),          {3,2,2})
+test.aeq(g3d:Origin(),        {1,4,7})
+test.aeq(g3d:Width(),         {0.9,1.0,0.8})
+test.aeq(g3d:CellWidth(),     {0.3,0.5,0.4})
+test.aeq(g3d:BoundaryDepth(), {1,1,1})
+test.aeq(g3d:UsePeriodic(),   {false,false,false})
+
+
+--------------------------------------------------------------------
+
+-- bad grid creation
+
+test.fail_function(function()
+  Grid.NewGrid2d {
+    size = {},
+    origin = {},
+    width = {},
+  }
+end, 'NewGrid2d should be called with named parameters')
+
+test.fail_function(function()
+  Grid.NewGrid3d {
+    size = {},
+    origin = {},
+    width = {},
+  }
+end, 'NewGrid3d should be called with named parameters')
+
+test.fail_function(function()
+  Grid.NewGrid2d {
+    origin = {1,2},
+    width = {5,5},
+  }
+end, 'NewGrid2d should be called with named parameters')
+
+test.fail_function(function()
+  Grid.NewGrid3d {
+    origin = {1,2,3},
+    width = {5,5,5},
+  }
+end, 'NewGrid3d should be called with named parameters')
+
+test.fail_function(function()
+  Grid.NewGrid2d {
+    size  = {1,2},
+    width = {5,5},
+  }
+end, 'NewGrid2d should be called with named parameters')
+
+test.fail_function(function()
+  Grid.NewGrid3d {
+    size  = {1,2,3},
+    width = {5,5,5},
+  }
+end, 'NewGrid3d should be called with named parameters')
+
+test.fail_function(function()
+  Grid.NewGrid2d {
+    size   = {1,2},
+    origin = {5,5},
+  }
+end, 'NewGrid2d should be called with named parameters')
+
+
+test.fail_function(function()
+  Grid.NewGrid3d {
+    size   = {1,2,3},
+    origin = {5,5,5},
+  }
+end, 'NewGrid3d should be called with named parameters')
+
+
+
 
 --------------------------------------------------------------------
 
 --[[
+g2d.cells:NewField('idsq', L.vec2d):Load({{ {0,0}, {0,1} },
+                                          { {1,0}, {1,1} },
+                                          { {4,0}, {4,1} }})
+--]]
 
-test.eq(rel1:isGrid(), false)
-test.eq(rel2:isGrid(), true)
-test.eq(rel3:isGrid(), true)
-test.eq(rel1:nDims(), 1)
-test.eq(rel2:nDims(), 2)
-test.eq(rel3:nDims(), 3)
-test.aeq(rel1:Dims(), {5})
-test.aeq(rel2:Dims(), {2,3})
-test.aeq(rel3:Dims(), {3,2,2})
 
+--[[
 
 -- Check bad arguments to create a relation with
 test.fail_function(function()
@@ -99,8 +175,8 @@ local tbl3 = {{{1,2,3},{4,5,6}},{{7,8,9},{10,11,12}}}
 rel2:NewField('f2',L.double):Load(tbl2)
 rel3:NewField('f3',L.double):Load(tbl3)
 -- test that dumping preserves list/structure
-test.rec_aeq(rel2.f2:DumpToList(),tbl2)
-test.rec_aeq(rel3.f3:DumpToList(),tbl3)
+test.rec_aeq(rel2.f2:Dump({}),tbl2)
+test.rec_aeq(rel3.f3:Dump({}),tbl3)
 
 -- test indexing consistency
 rel3:NewField('f3func',L.double):Load(function(x,y,z)

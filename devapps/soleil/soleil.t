@@ -25,6 +25,9 @@ double rand_unity() {
 C.srand(C.time(nil));
 local vdb = require 'ebb.lib.vdb'
 
+-- Load the CSV IO library
+local CSV = require 'ebb.io.csv'
+
 -- Load the pathname library, which just provides a couple of 
 -- convenience functions for manipulating filesystem paths.
 local PN = require 'ebb.lib.pathname'
@@ -700,12 +703,14 @@ grid.cells:NewField('rho', L.double)
 grid.cells:NewField('pressure', L.double)
 grid.cells:NewField('velocity', L.vec3d)
 if flow_options.initCase == Flow.Restart then
-  grid.cells.rho:LoadFromCSV(IO.outputFileNamePrefix .. 'restart_rho_' ..
-                             config.restartIter .. '.csv')
-  grid.cells.pressure:LoadFromCSV(IO.outputFileNamePrefix .. 'restart_pressure_'
-                                  .. config.restartIter .. '.csv')
-  grid.cells.velocity:LoadFromCSV(IO.outputFileNamePrefix .. 'restart_velocity_'
-                                  .. config.restartIter .. '.csv')
+  grid.cells.rho:Load(CSV.Load, IO.outputFileNamePrefix .. 'restart_rho_' ..
+                                config.restartIter .. '.csv')
+  grid.cells.pressure:Load(CSV.Load, IO.outputFileNamePrefix ..
+                                     'restart_pressure_' ..
+                                     config.restartIter .. '.csv')
+  grid.cells.velocity:Load(CSV.Load, IO.outputFileNamePrefix ..
+                                     'restart_velocity_'
+                                     .. config.restartIter .. '.csv')
 else
   grid.cells.rho        :Load(0)
   grid.cells.pressure   :Load(0)
@@ -779,18 +784,18 @@ particles:NewField('diameter', L.double)
 --   - a particle already collected has a state = 2
 particles:NewField('state', L.int)
 if particles_options.initParticles == Particles.Restart then
-  particles.position:LoadFromCSV(IO.outputFileNamePrefix ..
-                                 'restart_particle_position_' ..
-                                 config.restartParticleIter .. '.csv')
-  particles.velocity:LoadFromCSV(IO.outputFileNamePrefix ..
-                                 'restart_particle_velocity_' ..
-                                 config.restartParticleIter .. '.csv')
-  particles.temperature:LoadFromCSV(IO.outputFileNamePrefix ..
-                                    'restart_particle_temperature_' ..
+  particles.position:Load(CSV.Load, IO.outputFileNamePrefix ..
+                                    'restart_particle_position_' ..
                                     config.restartParticleIter .. '.csv')
-  particles.diameter:LoadFromCSV(IO.outputFileNamePrefix ..
-                                 'restart_particle_diameter_' ..
-                                 config.restartParticleIter .. '.csv')
+  particles.velocity:Load(CSV.Load, IO.outputFileNamePrefix ..
+                                    'restart_particle_velocity_' ..
+                                    config.restartParticleIter .. '.csv')
+  particles.temperature:Load(CSV.Load, IO.outputFileNamePrefix ..
+                                       'restart_particle_temperature_' ..
+                                       config.restartParticleIter .. '.csv')
+  particles.diameter:Load(CSV.Load, IO.outputFileNamePrefix ..
+                                    'restart_particle_diameter_' ..
+                                    config.restartParticleIter .. '.csv')
   particles.state         :Load(1)
 else
 particles.position      :Load({0, 0, 0})
@@ -3129,49 +3134,51 @@ function IO.WriteFlowRestart(timeStep)
   
   -- Check if it is time to output a restart file
   if (timeStep % TimeIntegrator.restartEveryTimeSteps == 0 and
-      IO.wrtRestart == ON) then
+      IO.wrtRestart == ON)
+  then
       
-      -- Prepare the restart info file (.dat)
-      
-      local outputFileName = IO.outputFileNamePrefix .. "restart_" ..
-      tostring(timeStep) .. ".dat"
-      
-      -- Open file
-      
-      local outputFile = io.output(outputFileName)
-      
-      -- We only need to write a few things to this info file (not fields)
-      
-      local nCells = grid.cells.velocity:Size()
-      local nX = grid_options.xnum + 2*xBnum
-      local nY = grid_options.ynum + 2*yBnum
-      local nZ = grid_options.znum + 2*zBnum
-      
-      io.write('Soleil Flow Restart\n')
-      local s = '' .. tostring(nX)
-      s = s .. ' ' .. tostring(nY)
-      s = s .. ' ' .. tostring(nZ)
-      s = s .. ' ' .. tostring(timeStep)
-      s = s .. ' ' .. tostring(TimeIntegrator.simTime:get()) .. '\n'
-      io.write(s)
-                           
-     -- Close the restart file
-     
-     io.close()
-     
-     -- Write the restart CSV files for density, pressure, and velocity
-     
-     local fileName = IO.outputFileNamePrefix .. "restart_rho_" ..
-     tostring(timeStep) .. ".csv"
-     grid.cells.rho:SaveToCSV(fileName,{precision=16})
-     
-     fileName = IO.outputFileNamePrefix .. "restart_pressure_" ..
-     tostring(timeStep) .. ".csv"
-     grid.cells.pressure:SaveToCSV(fileName,{precision=16})
-     
-     fileName = IO.outputFileNamePrefix .. "restart_velocity_" ..
-     tostring(timeStep) .. ".csv"
-     grid.cells.velocity:SaveToCSV(fileName,{precision=16})
+    -- Prepare the restart info file (.dat)
+    
+    local outputFileName = IO.outputFileNamePrefix .. "restart_" ..
+    tostring(timeStep) .. ".dat"
+    
+    -- Open file
+    
+    local outputFile = io.output(outputFileName)
+    
+    -- We only need to write a few things to this info file (not fields)
+    
+    local nCells = grid.cells.velocity:Size()
+    local nX = grid_options.xnum + 2*xBnum
+    local nY = grid_options.ynum + 2*yBnum
+    local nZ = grid_options.znum + 2*zBnum
+    
+    io.write('Soleil Flow Restart\n')
+    local s = '' .. tostring(nX)
+    s = s .. ' ' .. tostring(nY)
+    s = s .. ' ' .. tostring(nZ)
+    s = s .. ' ' .. tostring(timeStep)
+    s = s .. ' ' .. tostring(TimeIntegrator.simTime:get()) .. '\n'
+    io.write(s)
+                         
+    -- Close the restart file
+
+    io.close()
+
+    -- Write the restart CSV files for density, pressure, and velocity
+
+    local fileName = IO.outputFileNamePrefix .. "restart_rho_" ..
+    tostring(timeStep) .. ".csv"
+    grid.cells.rho:Dump(CSV.Dump, fileName, {precision=16})
+    grid.cells.rho:Dump(CSV.Dump, fileName, {precision=16})
+
+    fileName = IO.outputFileNamePrefix .. "restart_pressure_" ..
+    tostring(timeStep) .. ".csv"
+    grid.cells.pressure:Dump(CSV.Dump, fileName, {precision=16})
+
+    fileName = IO.outputFileNamePrefix .. "restart_velocity_" ..
+    tostring(timeStep) .. ".csv"
+    grid.cells.velocity:Dump(CSV.Dump, fileName, {precision=16})
      
   end
   
@@ -3181,38 +3188,39 @@ end
 -- it to write our Tecplot output (ASCII) for the flow phase.
 -- Callback can dump fields to stdout/ err/ any kind of file.
 -- Callback has read only access to requested fields.
-local terra FlowTecplotTerra(dldarray : &dld.ctype, filename : &int8,
-                             timeStep : uint8, timePhys : double,
-                             nX : uint8, nY : uint8, nZ : uint8,
-                             originX:double, originY:double, originZ:double,
-                             dX : double, dY : double, dZ : double)
-
+local terra FlowTecplotTerra(
+  dldarray : &dld.C_DLD,
+  filename : &int8,
+  timeStep : uint8, timePhys : double,
+  nX : uint8, nY : uint8, nZ : uint8,
+  originX:double, originY:double, originZ:double,
+  dX : double, dY : double, dZ : double
+)
   -- Access the density, velocity, pressure, and temperature
   -- fields and set the appropriate dimensions and strides.
 
-  var rho = dldarray[0]
-  var s_r = rho.stride
-  var dim = rho.dims
+  var rho         = dldarray[0]
+  var stride      = rho.dim_stride
+  var dim         = rho.dim_size
 
-  var velocity = dldarray[1]
-  var s_v      = velocity.stride
-  var s_vec_v  = velocity.type.stride
+  var velocity    = dldarray[1]
+  --var s_v        = velocity.dim_stride
+  var s_v         = velocity.type_stride
 
-  var pressure = dldarray[2]
-  var s_p = pressure.stride
+  var pressure    = dldarray[2]
+  --var s_p         = pressure.stride
 
   var temperature = dldarray[3]
-  var s_t = temperature.stride
+  --var s_t = temperature.stride
 
-  var halo_layer = dldarray[4]
-  var s_h = halo_layer.stride
+  var halo_layer  = dldarray[4]
+  --var s_h = halo_layer.stride
 
   -- Create one pointer that we will use repeatedly to access the
-  -- data in the current sell based on our strides.
+  -- data in the current cell based on our strides.
 
-  var value : &double
-  var halo  : &int
-  var write : bool
+  --var value : &double   = 
+  var halo = [&int](halo_layer.address)
 
   -- Get a file pointer and open up the Tecplot file for writing.
 
@@ -3224,9 +3232,13 @@ local terra FlowTecplotTerra(dldarray : &dld.ctype, filename : &int8,
   C.fprintf(fp,"%s",'TITLE = "Soleil-X Flow Solution"\n')
   C.fprintf(fp,"%s %s",'VARIABLES = "X", "Y", "Z", "Density", "X-Velocity",',
             ' "Y-Velocity", "Z-Velocity", "Pressure", "Temperature"\n')
-  C.fprintf(fp,"%s %d %s %f %s %d %s %d %s %d %s",'ZONE STRANDID=', timeStep+1,
-            ' SOLUTIONTIME=', timePhys, ' I=', nX+1, ' J=', nY+1, ' K=', nZ+1,
-            ' DATAPACKING=BLOCK VARLOCATION=([4-9]=CELLCENTERED)\n')
+  C.fprintf(fp,"%s %d %s %f %s %d %s %d %s %d %s",
+               'ZONE STRANDID=', timeStep+1,
+               ' SOLUTIONTIME=', timePhys,
+               ' I=', nX+1,
+               ' J=', nY+1,
+               ' K=', nZ+1,
+               ' DATAPACKING=BLOCK VARLOCATION=([4-9]=CELLCENTERED)\n')
 
   -- First, write the x, y, and z coords for the vertices. Note that
   -- we are currently computing these on the fly to avoid issues with
@@ -3260,67 +3272,59 @@ local terra FlowTecplotTerra(dldarray : &dld.ctype, filename : &int8,
   end
 
   -- Density
+  var rhoptr = [&double](rho.address)
   for k = 0, dim[2] do
     for j = 0, dim[1] do
       for i = 0, dim[0] do
-        halo  = [&int]([&uint8](halo_layer.address) + i*s_h[0] + j*s_h[1] +
-                          k*s_h[2])
-        value = [&double]([&uint8](rho.address) + i*s_r[0] + j*s_r[1] +
-                          k*s_r[2])
-        if (@halo == 0) then
-          C.fprintf(fp,"%.16f\n",@value)
-          write = true
-        else write = false end
+        var linidx  = i*stride[0] + j*stride[1] + k*stride[2]
+        if halo[linidx] == 0 then
+          var val   = rhoptr[linidx]
+          C.fprintf(fp,"%.16f\n",val)
+        end
       end
     end
   end
 
   -- Velocity (i_vec = 0)
+  var velptr = [&double](velocity.address)
   for i_vec = 0,3 do
     for k = 0, dim[2] do
       for j = 0, dim[1] do
         for i = 0, dim[0] do
-          halo  = [&int]([&uint8](halo_layer.address) + i*s_h[0] + j*s_h[1] +
-                         k*s_h[2])
-          value = [&double]([&uint8](velocity.address) + i*s_v[0] + j*s_v[1] +
-                            k*s_v[2] + i_vec*s_vec_v[0])
-          if (@halo == 0) then
-            C.fprintf(fp,"%.16f\n",@value)
-            write = true
-          else write = false end
+          var linidx  = i*stride[0] + j*stride[1] + k*stride[2]
+          if halo[linidx] == 0 then
+            var val   = velptr[ 3*linidx + i_vec ]
+            C.fprintf(fp,"%.16f\n",val)
+          end
         end
       end
     end
   end
 
   -- Pressure
+  var pressptr = [&double](pressure.address)
   for k = 0, dim[2] do
     for j = 0, dim[1] do
       for i = 0, dim[0] do
-        halo  = [&int]([&uint8](halo_layer.address) + i*s_h[0] + j*s_h[1] +
-                       k*s_h[2])
-        value = [&double]([&uint8](pressure.address) + i*s_p[0] + j*s_p[1] +
-                          k*s_p[2])
-        if (@halo == 0) then
-          C.fprintf(fp,"%.16f\n",@value)
-          write = true
-        else write = false end
+        var linidx  = i*stride[0] + j*stride[1] + k*stride[2]
+        if halo[linidx] == 0 then
+          var val = pressptr[linidx]
+          C.fprintf(fp,"%.16f\n",val)
+        end
       end
     end
   end
 
   -- Temperature
+  var tempptr = [&double](temperature.address)
   for k = 0, dim[2] do
     for j = 0, dim[1] do
       for i = 0, dim[0] do
-        halo  = [&int]([&uint8](halo_layer.address) + i*s_h[0] + j*s_h[1] +
-                       k*s_h[2])
-        value = [&double]([&uint8](temperature.address) + i*s_t[0] + j*s_t[1] +
-                          k*s_t[2])
-        if (@halo == 0) then
-          C.fprintf(fp,"%.16f\n",@value)
-          write = true
-        else write = false end
+        var linidx  = i*stride[0] + j*stride[1] + k*stride[2]
+        if halo[linidx] == 0 then
+          var val = tempptr[linidx]
+          C.fprintf(fp,"%.16f\n",val)
+        end
       end
     end
   end
@@ -3331,7 +3335,6 @@ local terra FlowTecplotTerra(dldarray : &dld.ctype, filename : &int8,
 end
 
 function IO.WriteFlowTecplotTerra(timeStep)
-  
   -- Check if it is time to output to file
   if (timeStep % TimeIntegrator.outputEveryTimeSteps == 0 and
       IO.wrtVolumeSolution == ON) then
@@ -3341,17 +3344,18 @@ function IO.WriteFlowTecplotTerra(timeStep)
       tostring(timeStep) .. ".dat"
       
       -- Use the terra callback to write the file (avoids Lua).
-      grid.cells:DumpJointTerraFunction(FlowTecplotTerra,
-                                        {'rho','velocity','pressure','temperature','cellRindLayer'},
-                                        {outputFileName, timeStep, TimeIntegrator.simTime:get(),
-                                        grid_options.xnum, grid_options.ynum, grid_options.znum,
-                                        gridOriginInteriorX, gridOriginInteriorY, gridOriginInteriorZ,
-                                        grid_options.xWidth / grid_options.xnum,
-                                        grid_options.yWidth / grid_options.ynum,
-                                        grid_options.zWidth / grid_options.znum})
-                                        
+      grid.cells:Dump(
+          {'rho','velocity','pressure','temperature','cellRindLayer'},
+          FlowTecplotTerra,
+          outputFileName,
+          timeStep, TimeIntegrator.simTime:get(),
+          grid_options.xnum, grid_options.ynum, grid_options.znum,
+          gridOriginInteriorX, gridOriginInteriorY, gridOriginInteriorZ,
+          grid_options.xWidth / grid_options.xnum,
+          grid_options.yWidth / grid_options.ynum,
+          grid_options.zWidth / grid_options.znum
+      )
   end
-  
 end
 
 function IO.WriteFlowTecplotLua(timeStep)
@@ -3451,7 +3455,7 @@ if (timeStep % TimeIntegrator.outputEveryTimeSteps == 0 and
   local function dump_with_cell_rind(field_name)
     s = ''
     k = 1
-    grid.cells:DumpJoint({'cellRindLayer', field_name},
+    grid.cells:Dump({'cellRindLayer', field_name},
     function(ids, cell_rind, field_val)
       if cell_rind == 0 then
         s = s .. ' ' .. value_tostring(field_val) .. ''
@@ -3468,7 +3472,7 @@ if (timeStep % TimeIntegrator.outputEveryTimeSteps == 0 and
   local function dump_vec_component_with_cell_rind(field_name, dim_idx)
     s = ''
     k = 1
-    grid.cells:DumpJoint({'cellRindLayer', field_name},
+    grid.cells:Dump({'cellRindLayer', field_name},
     function(ids, cell_rind, field_val)
       if cell_rind == 0 then
         s = s .. ' ' .. value_tostring(field_val[dim_idx]) .. ''
@@ -3510,19 +3514,19 @@ function IO.WriteParticleRestart(timeStep)
 
     local fileName = IO.outputFileNamePrefix .. 'restart_particle_position_' ..
     tostring(timeStep) .. '.csv'
-    particles.position:SaveToCSV(fileName,{precision=16})
+    particles.position:Dump(CSV.Dump, fileName, {precision=16})
 
     fileName = IO.outputFileNamePrefix .. 'restart_particle_velocity_' ..
     tostring(timeStep) .. '.csv'
-    particles.velocity:SaveToCSV(fileName,{precision=16})
+    particles.velocity:Dump(CSV.Dump, fileName, {precision=16})
 
     fileName = IO.outputFileNamePrefix .. 'restart_particle_temperature_' ..
     tostring(timeStep) .. '.csv'
-    particles.temperature:SaveToCSV(fileName,{precision=16})
+    particles.temperature:Dump(CSV.Dump, fileName, {precision=16})
 
     fileName = IO.outputFileNamePrefix .. 'restart_particle_diameter_' ..
     tostring(timeStep) .. '.csv'
-    particles.diameter:SaveToCSV(fileName,{precision=16})
+    particles.diameter:Dump(CSV.Dump, fileName, {precision=16})
 
   end
 
@@ -3530,31 +3534,30 @@ end
 
 -- terra callback to jointly dump multiple fields. Here, we use the
 -- function to write our Tecplot output (ASCII) for the particle phase.
-local terra ParticleTecplotTerra(dldarray : &dld.ctype, filename : &int8,
-                                 timePhys : double)
-
+local terra ParticleTecplotTerra(
+  dldarray : &dld.C_DLD,
+  filename : &int8,
+  timePhys : double
+)
   -- Access the density, velocity, pressure, and temperature
   -- fields and set the appropriate dimensions and strides.
 
   var position = dldarray[0]
-  var s_p      = position.stride
-  var dim      = position.dims
-  var s_vec_p  = position.type.stride
+  var stride   = position.dim_stride
+  var size     = position.dim_size[0]
+  var s_vec_p  = position.type_stride
 
   var velocity = dldarray[1]
-  var s_v      = velocity.stride
-  var s_vec_v  = velocity.type.stride
+  var s_vec_v  = velocity.type_stride
 
   var temperature = dldarray[2]
-  var s_t = temperature.stride
 
   var diameter = dldarray[3]
-  var s_d = diameter.stride
 
   -- Create one pointer that we will use repeatedly to access the
-  -- data in the current sell based on our strides.
+  -- data in the current cell based on our strides.
 
-  var value : &double
+  --var value : &double
 
   -- Get a file pointer and open up the Tecplot file for writing.
 
@@ -3570,19 +3573,23 @@ local terra ParticleTecplotTerra(dldarray : &dld.ctype, filename : &int8,
   -- Write the position, velocity, temperature, and diameter for
   -- each particle on successive lines in order.
 
-  for i = 0,dim[0] do
+  var posptr  = [&double](position.address)
+  var velptr  = [&double](velocity.address)
+  var tempptr = [&double](temperature.address)
+  var diamptr = [&double](diameter.address)
+  for i = 0,size do
     for i_vec = 0,3 do
-      value = [&double]([&uint8](position.address)+i*s_p[0]+i_vec*s_vec_p[0])
-      C.fprintf(fp," %.16f ",@value)
+      var posval = posptr[3*i + i_vec]
+      C.fprintf(fp," %.16f ",posval)
     end
     for i_vec = 0,3 do
-      value = [&double]([&uint8](velocity.address)+i*s_v[0]+i_vec*s_vec_v[0])
-      C.fprintf(fp," %.16f ",@value)
+      var velval = velptr[3*i + i_vec]
+      C.fprintf(fp," %.16f ",velval)
     end
-    value = [&double]([&uint8](temperature.address)+i*s_t[0])
-    C.fprintf(fp," %.16f ",@value)
-    value = [&double]([&uint8](diameter.address)+i*s_d[0])
-    C.fprintf(fp," %.16f ",@value)
+    var tempval = tempptr[i]
+    C.fprintf(fp," %.16f ",tempval)
+    var diamval = diamptr[i]
+    C.fprintf(fp," %.16f ",diamval)
     C.fprintf(fp,"%s","\n")
   end
 
@@ -3602,9 +3609,11 @@ function IO.WriteParticleTecplotTerra(timeStep)
       tostring(timeStep) .. ".dat"
       
       -- Use the terra callback to write the file (avoids Lua).
-      particles:DumpJointTerraFunction(ParticleTecplotTerra,
-                                        {'position','velocity','temperature','diameter'},
-                                        {particleFileName, TimeIntegrator.simTime:get()})
+      particles:Dump(
+          {'position','velocity','temperature','diameter'},
+          ParticleTecplotTerra,
+          particleFileName, TimeIntegrator.simTime:get()
+      )
                                         
   end
   
@@ -3631,7 +3640,7 @@ function IO.WriteParticleTecplotLua(timeStep)
   io.write('ZONE SOLUTIONTIME=', TimeIntegrator.simTime:get(), '\n')
 
   local veclen = particles.position:Type().N
-  particles:DumpJoint({'position', 'velocity', 'temperature', 'diameter'},
+  particles:Dump({'position', 'velocity', 'temperature', 'diameter'},
   function(ids, pos, vel, temp, diam)
     local s = ''
     s = s .. ' ' .. value_tostring(pos) .. ''
@@ -3676,10 +3685,10 @@ function IO.WriteParticleEvolution(timeStep)
     
     -- Check for the particle with 'index=particleIndex' and write its primitive variables
     
-    local pos  = particles.position:DumpToList()
-    local vel  = particles.velocity:DumpToList()
-    local temp = particles.temperature:DumpToList()
-    local diam = particles.diameter:DumpToList()
+    local pos  = particles.position:Dump({})
+    local vel  = particles.velocity:Dump({})
+    local temp = particles.temperature:Dump({})
+    local diam = particles.diameter:Dump({})
     
     local s =        value_tostring(TimeIntegrator.simTime:get())  .. ''
     s = s .. ', ' .. value_tostring_comma(pos[particleEvolutionIndex])  .. ''
@@ -3701,89 +3710,94 @@ end
 function IO.WriteX0SliceVec (timeStep, field, filename)
   
   if (timeStep % TimeIntegrator.outputEveryTimeSteps == 0 and
-      IO.wrt1DSlice == ON) then
+      IO.wrt1DSlice == ON)
+  then
+    -- Open file
+    local outputFile = io.output(IO.outputFileNamePrefix .. filename)
+    
+    -- CSV header
+    io.write('y, ' .. field .. '_1, ' .. field .. '_2, ' .. field .. '_3\n')
+    
+    -- Check for the vertical center of the domain and write the x-vel
+    grid.cells:Dump({ 'centerCoordinates', field },
+    function(ids, cellCenter, field)
+      local s = ''
+      local x = cellCenter[1]
+      local y = cellCenter[2]
+      local z = cellCenter[3]
+      if    x < (gridOriginInteriorX
+                 --               + grid_options.xWidth/2.0
+                 -- Modification in order to avoid not finding cells
+                 -- when grid_options.xnum is a pair number.
+                 -- A tolerance of "x-gridSize/1000.0" is added.
+                 + grid_options.xWidth/2.0 + (grid_options.xWidth /
+                                              grid_options.xnum) / 1000.0
+                 + grid_options.xWidth / (2.0*grid_options.xnum))
+        and x > (gridOriginInteriorX
+                 + grid_options.xWidth/2.0
+                 - grid_options.xWidth / (2.0*grid_options.xnum))
+        and y < (gridOriginInteriorY + grid_options.yWidth)
+        and y > (gridOriginInteriorY)
+        and z < (gridOriginInteriorZ + grid_options.zWidth)
+        and z > (gridOriginInteriorZ)
+      then
+        s = tostring(y) .. ', ' .. tostring(field[1]) .. ', '
+                                .. tostring(field[2]) .. ', '
+                                .. tostring(field[3]) .. '\n'
+        io.write(s)
+      end
+    end)
 
-      -- Open file
-      local outputFile = io.output(IO.outputFileNamePrefix .. filename)
-      
-      -- CSV header
-      io.write('y, ' .. field .. '_1, ' .. field .. '_2, ' .. field .. '_3\n')
-      
-      -- Check for the vertical center of the domain and write the x-vel
-      grid.cells:DumpJoint({ 'centerCoordinates', field },
-                           function(ids, cellCenter, field)
-                           local s = ''
-                           local x = cellCenter[1]
-                           local y = cellCenter[2]
-                           local z = cellCenter[3]
-                           if    x < (gridOriginInteriorX
-                                      --               + grid_options.xWidth/2.0
-                                      -- Modification in order to avoid not finding cells when grid_options.xnum is a pair number. A tolerance of "x-gridSize/1000.0" is added.
-                                      + grid_options.xWidth/2.0 + (grid_options.xWidth / grid_options.xnum) / 1000.0
-                                      + grid_options.xWidth / (2.0*grid_options.xnum))
-                           and x > (gridOriginInteriorX
-                                    + grid_options.xWidth/2.0
-                                    - grid_options.xWidth / (2.0*grid_options.xnum))
-                           and y < (gridOriginInteriorY + grid_options.yWidth)
-                           and y > (gridOriginInteriorY)
-                           and z < (gridOriginInteriorZ + grid_options.zWidth)
-                           and z > (gridOriginInteriorZ)
-                           then
-                           s = tostring(y) .. ', ' .. tostring(field[1]) .. ', '
-                                                   .. tostring(field[2]) .. ', '
-                                                   .. tostring(field[3]) .. '\n'
-                           io.write(s)
-                           end
-                           end)
-                           
-                           -- Close the file
-                           io.close()
+    -- Close the file
+    io.close()
                            
   end
-  
 end
 
 function IO.WriteY0SliceVec (timeStep, field, filename)
   
   if (timeStep % TimeIntegrator.outputEveryTimeSteps == 0 and
-      IO.wrt1DSlice == ON) then
-      
-      -- Open file
-      local outputFile = io.output(IO.outputFileNamePrefix .. filename)
-      
-      -- CSV header
-      io.write('x, ' .. field .. '\n')
-      
-      -- Check for the vertical center of the domain and write the x-vel
-      grid.cells:DumpJoint({ 'centerCoordinates', field },
-                           function(ids, cellCenter, field)
-                           local s = ''
-                           local x = cellCenter[1]
-                           local y = cellCenter[2]
-                           local z = cellCenter[3]
-                           if    y < (gridOriginInteriorY
-                                      --               + grid_options.yWidth/2.0
-                                      -- Modification in order to avoid not finding cells when grid_options.ynum is a pair number. A tolerance of "y-gridSize/1000.0" is added.
-                                      + grid_options.yWidth/2.0 + (grid_options.yWidth / grid_options.ynum) / 1000.0
-                                      + grid_options.yWidth / (2.0*grid_options.ynum))
-                           and y > (gridOriginInteriorY
-                                    + grid_options.yWidth/2.0
-                                    - grid_options.yWidth / (2.0*grid_options.ynum))
-                           and x < (gridOriginInteriorX + grid_options.xWidth)
-                           and x > (gridOriginInteriorX)
-                           and z < (gridOriginInteriorZ + grid_options.zWidth)
-                           and z > (gridOriginInteriorZ)
-                           then
-                           s = tostring(y) .. ', ' .. tostring(field[1]) .. ', '
-                                                   .. tostring(field[2]) .. ', '
-                                                   .. tostring(field[3]) .. '\n'
-                           io.write(s)
-                           end
-                           end)
-                           
-                           -- Close the file
-                           io.close()
-                           
+      IO.wrt1DSlice == ON)
+  then
+    -- Open file
+    local outputFile = io.output(IO.outputFileNamePrefix .. filename)
+    
+    -- CSV header
+    io.write('x, ' .. field .. '\n')
+    
+    -- Check for the vertical center of the domain and write the x-vel
+    grid.cells:Dump({ 'centerCoordinates', field },
+    function(ids, cellCenter, field)
+      local s = ''
+      local x = cellCenter[1]
+      local y = cellCenter[2]
+      local z = cellCenter[3]
+      if    y < (gridOriginInteriorY
+                --               + grid_options.yWidth/2.0
+                -- Modification in order to avoid not finding cells
+                -- when grid_options.ynum is a pair number.
+                -- A tolerance of "y-gridSize/1000.0" is added.
+                 + grid_options.yWidth/2.0 + (grid_options.yWidth /
+                                              grid_options.ynum) / 1000.0
+                 + grid_options.yWidth / (2.0*grid_options.ynum))
+        and y > (gridOriginInteriorY
+                 + grid_options.yWidth/2.0
+                 - grid_options.yWidth / (2.0*grid_options.ynum))
+        and x < (gridOriginInteriorX + grid_options.xWidth)
+        and x > (gridOriginInteriorX)
+        and z < (gridOriginInteriorZ + grid_options.zWidth)
+        and z > (gridOriginInteriorZ)
+      then
+        s = tostring(y) .. ', ' .. tostring(field[1]) .. ', '
+                                .. tostring(field[2]) .. ', '
+                                .. tostring(field[3]) .. '\n'
+        io.write(s)
+      end
+    end)
+
+    -- Close the file
+    io.close()
+                         
   end
   
 end
@@ -3800,7 +3814,7 @@ function IO.WriteX0Slice (timeStep, field, filename)
   io.write('y, ' .. field .. '\n')
   
   -- Check for the vertical center of the domain and write the x-vel
-  grid.cells:DumpJoint({ 'centerCoordinates', field },
+  grid.cells:Dump({ 'centerCoordinates', field },
   function(ids, cellCenter, field)
     local s = ''
     local x = cellCenter[1]
@@ -3844,7 +3858,7 @@ function IO.WriteY0Slice (timeStep, field, filename)
       io.write('x, ' .. field .. '\n')
 
   -- Check for the vertical center of the domain and write the x-vel
-  grid.cells:DumpJoint({ 'centerCoordinates', field },
+  grid.cells:Dump({ 'centerCoordinates', field },
   function(ids, cellCenter, field)
     local s = ''
     local x = cellCenter[1]

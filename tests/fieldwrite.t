@@ -11,7 +11,7 @@ function shift(x,y,z)
 end
 
 function check(x,y,z)
-  R.position:DumpFunction(function(pos, i)
+  R.position:Dump(function(pos, i)
     assert(pos[1] == x)
     assert(pos[2] == y)
     assert(pos[3] == z)

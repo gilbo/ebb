@@ -3,7 +3,7 @@ import "ebb"
 local R = L.NewRelation { name="R", size=6 }
 
 R:NewField('field', L.float)
-R.field:LoadConstant(0)
+R.field:Load(0)
 
 local lassert, lprint, length = L.assert, L.print, L.length
 

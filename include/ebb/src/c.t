@@ -71,12 +71,17 @@ cuda_include ..
 #include <execinfo.h>
 #include <unistd.h>
 
-FILE *get_stderr () { return stderr; }
-
+FILE * __sew_get__stdout() { return stdout; }
+FILE * __sew_get__stdin()  { return stdin; }
+FILE * __sew_get__stderr() { return stderr; }
 
 ]]..
 enum_c_define
 )
+
+rawset(c_blob, 'stdout', c_blob.__sew_get__stdout())
+rawset(c_blob, 'stdin',  c_blob.__sew_get__stdin())
+rawset(c_blob, 'stderr', c_blob.__sew_get__stderr())
 
 rawset(c_blob, 'assert', macro(function(test)
   local filename = test.tree.filename
@@ -84,8 +89,7 @@ rawset(c_blob, 'assert', macro(function(test)
 
   return quote
     if not test then
-      var stderr = c_blob.get_stderr()
-      c_blob.fprintf(stderr,
+      c_blob.fprintf(c_blob.stderr,
         [filename..':'..linenumber..': Terra Assertion Failed!\n'])
       c_blob.exit(1)
     end
@@ -95,10 +99,11 @@ end))
 rawset(c_blob, 'safemalloc', macro(function()
   error('safemalloc may not be called inside of Terra code')
 end,
-function( ttype, finalizer )
-  if not finalizer then finalizer = c_blob.free end
-  local ptr = terralib.cast( &ttype, c_blob.malloc(terralib.sizeof(ttype)) )
-  ffi.gc( ptr, finalizer )
+function( ttype, N )
+  N = N or 1
+  local ptr = terralib.cast( &ttype,
+                             c_blob.malloc( N * terralib.sizeof(ttype) ))
+  ffi.gc( ptr, c_blob.free )
   return ptr
 end))
 

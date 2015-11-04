@@ -42,8 +42,8 @@ local tbl3 = {{{1,2,3},{4,5,6}},{{7,8,9},{10,11,12}}}
 rel2:NewField('f2',L.double):Load(tbl2)
 rel3:NewField('f3',L.double):Load(tbl3)
 -- test that dumping preserves list/structure
-test.rec_aeq(rel2.f2:DumpToList(),tbl2)
-test.rec_aeq(rel3.f3:DumpToList(),tbl3)
+test.rec_aeq(rel2.f2:Dump({}),tbl2)
+test.rec_aeq(rel3.f3:Dump({}),tbl3)
 
 -- test indexing consistency
 rel3:NewField('f3func',L.double):Load(function(x,y,z)

@@ -230,7 +230,7 @@ function UFVersion:_CompileFieldsGlobalsSubsets(phase_data)
     -- record reductions
     if phase.reduceop then
       self._uses_global_reduce = true
-      local ttype             = globl.type:terraType()
+      local ttype             = globl.type:terratype()
 
       local reduce_data       = self:_getReduceData(globl)
       reduce_data.phase       = phase
@@ -347,7 +347,7 @@ function UFVersion:_getReduceData(global)
 
     self._global_reductions[global] = data
     if self:isOnGPU() then
-      self._arg_layout:addReduce(id, global.type:terraType())
+      self._arg_layout:addReduce(id, global.type:terratype())
     end
   end
   return data
@@ -373,7 +373,7 @@ function UFVersion:_getLegionGlobalTempSymbol(global)
   if not self._legion_global_temps then self._legion_global_temps = {} end
   local sym = self._legion_global_temps[id]
   if not sym then
-    local ttype = global.type:terraType()
+    local ttype = global.type:terratype()
     sym = symbol(&ttype)
     self._legion_global_temps[id] = sym
   end
@@ -739,7 +739,7 @@ function UFVersion:_CompileGPUReduction()
 
   -- Find all the global variables in this function that are being reduced
   for globl, data in pairs(self._global_reductions) do
-    local ttype             = globl.type:terraType()
+    local ttype             = globl.type:terratype()
     if self._useTreeReduce then
       data.sharedmem          = cudalib.sharedmemory(ttype, self._blocksize)
   
@@ -944,7 +944,7 @@ function UFVersion:_generateGPUReductionPreProcess(argptrsym)
     var [n_blocks] = [self:_numGPUBlocks(argptrsym)]
   end
   for globl, _ in pairs(self._global_reductions) do
-    local ttype = globl.type:terraType()
+    local ttype = globl.type:terratype()
     local id    = self:_getReduceData(globl).id
     code = quote code
       [argptrsym].[id] = [&ttype](G.malloc(sizeof(ttype) * n_blocks))
@@ -1183,7 +1183,7 @@ function UFVersion:_GenerateUnpackLegionTaskArgs(argsym, task_args)
     escape for globl, garg_name in pairs(ufv._global_ids) do
       -- position in the Legion task arguments
       local fut_i   = ufv:_getFutureNum(globl) 
-      local gtyp    = globl.type:terraType()
+      local gtyp    = globl.type:terratype()
       local gptr    = ufv:_getLegionGlobalTempSymbol(globl)
 
       if ufv:isOnGPU() then
@@ -1273,7 +1273,7 @@ function ArgLayout.New()
 end
 
 function ArgLayout:setRelation(rel)
-  self._key_type  = L.key(rel):terraType()
+  self._key_type  = L.key(rel):terratype()
   self.n_dims     = rel:nDims()
 end
 
@@ -1282,7 +1282,7 @@ function ArgLayout:addField(name, field)
     error('INTERNAL ERROR: cannot add new fields to compiled layout')
   end
   if use_single then
-    local typ = field:Type():terraType()
+    local typ = field:Type():terratype()
     table.insert(self.fields, { field=name, type=&typ })
   elseif use_legion then
     local ndims = field:Relation():nDims()
@@ -1294,7 +1294,7 @@ function ArgLayout:addGlobal(name, global)
   if self:isCompiled() then
     error('INTERNAL ERROR: cannot add new globals to compiled layout')
   end
-  local typ = global.type:terraType()
+  local typ = global.type:terratype()
   table.insert(self.globals, { field=name, type=&typ })
 end
 

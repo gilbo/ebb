@@ -432,9 +432,9 @@ end
 -- construct a new version of the OFF file.
 
 
--- DumpToList() is the inverse of the way we loaded the OFF file data
-local positions     = vertices.pos:DumpToList()
-local temperatures  = vertices.temperature:DumpToList()
+-- Dump({}) is the inverse of the way we loaded the OFF file data
+local positions     = vertices.pos:Dump({})
+local temperatures  = vertices.temperature:Dump({})
 
 -- Let's open up a file to dump this temperature data to.
 local output_temp_file = PN.scriptdir() ..
