@@ -1138,7 +1138,6 @@ function L.LField:Load(arg, ...)
   elseif  type(arg) == 'table' then
     -- terra function
     if (terralib.isfunction(arg)) then
-      error('IMPLEMENT')
       return self:_INTERNAL_LoadTerraBulkFunction(arg, ...)
 
     -- scalars, vectors and matrices
@@ -1194,7 +1193,6 @@ function L.LField:Dump(arg, ...)
     return self:_INTERNAL_DumpLuaPerElemFunction(arg)
 
   elseif isdumper(arg) then
-    print('dumper', arg, arg._func)
     return arg._func(self, ...)
 
   elseif type(arg) == 'table' then
@@ -2252,15 +2250,15 @@ function L.LRelation:GetOrCreateDisjointPartitioning()
   if self:isGrid() then
     -- STRUCTURED GRIDS
     -- create block partition
-    partn = self._logical_region_wrapper:CreatBlockPartitions()
+    partn = self._logical_region_wrapper:CreateBlockPartitions()
   else
     -- PLAIN/ GROUPED/ ELASTIC
     -- add a coloring field to logical region
     rawset(self, '_disjoint_coloring',
            L.LField.New(self, '_disjoint_coloring', L.color_type))
     -- set the coloring field
-    self._disjoint_coloring:LoadTerraFunction(ColorPlainIndexSpaceDisjoint,
-                                              self._num_partitions)
+    self._disjoint_coloring:Load(ColorPlainIndexSpaceDisjoint,
+                                 self:TotalPartitions())
     -- create index partition using the coloring field and save it
     partn = 
       self._logical_region_wrapper:CreatePartitionsByField(self._disjoint_coloring)

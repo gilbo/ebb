@@ -178,9 +178,11 @@ void setupebb(lua_State * L, ebb_Options * ebboptions) {
         snprintf(buffer, bufsize,
           "terralib.includepath = terralib.includepath.."
           "';%s/../legion/runtime;"
+          "%s/../legion/runtime/legion;"
+          "%s/../legion/runtime/mappers;"
           "%s/../mappers;"
           "%s/../legion/bindings/terra'",
-          bindir, bindir, bindir);
+          bindir, bindir, bindir, bindir, bindir);
         if (terra_dostring(L, buffer))
             doerror(L);
 

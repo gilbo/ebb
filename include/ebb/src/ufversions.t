@@ -195,7 +195,6 @@ function UFVersion:_CompileFieldsGlobalsSubsets(phase_data)
     self._n_futures    = 0
 
     local reg_data = self:_getPrimaryRegionData()
-    record_read(reg_data)
   end
 
   -- reserve ids
@@ -271,7 +270,9 @@ local function get_region_data(ufv, relation, field)
     local reg_data = {
       wrapper   = relation._logical_region_wrapper,
       num       = ufv._n_regions,
-      --relation  = relation,
+      relation  = relation,
+      privilege = LW.NO_ACCESS,
+      coherence = LW.EXCLUSIVE
     }
     ufv._n_regions = ufv._n_regions + 1
 
@@ -283,7 +284,8 @@ end
 
 function UFVersion:_getPrimaryRegionData()
   if use_single then error("INTERNAL: Cannot use regions w/o Legion") end
-  return get_region_data(self, self._relation)
+  self._primary_region = get_region_data(self, self._relation)
+  return self._primary_region
 end
 
 function UFVersion:_getRegionData(field)
@@ -1009,7 +1011,7 @@ end
 -- Creates a task launcher with task region requirements.
 function UFVersion:_CreateLegionTaskLauncher(task_func)
   local prim_reg   = self:_getPrimaryRegionData()
-  local prim_partn = prim_reg._partition
+  local prim_partn = prim_reg.partition
 
   local task_launcher = LW.NewTaskLauncher {
     taskfunc  = task_func,
@@ -1137,7 +1139,12 @@ function UFVersion:_GenerateUnpackLegionTaskArgs(argsym, task_args)
         var base = [&uint8](
           [ LW.LegionRawPtrFromAcc[reg_dim] ](
                               field_accessor, rect, &subrect, strides))
-        [argsym].[farg_name] = [ LW.FieldAccessor[reg_dim] ] { base, strides }
+        var offset : int = 0
+        for d = 0, reg_dim do
+          offset = offset + [rect].lo.x[d] * strides[d].offset 
+        end
+        base = base - offset
+        [argsym].[farg_name] = [ LW.FieldAccessor[reg_dim] ] { base, strides, field_accessor }
       end
       -- unstructured
       else emit quote
@@ -1150,7 +1157,7 @@ function UFVersion:_GenerateUnpackLegionTaskArgs(argsym, task_args)
           field_accessor, &base, &stride_val)
         var strides : LW.legion_byte_offset_t[1]
         strides[0].offset = (stride_val)
-        [argsym].[farg_name] = [ LW.FieldAccessor[1] ] { [&uint8](base), strides }
+        [argsym].[farg_name] = [ LW.FieldAccessor[1] ] { [&uint8](base), strides, field_accessor }
       end end
     end end
 
@@ -1217,7 +1224,17 @@ function UFVersion:_GenerateUnpackLegionTaskArgs(argsym, task_args)
   return code
 end
 
+function UFVersion:_CleanLegionTask(argsym)
+  local ufv = self
 
+  local stmts = {}
+  for field, farg_name in pairs(ufv._field_ids) do
+    table.insert(stmts, quote
+      LW.legion_accessor_generic_destroy([argsym].[farg_name].handle)
+    end)
+  end  -- escape
+  return stmts
+end
 
 function UFVersion:_CompileLegion(typed_ast)
   local task_function     = codegen.codegen(typed_ast, self)
@@ -1369,6 +1386,10 @@ function UFVersion:_addPrimaryPartition()
     -- branch
     local prim_partn = datum.wrapper
     if use_partitioning then
+      -- set number of partitions on the relation to number of cpus
+      if not prim_rel:IsPartitioningSet() then
+        prim_rel:SetPartitions(run_config.num_partitions)
+      end
       -- create a disjoint partition on the relation
       prim_partn = prim_rel:GetOrCreateDisjointPartitioning()
     end
@@ -1381,13 +1402,22 @@ function UFVersion:_addRegionPartition(field)
   local sig = tostring(rel:_INTERNAL_UID()) .. '_' .. tostring(field.fid)
   local datum = self._region_data[sig]
   if not datum.partition then
-    -- once partitioning works, change this to single partition with legion, no
-    -- partitioning, and stencil analysis with partitioning
+    -- If no partitions are needed on a region, we use logical region instead
+    -- of logical partition in region requirement (hack around stencil
+    -- analysis) for non-centered. Once we have stencil analysis in
+    -- place, we should instead pass the partition that includes halo, instead
+    -- of the logical region wrapper.
+    -- Once stencil analysis works, we can also remove 'use_partiotioning' from
+    -- the condition clauses, and treat non-partitioned cases as 1 partition.
     local prim_partn = datum.wrapper
-    if use_partitioning and self._field_use[field]:requriesExclusive() then
-      -- Not checking that rel == primary_relation since that would have been
-      -- necessary to pass phase checking any ways
+    if use_partitioning and self._field_use[field]:isCentered() then
+      assert(rel == self._relation)
       prim_partn = rel:GetOrCreateDisjointPartitioning()
+    -- Non-centered reductions are not supported yet with partitions.
+    elseif use_partitioning and self._field_use[field]:isReduce() and
+      not self._field_use[field]:isCentered() then
+      error("INTERNAL: Non-centered field reduction with partitioning not supported yet.")
+    -- (not is centered) and (requires exclusive) is a phase error
     end
     datum.partition = prim_partn
   end

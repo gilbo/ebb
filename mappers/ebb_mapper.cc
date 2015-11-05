@@ -75,6 +75,7 @@ EbbMapper::EbbMapper(Machine machine, HighLevelRuntime *rt, Processor local)
       break;
     }
   }
+#if 0
   if (first_loc == local_proc) {
 
     // processors
@@ -191,6 +192,7 @@ EbbMapper::EbbMapper(Machine machine, HighLevelRuntime *rt, Processor local)
               it->id, affinities[0].bandwidth, affinities[0].latency);
     }
   }
+#endif
 }
 
 void EbbMapper::select_task_options(Task *task) {
@@ -247,12 +249,6 @@ bool EbbMapper::rank_copy_targets(const Mappable *mappable,
                                       std::vector<Memory> &to_create,
                                       bool &create_one,
                                       size_t &blocking_factor) {
-  DefaultMapper::rank_copy_targets(mappable, rebuild_region, current_instances,
-                                   complete, max_blocking_factor, to_reuse,
-                                   to_create, create_one, blocking_factor);
-  if (create_one) {
-    blocking_factor = max_blocking_factor;
-  }
   return true;
 }
 
@@ -271,6 +267,5 @@ static void create_mappers(Machine machine,
 }
 
 void register_ebb_mappers() {
-  printf("WARNING: Using custom ebb mapper. This is in development phase.\n");
   HighLevelRuntime::set_registration_callback(create_mappers);
 }

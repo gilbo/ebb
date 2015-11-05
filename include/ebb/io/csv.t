@@ -25,8 +25,9 @@ local function get_cached_loader(typ)
   -- some Terra macro programming
   local fp = symbol('fp')
   -- error check
-  local ec = macro(function(test, msg)
-    if msg then msg = quote C.fprintf(C.stderr, msg) end
+  local ec = macro(function(test, msg, ...)
+    local varargs = {...}
+    if msg then msg = quote C.fprintf(C.stderr, msg, varargs) end
            else msg = {} end
     return quote
       if not test then
@@ -61,9 +62,9 @@ local function get_cached_loader(typ)
             for jt = 0, dimt[1] do
               var offset = it*dimt[1] + jt
 
-              ec( C.fscanf(fp, typfmt, &bt) == 1 )
+              ec( C.fscanf(fp, typfmt, &bt) == 1, "Expected entry\n" )
               ec( C.ferror(fp) == 0 and
-                  C.feof(fp)   == 0 )
+                  C.feof(fp)   == 0, "Reached Error or EOF while scanning\n" )
               ptr[ nt*linidx + offset ] = bt
               if offset ~= nt-1 then
                 c = 0
@@ -83,11 +84,13 @@ local function get_cached_loader(typ)
       end
     end
     c = 0
-    while (C.feof(fp) == 0) do
-      c = C.fgetc(fp)
+    repeat
       ec( c == 0 or c == 32 or (c >= 9 and c <= 13),
-          "CSV file longer than expected. Expected space or end of file.\n" )
-    end
+          ["CSV file longer than expected. "..
+           "Expected space or end of file.\n"..
+           "Got ASCII code %d\n"], c )
+      c = C.fgetc(fp)
+    until C.feof(fp) ~= 0
 
     C.fclose(fp)
     return 0 -- success
@@ -140,8 +143,9 @@ local function get_cached_dumper(typ, precision)
   -- some Terra macro programming
   local fp = symbol('fp')
   -- error check
-  local ec = macro(function(test, msg)
-    if msg then msg = quote C.fprintf(C.stderr, msg); C.fflush(C.stderr) end
+  local ec = macro(function(test, msg, ...)
+    local varargs = {...}
+    if msg then msg = quote C.fprintf(C.stderr, msg, varargs) end
            else msg = {} end
     return quote
       if not test then
@@ -177,15 +181,15 @@ local function get_cached_dumper(typ, precision)
               var offset = it*dimt[1] + jt
 
               bt = ptr[ nt*linidx + offset ]
-              ec( C.fprintf(fp, typfmt, bt) > 0 )
+              ec( C.fprintf(fp, typfmt, bt) > 0, "Error writing entry\n" )
               if offset ~= nt-1 then
-                ec( C.fprintf(fp, ", ") > 0 )
+                ec( C.fprintf(fp, ", ") > 0, "Error writing comma\n" )
               end
 
             end
           end
 
-          ec( C.fprintf(fp, "\n") > 0 )
+          ec( C.fprintf(fp, "\n") > 0, "Error writing Newline\n" )
         end
       end
     end

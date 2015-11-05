@@ -1,0 +1,3 @@
+[submodule "devapps/soleil-x"]
+	path = devapps/soleil-x
+	url = https://github.com/stanfordhpccenter/soleil-x

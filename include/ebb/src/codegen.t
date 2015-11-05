@@ -512,12 +512,6 @@ function Codegen.codegen (ufunc_ast, ufunc_version)
 
   -- OPTIONALLY WRAP UP AS A LEGION TASK
   if use_legion then
-    if run_config.use_partitioning and ctxt:isGridRelation() then
-      error("INTERNAL: launches over structured relations not yet supported with partitioning")
-    elseif
-      run_config.use_partitioning and ctxt:onGPU() then
-      error("INTERNAL: gpus with partitioning not supported yet")
-    end
     local generate_output_future = quote end
     if ctxt:hasGlobalReduce() then
       local globl             = next(ctxt.ufv._global_reductions)
@@ -577,6 +571,9 @@ function Codegen.codegen (ufunc_ast, ufunc_version)
       end -- End escape
 
       [generate_output_future]
+
+      [ ctxt.ufv:_CleanLegionTask(ctxt:argsym()) ]
+
     end -- Launcher done
 
     launcher:setname(ufunc_name)
@@ -959,7 +956,6 @@ function ast.FieldWrite:codegen (ctxt)
     assign.lvalue = self.fieldaccess
     assign.exp    = self.exp
     if self.reduceop then assign.reduceop = self.reduceop end
-
     return assign:codegen(ctxt)
   end
 end

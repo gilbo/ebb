@@ -61,7 +61,8 @@ LW.FieldAccessor = {}
 for d = 1, 3 do
   LW.FieldAccessor[d] = struct {
     ptr     : &uint8,
-    strides : LW.legion_byte_offset_t[d]
+    strides : LW.legion_byte_offset_t[d],
+    handle  : LW.legion_accessor_generic_t
   }
   LW.FieldAccessor[d].__typename =
     function() return 'FieldAccessor_'..tostring(d) end
@@ -761,6 +762,11 @@ function LogicalPartition:ColoringField()
   return self.color_field
 end
 
+-- color space (partition domain)
+function LogicalPartition:Domain()
+  return self.domain
+end
+
 -- create a color space with num_colors number of colors
 -- this corresponds to the number of partitions
 local terra CreateColorSpace(num_colors : LW.legion_color_t)
@@ -781,10 +787,11 @@ function LogicalRegion:CreatePartitionsByField(rfield)
   local lp = LW.legion_logical_partition_create(
     legion_env.runtime, legion_env.ctx, self.handle, partn)
   local lp = {
-               color_field = rfield,
-               handle      = lp,
-               index_partn = partn,
-               ptype       = 'FIELD'
+               ptype       = 'FIELD',  -- partition type (by field or block)
+               color_field = rfield,   -- field used to generate the partition
+               domain      = color_space,  -- partition domain (color space)
+               index_partn = partn,    -- legion index partition handle
+               handle      = lp,       -- legion logical partition handle
              }
   setmetatable(lp, LogicalPartition)
   return lp
@@ -792,24 +799,42 @@ end
 
 -- block partition helpers
 local AddDomainColor = {}
-for d = 1, 3 do
-  AddDomainColor[d] = terra(coloring : LW.legion_domain_coloring_t,
-                            color : LW.legion_color_t,
-                            lo    : int[d],
-                            hi    : int[d]
-                            )
-    var lo_pt = [LegionPoint[d]](lo)
-    var hi_pt = [LegionPoint[d]](lo)
-    var domain = [LegionDomFromRect[d]]([LegionRect[d]]({ lo_pt, hi_pt }))
-    LW.legion_domain_coloring_color_domain(coloring, color, domain)
-  end  -- terra function
-end  -- for loop
+AddDomainColor[1] = terra(coloring : LW.legion_domain_coloring_t,
+                          color : LW.legion_color_t,
+                          lo1 : int,
+                          hi1 : int
+                          )
+  var lo_pt = [LegionPoint[1]]{ array(lo1) }
+  var hi_pt = [LegionPoint[1]]{ array(hi1) }
+  var domain = [LegionDomFromRect[1]]([LegionRect[1]]({ lo_pt, hi_pt }))
+  LW.legion_domain_coloring_color_domain(coloring, color, domain)
+end  -- terra function
+AddDomainColor[2] = terra(coloring : LW.legion_domain_coloring_t,
+                          color : LW.legion_color_t,
+                          lo1 : int, lo2 : int,
+                          hi1 : int, hi2 : int 
+                          )
+  var lo_pt = [LegionPoint[2]]{ array(lo1, lo2) }
+  var hi_pt = [LegionPoint[2]]{ array(hi1, hi2) }
+  var domain = [LegionDomFromRect[2]]([LegionRect[2]]({ lo_pt, hi_pt }))
+  LW.legion_domain_coloring_color_domain(coloring, color, domain)
+end  -- terra function
+AddDomainColor[3] = terra(coloring : LW.legion_domain_coloring_t,
+                          color : LW.legion_color_t,
+                          lo1 : int, lo2 : int, lo3 : int,
+                          hi1 : int, hi2 : int, hi3 : int
+                          )
+  var lo_pt = [LegionPoint[3]]{ array(lo1, lo2, lo3) }
+  var hi_pt = [LegionPoint[3]]{ array(hi1, hi2, hi3) }
+  var domain = [LegionDomFromRect[3]]([LegionRect[3]]({ lo_pt, hi_pt }))
+  LW.legion_domain_coloring_color_domain(coloring, color, domain)
+end  -- terra function
 
 -- create block partitions
 function LogicalRegion:CreateBlockPartitions() 
   local num_partitions = self.relation:NumPartitions()
   local dims = self.relation:Dims()
-  local ndims = #ndims
+  local ndims = #dims
   -- check if number of elements along each dimension is a multiple of number
   -- of partitions
   local divisible = {}
@@ -822,7 +847,7 @@ function LogicalRegion:CreateBlockPartitions()
     divisible[d] = (num_elems % num_partns == 0)
     elems_lo[d] = math.floor(num_elems/num_partns)
     elems_hi[d] = math.ceil(num_elems/num_partns)
-    num_lo[d]   = num_partns - (num_elems % num_subregions)
+    num_lo[d]   = num_partns - (num_elems % num_partns)
   end
   -- color space
   local total_partitions = self.relation:TotalPartitions()
@@ -837,7 +862,8 @@ function LogicalRegion:CreateBlockPartitions()
       local elems1 = (p1 > num_lo[1] and elems_hi[1]) or elems_lo[1]
       lo = hi + 1
       hi = lo + elems1 - 1
-      AddDomainColor[1](coloring, color, lo, hi)
+      AddDomainColor[1](coloring, color,
+                        lo, hi)
       color = color + 1
     end
   elseif ndims == 2 then
@@ -852,7 +878,8 @@ function LogicalRegion:CreateBlockPartitions()
         local elems2 = (p2 > num_lo[2] and elems_hi[2]) or elems_lo[2]
         lo[2] = hi[2] + 1
         hi[2] = lo[2] + elems2 - 1
-        AddDomainColor[2](coloring, color, lo, hi)
+        AddDomainColor[2](coloring, color,
+                          lo[1], lo[2], hi[1], hi[2])
         color = color + 1
       end
     end
@@ -871,21 +898,23 @@ function LogicalRegion:CreateBlockPartitions()
           local elems3 = (p3 > num_lo[3] and elems_hi[3]) or elems_lo[3]
           lo[3] = hi[3] + 1
           hi[3] = lo[3] + elems3 - 1
-          AddDomainColor[3](coloring, color, lo, hi)
-          color = color + 1
+          AddDomainColor[3](coloring, color,
+                            lo[1], lo[2], lo[3], hi[1], hi[2], hi[3])
+          color = color + 1                           
         end
       end
     end
   end
   -- create logical partition with the coloring
   local partn = LW.legion_index_partition_create_domain_coloring(
-    legion_env.runtime, legion_env.ctx, self.handle, color_space, coloring, true, -1)
+    legion_env.runtime, legion_env.ctx, self.is, color_space, coloring, true, -1)
   local lp = LW.legion_logical_partition_create(
     legion_env.runtime, legion_env.ctx, self.handle, partn)
   local lp = {
-    handle      = lp,
+    ptype       = 'BLOCK',  -- partition type (by field or block)
+    domain      = color_space,  -- partition domain (color_space)
     index_partn = partn,
-    ptype       = 'BLOCK'
+    handle      = lp,
   }
   setmetatable(lp, LogicalPartition)
   return lp
