@@ -4,7 +4,7 @@ require "tests/test"
 local R = L.NewRelation { name="R", size=6 }
 
 R:NewField('val', L.float)
-R.val:LoadConstant(1)
+R.val:Load(1)
 red = L.Global(L.float, 0.0)
 
 -- checking decl statement, if statement, proper scoping

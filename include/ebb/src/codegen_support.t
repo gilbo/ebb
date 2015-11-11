@@ -34,7 +34,7 @@ local G = require 'ebb.src.gpu_util'
 local function vec_mapgen(typ,func)
   local arr = {}
   for i=1,typ.N do arr[i] = func(i-1) end
-  return `[typ:terraType()]({ array([arr]) })
+  return `[typ:terratype()]({ array([arr]) })
 end
 local function mat_mapgen(typ,func)
   local rows = {}
@@ -43,7 +43,7 @@ local function mat_mapgen(typ,func)
     for j=1,typ.Ncol do r[j] = func(i-1,j-1) end
     rows[i] = `array([r])
   end
-  return `[typ:terraType()]({ array([rows]) })
+  return `[typ:terratype()]({ array([rows]) })
 end
 
 local function vec_foldgen(N, init, binf)
@@ -76,11 +76,11 @@ Support.mat_foldgen = mat_foldgen
 
 -- ONLY ONE PLACE...
 local function let_vec_binding(typ, N, exp)
-  local val = symbol(typ:terraType())
+  local val = symbol(typ:terratype())
   local let_binding = quote var [val] = [exp] end
 
   local coords = {}
-  if typ:isVector() then
+  if typ:isvector() then
     for i=1, N do coords[i] = `val.d[i-1] end
   else
     for i=1, N do coords[i] = `val end
@@ -90,14 +90,14 @@ local function let_vec_binding(typ, N, exp)
 end
 
 local function let_mat_binding(typ, N, M, exp)
-  local val = symbol(typ:terraType())
+  local val = symbol(typ:terratype())
   local let_binding = quote var [val] = [exp] end
 
   local coords = {}
   for i = 1, N do
     coords[i] = {}
     for j = 1, M do
-      if typ:isMatrix() then
+      if typ:ismatrix() then
         coords[i][j] = `val.d[i-1][j-1]
       else
         coords[i][j] = `val
@@ -108,12 +108,12 @@ local function let_mat_binding(typ, N, M, exp)
 end
 
 local function symgen_bind(typ, exp, f)
-  local s = symbol(typ:terraType())
+  local s = symbol(typ:terratype())
   return quote var s = exp in [f(s)] end
 end
 local function symgen_bind2(typ1, typ2, exp1, exp2, f)
-  local s1 = symbol(typ1:terraType())
-  local s2 = symbol(typ2:terraType())
+  local s1 = symbol(typ1:terratype())
+  local s2 = symbol(typ2:terratype())
   return quote
     var s1 = exp1
     var s2 = exp2
@@ -232,9 +232,9 @@ end
 
 
 local function atomic_gpu_mat_red_exp(op, result_typ, lval, rhe, rhtyp)
-  if result_typ:isScalar() then
+  if result_typ:isscalar() then
     return atomic_gpu_red_exp(op, result_typ, `&lval, rhe)
-  elseif result_typ:isVector() then
+  elseif result_typ:isvector() then
 
     local N = result_typ.N
     local rhbind, rhcoords = let_vec_binding(rhtyp, N, rhe)
@@ -245,11 +245,11 @@ local function atomic_gpu_mat_red_exp(op, result_typ, lval, rhe, rhtyp)
     for i = 0, N-1 do
       result = quote
         [result]
-        [atomic_gpu_red_exp(op, result_typ:baseType(), `v+i, rhcoords[i+1])]
+        [atomic_gpu_red_exp(op, result_typ:basetype(), `v+i, rhcoords[i+1])]
       end
     end
     return quote
-      var [v] : &result_typ:terraBaseType() = [&result_typ:terraBaseType()](&[lval])
+      var [v] : &result_typ:terrabasetype() = [&result_typ:terrabasetype()](&[lval])
       [rhbind]
     in
       [result]
@@ -267,12 +267,12 @@ local function atomic_gpu_mat_red_exp(op, result_typ, lval, rhe, rhtyp)
       for j = 0, M-1 do
         result = quote
           [result]
-          [atomic_gpu_red_exp(op, result_typ:baseType(), `&([m].d[i][j]), rhcoords[i+1][j+1])]
+          [atomic_gpu_red_exp(op, result_typ:basetype(), `&([m].d[i][j]), rhcoords[i+1][j+1])]
         end
       end
     end
     return quote
-      var [m] : &result_typ:terraType() = [&result_typ:terraType()](&[lval])
+      var [m] : &result_typ:terratype() = [&result_typ:terratype()](&[lval])
       [rhbind]
       in
       [result]
@@ -292,12 +292,12 @@ end
 
 
 local function mat_bin_exp(op, result_typ, lhe, rhe, lhtyp, rhtyp)
-  if lhtyp:isPrimitive() and rhtyp:isPrimitive() then
+  if lhtyp:isprimitive() and rhtyp:isprimitive() then
     return prim_bin_exp(op, lhe, rhe)
   end
 
   -- handles equality and inequality of keys
-  if lhtyp:isKey() and rhtyp:isKey() then
+  if lhtyp:iskey() and rhtyp:iskey() then
     return prim_bin_exp(op, lhe, rhe)
   end
 
@@ -311,14 +311,14 @@ local function mat_bin_exp(op, result_typ, lhe, rhe, lhtyp, rhtyp)
     -- pairwise comparisons, and/or collapse
   local eqinitval = { ['=='] = `true, ['~='] = `false }
   if op == '==' or op == '~=' then
-    if lhtyp:isVector() then -- rhtyp:isVector()
+    if lhtyp:isvector() then -- rhtyp:isvector()
       return symgen_bind2(lhtyp, rhtyp, lhe, rhe, function(lvec,rvec)
         return vec_foldgen(lhtyp.N, eqinitval[op], function(i, acc)
           if op == '==' then return `acc and lvec.d[i] == rvec.d[i]
                         else return `acc or  lvec.d[i] ~= rvec.d[i] end
         end) end)
 
-    elseif lhtyp:isMatrix() then -- rhtyp:isMatrix()
+    elseif lhtyp:ismatrix() then -- rhtyp:ismatrix()
       return symgen_bind2(lhtyp, rhtyp, lhe, rhe, function(lmat,rmat)
         return mat_foldgen(lhtyp.Nrow, lhtyp.Ncol, eqinitval[op],
           function(i,j, acc)
@@ -337,12 +337,12 @@ local function mat_bin_exp(op, result_typ, lhe, rhe, lhtyp, rhtyp)
      op == '+'    or op == '-'  or
      op == 'min'  or op == 'max'
   then
-    if lhtyp:isVector() then -- rhtyp:isVector()
+    if lhtyp:isvector() then -- rhtyp:isvector()
       return symgen_bind2(lhtyp, rhtyp, lhe, rhe, function(lvec,rvec)
         return vec_mapgen(result_typ, function(i)
           return prim_bin_exp( op, `(lvec.d[i]), `(rvec.d[i]) ) end) end)
 
-    elseif lhtyp:isMatrix() then
+    elseif lhtyp:ismatrix() then
       return symgen_bind2(lhtyp, rhtyp, lhe, rhe, function(lmat,rmat)
         return mat_mapgen(result_typ, function(i,j)
           return prim_bin_exp( op, (`lmat.d[i][j]), `(rmat.d[i][j]) ) end) end)
@@ -358,24 +358,24 @@ local function mat_bin_exp(op, result_typ, lhe, rhe, lhtyp, rhtyp)
     -- DIM: _ Scalar
       -- map the OP with expanding one side
   if op == '/' or
-    (op == '*' and lhtyp:isPrimitive() or rhtyp:isPrimitive())
+    (op == '*' and lhtyp:isprimitive() or rhtyp:isprimitive())
   then
-    if lhtyp:isVector() then -- rhtyp:isPrimitive()
+    if lhtyp:isvector() then -- rhtyp:isprimitive()
       return symgen_bind2(lhtyp, rhtyp, lhe, rhe, function(lvec,r)
         return vec_mapgen(result_typ, function(i)
           return prim_bin_exp( op, (`lvec.d[i]), r ) end) end)
 
-    elseif rhtyp:isVector() then -- lhtyp:isPrimitive()
+    elseif rhtyp:isvector() then -- lhtyp:isprimitive()
       return symgen_bind2(lhtyp, rhtyp, lhe, rhe, function(l,rvec)
         return vec_mapgen(result_typ, function(i)
           return prim_bin_exp( op, l, `(rvec.d[i]) ) end) end)
 
-    elseif lhtyp:isMatrix() then -- rhtyp:isPrimitive()
+    elseif lhtyp:ismatrix() then -- rhtyp:isprimitive()
       return symgen_bind2(lhtyp, rhtyp, lhe, rhe, function(lmat,r)
         return mat_mapgen(result_typ, function(i,j)
           return prim_bin_exp( op, (`lmat.d[i][j]), r ) end) end)
 
-    elseif rhtyp:isMatrix() then -- rhtyp:isPrimitive()
+    elseif rhtyp:ismatrix() then -- rhtyp:isprimitive()
       return symgen_bind2(lhtyp, rhtyp, lhe, rhe, function(l,rmat)
         return mat_mapgen(result_typ, function(i,j)
           return prim_bin_exp( op, l, `(rmat.d[i][j]) ) end) end)
@@ -389,19 +389,19 @@ local function mat_bin_exp(op, result_typ, lhe, rhe, lhtyp, rhtyp)
     -- DIM: Matrix(_,m) Matrix(m,_)
       -- vector-matrix, matrix-vector, or matrix-matrix products
 --  if op == '*' then
---    if lhtyp:isVector() and rhtyp:isMatrix() then
+--    if lhtyp:isvector() and rhtyp:ismatrix() then
 --      return symgen_bind2(lhtyp, rhtyp, lhe, rhe, function(lvec,rmat)
 --        return vec_mapgen(result_typ, function(j)
 --          return vec_foldgen(rmat.Ncol, `0, function(i, acc)
 --            return `acc + lvec.d[i] * rmat.d[i][j] end) end) end)
 --
---    elseif lhtyp:isMatrix() and rhtyp:isVector() then
+--    elseif lhtyp:ismatrix() and rhtyp:isvector() then
 --      return symgen_bind2(lhtyp, rhtyp, lhe, rhe, function(lmat,rvec)
 --        return vec_mapgen(result_typ, function(i)
 --          return vec_foldgen(lmat.Nrow, `0, function(j, acc)
 --            return `acc + lmat.d[i][j] * rvec.d[j] end) end) end)
 --
---    elseif lhtyp:isMatrix() and rhtyp:isMatrix() then
+--    elseif lhtyp:ismatrix() and rhtyp:ismatrix() then
 --      return symgen_bind2(lhtyp, rhtyp, lhe, rhe, function(lmat,rmat)
 --        return mat_mapgen(result_typ, function(i,j)
 --          return vec_foldgen(rmat.Ncol, `0, function(k, acc)
@@ -412,20 +412,20 @@ local function mat_bin_exp(op, result_typ, lhe, rhe, lhtyp, rhtyp)
 
   -- If we fell through to here we've run into an unhandled branch
   error('Internal Error: Could not find any code to generate for '..
-        'binary operator '..op..' with opeands of type '..lhtyp:toString()..
-        ' and '..rhtyp:toString())
+        'binary operator '..op..' with opeands of type '..tostring(lhtyp)..
+        ' and '..tostring(rhtyp))
 end
 
 
 
 local function unary_exp(op, typ, expr)
 
-  if typ:isPrimitive() then
+  if typ:isprimitive() then
     if     op == '-'   then return `-[expr]
     elseif op == 'not' then return `not [expr] end
 
-  elseif typ:isVector() then
-    local vec = symbol(typ:terraType())
+  elseif typ:isvector() then
+    local vec = symbol(typ:terratype())
 
     if op == '-' then
       return quote var [vec] = expr in
@@ -439,8 +439,8 @@ local function unary_exp(op, typ, expr)
         end) ] end
     end
 
-  elseif typ:isMatrix() then
-    local mat = symbol(typ:terraType())
+  elseif typ:ismatrix() then
+    local mat = symbol(typ:terratype())
 
     if op == '-' then
       return quote var [mat] = expr in
@@ -455,7 +455,7 @@ local function unary_exp(op, typ, expr)
     end
 
   else
-    error("Internal Error: Type unrecognized "..typ:toString())
+    error("Internal Error: Type unrecognized "..tostring(typ))
   end
 
   error("Internal Error: Operation unrecognized "..op)
@@ -517,13 +517,13 @@ local function scalar_reduce_identity (ltype, reduceop)
 end
 
 function Support.reduction_identity(lz_type, reduceop)
-  if not lz_type:isVector() then
+  if not lz_type:isvector() then
     return scalar_reduce_identity(lz_type, reduceop)
   end
-  local scalar_id = scalar_reduce_identity(lz_type:baseType(), reduceop)
+  local scalar_id = scalar_reduce_identity(lz_type:basetype(), reduceop)
   return quote
-    var rid : lz_type:terraType()
-    var tmp : &lz_type:terraBaseType() = [&lz_type:terraBaseType()](&rid)
+    var rid : lz_type:terratype()
+    var tmp : &lz_type:terrabasetype() = [&lz_type:terrabasetype()](&rid)
     for i = 0, [lz_type.N] do
       tmp[i] = [scalar_id]
     end

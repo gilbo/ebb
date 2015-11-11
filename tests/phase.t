@@ -4,8 +4,8 @@ local test  = require "tests/test"
 local ioOff = require 'ebb.domains.ioOff'
 local M     = ioOff.LoadTrimesh('tests/octa.off')
 
-M.vertices:NewField('field1', L.float):LoadConstant(0)
-M.vertices:NewField('field2', L.float):LoadConstant(0)
+M.vertices:NewField('field1', L.float):Load(0)
+M.vertices:NewField('field2', L.float):Load(0)
 
 test.fail_function(function()
   local ebb write_neighbor (v : M.vertices)

@@ -307,7 +307,7 @@ local function project_velocity(grid)
         grid.cells:Copy{from='divergence', to='p'}
     else
         grid.cells:Swap('divergence','p') -- move divergence into p to do bnd
-        grid.cells:foreach(pressure_neumann_bnd)
+        pressure_neumann_bnd(grid.cells)
         grid.cells:Copy{from='p',to='divergence'} -- then copy it back
     end
 

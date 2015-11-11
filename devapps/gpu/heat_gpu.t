@@ -91,7 +91,7 @@ local R3 = terralib.cudacompile { clear_temp_vars = clear_temp_vars }
 --------------------------------------------------------------------------------
 --[[ Simulation:                                                            ]]-- 
 --------------------------------------------------------------------------------
-local vec3dtype = M.vertices.position.type:terraType()
+local vec3dtype = M.vertices.position.type:terratype()
 terra copy_posn_data (data : &vec3dtype, N : int) : &double
   var ret : &double = [&double](C.malloc(sizeof(double) * N * 3))
   for i = 0, N do

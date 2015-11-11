@@ -20,10 +20,42 @@ end
 local VERBOSE = rawget(_G, 'EBB_LOG_EBB')
 
 -------------------------------------------------------------------------------
---[[ Ebb modules:                                                          ]]--
+--[[ Copy from Type Module:                                                ]]--
 -------------------------------------------------------------------------------
 
+L.is_type = T.istype
 
+for _,name in ipairs({
+
+  }) do
+  L[name] = T[name]
+end
+L.int           = T.int
+L.uint          = T.uint
+L.uint64        = T.uint64
+L.bool          = T.bool
+L.float         = T.float
+L.double        = T.double
+
+L.vector        = T.vector 
+L.matrix        = T.matrix 
+L.key           = T.key 
+L.record        = T.record 
+L.internal      = T.internal 
+L.query         = T.query 
+L.error         = T.error
+
+for _,tchar in ipairs({ 'i', 'f', 'd', 'b' }) do
+  for n=2,4 do
+    n = tostring(n)
+    L['vec'..n..tchar] = T['vec'..n..tchar]
+    L['mat'..n..tchar] = T['mat'..n..tchar]
+    for m=2,4 do
+      local m = tostring(m)
+      L['mat'..n..'x'..m..tchar] = T['mat'..n..'x'..m..tchar]
+    end
+  end
+end
 
 -------------------------------------------------------------------------------
 --[[ Ebb Constants:                                                        ]]--
@@ -76,18 +108,18 @@ local Stats   = require "ebb.src.stats"
 -------------------------------------------------------------------------------
 
 function L.Global (typ, init)
-  if not T.istype(typ) or not typ:isValueType() then
+  if not T.istype(typ) or not typ:isvalue() then
     error("First argument to L.Global must be an Ebb value type", 2)
   end
   if not T.luaValConformsToType(init, typ) then
     error("Second argument to L.Global must be an "..
-          "instance of type " .. typ:toString(), 2)
+          "instance of type " .. tostring(typ), 2)
   end
 
   local s  = setmetatable({type=typ}, LGlobal)
 
   if use_single then
-    local tt = typ:terraType()
+    local tt = typ:terratype()
     s.data = DataArray.New({size=1,type=tt})
     s:set(init)
 
@@ -99,7 +131,7 @@ function L.Global (typ, init)
 end
 
 function LGlobal:set(val)
-  if not T.luaValConformsToType(val, self.type) then error("value does not conform to type of global: " .. self.type:toString(), 2) end
+  if not T.luaValConformsToType(val, self.type) then error("value does not conform to type of global: " .. tostring(self.type), 2) end
 
   if VERBOSE then
     local data_deps = "Ebb LOG: function global-set accesses"
@@ -114,7 +146,7 @@ function LGlobal:set(val)
 
   elseif use_legion then
     local typ    = self.type
-    local tt     = typ:terraType()
+    local tt     = typ:terratype()
     local blob   = C.safemalloc( tt )
     blob[0]      = T.luaToEbbVal(val, typ)
     local future = LW.legion_future_from_buffer(legion_env.runtime,
@@ -143,7 +175,7 @@ function LGlobal:get()
     self.data:close_read_ptr()
 
   elseif use_legion then
-    local tt = self.type:terraType()
+    local tt = self.type:terratype()
     local result = LW.legion_future_get_result(self.data)
     local rptr   = terralib.cast(&tt, result.value)
     value = T.ebbToLuaVal(rptr[0], self.type)
@@ -191,13 +223,13 @@ local function deep_copy(tbl)
 end
 
 function L.Constant (typ, init)
-    if not T.istype(typ) or not typ:isValueType() then
+    if not T.istype(typ) or not typ:isvalue() then
         error("First argument to L.Constant must be an "..
               "Ebb value type", 2)
     end
     if not T.luaValConformsToType(init, typ) then
         error("Second argument to L.Constant must be a "..
-              "value of type " .. typ:toString(), 2)
+              "value of type " .. tostring(typ), 2)
     end
 
 

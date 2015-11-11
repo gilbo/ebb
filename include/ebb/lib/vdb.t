@@ -15,8 +15,8 @@ local VDB_C     = terralib.includecstring([[
 local function check_vec(vec, errmsg)
   if not vec or
      not T.istype(vec.node_type) or
-     not vec.node_type:isVector() or
-     not vec.node_type:isNumeric() or
+     not vec.node_type:isvector() or
+     not vec.node_type:isnumeric() or
      vec.node_type.N < 3
   then
     error(errmsg)

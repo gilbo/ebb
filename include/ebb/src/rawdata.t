@@ -219,7 +219,7 @@ function DataArray:open_read_ptr()
       type      = self._type,
     }
     self._read_ptr_buf:copy(self)
-    return self:_raw_ptr()
+    return self._read_ptr_buf:_raw_ptr()
   end
 end
 function DataArray:close_read_ptr()

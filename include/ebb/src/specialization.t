@@ -332,10 +332,10 @@ local function luav_to_ast(luav, src_node)
     node.global = luav
 
   elseif L.is_constant(luav) then
-    local bt = luav.type:baseType()
-    if luav.type:isMatrix() then
+    local bt = luav.type:basetype()
+    if luav.type:ismatrix() then
       node = mat_to_AST(src_node, luav.value, bt)
-    elseif luav.type:isVector() then
+    elseif luav.type:isvector() then
       node = vec_to_AST(src_node, luav.value, bt)
     else
       node = prim_to_AST(src_node, luav.value, bt)
