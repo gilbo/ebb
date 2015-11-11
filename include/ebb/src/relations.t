@@ -1825,6 +1825,38 @@ function L.LRelation:IsPartitioningSet()
   return (self._total_partitions ~= nil)
 end
 
+-- ghost_width specifies ghost width on each side of a grid.
+-- example for a 2d grid, ghost_width is {xl, xh, yl, yh}
+-- (l = lower side, h = higher side).
+function L.LRelation:SetGhostWidth(ghost_width)
+  if not self:isGrid() then
+    error("SetGhostWidth supported for only structured relations (grids).", 2)
+  else
+    local ndims = self:nDims()
+    local num_elems = #ghost_width
+    if num_elems ~= 2 * ndims then
+      error("Expected a table of " .. tostring(2 * ndims) .. " elements for ghost width." ..
+            "Got " .. tostring(num_elems) .. "instead.")
+    end
+    rawset(self, '_ghost_width_default', ghost_width)
+  end
+end
+
+function L.LRelation:InvalidateGhostWidth()
+  if not self._ghost_width_default then
+    error("Attempt to invalidate ghost width which has never been set", 2)
+  end
+  self._ghost_width_default = nil
+end
+
+function L.LRelation:GhostWidth()
+  return self._ghost_width_default
+end
+
+function L.LRelation:IsGhostWidthValid()
+  return self._ghost_width_default ~= nil
+end
+
 local ColorPlainIndexSpaceDisjoint = nil
 if use_legion then
   ColorPlainIndexSpaceDisjoint = terra(darray : &DLD.ctype, num_colors : uint)
@@ -1840,7 +1872,10 @@ if use_legion then
   end
 end
 
--- creates a disjoint partitioning on the relation
+-- NOTE: partitions include boundary regions. Partitioning is not subset
+-- specific right now, but it is a partitioning over the entire logical region.
+
+-- looks up/ creates a disjoint partitioning on a relation
 function L.LRelation:GetOrCreateDisjointPartitioning()
   -- check if there is a disjoint partition
   if self._disjoint_partitioning then
@@ -1866,4 +1901,31 @@ function L.LRelation:GetOrCreateDisjointPartitioning()
   end
   rawset(self, '_disjoint_partitioning', partn)
   return partn
+end
+
+-- looks up/ creates an aliased partitioning on a relation
+-- only grids with specified ghost width supported right now
+function L.LRelation:GetOrCreateGhostPartitioning(ghost_width)
+  if not self:isGrid() then
+    error("INTERNAL: Ghost partitions on non-grid relations not supported yet.")
+  else
+    local ghost_width = ghost_width or self._ghost_width_default
+    if not ghost_width then
+      error("INTERNAL: Ghost width not specified. Stencil analysis does not work yet.")
+    end
+    local lookup_str = ""
+    local num_elems = #ghost_width
+    for i = 1, num_elems do
+      lookup_str = lookup_str .. "_" .. tostring(ghost_width[i])
+    end
+    if not self._ghost_partitionings then
+      rawset(self, '_ghost_partitionings', {})
+    end
+    local ghost_partitionings = self._ghost_partitionings
+    if not ghost_partitionings[lookup_str] then
+      ghost_partitionings[lookup_str] =
+        self._logical_region_wrapper:CreateBlockPartitions(self._ghost_width_default)
+    end
+    return ghost_partitionings[lookup_str]
+  end
 end

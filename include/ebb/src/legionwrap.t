@@ -791,12 +791,16 @@ AddDomainColor[3] = terra(coloring : LW.legion_domain_coloring_t,
 end  -- terra function
 
 -- create block partitions
-function LogicalRegion:CreateBlockPartitions() 
+function LogicalRegion:CreateBlockPartitions(ghost_width) 
+  -- NOTE: partitions include boundary regions. Partitioning is not subset
+  -- specific right now, but it is a partitioning over the entire logical
+  -- region.
   local num_partitions = self.relation:NumPartitions()
   local dims = self.relation:Dims()
   local ndims = #dims
   -- check if number of elements along each dimension is a multiple of number
-  -- of partitions
+  -- of partitions. compute number of elements along each dimension in each
+  -- partition for the disjoint case.
   local divisible = {}
   local elems_lo = {}
   local elems_hi = {}
@@ -809,19 +813,35 @@ function LogicalRegion:CreateBlockPartitions()
     elems_hi[d] = math.ceil(num_elems/num_partns)
     num_lo[d]   = num_partns - (num_elems % num_partns)
   end
+  -- check if partitioning will be disjoint
+  local disjoint = true
+  local ghost_width = ghost_width
+  if ghost_width then
+    for d = 1, 2*ndims do
+      disjoint = disjoint and (ghost_width[d] == 0)
+    end
+  else
+    ghost_width = {}
+    for d = 1, 2*ndims do
+      ghost_width[d] = 0
+    end
+  end
   -- color space
   local total_partitions = self.relation:TotalPartitions()
   local color_space = CreateColorSpace(total_partitions)
   local coloring = LW.legion_domain_coloring_create();
   -- determine number of elements in each partition/ color and create logical partition
+  -- TODO: what should we do for periodic boundary conditions?
   local color = 0
   if ndims == 1 then
     local lo = 0
     local hi = -1
     for p1 = 1, num_partitions[1] do
       local elems1 = (p1 > num_lo[1] and elems_hi[1]) or elems_lo[1]
-      lo = hi + 1
-      hi = lo + elems1 - 1
+      lo = hi + 1 - ghost_width[1]
+      if lo < 0 then lo = 0  end  -- clamp
+      hi = lo + elems1 - 1 + ghost_width[2]
+      if hi > dims[1] - 1 then hi = dims[1] - 1 end  -- clamp
       AddDomainColor[1](coloring, color,
                         lo, hi)
       color = color + 1
@@ -831,13 +851,17 @@ function LogicalRegion:CreateBlockPartitions()
     local hi = {-1, -1}
     for p1 = 1, num_partitions[1] do
       local elems1 = (p1 > num_lo[1] and elems_hi[1]) or elems_lo[1]
-      lo[1] = hi[1] + 1
-      hi[1] = lo[1] + elems1 - 1
+      lo[1] = hi[1] + 1 - ghost_width[1]
+      if lo[1] < 0 then lo[1] = 0  end  -- clamp
+      hi[1] = lo[1] + elems1 - 1 + ghost_width[2]
+      if hi[1] > dims[1] - 1 then hi[1] = dims[1] - 1 end  -- clamp
       hi[2] = -1
       for p2 = 1, num_partitions[2] do
         local elems2 = (p2 > num_lo[2] and elems_hi[2]) or elems_lo[2]
-        lo[2] = hi[2] + 1
-        hi[2] = lo[2] + elems2 - 1
+        lo[2] = hi[2] + 1 - ghost_width[3]
+        if lo[2] < 0 then lo[2] = 0  end  -- clamp
+        hi[2] = lo[2] + elems2 - 1 + ghost_width[4]
+        if hi[2] > dims[2] - 1 then hi[2] = dims[2] - 1 end  -- clamp
         AddDomainColor[2](coloring, color,
                           lo[1], lo[2], hi[1], hi[2])
         color = color + 1
@@ -846,18 +870,24 @@ function LogicalRegion:CreateBlockPartitions()
   elseif ndims == 3 then
     for p1 = 1, num_partitions[1] do
       local elems1 = (p1 > num_lo[1] and elems_hi[1]) or elems_lo[1]
-      lo[1] = hi[1] + 1
-      hi[1] = lo[1] + elems1 - 1
+      lo[1] = hi[1] + 1 - ghost_width[1]
+      if lo[1] < 0 then lo[1] = 0  end  -- clamp
+      hi[1] = lo[1] + elems1 - 1 + ghost_width[2]
+      if hi[1] > dims[1] - 1 then hi[1] = dims[1] - 1 end  -- clamp
       hi[2] = -1
       for p2 = 1, num_partitions[2] do
         local elems2 = (p2 > num_lo[2] and elems_hi[2]) or elems_lo[2]
-        lo[2] = hi[2] + 1
-        hi[2] = lo[2] + elems2 - 1
+        lo[2] = hi[2] + 1 - ghost_width[3]
+        if lo[2] < 0 then lo[2] = 0  end  -- clamp
+        hi[2] = lo[2] + elems2 - 1 + ghost_width[4]
+        if hi[2] > dims[2] - 1 then hi[2] = dims[2] - 1 end  -- clamp
         hi[3] = -1
         for p3 = 1, num_partitions[3] do
           local elems3 = (p3 > num_lo[3] and elems_hi[3]) or elems_lo[3]
-          lo[3] = hi[3] + 1
-          hi[3] = lo[3] + elems3 - 1
+          lo[3] = hi[3] + 1 - ghost_width[5]
+          if lo[3] < 0 then lo[3] = 0  end  -- clamp
+          hi[3] = lo[3] + elems3 - 1 + ghost_width[6]
+          if hi[3] > dims[3] - 1 then hi[3] = dims[3] - 1 end  -- clamp
           AddDomainColor[3](coloring, color,
                             lo[1], lo[2], lo[3], hi[1], hi[2], hi[3])
           color = color + 1                           
@@ -867,7 +897,7 @@ function LogicalRegion:CreateBlockPartitions()
   end
   -- create logical partition with the coloring
   local partn = LW.legion_index_partition_create_domain_coloring(
-    legion_env.runtime, legion_env.ctx, self.is, color_space, coloring, true, -1)
+    legion_env.runtime, legion_env.ctx, self.is, color_space, coloring, disjoint, -1)
   local lp = LW.legion_logical_partition_create(
     legion_env.runtime, legion_env.ctx, self.handle, partn)
   local lp = {
