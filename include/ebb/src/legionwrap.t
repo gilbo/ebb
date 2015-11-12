@@ -232,71 +232,43 @@ function LW.TaskLauncher:Destroy()
 end
 
 function LW.TaskLauncher:AddRegionReq(reg_partn, parent, permission, coherence)
-  local reg_req
+  local region_args = terralib.newlist({self._launcher, reg_partn.handle})
+  local add_region_requirement
   if self._index_launch then
+    region_args:insert(0)
     -- Two versions for transitioning. We should finally switch to logical
     -- partitions for all cases.
     if reg_partn == parent then
-      reg_req = LW.legion_index_launcher_add_region_requirement_logical_region(
-        self._launcher,
-        reg_partn.handle,
-        0,
-        permission,
-        coherence,
-        parent.handle, 
-        0,
-        false
-      )
+      add_region_requirement = LW.legion_index_launcher_add_region_requirement_logical_region
     else
-      reg_req = LW.legion_index_launcher_add_region_requirement_logical_partition(
-        self._launcher,
-        reg_partn.handle,
-        0,
-        permission,
-        coherence,
-        parent.handle,
-        0,
-        false
-      )
+      add_region_requirement = LW.legion_index_launcher_add_region_requirement_logical_partition
     end
   else
     assert(reg_partn == parent)
-    reg_req = LW.legion_task_launcher_add_region_requirement_logical_region(
-      self._launcher,
-      reg_partn.handle,
-      permission,
-      coherence,
-      parent.handle, -- superfluous parent ?
-      0,
-      false
-    )
+    add_region_requirement = LW.legion_task_launcher_add_region_requirement_logical_region
   end
-  return reg_req
+  region_args:insertall({permission, coherence, parent.handle, 0, false})
+  return add_region_requirement(unpack(region_args))
 end
 
 function LW.TaskLauncher:AddField(reg_req, fid)
-  local AddFieldVariant = self._index_launch and
-    LW.legion_index_launcher_add_field or
+  local AddFieldVariant =
+    (self._index_launch and LW.legion_index_launcher_add_field) or
     LW.legion_task_launcher_add_field
-  AddFieldVariant(
-    self._launcher,
-    reg_req,
-    fid,
-    true
-  )
+  AddFieldVariant(self._launcher, reg_req, fid, true)
 end
 
 function LW.TaskLauncher:AddFuture(future)
-  local AddFutureVariant = self._index_launch and
-    LW.legion_index_launcher_add_future or
+  local AddFutureVariant =
+    (self._index_launch and LW.legion_index_launcher_add_future) or
     LW.legion_task_launcher_add_future
   AddFutureVariant(self._launcher, future)
 end
 
 -- If there's a future it will be returned
 function LW.TaskLauncher:Execute(runtime, ctx)
-  local ExecuteVariant = self._index_launch and
-    LW.legion_index_launcher_execute or
+  local ExecuteVariant =
+    (self._index_launch and LW.legion_index_launcher_execute) or
     LW.legion_task_launcher_execute
   return ExecuteVariant(runtime, ctx, self._launcher)
 end
