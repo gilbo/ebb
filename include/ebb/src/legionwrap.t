@@ -288,7 +288,7 @@ terra LW.future_task(
   return result
 end
 
-terra LW.RegisterLegionTasks()
+terra LW.RegisterTasks()
   escape
     local procs = {'cpu', 'gpu'}
     local tasks = {'simple', 'future'}

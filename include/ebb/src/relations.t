@@ -2260,12 +2260,12 @@ local ColorPlainIndexSpaceDisjoint = nil
 if use_legion then
   ColorPlainIndexSpaceDisjoint = terra(darray : &DLD.C_DLD, num_colors : uint)
     var d = darray[0]
-    var b = d.dims[0]
-    var s = d.stride[0]
+    var b = d.dim_size[0]
+    var s = d.dim_stride[0]
     var partn_size = b / num_colors
     if num_colors * partn_size < b then partn_size = partn_size + 1 end
     for i = 0, b do
-      var ptr = [&LW.legion_color_t]([&uint8](d.address) + i*s)
+      var ptr = [&LW.legion_color_t](d.address) + i*s
       @ptr = i / partn_size
     end
   end

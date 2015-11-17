@@ -134,7 +134,7 @@ end
 -- Main function that launches Legion runtime
 local terra main()
   -- register legion tasks
-  LW.RegisterLegionTasks()
+  LW.RegisterTasks()
 
   -- top level task
   LW.legion_runtime_register_task_void(
