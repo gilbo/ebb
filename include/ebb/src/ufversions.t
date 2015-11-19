@@ -1097,7 +1097,7 @@ function UFVersion:_GenerateUnpackLegionTaskArgs(argsym, task_args)
       local domain        = symbol(LW.legion_domain_t)
 
       local rect          = reg_dim and symbol(LW.LegionRect[reg_dim]) or nil
-      local rectFromDom   = reg_dim and LW.LegionGetRectFromDom[reg_dim] or nil
+      local rectFromDom   = reg_dim and LW.LegionRectFromDom[reg_dim] or nil
 
       region_temporaries[ri] = {
         physical_reg  = physical_reg,
