@@ -941,6 +941,7 @@ end
 
 function ast.FieldWrite:codegen (ctxt)
   -- If this is a field-reduction on the GPU
+  -- TODO: add GPU atomic for legion
   if ctxt:onGPU() and
      self.reduceop and
      not ctxt:hasExclusivePhase(self.fieldaccess.field)
@@ -950,6 +951,20 @@ function ast.FieldWrite:codegen (ctxt)
     return Support.gpu_atomic_exp(self.reduceop,
                                   self.fieldaccess.node_type,
                                   lval, rexp, self.exp.node_type)
+  elseif use_legion and self.reduceop and
+         not ctxt:hasExclusivePhase(self.fieldaccess.field)
+  then
+    local rexp = self.exp:codegen(ctxt)
+    local key = self.fieldaccess.key:codegen(ctxt)
+    local farg = `[ ctxt:argsym() ].[ ctxt.ufv:_getFieldId(self.fieldaccess.field) ]
+    return
+        --var index = key:legionTerraLinearize(farg.strides)
+        --var accessor = farg.handle
+        Support.legion_cpu_atomic_exp(self.reduceop,
+                                      self.fieldaccess.node_type,
+                                      `key.a0,
+                                      `farg.handle,
+                                      rexp, self.exp.node_type)
   else
     -- just re-direct to an assignment statement otherwise
     local assign = ast.Assignment:DeriveFrom(self)

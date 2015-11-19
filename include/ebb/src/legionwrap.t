@@ -12,7 +12,7 @@ local DLD   = require "ebb.src.dld"
 -- have this module expose the full C-API.  Then, we'll augment it below.
 local APIblob = terralib.includecstring([[
 #include "legion_c.h"
-#include "legion_terra.h"
+#include "reductions_cpu.h"
 #include "ebb_mapper.h"
 ]])
 for k,v in pairs(APIblob) do LW[k] = v end
@@ -202,7 +202,8 @@ function LW.NewTaskLauncher(params)
     _taskfuncptr  = taskfuncptr,  -- important to prevent garbage collection
     _TID          = TID,
     _launcher     = launcher,
-    _index_launch = params.use_index_launch
+    _index_launch = params.use_index_launch,
+    _on_gpu       = params.gpu
   }, LW.TaskLauncher)
 end
 
@@ -216,23 +217,32 @@ function LW.TaskLauncher:Destroy()
   self._launcher = nil
 end
 
-function LW.TaskLauncher:AddRegionReq(reg_partn, parent, permission, coherence)
+function LW.TaskLauncher:IsOnGPU()
+  return self._on_gpu
+end
+
+
+function LW.TaskLauncher:AddRegionReq(reg_partn, parent, permission, coherence, redoptyp)
   local region_args = terralib.newlist({self._launcher, reg_partn.handle})
-  local add_region_requirement
+  local index_or_task_str = (self._index_launch and '_index') or '_task'
+  local reg_or_partn_str = ((reg_partn == parent) and '_region') or '_partition'
+  local p = permission
+  -- TODO: this is temporary till we implement legion atomics for gpu
+  if self:IsOnGPU() and (p == LW.REDUCE) then
+    p = LW.READ_WRITE
+  end
+  local red_str = ((p == LW.REDUCE) and '_reduction') or ''
+  local add_region_requirement =
+    LW['legion' .. index_or_task_str ..
+       '_launcher_add_region_requirement_logical' ..
+       reg_or_partn_str ..red_str]
   if self._index_launch then
     region_args:insert(0)
-    -- Two versions for transitioning. We should finally switch to logical
-    -- partitions for all cases.
-    if reg_partn == parent then
-      add_region_requirement = LW.legion_index_launcher_add_region_requirement_logical_region
-    else
-      add_region_requirement = LW.legion_index_launcher_add_region_requirement_logical_partition
-    end
-  else
-    assert(reg_partn == parent)
-    add_region_requirement = LW.legion_task_launcher_add_region_requirement_logical_region
   end
-  region_args:insertall({permission, coherence, parent.handle, 0, false})
+  local red_or_permission =
+    ((p == LW.REDUCE) and LW.reduction_ids[redoptyp]) or p
+  region_args:insertall({red_or_permission, coherence,
+                         parent.handle, 0, false})
   return add_region_requirement(unpack(region_args))
 end
 
@@ -1056,22 +1066,51 @@ end
 LW.reduction_ids = {}
 -- NOTE: supporting only cpu reductions for +, *, max, min
 -- on int, float and double supported right now
-local red_types = {'int', 'float', 'double'}
-local red_ops = {'plus', 'times', 'max', 'min'}
-local red_ttypes = {'int32', 'float', 'double'}
-for o = 1,#red_ops do
-  for t = 1,#red_types do
-    LW.reduction_ids[red_types[t] .. '_' .. red_ops[o]] = t + (#red_types) * (o-1)
+LW.reduction_types = {
+  ['int']    = 'int32',
+  ['float']  = 'float',
+  ['double'] = 'double'
+}
+for i = 2,4 do
+  LW.reduction_types['vec' .. tostring(i) .. 'f'] = 'float_vec' .. tostring(i)
+  LW.reduction_types['vec' .. tostring(i) .. 'd'] = 'double_vec' .. tostring(i)
+  LW.reduction_types['vec' .. tostring(i) .. 'i'] = 'int32_vec' .. tostring(i)
+  for j = 2,4 do
+    LW.reduction_types['mat' .. tostring(i) .. 'x' .. tostring(j) .. 'f']
+      = 'float_mat' .. tostring(i) .. 'x' .. tostring(j)
+    LW.reduction_types['mat' .. tostring(i) .. 'x' .. tostring(j) .. 'd']
+      = 'double_mat' .. tostring(i) .. 'x' .. tostring(j)
+    LW.reduction_types['mat' .. tostring(i) .. 'x' .. tostring(j) .. 'i']
+      = 'int32_mat' .. tostring(i) .. 'x' .. tostring(j)
+  end
+end
+LW.reduction_ops = {
+  ['+']   = 'plus',
+  ['*']   = 'times',
+  ['max'] = 'max',
+  ['min'] = 'min'
+}
+local num_reduction_functions = 0
+for _, o in pairs(LW.reduction_ops) do
+  for t, tt in pairs(LW.reduction_types) do
+    local register_reduction =
+      LW['register_reduction_' .. o .. '_' .. tt]
+    if register_reduction then
+      num_reduction_functions = num_reduction_functions + 1
+      LW.reduction_ids[o .. '_' .. t] = num_reduction_functions
+    end
   end
 end
 terra LW.RegisterReductions()
   escape
-    for o = 1,#red_ops do
-      for t = 1,#red_ttypes do
-        local red_reg =
-          LW['register_reduction_' .. red_ops[o] .. '_' .. red_ttypes[t]]
-        local red_id = LW.reduction_ids[red_types[t] .. '_' .. red_ops[o]]
-        emit `red_reg(red_id)
+    for _, o in pairs(LW.reduction_ops) do
+      for t, tt in pairs(LW.reduction_types) do
+        local register_reduction =
+          LW['register_reduction_' .. o .. '_' .. tt]
+        if register_reduction then
+          local reduction_id = LW.reduction_ids[o .. '_' .. t]
+          emit `register_reduction(reduction_id)
+        end
       end
     end
   end

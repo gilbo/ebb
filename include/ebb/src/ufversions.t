@@ -7,6 +7,7 @@ local use_single = not use_legion
 local L   = require "ebblib"
 local C   = require "ebb.src.c"
 local G   = require "ebb.src.gpu_util"
+local T   = require "ebb.src.types"
 
 local codegen         = require "ebb.src.codegen"
 local codesupport     = require "ebb.src.codegen_support"
@@ -161,10 +162,15 @@ end
 --  we do use those features, record_permission should be updated to reflect
 --  the correct privileges and coherence values.
 local function record_permission(reg_data, use)
+  -- The three cases are read only, centered (read/ write) and reduce.
   if use:isReadOnly() then
     reg_data.privilege = LW.READ_ONLY
-  else
+  elseif use:isCentered() then
     reg_data.privilege = LW.READ_WRITE
+  else
+    reg_data.privilege = LW.REDUCE
+    reg_data.redoptyp  = (LW.reduction_ops[use:reductionOp()]  or 'none') ..
+                         '_' .. T.typenames[reg_data.field:Type()]
   end
   reg_data.coherence   = LW.EXCLUSIVE
 end
@@ -271,8 +277,10 @@ local function get_region_data(ufv, relation, field)
       wrapper   = relation._logical_region_wrapper,
       num       = ufv._n_regions,
       relation  = relation,
+      field     = field,
       privilege = LW.NO_ACCESS,
-      coherence = LW.EXCLUSIVE
+      coherence = LW.EXCLUSIVE,
+      redop     = nil
     }
     ufv._n_regions = ufv._n_regions + 1
 
@@ -1030,7 +1038,8 @@ function UFVersion:_CreateLegionTaskLauncher(task_func)
     local reg_req = task_launcher:AddRegionReq(reg_partn,
                                                reg_parent,
                                                datum.privilege,
-                                               datum.coherence)
+                                               datum.coherence,
+                                               datum.redoptyp)
     assert(reg_req == ri)
   end
 
@@ -1419,13 +1428,11 @@ function UFVersion:_addRegionPartition(field)
     local prim_partn = datum.wrapper
     -- remove branches once partitions and stencil analysis are correctly set up for all cases
     if use_partitioning then
+      -- The three cases are read only, centered (read/ write) and reduce.
+      -- Read is handle by above initialization.
       if self._field_use[field]:isCentered() then
         assert(rel == self._relation)
         prim_partn = rel:GetOrCreateDisjointPartitioning()
-      -- Non-centered reductions are not supported with partitions yet.
-      elseif self._field_use[field]:isReduce() and
-        not self._field_use[field]:isCentered() then
-        error("INTERNAL: Non-centered field reduction with partitioning not supported yet.")
       -- (not is centered) and (requires exclusive) is a phase error
       -- Grid ghost partitions using specified ghost width
       elseif rel:isGrid() and rel:IsGhostWidthValid() then

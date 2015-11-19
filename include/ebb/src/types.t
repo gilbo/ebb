@@ -882,6 +882,27 @@ for n=2,4 do
   T[shortname..'b'] = T[fullname..'b']
 end
 
+-------------------------------------------------------------------------------
+--[[ type names                                                            ]]--
+-------------------------------------------------------------------------------
+local typenames = {
+  [T.int] = 'int',
+  [T.float] = 'float',
+  [T.double] = 'double'
+}
+for i = 2,4 do
+  local vtype = 'vec' .. tostring(i)
+  typenames[T[vtype .. 'i']] = vtype .. 'i'
+  typenames[T[vtype .. 'f']] = vtype .. 'f'
+  typenames[T[vtype .. 'd']] = vtype .. 'd'
+  for j = 2,4 do
+    local mtype = 'mat' .. tostring(i) .. 'x' .. tostring(j)
+    typenames[T[mtype .. 'i']] = mtype .. 'i'
+    typenames[T[mtype .. 'f']] = mtype .. 'f'
+    typenames[T[mtype .. 'd']] = mtype .. 'd'
+  end
+end
+T.typenames = typenames
 
 -------------------------------------------------------------------------------
 --[[ export type api                                                       ]]--
