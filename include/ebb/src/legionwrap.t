@@ -607,7 +607,7 @@ function LW.NewInlinePhysicalRegion(params)
     local subrect = terralib.new((LW.LegionRect[ndims])[1])
     local stride = terralib.new(LW.legion_byte_offset_t[ndims])
     for i, field in ipairs(params.fields) do
-      accs[i] = LW.legion_physical_region_get_field_accessor_generic(prs[i], field.fid)
+      accs[i] = LW.legion_physical_region_get_accessor_generic(prs[i])
       ptrs[i] = terralib.cast(&uint8,
                               LW.LegionRawPtrFromAcc[ndims](accs[i], rect, subrect, stride))
       local s = {}
@@ -622,7 +622,7 @@ function LW.NewInlinePhysicalRegion(params)
     local base = terralib.new((&opaque)[1])
     local stride = terralib.new(uint64[1])
     for i, field in ipairs(params.fields) do
-      accs[i] = LW.legion_physical_region_get_field_accessor_generic(prs[i], field.fid)
+      accs[i] = LW.legion_physical_region_get_accessor_generic(prs[i])
       base[0] = nil
       stride[0] = 0
       LW.legion_accessor_generic_get_soa_parameters(accs[i], base, stride)

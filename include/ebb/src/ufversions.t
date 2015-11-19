@@ -1141,8 +1141,7 @@ function UFVersion:_GenerateUnpackLegionTaskArgs(argsym, task_args)
       -- structured
       if reg_dim then emit quote
         var field_accessor =
-          LW.legion_physical_region_get_field_accessor_generic(
-                                              physical_reg, [field.fid])
+          LW.legion_physical_region_get_accessor_generic(physical_reg)
         var subrect : LW.LegionRect[reg_dim]
         var strides : LW.legion_byte_offset_t[reg_dim]
         var base = [&uint8](
@@ -1160,8 +1159,7 @@ function UFVersion:_GenerateUnpackLegionTaskArgs(argsym, task_args)
       -- unstructured
       else emit quote
         var field_accessor =
-          LW.legion_physical_region_get_field_accessor_generic(
-                                              physical_reg, [field.fid])
+          LW.legion_physical_region_get_accessor_generic(physical_reg)
         var base : &opaque = nil
         var stride_val : C.size_t = 0
         var ok = LW.legion_accessor_generic_get_soa_parameters(
