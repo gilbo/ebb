@@ -487,6 +487,342 @@ void safe_reduce_min_double_mat4x4(legion_accessor_generic_t accessor,
 void safe_reduce_min_int32_mat4x4(legion_accessor_generic_t accessor,
                                  legion_ptr_t ptr, int_16 value);
 
+// safe reduce plus on scalars
+void safe_reduce_domain_point_plus_float(legion_accessor_generic_t accessor,
+                            legion_domain_point_t pt, float_1 value);
+void safe_reduce_domain_point_plus_double(legion_accessor_generic_t accessor,
+                            legion_domain_point_t pt, double_1 value);
+void safe_reduce_domain_point_plus_int32(legion_accessor_generic_t accessor,
+                            legion_domain_point_t pt, int_1 value);
+
+// safe reduce plus on vectors
+void safe_reduce_domain_point_plus_float_vec2(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, float_2 value);
+void safe_reduce_domain_point_plus_double_vec2(legion_accessor_generic_t accessor,
+                                legion_domain_point_t pt, double_2 value);
+void safe_reduce_domain_point_plus_int32_vec2(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, int_2 value);
+void safe_reduce_domain_point_plus_float_vec3(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, float_3 value);
+void safe_reduce_domain_point_plus_double_vec3(legion_accessor_generic_t accessor,
+                                legion_domain_point_t pt, double_3 value);
+void safe_reduce_domain_point_plus_int32_vec3(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, int_3 value);
+void safe_reduce_domain_point_plus_float_vec4(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, float_4 value);
+void safe_reduce_domain_point_plus_double_vec4(legion_accessor_generic_t accessor,
+                                legion_domain_point_t pt, double_4 value);
+void safe_reduce_domain_point_plus_int32_vec4(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, int_4 value);
+
+// safe reduce plus on matrices
+void safe_reduce_domain_point_plus_float_mat2x2(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, float_4 value);
+void safe_reduce_domain_point_plus_double_mat2x2(legion_accessor_generic_t accessor,
+                                legion_domain_point_t pt, double_4 value);
+void safe_reduce_domain_point_plus_int32_mat2x2(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, int_4 value);
+void safe_reduce_domain_point_plus_float_mat2x3(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, float_6 value);
+void safe_reduce_domain_point_plus_double_mat2x3(legion_accessor_generic_t accessor,
+                                legion_domain_point_t pt, double_6 value);
+void safe_reduce_domain_point_plus_int32_mat2x3(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, int_6 value);
+void safe_reduce_domain_point_plus_float_mat2x4(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, float_8 value);
+void safe_reduce_domain_point_plus_double_mat2x4(legion_accessor_generic_t accessor,
+                                legion_domain_point_t pt, double_8 value);
+void safe_reduce_domain_point_plus_int32_mat2x4(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, int_8 value);
+void safe_reduce_domain_point_plus_float_mat3x2(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, float_6 value);
+void safe_reduce_domain_point_plus_double_mat3x2(legion_accessor_generic_t accessor,
+                                legion_domain_point_t pt, double_6 value);
+void safe_reduce_domain_point_plus_int32_mat3x2(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, int_6 value);
+void safe_reduce_domain_point_plus_float_mat3x3(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, float_9 value);
+void safe_reduce_domain_point_plus_double_mat3x3(legion_accessor_generic_t accessor,
+                                legion_domain_point_t pt, double_9 value);
+void safe_reduce_domain_point_plus_int32_mat3x3(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, int_9 value);
+void safe_reduce_domain_point_plus_float_mat3x4(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, float_12 value);
+void safe_reduce_domain_point_plus_double_mat3x4(legion_accessor_generic_t accessor,
+                                legion_domain_point_t pt, double_12 value);
+void safe_reduce_domain_point_plus_int32_mat3x4(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, int_12 value);
+void safe_reduce_domain_point_plus_float_mat4x2(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, float_8 value);
+void safe_reduce_domain_point_plus_double_mat4x2(legion_accessor_generic_t accessor,
+                                legion_domain_point_t pt, double_8 value);
+void safe_reduce_domain_point_plus_int32_mat4x2(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, int_8 value);
+void safe_reduce_domain_point_plus_float_mat4x3(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, float_12 value);
+void safe_reduce_domain_point_plus_double_mat4x3(legion_accessor_generic_t accessor,
+                                legion_domain_point_t pt, double_12 value);
+void safe_reduce_domain_point_plus_int32_mat4x3(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, int_12 value);
+void safe_reduce_domain_point_plus_float_mat4x4(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, float_16 value);
+void safe_reduce_domain_point_plus_double_mat4x4(legion_accessor_generic_t accessor,
+                                legion_domain_point_t pt, double_16 value);
+void safe_reduce_domain_point_plus_int32_mat4x4(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, int_16 value);
+
+// safe reduce times on scalars
+void safe_reduce_domain_point_times_float(legion_accessor_generic_t accessor,
+                            legion_domain_point_t pt, float_1 value);
+void safe_reduce_domain_point_times_double(legion_accessor_generic_t accessor,
+                            legion_domain_point_t pt, double_1 value);
+void safe_reduce_domain_point_times_int32(legion_accessor_generic_t accessor,
+                            legion_domain_point_t pt, int_1 value);
+
+// safe reduce times on vectors
+void safe_reduce_domain_point_times_float_vec2(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, float_2 value);
+void safe_reduce_domain_point_times_double_vec2(legion_accessor_generic_t accessor,
+                                legion_domain_point_t pt, double_2 value);
+void safe_reduce_domain_point_times_int32_vec2(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, int_2 value);
+void safe_reduce_domain_point_times_float_vec3(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, float_3 value);
+void safe_reduce_domain_point_times_double_vec3(legion_accessor_generic_t accessor,
+                                legion_domain_point_t pt, double_3 value);
+void safe_reduce_domain_point_times_int32_vec3(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, int_3 value);
+void safe_reduce_domain_point_times_float_vec4(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, float_4 value);
+void safe_reduce_domain_point_times_double_vec4(legion_accessor_generic_t accessor,
+                                legion_domain_point_t pt, double_4 value);
+void safe_reduce_domain_point_times_int32_vec4(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, int_4 value);
+
+// safe reduce times on vectors
+void safe_reduce_domain_point_times_float_mat2x2(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, float_4 value);
+void safe_reduce_domain_point_times_double_mat2x2(legion_accessor_generic_t accessor,
+                                legion_domain_point_t pt, double_4 value);
+void safe_reduce_domain_point_times_int32_mat2x2(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, int_4 value);
+void safe_reduce_domain_point_times_float_mat2x3(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, float_6 value);
+void safe_reduce_domain_point_times_double_mat2x3(legion_accessor_generic_t accessor,
+                                legion_domain_point_t pt, double_6 value);
+void safe_reduce_domain_point_times_int32_mat2x3(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, int_6 value);
+void safe_reduce_domain_point_times_float_mat2x4(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, float_8 value);
+void safe_reduce_domain_point_times_double_mat2x4(legion_accessor_generic_t accessor,
+                                legion_domain_point_t pt, double_8 value);
+void safe_reduce_domain_point_times_int32_mat2x4(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, int_8 value);
+void safe_reduce_domain_point_times_float_mat3x2(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, float_6 value);
+void safe_reduce_domain_point_times_double_mat3x2(legion_accessor_generic_t accessor,
+                                legion_domain_point_t pt, double_6 value);
+void safe_reduce_domain_point_times_int32_mat3x2(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, int_6 value);
+void safe_reduce_domain_point_times_float_mat3x3(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, float_9 value);
+void safe_reduce_domain_point_times_double_mat3x3(legion_accessor_generic_t accessor,
+                                legion_domain_point_t pt, double_9 value);
+void safe_reduce_domain_point_times_int32_mat3x3(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, int_9 value);
+void safe_reduce_domain_point_times_float_mat3x4(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, float_12 value);
+void safe_reduce_domain_point_times_double_mat3x4(legion_accessor_generic_t accessor,
+                                legion_domain_point_t pt, double_12 value);
+void safe_reduce_domain_point_times_int32_mat3x4(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, int_12 value);
+void safe_reduce_domain_point_times_float_mat4x2(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, float_8 value);
+void safe_reduce_domain_point_times_double_mat4x2(legion_accessor_generic_t accessor,
+                                legion_domain_point_t pt, double_8 value);
+void safe_reduce_domain_point_times_int32_mat4x2(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, int_8 value);
+void safe_reduce_domain_point_times_float_mat4x3(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, float_12 value);
+void safe_reduce_domain_point_times_double_mat4x3(legion_accessor_generic_t accessor,
+                                legion_domain_point_t pt, double_12 value);
+void safe_reduce_domain_point_times_int32_mat4x3(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, int_12 value);
+void safe_reduce_domain_point_times_float_mat4x4(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, float_16 value);
+void safe_reduce_domain_point_times_double_mat4x4(legion_accessor_generic_t accessor,
+                                legion_domain_point_t pt, double_16 value);
+void safe_reduce_domain_point_times_int32_mat4x4(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, int_16 value);
+
+// safe reduce max on scalars
+void safe_reduce_domain_point_max_float(legion_accessor_generic_t accessor,
+                            legion_domain_point_t pt, float_1 value);
+void safe_reduce_domain_point_max_double(legion_accessor_generic_t accessor,
+                            legion_domain_point_t pt, double_1 value);
+void safe_reduce_domain_point_max_int32(legion_accessor_generic_t accessor,
+                            legion_domain_point_t pt, int_1 value);
+
+// safe reduce max on vectors
+void safe_reduce_domain_point_max_float_vec2(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, float_2 value);
+void safe_reduce_domain_point_max_double_vec2(legion_accessor_generic_t accessor,
+                                legion_domain_point_t pt, double_2 value);
+void safe_reduce_domain_point_max_int32_vec2(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, int_2 value);
+void safe_reduce_domain_point_max_float_vec3(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, float_3 value);
+void safe_reduce_domain_point_max_double_vec3(legion_accessor_generic_t accessor,
+                                legion_domain_point_t pt, double_3 value);
+void safe_reduce_domain_point_max_int32_vec3(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, int_3 value);
+void safe_reduce_domain_point_max_float_vec4(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, float_4 value);
+void safe_reduce_domain_point_max_double_vec4(legion_accessor_generic_t accessor,
+                                legion_domain_point_t pt, double_4 value);
+void safe_reduce_domain_point_max_int32_vec4(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, int_4 value);
+
+// safe reduce max on vectors
+void safe_reduce_domain_point_max_float_mat2x2(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, float_4 value);
+void safe_reduce_domain_point_max_double_mat2x2(legion_accessor_generic_t accessor,
+                                legion_domain_point_t pt, double_4 value);
+void safe_reduce_domain_point_max_int32_mat2x2(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, int_4 value);
+void safe_reduce_domain_point_max_float_mat2x3(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, float_6 value);
+void safe_reduce_domain_point_max_double_mat2x3(legion_accessor_generic_t accessor,
+                                legion_domain_point_t pt, double_6 value);
+void safe_reduce_domain_point_max_int32_mat2x3(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, int_6 value);
+void safe_reduce_domain_point_max_float_mat2x4(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, float_8 value);
+void safe_reduce_domain_point_max_double_mat2x4(legion_accessor_generic_t accessor,
+                                legion_domain_point_t pt, double_8 value);
+void safe_reduce_domain_point_max_int32_mat2x4(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, int_8 value);
+void safe_reduce_domain_point_max_float_mat3x2(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, float_6 value);
+void safe_reduce_domain_point_max_double_mat3x2(legion_accessor_generic_t accessor,
+                                legion_domain_point_t pt, double_6 value);
+void safe_reduce_domain_point_max_int32_mat3x2(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, int_6 value);
+void safe_reduce_domain_point_max_float_mat3x3(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, float_9 value);
+void safe_reduce_domain_point_max_double_mat3x3(legion_accessor_generic_t accessor,
+                                legion_domain_point_t pt, double_9 value);
+void safe_reduce_domain_point_max_int32_mat3x3(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, int_9 value);
+void safe_reduce_domain_point_max_float_mat3x4(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, float_12 value);
+void safe_reduce_domain_point_max_double_mat3x4(legion_accessor_generic_t accessor,
+                                legion_domain_point_t pt, double_12 value);
+void safe_reduce_domain_point_max_int32_mat3x4(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, int_12 value);
+void safe_reduce_domain_point_max_float_mat4x2(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, float_8 value);
+void safe_reduce_domain_point_max_double_mat4x2(legion_accessor_generic_t accessor,
+                                legion_domain_point_t pt, double_8 value);
+void safe_reduce_domain_point_max_int32_mat4x2(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, int_8 value);
+void safe_reduce_domain_point_max_float_mat4x3(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, float_12 value);
+void safe_reduce_domain_point_max_double_mat4x3(legion_accessor_generic_t accessor,
+                                legion_domain_point_t pt, double_12 value);
+void safe_reduce_domain_point_max_int32_mat4x3(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, int_12 value);
+void safe_reduce_domain_point_max_float_mat4x4(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, float_16 value);
+void safe_reduce_domain_point_max_double_mat4x4(legion_accessor_generic_t accessor,
+                                legion_domain_point_t pt, double_16 value);
+void safe_reduce_domain_point_max_int32_mat4x4(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, int_16 value);
+
+// safe reduce min on scalars
+void safe_reduce_domain_point_min_float(legion_accessor_generic_t accessor,
+                            legion_domain_point_t pt, float_1 value);
+void safe_reduce_domain_point_min_double(legion_accessor_generic_t accessor,
+                            legion_domain_point_t pt, double_1 value);
+void safe_reduce_domain_point_min_int32(legion_accessor_generic_t accessor,
+                            legion_domain_point_t pt, int_1 value);
+
+// safe reduce min on vectors
+void safe_reduce_domain_point_min_float_vec2(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, float_2 value);
+void safe_reduce_domain_point_min_double_vec2(legion_accessor_generic_t accessor,
+                                legion_domain_point_t pt, double_2 value);
+void safe_reduce_domain_point_min_int32_vec2(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, int_2 value);
+void safe_reduce_domain_point_min_float_vec3(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, float_3 value);
+void safe_reduce_domain_point_min_double_vec3(legion_accessor_generic_t accessor,
+                                legion_domain_point_t pt, double_3 value);
+void safe_reduce_domain_point_min_int32_vec3(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, int_3 value);
+void safe_reduce_domain_point_min_float_vec4(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, float_4 value);
+void safe_reduce_domain_point_min_double_vec4(legion_accessor_generic_t accessor,
+                                legion_domain_point_t pt, double_4 value);
+void safe_reduce_domain_point_min_int32_vec4(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, int_4 value);
+
+// safe reduce min on vectors
+void safe_reduce_domain_point_min_float_mat2x2(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, float_4 value);
+void safe_reduce_domain_point_min_double_mat2x2(legion_accessor_generic_t accessor,
+                                legion_domain_point_t pt, double_4 value);
+void safe_reduce_domain_point_min_int32_mat2x2(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, int_4 value);
+void safe_reduce_domain_point_min_float_mat2x3(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, float_6 value);
+void safe_reduce_domain_point_min_double_mat2x3(legion_accessor_generic_t accessor,
+                                legion_domain_point_t pt, double_6 value);
+void safe_reduce_domain_point_min_int32_mat2x3(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, int_6 value);
+void safe_reduce_domain_point_min_float_mat2x4(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, float_8 value);
+void safe_reduce_domain_point_min_double_mat2x4(legion_accessor_generic_t accessor,
+                                legion_domain_point_t pt, double_8 value);
+void safe_reduce_domain_point_min_int32_mat2x4(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, int_8 value);
+void safe_reduce_domain_point_min_float_mat3x2(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, float_6 value);
+void safe_reduce_domain_point_min_double_mat3x2(legion_accessor_generic_t accessor,
+                                legion_domain_point_t pt, double_6 value);
+void safe_reduce_domain_point_min_int32_mat3x2(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, int_6 value);
+void safe_reduce_domain_point_min_float_mat3x3(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, float_9 value);
+void safe_reduce_domain_point_min_double_mat3x3(legion_accessor_generic_t accessor,
+                                legion_domain_point_t pt, double_9 value);
+void safe_reduce_domain_point_min_int32_mat3x3(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, int_9 value);
+void safe_reduce_domain_point_min_float_mat3x4(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, float_12 value);
+void safe_reduce_domain_point_min_double_mat3x4(legion_accessor_generic_t accessor,
+                                legion_domain_point_t pt, double_12 value);
+void safe_reduce_domain_point_min_int32_mat3x4(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, int_12 value);
+void safe_reduce_domain_point_min_float_mat4x2(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, float_8 value);
+void safe_reduce_domain_point_min_double_mat4x2(legion_accessor_generic_t accessor,
+                                legion_domain_point_t pt, double_8 value);
+void safe_reduce_domain_point_min_int32_mat4x2(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, int_8 value);
+void safe_reduce_domain_point_min_float_mat4x3(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, float_12 value);
+void safe_reduce_domain_point_min_double_mat4x3(legion_accessor_generic_t accessor,
+                                legion_domain_point_t pt, double_12 value);
+void safe_reduce_domain_point_min_int32_mat4x3(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, int_12 value);
+void safe_reduce_domain_point_min_float_mat4x4(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, float_16 value);
+void safe_reduce_domain_point_min_double_mat4x4(legion_accessor_generic_t accessor,
+                                legion_domain_point_t pt, double_16 value);
+void safe_reduce_domain_point_min_int32_mat4x4(legion_accessor_generic_t accessor,
+                                 legion_domain_point_t pt, int_16 value);
+
 #ifdef __cplusplus
 }
 #endif

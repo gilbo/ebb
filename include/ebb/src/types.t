@@ -259,6 +259,23 @@ local function legion_terra_lin_gen(keytyp)
   end
   return terra( [key], [strides] ) : uint64   return exp  end
 end
+local function legion_domain_point_gen(keytyp)
+  local key  = symbol(keytyp)
+  local dims = #keytyp.entries
+  if dims == 2 then return
+    terra([key]) : LW.legion_domain_point_t
+      return
+       LW.legion_domain_point_t { dim = 2,
+                                  point_data = arrayof(int, [int](key.a0), [int](key.a1), 0) }
+    end
+  elseif dims == 3 then return
+    terra([key]) : LW.legion_domain_point_t
+      return
+        LW.legion_domain_point_t { dim = 3,
+                                   point_data = arrayof(int, [int](key.a0), [int](key.a1), [int](key.a2)) }
+    end
+  end
+end
 --[[
 local function get_physical_key_type(rel)
   local cached = rawget(rel, '_key_type_cached')
@@ -363,6 +380,7 @@ local function keyType(relation)
   tstruct.methods.terraLinearize          = terra_lin_gen(tstruct, strides)
   if use_legion then
     tstruct.methods.legionTerraLinearize  = legion_terra_lin_gen(tstruct)
+    tstruct.methods.domainPoint           = legion_domain_point_gen(tstruct)
   end
   -- add equality / inequality tests
   tstruct.metamethods.__eq = macro(function(lhs,rhs)

@@ -580,15 +580,17 @@ end
 --[[--------------------------------------------------------------------]]--
 
 -- atomic legion reductions on scalar types
-local function legion_cpu_atomic_red_exp (op, result_typ, lindex, laccessor,
-                                          rhe, rhtyp)
+local function legion_cpu_atomic_red_exp (op, result_typ, key, laccessor,
+                                          rhe, rhtyp, isgrid)
   local typename = T.typenames[result_typ]
   if LW.reduction_ops[op] == nil or LW.reduction_types[typename] == nil then
     error('Reduction operator ' .. op .. ' on type ' .. typename ..
           ' not supported.')
   end
-  local reduction_function = LW['safe_reduce_' .. LW.reduction_ops[op] ..
+  local domain_point = (isgrid and "domain_point_") or ""
+  local reduction_function = LW['safe_reduce_' .. domain_point .. LW.reduction_ops[op] ..
                                 '_' .. LW.reduction_types[typename]]
+  local lindex = (isgrid and `key:domainPoint()) or `key.a0
   local base_type = result_typ:basetype()
   local binding, coords, size
   if result_typ:isscalar() then  -- scalar
@@ -605,13 +607,13 @@ local function legion_cpu_atomic_red_exp (op, result_typ, lindex, laccessor,
     size = M*N
     binding, coords = let_mat_binding_linearized(rhtyp, N, M, rhe)
   end
-  local legion_ptr = LW.legion_ptr_t
+  local legion_ptr_pt = (isgrid and `LW.legion_domain_point_t(lindex))
+                        or `LW.legion_ptr_t({lindex})
   local dtype = LW[T.typenames[base_type] .. '_' .. tostring(size)]
   return quote
           [binding]
          in
-            reduction_function(laccessor, legion_ptr({lindex}),
-                               dtype({coords}))
+            reduction_function(laccessor, legion_ptr_pt, dtype({coords}))
          end
 end
 

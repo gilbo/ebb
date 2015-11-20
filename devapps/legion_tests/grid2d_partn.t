@@ -15,7 +15,7 @@ print("***************************************************")
 --   - reducing fields
 --   - reducing globals
 local do_global_reduction = false
-local do_field_reduction  = false
+local do_field_reduction  = true
 
 -- includes
 local Grid  = require 'ebb.domains.grid'
