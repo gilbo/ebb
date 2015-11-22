@@ -9,7 +9,7 @@ package.loaded["ebb.gl.vo"] = VO
 
 local ffi = require 'ffi'
 local gl  = require 'ebb.gl.gl'
-local DLD = require 'ebb.src.dld'
+local DLD = require 'ebb.lib.dld'
 
 
 

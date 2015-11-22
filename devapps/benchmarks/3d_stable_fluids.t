@@ -185,10 +185,6 @@ local ebb advect_where_from (c : grid.cells)
     c.lookup_pos    = snap_to_grid(c.center + advect_dt * offset)
 end
 
-local ebb advect_point_locate (c : grid.cells)
-    c.lookup_from   = grid.dual_locate(c.lookup_pos)
-end
-
 local ebb advect_interpolate_velocity (c : grid.cells)
     var dc      = c.lookup_from
 
@@ -226,7 +222,7 @@ local function advect_velocity(grid)
 
     grid.cells:Swap('velocity','velocity_prev')
     grid.cells:foreach(advect_where_from)
-    grid.cells:foreach(advect_point_locate)
+    grid.locate_in_duals(grid.cells, 'lookup_pos', 'lookup_from')
     if PERIODIC then
         grid.cells:foreach(advect_interpolate_velocity)
     else
@@ -370,10 +366,6 @@ particles:foreach(ebb (p : particles) -- init...
             L.vec3f({xcwidth/2.0, ycwidth/2.0, zcwidth/2.0})
 end)
 
-local ebb locate_particles (p : particles)
-    p.dual_cell = grid.dual_locate(p.pos)
-end
-
 local ebb compute_particle_velocity (p : particles)
     var dc      = p.dual_cell
 
@@ -467,7 +459,7 @@ for i = 1, STEPS do
 
     particles:foreach(compute_particle_velocity)
     particles:foreach(update_particle_pos)
-    particles:foreach(locate_particles)
+    grid.locate_in_duals(particles, 'pos', 'dual_cell')
 
 
     --if i % 5 == 0 then

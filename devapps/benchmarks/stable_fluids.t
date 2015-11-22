@@ -185,10 +185,6 @@ local ebb advect_where_from(c : grid.cells)
     c.lookup_pos    = snap_to_grid(c.center + advect_dt * offset)
 end
 
-local ebb advect_point_locate(c : grid.cells)
-    c.lookup_from   = grid.dual_locate(c.lookup_pos)
-end
-
 local ebb advect_interpolate_velocity(c : grid.cells)
     -- lookup cell (this is the bottom left corner)
     var dc      = c.lookup_from
@@ -217,7 +213,7 @@ local function advect_velocity(grid)
 
     grid.cells:Swap('velocity','velocity_prev')
     grid.cells:foreach(advect_where_from)
-    grid.cells:foreach(advect_point_locate)
+    grid.locate_in_duals(grid.cells, 'lookup_pos', 'lookup_from')
     if PERIODIC then
         grid.cells:foreach(advect_interpolate_velocity)
     else
@@ -351,10 +347,6 @@ particles:foreach(ebb (p : particles) -- init...
             L.vec2f({cell_w/2.0, cell_h/2.0})
 end)
 
-local ebb locate_particles (p : particles)
-    p.dual_cell = grid.dual_locate(p.pos)
-end
-
 local ebb compute_particle_velocity (p : particles)
     -- lookup cell (this is the bottom left corner)
     var dc      = p.dual_cell
@@ -428,12 +420,13 @@ if PERIODIC then
         optional_insertion = ebb(c)
             var create_particle = rand_float() < 0.01
             if create_particle then
-                var pos = c.center + L.vec2f({
+                var offset = L.vec2f({
                     cell_w * (rand_float() - 0.5),
                     cell_h * (rand_float() - 0.5)
                 })
+                var pos = c.center + offset
                 insert {
-                    dual_cell = grid.dual_locate(pos),
+                    dual_cell = c.vertex.dual_cell, -- to be overwritten soon
                     pos = pos,
                     next_pos = pos
                 } into particles
@@ -479,9 +472,9 @@ for i = 0, STEPS-1 do
     advect_velocity(grid)
     project_velocity(grid)
 
+    grid.locate_in_duals(particles, 'pos', 'dual_cell')
     particles:foreach(compute_particle_velocity)
     particles:foreach(update_particle_pos)
-    particles:foreach(locate_particles)
 
     if L.default_processor == L.CPU and i % 5 == 0 then
         vdb.vbegin()

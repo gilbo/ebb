@@ -8,7 +8,7 @@ local use_single = not use_legion
 local L = require "ebblib"
 local T = require "ebb.src.types"
 local C = require "ebb.src.c"
-local DLD = require "ebb.src.dld"
+local DLD = require "ebb.lib.dld"
 local DLDiter = require 'ebb.src.dlditer'
 
 local PN = require "ebb.lib.pathname"
@@ -307,10 +307,11 @@ function L.LRelation:GroupBy(keyf_name)
           "unless it's a PLAIN relation", 2)
   end
 
-  local key_field = keyf_name
-  if type(key_field) == 'string' then key_field = self[key_field] end
-  if not L.is_field(key_field) then
-    error("GroupBy(): Could not find a field named '"..keyf_name.."'", 2)
+  local key_field = type(keyf_name) == 'string' and self[keyf_name]
+                                                 or keyf_name
+  if not L.is_field(key_field) or key_field.owner ~= self then
+    error("GroupBy(): Could not find a field named '"..
+          tostring(keyf_name).."'", 2)
   elseif not key_field.type:isscalarkey() then
     error("GroupBy(): Grouping by non-scalar-key fields is "..
           "prohibited.", 2)
@@ -1011,7 +1012,8 @@ end
 -- modular error checking
 local function ferrprefix(level)
   local blob = debug.getinfo(level)
-  return blob.name..': '
+  local name = type(blob.name) == 'string' and blob.name..': ' or ''
+  return name
 end
 local function argcheck_loadval_type(obj,typ,lvl)
   if not T.luaValConformsToType(obj,typ) then
@@ -1055,7 +1057,7 @@ local function _helper_argcheck_list_dims_err(dims,lvl)
   error(ferrprefix(lvl)..errmsg, lvl)
 end
 local function argcheck_list_dims_and_type(obj,dims,typ,lvl)
-  lvl = (lvl or 1)+1
+  lvl = (lvl or 1)
   argcheck_list(obj,lvl+1)
 
   if #dims == 1 then

@@ -795,7 +795,8 @@ function ast.SquareIndex:codegen (ctxt)
 end
 
 function ast.Number:codegen (ctxt)
-  return `[self.value]
+  local val = constant(self.node_type:terratype(), self.value)
+  return val
 end
 
 function ast.Bool:codegen (ctxt)

@@ -6,7 +6,7 @@ package.loaded["ebb.src.dlditer"] = Exports
 
 
 local C     = require "ebb.src.c"
-local DLD   = require "ebb.src.dld"
+local DLD   = require "ebb.lib.dld"
 --local G = require "ebb.src.gpu_util"
 
 

@@ -3,7 +3,7 @@ local CSV = {}
 package.loaded["ebb.io.csv"] = CSV
 
 local C     = require "ebb.src.c"       -- TODO: Don't expose compiler
-local DLD   = require "ebb.src.dld"
+local DLD   = require "ebb.lib.dld"
 local L     = require "ebblib"
 local PN    = require "ebb.lib.pathname"
 

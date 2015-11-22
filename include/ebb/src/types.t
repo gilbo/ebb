@@ -6,7 +6,7 @@ local T = {}
 
 local L   = require "ebblib"
 
-local DLD = require "ebb.src.dld"
+local DLD = require "ebb.lib.dld"
 
 -- SHOULD eliminate Legion from this file if at all possible
 local use_legion = not not rawget(_G, '_legion_env')

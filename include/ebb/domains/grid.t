@@ -47,6 +47,31 @@ local function copy_table(tbl)
   return cpy
 end
 
+local function memoize_call(f)
+  local cache = {}
+  local function penultimate(subcache, ...)
+    if select('#',...) == 1 then
+      return subcache
+    else
+      local k = select(1,...)
+      local lookup = subcache[k]
+      if not lookup then lookup = {}; subcache[k] = lookup end
+      return penultimate(lookup, select(2,...))
+    end
+  end
+  local function lastkey(...) return select(select('#',...), ...) end
+  return function(...)
+    local subcache  = penultimate(cache,...)
+    local k         = lastkey(...)
+    local val       = subcache[k]
+    if not val then
+      val = f(...)
+      subcache[k] = val
+    end
+    return val
+  end
+end
+
 local function is_num(obj) return type(obj) == 'number' end
 local function is_bool(obj) return type(obj) == 'boolean' end
 
@@ -90,19 +115,35 @@ local function setup2dCells(grid)
     return ebb ` L.vec2f({ xo + xw * (L.double(L.xid(c)) + 0.5),
                            yo + yw * (L.double(L.yid(c)) + 0.5) })  end))
 
+  -- hide this unsafe macro behind a bulk call below
   local xsnap = grid:xUsePeriodic() and wrap_idx or clamp_idx
   local ysnap = grid:yUsePeriodic() and wrap_idx or clamp_idx
-  grid.cell_locate = L.NewMacro(function(xy_vec)
+  local cell_locate = L.NewMacro(function(xy_vec)
     return ebb quote
       var xy    = xy_vec -- prevent duplication
       var xval  = (xy[0] - xo)/xw
       var yval  = (xy[1] - yo)/yw
       var xidx  = xsnap(xval, Cx)
-      var yidx  = ysnap(xval, Cy)
+      var yidx  = ysnap(yval, Cy)
     in
       L.UNSAFE_ROW({xidx, yidx}, grid.cells)
     end
   end)
+
+  local get_cell_locate_kernel = memoize_call(function(
+    particle_rel, particle_pos, particle_cell
+  )
+    local ebb locate_cells_kernel( p : particle_rel )
+      p.[particle_cell] = cell_locate(p.[particle_pos])
+    end
+    return locate_cells_kernel
+  end)
+
+  function grid.locate_in_cells(particle_rel, particle_pos, particle_cell)
+    local kernel =
+      get_cell_locate_kernel(particle_rel, particle_pos, particle_cell)
+    particle_rel:foreach(kernel)
+  end
 
   -- boundary depths
   cells:NewFieldMacro('xneg_depth', L.NewMacro(function(c)
@@ -144,7 +185,7 @@ local function setup2dDualCells(grid)
 
   local xsnap = grid:xUsePeriodic() and wrap_idx or clamp_idx
   local ysnap = grid:yUsePeriodic() and wrap_idx or clamp_idx
-  grid.dual_locate = L.NewMacro(function(xy_vec)
+  local dual_locate = L.NewMacro(function(xy_vec)
     return ebb quote
       var xy    = xy_vec -- prevent duplication
       var xval  = (xy[0] - xo)/xw + 0.5
@@ -155,6 +196,21 @@ local function setup2dDualCells(grid)
       L.UNSAFE_ROW({xidx, yidx}, dcells)
     end
   end)
+
+  local get_dual_locate_kernel = memoize_call(function(
+    particle_rel, particle_pos, particle_dc
+  )
+    local ebb dual_locate_kernel( p : particle_rel )
+      p.[particle_dc] = dual_locate(p.[particle_pos])
+    end
+    return dual_locate_kernel
+  end)
+
+  function grid.locate_in_duals(particle_rel, particle_pos, particle_dc)
+    local kernel =
+      get_dual_locate_kernel(particle_rel, particle_pos, particle_dc)
+    particle_rel:foreach(kernel)
+  end
 end
 
 -------------------------------------------------------------------------------
@@ -482,7 +538,7 @@ local function setup3dCells(grid)
   local xsnap = grid:xUsePeriodic() and wrap_idx or clamp_idx
   local ysnap = grid:yUsePeriodic() and wrap_idx or clamp_idx
   local zsnap = grid:zUsePeriodic() and wrap_idx or clamp_idx
-  grid.cell_locate = L.NewMacro(function(xyz_vec)
+  local cell_locate = L.NewMacro(function(xyz_vec)
     return ebb quote
       var xyz  = xyz_vec -- prevent duplication
       var xval = (xyz[0] - xo) / xw
@@ -495,6 +551,21 @@ local function setup3dCells(grid)
       L.UNSAFE_ROW({xidx, yidx, zidx}, cells)
     end
   end)
+
+  local get_cell_locate_kernel = memoize_call(function(
+    particle_rel, particle_pos, particle_cell
+  )
+    local ebb locate_cells_kernel( p : particle_rel )
+      p.[particle_cell] = cell_locate(p.[particle_pos])
+    end
+    return locate_cells_kernel
+  end)
+
+  function grid.locate_in_cells(particle_rel, particle_pos, particle_cell)
+    local kernel =
+      get_cell_locate_kernel(particle_rel, particle_pos, particle_cell)
+    particle_rel:foreach(kernel)
+  end
 
   -- boundary depths
   cells:NewFieldMacro('xneg_depth', L.NewMacro(function(c)
@@ -549,7 +620,7 @@ local function setup3dDualCells(grid)
   local xsnap = grid:xUsePeriodic() and wrap_idx or clamp_idx
   local ysnap = grid:yUsePeriodic() and wrap_idx or clamp_idx
   local zsnap = grid:zUsePeriodic() and wrap_idx or clamp_idx
-  grid.dual_locate = L.NewMacro(function(xyz_vec)
+  local dual_locate = L.NewMacro(function(xyz_vec)
     return ebb quote
       var xyz = xyz_vec -- prevent duplication
       var xval = (xyz[0] - xo) / xw + 0.5
@@ -562,6 +633,21 @@ local function setup3dDualCells(grid)
       L.UNSAFE_ROW({xidx, yidx, zidx}, dcells)
     end
   end)
+
+  local get_dual_locate_kernel = memoize_call(function(
+    particle_rel, particle_pos, particle_dc
+  )
+    local ebb dual_locate_kernel( p : particle_rel )
+      p.[particle_dc] = dual_locate(p.[particle_pos])
+    end
+    return dual_locate_kernel
+  end)
+
+  function grid.locate_in_duals(particle_rel, particle_pos, particle_dc)
+    local kernel =
+      get_dual_locate_kernel(particle_rel, particle_pos, particle_dc)
+    particle_rel:foreach(kernel)
+  end
 end
 
 -------------------------------------------------------------------------------
