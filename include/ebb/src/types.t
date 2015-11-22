@@ -259,6 +259,23 @@ local function legion_terra_lin_gen(keytyp)
   end
   return terra( [key], [strides] ) : uint64   return exp  end
 end
+local function legion_domain_point_gen(keytyp)
+  local key  = symbol(keytyp)
+  local dims = #keytyp.entries
+  if dims == 2 then return
+    terra([key]) : LW.legion_domain_point_t
+      return
+       LW.legion_domain_point_t { dim = 2,
+                                  point_data = arrayof(int, [int](key.a0), [int](key.a1), 0) }
+    end
+  elseif dims == 3 then return
+    terra([key]) : LW.legion_domain_point_t
+      return
+        LW.legion_domain_point_t { dim = 3,
+                                   point_data = arrayof(int, [int](key.a0), [int](key.a1), [int](key.a2)) }
+    end
+  end
+end
 --[[
 local function get_physical_key_type(rel)
   local cached = rawget(rel, '_key_type_cached')
@@ -363,6 +380,7 @@ local function keyType(relation)
   tstruct.methods.terraLinearize          = terra_lin_gen(tstruct, strides)
   if use_legion then
     tstruct.methods.legionTerraLinearize  = legion_terra_lin_gen(tstruct)
+    tstruct.methods.domainPoint           = legion_domain_point_gen(tstruct)
   end
   -- add equality / inequality tests
   tstruct.metamethods.__eq = macro(function(lhs,rhs)
@@ -882,6 +900,27 @@ for n=2,4 do
   T[shortname..'b'] = T[fullname..'b']
 end
 
+-------------------------------------------------------------------------------
+--[[ type names                                                            ]]--
+-------------------------------------------------------------------------------
+local typenames = {
+  [T.int] = 'int',
+  [T.float] = 'float',
+  [T.double] = 'double'
+}
+for i = 2,4 do
+  local vtype = 'vec' .. tostring(i)
+  typenames[T[vtype .. 'i']] = vtype .. 'i'
+  typenames[T[vtype .. 'f']] = vtype .. 'f'
+  typenames[T[vtype .. 'd']] = vtype .. 'd'
+  for j = 2,4 do
+    local mtype = 'mat' .. tostring(i) .. 'x' .. tostring(j)
+    typenames[T[mtype .. 'i']] = mtype .. 'i'
+    typenames[T[mtype .. 'f']] = mtype .. 'f'
+    typenames[T[mtype .. 'd']] = mtype .. 'd'
+  end
+end
+T.typenames = typenames
 
 -------------------------------------------------------------------------------
 --[[ export type api                                                       ]]--

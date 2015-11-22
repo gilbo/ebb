@@ -181,8 +181,9 @@ void setupebb(lua_State * L, ebb_Options * ebboptions) {
           "%s/../legion/runtime/legion;"
           "%s/../legion/runtime/mappers;"
           "%s/../mappers;"
+          "%s/../legion_utils;"
           "%s/../legion/bindings/terra'",
-          bindir, bindir, bindir, bindir, bindir);
+          bindir, bindir, bindir, bindir, bindir, bindir);
         if (terra_dostring(L, buffer))
             doerror(L);
 
@@ -206,6 +207,11 @@ void setupebb(lua_State * L, ebb_Options * ebboptions) {
               bindir);
             if (terra_dostring(L, buffer))
                 doerror(L);
+            snprintf(buffer, bufsize,"terralib.linklibrary("
+              "'%s/../legion_utils/liblegion_utils_release.so')",
+              bindir);
+            if (terra_dostring(L, buffer))
+                doerror(L);
         } else {
             snprintf(buffer, bufsize,"terralib.linklibrary("
               "'%s/../legion/bindings/terra/liblegion_terra_debug.so')",
@@ -214,6 +220,11 @@ void setupebb(lua_State * L, ebb_Options * ebboptions) {
                 doerror(L);
             snprintf(buffer, bufsize,"terralib.linklibrary("
               "'%s/../mappers/libmapper_debug.so')",
+              bindir);
+            if (terra_dostring(L, buffer))
+                doerror(L);
+            snprintf(buffer, bufsize,"terralib.linklibrary("
+              "'%s/../legion_utils/liblegion_utils_debug.so')",
               bindir);
             if (terra_dostring(L, buffer))
                 doerror(L);

@@ -1,3 +1,4 @@
+--DISABLE-TEST
 import "ebb"
 require "tests.test"
 

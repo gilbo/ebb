@@ -143,6 +143,34 @@ ifdef LEGION_INSTALLED
 endif # LEGION_INSTALLED
 
 # # ----------------------------------------------------------------------- # #
+#     Legion Utils
+
+ifdef LEGION_INSTALLED
+
+  LEGION_UTILS_SRC := $(wildcard legion_utils/*.cc)
+  LEGION_UTILS_H := $(wildcard legion_utils/*.h)
+  LEGION_UTILS_OBJS := $(subst .cc,.o,$(LEGION_UTILS_SRC))
+  LIBLEGION_UTILS:=legion_utils/liblegion_utils.so
+  LIBLEGION_UTILS_RELEASE:=legion_utils/liblegion_utils_release.so
+  LIBLEGION_UTILS_DEBUG:=legion_utils/liblegion_utils_debug.so
+
+  LEGION_UTILS_CFLAGS:=-fPIC
+  LEGION_UTILS_CFLAGS+=-I$(LEGION_RUNTIME_DIR) -I$(LEGION_RUNTIME_DIR)/legion -I$(LEGION_RUNTIME_DIR)/mappers
+
+  LEGION_UTILS_LFLAGS:=-L$(LEGION_BIND_DIR)
+  ifeq ($(PLATFORM),OSX)
+    LEGION_UTILS_LFLAGS += -dynamiclib -single_module -undefined dynamic_lookup -fPIC
+  endif
+  ifeq ($(PLATFORM),LINUX)
+    LEGION_UTILS_LFLAGS += -Wl,-rpath=$(LEGION_BIND_DIR)
+    LEGION_UTILS_LFLAGS += -shared
+  endif
+  LEGION_UTILS_LFLAGS += -ldl -lpthread -rdynamic
+
+endif # LEGION_INSTALLED
+
+
+# # ----------------------------------------------------------------------- # #
 # # ----------------------------------------------------------------------- # #
 #     Main Rules
 # # ----------------------------------------------------------------------- # #
@@ -151,8 +179,9 @@ endif # LEGION_INSTALLED
 # set of build dependencies
 ALL_DEP:= terra $(EXECUTABLE) $(EXECUTABLE_CP)
 ifdef LEGION_INSTALLED
-ALL_DEP += legion $(LIBLEGION_TERRA_RELEASE) $(LIBLEGION_TERRA_DEBUG)
-ALL_DEP += $(LIBMAPPER_RELEASE) $(LIBMAPPER_DEBUG)
+ALL_DEP += legion $(LIBLEGION_TERRA_DEBUG) $(LIBLEGION_TERRA_RELEASE)
+ALL_DEP += $(LIBMAPPER_DEBUG) $(LIBMAPPER_RELEASE)
+ALL_DEP += $(LIBLEGION_UTILS_DEBUG) $(LIBLEGION_UTILS_RELEASE)
 endif
 
 .PHONY: all clean test lmesh
@@ -277,16 +306,41 @@ $(LIBMAPPER_DEBUG): $(LIBLEGION_TERRA_DEBUG) $(MAPPER_OBJS)
 endif
 
 # # ----------------------------------------------------------------------- # #
+#     Legion utils (Legion) Rules
+
+ifdef LEGION_INSTALLED
+
+$(LIBLEGION_UTILS_RELEASE): $(LEGION_UTILS_OBJS) $(LIBLEGION_TERRA_RELEASE) $(LIBLEGION_UTILS_DEBUG)
+	DEBUG=0 $(CXX) $(LEGION_UTILS_OBJS) -o $@ $(LEGION_UTILS_LFLAGS)
+
+$(LIBLEGION_UTILS_DEBUG): $(LEGION_UTILS_OBJS) $(LIBLEGION_TERRA_DEBUG)
+	$(CXX) $(LEGION_UTILS_OBJS) -o $@ $(LEGION_UTILS_LFLAGS)
+
+$(LEGION_UTILS_OBJS): %.o : %.cc
+	echo $(LEGION_UTILS_CFLAGS)
+	$(CXX) $(LEGION_UTILS_CFLAGS) -c $< -o $@
+
+
+endif
+
+# # ----------------------------------------------------------------------- # #
 #     Cleanup
 
 mapperclean:
 ifdef LEGION_SYMLINK_EXISTS # don't try to recursively call into nowhere
-	-rm mappers/*.o
-	-rm $(LIBMAPPER_DEBUG)
-	-rm $(LIBMAPPER_RELEASE)
+	-rm -f mappers/*.o
+	-rm -f $(LIBMAPPER_DEBUG)
+	-rm -f $(LIBMAPPER_RELEASE)
 endif
 
-clean: mapperclean
+legionutilsclean:
+ifdef LEGION_SYMLINK_EXISTS # don't try to recursively call into nowhere
+	-rm -f legion_utils/*.o
+	-rm -f $(LIBLEGION_UTILS_DEBUG)
+	-rm -f $(LIBLEGION_UTILS_RELEASE)
+endif
+
+clean: mapperclean legionutilsclean
 	$(MAKE) -C deprecated_runtime clean
 	-rm -r vdb*
 	-rm -r bin

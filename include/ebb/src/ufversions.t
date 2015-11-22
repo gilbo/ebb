@@ -7,6 +7,7 @@ local use_single = not use_legion
 local L   = require "ebblib"
 local C   = require "ebb.src.c"
 local G   = require "ebb.src.gpu_util"
+local T   = require "ebb.src.types"
 
 local codegen         = require "ebb.src.codegen"
 local codesupport     = require "ebb.src.codegen_support"
@@ -161,10 +162,15 @@ end
 --  we do use those features, record_permission should be updated to reflect
 --  the correct privileges and coherence values.
 local function record_permission(reg_data, use)
+  -- The three cases are read only, centered (read/ write) and reduce.
   if use:isReadOnly() then
     reg_data.privilege = LW.READ_ONLY
-  else
+  elseif use:isCentered() then
     reg_data.privilege = LW.READ_WRITE
+  else
+    reg_data.privilege = LW.REDUCE
+    reg_data.redoptyp  = (LW.reduction_ops[use:reductionOp()]  or 'none') ..
+                         '_' .. T.typenames[reg_data.field:Type()]
   end
   reg_data.coherence   = LW.EXCLUSIVE
 end
@@ -271,8 +277,10 @@ local function get_region_data(ufv, relation, field)
       wrapper   = relation._logical_region_wrapper,
       num       = ufv._n_regions,
       relation  = relation,
+      field     = field,
       privilege = LW.NO_ACCESS,
-      coherence = LW.EXCLUSIVE
+      coherence = LW.EXCLUSIVE,
+      redop     = nil
     }
     ufv._n_regions = ufv._n_regions + 1
 
@@ -1030,7 +1038,8 @@ function UFVersion:_CreateLegionTaskLauncher(task_func)
     local reg_req = task_launcher:AddRegionReq(reg_partn,
                                                reg_parent,
                                                datum.privilege,
-                                               datum.coherence)
+                                               datum.coherence,
+                                               datum.redoptyp)
     assert(reg_req == ri)
   end
 
@@ -1097,7 +1106,7 @@ function UFVersion:_GenerateUnpackLegionTaskArgs(argsym, task_args)
       local domain        = symbol(LW.legion_domain_t)
 
       local rect          = reg_dim and symbol(LW.LegionRect[reg_dim]) or nil
-      local rectFromDom   = reg_dim and LW.LegionGetRectFromDom[reg_dim] or nil
+      local rectFromDom   = reg_dim and LW.LegionRectFromDom[reg_dim] or nil
 
       region_temporaries[ri] = {
         physical_reg  = physical_reg,
@@ -1132,8 +1141,7 @@ function UFVersion:_GenerateUnpackLegionTaskArgs(argsym, task_args)
       -- structured
       if reg_dim then emit quote
         var field_accessor =
-          LW.legion_physical_region_get_field_accessor_generic(
-                                              physical_reg, [field.fid])
+          LW.legion_physical_region_get_accessor_generic(physical_reg)
         var subrect : LW.LegionRect[reg_dim]
         var strides : LW.legion_byte_offset_t[reg_dim]
         var base = [&uint8](
@@ -1143,14 +1151,15 @@ function UFVersion:_GenerateUnpackLegionTaskArgs(argsym, task_args)
         for d = 0, reg_dim do
           offset = offset + [rect].lo.x[d] * strides[d].offset 
         end
+        -- C.printf("Pointer %p, rect %i, %i, %i, %i, offset %i\n", base, [rect].lo.x[0], [rect].lo.x[1],
+        --   [rect].hi.x[0], [rect].hi.x[1], offset)
         base = base - offset
         [argsym].[farg_name] = [ LW.FieldAccessor[reg_dim] ] { base, strides, field_accessor }
       end
       -- unstructured
       else emit quote
         var field_accessor =
-          LW.legion_physical_region_get_field_accessor_generic(
-                                              physical_reg, [field.fid])
+          LW.legion_physical_region_get_accessor_generic(physical_reg)
         var base : &opaque = nil
         var stride_val : C.size_t = 0
         var ok = LW.legion_accessor_generic_get_soa_parameters(
@@ -1377,6 +1386,9 @@ end
 --[[  Should run only when running over partitioned data in Legion         ]]--
 -------------------------------------------------------------------------------
 
+-- NOTE: partitions include boundary regions. Partitioning is not subset
+-- specific right now, but it is a partitioning over the entire logical region.
+
 function UFVersion:_addPrimaryPartition()
   local prim_rel = self._relation
   local sig = tostring(prim_rel:_INTERNAL_UID())
@@ -1402,22 +1414,28 @@ function UFVersion:_addRegionPartition(field)
   local sig = tostring(rel:_INTERNAL_UID()) .. '_' .. tostring(field.fid)
   local datum = self._region_data[sig]
   if not datum.partition then
-    -- If no partitions are needed on a region, we use logical region instead
+    -- Grid ghost partitions are made using specified ghost width. Stencil
+    -- analysis (to automatically determine ghost partitions) to come yet.
+    -- If we are not using partitions over a region, we use logical region instead
     -- of logical partition in region requirement (hack around stencil
     -- analysis) for non-centered. Once we have stencil analysis in
     -- place, we should instead pass the partition that includes halo, instead
     -- of the logical region wrapper.
-    -- Once stencil analysis works, we can also remove 'use_partiotioning' from
+    -- Once stencil analysis works, we can also remove 'use_partitioning' from
     -- the condition clauses, and treat non-partitioned cases as 1 partition.
     local prim_partn = datum.wrapper
-    if use_partitioning and self._field_use[field]:isCentered() then
-      assert(rel == self._relation)
-      prim_partn = rel:GetOrCreateDisjointPartitioning()
-    -- Non-centered reductions are not supported yet with partitions.
-    elseif use_partitioning and self._field_use[field]:isReduce() and
-      not self._field_use[field]:isCentered() then
-      error("INTERNAL: Non-centered field reduction with partitioning not supported yet.")
-    -- (not is centered) and (requires exclusive) is a phase error
+    -- remove branches once partitions and stencil analysis are correctly set up for all cases
+    if use_partitioning then
+      -- The three cases are read only, centered (read/ write) and reduce.
+      -- Read is handle by above initialization.
+      if self._field_use[field]:isCentered() then
+        assert(rel == self._relation)
+        prim_partn = rel:GetOrCreateDisjointPartitioning()
+      -- (not is centered) and (requires exclusive) is a phase error
+      -- Grid ghost partitions using specified ghost width
+      elseif rel:isGrid() and rel:IsGhostWidthValid() then
+        prim_partn = rel:GetOrCreateGhostPartitioning()
+      end
     end
     datum.partition = prim_partn
   end

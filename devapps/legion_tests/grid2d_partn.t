@@ -15,7 +15,7 @@ print("***************************************************")
 --   - reducing fields
 --   - reducing globals
 local do_global_reduction = false
-local do_field_reduction  = false
+local do_field_reduction  = true
 
 -- includes
 local Grid  = require 'ebb.domains.grid'
@@ -31,6 +31,8 @@ local grid = Grid.NewGrid2d {
 }
 local C = grid.cells
 local V = grid.vertices
+-- C:SetGhostWidth({1, 1, 1, 1})
+-- V:SetGhostWidth({1, 1, 1, 1})
 
 -------------------------------------------------------------------------------
 --  Initialization                                                           --
@@ -47,7 +49,6 @@ local sum_val = L.Global(L.double, 0)
 local ebb InitCellVal(c)
   var center = c.center
   c.value = L.sin(center[0] + center[1])
-  L.print(L.xid(c), L.yid(c), c.value)
 end
 
 local ebb InitVertexVal(v)
@@ -71,6 +72,8 @@ local ebb GatherAtVerts(v)
   v.value += v.cell(-1,  1).value + v.cell(1, -1).value
   v.value += v.cell(-1, -1).value + v.cell(1,  1).value
   v.value *= (d/4)
+  -- L.print(L.xid(v), L.yid(v), v.value)
+  -- L.print(v.cell(-1, 1).value, v.cell(1, -1).value, v.cell(-1, -1).value, v.cell(1,1).value)
 end
 
 local ebb ScatterToVerts(c)

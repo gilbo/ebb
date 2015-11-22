@@ -1,4 +1,3 @@
-
 local Support = {}
 package.loaded["ebb.src.codegen_support"] = Support
 
@@ -6,6 +5,13 @@ package.loaded["ebb.src.codegen_support"] = Support
 
 local C = require 'ebb.src.c'
 local G = require 'ebb.src.gpu_util'
+local T = require 'ebb.src.types'
+
+local use_legion = not not rawget(_G, '_legion_env')
+local LW
+if use_legion then
+  LW = require "ebb.src.legionwrap"
+end
 
 
 -- **** ******** ******** ******** ******** ****
@@ -27,9 +33,8 @@ local G = require 'ebb.src.gpu_util'
 
 
 --[[--------------------------------------------------------------------]]--
---[[                         Utility Functions                          ]]--
+--[[  Utility Functions for Vectors and Matrices                        ]]--
 --[[--------------------------------------------------------------------]]--
-
 
 local function vec_mapgen(typ,func)
   local arr = {}
@@ -66,11 +71,8 @@ Support.vec_foldgen = vec_foldgen
 Support.mat_foldgen = mat_foldgen
 
 
-
-
-
 --[[--------------------------------------------------------------------]]--
---[[                         Utility Functions                          ]]--
+--[[  Utility Functions for Vectors/ Matrices                           ]]--
 --[[--------------------------------------------------------------------]]--
 
 
@@ -85,7 +87,6 @@ local function let_vec_binding(typ, N, exp)
   else
     for i=1, N do coords[i] = `val end
   end
-
   return let_binding, coords
 end
 
@@ -107,6 +108,57 @@ local function let_mat_binding(typ, N, M, exp)
   return let_binding, coords
 end
 
+-- ONLY ONE PLACE...
+local function let_vec_binding_linearized(typ, N, exp)
+  local val = symbol(typ:terratype())
+  local coords = symbol(typ:terrabasetype()[N])
+  local binding = quote
+    var [val] = [exp]
+    var [coords]
+  end
+  if typ:isvector() then
+    for i=1, N do
+      binding = quote
+        [binding]
+        coords[i-1] = val.d[i-1]
+      end
+    end
+  else
+    for i=1, N do
+      binding = quote
+        [binding]
+        coords[i-1] = val
+      end
+    end
+  end
+  return binding, coords
+end
+
+local function let_mat_binding_linearized(typ, N, M, exp)
+  local val = symbol(typ:terratype())
+  local coords = symbol(typ:terrabasetype()[M*N])
+  local binding = quote
+    var [val] = [exp]
+    var [coords]
+  end
+  for i = 1, N do
+    for j = 1, M do
+      if typ:ismatrix() then
+        binding = quote
+          [binding]
+          coords[(i-1) * M + (j-1)] = val.d[i-1][j-1]
+        end
+      else
+        binding = quote
+          [binding]
+          coords[(i-1) * M + (j-1)] = val
+        end
+      end
+    end
+  end
+  return binding, coords
+end
+
 local function symgen_bind(typ, exp, f)
   local s = symbol(typ:terratype())
   return quote var s = exp in [f(s)] end
@@ -119,12 +171,6 @@ local function symgen_bind2(typ1, typ2, exp1, exp2, f)
     var s2 = exp2
   in [f(s1,s2)] end
 end
-
-
-
-
-
-
 
 
 --[[--------------------------------------------------------------------]]--
@@ -162,16 +208,11 @@ local maxexp = macro(function(lhe,rhe)
 end)
 
 
-
-
-
-
 --[[--------------------------------------------------------------------]]--
---[[                         Utility Functions                          ]]--
+--[[  Utility Functions for unary and binary operations                 ]]--
 --[[--------------------------------------------------------------------]]--
 
-
-
+-- binary expression onprimitives
 local function prim_bin_exp (op, lhe, rhe)
   if     op == '+'   then return `[lhe] +   [rhe]
   elseif op == '-'   then return `[lhe] -   [rhe]
@@ -191,104 +232,6 @@ local function prim_bin_exp (op, lhe, rhe)
   elseif op == 'min' then return `minexp(lhe, rhe)
   end
 end
-
-
-local function atomic_gpu_red_exp (op, typ, lvalptr, update)
-  local internal_error = 'unsupported reduction, internal error; '..
-                         'this should be guarded against in the typechecker'
-  if typ == L.float then
-    if     op == '+'   then return `G.atomic_add_float(lvalptr,  update)
-    --elseif op == '-'   then return `G.atomic_add_float(lvalptr, -update)
-    elseif op == '*'   then return `G.atomic_mul_float_SLOW(lvalptr, update)
-    --elseif op == '/'   then return `G.atomic_div_float_SLOW(lvalptr, update)
-    elseif op == 'min' then return `G.atomic_min_float_SLOW(lvalptr, update)
-    elseif op == 'max' then return `G.atomic_max_float_SLOW(lvalptr, update)
-    end
-
-  elseif typ == L.double then
-    if     op == '+'   then return `G.atomic_add_double_SLOW(lvalptr,  update)
-    --elseif op == '-'   then return `G.atomic_add_double_SLOW(lvalptr,-update)
-    elseif op == '*'   then return `G.atomic_mul_double_SLOW(lvalptr, update)
-    --elseif op == '/'   then return `G.atomic_div_double_SLOW(lvalptr, update)
-    elseif op == 'min' then return `G.atomic_min_double_SLOW(lvalptr, update)
-    elseif op == 'max' then return `G.atomic_max_double_SLOW(lvalptr, update)
-    end
-
-  elseif typ == L.int then
-    if     op == '+'   then return `G.reduce_add_int32(lvalptr,  update)
-    --elseif op == '-'   then return `G.reduce_add_int32(lvalptr, -update)
-    elseif op == '*'   then return `G.atomic_mul_int32_SLOW(lvalptr, update)
-    elseif op == 'max' then return `G.reduce_max_int32(lvalptr, update)
-    elseif op == 'min' then return `G.reduce_min_int32(lvalptr, update)
-    end
-
-  elseif typ == L.bool then
-    if     op == 'and' then return `G.reduce_and_b32(lvalptr, update)
-    elseif op == 'or'  then return `G.reduce_or_b32(lvalptr, update)
-    end
-  end
-  error(internal_error)
-end
-
-
-local function atomic_gpu_mat_red_exp(op, result_typ, lval, rhe, rhtyp)
-  if result_typ:isscalar() then
-    return atomic_gpu_red_exp(op, result_typ, `&lval, rhe)
-  elseif result_typ:isvector() then
-
-    local N = result_typ.N
-    local rhbind, rhcoords = let_vec_binding(rhtyp, N, rhe)
-
-    local v = symbol() -- pointer to vector location of reduction result
-
-    local result = quote end
-    for i = 0, N-1 do
-      result = quote
-        [result]
-        [atomic_gpu_red_exp(op, result_typ:basetype(), `v+i, rhcoords[i+1])]
-      end
-    end
-    return quote
-      var [v] : &result_typ:terrabasetype() = [&result_typ:terrabasetype()](&[lval])
-      [rhbind]
-    in
-      [result]
-    end
-  else -- small matrix
-
-    local N = result_typ.Nrow
-    local M = result_typ.Ncol
-    local rhbind, rhcoords = let_mat_binding(rhtyp, N, M, rhe)
-
-    local m = symbol()
-
-    local result = quote end
-    for i = 0, N-1 do
-      for j = 0, M-1 do
-        result = quote
-          [result]
-          [atomic_gpu_red_exp(op, result_typ:basetype(), `&([m].d[i][j]), rhcoords[i+1][j+1])]
-        end
-      end
-    end
-    return quote
-      var [m] : &result_typ:terratype() = [&result_typ:terratype()](&[lval])
-      [rhbind]
-      in
-      [result]
-    end
-  end
-end
-
-
-
-
-
-
---[[--------------------------------------------------------------------]]--
---[[                         Utility Functions                          ]]--
---[[--------------------------------------------------------------------]]--
-
 
 
 local function mat_bin_exp(op, result_typ, lhe, rhe, lhtyp, rhtyp)
@@ -416,8 +359,6 @@ local function mat_bin_exp(op, result_typ, lhe, rhe, lhtyp, rhtyp)
         ' and '..tostring(rhtyp))
 end
 
-
-
 local function unary_exp(op, typ, expr)
 
   if typ:isprimitive() then
@@ -462,6 +403,9 @@ local function unary_exp(op, typ, expr)
 end
 
 
+--[[--------------------------------------------------------------------]]--
+--[[  Utility Functions for Reductions (common)                         ]]--
+--[[--------------------------------------------------------------------]]--
 
 local function scalar_reduce_identity (ltype, reduceop)
   if ltype == L.int then
@@ -538,33 +482,147 @@ function Support.reduction_binop(lz_type, op, lhe, rhe)
 end
 
 
+--[[--------------------------------------------------------------------]]--
+--[[  Utility Functions for Reductions on GPU                           ]]--
+--[[--------------------------------------------------------------------]]--
+
+-- atomic gpu reductions on scalar types
+local function atomic_gpu_red_exp (op, typ, lvalptr, update)
+  local internal_error = 'unsupported reduction, internal error; '..
+                         'this should be guarded against in the typechecker'
+  if typ == L.float then
+    if     op == '+'   then return `G.atomic_add_float(lvalptr,  update)
+    --elseif op == '-'   then return `G.atomic_add_float(lvalptr, -update)
+    elseif op == '*'   then return `G.atomic_mul_float_SLOW(lvalptr, update)
+    --elseif op == '/'   then return `G.atomic_div_float_SLOW(lvalptr, update)
+    elseif op == 'min' then return `G.atomic_min_float_SLOW(lvalptr, update)
+    elseif op == 'max' then return `G.atomic_max_float_SLOW(lvalptr, update)
+    end
+
+  elseif typ == L.double then
+    if     op == '+'   then return `G.atomic_add_double_SLOW(lvalptr,  update)
+    --elseif op == '-'   then return `G.atomic_add_double_SLOW(lvalptr,-update)
+    elseif op == '*'   then return `G.atomic_mul_double_SLOW(lvalptr, update)
+    --elseif op == '/'   then return `G.atomic_div_double_SLOW(lvalptr, update)
+    elseif op == 'min' then return `G.atomic_min_double_SLOW(lvalptr, update)
+    elseif op == 'max' then return `G.atomic_max_double_SLOW(lvalptr, update)
+    end
+
+  elseif typ == L.int then
+    if     op == '+'   then return `G.reduce_add_int32(lvalptr,  update)
+    --elseif op == '-'   then return `G.reduce_add_int32(lvalptr, -update)
+    elseif op == '*'   then return `G.atomic_mul_int32_SLOW(lvalptr, update)
+    elseif op == 'max' then return `G.reduce_max_int32(lvalptr, update)
+    elseif op == 'min' then return `G.reduce_min_int32(lvalptr, update)
+    end
+
+  elseif typ == L.bool then
+    if     op == 'and' then return `G.reduce_and_b32(lvalptr, update)
+    elseif op == 'or'  then return `G.reduce_or_b32(lvalptr, update)
+    end
+  end
+  error(internal_error)
+end
+
+-- atomic gpu reductions on composed types
+local function atomic_gpu_mat_red_exp(op, result_typ, lval, rhe, rhtyp)
+  if result_typ:isscalar() then
+    return atomic_gpu_red_exp(op, result_typ, `&lval, rhe)
+  elseif result_typ:isvector() then
+
+    local N = result_typ.N
+    local rhbind, rhcoords = let_vec_binding(rhtyp, N, rhe)
+
+    local v = symbol() -- pointer to vector location of reduction result
+
+    local result = quote end
+    for i = 0, N-1 do
+      result = quote
+        [result]
+        [atomic_gpu_red_exp(op, result_typ:basetype(), `v+i, rhcoords[i+1])]
+      end
+    end
+    return quote
+      var [v] : &result_typ:terrabasetype() = [&result_typ:terrabasetype()](&[lval])
+      [rhbind]
+    in
+      [result]
+    end
+  else -- small matrix
+
+    local N = result_typ.Nrow
+    local M = result_typ.Ncol
+    local rhbind, rhcoords = let_mat_binding(rhtyp, N, M, rhe)
+
+    local m = symbol()
+
+    local result = quote end
+    for i = 0, N-1 do
+      for j = 0, M-1 do
+        result = quote
+          [result]
+          [atomic_gpu_red_exp(op, result_typ:basetype(), `&([m].d[i][j]), rhcoords[i+1][j+1])]
+        end
+      end
+    end
+    return quote
+      var [m] : &result_typ:terratype() = [&result_typ:terratype()](&[lval])
+      [rhbind]
+      in
+      [result]
+    end
+  end
+end
 
 
+--[[--------------------------------------------------------------------]]--
+--[[  Utility Functions for Reductions with Legion                      ]]--
+--[[--------------------------------------------------------------------]]--
+
+-- atomic legion reductions on scalar types
+local function legion_cpu_atomic_red_exp (op, result_typ, key, laccessor,
+                                          rhe, rhtyp, isgrid)
+  local typename = T.typenames[result_typ]
+  if LW.reduction_ops[op] == nil or LW.reduction_types[typename] == nil then
+    error('Reduction operator ' .. op .. ' on type ' .. typename ..
+          ' not supported.')
+  end
+  local domain_point = (isgrid and "domain_point_") or ""
+  local reduction_function = LW['safe_reduce_' .. domain_point .. LW.reduction_ops[op] ..
+                                '_' .. LW.reduction_types[typename]]
+  local lindex = (isgrid and `key:domainPoint()) or `key.a0
+  local base_type = result_typ:basetype()
+  local binding, coords, size
+  if result_typ:isscalar() then  -- scalar
+    local N = 1
+    binding, coords = let_vec_binding_linearized(rhtyp, N, rhe)
+    size = N
+  elseif result_typ:isvector() then  -- vector
+    local N = result_typ.N
+    binding, coords = let_vec_binding_linearized(rhtyp, N, rhe)
+    size = N
+  else  -- small matrix
+    local N = result_typ.Nrow
+    local M = result_typ.Ncol
+    size = M*N
+    binding, coords = let_mat_binding_linearized(rhtyp, N, M, rhe)
+  end
+  local legion_ptr_pt = (isgrid and `LW.legion_domain_point_t(lindex))
+                        or `LW.legion_ptr_t({lindex})
+  local dtype = LW[T.typenames[base_type] .. '_' .. tostring(size)]
+  return quote
+          [binding]
+         in
+            reduction_function(laccessor, legion_ptr_pt, dtype({coords}))
+         end
+end
 
 
+--[[--------------------------------------------------------------------]]--
+--[[  Export Functions                                                  ]]--
+--[[--------------------------------------------------------------------]]--
 
-
-
-
-
+Support.unary_exp = unary_exp
 Support.bin_exp = mat_bin_exp
 Support.gpu_atomic_exp = atomic_gpu_mat_red_exp
-Support.unary_exp = unary_exp
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+Support.legion_cpu_atomic_exp = legion_cpu_atomic_red_exp

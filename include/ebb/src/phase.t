@@ -43,6 +43,10 @@ function PhaseType:isCentered()
   return self.centered
 end
 
+function PhaseType:reductionOp()
+  return self.reduceop
+end
+
 function PhaseType:iserror()
   return not self.centered and self:requiresExclusive()
 end
