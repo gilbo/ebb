@@ -120,6 +120,155 @@ local function try_coerce(target_typ, node, ctxt)
   end
 end
 
+
+------------------------------------------------------------------------------
+--[[ Substitution Functions:                                              ]]--
+------------------------------------------------------------------------------
+
+local function QuoteParams(all_params_asts)
+  local quoted_params = {}
+  for i,param_ast in ipairs(all_params_asts) do
+    local q = ast.Quote:DeriveFrom(param_ast)
+    q.code = param_ast
+    if param_ast.is_centered then q.is_centered = true end
+    q.node_type = param_ast.node_type -- halt type-checking here
+    quoted_params[i] = q
+  end
+  return quoted_params
+end
+
+local function RunMacro(ctxt,src_node,the_macro,params)
+  --local quoted_params = QuoteParams(params)
+  local param_syms   = {}
+  local declarations = {}
+  for i, p_ast in ipairs(params) do
+    local ptype     = p_ast.node_type
+    -- exception for strings
+    if ptype:isinternal() and type(ptype.value) == 'string' then
+      param_syms[i]   = ptype.value
+    else
+      local decl       = ast.DeclStatement:DeriveFrom(src_node)
+      decl.name        = ast.GenSymbol('_macro_arg_'..tostring(i))
+      decl.initializer = p_ast
+      decl.node_type   = p_ast.node_type
+
+      local n     = ast.Name:DeriveFrom(p_ast)
+      n.name      = decl.name
+      n.node_type = p_ast.node_type
+
+      local q = ast.Quote:DeriveFrom(p_ast)
+      q.code = n
+      q.node_type = n.node_type
+
+      if p_ast.is_centered then
+        n.is_centered = true
+        q.is_centered = true
+      end
+
+      table.insert(declarations, decl)
+      param_syms[i]   = q
+    end
+  end
+
+  local result = the_macro.genfunc(unpack(param_syms))
+
+  if ast.is_ast(result) and result:is(ast.Quote) then
+    local block = ast.Block:DeriveFrom(src_node)
+    block.statements = declarations
+
+    local expansion     = ast.LetExpr:DeriveFrom(src_node)
+    expansion.block     = block
+    expansion.exp       = result
+    expansion.node_type = result.node_type
+    return expansion
+    --local qexp          = ast.Quote:DeriveFrom(src_node)
+    --return expansion:check(ctxt)
+  else
+    ctxt:error(src_node, 'Macros must return quoted code')
+    local errnode     = src_node:clone()
+    errnode.node_type = errorT
+    return errnode
+  end
+end
+
+local function InlineUserFunc(ctxt, src_node, the_func, param_asts)
+  -- note that this alpha rename is safe because the
+  -- param_asts haven't been attached yet.  We know from
+  -- specialization that there are no free variables in the function.
+  local f = the_func._decl_ast:alpha_rename()
+
+  -- check that the correct number of arguments are provided
+  if #(f.params) ~= #param_asts then
+    ctxt:error(src_node,
+        'Expected '..tostring(#(f.params))..' arguments, '..
+        'but was supplied '..tostring(#param_asts)..' arguments')
+    local errnode     = src_node:clone()
+    errnode.node_type = errorT
+    return errnode
+  end
+
+  -- bind params to variables (use a quote to fake it?)
+  local statements = {}
+  local string_literals = {}
+  for i,p_ast in ipairs(QuoteParams(param_asts)) do
+    -- exception for strings
+    local ptype     = param_asts[i].node_type
+    local argname   = f.params[i]
+    if ptype:isinternal() and type(ptype.value) == 'string' then
+      string_literals[argname] = ptype
+    else
+      local decl = ast.DeclStatement:DeriveFrom(src_node)
+      decl.name = argname
+      decl.initializer = p_ast
+      table.insert(statements, decl)
+    end
+  end
+
+  -- now add the function body statements to the list
+  for _,stmt in ipairs(f.body.statements) do
+    table.insert(statements, stmt)
+  end
+  local block = ast.Block:DeriveFrom(src_node)
+  block.statements = statements
+
+  -- ultimately, the user func call is translated into a let expression
+  -- which looks like
+  -- LET
+  --   var param_1 = ...
+  --   var param_2 = ...
+  --   ...
+  --   <body>
+  -- IN
+  --   <exp>
+  -- unless we're missing an expression to return, in which
+  -- case we expand into a do-statement instead
+  local expansion = ast.LetExpr:DeriveFrom(src_node)
+  expansion.block = block
+  expansion.exp   = f.exp
+
+  -- Lacking an expression, use a DO block instead
+  if not f.exp then
+    expansion = ast.DoStatement:DeriveFrom(src_node)
+    expansion.body = block
+    -- hack to make checker barf when this is used as an expression
+    expansion.node_type = internalT('no-return function')
+  end
+
+  -- wrap up in a quote and typecheck
+  local q = ast.Quote:DeriveFrom(src_node)
+  q.code = expansion
+  ctxt:enterblock()
+    for name,strtype in pairs(string_literals) do
+        ctxt:ebb()[name] = strtype
+    end
+    local qchecked = q:check(ctxt)
+  ctxt:leaveblock()
+
+  return qchecked
+end
+
+
+
 ------------------------------------------------------------------------------
 --[[ AST semantic checking methods:                                       ]]--
 ------------------------------------------------------------------------------
@@ -276,6 +425,11 @@ function ast.Assignment:check(ctxt)
   local node = self:clone()
 
   -- LHS tracked for phase-checking
+  if self.reduceop then -- signal context to child
+    ctxt:setReduceHint(self.lvalue, self.reduceop)
+  else
+    ctxt:setWriteHint(self.lvalue)
+  end
   node.lvalue = self.lvalue:check(ctxt)
 
   local ltype  = node.lvalue.node_type
@@ -284,6 +438,18 @@ function ast.Assignment:check(ctxt)
   node.exp     = self.exp:check(ctxt)
   local rtype  = node.exp.node_type
   if rtype == errorT then return node end
+
+  -- check for write/reduce functions...
+  if ltype:isinternal() then
+    local func, key = ltype.value[1], ltype.value[2]
+    if not node.lvalue.from_dispatch then
+      ctxt:error(self.lvalue, "Illegal assignment: left hand side cannot "..
+                              "be assigned")
+      return node
+    end
+    assert(is_function(func))
+    return InlineUserFunc(ctxt, self, func, { key, node.exp })
+  end
 
   -- Promote global lhs to lvalue if there was a reduction
   if (node.lvalue:is(ast.Global) or node.lvalue:is(ast.GlobalIndex)) and
@@ -1072,147 +1238,6 @@ end
 ------------------------------------------------------------------------------
 
 
-local function QuoteParams(all_params_asts)
-  local quoted_params = {}
-  for i,param_ast in ipairs(all_params_asts) do
-    local q = ast.Quote:DeriveFrom(param_ast)
-    q.code = param_ast
-    if param_ast.is_centered then q.is_centered = true end
-    q.node_type = param_ast.node_type -- halt type-checking here
-    quoted_params[i] = q
-  end
-  return quoted_params
-end
-
-local function RunMacro(ctxt,src_node,the_macro,params)
-  --local quoted_params = QuoteParams(params)
-  local param_syms   = {}
-  local declarations = {}
-  for i, p_ast in ipairs(params) do
-    local ptype     = p_ast.node_type
-    -- exception for strings
-    if ptype:isinternal() and type(ptype.value) == 'string' then
-      param_syms[i]   = ptype.value
-    else
-      local decl       = ast.DeclStatement:DeriveFrom(src_node)
-      decl.name        = ast.GenSymbol('_macro_arg_'..tostring(i))
-      decl.initializer = p_ast
-      decl.node_type   = p_ast.node_type
-
-      local n     = ast.Name:DeriveFrom(p_ast)
-      n.name      = decl.name
-      n.node_type = p_ast.node_type
-
-      local q = ast.Quote:DeriveFrom(p_ast)
-      q.code = n
-      q.node_type = n.node_type
-
-      if p_ast.is_centered then
-        n.is_centered = true
-        q.is_centered = true
-      end
-
-      table.insert(declarations, decl)
-      param_syms[i]   = q
-    end
-  end
-
-  local result = the_macro.genfunc(unpack(param_syms))
-
-  if ast.is_ast(result) and result:is(ast.Quote) then
-    local block = ast.Block:DeriveFrom(src_node)
-    block.statements = declarations
-
-    local expansion     = ast.LetExpr:DeriveFrom(src_node)
-    expansion.block     = block
-    expansion.exp       = result
-    expansion.node_type = result.node_type
-    return expansion
-    --local qexp          = ast.Quote:DeriveFrom(src_node)
-    --return expansion:check(ctxt)
-  else
-    ctxt:error(src_node, 'Macros must return quoted code')
-    local errnode     = src_node:clone()
-    errnode.node_type = errorT
-    return errnode
-  end
-end
-
-local function InlineUserFunc(ctxt, src_node, the_func, param_asts)
-  -- note that this alpha rename is safe because the
-  -- param_asts haven't been attached yet.  We know from
-  -- specialization that there are no free variables in the function.
-  local f = the_func._decl_ast:alpha_rename()
-
-  -- check that the correct number of arguments are provided
-  if #(f.params) ~= #param_asts then
-    ctxt:error(src_node,
-        'Expected '..tostring(#(f.params))..' arguments, '..
-        'but was supplied '..tostring(#param_asts)..' arguments')
-    local errnode     = src_node:clone()
-    errnode.node_type = errorT
-    return errnode
-  end
-
-  -- bind params to variables (use a quote to fake it?)
-  local statements = {}
-  local string_literals = {}
-  for i,p_ast in ipairs(QuoteParams(param_asts)) do
-    -- exception for strings
-    local ptype     = param_asts[i].node_type
-    local argname   = f.params[i]
-    if ptype:isinternal() and type(ptype.value) == 'string' then
-      string_literals[argname] = ptype
-    else
-      local decl = ast.DeclStatement:DeriveFrom(src_node)
-      decl.name = argname
-      decl.initializer = p_ast
-      table.insert(statements, decl)
-    end
-  end
-
-  -- now add the function body statements to the list
-  for _,stmt in ipairs(f.body.statements) do
-    table.insert(statements, stmt)
-  end
-  local block = ast.Block:DeriveFrom(src_node)
-  block.statements = statements
-
-  -- ultimately, the user func call is translated into a let expression
-  -- which looks like
-  -- LET
-  --   var param_1 = ...
-  --   var param_2 = ...
-  --   ...
-  --   <body>
-  -- IN
-  --   <exp>
-  -- unless we're missing an expression to return, in which
-  -- case we expand into a do-statement instead
-  local expansion = ast.LetExpr:DeriveFrom(src_node)
-  expansion.block = block
-  expansion.exp   = f.exp
-
-  -- Lacking an expression, use a DO block instead
-  if not f.exp then
-    expansion = ast.DoStatement:DeriveFrom(src_node)
-    expansion.body = block
-    -- hack to make checker barf when this is used as an expression
-    expansion.node_type = internalT('no-return function')
-  end
-
-  -- wrap up in a quote and typecheck
-  local q = ast.Quote:DeriveFrom(src_node)
-  q.code = expansion
-  ctxt:enterblock()
-    for name,strtype in pairs(string_literals) do
-        ctxt:ebb()[name] = strtype
-    end
-    local qchecked = q:check(ctxt)
-  ctxt:leaveblock()
-
-  return qchecked
-end
 
 function ast.TableLookup:check(ctxt)
   local tab = self.table:check(ctxt)
@@ -1250,8 +1275,9 @@ function ast.TableLookup:check(ctxt)
           return err(self, ctxt, "relation "..ttype.relation:Name()..
             " does not have a field write function '"..member.."'")
         end
-        --return InlineUserFunc(ctxt, self, luaval._writer, {tab})
-        error('WRITE FUNCTION UNIMPLEMENTED')
+        local obj = NewLuaObject(self, { luaval._writer, tab })
+        obj.from_dispatch = true
+        return obj
       elseif ctxt:checkReduceHint(self) then
         local op = ctxt:checkReduceHint(self)
         if not luaval._reducers[op] then
@@ -1259,7 +1285,9 @@ function ast.TableLookup:check(ctxt)
             " does not have a field write function '"..member.."' "..
             "for reduction '"..op.."'")
         end
-        error('REDUCE FUNCTION UNIMPLEMENTED')
+        local obj = NewLuaObject(self, { luaval._reducers[op], tab })
+        obj.from_dispatch = true
+        return obj
       else
         if not luaval._reader then
           return err(self, ctxt, "relation "..ttype.relation:Name()..
