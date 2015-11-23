@@ -9,6 +9,14 @@ local C   = require "ebb.src.c"
 local G   = require "ebb.src.gpu_util"
 local T   = require "ebb.src.types"
 
+local CPU       = L.CPU
+local GPU       = L.GPU
+local uint64T   = T.uint64
+local keyT      = T.key
+
+local EbbGlobal = L.Global
+local _INTERNAL_DEV_OUTPUT_PTX = L._INTERNAL_DEV_OUTPUT_PTX
+
 local codegen         = require "ebb.src.codegen"
 local codesupport     = require "ebb.src.codegen_support"
 local LE, legion_env, LW, run_config
@@ -96,7 +104,7 @@ function UFVersion:UsesGlobalReduce()
   return next(self._global_reductions) ~= nil
 end
 function UFVersion:isOnGPU()
-  return self._proc == L.GPU
+  return self._proc == GPU
 end
 function UFVersion:overElasticRelation()
   return self._is_elastic
@@ -143,7 +151,7 @@ function UFVersion:Compile()
     self._args = DataArray.New{
       size = 1,
       type = self._arg_layout:TerraStruct(),
-      processor = L.CPU -- DON'T MOVE
+      processor = CPU -- DON'T MOVE
     }
     
     -- compile an executable
@@ -569,7 +577,7 @@ function UFVersion:_CompileInserts(inserts)
   ufv._insert_data = {
     relation    = rel, -- relation we're going to insert into, not map over
     record_type = ast_nodes[1].record_type,
-    write_idx   = L.Global(L.uint64, 0),
+    write_idx   = EbbGlobal(uint64T, 0),
   }
   -- register the global variable
   ufv:_getGlobalId(ufv._insert_data.write_idx)
@@ -641,7 +649,7 @@ function UFVersion:_CompileDeletes(deletes)
   local rel = next(deletes)
   ufv._delete_data = {
     relation  = rel,
-    n_deleted = L.Global(L.uint64, 0)
+    n_deleted = EbbGlobal(uint64T, 0)
   }
   -- register global variable
   ufv:_getGlobalId(ufv._delete_data.n_deleted)
@@ -916,7 +924,7 @@ function UFVersion:_CompileGlobalMemReductionKernel()
     [ufv:_GenerateSharedMemReduceTree(args, tid, bid, true)]
   end
   cuda_kernel:setname(fn_name)
-  cuda_kernel = G.kernelwrap(cuda_kernel, L._INTERNAL_DEV_OUTPUT_PTX)
+  cuda_kernel = G.kernelwrap(cuda_kernel, _INTERNAL_DEV_OUTPUT_PTX)
 
   -- the globalmem array has an entry for every block in the primary kernel
   local terra launcher( argptr : &(ufv:_argsType()) )
@@ -936,7 +944,7 @@ end
 --                  ---------------------------------------                  --
 
 function UFVersion:_DynamicGPUReductionChecks()
-  if self._proc ~= L.GPU then
+  if self._proc ~= GPU then
     error("INTERNAL ERROR: Should only try to run GPUReduction on the GPU...")
   end
 end
@@ -1308,7 +1316,7 @@ function ArgLayout.New()
 end
 
 function ArgLayout:setRelation(rel)
-  self._key_type  = L.key(rel):terratype()
+  self._key_type  = keyT(rel):terratype()
   self.n_dims     = rel:nDims()
 end
 

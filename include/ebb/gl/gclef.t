@@ -7,7 +7,7 @@ package.loaded["ebb.gl.gclef"] = GClef_Module
 
 local L = require "ebblib"
 local C = require "ebb.src.c"
-local DLD = require "ebb.src.dld"
+local DLD = require "ebb.lib.dld"
 
 local VO = require "ebb.gl.vo"
 

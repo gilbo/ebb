@@ -7,7 +7,7 @@ local LW = {}
 package.loaded["ebb.src.legionwrap"] = LW
 
 local C     = require "ebb.src.c"
-local DLD   = require "ebb.src.dld"
+local DLD   = require "ebb.lib.dld"
 
 -- have this module expose the full C-API.  Then, we'll augment it below.
 local APIblob = terralib.includecstring([[

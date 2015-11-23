@@ -10,7 +10,7 @@ import "ebb"
 local ffi = require 'ffi'
 local gl  = require 'gl.gl'
 local VO = require 'gl.vo'
-local dld = require 'ebb.src.dld'
+local dld = require 'ebb.lib.dld'
 local mat4f = require 'gl.mat4f'
 
 local C = require 'compiler.c'

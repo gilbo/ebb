@@ -8,8 +8,29 @@ local use_single = not use_legion
 local L = require "ebblib"
 local T = require "ebb.src.types"
 local C = require "ebb.src.c"
-local DLD = require "ebb.src.dld"
+local DLD = require "ebb.lib.dld"
 local DLDiter = require 'ebb.src.dlditer'
+
+
+local Relation  = L.LRelation
+local Field     = L.LField
+local LIndex    = L.LIndex
+local Subset    = L.LSubset
+
+local uint64T   = T.uint64
+local boolT     = T.bool
+
+local keyT      = T.key
+local recordT   = T.record
+
+local CPU       = L.CPU
+local GPU       = L.GPU
+
+local is_relation   = L.is_relation
+local is_macro      = L.is_macro
+local is_field      = L.is_field
+local is_function   = L.is_function
+
 
 local PN = require "ebb.lib.pathname"
 
@@ -57,12 +78,12 @@ end
 --    GROUPED (has been sorted for reference)
 --    GRID
 --    ELASTIC (can insert/delete)
-function L.LRelation:isPlain()      return self._mode == 'PLAIN'      end
-function L.LRelation:isGrouped()    return self._mode == 'GROUPED'    end
-function L.LRelation:isGrid()       return self._mode == 'GRID'       end
-function L.LRelation:isElastic()    return self._mode == 'ELASTIC'    end
+function Relation:isPlain()       return self._mode == 'PLAIN'      end
+function Relation:isGrouped()     return self._mode == 'GROUPED'    end
+function Relation:isGrid()        return self._mode == 'GRID'       end
+function Relation:isElastic()     return self._mode == 'ELASTIC'    end
 
-function L.LRelation:isFragmented() return self._is_fragmented end
+function Relation:isFragmented()  return self._is_fragmented end
 
 -- Create a generic relation
 -- local myrel = L.NewRelation {
@@ -72,7 +93,7 @@ function L.LRelation:isFragmented() return self._is_fragmented end
 --  [dims = {45,90}, ]  -- IF mode == 'GRID'
 -- }
 local relation_uid = 0
-function L.NewRelation(params)
+function R.NewRelation(params)
   -- CHECK the parameters coming in
   if type(params) ~= 'table' then
     error("NewRelation() expects a table of named arguments", 2)
@@ -124,7 +145,7 @@ function L.NewRelation(params)
     _incoming_refs = {}, -- used for walking reference graph
     _disjoint_partition = nil
   },
-  L.LRelation)
+  Relation)
   relation_uid = relation_uid + 1 -- increment unique id counter
 
   -- store mode dependent values
@@ -152,7 +173,7 @@ function L.NewRelation(params)
   if use_single then
     -- TODO: Remove the _is_live_mask for inelastic relations
     -- create a mask to track which rows are live.
-    rawset(rel, '_is_live_mask', L.LField.New(rel, '_is_live_mask', L.bool))
+    rawset(rel, '_is_live_mask', Field.New(rel, '_is_live_mask', boolT))
     rel._is_live_mask:Load(true)
 
   elseif use_legion then
@@ -173,26 +194,26 @@ function L.NewRelation(params)
   return rel
 end
 
-function L.LRelation:_INTERNAL_UID() -- Why is this even necessary?
+function Relation:_INTERNAL_UID() -- Why is this even necessary?
   return self._uid
 end
-function L.LRelation:Size()
+function Relation:Size()
   return self._logical_size
 end
-function L.LRelation:ConcreteSize()
+function Relation:ConcreteSize()
   return self._concrete_size
 end
-function L.LRelation:Name()
+function Relation:Name()
   return self._name
 end
-function L.LRelation:nDims()
+function Relation:nDims()
   if self:isGrid() then
     return #self._dims
   else
     return 1
   end
 end
-function L.LRelation:Dims()
+function Relation:Dims()
   if not self:isGrid() then
     return { self:Size() }
   end
@@ -201,7 +222,7 @@ function L.LRelation:Dims()
   for i,n in ipairs(self._dims) do dimret[i] = n end
   return dimret
 end
-function L.LRelation:Strides()
+function Relation:Strides()
   if not self:isGrid() then
     return { 1 }
   end
@@ -209,54 +230,68 @@ function L.LRelation:Strides()
   for i,n in ipairs(self._strides) do dimstrides[i] = n end
   return dimstrides
 end
-function L.LRelation:GroupedKeyField()
+function Relation:GroupedKeyField()
   if not self:isGrouped() then return nil
                           else return self._grouped_field end
 end
-function L.LRelation:_INTERNAL_GroupedOffset()
+function Relation:_INTERNAL_GroupedOffset()
   if not self:isGrouped() then return nil
                           else return self._grouped_offset end
 end
-function L.LRelation:_INTERNAL_GroupedLength()
+function Relation:_INTERNAL_GroupedLength()
   if not self:isGrouped() then return nil
                           else return self._grouped_length end
 end
-function L.LRelation:Periodicity()
+function Relation:Periodicity()
   if not self:isGrid() then return { false } end
   local wraps = {}
   for i,p in ipairs(self._dims) do wraps[i] = p end
   return wraps
 end
 
-function L.LRelation:foreach(user_func, ...)
-  if not L.is_function(user_func) then
+function Relation:foreach(user_func, ...)
+  if not is_function(user_func) then
     error('foreach(): expects an ebb function as the first argument', 2)
   end
   user_func:_doForEach(self, ...)
 end
 
-function L.LRelation:hasSubsets()
+function Relation:hasSubsets()
   return #self._subsets ~= 0
 end
 
 -- returns a record type
-function L.LRelation:StructuralType()
+function Relation:StructuralType()
   local rec = {}
   for _, field in ipairs(self._fields) do
     rec[field.name] = field.type
   end
-  local typ = L.record(rec)
+  local typ = recordT(rec)
   return typ
 end
 
 -- prevent user from modifying the lua table
-function L.LRelation:__newindex(fieldname,value)
+function Relation:__newindex(fieldname,value)
   error("Cannot assign members to LRelation object "..
       "(did you mean to call relation:New...?)", 2)
 end
 
+local FieldDispatcher     = {}
+FieldDispatcher.__index   = FieldDispatcher
+R.FieldDispatcher         = FieldDispatcher
+local function NewFieldDispatcher()
+  return setmetatable({
+    _reader   = nil,
+    _writer   = nil,
+    _reducers = {},
+  }, FieldDispatcher)
+end
+local function isfielddispatcher(obj)
+  return getmetatable(obj) == FieldDispatcher
+end
+R.isfielddispatcher = isfielddispatcher
 
-function L.LRelation:NewFieldMacro (name, macro)
+function Relation:NewFieldMacro (name, macro)
   if not name or type(name) ~= "string" then
     error("NewFieldMacro() expects a string as the first argument", 2)
   end
@@ -268,7 +303,7 @@ function L.LRelation:NewFieldMacro (name, macro)
           "That name is already being used.", 2)
   end
 
-  if not L.is_macro(macro) then
+  if not is_macro(macro) then
     error("NewFieldMacro() expects a Macro as the 2nd argument", 2)
   end
 
@@ -277,7 +312,73 @@ function L.LRelation:NewFieldMacro (name, macro)
   return macro
 end
 
-function L.LRelation:NewFieldFunction (name, userfunc)
+local function getFieldDispatcher(rel, fname, ufunc)
+  if not fname or type(fname) ~= "string" then
+    error("NewField*Function() expects a string as the first argument", 3)
+  end
+  if not is_valid_lua_identifier(fname) then
+    error(valid_name_err_msg.field, 3)
+  end
+  if not is_function(ufunc) then
+    error("NewField*Function() expects an Ebb Function "..
+          "as the last argument", 3)
+  end
+
+  local lookup = rel[fname]
+  if lookup and isfielddispatcher(lookup) then return lookup
+  elseif lookup then
+    error("Cannot create a new field-function with name '"..fname.."'  "..
+          "That name is already being used.", 3)
+  end
+
+  rawset(rel, fname, NewFieldDispatcher())
+  return rel[fname]
+end
+
+function Relation:NewFieldReadFunction(fname, userfunc)
+  local dispatch = getFieldDispatcher(self, fname, userfunc)
+  if dispatch._reader then
+    error("NewFieldReadFunction() error: function already assigned.", 2)
+  end
+  dispatch._reader = userfunc
+  self._functions:insert(userfunc)
+  return userfunc
+end
+
+function Relation:NewFieldWriteFunction(fname, userfunc)
+  local dispatch = getFieldDispatcher(self, fname, userfunc)
+  if dispatch._writer then
+    error("NewFieldWriteFunction() error: function already assigned.", 2)
+  end
+  dispatch._writer = userfunc
+  self._functions:insert(userfunc)
+  return userfunc
+end
+
+local redops = {
+  ['+'] = true,
+  ['-'] = true,
+  ['*'] = true,
+  ['max'] = true,
+  ['min'] = true,
+}
+function Relation:NewFieldReduceFunction(fname, op, userfunc)
+  local dispatch = getFieldDispatcher(self, fname, userfunc)
+  if not redops[op] then
+    error("NewFieldReduceFunction() expects a reduction operator as the "..
+          "second argument.", 2)
+  end
+  if dispatch._reducers[op] then
+    error("NewFieldReduceFunction() error: '"..op.."' "..
+          "function already assigned.", 2)
+  end
+  dispatch._reducers[op] = userfunc
+  self._functions:insert(userfunc)
+  return userfunc
+end
+
+--[[
+function Relation:NewFieldFunction (name, userfunc)
   if not name or type(name) ~= "string" then
     error("NewFieldFunction() expects a string as the first argument", 2)
   end
@@ -289,7 +390,7 @@ function L.LRelation:NewFieldFunction (name, userfunc)
           "That name is already being used.", 2)
   end
 
-  if not L.is_function(userfunc) then
+  if not is_function(userfunc) then
     error("NewFieldFunction() expects an Ebb Function "..
           "as the 2nd argument", 2)
   end
@@ -298,8 +399,9 @@ function L.LRelation:NewFieldFunction (name, userfunc)
   self._functions:insert(userfunc)
   return userfunc
 end
+--]]
 
-function L.LRelation:GroupBy(keyf_name)
+function Relation:GroupBy(keyf_name)
   if self:isGrouped() then
     error("GroupBy(): Relation is already grouped", 2)
   elseif not self:isPlain() then
@@ -307,10 +409,11 @@ function L.LRelation:GroupBy(keyf_name)
           "unless it's a PLAIN relation", 2)
   end
 
-  local key_field = keyf_name
-  if type(key_field) == 'string' then key_field = self[key_field] end
-  if not L.is_field(key_field) then
-    error("GroupBy(): Could not find a field named '"..keyf_name.."'", 2)
+  local key_field = type(keyf_name) == 'string' and self[keyf_name]
+                                                 or keyf_name
+  if not is_field(key_field) or key_field.owner ~= self then
+    error("GroupBy(): Could not find a field named '"..
+          tostring(keyf_name).."'", 2)
   elseif not key_field.type:isscalarkey() then
     error("GroupBy(): Grouping by non-scalar-key fields is "..
           "prohibited.", 2)
@@ -326,8 +429,8 @@ function L.LRelation:GroupBy(keyf_name)
   local n_src  = srcrel:Size()
   local n_dst  = dstrel:Size()
   local dstname = dstrel:Name()
-  local offset_f = L.LField.New(srcrel, dstname..'_grouped_offset', L.uint64)
-  local length_f = L.LField.New(srcrel, dstname..'_grouped_length', L.uint64)
+  local offset_f = Field.New(srcrel, dstname..'_grouped_offset', uint64T)
+  local length_f = Field.New(srcrel, dstname..'_grouped_length', uint64T)
 
   rawset(self,'_grouped_field', key_field)
   rawset(self,'_grouped_offset', offset_f)
@@ -411,9 +514,9 @@ function L.LRelation:GroupBy(keyf_name)
   srcrel._incoming_refs[self] = 'group'
 end
 
-function L.LRelation:MoveTo( proc )
+function Relation:MoveTo( proc )
   if use_legion then error("MoveTo() unsupported using Legion", 2) end
-  if proc ~= L.CPU and proc ~= L.GPU then
+  if proc ~= CPU and proc ~= GPU then
     error('must specify valid processor to move to', 2)
   end
 
@@ -427,7 +530,7 @@ function L.LRelation:MoveTo( proc )
 end
 
 
-function L.LRelation:print()
+function Relation:print()
   if use_legion then
     error("print() currently unsupported using Legion", 2)
   end
@@ -446,8 +549,8 @@ end
 -------------------------------------------------------------------------------
 
 
-function L.LIndex.New(params)
-  if not L.is_relation(params.owner) or
+function LIndex.New(params)
+  if not is_relation(params.owner) or
      type(params.name) ~= 'string' or
      not (params.size or params.terra_type or params.data)
   then
@@ -457,7 +560,7 @@ function L.LIndex.New(params)
   local index = setmetatable({
     _owner = params.owner,
     _name  = params.name,
-  }, L.LIndex)
+  }, LIndex)
 
   index._array = DynamicArray.New {
     size = params.size or (#params.data),
@@ -480,26 +583,26 @@ function L.LIndex.New(params)
   return index
 end
 
-function L.LIndex:DataPtr()
+function LIndex:DataPtr()
   return self._array:_raw_ptr()
 end
-function L.LIndex:Size()
+function LIndex:Size()
   return self._array:size()
 end
 
-function L.LIndex:Relation()
+function LIndex:Relation()
   return self._owner
 end
 
-function L.LIndex:ReAllocate(size)
+function LIndex:ReAllocate(size)
   self._array:resize(size)
 end
 
-function L.LIndex:MoveTo(proc)
+function LIndex:MoveTo(proc)
   self._array:moveto(proc)
 end
 
-function L.LIndex:Release()
+function LIndex:Release()
   if self._array then
     self._array:free()
     self._array = nil
@@ -514,27 +617,27 @@ end
 -------------------------------------------------------------------------------
 
 
-function L.LSubset:foreach(user_func, ...)
-  if not L.is_function(user_func) then
+function Subset:foreach(user_func, ...)
+  if not is_function(user_func) then
     error('map(): expects an Ebb function as the argument', 2)
   end
   user_func:_doForEach(self, ...)
 end
 
-function L.LSubset:Relation()
+function Subset:Relation()
   return self._owner
 end
 
-function L.LSubset:Name()
+function Subset:Name()
   return self._name
 end
 
-function L.LSubset:FullName()
+function Subset:FullName()
   return self._owner._name .. '.' .. self._name
 end
 
-function L.LSubset:MoveTo( proc )
-  if proc ~= L.CPU and proc ~= L.GPU then
+function Subset:MoveTo( proc )
+  if proc ~= CPU and proc ~= GPU then
     error('must specify valid processor to move to', 2)
   end
 
@@ -542,7 +645,7 @@ function L.LSubset:MoveTo( proc )
   if self._index      then self._index:MoveTo(proc)       end
 end
 
-function L.LRelation:NewSubsetFromFunction (name, predicate)
+function Relation:NewSubsetFromFunction (name, predicate)
   if not name or type(name) ~= "string" then
     error("NewSubsetFromFunction() "..
           "expects a string as the first argument", 2)
@@ -570,7 +673,7 @@ function L.LRelation:NewSubsetFromFunction (name, predicate)
   local subset = setmetatable({
     _owner    = self,
     _name     = name,
-  }, L.LSubset)
+  }, Subset)
   rawset(self, name, subset)
   self._subsets:insert(subset)
 
@@ -579,7 +682,7 @@ function L.LRelation:NewSubsetFromFunction (name, predicate)
   local SUBSET_CUTOFF_FRAC = 0.1
   local SUBSET_CUTOFF = SUBSET_CUTOFF_FRAC * self:Size()
 
-  local boolmask  = L.LField.New(self, name..'_subset_boolmask', L.bool)
+  local boolmask  = Field.New(self, name..'_subset_boolmask', boolT)
   local index_tbl = {}
   local subset_size = 0
   local dims = self:Dims()
@@ -598,9 +701,9 @@ function L.LRelation:NewSubsetFromFunction (name, predicate)
     subset._boolmask = boolmask
   else
   -- USE INDEX
-    subset._index = L.LIndex.New{
+    subset._index = LIndex.New{
       owner=self,
-      terra_type = L.key(self):terratype(),
+      terra_type = keyT(self):terratype(),
       ndims=self:nDims(),
       name=name..'_subset_index',
       data=index_tbl
@@ -621,8 +724,8 @@ end
 
 -- Client code should never call this constructor
 -- For internal use only.  Does not install on relation...
-function L.LField.New(rel, name, typ)
-  local field   = setmetatable({}, L.LField)
+function Field.New(rel, name, typ)
+  local field   = setmetatable({}, Field)
   field.type    = typ
   field.name    = name
   field.owner   = rel
@@ -635,30 +738,30 @@ function L.LField.New(rel, name, typ)
   return field
 end
 
-function L.LField:Name()
+function Field:Name()
   return self.name
 end
-function L.LField:FullName()
+function Field:FullName()
   return self.owner._name .. '.' .. self.name
 end
-function L.LField:Size()
+function Field:Size()
   return self.owner:Size()
 end
-function L.LField:ConcreteSize()
+function Field:ConcreteSize()
   return self.owner:ConcreteSize()
 end
-function L.LField:Type()
+function Field:Type()
   return self.type
 end
-function L.LField:DataPtr()
+function Field:DataPtr()
   if use_legion then error('DataPtr() unsupported using legion') end
   return self.array:_raw_ptr()
 end
-function L.LField:Relation()
+function Field:Relation()
   return self.owner
 end
 
-function L.LRelation:NewField (name, typ)  
+function Relation:NewField (name, typ)  
   if not name or type(name) ~= "string" then
     error("NewField() expects a string as the first argument", 2)
   end
@@ -670,8 +773,8 @@ function L.LRelation:NewField (name, typ)
           "That name is already being used.", 2)
   end
   
-  if L.is_relation(typ) then
-    typ = L.key(typ)
+  if is_relation(typ) then
+    typ = keyT(typ)
   end
   if not T.istype(typ) or not typ:isfieldvalue() then
     error("NewField() expects an Ebb type or "..
@@ -691,7 +794,7 @@ function L.LRelation:NewField (name, typ)
   end
 
   -- create the field
-  local field = L.LField.New(self, name, typ)
+  local field = Field.New(self, name, typ)
   rawset(self, name, field)
   self._fields:insert(field)
 
@@ -704,7 +807,7 @@ function L.LRelation:NewField (name, typ)
 end
 
 -- TODO: Hide this function so it's not public
-function L.LField:Allocate()
+function Field:Allocate()
   if use_legion then error('No Allocate() using legion') end
   if not self.array then
     --if self.owner:isElastic() then
@@ -723,7 +826,7 @@ end
 
 -- TODO: Hide this function so it's not public
 -- remove allocated data and clear any depedent data, such as indices
-function L.LField:ClearData ()
+function Field:ClearData ()
   if use_legion then error('No ClearData() using legion') end
   if self.array then
     self.array:free()
@@ -737,21 +840,21 @@ function L.LField:ClearData ()
   end
 end
 
-function L.LField:MoveTo( proc )
+function Field:MoveTo( proc )
   if use_legion then error('No MoveTo() using legion') end
-  if proc ~= L.CPU and proc ~= L.GPU then
+  if proc ~= CPU and proc ~= GPU then
     error('must specify valid processor to move to', 2)
   end
 
   self.array:moveto(proc)
 end
 
-function L.LRelation:Swap( f1_name, f2_name )
+function Relation:Swap( f1_name, f2_name )
   local f1 = self[f1_name]
   local f2 = self[f2_name]
-  if not L.is_field(f1) then
+  if not is_field(f1) then
     error('Could not find a field named "'..f1_name..'"', 2) end
-  if not L.is_field(f2) then
+  if not is_field(f2) then
     error('Could not find a field named "'..f2_name..'"', 2) end
   if f1.type ~= f2.type then
     error('Cannot Swap() fields of different type', 2)
@@ -778,7 +881,7 @@ function L.LRelation:Swap( f1_name, f2_name )
   end
 end
 
-function L.LRelation:Copy( p )
+function Relation:Copy( p )
   if type(p) ~= 'table' or not p.from or not p.to then
     error("relation:Copy() should be called using the form\n"..
           "  relation:Copy{from='f1',to='f2'}", 2)
@@ -787,9 +890,9 @@ function L.LRelation:Copy( p )
   local to   = p.to
   if type(from) == 'string' then from = self[from] end
   if type(to)   == 'string' then to   = self[to]   end
-  if not L.is_field(from) then
+  if not is_field(from) then
     error('Could not find a field named "'..p.from..'"', 2) end
-  if not L.is_field(to) then
+  if not is_field(to) then
     error('Could not find a field named "'..p.to..'"', 2) end
   if not from:Relation() == self then
     error('Field '..from:FullName()..' is not a field of '..
@@ -830,7 +933,7 @@ end
 --[[  Base-Level Relation Memory Access Operations  (Lua and Terra)        ]]--
 
 local mapcount = 0
-function L.LRelation:_INTERNAL_MapJointFunction(
+function Relation:_INTERNAL_MapJointFunction(
   iswrite, isterra, clbk, fields, ...
 )
   assert(type(iswrite) == 'boolean')
@@ -842,7 +945,7 @@ function L.LRelation:_INTERNAL_MapJointFunction(
   end
   assert(terralib.israwlist(fields), 'arg should be list of fields')
   for _,f in ipairs(fields) do
-    assert(L.is_field(f), 'arg should be list of fields')
+    assert(is_field(f), 'arg should be list of fields')
     assert(f.owner == self, 'fields should belong to this relation')
   end
   assert(not self:isFragmented(), 'cannot expose a fragmented relation')
@@ -886,7 +989,7 @@ end
 -------------------------------------------------------------------------------
 --[[  Mid-Level Loading Operations (Lua and Terra)                         ]]--
 
-function L.LField:_INTERNAL_LoadLuaPerElemFunction(clbk)
+function Field:_INTERNAL_LoadLuaPerElemFunction(clbk)
   local typ       = self:Type()
   local ttyp      = typ:terratype()
 
@@ -901,16 +1004,16 @@ function L.LField:_INTERNAL_LoadLuaPerElemFunction(clbk)
   end, {self})
 end
 
-function L.LField:_INTERNAL_LoadTerraBulkFunction(clbk, ...)
+function Field:_INTERNAL_LoadTerraBulkFunction(clbk, ...)
   return self.owner:_INTERNAL_MapJointFunction(true, true, clbk, {self}, ...)
 end
 
-function L.LRelation:_INTERNAL_LoadTerraBulkFunction(fields, clbk, ...)
+function Relation:_INTERNAL_LoadTerraBulkFunction(fields, clbk, ...)
   return self:_INTERNAL_MapJointFunction(true, true, clbk, fields, ...)
 end
 
 -- this is broken for unstructured relations with legion
-function L.LField:_INTERNAL_LoadList(tbl)
+function Field:_INTERNAL_LoadList(tbl)
   local ndims = self.owner:nDims()
   if ndims == 1 then
     self:_INTERNAL_LoadLuaPerElemFunction(function(i)
@@ -927,7 +1030,7 @@ function L.LField:_INTERNAL_LoadList(tbl)
   else assert(false, 'INTERNAL: bad # dims '..ndims) end
 end
 
-function L.LField:_INTERNAL_LoadConstant(c)
+function Field:_INTERNAL_LoadConstant(c)
   -- TODO: Convert implementation to Terra
   self:_INTERNAL_LoadLuaPerElemFunction(function()
     return c
@@ -938,7 +1041,7 @@ end
 -------------------------------------------------------------------------------
 --[[  Mid-Level Dumping Operations (Lua and Terra)                         ]]--
 
-function L.LRelation:_INTERNAL_DumpLuaPerElemFunction(fields, clbk)
+function Relation:_INTERNAL_DumpLuaPerElemFunction(fields, clbk)
   --local typ       = self:Type()
   --local ttyp      = typ:terratype()
 
@@ -964,21 +1067,21 @@ function L.LRelation:_INTERNAL_DumpLuaPerElemFunction(fields, clbk)
   end, fields)
 end
 
-function L.LField:_INTERNAL_DumpLuaPerElemFunction(clbk)
+function Field:_INTERNAL_DumpLuaPerElemFunction(clbk)
   self.owner:_INTERNAL_DumpLuaPerElemFunction({self}, function(ids, val)
     clbk(val, unpack(ids))
   end)
 end
 
-function L.LRelation:_INTERNAL_DumpTerraBulkFunction(fields, clbk, ...)
+function Relation:_INTERNAL_DumpTerraBulkFunction(fields, clbk, ...)
   return self:_INTERNAL_MapJointFunction(false, true, clbk, fields, ...)
 end
 
-function L.LField:_INTERNAL_DumpTerraBulkFunction(clbk, ...)
+function Field:_INTERNAL_DumpTerraBulkFunction(clbk, ...)
   return self.owner:_INTERNAL_MapJointFunction(false, true, clbk, {self}, ...)
 end
 
-function L.LField:_INTERNAL_DumpList()
+function Field:_INTERNAL_DumpList()
   local result = {}
   local dims = self.owner:Dims()
 
@@ -1011,7 +1114,8 @@ end
 -- modular error checking
 local function ferrprefix(level)
   local blob = debug.getinfo(level)
-  return blob.name..': '
+  local name = type(blob.name) == 'string' and blob.name..': ' or ''
+  return name
 end
 local function argcheck_loadval_type(obj,typ,lvl)
   if not T.luaValConformsToType(obj,typ) then
@@ -1036,7 +1140,7 @@ local function argcheck_rel_fields(obj,rel,lvl)
   lvl = (lvl or 1)+1
   argcheck_list(obj,lvl+1)
   for i,f in ipairs(obj) do
-    if not L.is_field(f) then
+    if not is_field(f) then
       error(ferrprefix(lvl)..'Expected field at list entry '..i, lvl)
     end
     if not f.owner == rel then
@@ -1055,7 +1159,7 @@ local function _helper_argcheck_list_dims_err(dims,lvl)
   error(ferrprefix(lvl)..errmsg, lvl)
 end
 local function argcheck_list_dims_and_type(obj,dims,typ,lvl)
-  lvl = (lvl or 1)+1
+  lvl = (lvl or 1)
   argcheck_list(obj,lvl+1)
 
   if #dims == 1 then
@@ -1092,10 +1196,10 @@ CustomDumper.__index = CustomDumper
 
 local function isloader(obj) return getmetatable(obj) == CustomLoader end
 local function isdumper(obj) return getmetatable(obj) == CustomDumper end
-L.isloader = isloader
-L.isdumper = isdumper
+R.is_loader = isloader
+R.is_dumper = isdumper
 
-function L.NewLoader(loadfunc)
+function R.NewLoader(loadfunc)
   if type(loadfunc) ~= 'function' then
     error('NewLoader() expects a lua function as the argument', 2)
   end
@@ -1104,7 +1208,7 @@ function L.NewLoader(loadfunc)
   }, CustomLoader)
 end
 
-function L.NewDumper(dumpfunc)
+function R.NewDumper(dumpfunc)
   if type(dumpfunc) ~= 'function' then
     error('NewDumper() expects a lua function as the argument', 2)
   end
@@ -1116,7 +1220,7 @@ end
 -------------------------------------------------------------------------------
 --[[  High-Level Loading and Dumping Operations (Lua and Terra)            ]]--
 
-function L.LField:Load(arg, ...)
+function Field:Load(arg, ...)
   if self.owner:isFragmented() then
     error('cannot load into fragmented relation', 2)
   end
@@ -1161,7 +1265,7 @@ function L.LField:Load(arg, ...)
 end
 
 -- joint loading has to be done with a function
-function L.LRelation:Load(fieldargs, arg, ...)
+function Relation:Load(fieldargs, arg, ...)
   if self:isFragmented() then
     error('cannot load into fragmented relation', 2)
   end
@@ -1183,7 +1287,7 @@ function L.LRelation:Load(fieldargs, arg, ...)
 end
 
 -- pass an empty table to signify that you want the data dumped as a Lua list
-function L.LField:Dump(arg, ...)
+function Field:Dump(arg, ...)
   if self.owner:isFragmented() then
     error('cannot dump from a fragmented relation', 2)
   end
@@ -1209,7 +1313,7 @@ function L.LField:Dump(arg, ...)
 end
 
 -- joint dumping also has to be done with a function
-function L.LRelation:Dump(fieldargs, arg, ...)
+function Relation:Dump(fieldargs, arg, ...)
   if self:isFragmented() then
     error('cannot dump from a fragmented relation', 2)
   end
@@ -1234,7 +1338,7 @@ end
 
 
 --[[
-function L.LField:LoadFunction(lua_callback)
+function Field:LoadFunction(lua_callback)
   if self.owner:isFragmented() then
     error('cannot load into fragmented relation', 2)
   end
@@ -1280,7 +1384,7 @@ end
 
 -- To load fields using terra callback. Terra callback gets a list of dlds.
 --   callback([dlds])
-function L.LRelation:LoadJointTerraFunction( terra_callback, fields_arg, ...)
+function Relation:LoadJointTerraFunction( terra_callback, fields_arg, ...)
   if not terralib.isfunction(terra_callback) then
     error('LoadJointTerraFunction.. should be used with terra callback')
   end
@@ -1292,7 +1396,7 @@ function L.LRelation:LoadJointTerraFunction( terra_callback, fields_arg, ...)
   local fields = {}
   for i,f in ipairs(fields_arg) do
     if type(f) == 'string' then f = self[f] end
-    if not L.is_field(f) then
+    if not is_field(f) then
       error('LoadJointTerraFunction(): list entry '..tostring(i)..' was either '..
             'not a field or not the name of a field in '..
             'relation '..self:Name(),2)
@@ -1347,7 +1451,7 @@ end
 -- Load a single field using a terra callback
 -- callback accepts argument dld
 --   callback(dld)
-function L.LField:LoadTerraFunction(terra_callback, ...)
+function Field:LoadTerraFunction(terra_callback, ...)
   if not terralib.isfunction(terra_callback) then
     error('LoadTerraFunction should be used with terra callback')
   end
@@ -1356,7 +1460,7 @@ end
 
 --[[
 -- this is broken for unstructured relations with legion
-function L.LField:LoadList(tbl)
+function Field:LoadList(tbl)
   if self.owner:isFragmented() then
     error('cannot load into fragmented relation', 2)
   end
@@ -1406,7 +1510,7 @@ end
 
 --[[
 -- TODO: DEPRECATED FORM.  (USE DLD?)
-function L.LField:LoadFromMemory(mem)
+function Field:LoadFromMemory(mem)
   if self.owner:isFragmented() then
     error('cannot load into fragmented relation', 2)
   end
@@ -1436,14 +1540,14 @@ function L.LField:LoadFromMemory(mem)
       size = self:ConcreteSize(),
       type = self.type:terratype(),
       data = mem,
-      processor = L.CPU,
+      processor = CPU,
     }
     self.array:copy(wrapped)
   end
 end
 
 --[[
-function L.LField:LoadConstant(constant)
+function Field:LoadConstant(constant)
   if self.owner:isFragmented() then
     error('cannot load into fragmented relation', 2)
   end
@@ -1474,7 +1578,7 @@ end
 
 --[[
 -- generic dispatch function for loads
-function L.LField:Load(arg)
+function Field:Load(arg)
   if self.owner:isFragmented() then
     error('cannot load into fragmented relation', 2)
   end
@@ -1516,7 +1620,7 @@ end
 
 --[[
 -- helper to dump multiple fields jointly
-function L.LRelation:DumpJoint(fields_arg, lua_callback)
+function Relation:DumpJoint(fields_arg, lua_callback)
   if self:isFragmented() then
     error('cannot dump from fragmented relation', 2)
   end
@@ -1526,7 +1630,7 @@ function L.LRelation:DumpJoint(fields_arg, lua_callback)
   local fields = {}
   for i,f in ipairs(fields_arg) do
     if type(f) == 'string' then f = self[f] end
-    if not L.is_field(f) then
+    if not is_field(f) then
       error('DumpJoint(): list entry '..tostring(i)..' was either '..
             'not a field or not the name of a field in '..
             'relation '..self:Name(),2)
@@ -1599,7 +1703,7 @@ end
 -- callback(i, val)
 --      i:      which row we're outputting (starting at 0)
 --      val:    the value of this field for the ith row
-function L.LField:DumpFunction(lua_callback)
+function Field:DumpFunction(lua_callback)
   if self.owner:isFragmented() then
     error('cannot dump from fragmented relation', 2)
   end
@@ -1608,7 +1712,7 @@ function L.LField:DumpFunction(lua_callback)
   end)
 end
 
-function L.LField:DumpToList()
+function Field:DumpToList()
   if self.owner:isFragmented() then
     error('cannot dump from fragmented relation', 2)
   end
@@ -1641,7 +1745,7 @@ end
 
 -- To dump fields using terra callback. Terra callback gets a list of dlds.
 --   callback([dlds])
-function L.LRelation:DumpJointTerraFunction(terra_callback, fields_arg, ...)
+function Relation:DumpJointTerraFunction(terra_callback, fields_arg, ...)
   if not terralib.isfunction(terra_callback) then
     error('DumpJointTerraFunction.. should be used with terra callback')
   end
@@ -1653,7 +1757,7 @@ function L.LRelation:DumpJointTerraFunction(terra_callback, fields_arg, ...)
   local fields = {}
   for i,f in ipairs(fields_arg) do
     if type(f) == 'string' then f = self[f] end
-    if not L.is_field(f) then
+    if not is_field(f) then
       error('DumpJointTerraFunction(): list entry '..tostring(i)..' was either '..
             'not a field or not the name of a field in '..
             'relation '..self:Name(),2)
@@ -1709,7 +1813,7 @@ end
 -- Dump a single field using a terra callback
 -- callback accepts argument dld
 --   callback(dld)
-function L.LField:DumpTerraFunction(terra_callback, ...)
+function Field:DumpTerraFunction(terra_callback, ...)
   if not terralib.isfunction(terra_callback) then
     error('DumpTerraFunction should be used with terra callback')
   end
@@ -1719,7 +1823,7 @@ end
 
 --[[  I/O: Load from/ save to files, print to stdout                       ]]--
 
-function L.LField:print()
+function Field:print()
   print(self.name..": <" .. tostring(self.type:terratype()) .. '>')
   if use_single and not self.array then
     print("...not initialized")
@@ -1783,7 +1887,7 @@ end
 --[[
 -- load/ save field from file (very basic error handling right now)
 
-function L.LField:LoadFromCSV(filename)
+function Field:LoadFromCSV(filename)
   if self.owner:isFragmented() then
     error('cannot load into fragmented relation', 2)
   end
@@ -1862,7 +1966,7 @@ function L.LField:LoadFromCSV(filename)
   C.fclose(fp)
 end
 
-function L.LField:SaveToCSV(filename, args)
+function Field:SaveToCSV(filename, args)
   if self.owner:isFragmented() then
     error('cannot save a fragmented relation', 2)
   end
@@ -1934,7 +2038,7 @@ end
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
 
-function L.LField:GetDLD()
+function Field:GetDLD()
   if self.owner:isFragmented() then
     error('Cannot get DLD from fragmented relation', 2)
   end
@@ -1950,8 +2054,8 @@ function L.LField:GetDLD()
 
   if use_single then
     local location  = self.array:location()
-    location        = assert( (location == L.CPU and DLD.CPU) or
-                              (location == L.GPU and DLD.GPU) )
+    location        = assert( (location == CPU and DLD.CPU) or
+                              (location == GPU and DLD.GPU) )
     local dims      = self.owner:Dims()
 
     local dim_size, dim_stride = {}, {}
@@ -2004,7 +2108,7 @@ end
 -------------------------------------------------------------------------------
 
 
-function L.LRelation:_INTERNAL_Resize(new_concrete_size, new_logical)
+function Relation:_INTERNAL_Resize(new_concrete_size, new_logical)
   if not self:isElastic() then
     error('Can only resize ELASTIC relations', 2)
   end
@@ -2023,7 +2127,7 @@ end
 -------------------------------------------------------------------------------
 
 -- returns a useful error message 
-function L.LRelation:UnsafeToDelete()
+function Relation:UnsafeToDelete()
   if not self:isElastic() then
     return "Cannot delete from relation "..self:Name()..
            " because it's not ELASTIC"
@@ -2034,7 +2138,7 @@ function L.LRelation:UnsafeToDelete()
   end
 end
 
-function L.LRelation:UnsafeToInsert(record_type)
+function Relation:UnsafeToInsert(record_type)
   -- duplicate above checks
   local msg = self:UnsafeToDelete()
   if msg then
@@ -2051,7 +2155,7 @@ end
 --[[  Defrag                                                               ]]--
 -------------------------------------------------------------------------------
 
-function L.LRelation:_INTERNAL_MarkFragmented()
+function Relation:_INTERNAL_MarkFragmented()
   if not self:isElastic() then
     error("INTERNAL: Cannot Fragment a non-elastic relation")
   end
@@ -2059,7 +2163,7 @@ function L.LRelation:_INTERNAL_MarkFragmented()
 end
 
 TOTAL_DEFRAG_TIME = 0
-function L.LRelation:Defrag()
+function Relation:Defrag()
   local start_time = terralib.currenttimeinseconds()
   if not self:isElastic() then
     error("Defrag(): Cannot Defrag a non-elastic relation")
@@ -2071,10 +2175,10 @@ function L.LRelation:Defrag()
   local on_gpu      = {}
   local live_gpu    = false
   for i,field in ipairs(self._fields) do
-    on_gpu[i]   = field.array:location() == L.GPU
+    on_gpu[i]   = field.array:location() == GPU
     any_on_gpu  = true
   end
-  if self._is_live_mask.array:location() == L.GPU then
+  if self._is_live_mask.array:location() == GPU then
     live_gpu    = true
     any_on_gpu  = true
   end
@@ -2085,9 +2189,9 @@ function L.LRelation:Defrag()
   -- slow workaround logic
   if any_on_gpu then
     for i,field in ipairs(self._fields) do
-      if on_gpu[i] then field:MoveTo(L.CPU) end
+      if on_gpu[i] then field:MoveTo(CPU) end
     end
-    if live_gpu then self._is_live_mask:MoveTo(L.CPU) end
+    if live_gpu then self._is_live_mask:MoveTo(CPU) end
   end
 
   -- ok, build a terra function that we can execute to compact
@@ -2166,9 +2270,9 @@ function L.LRelation:Defrag()
   -- move back to GPU if necessary
   if any_on_gpu then
     for i,field in ipairs(self._fields) do
-      if on_gpu[i] then field:MoveTo(L.GPU) end
+      if on_gpu[i] then field:MoveTo(GPU) end
     end
-    if live_gpu then self._is_live_mask:MoveTo(L.GPU) end
+    if live_gpu then self._is_live_mask:MoveTo(GPU) end
   end
 
   -- now cleanup by resizing the relation
@@ -2190,7 +2294,7 @@ end
 -------------------------------------------------------------------------------
 
 
-function L.LRelation:SetPartitions(num_partitions)
+function Relation:SetPartitions(num_partitions)
   if self._total_partitions ~= nil then
     error("Partitioning for " .. self._name .. " is already set", 2)
   end
@@ -2212,22 +2316,22 @@ function L.LRelation:SetPartitions(num_partitions)
   rawset(self, '_num_partitions', num_partitions_table)
 end
 
-function L.LRelation:TotalPartitions()
+function Relation:TotalPartitions()
   return self._total_partitions
 end
 
-function L.LRelation:NumPartitions()
+function Relation:NumPartitions()
   return self._num_partitions
 end
 
-function L.LRelation:IsPartitioningSet()
+function Relation:IsPartitioningSet()
   return (self._total_partitions ~= nil)
 end
 
 -- ghost_width specifies ghost width on each side of a grid.
 -- example for a 2d grid, ghost_width is {xl, xh, yl, yh}
 -- (l = lower side, h = higher side).
-function L.LRelation:SetGhostWidth(ghost_width)
+function Relation:SetGhostWidth(ghost_width)
   if not self:isGrid() then
     error("SetGhostWidth supported for only structured relations (grids).", 2)
   else
@@ -2241,18 +2345,18 @@ function L.LRelation:SetGhostWidth(ghost_width)
   end
 end
 
-function L.LRelation:InvalidateGhostWidth()
+function Relation:InvalidateGhostWidth()
   if not self._ghost_width_default then
     error("Attempt to invalidate ghost width which has never been set", 2)
   end
   self._ghost_width_default = nil
 end
 
-function L.LRelation:GhostWidth()
+function Relation:GhostWidth()
   return self._ghost_width_default
 end
 
-function L.LRelation:IsGhostWidthValid()
+function Relation:IsGhostWidthValid()
   return self._ghost_width_default ~= nil
 end
 
@@ -2275,7 +2379,7 @@ end
 -- specific right now, but it is a partitioning over the entire logical region.
 
 -- looks up/ creates a disjoint partitioning on a relation
-function L.LRelation:GetOrCreateDisjointPartitioning()
+function Relation:GetOrCreateDisjointPartitioning()
   -- check if there is a disjoint partition
   if self._disjoint_partitioning then
     return self._disjoint_partitioning
@@ -2290,7 +2394,7 @@ function L.LRelation:GetOrCreateDisjointPartitioning()
     -- PLAIN/ GROUPED/ ELASTIC
     -- add a coloring field to logical region
     rawset(self, '_disjoint_coloring',
-           L.LField.New(self, '_disjoint_coloring', L.color_type))
+           Field.New(self, '_disjoint_coloring', T.color_type))
     -- set the coloring field
     self._disjoint_coloring:Load(ColorPlainIndexSpaceDisjoint,
                                  self:TotalPartitions())
@@ -2304,7 +2408,7 @@ end
 
 -- looks up/ creates an aliased partitioning on a relation
 -- only grids with specified ghost width supported right now
-function L.LRelation:GetOrCreateGhostPartitioning(ghost_width)
+function Relation:GetOrCreateGhostPartitioning(ghost_width)
   if not self:isGrid() then
     error("INTERNAL: Ghost partitions on non-grid relations not supported yet.")
   else

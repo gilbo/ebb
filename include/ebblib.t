@@ -7,9 +7,6 @@ local use_single = not use_legion
 -- Ebb types are created here
 local T = require 'ebb.src.types'
 
-local DataArray = use_single and
-                  require('ebb.src.rawdata').DataArray
-
 local LE, legion_env, LW
 if use_legion then
   LE            = rawget(_G, '_legion_env')
@@ -57,6 +54,9 @@ for _,tchar in ipairs({ 'i', 'f', 'd', 'b' }) do
   end
 end
 
+-- Get rid of this?
+L.color_type = T.color_type
+
 -------------------------------------------------------------------------------
 --[[ Ebb Constants:                                                        ]]--
 -------------------------------------------------------------------------------
@@ -91,17 +91,14 @@ local LConstant  = make_prototype("LConstant","constant")
 local LMacro     = make_prototype("LMacro","macro")
 local LUserFunc  = make_prototype("LUserFunc","function")
 local UFVersion  = make_prototype("UFVersion","version")
+T.is_relation = L.is_relation -- expose to type file
 
 local C = require "ebb.src.c"
-local T = require "ebb.src.types"
-local ast = require "ebb.src.ast"
-require "ebb.src.builtins"
-require "ebb.src.relations"
-require "ebb.src.ufversions"
+--local ast = require "ebb.src.ast"
 
-local semant  = require "ebb.src.semant"
-local phase   = require "ebb.src.phase"
-local Stats   = require "ebb.src.stats"
+
+local DataArray = use_single and
+                  require('ebb.src.rawdata').DataArray
 
 -------------------------------------------------------------------------------
 --[[ LGlobals:                                                             ]]--
@@ -250,9 +247,42 @@ end
 
 local specialization = require('ebb.src.specialization')
 
+
+
+
+
+local semant  = require "ebb.src.semant"
+local phase   = require "ebb.src.phase"
+local Stats   = require "ebb.src.stats"
+local B       = require "ebb.src.builtins"
+L.is_builtin      = B.is_builtin
+L.Where           = B.Where
+L.Affine          = B.Affine
+L.print           = B.print
+L.assert          = B.assert
+L.rand            = B.rand
+L.dot             = B.dot
+L.cross           = B.cross
+L.length          = B.length
+L.id              = B.id
+L.xid             = B.xid
+L.yid             = B.yid
+L.zid             = B.zid
+L.UNSAFE_ROW      = B.UNSAFE_ROW
+L.any             = B.any
+L.all             = B.all
+local R       = require "ebb.src.relations"
+L.NewRelation     = R.NewRelation
+L.is_loader       = R.is_loader
+L.is_dumper       = R.is_dumper
+L.NewLoader       = R.NewLoader
+L.NewDumper       = R.NewDumper
+require "ebb.src.ufversions"
+
 -------------------------------------------------------------------------------
 --[[ LUserFunc:                                                            ]]--
 -------------------------------------------------------------------------------
+
 
 function L.NewUserFunc(func_ast, luaenv)
   local special = specialization.specialize(luaenv, func_ast)

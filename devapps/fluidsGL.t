@@ -143,10 +143,6 @@ local ebb advectWhereFrom (c : grid.cells)
     c.advectPos = snapToGrid(c.center + dt * N * -c.dv)
 end
 
-local ebb advectPointLocate (c : grid.cells)
-    c.advectFrom = grid.dual_locate(c.advectPos)
-end
-
 local ebb advectInterpolateVelocity (c : grid.cells)
     -- lookup cell (this is the bottom left corner)
     var dc      = c.advectFrom
@@ -174,7 +170,7 @@ end
 
 local function advectVelocity(grid)
 	grid.cells:foreach(advectWhereFrom)
-    grid.cells:foreach(advectPointLocate)
+    grid.locate_in_duals(grid.cells, 'advectPos', 'advectFrom')
     grid.cells:foreach(advectInterpolateVelocity)
 end
 
@@ -312,10 +308,6 @@ particles:foreach(ebb (p : particles) -- init...
             L.vec2f({cell_w/2.0, cell_h/2.0})
 end)
 
-local ebb locateParticles (p : particles)
-    p.dual_cell = grid.dual_locate(p.pos)
-end
-
 local ebb computeParticleVelocity (p : particles)
     -- lookup cell (this is the bottom left corner)
     var dc      = p.dual_cell
@@ -352,7 +344,7 @@ for i = 1, 1 do
     
 	particles:foreach(computeParticleVelocity)
     particles:foreach(updateParticlePos)
-    particles:foreach(locateParticles)
+    grid.locate_in_duals(particles, 'pos', 'dual_cell')
 end
 
 grid.cells:print()

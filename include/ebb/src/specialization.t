@@ -5,8 +5,20 @@ package.loaded["ebb.src.specialization"] = S
 local ast = require "ebb.src.ast"
 local B   = require "ebb.src.builtins"
 local T   = require "ebb.src.types"
+local L   = require "ebblib"
 
+local errorT        = T.error
+local keyT          = T.key
+local internalT     = T.internal
+local boolT         = T.bool
 
+local is_relation   = L.is_relation
+local is_type       = T.istype
+local is_global     = L.is_global
+local is_constant   = L.is_constant
+local is_macro      = L.is_macro
+local is_function   = L.is_function
+local is_builtin    = B.is_builtin
 
 
 ------------------------------------------------------------------------------
@@ -74,14 +86,14 @@ local function exec_external(exp, ctxt, default)
 end
 
 local function exec_type_annotation(typexp, ast_node, ctxt)
-  local typ = exec_external(typexp, ctxt, L.error)
+  local typ = exec_external(typexp, ctxt, errorT)
   -- handle use of relations as shorthand for key types
-  if L.is_relation(typ) then typ = L.key(typ) end
+  if is_relation(typ) then typ = keyT(typ) end
 
-  if not T.istype(typ) then
+  if not is_type(typ) then
     ctxt:error(ast_node, "Expected Ebb type annotation but found " ..
                          type(typ))
-    typ = L.error
+    typ = errorT
   end
   return typ
 end
@@ -280,7 +292,7 @@ end
 
 local function NewLuaObject(anchor, obj)
   local lo     = ast.LuaObject:DeriveFrom(anchor)
-  lo.node_type = L.internal(obj)
+  lo.node_type = internalT(obj)
   return lo
 end
 
@@ -293,7 +305,7 @@ local function prim_to_AST(anchor, primval, typ)
   elseif type(primval) == 'boolean' then
     local node = ast.Bool:DeriveFrom(anchor)
     node.value = primval
-    node.node_type = L.bool
+    node.node_type = boolT
     return node
   else
     error("INTERNAL: SHOULD only see primitive types number/boolean here")
@@ -327,11 +339,11 @@ local function luav_to_ast(luav, src_node)
   local node
 
   -- Global objects are replaced with special Global nodes
-  if L.is_global(luav) then
+  if is_global(luav) then
     node        = ast.Global:DeriveFrom(src_node)
     node.global = luav
 
-  elseif L.is_constant(luav) then
+  elseif is_constant(luav) then
     local bt = luav.type:basetype()
     if luav.type:ismatrix() then
       node = mat_to_AST(src_node, luav.value, bt)
@@ -341,13 +353,13 @@ local function luav_to_ast(luav, src_node)
       node = prim_to_AST(src_node, luav.value, bt)
     end
 
-  elseif B.isBuiltin(luav) then
+  elseif is_builtin(luav) then
     node = NewLuaObject(src_node,luav)
-  elseif L.is_relation(luav) then
+  elseif is_relation(luav) then
     node = NewLuaObject(src_node,luav)
-  elseif L.is_function(luav) then
+  elseif is_function(luav) then
     node = NewLuaObject(src_node,luav)
-  elseif L.is_macro(luav) then
+  elseif is_macro(luav) then
     node = NewLuaObject(src_node,luav)
   elseif terralib.isfunction(luav) then
     node = NewLuaObject(src_node,B.terra_to_func(luav))

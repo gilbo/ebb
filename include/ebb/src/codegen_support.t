@@ -31,6 +31,13 @@ end
 ]]
 
 
+local floatT    = T.float
+local doubleT   = T.double
+local intT      = T.int
+local uint64T   = T.uint64
+local boolT     = T.bool
+
+
 
 --[[--------------------------------------------------------------------]]--
 --[[  Utility Functions for Vectors and Matrices                        ]]--
@@ -408,7 +415,7 @@ end
 --[[--------------------------------------------------------------------]]--
 
 local function scalar_reduce_identity (ltype, reduceop)
-  if ltype == L.int then
+  if ltype == intT then
     if reduceop == '+' or reduceop == '-' then
       return `0
     elseif reduceop == '*' or reduceop == '/' then
@@ -418,7 +425,7 @@ local function scalar_reduce_identity (ltype, reduceop)
     elseif reduceop == 'max' then
       return `[C.INT_MIN]
     end
-  elseif ltype == L.uint64 then
+  elseif ltype == uint64T then
     if reduceop == '+' or reduceop == '-' then
       return `0
     elseif reduceop == '*' or reduceop == '/' then
@@ -428,7 +435,7 @@ local function scalar_reduce_identity (ltype, reduceop)
     elseif reduceop == 'max' then
       return `0
     end
-  elseif ltype == L.float then
+  elseif ltype == floatT then
     if reduceop == '+' or reduceop == '-' then
       return `0.0f
     elseif reduceop == '*' or reduceop == '/' then
@@ -438,7 +445,7 @@ local function scalar_reduce_identity (ltype, reduceop)
     elseif reduceop == 'max' then
       return `[C.FLT_MIN]
     end
-  elseif ltype == L.double then
+  elseif ltype == doubleT then
     if reduceop == '+' or reduceop == '-' then
       return `0.0
     elseif reduceop == '*' or reduceop == '/' then
@@ -448,7 +455,7 @@ local function scalar_reduce_identity (ltype, reduceop)
     elseif reduceop == 'max' then
       return `[C.DBL_MIN]
     end
-  elseif ltype == L.bool then
+  elseif ltype == boolT then
     if reduceop == 'and' then
       return `true
     elseif reduceop == 'or' then
@@ -490,7 +497,7 @@ end
 local function atomic_gpu_red_exp (op, typ, lvalptr, update)
   local internal_error = 'unsupported reduction, internal error; '..
                          'this should be guarded against in the typechecker'
-  if typ == L.float then
+  if typ == floatT then
     if     op == '+'   then return `G.atomic_add_float(lvalptr,  update)
     --elseif op == '-'   then return `G.atomic_add_float(lvalptr, -update)
     elseif op == '*'   then return `G.atomic_mul_float_SLOW(lvalptr, update)
@@ -499,7 +506,7 @@ local function atomic_gpu_red_exp (op, typ, lvalptr, update)
     elseif op == 'max' then return `G.atomic_max_float_SLOW(lvalptr, update)
     end
 
-  elseif typ == L.double then
+  elseif typ == doubleT then
     if     op == '+'   then return `G.atomic_add_double_SLOW(lvalptr,  update)
     --elseif op == '-'   then return `G.atomic_add_double_SLOW(lvalptr,-update)
     elseif op == '*'   then return `G.atomic_mul_double_SLOW(lvalptr, update)
@@ -508,7 +515,7 @@ local function atomic_gpu_red_exp (op, typ, lvalptr, update)
     elseif op == 'max' then return `G.atomic_max_double_SLOW(lvalptr, update)
     end
 
-  elseif typ == L.int then
+  elseif typ == intT then
     if     op == '+'   then return `G.reduce_add_int32(lvalptr,  update)
     --elseif op == '-'   then return `G.reduce_add_int32(lvalptr, -update)
     elseif op == '*'   then return `G.atomic_mul_int32_SLOW(lvalptr, update)
@@ -516,7 +523,7 @@ local function atomic_gpu_red_exp (op, typ, lvalptr, update)
     elseif op == 'min' then return `G.reduce_min_int32(lvalptr, update)
     end
 
-  elseif typ == L.bool then
+  elseif typ == boolT then
     if     op == 'and' then return `G.reduce_and_b32(lvalptr, update)
     elseif op == 'or'  then return `G.reduce_or_b32(lvalptr, update)
     end

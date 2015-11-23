@@ -6,6 +6,7 @@ local use_single = not use_legion
 
 local ast = require "ebb.src.ast"
 local T   = require "ebb.src.types"
+local keyT      = T.key
 
 local C   = require 'ebb.src.c'
 local L   = require 'ebblib'
@@ -19,6 +20,7 @@ if use_legion then
 end
 
 L._INTERNAL_DEV_OUTPUT_PTX = false
+
 
 
 
@@ -56,7 +58,7 @@ function Context:dims()
 end
 
 function Context:argKeyTerraType()
-  return L.key(self.ufv._relation):terratype()
+  return keyT(self.ufv._relation):terratype()
 end
 
 -- This one is the odd one out, generates some code
@@ -792,7 +794,8 @@ function ast.SquareIndex:codegen (ctxt)
 end
 
 function ast.Number:codegen (ctxt)
-  return `[self.value]
+  local val = constant(self.node_type:terratype(), self.value)
+  return val
 end
 
 function ast.Bool:codegen (ctxt)
@@ -829,16 +832,15 @@ function ast.GenericFor:codegen (ctxt)
     local dstrel    = self.set.node_type.relation
     -- the key being used to drive the where query should
     -- come from a grouped relation, which is necessarily 1d
-    local projected = `[L.key(dstrel):terratype()]( { iter } )
+    local projected = `[keyT(dstrel):terratype()]( { iter } )
 
     for i,p in ipairs(self.set.node_type.projections) do
         local field = dstrel[p]
-        --projected   = doProjection(projected,field,ctxt)
         projected   = `@[ ctxt:FieldElemPtr(field, projected) ]
         dstrel      = field.type.relation
         assert(dstrel)
     end
-    local sym = symbol(L.key(dstrel):terratype())
+    local sym = symbol(keyT(dstrel):terratype())
     ctxt:enterblock()
         ctxt:localenv()[self.name] = sym
         local body = self.body:codegen(ctxt)
@@ -907,10 +909,6 @@ function ast.Where:codegen(ctxt)
   return v
 end
 
---local function doProjection(key,field,ctxt)
---  assert(L.is_field(field))
---  return `@[ ctxt:FieldElemPtr(field, key) ]
---end
 
 
 function ast.GlobalReduce:codegen(ctxt)
@@ -1024,7 +1022,7 @@ function ast.InsertStatement:codegen (ctxt)
   local insert_rel = self.relation.node_type.value -- to insert into
 
   -- index to write to
-  local i_type = L.key(insert_rel):terratype()
+  local i_type = keyT(insert_rel):terratype()
   local i_addr = symbol(i_type)
   local write_code = quote
     var [i_addr] = [i_type]( { [ctxt:reserveInsertIndex()] } )

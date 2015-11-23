@@ -32,12 +32,12 @@ function build_next_level(cellrel)
   }
 
   -- link the cells of down to up
-  cellrel:NewFieldFunction('up_cell', ebb (c)
+  cellrel:NewFieldReadFunction('up_cell', ebb (c)
     return L.Affine(grid.cells, {{ 0.5,   0, 0},
                                  {   0, 0.5, 0}}, c)
   end)
   -- link the cells of up to down
-  grid.cells:NewFieldFunction('down_cell', ebb (c)
+  grid.cells:NewFieldReadFunction('down_cell', ebb (c)
     return L.Affine(cellrel, {{ 2, 0, 0},
                               { 0, 2, 0}}, c)
   end)
