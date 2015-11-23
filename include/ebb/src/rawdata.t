@@ -7,6 +7,10 @@ package.loaded["ebb.src.rawdata"] = Raw
 
 local C = require "ebb.src.c"
 local G = require "ebb.src.gpu_util"
+local L = require "ebblib"
+
+local CPU = L.CPU
+local GPU = L.GPU
 
 
 -------------------------------------------------------------------------------
@@ -103,9 +107,9 @@ function DataArray:allocate()
   if self._data then return end
   if self._size == 0 then return end -- do not allocate if size 0
 
-  if self._processor == L.CPU then
+  if self._processor == CPU then
     self._data = cpu_allocate(self)
-  elseif self._processor == L.GPU then
+  elseif self._processor == GPU then
     self._data = gpu_allocate(self)
   else
     error('unrecognized processor')
@@ -115,9 +119,9 @@ end
 -- idempotent
 function DataArray:free()
   if self._data then
-    if self._processor == L.CPU then
+    if self._processor == CPU then
       cpu_free(self._data)
-    elseif self._processor == L.GPU then
+    elseif self._processor == GPU then
       gpu_free(self._data)
     else
       error('unrecognized processor')
@@ -139,13 +143,13 @@ function DataArray:copy(src, size)
   if not size then size = math.min(dst:size(), src:size()) end
   local byte_size = size * terralib.sizeof(src._type)
 
-  if     dst._processor == L.CPU and src._processor == L.CPU then
+  if     dst._processor == CPU and src._processor == CPU then
     cpu_cpu_copy( dst:_raw_ptr(), src:_raw_ptr(), byte_size )
-  elseif dst._processor == L.CPU and src._processor == L.GPU then
+  elseif dst._processor == CPU and src._processor == GPU then
     cpu_gpu_copy( dst:_raw_ptr(), src:_raw_ptr(), byte_size )
-  elseif dst._processor == L.GPU and src._processor == L.CPU then
+  elseif dst._processor == GPU and src._processor == CPU then
     gpu_cpu_copy( dst:_raw_ptr(), src:_raw_ptr(), byte_size )
-  elseif dst._processor == L.GPU and src._processor == L.GPU then
+  elseif dst._processor == GPU and src._processor == GPU then
     gpu_gpu_copy( dst:_raw_ptr(), src:_raw_ptr(), byte_size )
   else
     error('unsupported processor')
@@ -191,11 +195,11 @@ end
 
 
 function DataArray:open_write_ptr()
-  if self:location() == L.CPU then
+  if self:location() == CPU then
     return self:_raw_ptr()
   else
     self._write_ptr_buf = DataArray.New {
-      processor = L.CPU,
+      processor = CPU,
       size      = self:size(),
       type      = self._type,
     }
@@ -210,11 +214,11 @@ function DataArray:close_write_ptr()
   end
 end
 function DataArray:open_read_ptr()
-  if self:location() == L.CPU then
+  if self:location() == CPU then
     return self:_raw_ptr()
   else
     self._read_ptr_buf = DataArray.New {
-      processor = L.CPU,
+      processor = CPU,
       size      = self:size(),
       type      = self._type,
     }
@@ -231,7 +235,7 @@ end
 
 function DataArray:open_readwrite_ptr()
   self._readwrite_original_location = self:location()
-  self:moveto(L.CPU)
+  self:moveto(CPU)
   return self:_raw_ptr()
 end
 function DataArray:close_readwrite_ptr()
@@ -241,11 +245,11 @@ end
 
 --[[
 function DataArray:write_ptr(f)
-  if self:location() == L.CPU then
+  if self:location() == CPU then
     f(self:_raw_ptr())
   else
     local buf = DataArray.New {
-      processor = L.CPU,
+      processor = CPU,
       size = self:size(),
       type = self._type
     }
@@ -255,11 +259,11 @@ function DataArray:write_ptr(f)
   end
 end
 function DataArray:read_ptr(f)
-  if self:location() == L.CPU then
+  if self:location() == CPU then
     f(self:_raw_ptr())
   else
     local buf = DataArray.New {
-      processor = L.CPU,
+      processor = CPU,
       size = self:size(),
       type = self._type
     }
@@ -270,7 +274,7 @@ function DataArray:read_ptr(f)
 end
 function DataArray:readwrite_ptr(f)
   local loc = self:location()
-  self:moveto(L.CPU)
+  self:moveto(CPU)
   f(self:_raw_ptr())
   self:moveto(loc)
 end

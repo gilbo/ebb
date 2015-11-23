@@ -7,6 +7,23 @@ local C = require "ebb.src.c"
 local G = require "ebb.src.gpu_util"
 local AST = require "ebb.src.ast"
 
+
+local errorT    = T.error
+local floatT    = T.float
+local doubleT   = T.double
+local intT      = T.int
+local uint64T   = T.uint64
+local boolT     = T.bool
+
+local keyT      = T.key
+local vectorT   = T.vector
+--local matrixT   = T.matrix
+
+local CPU       = L.CPU
+local GPU       = L.GPU
+
+local is_relation   = L.is_relation
+
 ---------------------------------------------
 --[[ Builtin functions                   ]]--
 ---------------------------------------------
@@ -29,7 +46,7 @@ function Builtin.new(luafunc)
     return setmetatable({check=check, codegen=codegen, luafunc = luafunc},
                         Builtin)
 end
-function B.isBuiltin(f)
+function B.is_builtin(f)
     return getmetatable(f) == Builtin
 end
 
@@ -39,7 +56,7 @@ B.Where = Builtin.new()
 function B.Where.check(call_ast, ctxt)
     if #(call_ast.params) ~= 2 then
         ctxt:error(ast, "Where expects exactly 2 arguments")
-        return L.error
+        return errorT
     end
 
     local w = AST.Where:DeriveFrom(call_ast)
@@ -68,15 +85,15 @@ B.id = Builtin.new()
 function B.id.check(ast, ctxt)
     local args = ast.params
 
-    if not id_checks('id', ast, ctxt, args) then return L.error end
+    if not id_checks('id', ast, ctxt, args) then return errorT end
     if args[1].node_type.ndims ~= 1 then
         ctxt:error(ast, "Can only use built-in id() on keys of "..
                         "non-grid relations; "..
                         "try using xid(), yid() or zid() instead.")
-        return L.error
+        return errorT
     end
 
-    return L.uint64
+    return uint64T
 end
 function B.id.codegen(ast, ctxt)
     return `[uint64]([ast.params[1]:codegen(ctxt)].a0)
@@ -86,14 +103,14 @@ B.xid = Builtin.new()
 function B.xid.check(ast, ctxt)
     local args = ast.params
 
-    if not id_checks('xid', ast, ctxt, args) then return L.error end
+    if not id_checks('xid', ast, ctxt, args) then return errorT end
     if args[1].node_type.ndims == 1 then
         ctxt:error(ast, "Can only use built-in xid() on keys of "..
                         "grid relations; try using id() instead.")
-        return L.error
+        return errorT
     end
 
-    return L.uint64
+    return uint64T
 end
 function B.xid.codegen(ast, ctxt)
     return `[ast.params[1]:codegen(ctxt)].a0
@@ -103,14 +120,14 @@ B.yid = Builtin.new()
 function B.yid.check(ast, ctxt)
     local args = ast.params
 
-    if not id_checks('yid', ast, ctxt, args) then return L.error end
+    if not id_checks('yid', ast, ctxt, args) then return errorT end
     if args[1].node_type.ndims == 1 then
         ctxt:error(ast, "Can only use built-in yid() on keys of "..
                         "grid relations; try using id() instead.")
-        return L.error
+        return errorT
     end
 
-    return L.uint64
+    return uint64T
 end
 function B.yid.codegen(ast, ctxt)
     return `[ast.params[1]:codegen(ctxt)].a1
@@ -120,19 +137,19 @@ B.zid = Builtin.new()
 function B.zid.check(ast, ctxt)
     local args = ast.params
 
-    if not id_checks('zid', ast, ctxt, args) then return L.error end
+    if not id_checks('zid', ast, ctxt, args) then return errorT end
     if args[1].node_type.ndims == 1 then
         ctxt:error(ast, "Can only use built-in zid() on keys of "..
                         "grid relations; try using id() instead.")
-        return L.error
+        return errorT
     end
     if args[1].node_type.ndims < 3 then
         ctxt:error(ast, "The key argument to zid() refers to a 2d grid, "..
                         "so zid() doesn't make any sense.")
-        return L.error
+        return errorT
     end
 
-    return L.uint64
+    return uint64T
 end
 function B.zid.codegen(ast, ctxt)
     return `[ast.params[1]:codegen(ctxt)].a2
@@ -145,7 +162,7 @@ function B.Affine.check(ast, ctxt)
 
     if #args ~= 3 then
         ctxt:error(ast,'Affine expects 3 arguments')
-        return L.error
+        return errorT
     end
     local dst_rel_arg   = args[1]
     local matrix        = args[2]
@@ -154,14 +171,14 @@ function B.Affine.check(ast, ctxt)
 
     -- check that the first and last arg are actually relations
     if not dst_rel_arg.node_type:isinternal() or
-       not L.is_relation(dst_rel_arg.node_type.value)
+       not is_relation(dst_rel_arg.node_type.value)
     then
         ctxt:error(ast[1], "Affine expects a relation as the 1st argument")
-        return L.error
+        return errorT
     end
     if not key_arg.node_type:isscalarkey() then
         ctxt:error(ast[3], "Affine expects a key as the 3rd argument")
-        return L.error
+        return errorT
     end
 
     -- get the source and destination relations and check that they're grids
@@ -170,11 +187,11 @@ function B.Affine.check(ast, ctxt)
     if not dst_rel:isGrid() then
         ctxt:error(ast[1],
             "Affine expects a grid relation as the 1st argument")
-        return L.error
+        return errorT
     end
     if not src_rel:isGrid() then
         ctxt:error(ast[3], "Affine expects a grid key as the 3rd argument")
-        return L.error
+        return errorT
     end
 
     -- get dimensions out
@@ -189,22 +206,22 @@ function B.Affine.check(ast, ctxt)
         ctxt:error(ast[2], "Affine expects a matrix as the 2nd argument "..
             "with matching dimensions (needs to be "..
             tostring(#dst_dims).."-by-"..tostring(#src_dims + 1))
-        return L.error
+        return errorT
     end
     --if not matrix.node_type:isintegral() then
     --    ctxt:error(ast[2], "Affine expects a matrix of integral values")
-    --    return L.error
+    --    return errorT
     --end
     if not matrix.node_type:isnumeric() then
         ctxt:error(ast[2], "Affine expects a matrix of numeric values")
-        return L.error
+        return errorT
     end
     -- WE NEED TO CHECK CONST-NESS, but this seems to be
     -- the wrong time to do it
     --if not matrix:is(AST.MatrixLiteral) then
     --    ctxt:error(ast[2], "Compiler could not verify that "..
     --        "the matrix argument (2nd) to Affine is constant")
-    --    return L.error
+    --    return errorT
     --end
     --for yi = 0,matrix.n-1 do for xi = 0,matrix.m-1 do
     --    if not matrix.elems[yi*matrix.m + xi + 1]:is(AST.Number) then
@@ -213,7 +230,7 @@ function B.Affine.check(ast, ctxt)
     --    end
     --end end
 
-    return L.key(dst_rel)
+    return keyT(dst_rel)
 end
 local terra full_mod(val : int64, modulus : int64) : uint64
     return ((val % modulus) + modulus) % modulus
@@ -230,7 +247,7 @@ function B.Affine.codegen(ast, ctxt)
 
     local srckey    = symbol(args[3].node_type:terratype())
     local mat       = symbol(args[2].node_type:terratype())
-    local dsttype   = L.key(dst_rel):terratype()
+    local dsttype   = keyT(dst_rel):terratype()
     local results   = {}
 
     -- matrix multiply build
@@ -267,41 +284,41 @@ function B.UNSAFE_ROW.check(ast, ctxt)
     if #args ~= 2 then
         ctxt:error(ast, "UNSAFE_ROW expects exactly 2 arguments "..
                         "(instead got " .. #args .. ")")
-        return L.error
+        return errorT
     end
 
     local ret_type = nil
 
     local addr_type = args[1].node_type
     local rel_type = args[2].node_type
-    if not rel_type:isinternal() or not L.is_relation(rel_type.value) then
+    if not rel_type:isinternal() or not is_relation(rel_type.value) then
         ctxt:error(ast, "UNSAFE_ROW expected a relation as the second arg")
-        ret_type = L.error
+        ret_type = errorT
     end
     local rel = rel_type.value
     local ndim = rel:nDims()
     --if rel:isGrid() then
     --    ctxt:error(ast, "UNSAFE_ROW cannot generate keys into a grid")
-    --    ret_type = L.error
+    --    ret_type = errorT
     --end
-    if ndim == 1 and addr_type ~= L.uint64 then
+    if ndim == 1 and addr_type ~= uint64T then
         ctxt:error(ast, "UNSAFE_ROW expected a uint64 as the first arg")
-        ret_type = L.error
-    elseif ndim > 1  and addr_type ~= L.vector(L.uint64,ndim) then
+        ret_type = errorT
+    elseif ndim > 1  and addr_type ~= vectorT(uint64T,ndim) then
         ctxt:error(ast, "UNSAFE_ROW expected a vector of "..ndim..
                         " uint64 values")
     end
 
     -- actual typing
     if not ret_type then
-        ret_type = L.key(rel_type.value)
+        ret_type = keyT(rel_type.value)
     end
     return ret_type
 end
 function B.UNSAFE_ROW.codegen(ast, ctxt)
     local rel = ast.params[2].node_type.value
     local ndim = rel:nDims()
-    local addrtype = L.key(rel):terratype()
+    local addrtype = keyT(rel):terratype()
     if ndim == 1 then
         return `[addrtype]({ [ast.params[1]:codegen(ctxt)] })
     else
@@ -330,7 +347,7 @@ function B.assert.check(ast, ctxt)
     local test = args[1]
     local test_type = test.node_type
     if test_type:isvector() then test_type = test_type:basetype() end
-    if test_type ~= L.error and test_type ~= L.bool then
+    if test_type ~= errorT and test_type ~= boolT then
         ctxt:error(ast, "expected a boolean or vector of booleans as the test for assert statement")
     end
 end
@@ -388,7 +405,7 @@ function B.print.check(ast, ctxt)
     
     for i,output in ipairs(args) do
         local outtype = output.node_type
-        if outtype ~= L.error and
+        if outtype ~= errorT and
            not outtype:isvalue() and not outtype:iskey()
         then
             ctxt:error(ast, "only numbers, bools, vectors, matrices and keys can be printed")
@@ -397,16 +414,16 @@ function B.print.check(ast, ctxt)
 end
 
 local function printSingle (bt, exp, elemQuotes)
-    if bt == L.float or bt == L.double then
+    if bt == floatT or bt == doubleT then
         table.insert(elemQuotes, `[double]([exp]))
         return "%f"
-    elseif bt == L.int then
+    elseif bt == intT then
         table.insert(elemQuotes, exp)
         return "%d"
-    elseif bt == L.uint64 then 
+    elseif bt == uint64T then 
         table.insert(elemQuotes, exp)
         return "%lu"
-    elseif bt == L.bool then
+    elseif bt == boolT then
         table.insert(elemQuotes, `terralib.select([exp], "true", "false"))
         return "%s"
     else
@@ -453,7 +470,7 @@ local function buildPrintSpec(ctxt, output, printSpec, elemQuotes, definitions)
     elseif lt:isscalarkey() then
         if lt.ndims == 1 then
             printSpec = printSpec ..
-                        printSingle(L.uint64, `code.a0, elemQuotes)
+                        printSingle(uint64T, `code.a0, elemQuotes)
         else
             local sym = symbol(lt:terratype())
             definitions = quote
@@ -464,7 +481,7 @@ local function buildPrintSpec(ctxt, output, printSpec, elemQuotes, definitions)
             for i = 0, lt.ndims-1 do
                 local astr = 'a'..tostring(i)
                 printSpec = printSpec .. ' ' ..
-                            printSingle(L.uint64, `sym.[astr], elemQuotes)
+                            printSingle(uint64T, `sym.[astr], elemQuotes)
             end
             printSpec = printSpec .. ' }'
         end
@@ -502,9 +519,9 @@ function B.rand.check(ast, ctxt)
     local args = ast.params
     if #args ~= 0 then
         ctxt:error(ast, "rand expects 0 arguments")
-        return L.error
+        return errorT
     else
-        return L.double
+        return doubleT
     end
 end
 local cpu_randinitialized = false
@@ -539,7 +556,7 @@ function B.dot.check(ast, ctxt)
     if #args ~= 2 then
         ctxt:error(ast, "dot product expects exactly 2 arguments "..
                         "(instead got " .. #args .. ")")
-        return L.error
+        return errorT
     end
 
     local lt1 = args[1].node_type
@@ -557,7 +574,7 @@ function B.dot.check(ast, ctxt)
         return T.type_join(lt1:basetype(), lt2:basetype())
     end
 
-    return L.error
+    return errorT
 end
 
 function B.dot.codegen(ast, ctxt)
@@ -594,7 +611,7 @@ function B.cross.check(ast, ctxt)
     if #args ~= 2 then
         ctxt:error(ast, "cross product expects exactly 2 arguments "..
                         "(instead got " .. #args .. ")")
-        return L.error
+        return errorT
     end
 
     local lt1 = args[1].node_type
@@ -612,7 +629,7 @@ function B.cross.check(ast, ctxt)
         return T.type_join(lt1, lt2)
     end
 
-    return L.error
+    return errorT
 end
 
 function B.cross.codegen(ast, ctxt)
@@ -644,18 +661,18 @@ function B.length.check(ast, ctxt)
     local args = ast.params
     if #args ~= 1 then
         ctxt:error(ast, "length expects exactly 1 argument (instead got " .. #args .. ")")
-        return L.error
+        return errorT
     end
     local lt = args[1].node_type
     if not lt:isvector() then
         ctxt:error(args[1], "argument to length must be a vector")
-        return L.error
+        return errorT
     end
     if not lt:basetype():isnumeric() then
         ctxt:error(args[1], "length expects vectors of numeric type")
     end
-    if lt:basetype() == L.float then return L.float
-                                else return L.double end
+    if lt:basetype() == floatT then return floatT
+                                else return doubleT end
 end
 
 function B.length.codegen(ast, ctxt)
@@ -693,7 +710,7 @@ function Builtin.newDoubleFunction(name)
         local args = ast.params
         if #args ~= 1 then
             ctxt:error(ast, name.." expects exactly 1 argument (instead got " .. #args .. ")")
-            return L.error
+            return errorT
         end
         local lt = args[1].node_type
         if not lt:isnumeric() then
@@ -701,9 +718,9 @@ function Builtin.newDoubleFunction(name)
         end
         if lt:isvector() then
             ctxt:error(args[1], "argument to "..name.." must be a scalar")
-            return L.error
+            return errorT
         end
-        return L.double
+        return doubleT
     end
 
     function b.codegen (ast, ctxt)
@@ -739,17 +756,17 @@ L.log   = Builtin.newDoubleFunction('log')
 --    local args = ast.params
 --    if #args ~= 2 then ctxt:error(ast, "binary_and expects 2 arguments "..
 --                                       "(instead got " .. #args .. ")")
---        return L.error
+--        return errorT
 --    end
 --    for i = 1, #args do
 --        local lt = args[i].node_type
---        if lt ~= L.int then
+--        if lt ~= intT then
 --            ctxt:error(args[i], "argument "..i..
 --                                "to binary_and must be numeric")
---            return L.error
+--            return errorT
 --        end
 --    end
---    return L.int
+--    return intT
 --end
 --function L.band.codegen(ast, ctxt)
 --    local exp1 = ast.params[1]:codegen(ctxt)
@@ -761,23 +778,23 @@ L.pow = Builtin.new(C.pow)
 function L.pow.check (ast, ctxt)
     local args = ast.params
     if #args ~= 2 then ctxt:error(ast, "pow expects 2 arguments (instead got " .. #args .. ")")
-        return L.error
+        return errorT
     end
     for i = 1, #args do
         local lt = args[i].node_type
         if not lt:isnumeric() then
             ctxt:error(args[i], "argument "..i.." to pow must be numeric")
-            return L.error
+            return errorT
         end
     end
     for i = 1, #args do
         local lt = args[i].node_type
         if not lt:isscalar() then
             ctxt:error(args[i], "argument "..i.." to pow must be a scalar")
-            return L.error
+            return errorT
         end
     end
-    return L.double
+    return doubleT
 end
 function L.pow.codegen(ast, ctxt)
     local exp1 = ast.params[1]:codegen(ctxt)
@@ -793,23 +810,23 @@ L.fmod = Builtin.new(C.fmod)
 function L.fmod.check (ast, ctxt)
     local args = ast.params
     if #args ~= 2 then ctxt:error(ast, "fmod expects 2 arguments (instead got " .. #args .. ")")
-        return L.error
+        return errorT
     end
     for i = 1, #args do
         local lt = args[i].node_type
         if not lt:isnumeric() then
             ctxt:error(args[i], "argument "..i.." to fmod must be numeric")
-            return L.error
+            return errorT
         end
     end
     for i = 1, #args do
         local lt = args[i].node_type
         if not lt:isscalar() then
             ctxt:error(args[i], "argument "..i.." to fmod must be a scalar")
-            return L.error
+            return errorT
         end
     end
-    return L.double
+    return doubleT
 end
 function L.fmod.codegen(ast, ctxt)
     local exp1 = ast.params[1]:codegen(ctxt)
@@ -828,14 +845,14 @@ function B.all.check(ast, ctxt)
     local args = ast.params
     if #args ~= 1 then
         ctxt:error(ast, "all expects exactly 1 argument (instead got " .. #args .. ")")
-        return L.error
+        return errorT
     end
     local lt = args[1].node_type
     if not lt:isvector() then
         ctxt:error(args[1], "argument to all must be a vector")
-        return L.error
+        return errorT
     end
-    return L.bool
+    return boolT
 end
 
 function B.all.codegen(ast, ctxt)
@@ -866,14 +883,14 @@ function B.any.check(ast, ctxt)
     local args = ast.params
     if #args ~= 1 then
         ctxt:error(ast, "any expects exactly 1 argument (instead got " .. #args .. ")")
-        return L.error
+        return errorT
     end
     local lt = args[1].node_type
     if not lt:isvector() then
         ctxt:error(args[1], "argument to any must be a vector")
-        return L.error
+        return errorT
     end
-    return L.bool
+    return boolT
 end
 
 function B.any.codegen(ast, ctxt)
@@ -925,7 +942,7 @@ local function TerraCheck(func)
         if not success then
             ctxt:error(ast, "couldn't fit parameters to signature of terra function")
             ctxt:error(ast, retval)
-            return L.error
+            return errorT
         end
         -- Kinda terrible hack due to flux in Terra inteface here
         if rettype:isstruct() and terralib.sizeof(rettype) == 0 then
@@ -935,7 +952,7 @@ local function TerraCheck(func)
         if not T.terraToEbbType(rettype) then
             ctxt:error(ast, "unable to use return type '"..tostring(rettype)..
                             "' of terra function in Ebb")
-            return L.error
+            return errorT
         end
         return T.terraToEbbType(rettype)
     end
@@ -965,19 +982,3 @@ function B.terra_to_func(terrafn)
     return newfunc
 end
 
-L.Where  = B.Where
-L.Affine = B.Affine
-L.print  = B.print
-L.assert = B.assert
-L.rand   = B.rand
-L.dot    = B.dot
-L.cross  = B.cross
-L.length = B.length
-L.id     = B.id
-L.xid    = B.xid
-L.yid    = B.yid
-L.zid    = B.zid
-L.UNSAFE_ROW = B.UNSAFE_ROW
-L.any    = B.any
-L.all    = B.all
-L.is_builtin = B.isBuiltin

@@ -2,9 +2,7 @@ local T = {}
 -- Warning: DO NOT UNCOMMENT this line!
 -- Circular dependencies for types.t cannot be resolved this way because Ebb
 -- types are defined inline when this file is first executed.
--- packed.loaded["ebb.src.types"] = T
-
-local L   = require "ebblib"
+package.loaded["ebb.src.types"] = T
 
 local DLD = require "ebb.lib.dld"
 
@@ -68,7 +66,7 @@ for i=1,#primitives do
 end
 
 -- TODO: Remove this; why is this an Ebb type?  Is it user-visible or...?
-L.color_type = T.uint
+T.color_type = T.uint
 if use_legion then
   assert(uint == LW.legion_color_t)
 end
@@ -78,7 +76,7 @@ end
 local vectortype_cache = {}
 local function vectorType (typ, len)
   -- Ebb may not be fully loaded yet, so...
-  if L.is_relation and L.is_relation(typ) then typ = T.key(typ) end
+  if T.is_relation and T.is_relation(typ) then typ = T.key(typ) end
   -- memoize
   if vectortype_cache[typ] and vectortype_cache[typ][len] then
     return vectortype_cache[typ][len]
@@ -108,7 +106,7 @@ end
 local matrixtype_cache = {}
 local function matrixType (typ, nrow, ncol)
   -- Ebb may not be fully loaded yet, so...
-  if L.is_relation and L.is_relation(typ) then typ = L.key(typ) end
+  if T.is_relation and T.is_relation(typ) then typ = T.key(typ) end
   -- memoize
   local lookup  = matrixtype_cache[typ]
   lookup        = lookup and lookup[nrow]
@@ -334,7 +332,7 @@ local function dim_to_bits(n_dim)
 end
 
 local function checkrelation(relation)
-  if not L.is_relation(relation) then
+  if not T.is_relation(relation) then
     error("invalid argument to type constructor."..
           "A relation must be provided", 4)
   end
@@ -933,4 +931,4 @@ T.ebbToLuaVal           = ebbToLuaVal
 T.terraToEbbType        = terraToEbbType
 T.Type = Type
 
-return T
+--return T
