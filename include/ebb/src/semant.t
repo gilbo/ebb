@@ -5,6 +5,7 @@ local ast = require "ebb.src.ast"
 local B   = require "ebb.src.builtins"
 local T   = require "ebb.src.types"
 local L   = require 'ebblib'
+local R   = require 'ebb.src.relations'
 --[[
     AST:check(ctxt) type checking routines
         These methods define type checking.
@@ -62,6 +63,21 @@ function Context:recordcenter(sym)
 end
 function Context:iscenter(sym)
     return self.centers[sym]
+end
+
+-- Terrible hacks to get info about immediate parent use context
+function Context:setWriteHint(node)
+    self._write_hint = node
+end
+function Context:checkWriteHint(node)
+    return self._write_hint == node
+end
+function Context:setReduceHint(node, op)
+    self._reduce_hint_node = node
+    self._reduce_hint_op   = op
+end
+function Context:checkReduceHint(node)
+    if self._reduce_hint_node == node then return self._reduce_hint_op end
 end
 
 local function try_coerce(target_typ, node, ctxt)
@@ -1201,6 +1217,29 @@ function ast.TableLookup:check(ctxt)
         elseif L.is_macro(luaval) then
             return RunMacro(ctxt,self,luaval,{tab})
         -- desugar function-fields from key.func to func(key)
+        elseif R.isfielddispatcher(luaval) then
+            if ctxt:checkWriteHint(self) then
+                if not luaval._writer then
+                  return err(self, ctxt, "relation "..ttype.relation:Name()..
+                    " does not have a field write function '"..member.."'")
+                end
+                --return InlineUserFunc(ctxt, self, luaval._writer, {tab})
+                error('WRITE FUNCTION UNIMPLEMENTED')
+            elseif ctxt:checkReduceHint(self) then
+                local op = ctxt:checkReduceHint(self)
+                if not luaval._reducers[op] then
+                  return err(self, ctxt, "relation "..ttype.relation:Name()..
+                    " does not have a field write function '"..member.."' "..
+                    "for reduction '"..op.."'")
+                end
+                error('REDUCE FUNCTION UNIMPLEMENTED')
+            else
+                if not luaval._reader then
+                  return err(self, ctxt, "relation "..ttype.relation:Name()..
+                    " does not have a field read function '"..member.."'")
+                end
+                return InlineUserFunc(ctxt,self,luaval._reader,{tab})
+            end
         elseif L.is_function(luaval) then
             return InlineUserFunc(ctxt,self,luaval,{tab})
         else

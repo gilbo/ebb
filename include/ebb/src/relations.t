@@ -255,6 +255,20 @@ function L.LRelation:__newindex(fieldname,value)
       "(did you mean to call relation:New...?)", 2)
 end
 
+local FieldDispatcher     = {}
+FieldDispatcher.__index   = FieldDispatcher
+R.FieldDispatcher         = FieldDispatcher
+local function NewFieldDispatcher()
+  return setmetatable({
+    _reader   = nil,
+    _writer   = nil,
+    _reducers = {},
+  }, FieldDispatcher)
+end
+local function isfielddispatcher(obj)
+  return getmetatable(obj) == FieldDispatcher
+end
+R.isfielddispatcher = isfielddispatcher
 
 function L.LRelation:NewFieldMacro (name, macro)
   if not name or type(name) ~= "string" then
@@ -277,6 +291,72 @@ function L.LRelation:NewFieldMacro (name, macro)
   return macro
 end
 
+local function getFieldDispatcher(rel, fname, ufunc)
+  if not fname or type(fname) ~= "string" then
+    error("NewField*Function() expects a string as the first argument", 3)
+  end
+  if not is_valid_lua_identifier(fname) then
+    error(valid_name_err_msg.field, 3)
+  end
+  if not L.is_function(ufunc) then
+    error("NewField*Function() expects an Ebb Function "..
+          "as the last argument", 3)
+  end
+
+  local lookup = rel[fname]
+  if lookup and isfielddispatcher(lookup) then return lookup
+  elseif lookup then
+    error("Cannot create a new field-function with name '"..fname.."'  "..
+          "That name is already being used.", 3)
+  end
+
+  rawset(rel, fname, NewFieldDispatcher())
+  return rel[fname]
+end
+
+function L.LRelation:NewFieldReadFunction(fname, userfunc)
+  local dispatch = getFieldDispatcher(self, fname, userfunc)
+  if dispatch._reader then
+    error("NewFieldReadFunction() error: function already assigned.", 2)
+  end
+  dispatch._reader = userfunc
+  self._functions:insert(userfunc)
+  return userfunc
+end
+
+function L.LRelation:NewFieldWriteFunction(fname, userfunc)
+  local dispatch = getFieldDispatcher(self, fname, userfunc)
+  if dispatch._writer then
+    error("NewFieldWriteFunction() error: function already assigned.", 2)
+  end
+  dispatch._writer = userfunc
+  self._functions:insert(userfunc)
+  return userfunc
+end
+
+local redops = {
+  ['+'] = true,
+  ['-'] = true,
+  ['*'] = true,
+  ['max'] = true,
+  ['min'] = true,
+}
+function L.LRelation:NewFieldReduceFunction(fname, op, userfunc)
+  local dispatch = getFieldDispatcher(self, fname, userfunc)
+  if not redops[op] then
+    error("NewFieldReduceFunction() expects a reduction operator as the "..
+          "second argument.", 2)
+  end
+  if dispatch._reducers[op] then
+    error("NewFieldReduceFunction() error: '"..op.."' "..
+          "function already assigned.", 2)
+  end
+  dispatch._reducers[op] = userfunc
+  self._functions:insert(userfunc)
+  return userfunc
+end
+
+--[[
 function L.LRelation:NewFieldFunction (name, userfunc)
   if not name or type(name) ~= "string" then
     error("NewFieldFunction() expects a string as the first argument", 2)
@@ -298,6 +378,7 @@ function L.LRelation:NewFieldFunction (name, userfunc)
   self._functions:insert(userfunc)
   return userfunc
 end
+--]]
 
 function L.LRelation:GroupBy(keyf_name)
   if self:isGrouped() then

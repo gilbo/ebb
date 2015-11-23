@@ -37,7 +37,7 @@ cells:foreach(t2)
 -------------------------------------------
 --Test function that behaves like a field--
 -------------------------------------------
-cells:NewFieldFunction('scaledposition', ebb(c)
+cells:NewFieldReadFunction('scaledposition', ebb(c)
     return 2*c.position 
 end)
 local t3 = ebb(c : cells)
