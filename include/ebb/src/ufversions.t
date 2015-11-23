@@ -199,6 +199,7 @@ function UFVersion:_CompileFieldsGlobalsSubsets(phase_data)
 
     self._future_nums  = {}
     self._n_futures    = 0
+    self._global_reduce = nil
 
     local reg_data = self:_getPrimaryRegionData()
   end
@@ -1070,7 +1071,11 @@ function UFVersion:_CreateLegionLauncher(task_func)
     return function(leg_args)
       local task_launcher = ufv:_CreateLegionTaskLauncher(task_func)
       local global  = next(ufv._global_reductions)
-      local future  = task_launcher:Execute(leg_args.runtime, leg_args.ctx)
+      local reduce_data = ufv:_getReduceData(global)
+      local redoptype =
+        LW.reduction_ops[reduce_data.phase:reductionOp()] ..
+        '_' .. T.typenames[global:Type()]
+      local future  = task_launcher:Execute(leg_args.runtime, leg_args.ctx, redoptype)
       if global.data then
         LW.legion_future_destroy(global.data)
       end
@@ -1204,6 +1209,8 @@ function UFVersion:_GenerateUnpackLegionTaskArgs(argsym, task_args)
 
       if ufv:isOnGPU() then
         emit quote
+          -- TODO: check if this global is being reduced and if it is first
+          -- partition. if yes, initialize datum to identity.
           var fut     = LW.legion_task_get_future([task_args].task, fut_i)
           var result  = LW.legion_future_get_result(fut)
           var datum   = @[&gtyp](result.value)
@@ -1216,6 +1223,8 @@ function UFVersion:_GenerateUnpackLegionTaskArgs(argsym, task_args)
         end
       else
         emit quote
+          -- TODO: check if this global is being reduced and if it is first
+          -- partition. if yes, initialize datum to identity.
           var fut     = LW.legion_task_get_future([task_args].task, fut_i)
           var result  = LW.legion_future_get_result(fut)
           var datum   = @[&gtyp](result.value)

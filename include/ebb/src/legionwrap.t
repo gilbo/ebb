@@ -261,11 +261,17 @@ function LW.TaskLauncher:AddFuture(future)
 end
 
 -- If there's a future it will be returned
-function LW.TaskLauncher:Execute(runtime, ctx)
-  local ExecuteVariant =
-    (self._index_launch and LW.legion_index_launcher_execute) or
-    LW.legion_task_launcher_execute
-  return ExecuteVariant(runtime, ctx, self._launcher)
+function LW.TaskLauncher:Execute(runtime, ctx, redoptype)
+  local exec_str =
+    'legion' .. ((self._index_launch and '_index') or '_task') .. '_launcher_execute'
+  local exec_args = terralib.newlist({runtime, ctx, self._launcher})
+  local reduce_id = nil
+  if redoptype then
+    exec_args:insert(LW.reduction_ids[redoptype])
+    exec_str = exec_str .. '_reduction'
+    print(exec_str .. " " .. tostring(LW.reduction_ids[redoptype]))
+  end
+  return LW[exec_str](unpack(exec_args))
 end
 
 

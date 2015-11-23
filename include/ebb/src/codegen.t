@@ -518,10 +518,6 @@ function Codegen.codegen (ufunc_ast, ufunc_version)
       local gtyp              = globl.type:terratype()
       local gptr              = ctxt.ufv:_getLegionGlobalTempSymbol(globl)
 
-      if run_config.use_partitioning then
-        error("INTERNAL: reductions with partitioning not supported yet")
-      end
-
       if next(ctxt.ufv._global_reductions, globl) then
         error("INTERNAL: More than 1 global reduction at a time unsupported")
       end
@@ -534,6 +530,7 @@ function Codegen.codegen (ufunc_ast, ufunc_version)
         end
       else
         generate_output_future  = quote
+          C.printf("Output future has value %f, size %d\n", @gptr, sizeof(gtyp))
           return LW.legion_task_result_create( gptr, sizeof(gtyp) )
         end
       end

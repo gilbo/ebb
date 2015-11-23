@@ -7,7 +7,7 @@ local LE = rawget(_G, '_legion_env')
 -- set up a global structure to stash cluster information into
 rawset(_G, '_run_config', {
                             use_ebb_mapper = true,
-                            use_partitioning = false,  -- TODO: remove this once partitioning with legion works
+                            use_partitioning = true,  -- TODO: remove this once partitioning with legion works
                                                        -- the default with legion then becomes 'one' partition
                             num_partitions = { 2, 2 },   -- TODO: set this from application, default to 1
                             num_cpus = 0,  -- 0 indicates auomatically find the number of cpus
