@@ -22,106 +22,6 @@ extern "C" {
 
 #include "legion_c.h"
 
-// register plus on scalars
-void register_reduction_plus_float(legion_reduction_op_id_t redop);
-void register_reduction_plus_double(legion_reduction_op_id_t redop);
-void register_reduction_plus_int32(legion_reduction_op_id_t redop);
-
-// register plus on vectors
-void register_reduction_plus_float_vec2(legion_reduction_op_id_t redop);
-void register_reduction_plus_double_vec2(legion_reduction_op_id_t redop);
-void register_reduction_plus_int32_vec2(legion_reduction_op_id_t redop);
-void register_reduction_plus_float_vec3(legion_reduction_op_id_t redop);
-void register_reduction_plus_double_vec3(legion_reduction_op_id_t redop);
-void register_reduction_plus_int32_vec3(legion_reduction_op_id_t redop);
-void register_reduction_plus_float_vec4(legion_reduction_op_id_t redop);
-void register_reduction_plus_double_vec4(legion_reduction_op_id_t redop);
-void register_reduction_plus_int32_vec4(legion_reduction_op_id_t redop);
-
-// register plus on matrices
-void register_reduction_plus_float_mat2x2(legion_reduction_op_id_t redop);
-void register_reduction_plus_double_mat2x2(legion_reduction_op_id_t redop);
-void register_reduction_plus_int32_mat2x2(legion_reduction_op_id_t redop);
-void register_reduction_plus_float_mat2x3(legion_reduction_op_id_t redop);
-void register_reduction_plus_double_mat2x3(legion_reduction_op_id_t redop);
-void register_reduction_plus_int32_mat2x3(legion_reduction_op_id_t redop);
-void register_reduction_plus_float_mat2x4(legion_reduction_op_id_t redop);
-void register_reduction_plus_double_mat2x4(legion_reduction_op_id_t redop);
-void register_reduction_plus_int32_mat2x4(legion_reduction_op_id_t redop);
-void register_reduction_plus_float_mat3x2(legion_reduction_op_id_t redop);
-void register_reduction_plus_double_mat3x2(legion_reduction_op_id_t redop);
-void register_reduction_plus_int32_mat3x2(legion_reduction_op_id_t redop);
-void register_reduction_plus_float_mat3x3(legion_reduction_op_id_t redop);
-void register_reduction_plus_double_mat3x3(legion_reduction_op_id_t redop);
-void register_reduction_plus_int32_mat3x3(legion_reduction_op_id_t redop);
-void register_reduction_plus_float_mat3x4(legion_reduction_op_id_t redop);
-void register_reduction_plus_double_mat3x4(legion_reduction_op_id_t redop);
-void register_reduction_plus_int32_mat3x4(legion_reduction_op_id_t redop);
-void register_reduction_plus_float_mat4x2(legion_reduction_op_id_t redop);
-void register_reduction_plus_double_mat4x2(legion_reduction_op_id_t redop);
-void register_reduction_plus_int32_mat4x2(legion_reduction_op_id_t redop);
-void register_reduction_plus_float_mat4x3(legion_reduction_op_id_t redop);
-void register_reduction_plus_double_mat4x3(legion_reduction_op_id_t redop);
-void register_reduction_plus_int32_mat4x3(legion_reduction_op_id_t redop);
-void register_reduction_plus_float_mat4x4(legion_reduction_op_id_t redop);
-void register_reduction_plus_double_mat4x4(legion_reduction_op_id_t redop);
-void register_reduction_plus_int32_mat4x4(legion_reduction_op_id_t redop);
-
-// register times on scalars
-void register_reduction_times_float(legion_reduction_op_id_t redop);
-void register_reduction_times_double(legion_reduction_op_id_t redop);
-void register_reduction_times_int32(legion_reduction_op_id_t redop);
-
-// register times on vectors
-void register_reduction_times_float_vec2(legion_reduction_op_id_t redop);
-void register_reduction_times_double_vec2(legion_reduction_op_id_t redop);
-void register_reduction_times_int32_vec2(legion_reduction_op_id_t redop);
-void register_reduction_times_float_vec3(legion_reduction_op_id_t redop);
-void register_reduction_times_double_vec3(legion_reduction_op_id_t redop);
-void register_reduction_times_int32_vec3(legion_reduction_op_id_t redop);
-void register_reduction_times_float_vec4(legion_reduction_op_id_t redop);
-void register_reduction_times_double_vec4(legion_reduction_op_id_t redop);
-void register_reduction_times_int32_vec4(legion_reduction_op_id_t redop);
-
-// register times on matrices
-void register_reduction_times_float_mat2x2(legion_reduction_op_id_t redop);
-void register_reduction_times_double_mat2x2(legion_reduction_op_id_t redop);
-void register_reduction_times_int32_mat2x2(legion_reduction_op_id_t redop);
-void register_reduction_times_float_mat2x3(legion_reduction_op_id_t redop);
-void register_reduction_times_double_mat2x3(legion_reduction_op_id_t redop);
-void register_reduction_times_int32_mat2x3(legion_reduction_op_id_t redop);
-void register_reduction_times_float_mat2x4(legion_reduction_op_id_t redop);
-void register_reduction_times_double_mat2x4(legion_reduction_op_id_t redop);
-void register_reduction_times_int32_mat2x4(legion_reduction_op_id_t redop);
-void register_reduction_times_float_mat3x2(legion_reduction_op_id_t redop);
-void register_reduction_times_double_mat3x2(legion_reduction_op_id_t redop);
-void register_reduction_times_int32_mat3x2(legion_reduction_op_id_t redop);
-void register_reduction_times_float_mat3x3(legion_reduction_op_id_t redop);
-void register_reduction_times_double_mat3x3(legion_reduction_op_id_t redop);
-void register_reduction_times_int32_mat3x3(legion_reduction_op_id_t redop);
-void register_reduction_times_float_mat3x4(legion_reduction_op_id_t redop);
-void register_reduction_times_double_mat3x4(legion_reduction_op_id_t redop);
-void register_reduction_times_int32_mat3x4(legion_reduction_op_id_t redop);
-void register_reduction_times_float_mat4x2(legion_reduction_op_id_t redop);
-void register_reduction_times_double_mat4x2(legion_reduction_op_id_t redop);
-void register_reduction_times_int32_mat4x2(legion_reduction_op_id_t redop);
-void register_reduction_times_float_mat4x3(legion_reduction_op_id_t redop);
-void register_reduction_times_double_mat4x3(legion_reduction_op_id_t redop);
-void register_reduction_times_int32_mat4x3(legion_reduction_op_id_t redop);
-void register_reduction_times_float_mat4x4(legion_reduction_op_id_t redop);
-void register_reduction_times_double_mat4x4(legion_reduction_op_id_t redop);
-void register_reduction_times_int32_mat4x4(legion_reduction_op_id_t redop);
-
-// register max on scalars
-void register_reduction_max_float(legion_reduction_op_id_t redop);
-void register_reduction_max_double(legion_reduction_op_id_t redop);
-void register_reduction_max_int32(legion_reduction_op_id_t redop);
-
-// register min on scalars
-void register_reduction_min_float(legion_reduction_op_id_t redop);
-void register_reduction_min_double(legion_reduction_op_id_t redop);
-void register_reduction_min_int32(legion_reduction_op_id_t redop);
-
 // struct for types
 typedef struct { float  value[1 ]; }  float_1 ;
 typedef struct { double value[1 ]; } double_1 ;
@@ -150,6 +50,109 @@ typedef struct { int    value[12]; }    int_12;
 typedef struct { float  value[16]; }  float_16;
 typedef struct { double value[16]; } double_16;
 typedef struct { int    value[16]; }    int_16;
+
+
+// FIELD DATA
+
+// register plus on scalars
+void register_reduction_field_plus_float(legion_reduction_op_id_t redop);
+void register_reduction_field_plus_double(legion_reduction_op_id_t redop);
+void register_reduction_field_plus_int32(legion_reduction_op_id_t redop);
+
+// register plus on vectors
+void register_reduction_field_plus_float_vec2(legion_reduction_op_id_t redop);
+void register_reduction_field_plus_double_vec2(legion_reduction_op_id_t redop);
+void register_reduction_field_plus_int32_vec2(legion_reduction_op_id_t redop);
+void register_reduction_field_plus_float_vec3(legion_reduction_op_id_t redop);
+void register_reduction_field_plus_double_vec3(legion_reduction_op_id_t redop);
+void register_reduction_field_plus_int32_vec3(legion_reduction_op_id_t redop);
+void register_reduction_field_plus_float_vec4(legion_reduction_op_id_t redop);
+void register_reduction_field_plus_double_vec4(legion_reduction_op_id_t redop);
+void register_reduction_field_plus_int32_vec4(legion_reduction_op_id_t redop);
+
+// register plus on matrices
+void register_reduction_field_plus_float_mat2x2(legion_reduction_op_id_t redop);
+void register_reduction_field_plus_double_mat2x2(legion_reduction_op_id_t redop);
+void register_reduction_field_plus_int32_mat2x2(legion_reduction_op_id_t redop);
+void register_reduction_field_plus_float_mat2x3(legion_reduction_op_id_t redop);
+void register_reduction_field_plus_double_mat2x3(legion_reduction_op_id_t redop);
+void register_reduction_field_plus_int32_mat2x3(legion_reduction_op_id_t redop);
+void register_reduction_field_plus_float_mat2x4(legion_reduction_op_id_t redop);
+void register_reduction_field_plus_double_mat2x4(legion_reduction_op_id_t redop);
+void register_reduction_field_plus_int32_mat2x4(legion_reduction_op_id_t redop);
+void register_reduction_field_plus_float_mat3x2(legion_reduction_op_id_t redop);
+void register_reduction_field_plus_double_mat3x2(legion_reduction_op_id_t redop);
+void register_reduction_field_plus_int32_mat3x2(legion_reduction_op_id_t redop);
+void register_reduction_field_plus_float_mat3x3(legion_reduction_op_id_t redop);
+void register_reduction_field_plus_double_mat3x3(legion_reduction_op_id_t redop);
+void register_reduction_field_plus_int32_mat3x3(legion_reduction_op_id_t redop);
+void register_reduction_field_plus_float_mat3x4(legion_reduction_op_id_t redop);
+void register_reduction_field_plus_double_mat3x4(legion_reduction_op_id_t redop);
+void register_reduction_field_plus_int32_mat3x4(legion_reduction_op_id_t redop);
+void register_reduction_field_plus_float_mat4x2(legion_reduction_op_id_t redop);
+void register_reduction_field_plus_double_mat4x2(legion_reduction_op_id_t redop);
+void register_reduction_field_plus_int32_mat4x2(legion_reduction_op_id_t redop);
+void register_reduction_field_plus_float_mat4x3(legion_reduction_op_id_t redop);
+void register_reduction_field_plus_double_mat4x3(legion_reduction_op_id_t redop);
+void register_reduction_field_plus_int32_mat4x3(legion_reduction_op_id_t redop);
+void register_reduction_field_plus_float_mat4x4(legion_reduction_op_id_t redop);
+void register_reduction_field_plus_double_mat4x4(legion_reduction_op_id_t redop);
+void register_reduction_field_plus_int32_mat4x4(legion_reduction_op_id_t redop);
+
+// register times on scalars
+void register_reduction_field_times_float(legion_reduction_op_id_t redop);
+void register_reduction_field_times_double(legion_reduction_op_id_t redop);
+void register_reduction_field_times_int32(legion_reduction_op_id_t redop);
+
+// register times on vectors
+void register_reduction_field_times_float_vec2(legion_reduction_op_id_t redop);
+void register_reduction_field_times_double_vec2(legion_reduction_op_id_t redop);
+void register_reduction_field_times_int32_vec2(legion_reduction_op_id_t redop);
+void register_reduction_field_times_float_vec3(legion_reduction_op_id_t redop);
+void register_reduction_field_times_double_vec3(legion_reduction_op_id_t redop);
+void register_reduction_field_times_int32_vec3(legion_reduction_op_id_t redop);
+void register_reduction_field_times_float_vec4(legion_reduction_op_id_t redop);
+void register_reduction_field_times_double_vec4(legion_reduction_op_id_t redop);
+void register_reduction_field_times_int32_vec4(legion_reduction_op_id_t redop);
+
+// register times on matrices
+void register_reduction_field_times_float_mat2x2(legion_reduction_op_id_t redop);
+void register_reduction_field_times_double_mat2x2(legion_reduction_op_id_t redop);
+void register_reduction_field_times_int32_mat2x2(legion_reduction_op_id_t redop);
+void register_reduction_field_times_float_mat2x3(legion_reduction_op_id_t redop);
+void register_reduction_field_times_double_mat2x3(legion_reduction_op_id_t redop);
+void register_reduction_field_times_int32_mat2x3(legion_reduction_op_id_t redop);
+void register_reduction_field_times_float_mat2x4(legion_reduction_op_id_t redop);
+void register_reduction_field_times_double_mat2x4(legion_reduction_op_id_t redop);
+void register_reduction_field_times_int32_mat2x4(legion_reduction_op_id_t redop);
+void register_reduction_field_times_float_mat3x2(legion_reduction_op_id_t redop);
+void register_reduction_field_times_double_mat3x2(legion_reduction_op_id_t redop);
+void register_reduction_field_times_int32_mat3x2(legion_reduction_op_id_t redop);
+void register_reduction_field_times_float_mat3x3(legion_reduction_op_id_t redop);
+void register_reduction_field_times_double_mat3x3(legion_reduction_op_id_t redop);
+void register_reduction_field_times_int32_mat3x3(legion_reduction_op_id_t redop);
+void register_reduction_field_times_float_mat3x4(legion_reduction_op_id_t redop);
+void register_reduction_field_times_double_mat3x4(legion_reduction_op_id_t redop);
+void register_reduction_field_times_int32_mat3x4(legion_reduction_op_id_t redop);
+void register_reduction_field_times_float_mat4x2(legion_reduction_op_id_t redop);
+void register_reduction_field_times_double_mat4x2(legion_reduction_op_id_t redop);
+void register_reduction_field_times_int32_mat4x2(legion_reduction_op_id_t redop);
+void register_reduction_field_times_float_mat4x3(legion_reduction_op_id_t redop);
+void register_reduction_field_times_double_mat4x3(legion_reduction_op_id_t redop);
+void register_reduction_field_times_int32_mat4x3(legion_reduction_op_id_t redop);
+void register_reduction_field_times_float_mat4x4(legion_reduction_op_id_t redop);
+void register_reduction_field_times_double_mat4x4(legion_reduction_op_id_t redop);
+void register_reduction_field_times_int32_mat4x4(legion_reduction_op_id_t redop);
+
+// register max on scalars
+void register_reduction_field_max_float(legion_reduction_op_id_t redop);
+void register_reduction_field_max_double(legion_reduction_op_id_t redop);
+void register_reduction_field_max_int32(legion_reduction_op_id_t redop);
+
+// register min on scalars
+void register_reduction_field_min_float(legion_reduction_op_id_t redop);
+void register_reduction_field_min_double(legion_reduction_op_id_t redop);
+void register_reduction_field_min_int32(legion_reduction_op_id_t redop);
 
 // safe reduce plus on scalars
 void safe_reduce_plus_float(legion_accessor_generic_t accessor,
@@ -822,6 +825,110 @@ void safe_reduce_domain_point_min_double_mat4x4(legion_accessor_generic_t access
                                 legion_domain_point_t pt, double_16 value);
 void safe_reduce_domain_point_min_int32_mat4x4(legion_accessor_generic_t accessor,
                                  legion_domain_point_t pt, int_16 value);
+
+
+// GLOBAL (FUTURE) DATA
+
+// register plus on scalars
+void register_reduction_global_plus_float(legion_reduction_op_id_t redop);
+void register_reduction_global_plus_double(legion_reduction_op_id_t redop);
+void register_reduction_global_plus_int32(legion_reduction_op_id_t redop);
+
+// register plus on vectors
+void register_reduction_global_plus_float_vec2(legion_reduction_op_id_t redop);
+void register_reduction_global_plus_double_vec2(legion_reduction_op_id_t redop);
+void register_reduction_global_plus_int32_vec2(legion_reduction_op_id_t redop);
+void register_reduction_global_plus_float_vec3(legion_reduction_op_id_t redop);
+void register_reduction_global_plus_double_vec3(legion_reduction_op_id_t redop);
+void register_reduction_global_plus_int32_vec3(legion_reduction_op_id_t redop);
+void register_reduction_global_plus_float_vec4(legion_reduction_op_id_t redop);
+void register_reduction_global_plus_double_vec4(legion_reduction_op_id_t redop);
+void register_reduction_global_plus_int32_vec4(legion_reduction_op_id_t redop);
+
+// register plus on matrices
+void register_reduction_global_plus_float_mat2x2(legion_reduction_op_id_t redop);
+void register_reduction_global_plus_double_mat2x2(legion_reduction_op_id_t redop);
+void register_reduction_global_plus_int32_mat2x2(legion_reduction_op_id_t redop);
+void register_reduction_global_plus_float_mat2x3(legion_reduction_op_id_t redop);
+void register_reduction_global_plus_double_mat2x3(legion_reduction_op_id_t redop);
+void register_reduction_global_plus_int32_mat2x3(legion_reduction_op_id_t redop);
+void register_reduction_global_plus_float_mat2x4(legion_reduction_op_id_t redop);
+void register_reduction_global_plus_double_mat2x4(legion_reduction_op_id_t redop);
+void register_reduction_global_plus_int32_mat2x4(legion_reduction_op_id_t redop);
+void register_reduction_global_plus_float_mat3x2(legion_reduction_op_id_t redop);
+void register_reduction_global_plus_double_mat3x2(legion_reduction_op_id_t redop);
+void register_reduction_global_plus_int32_mat3x2(legion_reduction_op_id_t redop);
+void register_reduction_global_plus_float_mat3x3(legion_reduction_op_id_t redop);
+void register_reduction_global_plus_double_mat3x3(legion_reduction_op_id_t redop);
+void register_reduction_global_plus_int32_mat3x3(legion_reduction_op_id_t redop);
+void register_reduction_global_plus_float_mat3x4(legion_reduction_op_id_t redop);
+void register_reduction_global_plus_double_mat3x4(legion_reduction_op_id_t redop);
+void register_reduction_global_plus_int32_mat3x4(legion_reduction_op_id_t redop);
+void register_reduction_global_plus_float_mat4x2(legion_reduction_op_id_t redop);
+void register_reduction_global_plus_double_mat4x2(legion_reduction_op_id_t redop);
+void register_reduction_global_plus_int32_mat4x2(legion_reduction_op_id_t redop);
+void register_reduction_global_plus_float_mat4x3(legion_reduction_op_id_t redop);
+void register_reduction_global_plus_double_mat4x3(legion_reduction_op_id_t redop);
+void register_reduction_global_plus_int32_mat4x3(legion_reduction_op_id_t redop);
+void register_reduction_global_plus_float_mat4x4(legion_reduction_op_id_t redop);
+void register_reduction_global_plus_double_mat4x4(legion_reduction_op_id_t redop);
+void register_reduction_global_plus_int32_mat4x4(legion_reduction_op_id_t redop);
+
+// register times on scalars
+void register_reduction_global_times_float(legion_reduction_op_id_t redop);
+void register_reduction_global_times_double(legion_reduction_op_id_t redop);
+void register_reduction_global_times_int32(legion_reduction_op_id_t redop);
+
+// register times on vectors
+void register_reduction_global_times_float_vec2(legion_reduction_op_id_t redop);
+void register_reduction_global_times_double_vec2(legion_reduction_op_id_t redop);
+void register_reduction_global_times_int32_vec2(legion_reduction_op_id_t redop);
+void register_reduction_global_times_float_vec3(legion_reduction_op_id_t redop);
+void register_reduction_global_times_double_vec3(legion_reduction_op_id_t redop);
+void register_reduction_global_times_int32_vec3(legion_reduction_op_id_t redop);
+void register_reduction_global_times_float_vec4(legion_reduction_op_id_t redop);
+void register_reduction_global_times_double_vec4(legion_reduction_op_id_t redop);
+void register_reduction_global_times_int32_vec4(legion_reduction_op_id_t redop);
+
+// register times on matrices
+void register_reduction_global_times_float_mat2x2(legion_reduction_op_id_t redop);
+void register_reduction_global_times_double_mat2x2(legion_reduction_op_id_t redop);
+void register_reduction_global_times_int32_mat2x2(legion_reduction_op_id_t redop);
+void register_reduction_global_times_float_mat2x3(legion_reduction_op_id_t redop);
+void register_reduction_global_times_double_mat2x3(legion_reduction_op_id_t redop);
+void register_reduction_global_times_int32_mat2x3(legion_reduction_op_id_t redop);
+void register_reduction_global_times_float_mat2x4(legion_reduction_op_id_t redop);
+void register_reduction_global_times_double_mat2x4(legion_reduction_op_id_t redop);
+void register_reduction_global_times_int32_mat2x4(legion_reduction_op_id_t redop);
+void register_reduction_global_times_float_mat3x2(legion_reduction_op_id_t redop);
+void register_reduction_global_times_double_mat3x2(legion_reduction_op_id_t redop);
+void register_reduction_global_times_int32_mat3x2(legion_reduction_op_id_t redop);
+void register_reduction_global_times_float_mat3x3(legion_reduction_op_id_t redop);
+void register_reduction_global_times_double_mat3x3(legion_reduction_op_id_t redop);
+void register_reduction_global_times_int32_mat3x3(legion_reduction_op_id_t redop);
+void register_reduction_global_times_float_mat3x4(legion_reduction_op_id_t redop);
+void register_reduction_global_times_double_mat3x4(legion_reduction_op_id_t redop);
+void register_reduction_global_times_int32_mat3x4(legion_reduction_op_id_t redop);
+void register_reduction_global_times_float_mat4x2(legion_reduction_op_id_t redop);
+void register_reduction_global_times_double_mat4x2(legion_reduction_op_id_t redop);
+void register_reduction_global_times_int32_mat4x2(legion_reduction_op_id_t redop);
+void register_reduction_global_times_float_mat4x3(legion_reduction_op_id_t redop);
+void register_reduction_global_times_double_mat4x3(legion_reduction_op_id_t redop);
+void register_reduction_global_times_int32_mat4x3(legion_reduction_op_id_t redop);
+void register_reduction_global_times_float_mat4x4(legion_reduction_op_id_t redop);
+void register_reduction_global_times_double_mat4x4(legion_reduction_op_id_t redop);
+void register_reduction_global_times_int32_mat4x4(legion_reduction_op_id_t redop);
+
+// register max on scalars
+void register_reduction_global_max_float(legion_reduction_op_id_t redop);
+void register_reduction_global_max_double(legion_reduction_op_id_t redop);
+void register_reduction_global_max_int32(legion_reduction_op_id_t redop);
+
+// register min on scalars
+void register_reduction_global_min_float(legion_reduction_op_id_t redop);
+void register_reduction_global_min_double(legion_reduction_op_id_t redop);
+void register_reduction_global_min_int32(legion_reduction_op_id_t redop);
+
 
 #ifdef __cplusplus
 }

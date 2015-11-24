@@ -532,7 +532,6 @@ function Codegen.codegen (ufunc_ast, ufunc_version)
         end
       else
         generate_output_future  = quote
-          C.printf("Output future has value %f, size %d\n", @gptr, sizeof(gtyp))
           return LW.legion_task_result_create( gptr, sizeof(gtyp) )
         end
       end

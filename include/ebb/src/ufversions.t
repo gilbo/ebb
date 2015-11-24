@@ -177,7 +177,13 @@ local function record_permission(reg_data, use)
     reg_data.privilege = LW.READ_WRITE
   else
     reg_data.privilege = LW.REDUCE
-    reg_data.redoptyp  = (LW.reduction_ops[use:reductionOp()]  or 'none') ..
+    if LW.reduction_ops[use:reductionOp()] == nil or
+      T.typenames[reg_data.field:Type()] == nil then
+      error('Reduction operation ' .. use:reductionOp() ..
+            ' on '.. tostring(reg_data.field:Type()) ..
+            ' currently unspported with Legion')
+    end
+    reg_data.redoptyp  = 'field_' .. (LW.reduction_ops[use:reductionOp()]  or 'none') ..
                          '_' .. T.typenames[reg_data.field:Type()]
   end
   reg_data.coherence   = LW.EXCLUSIVE
@@ -1080,10 +1086,16 @@ function UFVersion:_CreateLegionLauncher(task_func)
       local task_launcher = ufv:_CreateLegionTaskLauncher(task_func)
       local global  = next(ufv._global_reductions)
       local reduce_data = ufv:_getReduceData(global)
-      local redoptype =
-        LW.reduction_ops[reduce_data.phase:reductionOp()] ..
+      if LW.reduction_ops[reduce_data.phase:reductionOp()] == nil or
+        T.typenames[global:Type()] == nil then
+        error('Reduction operation ' .. reduce_data.phase:reductionOp() ..
+              ' on '.. tostring(global:Type()) ..
+              ' currently unspported with Legion')
+      end
+      local redoptyp =
+        'global_' .. LW.reduction_ops[reduce_data.phase:reductionOp()] ..
         '_' .. T.typenames[global:Type()]
-      local future  = task_launcher:Execute(leg_args.runtime, leg_args.ctx, redoptype)
+      local future  = task_launcher:Execute(leg_args.runtime, leg_args.ctx, redoptyp)
       if global.data then
         LW.legion_future_destroy(global.data)
       end

@@ -3,11 +3,12 @@
 local legion_dir    = './legion'
 local bindings_dir  = legion_dir..'/bindings/terra'
 local runtime_dir   = legion_dir..'/runtime'
+local legion_runtime_dir   = legion_dir..'/runtime/legion'
 
 -- Link in a particular library
-terralib.linklibrary(bindings_dir..'/liblegion_terra.so')
+terralib.linklibrary(bindings_dir..'/liblegion_terra_debug.so')
 -- Extend the Terra path that looks for C header files
-terralib.includepath = terralib.includepath..';'..runtime_dir..
+terralib.includepath = terralib.includepath..';'..runtime_dir..';'..legion_runtime_dir..
                                              ';'..bindings_dir
 -- Extend the Lua path
 package.path = package.path .. ';'..bindings_dir..'/?.t'
