@@ -1244,6 +1244,17 @@ function Field:Load(arg, ...)
     if (terralib.isfunction(arg)) then
       return self:_INTERNAL_LoadTerraBulkFunction(arg, ...)
 
+    -- field
+    elseif is_field(arg) then
+      if arg.owner ~= self.owner then
+        error('Can only load from another field on the same relation', 2)
+      end
+      if arg:Type() ~= self:Type() then
+        error('Can only load from another field with identical type', 2)
+      end
+      self.owner:Copy { from=arg, to=self }
+      return
+
     -- scalars, vectors and matrices
     elseif (self.type:isscalarkey() and #arg == self.type.ndims) or
        (self.type:isvector() and #arg == self.type.N) or

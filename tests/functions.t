@@ -34,9 +34,9 @@ local t2 = ebb(c : cells)
 end
 cells:foreach(t2)
 
--------------------------------------------
---Test function that behaves like a field--
--------------------------------------------
+------------------------------------------
+--Test functions that behave like fields--
+------------------------------------------
 cells:NewFieldReadFunction('scaledposition', ebb(c)
     return 2*c.position 
 end)
@@ -44,6 +44,30 @@ local t3 = ebb(c : cells)
     assert(c.scaledposition == 2 * c.position)
 end
 cells:foreach(t3)
+
+-- save backup positions
+cells:NewField('orig_pos', L.vec2d):Load(cells.position)
+
+cells:NewFieldWriteFunction('scaledposition', ebb(c, val)
+    c.position = val/2.0
+end)
+local writefunc = ebb(c : cells)
+    c.scaledposition = {3.2, 5.6}
+    assert(c.position == {1.6,2.8})
+end
+cells:foreach(writefunc)
+
+cells:NewFieldReduceFunction('scaledposition', '+', ebb(c, val)
+    c.position += val/2.0
+end)
+local reducefunc = ebb(c : cells)
+    c.scaledposition += {0.8,0.4}
+    assert(c.position == {2,3})
+end
+cells:foreach(reducefunc)
+
+-- restore 
+cells:Copy { from='orig_pos', to='position' }
 
 --------------------------------------
 --Combine normal and field functions--
