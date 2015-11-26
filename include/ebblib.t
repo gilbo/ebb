@@ -241,7 +241,7 @@ end
 -------------------------------------------------------------------------------
 --[[ LMacros:                                                              ]]--
 -------------------------------------------------------------------------------
-function L.NewMacro(generator)
+function L.Macro(generator)
     return setmetatable({genfunc=generator}, LMacro)    
 end
 

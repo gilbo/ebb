@@ -5,10 +5,10 @@ package.loaded["ebb.domains.grid"] = Grid
 
 -------------------------------------------------------------------------------
 
-local int_floor = L.NewMacro(function(v)
+local int_floor = L.Macro(function(v)
   return ebb ` L.int(L.floor(v))
 end)
-local max_impl = L.NewMacro(function(a,b)
+local max_impl = L.Macro(function(a,b)
   return ebb quote
     var ret = a
     if b > a then ret = b end
@@ -16,7 +16,7 @@ local max_impl = L.NewMacro(function(a,b)
     ret
   end
 end)
-local min_impl = L.NewMacro(function(a,b)
+local min_impl = L.Macro(function(a,b)
   return ebb quote
     var ret = a
     if b < a then ret = b end
@@ -25,21 +25,21 @@ local min_impl = L.NewMacro(function(a,b)
   end
 end)
 
-local clamp_impl = L.NewMacro(function(x, lower, upper)
+local clamp_impl = L.Macro(function(x, lower, upper)
   return ebb `max_impl(lower, min_impl(upper, x))
 end)
 
 -- convert a potentially continuous signed value x to
 -- an address modulo the given uint m
-local float_to_uint64_mod = L.NewMacro(function(x, m)
-  return ebb `L.uint64(L.fmod(x,m) + m) % m
-end)
+local ebb float_to_uint64_mod (x, m)
+  return L.uint64(L.fmod(x,m) + m) % m
+end
 
 -- the way we actually use these...
 local wrap_idx  = float_to_uint64_mod
-local clamp_idx = L.NewMacro(function(x, limit)
-  return ebb `L.uint64(clamp_impl(x, 0.0, L.double(limit-1)))
-end)
+local ebb clamp_idx (x, limit)
+  return L.uint64(clamp_impl(x, 0.0, L.double(limit-1)))
+end
 
 local function copy_table(tbl)
   local cpy = {}
@@ -97,7 +97,7 @@ local function setup2dCells(grid)
   local cells   = grid.cells
 
   -- offset
-  cells:NewFieldMacro('__apply_macro', L.NewMacro(function(c,x,y)
+  cells:NewFieldMacro('__apply_macro', L.Macro(function(c,x,y)
     return ebb `L.Affine(cells, {{1,0,x},
                                  {0,1,y}}, c)                   end))
 
@@ -111,14 +111,14 @@ local function setup2dCells(grid)
     return not is_bd(xi,yi)
   end)
 
-  cells:NewFieldMacro('center', L.NewMacro(function(c)
-    return ebb ` L.vec2f({ xo + xw * (L.double(L.xid(c)) + 0.5),
-                           yo + yw * (L.double(L.yid(c)) + 0.5) })  end))
+  cells:NewFieldReadFunction('center', ebb (c)
+    return L.vec2f({ xo + xw * (L.double(L.xid(c)) + 0.5),
+                     yo + yw * (L.double(L.yid(c)) + 0.5) })  end)
 
   -- hide this unsafe macro behind a bulk call below
   local xsnap = grid:xUsePeriodic() and wrap_idx or clamp_idx
   local ysnap = grid:yUsePeriodic() and wrap_idx or clamp_idx
-  local cell_locate = L.NewMacro(function(xy_vec)
+  local cell_locate = L.Macro(function(xy_vec)
     return ebb quote
       var xy    = xy_vec -- prevent duplication
       var xval  = (xy[0] - xo)/xw
@@ -146,19 +146,19 @@ local function setup2dCells(grid)
   end
 
   -- boundary depths
-  cells:NewFieldMacro('xneg_depth', L.NewMacro(function(c)
+  cells:NewFieldMacro('xneg_depth', L.Macro(function(c)
     return ebb `max_impl(L.int(xn_bd - L.xid(c)), 0)            end))
-  cells:NewFieldMacro('xpos_depth', L.NewMacro(function(c)
+  cells:NewFieldMacro('xpos_depth', L.Macro(function(c)
     return ebb `max_impl(L.int(L.xid(c) - (Cx-1 - xn_bd)), 0)   end))
-  cells:NewFieldMacro('yneg_depth', L.NewMacro(function(c)
+  cells:NewFieldMacro('yneg_depth', L.Macro(function(c)
     return ebb `max_impl(L.int(yn_bd - L.yid(c)), 0)            end))
-  cells:NewFieldMacro('ypos_depth', L.NewMacro(function(c)
+  cells:NewFieldMacro('ypos_depth', L.Macro(function(c)
     return ebb `max_impl(L.int(L.yid(c) - (Cy-1 - yn_bd)), 0)   end))
 
-  cells:NewFieldMacro('in_boundary', L.NewMacro(function(c)
-    return ebb ` c.xneg_depth > 0 or c.xpos_depth > 0 or
-                 c.yneg_depth > 0 or c.ypos_depth > 0           end))
-  cells:NewFieldMacro('in_interior', L.NewMacro(function(c)
+  cells:NewFieldReadFunction('in_boundary', ebb(c)
+    return c.xneg_depth > 0 or c.xpos_depth > 0 or
+           c.yneg_depth > 0 or c.ypos_depth > 0           end)
+  cells:NewFieldMacro('in_interior', L.Macro(function(c)
     return ebb ` not c.in_boundary                              end))
 end
 
@@ -173,19 +173,19 @@ local function setup2dDualCells(grid)
   local yn_bd   = grid:yBoundaryDepth()
   local dcells  = grid.dual_cells
 
-  dcells:NewFieldMacro('__apply_macro', L.NewMacro(function(dc,x,y)
+  dcells:NewFieldMacro('__apply_macro', L.Macro(function(dc,x,y)
     return ebb `L.Affine(dcells, {{1,0,x},
                                   {0,1,y}}, dc)                 end))
 
   if not xp and not yp then
-    dcells:NewFieldMacro('center', L.NewMacro(function(dc)
-      return ebb `L.vec2f({ xo + xw * (L.double(L.xid(dc))),
-                            yo + yw * (L.double(L.yid(dc))) })  end))
+    dcells:NewFieldReadFunction('center', ebb(dc)
+      return L.vec2f({ xo + xw * (L.double(L.xid(dc))),
+                       yo + yw * (L.double(L.yid(dc))) })  end)
   end
 
   local xsnap = grid:xUsePeriodic() and wrap_idx or clamp_idx
   local ysnap = grid:yUsePeriodic() and wrap_idx or clamp_idx
-  local dual_locate = L.NewMacro(function(xy_vec)
+  local dual_locate = L.Macro(function(xy_vec)
     return ebb quote
       var xy    = xy_vec -- prevent duplication
       var xval  = (xy[0] - xo)/xw + 0.5
@@ -221,7 +221,7 @@ local function setup2dVertices(grid)
   local yn_bd   = grid:yBoundaryDepth()
   local verts   = grid.vertices
 
-  verts:NewFieldMacro('__apply_macro', L.NewMacro(function(v,x,y)
+  verts:NewFieldMacro('__apply_macro', L.Macro(function(v,x,y)
     return ebb `L.Affine(verts, {{1,0,x},
                                  {0,1,y}}, v)                   end))
 
@@ -236,25 +236,25 @@ local function setup2dVertices(grid)
   end)
 
   -- boundary depths
-  verts:NewFieldMacro('xneg_depth', L.NewMacro(function(v)
+  verts:NewFieldMacro('xneg_depth', L.Macro(function(v)
     return ebb `max_impl(L.int(xn_bd - L.xid(v)), 0)            end))
-  verts:NewFieldMacro('xpos_depth', L.NewMacro(function(v)
+  verts:NewFieldMacro('xpos_depth', L.Macro(function(v)
     return ebb `max_impl(L.int(L.xid(v) - (Vx-1 - xn_bd)), 0)   end))
-  verts:NewFieldMacro('yneg_depth', L.NewMacro(function(v)
+  verts:NewFieldMacro('yneg_depth', L.Macro(function(v)
     return ebb `max_impl(L.int(yn_bd - L.yid(v)), 0)            end))
-  verts:NewFieldMacro('ypos_depth', L.NewMacro(function(v)
+  verts:NewFieldMacro('ypos_depth', L.Macro(function(v)
     return ebb `max_impl(L.int(L.yid(v) - (Vy-1 - yn_bd)), 0)   end))
 
-  verts:NewFieldMacro('in_boundary', L.NewMacro(function(v)
-    return ebb ` v.xneg_depth > 0 or v.xpos_depth > 0 or
-                 v.yneg_depth > 0 or v.ypos_depth > 0           end))
-  verts:NewFieldMacro('in_interior', L.NewMacro(function(v)
+  verts:NewFieldReadFunction('in_boundary', ebb(v)
+    return v.xneg_depth > 0 or v.xpos_depth > 0 or
+           v.yneg_depth > 0 or v.ypos_depth > 0           end)
+  verts:NewFieldMacro('in_interior', L.Macro(function(v)
     return ebb ` not v.in_boundary                              end))
 end
 local function setup2dDualVertices(grid)
   local dverts            = grid.dual_vertices
 
-  dverts:NewFieldMacro('__apply_macro', L.NewMacro(function(dv,x,y)
+  dverts:NewFieldMacro('__apply_macro', L.Macro(function(dv,x,y)
     return ebb `L.Affine(dverts, {{1,0,x},
                                   {0,1,y}}, dv)                 end))
 end
@@ -273,32 +273,32 @@ local function setup2dEdges(grid)
                                 dims = {Vx,Cy}, periodic = {xp,yp} }
   
   -- Access vertices from the edges
-  grid.xedges:NewFieldMacro('tail', L.NewMacro(function(xe)
+  grid.xedges:NewFieldMacro('tail', L.Macro(function(xe)
     return ebb `L.Affine(verts, {{1,0,0},
                                  {0,1,0}}, xe)                  end))
-  grid.xedges:NewFieldMacro('head', L.NewMacro(function(xe)
+  grid.xedges:NewFieldMacro('head', L.Macro(function(xe)
     return ebb `L.Affine(verts, {{1,0,1},
                                  {0,1,0}}, xe)                  end))
 
-  grid.yedges:NewFieldMacro('tail', L.NewMacro(function(ye)
+  grid.yedges:NewFieldMacro('tail', L.Macro(function(ye)
     return ebb `L.Affine(verts, {{1,0,0},
                                  {0,1,0}}, ye)                  end))
-  grid.yedges:NewFieldMacro('head', L.NewMacro(function(ye)
+  grid.yedges:NewFieldMacro('head', L.Macro(function(ye)
     return ebb `L.Affine(verts, {{1,0,0},
                                  {0,1,1}}, ye)                  end))
   
   -- Access the edges from the vertices
-  verts:NewFieldMacro('xpos_edge', L.NewMacro(function(v)
+  verts:NewFieldMacro('xpos_edge', L.Macro(function(v)
     return ebb `L.Affine(grid.xedges, {{1,0,0},
                                        {0,1,0}}, v)             end))
-  verts:NewFieldMacro('xneg_edge', L.NewMacro(function(v)
+  verts:NewFieldMacro('xneg_edge', L.Macro(function(v)
     return ebb `L.Affine(grid.xedges, {{1,0,-1},
                                        {0,1,0}}, v)             end))
 
-  verts:NewFieldMacro('ypos_edge', L.NewMacro(function(v)
+  verts:NewFieldMacro('ypos_edge', L.Macro(function(v)
     return ebb `L.Affine(grid.yedges, {{1,0,0},
                                        {0,1,0}}, v)             end))
-  verts:NewFieldMacro('yneg_edge', L.NewMacro(function(v)
+  verts:NewFieldMacro('yneg_edge', L.Macro(function(v)
     return ebb `L.Affine(grid.yedges, {{1,0,0},
                                        {0,1,-1}}, v)            end))
 end
@@ -315,47 +315,47 @@ local function setup2dFaces(grid)
                                 dims = {Cx,Vy}, periodic = {xp,yp} }
   
   -- Access the cells from the faces
-  grid.xfaces:NewFieldMacro('pos', L.NewMacro(function(xf)
+  grid.xfaces:NewFieldMacro('pos', L.Macro(function(xf)
     return ebb `L.Affine(cells, {{1,0,0},
                                  {0,1,0}}, xf)                  end))
-  grid.xfaces:NewFieldMacro('neg', L.NewMacro(function(xf)
+  grid.xfaces:NewFieldMacro('neg', L.Macro(function(xf)
     return ebb `L.Affine(cells, {{1,0,-1},
                                  {0,1,0}}, xf)                  end))
 
-  grid.yfaces:NewFieldMacro('pos', L.NewMacro(function(yf)
+  grid.yfaces:NewFieldMacro('pos', L.Macro(function(yf)
     return ebb `L.Affine(cells, {{1,0,0},
                                  {0,1,0}}, yf)                  end))
-  grid.yfaces:NewFieldMacro('neg', L.NewMacro(function(yf)
+  grid.yfaces:NewFieldMacro('neg', L.Macro(function(yf)
     return ebb `L.Affine(cells, {{1,0,0},
                                  {0,1,-1}}, yf)                 end))
   
   -- Access the faces from the cells
-  cells:NewFieldMacro('xpos_face', L.NewMacro(function(v)
+  cells:NewFieldMacro('xpos_face', L.Macro(function(v)
     return ebb `L.Affine(grid.xfaces, {{1,0,1},
                                        {0,1,0}}, v)             end))
-  cells:NewFieldMacro('xneg_face', L.NewMacro(function(v)
+  cells:NewFieldMacro('xneg_face', L.Macro(function(v)
     return ebb `L.Affine(grid.xfaces, {{1,0,0},
                                        {0,1,0}}, v)             end))
 
-  cells:NewFieldMacro('ypos_face', L.NewMacro(function(v)
+  cells:NewFieldMacro('ypos_face', L.Macro(function(v)
     return ebb `L.Affine(grid.yfaces, {{1,0,0},
                                        {0,1,1}}, v)             end))
-  cells:NewFieldMacro('yneg_face', L.NewMacro(function(v)
+  cells:NewFieldMacro('yneg_face', L.Macro(function(v)
     return ebb `L.Affine(grid.yfaces, {{1,0,0},
                                        {0,1,0}}, v)             end))
 
   -- Access the corresponding edge from the face and vice-versa
-  grid.xfaces:NewFieldMacro('edge', L.NewMacro(function(xf)
+  grid.xfaces:NewFieldMacro('edge', L.Macro(function(xf)
     return ebb `L.Affine(grid.yedges, {{1,0,0},
                                        {0,1,0}}, xf)            end))
-  grid.yfaces:NewFieldMacro('edge', L.NewMacro(function(yf)
+  grid.yfaces:NewFieldMacro('edge', L.Macro(function(yf)
     return ebb `L.Affine(grid.xedges, {{1,0,0},
                                        {0,1,0}}, yf)            end))
 
-  grid.xedges:NewFieldMacro('face', L.NewMacro(function(xe)
+  grid.xedges:NewFieldMacro('face', L.Macro(function(xe)
     return ebb `L.Affine(grid.yfaces, {{1,0,0},
                                        {0,1,0}}, xe)            end))
-  grid.yedges:NewFieldMacro('face', L.NewMacro(function(ye)
+  grid.yedges:NewFieldMacro('face', L.Macro(function(ye)
     return ebb `L.Affine(grid.xfaces, {{1,0,0},
                                        {0,1,0}}, ye)            end))
 end
@@ -371,34 +371,34 @@ local function setup2dInterconnects(grid)
   local dverts  = grid.dual_vertices
 
   -- v <-> dc
-  dcells:NewFieldMacro('vertex', L.NewMacro(function(dc)
+  dcells:NewFieldMacro('vertex', L.Macro(function(dc)
     return ebb `L.Affine(verts, {{1,0,0},
                                  {0,1,0}}, dc)                  end))
-  verts:NewFieldMacro('dual_cell', L.NewMacro(function(v)
+  verts:NewFieldMacro('dual_cell', L.Macro(function(v)
     return ebb `L.Affine(dcells, {{1,0,0},
                                   {0,1,0}}, v)                  end))
 
   -- v <-> c
-  cells:NewFieldMacro('vertex', L.NewMacro(function(c)
+  cells:NewFieldMacro('vertex', L.Macro(function(c)
     return ebb `L.Affine(verts, {{1,0,0},
                                  {0,1,0}}, c)                   end))
-  verts:NewFieldMacro('cell', L.NewMacro(function(v)
+  verts:NewFieldMacro('cell', L.Macro(function(v)
     return ebb `L.Affine(cells, {{1,0,0},
                                  {0,1,0}}, v)                   end))
 
   -- dv <-> c
-  cells:NewFieldMacro('dual_vertex', L.NewMacro(function(c)
+  cells:NewFieldMacro('dual_vertex', L.Macro(function(c)
       return ebb `L.Affine(dverts, {{1,0,0},
                                     {0,1,0}}, c)                end))
-  dverts:NewFieldMacro('cell', L.NewMacro(function(dv)
+  dverts:NewFieldMacro('cell', L.Macro(function(dv)
       return ebb `L.Affine(cells, {{1,0,0},
                                    {0,1,0}}, dv)                end))
 
   -- dv <-> dc
-  dcells:NewFieldMacro('dual_vertex', L.NewMacro(function(dc)
+  dcells:NewFieldMacro('dual_vertex', L.Macro(function(dc)
       return ebb `L.Affine(dverts, {{1,0,0},
                                     {0,1,0}}, dc)               end))
-  dverts:NewFieldMacro('dual_cell', L.NewMacro(function(dv)
+  dverts:NewFieldMacro('dual_cell', L.Macro(function(dv)
       return ebb `L.Affine(dcells, {{1,0,0},
                                     {0,1,0}}, dv)               end))
 end
@@ -514,7 +514,7 @@ local function setup3dCells(grid)
   local cells       = grid.cells
 
   -- relative offset
-  cells:NewFieldMacro('__apply_macro', L.NewMacro(function(c,x,y,z)
+  cells:NewFieldMacro('__apply_macro', L.Macro(function(c,x,y,z)
       return ebb `L.Affine(cells, {{1,0,0,x},
                                    {0,1,0,y},
                                    {0,0,1,z}}, c)               end))
@@ -530,15 +530,15 @@ local function setup3dCells(grid)
     return not is_bd(xi,yi,zi)
   end)
 
-  cells:NewFieldMacro('center', L.NewMacro(function(c)
-    return ebb ` L.vec3f({ xo + xw * (L.double(L.xid(c)) + 0.5),
-                           yo + yw * (L.double(L.yid(c)) + 0.5),
-                           zo + zw * (L.double(L.zid(c)) + 0.5) })  end))
+  cells:NewFieldReadFunction('center', ebb(c)
+    return L.vec3f({ xo + xw * (L.double(L.xid(c)) + 0.5),
+                     yo + yw * (L.double(L.yid(c)) + 0.5),
+                     zo + zw * (L.double(L.zid(c)) + 0.5) })  end)
 
   local xsnap = grid:xUsePeriodic() and wrap_idx or clamp_idx
   local ysnap = grid:yUsePeriodic() and wrap_idx or clamp_idx
   local zsnap = grid:zUsePeriodic() and wrap_idx or clamp_idx
-  local cell_locate = L.NewMacro(function(xyz_vec)
+  local cell_locate = L.Macro(function(xyz_vec)
     return ebb quote
       var xyz  = xyz_vec -- prevent duplication
       var xval = (xyz[0] - xo) / xw
@@ -568,25 +568,25 @@ local function setup3dCells(grid)
   end
 
   -- boundary depths
-  cells:NewFieldMacro('xneg_depth', L.NewMacro(function(c)
+  cells:NewFieldMacro('xneg_depth', L.Macro(function(c)
     return ebb `max_impl(L.int(xn_bd - L.xid(c)), 0)            end))
-  cells:NewFieldMacro('xpos_depth', L.NewMacro(function(c)
+  cells:NewFieldMacro('xpos_depth', L.Macro(function(c)
     return ebb `max_impl(L.int(L.xid(c) - (Cx-1 - xn_bd)), 0)   end))
-  cells:NewFieldMacro('yneg_depth', L.NewMacro(function(c)
+  cells:NewFieldMacro('yneg_depth', L.Macro(function(c)
     return ebb `max_impl(L.int(yn_bd - L.yid(c)), 0)            end))
-  cells:NewFieldMacro('ypos_depth', L.NewMacro(function(c)
+  cells:NewFieldMacro('ypos_depth', L.Macro(function(c)
     return ebb `max_impl(L.int(L.yid(c) - (Cy-1 - yn_bd)), 0)   end))
-  cells:NewFieldMacro('zneg_depth', L.NewMacro(function(c)
+  cells:NewFieldMacro('zneg_depth', L.Macro(function(c)
     return ebb `max_impl(L.int(zn_bd - L.zid(c)), 0)            end))
-  cells:NewFieldMacro('zpos_depth', L.NewMacro(function(c)
+  cells:NewFieldMacro('zpos_depth', L.Macro(function(c)
     return ebb `max_impl(L.int(L.zid(c) - (Cz-1 - zn_bd)), 0)   end))
 
-  cells:NewFieldMacro('in_boundary', L.NewMacro(function(c)
-    return ebb ` c.xneg_depth > 0 or c.xpos_depth > 0 or
-                 c.yneg_depth > 0 or c.ypos_depth > 0 or
-                 c.zneg_depth > 0 or c.zpos_depth > 0
-  end))
-  cells:NewFieldMacro('in_interior', L.NewMacro(function(c)
+  cells:NewFieldReadFunction('in_boundary', ebb(c)
+    return c.xneg_depth > 0 or c.xpos_depth > 0 or
+           c.yneg_depth > 0 or c.ypos_depth > 0 or
+           c.zneg_depth > 0 or c.zpos_depth > 0
+  end)
+  cells:NewFieldMacro('in_interior', L.Macro(function(c)
     return ebb ` not c.in_boundary
   end))
 end
@@ -605,22 +605,22 @@ local function setup3dDualCells(grid)
   local dcells      = grid.dual_cells
 
   -- relative offset
-  dcells:NewFieldMacro('__apply_macro', L.NewMacro(function(dc,x,y,z)
+  dcells:NewFieldMacro('__apply_macro', L.Macro(function(dc,x,y,z)
       return ebb `L.Affine(dcells, {{1,0,0,x},
                                     {0,1,0,y},
                                     {0,0,1,z}}, dc)             end))
 
   if not xp and not yp and not zp then
-    dcells:NewFieldMacro('center', L.NewMacro(function(dc)
-      return ebb `L.vec3f({ xo + xw * (L.double(L.xid(dc))),
-                            yo + yw * (L.double(L.yid(dc))),
-                            zo + zw * (L.double(L.zid(dc))) })  end))
+    dcells:NewFieldReadFunction('center', ebb(dc)
+      return L.vec3f({ xo + xw * (L.double(L.xid(dc))),
+                       yo + yw * (L.double(L.yid(dc))),
+                       zo + zw * (L.double(L.zid(dc))) })  end)
   end
 
   local xsnap = grid:xUsePeriodic() and wrap_idx or clamp_idx
   local ysnap = grid:yUsePeriodic() and wrap_idx or clamp_idx
   local zsnap = grid:zUsePeriodic() and wrap_idx or clamp_idx
-  local dual_locate = L.NewMacro(function(xyz_vec)
+  local dual_locate = L.Macro(function(xyz_vec)
     return ebb quote
       var xyz = xyz_vec -- prevent duplication
       var xval = (xyz[0] - xo) / xw + 0.5
@@ -664,7 +664,7 @@ local function setup3dVertices(grid)
   local verts       = grid.vertices
 
   -- relative offset
-  verts:NewFieldMacro('__apply_macro', L.NewMacro(function(v,x,y,z)
+  verts:NewFieldMacro('__apply_macro', L.Macro(function(v,x,y,z)
       return ebb `L.Affine(verts, {{1,0,0,x},
                                    {0,1,0,y},
                                    {0,0,1,z}}, v)               end))
@@ -681,32 +681,32 @@ local function setup3dVertices(grid)
   end)
 
   -- boundary depths
-  verts:NewFieldMacro('xneg_depth', L.NewMacro(function(v)
+  verts:NewFieldMacro('xneg_depth', L.Macro(function(v)
     return ebb `max_impl(L.int(xn_bd - L.xid(v)), 0)            end))
-  verts:NewFieldMacro('xpos_depth', L.NewMacro(function(v)
+  verts:NewFieldMacro('xpos_depth', L.Macro(function(v)
     return ebb `max_impl(L.int(L.xid(v) - (Vx-1 - xn_bd)), 0)   end))
-  verts:NewFieldMacro('yneg_depth', L.NewMacro(function(v)
+  verts:NewFieldMacro('yneg_depth', L.Macro(function(v)
     return ebb `max_impl(L.int(yn_bd - L.yid(v)), 0)            end))
-  verts:NewFieldMacro('ypos_depth', L.NewMacro(function(v)
+  verts:NewFieldMacro('ypos_depth', L.Macro(function(v)
     return ebb `max_impl(L.int(L.yid(v) - (Vy-1 - yn_bd)), 0)   end))
-  verts:NewFieldMacro('zneg_depth', L.NewMacro(function(v)
+  verts:NewFieldMacro('zneg_depth', L.Macro(function(v)
     return ebb `max_impl(L.int(zn_bd - L.zid(v)), 0)            end))
-  verts:NewFieldMacro('zpos_depth', L.NewMacro(function(v)
+  verts:NewFieldMacro('zpos_depth', L.Macro(function(v)
     return ebb `max_impl(L.int(L.zid(v) - (Vz-1 - zn_bd)), 0)   end))
 
-  verts:NewFieldMacro('in_boundary', L.NewMacro(function(v)
-    return ebb ` v.xneg_depth > 0 or v.xpos_depth > 0 or
-                 v.yneg_depth > 0 or v.ypos_depth > 0 or
-                 v.zneg_depth > 0 or v.zpos_depth > 0
-  end))
-  verts:NewFieldMacro('in_interior', L.NewMacro(function(v)
+  verts:NewFieldReadFunction('in_boundary', ebb(v)
+    return v.xneg_depth > 0 or v.xpos_depth > 0 or
+           v.yneg_depth > 0 or v.ypos_depth > 0 or
+           v.zneg_depth > 0 or v.zpos_depth > 0
+  end)
+  verts:NewFieldMacro('in_interior', L.Macro(function(v)
     return ebb ` not v.in_boundary
   end))
 end
 
 local function setup3dDualVertices(grid)
   grid.dual_vertices:NewFieldMacro('__apply_macro',
-    L.NewMacro(function(dv,xoff,yoff,zoff)
+    L.Macro(function(dv,xoff,yoff,zoff)
       return ebb `L.Affine(grid.dual_vertices, {{1,0,0,xoff},
                                                 {0,1,0,yoff},
                                                 {0,0,1,zoff}}, dv)
@@ -726,41 +726,41 @@ local function setup3dInterconnects(grid)
   local dverts      = grid.dual_vertices
 
   -- v <-> dc
-  dcells:NewFieldMacro('vertex', L.NewMacro(function(dc)
+  dcells:NewFieldMacro('vertex', L.Macro(function(dc)
       return ebb `L.Affine(verts, {{1,0,0,0},
                                    {0,1,0,0},
                                    {0,0,1,0}}, dc)              end))
-  verts:NewFieldMacro('dual_cell', L.NewMacro(function(v)
+  verts:NewFieldMacro('dual_cell', L.Macro(function(v)
       return ebb `L.Affine(dcells, {{1,0,0,0},
                                     {0,1,0,0},
                                     {0,0,1,0}}, v)              end))
 
   -- v <-> c
-  cells:NewFieldMacro('vertex', L.NewMacro(function(c)
+  cells:NewFieldMacro('vertex', L.Macro(function(c)
       return ebb `L.Affine(verts, {{1,0,0,0},
                                    {0,1,0,0},
                                    {0,0,1,0}}, c)               end))
-  verts:NewFieldMacro('cell', L.NewMacro(function(v)
+  verts:NewFieldMacro('cell', L.Macro(function(v)
       return ebb `L.Affine(cells, {{1,0,0,0},
                                    {0,1,0,0},
                                    {0,0,1,0}}, v)               end))
 
   -- dv <-> c
-  cells:NewFieldMacro('dual_vertex', L.NewMacro(function(c)
+  cells:NewFieldMacro('dual_vertex', L.Macro(function(c)
       return ebb `L.Affine(dverts, {{1,0,0,0},
                                     {0,1,0,0},
                                     {0,0,1,0}}, c)              end))
-  dverts:NewFieldMacro('cell', L.NewMacro(function(dv)
+  dverts:NewFieldMacro('cell', L.Macro(function(dv)
       return ebb `L.Affine(cells, {{1,0,0,0},
                                    {0,1,0,0},
                                    {0,0,1,0}}, dv)              end))
 
   -- dv <-> dc
-  dcells:NewFieldMacro('dual_vertex', L.NewMacro(function(dc)
+  dcells:NewFieldMacro('dual_vertex', L.Macro(function(dc)
       return ebb `L.Affine(dverts, {{1,0,0,0},
                                     {0,1,0,0},
                                     {0,0,1,0}}, dc)             end))
-  dverts:NewFieldMacro('dual_cell', L.NewMacro(function(dv)
+  dverts:NewFieldMacro('dual_cell', L.Macro(function(dv)
       return ebb `L.Affine(dcells, {{1,0,0,0},
                                     {0,1,0,0},
                                     {0,0,1,0}}, dv)             end))

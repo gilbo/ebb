@@ -52,9 +52,9 @@ grid.vertices:NewField("fz", L.double):Load(0)
 
 grid.vertices:NewField("mass",      L.float):Load(0) -- nodal mass
 
-grid.vertices:NewFieldMacro("position", L.NewMacro(function(v) return ebb `{v.px, v.py, v.pz} end))
-grid.vertices:NewFieldMacro("velocity", L.NewMacro(function(v) return ebb `{v.vx, v.vy, v.vz} end))
-grid.vertices:NewFieldMacro("forces",   L.NewMacro(function(v) return ebb `{v.fx, v.fy, v.fz} end))
+grid.vertices:NewFieldMacro("position", L.Macro(function(v) return ebb `{v.px, v.py, v.pz} end))
+grid.vertices:NewFieldMacro("velocity", L.Macro(function(v) return ebb `{v.vx, v.vy, v.vz} end))
+grid.vertices:NewFieldMacro("forces",   L.Macro(function(v) return ebb `{v.fx, v.fy, v.fz} end))
 
 
 ------------------------------------------------------------------------------------------
@@ -625,8 +625,8 @@ local ebb mmult_8x4x3 (ma, mb)
   return result
 end
 
-local transpose_4x8 = L.NewMacro(function(m)
-  return ebb `{
+local ebb transpose_4x8 (m)
+  return {
     m[0],  m[8], m[16], m[24],
     m[1],  m[9], m[17], m[25],
     m[2], m[10], m[18], m[26],
@@ -636,7 +636,7 @@ local transpose_4x8 = L.NewMacro(function(m)
     m[6], m[14], m[22], m[30],
     m[7], m[15], m[23], m[31]
   }
-end)
+end
 
 
 

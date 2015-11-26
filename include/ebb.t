@@ -50,13 +50,15 @@ local ebblanguage = {
                 local env = env_fn()
                 return ebblib.NewUserFunc(ast, env)
             end
-        else -- quote
+        elseif ast.kind == 'Quote' then -- quote
             return function (env_fn)
                 local env = env_fn()
                 local specialized = specialization.specialize(env, ast)
-                local checked     = semant.check(specialized)
+                local checked     = semant.check_quote(specialized)
                 return checked
             end
+        else
+            error('INTERNAL: unexpected ebb code type')
         end
     end,
 

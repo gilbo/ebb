@@ -37,6 +37,12 @@ local is_function   = L.is_function
 local isfielddispatcher = R.isfielddispatcher
 
 
+local MAX_INT_32, MIN_INT_32 = math.pow(2,31)-1, -math.pow(2,31)
+local function is_int32(x)
+  return type(x) == 'number' and x % 1 == 0 and
+         x <= MAX_INT_32 and x >= MIN_INT_32
+end
+
 ------------------------------------------------------------------------------
 --[[ Context Definition                                                   ]]--
 ------------------------------------------------------------------------------
@@ -128,61 +134,25 @@ end
 local function QuoteParams(all_params_asts)
   local quoted_params = {}
   for i,param_ast in ipairs(all_params_asts) do
-    local q = ast.Quote:DeriveFrom(param_ast)
-    q.code = param_ast
-    if param_ast.is_centered then q.is_centered = true end
-    q.node_type = param_ast.node_type -- halt type-checking here
-    quoted_params[i] = q
+    assert(ast.is_ast(param_ast), 'INTERNAL: parameters not ASTs?')
+    if param_ast:is(ast.Quote) then
+      quoted_params[i] = param_ast
+    else
+      local q = ast.Quote:DeriveFrom(param_ast)
+      q.code = param_ast
+      if param_ast.is_centered then q.is_centered = true end
+      q.node_type = param_ast.node_type -- halt type-checking here
+      quoted_params[i] = q
+    end
   end
   return quoted_params
 end
 
 local function RunMacro(ctxt,src_node,the_macro,params)
-  --local quoted_params = QuoteParams(params)
-  local param_syms   = {}
-  local declarations = {}
-  for i, p_ast in ipairs(params) do
-    local ptype     = p_ast.node_type
-    -- exception for strings
-    if ptype:isinternal() and type(ptype.value) == 'string' then
-      param_syms[i]   = ptype.value
-    else
-      local decl       = ast.DeclStatement:DeriveFrom(src_node)
-      decl.name        = ast.GenSymbol('_macro_arg_'..tostring(i))
-      decl.initializer = p_ast
-      decl.node_type   = p_ast.node_type
-
-      local n     = ast.Name:DeriveFrom(p_ast)
-      n.name      = decl.name
-      n.node_type = p_ast.node_type
-
-      local q = ast.Quote:DeriveFrom(p_ast)
-      q.code = n
-      q.node_type = n.node_type
-
-      if p_ast.is_centered then
-        n.is_centered = true
-        q.is_centered = true
-      end
-
-      table.insert(declarations, decl)
-      param_syms[i]   = q
-    end
-  end
-
-  local result = the_macro.genfunc(unpack(param_syms))
+  local result = the_macro.genfunc(unpack(QuoteParams(params)))
 
   if ast.is_ast(result) and result:is(ast.Quote) then
-    local block = ast.Block:DeriveFrom(src_node)
-    block.statements = declarations
-
-    local expansion     = ast.LetExpr:DeriveFrom(src_node)
-    expansion.block     = block
-    expansion.exp       = result
-    expansion.node_type = result.node_type
-    return expansion
-    --local qexp          = ast.Quote:DeriveFrom(src_node)
-    --return expansion:check(ctxt)
+    return result
   else
     ctxt:error(src_node, 'Macros must return quoted code')
     local errnode     = src_node:clone()
@@ -1014,7 +984,7 @@ function ast.Number:check(ctxt)
         ctxt:error(self, "numeric literal type unsupported by Ebb")
         number.node_type = errorT
     end
-  elseif tonumber(self.value) % 1 == 0 then
+  elseif is_int32(self.value) then
     number.node_type = intT
   else
     number.node_type = doubleT
@@ -1503,16 +1473,14 @@ end
 function ast.Quote:check(ctxt)
   -- Ensure quotes are only typed once
   -- By typing the quote at declaration, we make it safe
-  -- to included it in other code as is
+  -- to included it in other code as is.
+
+  -- We also strip out the quote wrapper here since it's no longer needed
+
   if self.node_type then
-    return self
+    return self.code
   else
-    local q = self:clone()
-
-    q.code = self.code:check(ctxt)
-    q.node_type = q.code.node_type
-
-    return q
+    return self.code:check(ctxt)
   end
 end
 
@@ -1625,4 +1593,19 @@ function S.check(some_ast)
   env:leaveblock()
   diag:finishandabortiferrors("Errors during typechecking ebb", 1)
   return typed_ast
+end
+
+function S.check_quote(quote_ast)
+  local checked = S.check(quote_ast)
+
+  -- now re-wrap in a quote
+  if checked:is(ast.Quote) then
+    return checked
+  else
+    local q       = ast.Quote:DeriveFrom(checked)
+    q.code        = checked
+    if checked.is_centered then q.is_centered = true end
+    q.node_type   = checked.node_type -- halt type-checking here
+    return q
+  end
 end

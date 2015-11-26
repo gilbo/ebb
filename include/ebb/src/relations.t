@@ -401,6 +401,196 @@ function Relation:NewFieldFunction (name, userfunc)
 end
 --]]
 
+local terra initShuffleArray( a : &uint64, n : uint64 )
+  for i=0,n do a[i] = i end
+end
+
+local keysort_cache = {}
+local function gen_keysort( keytyp )
+  if keysort_cache[keytyp] then return keysort_cache[keytyp] end
+
+  local ttyp = keytyp:terratype()
+  local terra checksorted( keys : &ttyp, n : uint64 )
+    for k=0,n-1 do
+      if keys[k]:terraLinearize() > keys[k+1]:terraLinearize() then
+        return false
+      end
+    end
+    return true
+  end
+  local terra selectsort( keys:&ttyp, shuffle:&uint64, lo:uint64, hi:uint64 )
+    for i=lo,hi do
+      var least, least_i = keys[i]:terraLinearize(), i
+      for j=i+1,hi+1 do
+        var j_lin = keys[j]:terraLinearize()
+        if j_lin < least then
+          least, least_i = j_lin, j
+        end
+      end
+      -- now swap
+      var tmp_k, tmp_s = keys[i], shuffle[i]
+      keys[i], shuffle[i] = keys[least_i], shuffle[least_i]
+      keys[least_i], shuffle[least_i] = tmp_k, tmp_s
+    end
+  end
+  local terra choosepivot( keys:&ttyp, lo:uint64, hi:uint64 )
+    -- median of three
+    var mid = (lo + hi) / 2
+    var a,b,c = keys[lo]:terraLinearize(),
+                keys[hi]:terraLinearize(),
+                keys[mid]:terraLinearize()
+    var pivot = a
+    if a < b then if a < c then if b < c then pivot = b
+                                         else pivot = c end
+                           else pivot = a end
+             else if b < c then if a < c then pivot = a
+                                         else pivot = c end
+                           else pivot = b end
+    end
+    return pivot
+  end
+  local terra partition( keys:&ttyp, shuffle:&uint64, lo:uint64, hi:uint64 )
+    var pivot = choosepivot(keys, lo, hi)
+    -- do pivoting
+    lo, hi = lo - 1, hi + 1
+    while true do
+      repeat lo = lo + 1 until keys[lo]:terraLinearize() >= pivot
+      repeat hi = hi - 1 until keys[hi]:terraLinearize() <= pivot
+      if lo < hi then
+        var tempkey, tempidx  = keys[lo], shuffle[lo]
+        keys[lo], shuffle[lo] = keys[hi], shuffle[hi]
+        keys[hi], shuffle[hi] = tempkey,  tempidx
+      else return hi,hi+1 end
+    end
+  end
+  local terra quicksort( keys:&ttyp, shuffle:&uint64, lo:uint64, hi:uint64 ):{}
+    --if stop - start < 8 then selectsort(keys, shuffle, lo, hi) end
+    if lo >= hi then return end
+    var mid_lo, mid_hi = partition(keys, shuffle, lo, hi)
+    quicksort(keys, shuffle, lo, mid_lo)
+    quicksort(keys, shuffle, mid_hi, hi)
+  end
+  local terra keysort( keys : &ttyp, shuffle : &uint64, n : uint64 )
+    if checksorted(keys, n) then return true end
+    quicksort(keys, shuffle, 0, n-1)
+    return false
+  end
+
+  keysort_cache[keytyp] = keysort
+  return keysort
+end
+
+local shuffle_cache = {}
+local function gen_shuffle( ftyp )
+  if shuffle_cache[ftyp] then return shuffle_cache[ftyp] end
+
+  local ttyp = ftyp:terratype()
+  local terra shufflefunc( vals : &ttyp, shuffle : &uint64, n : uint64 )
+    var tmp = [&ttyp](C.malloc(sizeof(ttyp) * n))
+
+    for k=0,n do tmp[k] = vals[ shuffle[k] ] end
+    for k=0,n do vals[k] = tmp[k] end
+
+    C.free(tmp)
+  end
+
+  shuffle_cache[ftyp] = shufflefunc
+  return shufflefunc
+end
+
+function Relation:_INTERNAL_SortBy(keyfield)
+  assert( is_field(keyfield) and keyfield.owner == self and
+          keyfield:Type():isscalarkey(), 'expecting key field' )
+  assert( not self:isFragmented(), 'cannot sort fragmented relation')
+  assert( #self._subsets == 0, 'TODO: Support sorting relations w/subsets')
+
+  -- First we'll sort the keys and produce the following shuffle index
+  local shuffle_array = terralib.cast( &uint64, C.malloc(8 * self:Size()) )
+  initShuffleArray(shuffle_array, self:Size())
+
+  -- get access to the key data to sort on
+  local keydld = nil
+  local keytyp = keyfield:Type()
+  local legion_region = nil
+  if use_single then
+    keydld          = keyfield:GetDLD()
+    keydld.address  = keyfield.array:open_readwrite_ptr()
+    keydld:setlocation(DLD.CPU)
+  elseif use_legion then
+    legion_region = LW.NewInlinePhysicalRegion {
+      relation  = self,
+      fields    = { keyfield },
+      privilege = LW.READ_WRITE,
+    }
+    keydld = legion_region:GetLuaDLDs()[1]
+  end
+
+  -- verify that the layout is acceptable
+  assert(keydld.version[1] == 1 and keydld.version[2] == 0)
+  assert(keydld.type_stride == terralib.sizeof(keytyp:terratype()))
+  local ndim, size = self:nDims(), 1
+  while ndim > 0 do -- check for tight packing of grids
+    assert(keydld.dim_stride[ndim] == size)
+    size = size * keydld.dim_size[ndim]
+    ndim = ndim-1
+  end
+
+  -- sort keys
+  local keysort = gen_keysort(keytyp)
+  local addr = terralib.cast( &(keytyp:terratype()), keydld.address )
+  local already_sorted = keysort( addr, shuffle_array, self:Size() )
+
+  -- release lock on the key data
+  if use_single then
+    keyfield.array:close_readwrite_ptr()
+  elseif use_legion then
+    legion_region:Destroy()
+  end
+
+  if already_sorted then return end
+
+  ------------
+
+  -- Now we'll shuffle the other fields
+
+  local function shuffle_field(f)
+    local dld = nil
+    if use_single then
+      dld         = f:GetDLD()
+      dld.address = f.array:open_readwrite_ptr()
+      dld:setlocation(DLD.CPU)
+    elseif use_legion then
+      legion_region = LW.NewInlinePhysicalRegion {
+        relation  = self,
+        fields    = {f},
+        privilege = LW.READ_WRITE,
+      }
+      dld = legion_region:GetLuaDLDs()[1]
+    end
+
+    local ftyp = f:Type()
+    assert(dld.type_stride == terralib.sizeof(ftyp:terratype()))
+
+    local shufflefunc = gen_shuffle(ftyp)
+    local addr = terralib.cast( &(ftyp:terratype()), dld.address )
+    shufflefunc( dld.address, shuffle_array, self:Size() )
+
+    if use_single then
+      f.array:close_readwrite_ptr()
+    elseif use_legion then
+      legion_region:Destroy()
+    end
+  end
+
+  if self._is_live_mask then shuffle_field(self._is_live_mask) end
+  for _,f in ipairs(self._fields) do
+    if f ~= keyfield then shuffle_field(f) end
+  end
+
+  -- and release the shuffle array data
+  C.free(shuffle_array)
+end
+
 function Relation:GroupBy(keyf_name)
   if self:isGrouped() then
     error("GroupBy(): Relation is already grouped", 2)
@@ -418,6 +608,8 @@ function Relation:GroupBy(keyf_name)
     error("GroupBy(): Grouping by non-scalar-key fields is "..
           "prohibited.", 2)
   end
+
+  self:_INTERNAL_SortBy(key_field)
 
   -- In the below, we use the following convention
   --  SRC is the relation referred to by the key field

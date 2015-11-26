@@ -709,7 +709,8 @@ function Builtin.newDoubleFunction(name)
     function b.check (ast, ctxt)
         local args = ast.params
         if #args ~= 1 then
-            ctxt:error(ast, name.." expects exactly 1 argument (instead got " .. #args .. ")")
+            ctxt:error(ast, name.." expects exactly 1 argument "..
+                            "(instead got ".. #args ..")")
             return errorT
         end
         local lt = args[1].node_type
@@ -746,6 +747,39 @@ L.floor = Builtin.newDoubleFunction('floor')
 L.ceil  = Builtin.newDoubleFunction('ceil')
 L.fabs  = Builtin.newDoubleFunction('fabs')
 L.log   = Builtin.newDoubleFunction('log')
+
+L.fmin  = Builtin.new()
+L.fmax  = Builtin.new()
+local function minmax_check(ast, ctxt, name)
+    if #ast.params ~= 2 then
+        ctxt:error(ast, name.." expects 2 arguments "..
+                        "(instead got ".. #ast.params ..")")
+        return errorT
+    end
+    local lt = ast.params[1].node_type
+    local rt = ast.params[1].node_type
+    if not lt:isnumeric() or not rt:isscalar() then
+        ctxt:error(ast.params[1], "argument to "..name..
+                                  " must be a scalar number")
+    end
+    if not rt:isnumeric() or not rt:isscalar() then
+        ctxt:error(ast.params[2], "argument to "..name..
+                                  " must be a scalar number")
+    end
+    return doubleT
+end
+function L.fmin.check(ast, ctxt) return minmax_check(ast, ctxt, 'fmin') end
+function L.fmax.check(ast, ctxt) return minmax_check(ast, ctxt, 'fmax') end
+function L.fmin.codegen(ast, ctxt)
+    local lhs, rhs = ast.params[1]:codegen(ctxt), ast.params[2]:codegen(ctxt)
+    if ctxt:onGPU() then return `G.fmin(lhs, rhs)
+                    else return `C.fmin(lhs, rhs) end
+end
+function L.fmax.codegen(ast, ctxt)
+    local lhs, rhs = ast.params[1]:codegen(ctxt), ast.params[2]:codegen(ctxt)
+    if ctxt:onGPU() then return `G.fmax(lhs, rhs)
+                    else return `C.fmax(lhs, rhs) end
+end
 
 
 --terra b_and (a : int, b : int)

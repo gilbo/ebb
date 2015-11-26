@@ -151,7 +151,7 @@ local function initMeshRelations(mesh)
             initRowFromMemory32(rel[xtoy.n2], mesh[old_name].values)
         end
         --setup the correct macros
-        relations[xtoy.t1]:NewFieldMacro(xtoy.t2,L.NewMacro(function(f)
+        relations[xtoy.t1]:NewFieldMacro(xtoy.t2,L.Macro(function(f)
             return ebb `L.Where(rel.[xtoy.n1],f).[xtoy.n2]
         end))
     end

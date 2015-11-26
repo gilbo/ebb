@@ -73,10 +73,10 @@ function Tetmesh:build_edges(elements)
 
   -- and group the edges for access from vertices
   mesh.edges:GroupBy('tail')
-  mesh.vertices:NewFieldMacro('edges', L.NewMacro(function(v)
+  mesh.vertices:NewFieldMacro('edges', L.Macro(function(v)
     return ebb ` L.Where(mesh.edges.tail, v)
   end))
-  mesh.vertices:NewFieldMacro('neighbors', L.NewMacro(function(v)
+  mesh.vertices:NewFieldMacro('neighbors', L.Macro(function(v)
     return ebb ` L.Where(mesh.edges.tail, v).head
   end))
 

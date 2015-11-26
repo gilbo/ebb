@@ -8,7 +8,7 @@ local assert, length, print, dot = L.assert, L.length, L.print, L.dot
 ---------------------------------------
 --Test ordinary (function-like) macro--
 ---------------------------------------
-local square = L.NewMacro(function(x)
+local square = L.Macro(function(x)
     return ebb `x*x
 end)
 
@@ -19,7 +19,7 @@ end)
 ----------------------------
 --Test stacked macro calls--
 ----------------------------
-local sum = L.NewMacro(function(x, y, z)
+local sum = L.Macro(function(x, y, z)
     return ebb `x + y + z
 end)
 mesh.vertices:foreach(ebb(v : mesh.vertices)
@@ -29,7 +29,7 @@ end)
 ----------------------------------------
 --Test macro that behaves like a field--
 ----------------------------------------
-mesh.vertices:NewFieldMacro('scaledpos', L.NewMacro(function(v)
+mesh.vertices:NewFieldMacro('scaledpos', L.Macro(function(v)
     return ebb `2*v.pos 
 end))
 mesh.vertices:foreach(ebb(v : mesh.vertices)
@@ -39,7 +39,7 @@ end)
 -----------------------------------
 --Combine normal and field macros--
 -----------------------------------
-local norm = L.NewMacro(function(v)
+local norm = L.Macro(function(v)
     return ebb `dot(v, v)
 end)
 mesh.vertices:foreach(ebb(v : mesh.vertices)
@@ -51,7 +51,7 @@ end)
 --------------------------------------
 --Test Macros Using Let-Style Quotes--
 --------------------------------------
-local sub1_but_non_neg = L.NewMacro(function(num)
+local sub1_but_non_neg = L.Macro(function(num)
     return ebb quote
         var result = num - 1
         if result < 0 then result = 0 end
@@ -69,7 +69,7 @@ end)
 --Test special Apply Macro --
 -----------------------------
 mesh.vertices:NewField('temperature', L.double):Load(1.0)
-mesh.vertices:NewFieldMacro('__apply_macro', L.NewMacro(function(v, scale)
+mesh.vertices:NewFieldMacro('__apply_macro', L.Macro(function(v, scale)
     return ebb `scale * v.temperature
 end))
 mesh.vertices:foreach(ebb (v : mesh.vertices)

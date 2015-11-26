@@ -123,7 +123,7 @@ local ebb passthrough(c : cells, field)
 end
 cells:foreach(passthrough, 'temp')
 
-local m0check = L.NewMacro(function(c, f)
+local m0check = L.Macro(function(c, f)
   return ebb quote
     L.assert(c[f] == 0)
   in 0 end

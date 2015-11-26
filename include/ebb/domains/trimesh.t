@@ -107,12 +107,12 @@ function Trimesh:build_edges(vs)
   -- the edges relation looking for all edges with a given tail
   -- In order to abstract this query for the user, we install a macro
   -- on the vertices relation
-  mesh.vertices:NewFieldMacro('edges', L.NewMacro(function(v)
+  mesh.vertices:NewFieldMacro('edges', L.Macro(function(v)
     return ebb ` L.Where(mesh.edges.tail, v)
   end))
   -- We also store a slight modification where neighboring vertices
   -- are given directly instead of the edges themselves
-  mesh.vertices:NewFieldMacro('neighbors', L.NewMacro(function(v)
+  mesh.vertices:NewFieldMacro('neighbors', L.Macro(function(v)
     return ebb ` L.Where(mesh.edges.tail, v).head
   end))
 

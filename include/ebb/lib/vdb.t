@@ -23,12 +23,12 @@ local function check_vec(vec, errmsg)
   end
 end
 
-vdb.color = L.NewMacro(function(vec)
+vdb.color = L.Macro(function(vec)
   check_vec(vec, "vdb.color() expects a vector argument of length 3 or more")
   return ebb `VDB_C.vdb_color(vec[0], vec[1], vec[2])
 end)
 
-vdb.normal = L.NewMacro(function(p0, p1)
+vdb.normal = L.Macro(function(p0, p1)
   local err = "vdb.normal() expects 2 vector arguments of length 3 or more"
   check_vec(p0, err)
   check_vec(p1, err)
@@ -36,12 +36,12 @@ vdb.normal = L.NewMacro(function(p0, p1)
                                  p1[0], p1[1], p1[2])
 end)
 
-vdb.point = L.NewMacro(function(vec)
+vdb.point = L.Macro(function(vec)
   check_vec(vec, "vdb.point() expects a vector argument of length 3 or more")
   return ebb `VDB_C.vdb_point(vec[0], vec[1], vec[2])
 end)
 
-vdb.line = L.NewMacro(function(p0, p1)
+vdb.line = L.Macro(function(p0, p1)
   local err = "vdb.line() expects 2 vector arguments of length 3 or more"
   check_vec(p0, err)
   check_vec(p1, err)
@@ -49,7 +49,7 @@ vdb.line = L.NewMacro(function(p0, p1)
                                p1[0], p1[1], p1[2])
 end)
 
-vdb.triangle = L.NewMacro(function(p0, p1, p2)
+vdb.triangle = L.Macro(function(p0, p1, p2)
   local err = "vdb.triangle() expects 3 vector arguments of length 3 or more"
   check_vec(p0, err)
   check_vec(p1, err)

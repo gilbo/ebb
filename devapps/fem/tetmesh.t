@@ -52,10 +52,10 @@ local function build_element_edges(mesh, elements)
 
   -- index the edges
   mesh.edges:GroupBy('tail')
-  mesh.vertices:NewFieldMacro('edges', L.NewMacro(function(v)
+  mesh.vertices:NewFieldMacro('edges', L.Macro(function(v)
     return ebb ` L.Where(mesh.edges.tail, v)
   end))
-  mesh.vertices:NewFieldMacro('neighbors', L.NewMacro(function(v)
+  mesh.vertices:NewFieldMacro('neighbors', L.Macro(function(v)
     return ebb ` L.Where(mesh.edges.tail, v).head
   end))
 
@@ -141,7 +141,7 @@ function Tetmesh.LoadFromLists(vertices, elements)
   build_element_edges(mesh, elements)
 
   -- get determintant for tetreahedron
-  mesh.tetrahedra:NewFieldMacro('elementDet', L.NewMacro(function(t)
+  mesh.tetrahedra:NewFieldMacro('elementDet', L.Macro(function(t)
       return ebb quote
           var a = t.v[0].pos
           var b = t.v[1].pos
@@ -153,14 +153,14 @@ function Tetmesh.LoadFromLists(vertices, elements)
       end) )
 
   -- element density
-  mesh.tetrahedra:NewFieldMacro('density', L.NewMacro(function(t)
+  mesh.tetrahedra:NewFieldMacro('density', L.Macro(function(t)
     return ebb `mesh.density end ))
 
   -- lame constants
-  mesh.tetrahedra:NewFieldMacro('lambdaLame', L.NewMacro(function(t)
+  mesh.tetrahedra:NewFieldMacro('lambdaLame', L.Macro(function(t)
     return ebb `L.double(mesh.lambdaLame)
   end ))
-  mesh.tetrahedra:NewFieldMacro('muLame', L.NewMacro(function(t)
+  mesh.tetrahedra:NewFieldMacro('muLame', L.Macro(function(t)
     return ebb `L.double(mesh.muLame)
   end ))
 
