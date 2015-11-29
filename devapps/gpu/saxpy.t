@@ -1,4 +1,5 @@
-import 'ebb'
+import "ebb"
+local L = require "ebblib"
 
 local tid_x   = cudalib.nvvm_read_ptx_sreg_tid_x
 local b_dim_x = cudalib.nvvm_read_ptx_sreg_ntid_x
@@ -10,7 +11,7 @@ local N = 100000
 -------------------------------------------------------------------------------
 --[[                              ebb saxpy                                ]]--
 -------------------------------------------------------------------------------
-L.default_processor = L.GPU
+L.SetDefaultProcessor(L.GPU)
 
 function run_ebb_saxpy (tests)
 	local R = L.NewRelation { size = N, name = 'R' }

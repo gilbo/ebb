@@ -3,9 +3,10 @@ package.loaded["ebb.src.codegen_support"] = Support
 
 --local ast = require "ebb.src.ast"
 
-local C = require 'ebb.src.c'
-local G = require 'ebb.src.gpu_util'
-local T = require 'ebb.src.types'
+local Pre = require 'ebb.src.prelude'
+local C   = require 'ebb.src.c'
+local G   = require 'ebb.src.gpu_util'
+local T   = require 'ebb.src.types'
 
 local use_legion = not not rawget(_G, '_legion_env')
 local LW
@@ -185,7 +186,7 @@ end
 --[[--------------------------------------------------------------------]]--
 
 local minexp = macro(function(lhe,rhe)
-    if lhe:gettype() == double and L.default_processor == L.GPU then
+    if lhe:gettype() == double and Pre.GetDefaultProcessor() == Pre.GPU then
         return `G.fmin(lhe,rhe)
     else 
       return quote
@@ -200,7 +201,7 @@ local minexp = macro(function(lhe,rhe)
 end)
 
 local maxexp = macro(function(lhe,rhe)
-    if lhe:gettype() == double and L.default_processor == L.GPU then
+    if lhe:gettype() == double and Pre.GetDefaultProcessor() == Pre.GPU then
         return `G.fmax(lhe,rhe)
     else 
       return quote

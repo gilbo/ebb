@@ -202,7 +202,7 @@ end
 --[[ Choose Architecture                                                   ]]--
 -------------------------------------------------------------------------------
 function moveToArch (l_arch)
-	L.default_processor = l_arch
+	L.SetDefaultProcessor(l_arch)
 	M.vertices:MoveTo(l_arch)
 	M.edges:MoveTo(l_arch)
 	M.cells:MoveTo(l_arch)

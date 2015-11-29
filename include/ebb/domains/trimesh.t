@@ -1,4 +1,5 @@
 import "ebb" -- Every Ebb File should start with this command
+local L = require 'ebblib'
 
 -- Declare a table named Trimesh for the Module
 local Trimesh = {}

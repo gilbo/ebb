@@ -1,6 +1,7 @@
 -- Test partitioning on non-grid relations.
 
 import "ebb"
+local L = require "ebblib"
 
 print("***************************************************")
 print("**  This is an Ebb application intended to test  **")

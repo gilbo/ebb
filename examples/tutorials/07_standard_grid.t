@@ -4,7 +4,8 @@
 -- we look at how to make use of the standard grid library.
 
 
-import "ebb"
+import 'ebb'
+local L = require 'ebblib'
 
 local GridLib   = require 'ebb.domains.grid'
 

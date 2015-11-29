@@ -1,4 +1,5 @@
-import "ebb"
+import 'ebb'
+local L = require 'ebblib'
 
 local assert = L.assert
 local cross  = L.cross

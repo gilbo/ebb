@@ -1,4 +1,5 @@
-import "ebb"
+import 'ebb'
+local L = require 'ebblib'
 
 local print, assert, dot, cross, length =
   L.print, L.assert, L.dot, L.cross, L.length

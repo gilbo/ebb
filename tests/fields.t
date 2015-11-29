@@ -5,7 +5,8 @@
         produces something that can compile.
 ]]
 
-import "ebb"
+import 'ebb'
+local L = require 'ebblib'
 require "tests.test"
 
 local assert = L.assert

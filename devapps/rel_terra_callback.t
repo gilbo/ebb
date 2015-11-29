@@ -1,4 +1,5 @@
-import 'ebb'
+import "ebb"
+local L = require "ebblib"
 local dld  = require 'ebb.lib.dld'
 local C = terralib.includecstring([[
 #include <stdio.h>

@@ -3,7 +3,8 @@
 -- computations to access data from _neighboring_ elements.  That is,
 -- we need some way to access the mesh's _topology_ inside of our functions.
 
-import "ebb"
+import 'ebb'
+local L = require 'ebblib'
 
 local ioOff = require 'ebb.domains.ioOff'
 local PN    = require 'ebb.lib.pathname'

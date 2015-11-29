@@ -4,18 +4,17 @@ package.loaded["ebb.src.ufversions"] = UF
 local use_legion = not not rawget(_G, '_legion_env')
 local use_single = not use_legion
 
-local L   = require "ebblib"
+local Pre = require "ebb.src.prelude"
 local C   = require "ebb.src.c"
 local G   = require "ebb.src.gpu_util"
 local T   = require "ebb.src.types"
 
-local CPU       = L.CPU
-local GPU       = L.GPU
+local CPU       = Pre.CPU
+local GPU       = Pre.GPU
 local uint64T   = T.uint64
 local keyT      = T.key
 
-local EbbGlobal = L.Global
-local _INTERNAL_DEV_OUTPUT_PTX = L._INTERNAL_DEV_OUTPUT_PTX
+local EbbGlobal = Pre.Global
 
 local codegen         = require "ebb.src.codegen"
 local codesupport     = require "ebb.src.codegen_support"
@@ -29,8 +28,10 @@ end
 local use_partitioning = use_legion and run_config.use_partitioning
 local DataArray       = require('ebb.src.rawdata').DataArray
 
-local UFunc     = L.UserFunction
-local UFVersion = L.UFVersion
+local F         = require 'ebb.src.functions'
+local UFunc     = F.Function
+local UFVersion = F.UFVersion
+local _INTERNAL_DEV_OUTPUT_PTX = F._INTERNAL_DEV_OUTPUT_PTX
 
 local VERBOSE = rawget(_G, 'EBB_LOG_EBB')
 

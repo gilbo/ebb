@@ -1,4 +1,5 @@
-import "ebb"
+import 'ebb'
+local L = require 'ebblib'
 require "tests/test"
 
 --error('NEED TO WRITE GRID TESTS; DO WHILE REWRITING GRID DOMAIN')

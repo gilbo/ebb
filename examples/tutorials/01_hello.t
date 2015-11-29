@@ -3,9 +3,16 @@ import 'ebb'
 -- that includes Ebb code (rather than pure Lua) needs to begin with
 -- this command.
 
+
+local L = require 'ebblib'
+-- In addition to importing the language, we probably also want to `require`
+-- Ebb's standard library.  `require` is the standard Lua mechanism for 
+-- pulling in modules, similar to C's `#include`, or Java/Python's `import`.
+
+
 local GridLibrary = require 'ebb.domains.grid'
--- After importing Ebb, we usually `require` some number of
--- support libraries.  In particular, we'll usually want to require
+-- In addition to the Ebb standard library, we usually `require` some number
+-- of other support libraries.  In particular, we'll usually want to require
 -- at least one geometric domain library.  Ebb provides a set of
 -- default domain libraries available at 'ebb.domains.xxxx';
 -- Here we use the grid library.

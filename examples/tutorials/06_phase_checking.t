@@ -2,7 +2,8 @@
 -- two functions?  Let's look at some alternate ways we could have
 -- written that, and which ways won't work.
 
-import "ebb"
+import 'ebb'
+local L = require 'ebblib'
 
 local ioOff = require 'ebb.domains.ioOff'
 local PN    = require 'ebb.lib.pathname'

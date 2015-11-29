@@ -5,7 +5,8 @@
 -- so that Ebb-external code can directly manipulate the data without
 -- incurring memory copy overheads.
 
-import "ebb"
+import 'ebb'
+local L = require 'ebblib'
 
 local GridLib   = require 'ebb.domains.grid'
 

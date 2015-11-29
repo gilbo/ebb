@@ -1,4 +1,5 @@
-import 'ebb'
+import "ebb"
+local L = require "ebblib"
 
 -- local cells = L.NewRelation{ name = 'cells', size = 8 }
 -- local cells = L.NewRelation{ name = 'cells', dims = {2,4} }

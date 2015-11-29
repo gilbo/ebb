@@ -1,4 +1,5 @@
 import "ebb"
+local L = require "ebblib"
 local PN = require 'ebb.lib.pathname'
 local U = require 'devapps.fem.utils'
 

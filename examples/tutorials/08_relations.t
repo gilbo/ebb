@@ -14,7 +14,8 @@
 -- rather than load a triangle-mesh or use the built in grid library,
 -- we'll build our geometric domain from scratch.
 
-import "ebb"
+import 'ebb'
+local L = require 'ebblib'
 
 local vdb   = require('ebb.lib.vdb')
 -- We'll start the program in the usual way

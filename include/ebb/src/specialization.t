@@ -2,23 +2,24 @@
 local S = {}
 package.loaded["ebb.src.specialization"] = S
 
+local Pre = require "ebb.src.prelude"
 local ast = require "ebb.src.ast"
 local B   = require "ebb.src.builtins"
 local T   = require "ebb.src.types"
-local L   = require "ebblib"
+local R   = require "ebb.src.relations"
+local F   = require "ebb.src.functions"
 
 local errorT        = T.error
 local keyT          = T.key
 local internalT     = T.internal
 local boolT         = T.bool
 
-local is_relation   = L.is_relation
 local is_type       = T.istype
-local is_global     = L.is_global
-local is_constant   = L.is_constant
-local is_macro      = L.is_macro
-local is_function   = L.is_function
-local is_builtin    = B.is_builtin
+local is_global     = Pre.is_global
+local is_constant   = Pre.is_constant
+local is_macro      = Pre.is_macro
+--local is_function   = F.is_function
+--local is_builtin    = B.is_builtin
 
 
 ------------------------------------------------------------------------------
@@ -88,7 +89,7 @@ end
 local function exec_type_annotation(typexp, ast_node, ctxt)
   local typ = exec_external(typexp, ctxt, ast_node, errorT)
   -- handle use of relations as shorthand for key types
-  if is_relation(typ) then typ = keyT(typ) end
+  if R.is_relation(typ) then typ = keyT(typ) end
 
   if not is_type(typ) then
     ctxt:error(ast_node, "Expected Ebb type annotation but found " ..
@@ -353,11 +354,11 @@ local function luav_to_ast(luav, src_node)
       node = prim_to_AST(src_node, luav.value, bt)
     end
 
-  elseif is_builtin(luav) then
+  elseif B.is_builtin(luav) then
     node = NewLuaObject(src_node,luav)
-  elseif is_relation(luav) then
+  elseif R.is_relation(luav) then
     node = NewLuaObject(src_node,luav)
-  elseif is_function(luav) then
+  elseif F.is_function(luav) then
     node = NewLuaObject(src_node,luav)
   elseif is_macro(luav) then
     node = NewLuaObject(src_node,luav)

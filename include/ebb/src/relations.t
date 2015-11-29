@@ -5,17 +5,13 @@ package.loaded["ebb.src.relations"] = R
 local use_legion = not not rawget(_G, '_legion_env')
 local use_single = not use_legion
 
-local L = require "ebblib"
-local T = require "ebb.src.types"
-local C = require "ebb.src.c"
+local Pre   = require "ebb.src.prelude"
+local T     = require "ebb.src.types"
+local C     = require "ebb.src.c"
+local F     = require "ebb.src.functions"
+
 local DLD = require "ebb.lib.dld"
 local DLDiter = require 'ebb.src.dlditer'
-
-
-local Relation  = L.LRelation
-local Field     = L.LField
-local LIndex    = L.LIndex
-local Subset    = L.LSubset
 
 local uint64T   = T.uint64
 local boolT     = T.bool
@@ -23,13 +19,11 @@ local boolT     = T.bool
 local keyT      = T.key
 local recordT   = T.record
 
-local CPU       = L.CPU
-local GPU       = L.GPU
+local CPU       = Pre.CPU
+local GPU       = Pre.GPU
 
-local is_relation   = L.is_relation
-local is_macro      = L.is_macro
-local is_field      = L.is_field
-local is_function   = L.is_function
+local is_macro      = Pre.is_macro
+local is_function   = F.is_function
 
 
 local PN = require "ebb.lib.pathname"
@@ -66,9 +60,41 @@ local function linid(ids,dims)
 end
 
 
+
+
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
---[[  LRelation methods                                                    ]]--
+
+
+local Relation    = {}
+Relation.__index  = Relation
+R.Relation        = Relation
+local function is_relation(obj) return getmetatable(obj) == Relation end
+R.is_relation     = is_relation
+
+
+local Field       = {}
+Field.__index     = Field
+R.Field           = Field
+local function is_field(obj) return getmetatable(obj) == Field end
+R.is_field        = is_field
+
+
+local Subset      = {}
+Subset.__index    = Subset
+R.Subset          = Subset
+local function is_subset(obj) return getmetatable(obj) == Subset end
+R.is_subset       = is_subset
+
+
+local Index       = {}
+Index.__index     = Index
+local function is_index(obj) return getmetatable(obj) == Index end
+
+
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+--[[  Relation methods                                                     ]]--
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
 
@@ -741,7 +767,7 @@ end
 -------------------------------------------------------------------------------
 
 
-function LIndex.New(params)
+function Index.New(params)
   if not is_relation(params.owner) or
      type(params.name) ~= 'string' or
      not (params.size or params.terra_type or params.data)
@@ -752,12 +778,12 @@ function LIndex.New(params)
   local index = setmetatable({
     _owner = params.owner,
     _name  = params.name,
-  }, LIndex)
+  }, Index)
 
   index._array = DynamicArray.New {
     size = params.size or (#params.data),
     type = params.terra_type,
-    processor = params.processor or L.default_processor,
+    processor = params.processor or Pre.default_processor,
   }
 
   if params.data then
@@ -775,26 +801,26 @@ function LIndex.New(params)
   return index
 end
 
-function LIndex:DataPtr()
+function Index:DataPtr()
   return self._array:_raw_ptr()
 end
-function LIndex:Size()
+function Index:Size()
   return self._array:size()
 end
 
-function LIndex:Relation()
+function Index:Relation()
   return self._owner
 end
 
-function LIndex:ReAllocate(size)
+function Index:ReAllocate(size)
   self._array:resize(size)
 end
 
-function LIndex:MoveTo(proc)
+function Index:MoveTo(proc)
   self._array:moveto(proc)
 end
 
-function LIndex:Release()
+function Index:Release()
   if self._array then
     self._array:free()
     self._array = nil
@@ -893,7 +919,7 @@ function Relation:_INTERNAL_NewSubsetFromLuaFunction (name, predicate)
     subset._boolmask = boolmask
   else
   -- USE INDEX
-    subset._index = LIndex.New{
+    subset._index = Index.New{
       owner=self,
       terra_type = keyT(self):terratype(),
       ndims=self:nDims(),

@@ -35,6 +35,8 @@ Since Ebb doesn't support string values, let's do some arithmetic instead
 ```
 import 'ebb'
 
+local L = require 'ebblib'
+
 local GridLibrary = require 'ebb.domains.grid'
 
 local grid = GridLibrary.NewGrid2d {
@@ -100,9 +102,14 @@ The tutorials are organized into 3 groups.  The first group (*Intro*) provides a
 Let's take a look at everything going on in the "Hello, 42!" example program.
 
 ```
-import 'ebb'
+local L = require 'ebblib'
 ```
-The program starts by importing the Ebb language.  Every file you write that includes Ebb code (rather than pure Lua) needs to begin with this command.
+In addition to importing the language, we probably also want to `require` Ebb's standard library.  `require` is the standard Lua mechanism for  pulling in modules, similar to C's `#include`, or Java/Python's `import`.
+
+```
+local GridLibrary = require 'ebb.domains.grid'
+```
+In addition to the Ebb standard library, we usually `require` some number of other support libraries.  In particular, we'll usually want to require at least one geometric domain library.  Ebb provides a set of default domain libraries available at 'ebb.domains.xxxx'; Here we use the grid library.
 
 ```
 local GridLibrary = require 'ebb.domains.grid'
@@ -141,7 +148,8 @@ Finally, we invoke this function for each cell in the grid.  Since there are 4 c
 Except in the case of grids, we'll want to load the domain data from a file.  This example program demonstrates loading an octahedron triangle mesh.
 
 ```
-import "ebb"
+import 'ebb'
+local L = require 'ebblib'
 
 local ioOff = require 'ebb.domains.ioOff'
 local mesh  = ioOff.LoadTrimesh('examples/livecode_getting_started/octa.off')
@@ -188,7 +196,8 @@ Finally, we can write an Ebb function to translate all of the vertices, execute 
 ## 03: Visualizing Simulations
 
 ```
-import "ebb"
+import 'ebb'
+local L = require 'ebblib'
 
 local ioOff = require 'ebb.domains.ioOff'
 local PN    = require 'ebb.lib.pathname'
@@ -233,7 +242,8 @@ to open up a visualization window, or just launch vdb in the background
 We're going to try to make the octahedron oscillate using a sinusoid here.  This won't really require simulating anything yet, but we'll see how to define some data.
 
 ```
-import "ebb"
+import 'ebb'
+local L = require 'ebblib'
 
 local ioOff = require 'ebb.domains.ioOff'
 local PN    = require 'ebb.lib.pathname'
@@ -306,7 +316,8 @@ Suppose you wanted to have the color oscillate together with the positions of th
 In order to do useful simulation computations, we need to not just execute computations at each element of a mesh.  We also need those computations to access data from _neighboring_ elements.  That is, we need some way to access the mesh's _topology_ inside of our functions.
 
 ```
-import "ebb"
+import 'ebb'
+local L = require 'ebblib'
 
 local ioOff = require 'ebb.domains.ioOff'
 local PN    = require 'ebb.lib.pathname'
@@ -401,7 +412,8 @@ The simulation loop is almost identical to last time.  If you run the program wi
 In example 05, why did we have to break the heat diffusion step into two functions?  Let's look at some alternate ways we could have written that, and which ways won't work.
 
 ```
-import "ebb"
+import 'ebb'
+local L = require 'ebblib'
 
 local ioOff = require 'ebb.domains.ioOff'
 local PN    = require 'ebb.lib.pathname'
@@ -534,7 +546,8 @@ Part of what makes Ebb unique is the ability to handle simulations over very dif
 
 
 ```
-import "ebb"
+import 'ebb'
+local L = require 'ebblib'
 
 local GridLib   = require 'ebb.domains.grid'
 
@@ -666,7 +679,8 @@ In this tutorial, we'll implement heat diffusion on a torus.  But rather than lo
 
 
 ```
-import "ebb"
+import 'ebb'
+local L = require 'ebblib'
 
 local vdb   = require('ebb.lib.vdb')
 ```
@@ -805,7 +819,8 @@ The remaining tutorials are mostly independent of each other.  Depending on your
 In this tutorial, we'll look at how to couple two geometric domains together, which is often critical for simulating interacting physical phenomena.
 
 ```
-import "ebb"
+import 'ebb'
+local L = require 'ebblib'
 
 local GridLib   = require 'ebb.domains.grid'
 
@@ -935,7 +950,8 @@ Finally, our simulation loop is mostly unchanged, except we add two calls: to up
 In this example, we'll see how to get lower level access to the data that Ebb is storing and computing on.  This data access is provided through metadata objects that we call data layout descriptors (DLDs).  These descriptors communicate information about how data is stored in memory so that Ebb-external code can directly manipulate the data without incurring memory copy overheads.
 
 ```
-import "ebb"
+import 'ebb'
+local L = require 'ebblib'
 
 local GridLib   = require 'ebb.domains.grid'
 
@@ -1085,7 +1101,8 @@ void tile_shuffle( void * dld_ptr ) {
 ### Ebb Code
 
 ```
-import "ebb"
+import 'ebb'
+local L = require 'ebblib'
 
 local GridLib   = require 'ebb.domains.grid'
 
@@ -1184,7 +1201,8 @@ For example, Loading or Dumping a field of data to/from a CSV file is supported 
 Lastly, this tutorial makes more substantial use of Terra.  Rather than try to explain Terra as well, we recommend that programmers interested in building custom file I/O read the Terra documentation themselves.
 
 ```
-import "ebb"
+import 'ebb'
+local L = require 'ebblib'
 
 local PN        = require 'ebb.lib.pathname'
 local DLD       = require 'ebb.lib.dld'
@@ -1420,7 +1438,8 @@ In tutorial 08 (relations) we saw the most basic mechanisms for building custom 
 In this tutorial, we'll explore the _group-by_ operation.  To do so, we'll use the earlier heat diffusion example from tutorial 8, except we'll use two relations this time: one for the vertices, and one for the edges.  Then, since the edges are explicitly represented, we'll simply omit the edges that form the torus.  Because we explicitly represent the edges in this way, we no longer need to assume that each vertex has exactly four neighbors in each of 4 cardinal directions.
 
 ```
-import "ebb"
+import 'ebb'
+local L = require 'ebblib'
 
 local vdb   = require('ebb.lib.vdb')
 ```
@@ -1584,7 +1603,8 @@ The simulation loop is unchanged.
 Somewhat surprisingly, key-fields together with group-by/query-loops are sufficient to express arbitrary graph connectivity patterns.  To do so, we use a well known trick from databases, called a _join table_.  Unlike the relational tables we've been declaring up to this point, join tables don't represent a particular set of objects.  Instead, they represent a relationship between two different other sets of objects.  As an example, we'll load in a standard triangle-mesh and augment it with a way to get all of the triangles touching a given vertex.
 
 ```
-import "ebb"
+import 'ebb'
+local L = require 'ebblib'
 
 local ioOff = require 'ebb.domains.ioOff'
 local PN    = require 'ebb.lib.pathname'
@@ -1678,7 +1698,8 @@ Besides macros, we'll also introduce field-functions.  These two tools allow sim
 Unlike previous tutorials, this file will not compute much, though it can still be safely executed.
 
 ```
-import "ebb"
+import 'ebb'
+local L = require 'ebblib'
 
 local ioOff = require 'ebb.domains.ioOff'
 local PN    = require 'ebb.lib.pathname'
@@ -1791,7 +1812,8 @@ In this tutorial, we show how to create grid-structured domains and connect them
 To illustrate these features, we're going to write two coupled simulations on grids of different scales.  The lower-resolution grid will simulate a heat diffusion, while the higher-resolution grid will simulate the wave equation.  The particular simulation isn't physically derived, but will show both how to write code for grids and how to construct multi-grid structures.
 
 ```
-import "ebb"
+import 'ebb'
+local L = require 'ebblib'
 
 local vdb   = require('ebb.lib.vdb')
 ```
@@ -1973,7 +1995,8 @@ Our simulation loop down-samples the field, runs both simulations, and then up-s
 In tutorial 07, computing heat diffusion using the standard grid library, we imposed boundary conditions instead of having both directions be periodic.  To do so, we made use of subsets.  In this tutorial, we'll see how to define and use subsets of a relation.
 
 ```
-import "ebb"
+import 'ebb'
+local L = require 'ebblib'
 
 local vdb   = require('ebb.lib.vdb')
 

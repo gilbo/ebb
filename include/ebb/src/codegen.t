@@ -9,9 +9,9 @@ local T   = require "ebb.src.types"
 local keyT      = T.key
 
 local C   = require 'ebb.src.c'
-local L   = require 'ebblib'
 local G   = require 'ebb.src.gpu_util'
 local Support = require 'ebb.src.codegen_support'
+local F   = require 'ebb.src.functions'
 
 local LW, run_config
 if use_legion then
@@ -19,7 +19,6 @@ if use_legion then
   run_config = rawget(_G, '_run_config')
 end
 
-L._INTERNAL_DEV_OUTPUT_PTX = false
 
 
 
@@ -469,7 +468,7 @@ function Codegen.codegen (ufunc_ast, ufunc_version)
       [body]
     end
     cuda_kernel:setname(ufunc_name .. '_cudakernel')
-    cuda_kernel = G.kernelwrap(cuda_kernel, L._INTERNAL_DEV_OUTPUT_PTX,
+    cuda_kernel = G.kernelwrap(cuda_kernel, F._INTERNAL_DEV_OUTPUT_PTX,
                                { {"maxntidx",64}, {"minctasm",6} })
 
     local MAX_GRID_DIM = 65536

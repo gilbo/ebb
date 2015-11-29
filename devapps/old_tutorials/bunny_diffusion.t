@@ -1,4 +1,5 @@
-import "ebb" -- Every Ebb File should start with this command
+import "ebb"
+local L = require "ebblib" -- Every Ebb File should start with this command
 
 -- Single line comments in Lua look like this
 
@@ -91,8 +92,6 @@ off_in:close()
 ------------------------------------------------------------------------------
 
 -- Now We want to construct the Ebb relations
--- The 'L' namespace is available because of the
--- initial 'import "ebb"' statement at the top of this file
 
 local triangles = L.NewRelation { size = n_tris, name = 'triangles' }
 local vertices  = L.NewRelation { size = n_verts, name = 'vertices' }

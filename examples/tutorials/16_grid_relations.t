@@ -14,7 +14,8 @@
 -- structures.
 
 
-import "ebb"
+import 'ebb'
+local L = require 'ebblib'
 
 local vdb   = require('ebb.lib.vdb')
 -- We'll start the program in the usual way

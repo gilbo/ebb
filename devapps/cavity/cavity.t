@@ -1,4 +1,5 @@
 import "ebb"
+local L = require "ebblib"
 
 -- Load the grid library for structured grids.
 

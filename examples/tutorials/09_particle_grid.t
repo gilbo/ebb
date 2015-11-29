@@ -3,7 +3,8 @@
 -- phenomena.
 
 
-import "ebb"
+import 'ebb'
+local L = require 'ebblib'
 
 local GridLib   = require 'ebb.domains.grid'
 

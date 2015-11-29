@@ -1,4 +1,5 @@
-import "ebb"
+import 'ebb'
+local L = require 'ebblib'
 require "tests/test"
 
 local Grid = require 'ebb.domains.grid'

@@ -1,4 +1,5 @@
 import "ebb"
+local L = require 'ebblib'
 
 local MultiGrid = {}
 package.loaded["ebb.domains.multigrid"] = MultiGrid

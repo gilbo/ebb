@@ -1,4 +1,5 @@
 import "ebb"
+local L = require "ebblib"
 
 local VEGFileIO = {}
 VEGFileIO.__index = VEGFileIO

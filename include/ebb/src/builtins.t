@@ -1,11 +1,12 @@
 local B = {}
 package.loaded["ebb.src.builtins"] = B
 
-local L = require "ebblib"
-local T = require "ebb.src.types"
-local C = require "ebb.src.c"
-local G = require "ebb.src.gpu_util"
+local Pre = require "ebb.src.prelude"
+local T   = require "ebb.src.types"
+local C   = require "ebb.src.c"
+local G   = require "ebb.src.gpu_util"
 local AST = require "ebb.src.ast"
+local R   = require "ebb.src.relations"
 
 
 local errorT    = T.error
@@ -19,10 +20,9 @@ local keyT      = T.key
 local vectorT   = T.vector
 --local matrixT   = T.matrix
 
-local CPU       = L.CPU
-local GPU       = L.GPU
+local CPU       = Pre.CPU
+local GPU       = Pre.GPU
 
-local is_relation   = L.is_relation
 
 ---------------------------------------------
 --[[ Builtin functions                   ]]--
@@ -171,7 +171,7 @@ function B.Affine.check(ast, ctxt)
 
     -- check that the first and last arg are actually relations
     if not dst_rel_arg.node_type:isinternal() or
-       not is_relation(dst_rel_arg.node_type.value)
+       not R.is_relation(dst_rel_arg.node_type.value)
     then
         ctxt:error(ast[1], "Affine expects a relation as the 1st argument")
         return errorT
@@ -291,7 +291,7 @@ function B.UNSAFE_ROW.check(ast, ctxt)
 
     local addr_type = args[1].node_type
     local rel_type = args[2].node_type
-    if not rel_type:isinternal() or not is_relation(rel_type.value) then
+    if not rel_type:isinternal() or not R.is_relation(rel_type.value) then
         ctxt:error(ast, "UNSAFE_ROW expected a relation as the second arg")
         ret_type = errorT
     end
@@ -735,21 +735,21 @@ function Builtin.newDoubleFunction(name)
     return b
 end
 
-L.cos   = Builtin.newDoubleFunction('cos')
-L.acos  = Builtin.newDoubleFunction('acos')
-L.sin   = Builtin.newDoubleFunction('sin')
-L.asin  = Builtin.newDoubleFunction('asin')
-L.tan   = Builtin.newDoubleFunction('tan')
-L.atan  = Builtin.newDoubleFunction('atan')
-L.sqrt  = Builtin.newDoubleFunction('sqrt')
-L.cbrt  = Builtin.newDoubleFunction('cbrt')
-L.floor = Builtin.newDoubleFunction('floor')
-L.ceil  = Builtin.newDoubleFunction('ceil')
-L.fabs  = Builtin.newDoubleFunction('fabs')
-L.log   = Builtin.newDoubleFunction('log')
+B.cos   = Builtin.newDoubleFunction('cos')
+B.acos  = Builtin.newDoubleFunction('acos')
+B.sin   = Builtin.newDoubleFunction('sin')
+B.asin  = Builtin.newDoubleFunction('asin')
+B.tan   = Builtin.newDoubleFunction('tan')
+B.atan  = Builtin.newDoubleFunction('atan')
+B.sqrt  = Builtin.newDoubleFunction('sqrt')
+B.cbrt  = Builtin.newDoubleFunction('cbrt')
+B.floor = Builtin.newDoubleFunction('floor')
+B.ceil  = Builtin.newDoubleFunction('ceil')
+B.fabs  = Builtin.newDoubleFunction('fabs')
+B.log   = Builtin.newDoubleFunction('log')
 
-L.fmin  = Builtin.new()
-L.fmax  = Builtin.new()
+B.fmin  = Builtin.new()
+B.fmax  = Builtin.new()
 local function minmax_check(ast, ctxt, name)
     if #ast.params ~= 2 then
         ctxt:error(ast, name.." expects 2 arguments "..
@@ -768,14 +768,14 @@ local function minmax_check(ast, ctxt, name)
     end
     return doubleT
 end
-function L.fmin.check(ast, ctxt) return minmax_check(ast, ctxt, 'fmin') end
-function L.fmax.check(ast, ctxt) return minmax_check(ast, ctxt, 'fmax') end
-function L.fmin.codegen(ast, ctxt)
+function B.fmin.check(ast, ctxt) return minmax_check(ast, ctxt, 'fmin') end
+function B.fmax.check(ast, ctxt) return minmax_check(ast, ctxt, 'fmax') end
+function B.fmin.codegen(ast, ctxt)
     local lhs, rhs = ast.params[1]:codegen(ctxt), ast.params[2]:codegen(ctxt)
     if ctxt:onGPU() then return `G.fmin(lhs, rhs)
                     else return `C.fmin(lhs, rhs) end
 end
-function L.fmax.codegen(ast, ctxt)
+function B.fmax.codegen(ast, ctxt)
     local lhs, rhs = ast.params[1]:codegen(ctxt), ast.params[2]:codegen(ctxt)
     if ctxt:onGPU() then return `G.fmax(lhs, rhs)
                     else return `C.fmax(lhs, rhs) end
@@ -808,8 +808,8 @@ end
 --    return `b_and([exp1], [exp2])
 --end
 
-L.pow = Builtin.new(C.pow)
-function L.pow.check (ast, ctxt)
+B.pow = Builtin.new(C.pow)
+function B.pow.check (ast, ctxt)
     local args = ast.params
     if #args ~= 2 then ctxt:error(ast, "pow expects 2 arguments (instead got " .. #args .. ")")
         return errorT
@@ -830,7 +830,7 @@ function L.pow.check (ast, ctxt)
     end
     return doubleT
 end
-function L.pow.codegen(ast, ctxt)
+function B.pow.codegen(ast, ctxt)
     local exp1 = ast.params[1]:codegen(ctxt)
     local exp2 = ast.params[2]:codegen(ctxt)
     if ctxt:onGPU() then
@@ -840,8 +840,8 @@ function L.pow.codegen(ast, ctxt)
     end
 end
 
-L.fmod = Builtin.new(C.fmod)
-function L.fmod.check (ast, ctxt)
+B.fmod = Builtin.new(C.fmod)
+function B.fmod.check (ast, ctxt)
     local args = ast.params
     if #args ~= 2 then ctxt:error(ast, "fmod expects 2 arguments (instead got " .. #args .. ")")
         return errorT
@@ -862,7 +862,7 @@ function L.fmod.check (ast, ctxt)
     end
     return doubleT
 end
-function L.fmod.codegen(ast, ctxt)
+function B.fmod.codegen(ast, ctxt)
     local exp1 = ast.params[1]:codegen(ctxt)
     local exp2 = ast.params[2]:codegen(ctxt)
     if ctxt:onGPU() then

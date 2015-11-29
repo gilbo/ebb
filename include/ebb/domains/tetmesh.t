@@ -1,5 +1,5 @@
 import "ebb"
-
+local L = require 'ebblib'
 
 local Tetmesh = {}
 Tetmesh.__index = Tetmesh

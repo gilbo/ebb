@@ -1,11 +1,12 @@
 local S = {}
 package.loaded["ebb.src.semant"] = S
 
+local Pre = require "ebb.src.prelude"
 local ast = require "ebb.src.ast"
 local B   = require "ebb.src.builtins"
 local T   = require "ebb.src.types"
-local L   = require 'ebblib'
 local R   = require 'ebb.src.relations'
+local F   = require 'ebb.src.functions'
 --[[
   AST:check(ctxt) type checking routines
     These methods define type checking.
@@ -28,13 +29,13 @@ local queryT    = T.query
 local vectorT   = T.vector
 local matrixT   = T.matrix
 
-local is_relation   = L.is_relation
-local is_builtin    = B.is_builtin
-local is_macro      = L.is_macro
-local is_field      = L.is_field
-local is_function   = L.is_function
+--local is_relation   = R.is_relation
+--local is_builtin    = B.is_builtin
+local is_macro      = Pre.is_macro
+--local is_field      = R.is_field
+--local is_function   = F.is_function
 
-local isfielddispatcher = R.isfielddispatcher
+--local isfielddispatcher = R.isfielddispatcher
 
 
 local MAX_INT_32, MIN_INT_32 = math.pow(2,31)-1, -math.pow(2,31)
@@ -417,7 +418,7 @@ function ast.Assignment:check(ctxt)
                               "be assigned")
       return node
     end
-    assert(is_function(func))
+    assert(F.is_function(func))
     return InlineUserFunc(ctxt, self, func, { key, node.exp })
   end
 
@@ -603,7 +604,7 @@ function ast.InsertStatement:check(ctxt)
   insert.relation     = self.relation:check(ctxt)
   local reltyp        = insert.relation.node_type
   local rel           = reltyp:isinternal() and reltyp.value
-  if not rel or not is_relation(rel) then
+  if not rel or not R.is_relation(rel) then
     ctxt:error(self,"Expected a relation to insert into")
     return insert
   end
@@ -1222,7 +1223,7 @@ function ast.TableLookup:check(ctxt)
     local luaval = ttype.relation[member]
 
     -- create a field access normally
-    if is_field(luaval) then
+    if R.is_field(luaval) then
       local field         = luaval
       local ast_node      = ast.FieldAccess:DeriveFrom(tab)
       ast_node.name       = member
@@ -1239,7 +1240,7 @@ function ast.TableLookup:check(ctxt)
     elseif is_macro(luaval) then
       return RunMacro(ctxt,self,luaval,{tab})
     -- desugar function-fields from key.func to func(key)
-    elseif isfielddispatcher(luaval) then
+    elseif R.isfielddispatcher(luaval) then
       if ctxt:checkWriteHint(self) then
         if not luaval._writer then
           return err(self, ctxt, "relation "..ttype.relation:Name()..
@@ -1265,7 +1266,7 @@ function ast.TableLookup:check(ctxt)
         end
         return InlineUserFunc(ctxt,self,luaval._reader,{tab})
       end
-    elseif is_function(luaval) then
+    elseif F.is_function(luaval) then
       return InlineUserFunc(ctxt,self,luaval,{tab})
     else
       return err(self, ctxt, "Key from "..ttype.relation:Name()..
@@ -1283,7 +1284,7 @@ function ast.TableLookup:check(ctxt)
       assert(rel)
     end
     local field = rel[member]
-    if not is_field(field) then
+    if not R.is_field(field) then
       ctxt:error(self, "Relation "..rel:Name()..
                        " does not have field "..member)
     else 
@@ -1405,7 +1406,7 @@ function ast.Call:check(ctxt)
   end
 
   local v = func.node_type:isinternal() and func.node_type.value
-  if v and is_builtin(v) then
+  if v and B.is_builtin(v) then
     -- check the built-in.  If an ast is returned,
     -- then we assume the built-in is functioning as an internal macro
     -- Otherwise, assume standard built-in behavior
@@ -1419,7 +1420,7 @@ function ast.Call:check(ctxt)
   elseif v and is_macro(v) then
     -- replace the call node with the inlined AST
     call = RunMacro(ctxt, self, v, call.params)
-  elseif v and is_function(v) then
+  elseif v and F.is_function(v) then
     call = InlineUserFunc(ctxt, self, v, call.params)
   elseif v and T.istype(v) and v:isvalue() then
     local params = call.params
@@ -1512,7 +1513,7 @@ function ast.Where:check(ctxt)
   --      so its fields are already type-checked
   local fieldobj = self.field.node_type
   local keytype  = self.key.node_type
-  if not fieldobj:isinternal() or not is_field(fieldobj.value) then
+  if not fieldobj:isinternal() or not R.is_field(fieldobj.value) then
     ctxt:error(self,"Expected a field as the first argument but found "..
                     tostring(fieldobj))
   end

@@ -1,4 +1,5 @@
 import "ebb"
+local L = require "ebblib"
 
 
 -- In this tutorial, we're going to write a spring-mass simulation

@@ -1,6 +1,7 @@
 --DISABLE-ON-LEGION
 
-import "ebb"
+import 'ebb'
+local L = require 'ebblib'
 require "tests/test"
 
 

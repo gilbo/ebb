@@ -13,7 +13,8 @@
 -- neighbors in each of 4 cardinal directions.
 
 
-import "ebb"
+import 'ebb'
+local L = require 'ebblib'
 
 local vdb   = require('ebb.lib.vdb')
 -- We start the program as usual

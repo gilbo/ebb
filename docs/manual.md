@@ -34,6 +34,7 @@ Since Ebb doesn't support string values, let's do some arithmetic instead
 
 ```
 import 'ebb'
+local L = require 'ebblib'
 
 local GridLibrary = require 'ebb.domains.grid'
 

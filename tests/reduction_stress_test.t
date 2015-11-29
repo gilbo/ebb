@@ -1,5 +1,6 @@
 
 import 'ebb'
+local L = require 'ebblib'
 require 'tests.test'
 
 local N = 10000

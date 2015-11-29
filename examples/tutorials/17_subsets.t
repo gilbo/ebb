@@ -4,7 +4,8 @@
 -- how to define and use subsets of a relation.
 
 
-import "ebb"
+import 'ebb'
+local L = require 'ebblib'
 
 local vdb   = require('ebb.lib.vdb')
 

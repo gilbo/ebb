@@ -7,7 +7,8 @@
 -- we'll load in a standard triangle-mesh and augment it with a way to
 -- get all of the triangles touching a given vertex.
 
-import "ebb"
+import 'ebb'
+local L = require 'ebblib'
 
 local ioOff = require 'ebb.domains.ioOff'
 local PN    = require 'ebb.lib.pathname'

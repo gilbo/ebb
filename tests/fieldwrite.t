@@ -1,4 +1,5 @@
-import "ebb"
+import 'ebb'
+local L = require 'ebblib'
 
 local R = L.NewRelation { name="R", size=5 }
 R:NewField('position', L.vec3d):Load({0,0,0})

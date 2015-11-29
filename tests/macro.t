@@ -1,4 +1,5 @@
-import "ebb"
+import 'ebb'
+local L = require 'ebblib'
 
 local R = L.NewRelation { size = 4, name = 'relation' }
 R:NewField("result", L. uint64)

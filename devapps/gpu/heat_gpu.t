@@ -2,9 +2,10 @@ if not terralib.cudacompile then
   print("This simulation requires CUDA support; exiting...")
   return
 end
-import 'ebb'
+import "ebb"
+local L = require "ebblib"
 
-L.default_processor = L.GPU
+L.SetDefaultProcessor(L.GPU)
 --------------------------------------------------------------------------------
 --[[ Grab references to CUDA API                                            ]]--
 --------------------------------------------------------------------------------

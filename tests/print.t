@@ -1,4 +1,5 @@
-import "ebb"
+import 'ebb'
+local L = require 'ebblib'
 
 local R = L.NewRelation { name="R", size=6 }
 

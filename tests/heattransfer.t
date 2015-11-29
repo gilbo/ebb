@@ -1,4 +1,5 @@
 import 'ebb'
+local L = require 'ebblib'
 
 local M     = {
   vertices  = L.NewRelation { name="vertices",  size=8  },

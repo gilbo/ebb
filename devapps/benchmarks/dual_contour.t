@@ -1,5 +1,6 @@
 import "ebb"
---L.default_processor = L.GPU
+local L = require "ebblib"
+--L.SetDefaultProcessor(L.GPU)
 error("OUT OF DATE EXAMPLE")
 
 local Grid  = require 'ebb.domains.grid'

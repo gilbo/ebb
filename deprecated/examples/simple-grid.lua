@@ -1,7 +1,7 @@
 import "compiler.liszt"
 local Grid  = L.require 'domains.grid'
 
-L.default_processor = L.GPU
+L.SetDefaultProcessor(L.GPU)
 
 local xn = 17
 local yn = xn

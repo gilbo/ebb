@@ -1,4 +1,5 @@
-import 'ebb'
+import "ebb"
+local L = require "ebblib"
 
 function split_on_spaces(str)
   local a = {}

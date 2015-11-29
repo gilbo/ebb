@@ -1,4 +1,5 @@
 import "ebb"
+local L = require 'ebblib'
 
 local ioVeg = {}
 ioVeg.__index = ioVeg

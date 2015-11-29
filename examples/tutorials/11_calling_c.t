@@ -6,7 +6,8 @@
 -- to be separately compiled into a shared object/library.  We've included
 -- some sample compilation commands in a makefile in this directory.
 
-import "ebb"
+import 'ebb'
+local L = require 'ebblib'
 
 local GridLib   = require 'ebb.domains.grid'
 

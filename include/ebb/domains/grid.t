@@ -1,4 +1,5 @@
 import "ebb"
+local L = require 'ebblib'
 
 local Grid = {}
 package.loaded["ebb.domains.grid"] = Grid

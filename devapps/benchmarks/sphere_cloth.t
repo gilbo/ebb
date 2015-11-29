@@ -1,4 +1,5 @@
-import "ebb" -- Every Ebb File should start with this command
+import "ebb"
+local L = require "ebblib" -- Every Ebb File should start with this command
 
 error("OUT OF DATE EXAMPLE")
 

@@ -1,4 +1,5 @@
-import "ebb"
+import 'ebb'
+local L = require 'ebblib'
 
 local ioOff = require 'ebb.domains.ioOff'
 local M = ioOff.LoadTrimesh('tests/octa.off')

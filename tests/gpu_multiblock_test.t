@@ -2,6 +2,7 @@
 -- This test actually doesn't need to run on the GPU,
 -- it's just designed to stress test GPU execution in particular
 import 'ebb'
+local L = require 'ebblib'
 
 -- A 17x17 grid will, at current settings,
 -- will force ebb to run the generated kernel

@@ -14,7 +14,8 @@
 -- it can still be safely executed.
 
 
-import "ebb"
+import 'ebb'
+local L = require 'ebblib'
 
 local ioOff = require 'ebb.domains.ioOff'
 local PN    = require 'ebb.lib.pathname'

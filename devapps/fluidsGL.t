@@ -1,10 +1,11 @@
-import 'ebb'
+import "ebb"
+local L = require "ebblib"
 
 local useGPU = true
 if useGPU then
-	L.default_processor = L.GPU
+    L.SetDefaultProcessor(L.GPU)
 else
-	L.default_processor = L.CPU
+    L.SetDefaultProcessor(L.CPU)
 end
 
 --

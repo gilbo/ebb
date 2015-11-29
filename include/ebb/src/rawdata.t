@@ -5,12 +5,12 @@ local Raw = {}
 package.loaded["ebb.src.rawdata"] = Raw
 
 
-local C = require "ebb.src.c"
-local G = require "ebb.src.gpu_util"
-local L = require "ebblib"
+local C   = require "ebb.src.c"
+local G   = require "ebb.src.gpu_util"
+local Pre = require "ebb.src.prelude"
 
-local CPU = L.CPU
-local GPU = L.GPU
+local CPU = Pre.CPU
+local GPU = Pre.GPU
 
 
 -------------------------------------------------------------------------------
@@ -22,7 +22,7 @@ DataArray.__index = DataArray
 Raw.DataArray = DataArray
 
 function DataArray.New(params)
-  params.processor = params.processor or L.default_processor
+  params.processor = params.processor or Pre.default_processor
   params.size = params.size or 0
   if not params.type then error('must provide type') end
 

@@ -75,16 +75,16 @@ returns true when the obj is a Liszt type.
 -----------------------------------------------
 
 ```
-typ:isScalar()
-typ:isVector()
-typ:isMatrix()
+typ:isscalar()
+typ:isvector()
+typ:ismatrix()
 ```
 Every Liszt type is either a matrix, vector, or scalar.  If the type is a vector, we can get its size using `typ.N`.  If the type is a matrix, we can get its dimensions using `typ.Nrow` and `typ.Ncol`.
 
 -----------------------------------------------
 
 ```
-typ:baseType()
+typ:basetype()
 ```
 For vector and matrix types, the base type is the scalar type parameter.  For scalar types, this function returns the type it was called on.
 
@@ -94,28 +94,28 @@ For vector and matrix types, the base type is the scalar type parameter.  For sc
 -----------------------------------------------
 
 ```
-typ:isValueType()
+typ:isvalue()
 ```
 returns true when the base type is a primitive, i.e. `L.bool`, `L.float`, `L.double`, `L.int`, or `L.uint64`.
 
 -----------------------------------------------
 
 ```
-typ:isIntegral()
+typ:isintegral()
 ```
 returns true when the base type is `L.int` or `L.uint64`.
 
 -----------------------------------------------
 
 ```
-typ:isNumeric()
+typ:isnumeric()
 ```
 returns true when the base type is `L.float`, `L.double`, `L.int`, or `L.uint64`.
 
 -----------------------------------------------
 
 ```
-typ:isLogical()
+typ:islogical()
 ```
 returns true when the base type is `L.bool`.
 
@@ -125,7 +125,7 @@ returns true when the base type is `L.bool`.
 -----------------------------------------------
 
 ```
-typ:isKey()
+typ:iskey()
 ```
 returns true when the base type is a key.  The relation argument to the key type can be retreived as `typ.relation`.
 
@@ -135,14 +135,14 @@ returns true when the base type is a key.  The relation argument to the key type
 -----------------------------------------------
 
 ```
-typ:isPrimitive()
+typ:isprimitive()
 ```
 returns true when the type is a primitive. (both scalar and a value type)
 
 -----------------------------------------------
 
 ```
-typ:isScalarKey()
+typ:isscalarkey()
 ```
 returns true when the type is a key, but not a vector of keys or matrix of keys.
 
@@ -643,7 +643,7 @@ end)
 ------------------
 
 ```
-field:DumpToList()
+field:Dump({})
 ```
 
 Opposite of loading via a list; this function returns the contents of `field` converted into a Lua list value.
@@ -727,13 +727,13 @@ NOTE: The exact format of DLDs is preliminary and subject to change.  The follow
 Liszt supports macros in the style of Terra as an advanced feature.
 
 ```
-local m = L.NewMacro(lua_generator_function)
+local m = L.Macro(lua_generator_function)
 ```
 
 `NewMacro` takes a Lua generator function as its argument.  This function is passed Liszt ASTs as arguments and expected to return a Liszt AST as its result.  For instance, the following macro implements addition.
 
 ```
-local sum_macro = L.NewMacro(function(arg1, arg2)
+local sum_macro = L.Macro(function(arg1, arg2)
   return liszt `arg1 + arg2
 end)
 ```
@@ -758,14 +758,14 @@ Install `macro` with name `name` on relation `rel` as if it were a function.  In
 This feature allows us to expose more friendly syntax to the users of geometric domain libraries.
 
 ```
-vertices:NewFieldMacro('edges', L.NewMacro(function(v)
+vertices:NewFieldMacro('edges', L.Macro(function(v)
   return liszt `L.Where(edges.tail, v)
 end))
 ```
 This macro now allows client programmers to write `for e in v.edges do ... end` when `v` is a key from `vertices`.
 
 ```
-cells:NewFieldMacro('__apply_macro', L.NewMacro(function(c, xoff, yoff)
+cells:NewFieldMacro('__apply_macro', L.Macro(function(c, xoff, yoff)
   return liszt `L.Affine(cells, {{1, 0, xoff},
                                  {0, 1, yoff}}, c)
 end))

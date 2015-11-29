@@ -7,11 +7,12 @@
 
 local P = require "ebb.src.parser"
 
-local ebblib = require "ebblib"
-local specialization = require "ebb.src.specialization"
-local semant = require "ebb.src.semant"
+local ebblib            = require "ebblib"
+local specialization    = require "ebb.src.specialization"
+local semant            = require "ebb.src.semant"
+local F                 = require "ebb.src.functions"
 -- include ebb library for programmer
-L = ebblib
+--L = ebblib
 
 local statement = function(self, lexer)
     local ast, assign = P.ParseStatement(lexer)
@@ -19,7 +20,7 @@ local statement = function(self, lexer)
     if ast.kind == 'UserFunction' then
         constructor = function (env_fn)
             local env = env_fn()
-            return ebblib.NewUserFunc(ast, env)
+            return F.NewFunction(ast, env)
         end
     else -- quote
         error("Expected ebb function!", 2)
@@ -48,7 +49,7 @@ local ebblanguage = {
         if ast.kind == 'UserFunction' then
             return function (env_fn)
                 local env = env_fn()
-                return ebblib.NewUserFunc(ast, env)
+                return F.NewFunction(ast, env)
             end
         elseif ast.kind == 'Quote' then -- quote
             return function (env_fn)

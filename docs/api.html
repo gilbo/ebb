@@ -43,36 +43,36 @@ L.vec3b   -- a vector of 3 booleans</code></pre>
 <pre><code>L.is_type(obj)</code></pre>
 <p>returns true when the obj is a Liszt type.</p>
 <hr />
-<pre><code>typ:isScalar()
-typ:isVector()
-typ:isMatrix()</code></pre>
+<pre><code>typ:isscalar()
+typ:isvector()
+typ:ismatrix()</code></pre>
 <p>Every Liszt type is either a matrix, vector, or scalar. If the type is a vector, we can get its size using <code>typ.N</code>. If the type is a matrix, we can get its dimensions using <code>typ.Nrow</code> and <code>typ.Ncol</code>.</p>
 <hr />
-<pre><code>typ:baseType()</code></pre>
+<pre><code>typ:basetype()</code></pre>
 <p>For vector and matrix types, the base type is the scalar type parameter. For scalar types, this function returns the type it was called on.</p>
 <h3 id="value-types">Value Types</h3>
 <hr />
-<pre><code>typ:isValueType()</code></pre>
+<pre><code>typ:isvalue()</code></pre>
 <p>returns true when the base type is a primitive, i.e. <code>L.bool</code>, <code>L.float</code>, <code>L.double</code>, <code>L.int</code>, or <code>L.uint64</code>.</p>
 <hr />
-<pre><code>typ:isIntegral()</code></pre>
+<pre><code>typ:isintegral()</code></pre>
 <p>returns true when the base type is <code>L.int</code> or <code>L.uint64</code>.</p>
 <hr />
-<pre><code>typ:isNumeric()</code></pre>
+<pre><code>typ:isnumeric()</code></pre>
 <p>returns true when the base type is <code>L.float</code>, <code>L.double</code>, <code>L.int</code>, or <code>L.uint64</code>.</p>
 <hr />
-<pre><code>typ:isLogical()</code></pre>
+<pre><code>typ:islogical()</code></pre>
 <p>returns true when the base type is <code>L.bool</code>.</p>
 <h3 id="key-types">Key Types</h3>
 <hr />
-<pre><code>typ:isKey()</code></pre>
+<pre><code>typ:iskey()</code></pre>
 <p>returns true when the base type is a key. The relation argument to the key type can be retreived as <code>typ.relation</code>.</p>
 <h3 id="miscellaneous">Miscellaneous</h3>
 <hr />
 <pre><code>typ:isPrimitive()</code></pre>
 <p>returns true when the type is a primitive. (both scalar and a value type)</p>
 <hr />
-<pre><code>typ:isScalarKey()</code></pre>
+<pre><code>typ:isscalarkey()</code></pre>
 <p>returns true when the type is a key, but not a vector of keys or matrix of keys.</p>
 <h1 id="constants">Constants</h1>
 <pre><code>local c = L.Constant(typ, initial_value)</code></pre>
@@ -290,7 +290,7 @@ field:Load(lua_function)</code></pre>
   if i == 0 then return 1000 else return 0 end
 end)</code></pre>
 <hr />
-<pre><code>field:DumpToList()</code></pre>
+<pre><code>field:Dump({})</code></pre>
 <p>Opposite of loading via a list; this function returns the contents of <code>field</code> converted into a Lua list value.</p>
 <hr />
 <pre><code>field:DumpFunction(lua_function)</code></pre>
@@ -327,9 +327,9 @@ end)</code></pre>
 </ul>
 <h1 id="macros">Macros</h1>
 <p>Liszt supports macros in the style of Terra as an advanced feature.</p>
-<pre><code>local m = L.NewMacro(lua_generator_function)</code></pre>
+<pre><code>local m = L.Macro(lua_generator_function)</code></pre>
 <p><code>NewMacro</code> takes a Lua generator function as its argument. This function is passed Liszt ASTs as arguments and expected to return a Liszt AST as its result. For instance, the following macro implements addition.</p>
-<pre><code>local sum_macro = L.NewMacro(function(arg1, arg2)
+<pre><code>local sum_macro = L.Macro(function(arg1, arg2)
   return liszt `arg1 + arg2
 end)</code></pre>
 <hr />
@@ -339,11 +339,11 @@ end)</code></pre>
 <pre><code>rel:NewFieldMacro(name, macro)</code></pre>
 <p>Install <code>macro</code> with name <code>name</code> on relation <code>rel</code> as if it were a function. Inside Liszt code, whenever a key from <code>rel</code> accesses <code>name</code>, the macro will be expanded and passed the key as its only argument. A macro bound to the special name <code>__apply_macro</code> will instead be expanded wherever a programmer calls a key from the relation, and passed the key along with any arguments as arguments to the macro function.</p>
 <p>This feature allows us to expose more friendly syntax to the users of geometric domain libraries.</p>
-<pre><code>vertices:NewFieldMacro(&#39;edges&#39;, L.NewMacro(function(v)
+<pre><code>vertices:NewFieldMacro(&#39;edges&#39;, L.Macro(function(v)
   return liszt `L.Where(edges.tail, v)
 end))</code></pre>
 <p>This macro now allows client programmers to write <code>for e in v.edges do ... end</code> when <code>v</code> is a key from <code>vertices</code>.</p>
-<pre><code>cells:NewFieldMacro(&#39;__apply_macro&#39;, L.NewMacro(function(c, xoff, yoff)
+<pre><code>cells:NewFieldMacro(&#39;__apply_macro&#39;, L.Macro(function(c, xoff, yoff)
   return liszt `L.Affine(cells, {{1, 0, xoff},
                                  {0, 1, yoff}}, c)
 end))</code></pre>

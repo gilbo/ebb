@@ -1,6 +1,7 @@
 --DISABLE-ON-LEGION
 
-import "ebb"
+import 'ebb'
+local L = require 'ebblib'
 require "tests/test"
 
 local cells = L.NewRelation { size = 10, name = 'cells' }

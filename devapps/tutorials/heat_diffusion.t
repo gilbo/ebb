@@ -1,4 +1,5 @@
-import "ebb" -- Every Ebb File should start with this command
+import "ebb"
+local L = require "ebblib" -- Every Ebb File should start with this command
 
 -- The first thing we do in most Ebb simulations is to load
 -- a geometric domain library.  The standard library comes with a

@@ -1,6 +1,7 @@
 package.path = package.path .. ";./tests/?.lua;?.lua"
 local test = require "test"
-import "ebb"
+import 'ebb'
+local L = require 'ebblib'
 local types = require "ebb.src.types"
 
 

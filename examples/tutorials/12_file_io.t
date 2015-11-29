@@ -18,7 +18,8 @@
 -- building custom file I/O read the Terra documentation themselves.
 
 
-import "ebb"
+import 'ebb'
+local L = require 'ebblib'
 
 local PN        = require 'ebb.lib.pathname'
 local DLD       = require 'ebb.lib.dld'

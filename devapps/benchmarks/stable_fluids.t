@@ -1,5 +1,6 @@
 import "ebb"
---L.default_processor = L.GPU
+local L = require "ebblib"
+--L.SetDefaultProcessor(L.GPU)
 
 local Grid  = require 'ebb.domains.grid'
 local cmath = terralib.includecstring [[
@@ -20,7 +21,7 @@ float rand_float()
 --cmath.srand(cmath.time(nil));
 --local rand_float = cmath.rand_float
 local rand_float = L.rand
---if L.default_processor == L.GPU then
+--if L.GetDefaultProcessor() == L.GPU then
 --    rand_float = terra() return 0.5f end
 --end
 local vdb   = require 'ebb.lib.vdb'
@@ -476,7 +477,7 @@ for i = 0, STEPS-1 do
     particles:foreach(compute_particle_velocity)
     particles:foreach(update_particle_pos)
 
-    if L.default_processor == L.CPU and i % 5 == 0 then
+    if L.GetDefaultProcessor() == L.CPU and i % 5 == 0 then
         vdb.vbegin()
             vdb.frame()
             --grid.cells:foreach(draw_grid)

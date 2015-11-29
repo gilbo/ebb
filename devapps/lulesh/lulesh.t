@@ -1,6 +1,7 @@
-import 'ebb'
+import "ebb"
+local L = require "ebblib"
 
---L.default_processor = L.GPU
+--L.SetDefaultProcessor(L.GPU)
 
 local PN    = require 'ebb.lib.pathname'
 local Grid  = require "ebb.domains.grid"

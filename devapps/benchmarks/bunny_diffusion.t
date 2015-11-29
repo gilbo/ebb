@@ -1,4 +1,5 @@
-import "ebb" -- Every Ebb File should start with this command
+import "ebb"
+local L = require "ebblib" -- Every Ebb File should start with this command
 
 -- This line includes the trimesh.t file.
 -- As a result, the table 'Trimesh' defined in that file is bound to

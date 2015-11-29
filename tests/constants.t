@@ -1,5 +1,6 @@
 --DISABLE-TEST
-import "ebb"
+import 'ebb'
+local L = require 'ebblib'
 require "tests/test"
 
 local R = L.NewRelation { name="R", size=5 }

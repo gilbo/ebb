@@ -1,4 +1,5 @@
-import 'ebb'
+import "ebb"
+local L = require "ebblib"
 local vdb = require 'ebb.lib.vdb'
 
 local Tetmesh = require 'devapps.fem.tetmesh'
