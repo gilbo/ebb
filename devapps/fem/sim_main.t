@@ -521,6 +521,24 @@ function main()
   local numFixedDOFs     = 0
   local fixedDOFs        = nil
 
+  --[[
+  local maxdegree = L.Global(L.double, 0)
+  local mindegree = L.Global(L.double, math.huge)
+  mesh.vertices:foreach( ebb ( v )
+    var d = -1
+    for e in v.edges do d = d + 1 end
+    maxdegree max= d
+  end)
+  mesh.vertices:foreach( ebb ( v )
+    var d = -1
+    for e in v.edges do d = d + 1 end
+    mindegree min= d
+  end)
+  print('min degree: ', mindegree:get())
+  print('max degree: ', maxdegree:get())
+  print('avg degree: ', mesh.edges:Size() / mesh.vertices:Size() - 1)
+  --]]
+
   computeMassMatrix(volumetric_mesh)
 
   F:setupFieldsFunctions(mesh)
