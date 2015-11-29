@@ -23,3 +23,15 @@ os.execute("pandoc manual.md -o manual.html"..
 
 
 
+os.execute("pandoc tutorials.md -o tutorials.html"..
+" -f markdown -t html"..
+" --standalone --table-of-contents --toc-depth=3"..
+" --title-prefix='Ebb Tutorials' "..
+" -c style.css"..
+" --template=template.html"
+)
+
+
+
+
+

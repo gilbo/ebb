@@ -42,6 +42,6 @@ end
 mesh.vertices:foreach(translate)
 
 mesh.vertices.pos:print()
---Finally, we can write an Ebb function to translate all of the vertices,
+-- Finally, we can write an Ebb function to translate all of the vertices,
 -- execute it, and then print the results.
 
