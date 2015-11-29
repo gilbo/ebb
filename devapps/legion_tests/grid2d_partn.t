@@ -15,8 +15,8 @@ print("***************************************************")
 -- When using partitioning, this example should throw errors when:
 --   - reducing fields
 --   - reducing globals
-local do_global_reduction = false
-local do_field_reduction  = true
+local do_global_reduction = true
+local do_field_reduction  = false
 
 -- includes
 local Grid  = require 'ebb.domains.grid'
@@ -95,7 +95,7 @@ local ebb SumValue(c)
 end
 
 -- loop/ main
-for iter = 1, 4 do
+for iter = 1, 2 do
     sum_val:set(0)
     if do_field_reduction then
         C:foreach(ScatterToVerts)

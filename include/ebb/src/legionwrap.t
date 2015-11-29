@@ -261,11 +261,16 @@ function LW.TaskLauncher:AddFuture(future)
 end
 
 -- If there's a future it will be returned
-function LW.TaskLauncher:Execute(runtime, ctx)
-  local ExecuteVariant =
-    (self._index_launch and LW.legion_index_launcher_execute) or
-    LW.legion_task_launcher_execute
-  return ExecuteVariant(runtime, ctx, self._launcher)
+function LW.TaskLauncher:Execute(runtime, ctx, redoptype)
+  local exec_str =
+    'legion' .. ((self._index_launch and '_index') or '_task') .. '_launcher_execute'
+  local exec_args = terralib.newlist({runtime, ctx, self._launcher})
+  local reduce_id = nil
+  if redoptype and self._index_launch then
+    exec_args:insert(LW.reduction_ids[redoptype])
+    exec_str = exec_str .. '_reduction'
+  end
+  return LW[exec_str](unpack(exec_args))
 end
 
 
@@ -1093,11 +1098,17 @@ LW.reduction_ops = {
 local num_reduction_functions = 0
 for _, o in pairs(LW.reduction_ops) do
   for t, tt in pairs(LW.reduction_types) do
-    local register_reduction =
-      LW['register_reduction_' .. o .. '_' .. tt]
-    if register_reduction then
+    local field_register_reduction =
+      LW['register_reduction_field_' .. o .. '_' .. tt]
+    if field_register_reduction then
       num_reduction_functions = num_reduction_functions + 1
-      LW.reduction_ids[o .. '_' .. t] = num_reduction_functions
+      LW.reduction_ids['field_' .. o .. '_' .. t] = num_reduction_functions
+    end
+    local global_register_reduction =
+      LW['register_reduction_global_' .. o .. '_' .. tt]
+    if global_register_reduction then
+      num_reduction_functions = num_reduction_functions + 1
+      LW.reduction_ids['global_' .. o .. '_' .. t] = num_reduction_functions
     end
   end
 end
@@ -1105,11 +1116,17 @@ terra LW.RegisterReductions()
   escape
     for _, o in pairs(LW.reduction_ops) do
       for t, tt in pairs(LW.reduction_types) do
-        local register_reduction =
-          LW['register_reduction_' .. o .. '_' .. tt]
-        if register_reduction then
-          local reduction_id = LW.reduction_ids[o .. '_' .. t]
-          emit `register_reduction(reduction_id)
+        local field_register_reduction =
+          LW['register_reduction_field_' .. o .. '_' .. tt]
+        if field_register_reduction then
+          local reduction_id = LW.reduction_ids['field_' .. o .. '_' .. t]
+          emit `field_register_reduction(reduction_id)
+        end
+        local global_register_reduction =
+          LW['register_reduction_global_' .. o .. '_' .. tt]
+        if global_register_reduction then
+          local reduction_id = LW.reduction_ids['global_' .. o .. '_' .. t]
+          emit `global_register_reduction(reduction_id)
         end
       end
     end
