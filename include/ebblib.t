@@ -53,8 +53,6 @@ L.yid             = B.yid
 L.zid             = B.zid
 
 L.UNSAFE_ROW      = B.UNSAFE_ROW
---L.any             = B.any
---L.all             = B.all
 
 L.acos            = B.acos
 L.asin            = B.asin
