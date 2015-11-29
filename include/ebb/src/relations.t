@@ -837,7 +837,7 @@ function Subset:MoveTo( proc )
   if self._index      then self._index:MoveTo(proc)       end
 end
 
-function Relation:NewSubsetFromFunction (name, predicate)
+function Relation:_INTERNAL_NewSubsetFromLuaFunction (name, predicate)
   if not name or type(name) ~= "string" then
     error("NewSubsetFromFunction() "..
           "expects a string as the first argument", 2)
@@ -906,6 +906,94 @@ function Relation:NewSubsetFromFunction (name, predicate)
   return subset
 end
 
+local function is_int(obj)
+  return type(obj) == 'number' and obj % 1 == 0
+end
+local function is_subrectangle(rel, obj)
+  local dims = rel:Dims()
+  if not terralib.israwlist(obj) or #obj ~= #dims then return false end
+  for i,r in ipairs(obj) do
+    if not terralib.israwlist(r) or #r ~= 2 then return false end
+    if not is_int(r[1]) or not is_int(r[2]) then return false end
+    if r[1] < 0 or r[2] < 0 or r[1] >= dims[i] or r[2] >= dims[i] then
+      return false
+    end
+  end
+  return true
+end
+
+function Relation:_INTERNAL_NewSubsetFromRectangles(name, rectangles)
+  if self:nDims() == 2 then
+    return self:_INTERNAL_NewSubsetFromLuaFunction(name, function(xi, yi)
+      for _,r in ipairs(rectangles) do
+        local xlo, xhi, ylo, yhi = r[1][1], r[1][2], r[2][1], r[2][2]
+        if xlo <= xi and xi <= xhi and ylo <= yi and yi <= yhi then
+          return true -- found cell inside some rectangle
+        end
+      end
+      return false -- couldn't find cell inside any rectangle
+    end)
+  else
+    assert(self:nDims() == 3, "grids must be 2 or 3 dimensional")
+    return self:_INTERNAL_NewSubsetFromLuaFunction(name, function(xi, yi, zi)
+      for _,r in ipairs(rectangles) do
+        local xlo, xhi, ylo, yhi, zlo, zhi =
+          r[1][1], r[1][2],  r[2][1], r[2][2], r[3][1], r[3][2]
+        if xlo <= xi and xi <= xhi and
+           ylo <= yi and yi <= yhi and
+           zlo <= zi and zi <= zhi
+        then
+          return true -- found cell inside some rectangle
+        end
+      end
+      return false -- couldn't find cell inside any rectangle
+    end)
+  end
+end
+
+function Relation:NewSubset( name, arg )
+  if not name or type(name) ~= "string" then
+    error("NewSubset() expects a string as the first argument", 2) end
+  if not is_valid_lua_identifier(name) then
+    error(valid_name_err_msg.subset, 2) end
+  if self[name] then
+    error("Cannot create a new subset with name '"..name.."'  "..
+          "That name is already being used.", 2)
+  end
+
+  if self:isElastic() then
+    error("NewSubset(): "..
+          "Subsets of elastic relations are currently unsupported", 2)
+  end
+
+  if type(arg) == 'table' then
+    if self:isGrid() then
+      if arg.rectangles then
+        if not terralib.israwlist(arg.rectangles) then
+          error("NewSubset(): Was expecting 'rectangles' to be a list", 2)
+        end
+        for i,r in ipairs(arg.rectangles) do
+          if not is_subrectangle(self, r) then
+            error("NewSubset(): Entry #"..i.." in 'rectangles' list was "..
+                  "not a rectangle, specified as a list of "..self:nDims()..
+                  " range pairs lying inside the grid", 2)
+          end
+        end
+        return self:_INTERNAL_NewSubsetFromRectangles(name, arg.rectangles)
+      else -- assume a single rectangle
+        if not is_subrectangle(self, arg) then
+          error('NewSubset(): Was expecting a rectangle specified as a '..
+                'list of '..self:nDims()..' range pairs lying inside '..
+                'the grid', 2)
+        end
+        return self:_INTERNAL_NewSubsetFromRectangles(name, { arg })
+      end
+    end
+  end
+
+  -- catch-all
+  error('NewSubset(): unrecognized argument type', 2)
+end
 
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------

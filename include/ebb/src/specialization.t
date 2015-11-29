@@ -74,19 +74,19 @@ end
 
 
 
-local function exec_external(exp, ctxt, default)
+local function exec_external(exp, ctxt, ast_node, default)
   local status, v = pcall(function()
     return exp(ctxt:lua())
   end)
   if not status then
-    ctxt:error(exp, "Error evaluating lua expression")
+    ctxt:error(ast_node, "Error evaluating lua expression:\n"..v)
     v = default
   end
   return v
 end
 
 local function exec_type_annotation(typexp, ast_node, ctxt)
-  local typ = exec_external(typexp, ctxt, errorT)
+  local typ = exec_external(typexp, ctxt, ast_node, errorT)
   -- handle use of relations as shorthand for key types
   if is_relation(typ) then typ = keyT(typ) end
 
@@ -422,7 +422,7 @@ function ast.TableLookup:specialize(ctxt)
   -- use of the .[lua_expression] syntax
   -- the lua expression must be evaluated into a string
   if type(member) == "function" then
-    member = exec_external(member, ctxt, "<error>")
+    member = exec_external(member, ctxt, self, "<error>")
     if type(member) ~= "string" then
       ctxt:error(self,"expected escape to evaluate to a string but found ",
                       type(member))

@@ -88,6 +88,15 @@ Grid3d.__index = Grid3d
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
 
+local function boundary_rectangles_2d(X, Y, xn_bd, yn_bd)
+  local rects = {}
+  if xn_bd > 0 then table.insert(rects, { {0,xn_bd-1},    {0,Y-1} })
+                    table.insert(rects, { {X-xn_bd,X-1},  {0,Y-1} }) end
+  if yn_bd > 0 then table.insert(rects, { {0,X-1},  {0,yn_bd-1}   })
+                    table.insert(rects, { {0,X-1},  {Y-yn_bd,Y-1} }) end
+  return rects
+end
+
 local function setup2dCells(grid)
   local Cx, Cy  = grid:xSize(), grid:ySize()
   local xw, yw  = grid:xCellWidth(), grid:yCellWidth()
@@ -102,14 +111,11 @@ local function setup2dCells(grid)
                                  {0,1,y}}, c)                   end))
 
   -- Boundary/Interior subsets
-  local function is_bd(x,y)
-    return y <  yn_bd or y >= Cy-yn_bd or
-           x <  xn_bd or x >= Cx-xn_bd
-  end
-  cells:NewSubsetFromFunction('boundary', is_bd)
-  cells:NewSubsetFromFunction('interior', function(xi,yi)
-    return not is_bd(xi,yi)
-  end)
+  cells:NewSubset('boundary', {
+    rectangles = boundary_rectangles_2d(Cx, Cy, xn_bd, yn_bd)
+  })
+  cells:NewSubset('interior', { { xn_bd, Cx-xn_bd-1 },
+                                { yn_bd, Cy-yn_bd-1 } })
 
   cells:NewFieldReadFunction('center', ebb (c)
     return L.vec2f({ xo + xw * (L.double(L.xid(c)) + 0.5),
@@ -226,14 +232,11 @@ local function setup2dVertices(grid)
                                  {0,1,y}}, v)                   end))
 
   -- Boundary/Interior subsets
-  local function is_bd(x,y)
-    return y < yn_bd or y >= Vy-yn_bd or
-           x < xn_bd or x >= Vx-xn_bd
-  end
-  verts:NewSubsetFromFunction('boundary', is_bd)
-  verts:NewSubsetFromFunction('interior', function(xi,yi)
-    return not is_bd(xi,yi)
-  end)
+  verts:NewSubset('boundary', {
+    rectangles = boundary_rectangles_2d(Vx, Vy, xn_bd, yn_bd)
+  })
+  verts:NewSubset('interior', { { xn_bd, Vx-xn_bd-1 },
+                                { yn_bd, Vy-yn_bd-1 } })
 
   -- boundary depths
   verts:NewFieldMacro('xneg_depth', L.Macro(function(v)
@@ -503,6 +506,19 @@ end
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
 
+local function boundary_rectangles_3d(X, Y, Z, xn_bd, yn_bd, zn_bd)
+  local rects = {}
+  if xn_bd > 0 then table.insert(rects, { {0,xn_bd-1},    {0,Y-1}, {0,Z-1} })
+                    table.insert(rects, { {X-xn_bd,X-1},  {0,Y-1}, {0,Z-1} })
+  end
+  if yn_bd > 0 then table.insert(rects, { {0,X-1},  {0,yn_bd-1},   {0,Z-1} })
+                    table.insert(rects, { {0,X-1},  {Y-yn_bd,Y-1}, {0,Z-1} })
+  end
+  if zn_bd > 0 then table.insert(rects, { {0,X-1},  {0,Y-1}, {0,zn_bd-1}   })
+                    table.insert(rects, { {0,X-1},  {0,Y-1}, {Z-zn_bd,Z-1} })
+  end
+  return rects
+end
 
 local function setup3dCells(grid)
   local Cx, Cy, Cz  = grid:xSize(), grid:ySize(), grid:zSize()
@@ -520,15 +536,12 @@ local function setup3dCells(grid)
                                    {0,0,1,z}}, c)               end))
 
   -- Boundary/Interior subsets
-  local function is_bd(xi, yi, zi)
-    return  xi < xn_bd or xi >= Cx-xn_bd or
-            yi < yn_bd or yi >= Cy-yn_bd or
-            zi < zn_bd or zi >= Cz-zn_bd
-  end
-  cells:NewSubsetFromFunction('boundary', is_bd)
-  cells:NewSubsetFromFunction('interior', function(xi,yi,zi)
-    return not is_bd(xi,yi,zi)
-  end)
+  cells:NewSubset('boundary', {
+    rectangles = boundary_rectangles_3d(Cx, Cy, Cz, xn_bd, yn_bd, zn_bd)
+  })
+  cells:NewSubset('interior', { { xn_bd, Cx-xn_bd-1 },
+                                { yn_bd, Cy-yn_bd-1 },
+                                { zn_bd, Cz-zn_bd-1 } })
 
   cells:NewFieldReadFunction('center', ebb(c)
     return L.vec3f({ xo + xw * (L.double(L.xid(c)) + 0.5),
@@ -670,15 +683,12 @@ local function setup3dVertices(grid)
                                    {0,0,1,z}}, v)               end))
 
   -- Boundary/Interior subsets
-  local function is_bd(xi,yi,zi)
-    return  xi < xn_bd or xi >= Vx-xn_bd or
-            yi < yn_bd or yi >= Vy-yn_bd or
-            zi < zn_bd or zi >= Vz-zn_bd
-  end
-  verts:NewSubsetFromFunction('boundary', is_bd)
-  verts:NewSubsetFromFunction('interior', function(xi,yi,zi)
-    return not is_bd(xi,yi,zi)
-  end)
+  verts:NewSubset('boundary', {
+    rectangles = boundary_rectangles_3d(Vx, Vy, Vz, xn_bd, yn_bd, zn_bd)
+  })
+  verts:NewSubset('interior', { { xn_bd, Vx-xn_bd-1 },
+                                { yn_bd, Vy-yn_bd-1 },
+                                { zn_bd, Vz-zn_bd-1 } })
 
   -- boundary depths
   verts:NewFieldMacro('xneg_depth', L.Macro(function(v)
