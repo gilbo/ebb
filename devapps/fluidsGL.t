@@ -348,5 +348,5 @@ for i = 1, 1 do
     grid.locate_in_duals(particles, 'pos', 'dual_cell')
 end
 
-grid.cells:print()
+grid.cells:Print()
 

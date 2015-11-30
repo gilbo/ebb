@@ -171,7 +171,7 @@ print(mesh.triangles:Size())
 Having loaded the octahedron, let's print out some simple statistics about how many elements of each kind it contains.  If everything is working fine, we should expect to see `6`, `24`, and `8`.  (Why 24?  The standard triangle mesh represents directed rather than undirected edges.)
 
 ```
-mesh.vertices.pos:print()
+mesh.vertices.pos:Print()
 ```
 When we load in the triangle mesh, the vertices are assigned positions from the file.  Here, we print those out to inspect.  They should be unit distance away from the origin along each axis.  Take a look at the OFF file itself (it's in plaintext) and you'll see that the positions there correspond to the positions printed out.
 
@@ -182,7 +182,7 @@ end
 
 mesh.vertices:foreach(translate)
 
-mesh.vertices.pos:print()
+mesh.vertices.pos:Print()
 ```
 Finally, we can write an Ebb function to translate all of the vertices, execute it, and then print the results.
 
@@ -1341,8 +1341,8 @@ When loading key data, we have to account for Ebb's optimized key encoding.  Her
 
 
 ```
---vertices.pos:print()
---triangles.v:print()
+--vertices.pos:Print()
+--triangles.v:Print()
 
 local ebb visualize ( t : triangles )
   var n = L.double(L.id(t) % 256) / 255.0

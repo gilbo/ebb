@@ -193,46 +193,6 @@ end
 
 -------------------------------------------------------------------------------
 
---[[
-local function cached(ctor)
-    local cache = {}
-    return function(param)
-        local t = cache[param]
-        if not t then
-            t = ctor(param)
-            cache[param] = t
-        end
-        return t
-    end
-end
-
-local function dims_to_bit_dims(dims)
-  local bitdims = {}
-  for k=1,#dims do
-    if      dims[k] < 256         then  bitdims[k] = 8
-    elseif  dims[k] < 65536       then  bitdims[k] = 16
-    elseif  dims[k] < 4294967296  then  bitdims[k] = 32
-                                  else  bitdims[k] = 64 end
-  end
-  return bitdims
-end
-local function bit_dims_to_dim_types(bitdims)
-  local dimtyps = {}
-  for k=1,#bitdims do
-    if      bitdims[k] == 8   then  dimtyps[k] = uint8
-    elseif  bitdims[k] == 16  then  dimtyps[k] = uint16
-    elseif  bitdims[k] == 32  then  dimtyps[k] = uint32
-                              else  dimtyps[k] = uint64 end
-  end
-  return dimtyps
-end
-local function dims_to_strides(dims)
-  local strides = {1}
-  if #dims >= 2 then  strides[2] = dims[1]            end
-  if #dims >= 3 then  strides[3] = dims[1] * dims[2]  end
-  return strides
-end
---]]
 local function lua_lin_gen(strides)
   local code = 'return function(self) return self.a0'
   for k=2,#strides do
@@ -274,55 +234,6 @@ local function legion_domain_point_gen(keytyp)
     end
   end
 end
---[[
-local function get_physical_key_type(rel)
-  local cached = rawget(rel, '_key_type_cached')
-  if cached then return cached end
-  -- If not cached, then execute the rest of this function
-  -- to build the type
-
-  local dims    = rel:Dims()
-  local bitdims = dims_to_bit_dims(dims)
-  local dimtyps = bit_dims_to_dim_types(bitdims)
-  local strides = dims_to_strides(dims)
-  if rel:isElastic() then
-    bitdims = {64}
-    dimtyps = {uint64}
-  end
-
-  local name    = 'key'
-  for k=1,#bitdims do name = name .. '_' .. tostring(bitdims[k]) end
-  name = name .. '_'..rel:Name()
-
-  local PhysKey = terralib.types.newstruct(name)
-  for k=1,#bitdims do name = 
-    table.insert(PhysKey.entries,
-                 { field = 'a'..tostring(k-1), type = dimtyps[k] })
-  end
-
-  -- install specialized methods
-  PhysKey.methods.luaLinearize            = lua_lin_gen(strides)
-  PhysKey.methods.terraLinearize          = terra_lin_gen(PhysKey, strides)
-  if use_legion then
-    PhysKey.methods.legionTerraLinearize  = legion_terra_lin_gen(PhysKey)
-  end
-  -- add equality / inequality tests
-  local ndim = #dims
-  PhysKey.metamethods.__eq = macro(function(lhs,rhs)
-    local exp = `lhs.a0 == rhs.a0
-    for k=2,ndim do
-      local astr = 'a'..tostring(k-1)
-      exp = `exp and lhs.[astr] == rhs.[astr]
-    end
-    return exp
-  end)
-  PhysKey.metamethods.__ne = macro(function(lhs,rhs)
-    return `not lhs == rhs
-  end)
-
-  return PhysKey
-end
---]]
 
 local function dim_to_bits(n_dim)
   if      n_dim < 256         then  return 8
@@ -346,7 +257,7 @@ local function keyType(relation)
 
   -- collect information
   local dims        = relation:Dims()
-  local strides     = relation:Strides()
+  local strides     = relation:_INTERNAL_Strides()
   local dimbits, dimtyps = {}, {}
   local name        = 'key'
   if relation:isElastic() then
@@ -397,15 +308,6 @@ local function keyType(relation)
   keytype_cache[relation] = ktyp
   return ktyp
 end
-
---local keyType = cached(function(relation)
---    checkrelation(relation)
---    local rt = NewType("key")
---    rt.relation = relation
---    rt.ndims    = relation:nDims()
---    rt._terra_type = get_physical_key_type(relation)
---    return rt
---end)
 
 -------------------------------------------------------------------------------
 -- In Summary of the Constructors

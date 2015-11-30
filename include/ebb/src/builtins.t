@@ -241,7 +241,7 @@ function B.Affine.codegen(ast, ctxt)
     local src_rel   = args[3].node_type.relation
     local dst_dims  = dst_rel:Dims()
     local src_dims  = src_rel:Dims()
-    local dst_wrap  = dst_rel:Periodicity()
+    local dst_wrap  = dst_rel:Periodic()
     local nrow      = args[2].node_type.Nrow
     local ncol      = args[2].node_type.Ncol
 
@@ -296,7 +296,7 @@ function B.UNSAFE_ROW.check(ast, ctxt)
         ret_type = errorT
     end
     local rel = rel_type.value
-    local ndim = rel:nDims()
+    local ndim = #rel:Dims()
     --if rel:isGrid() then
     --    ctxt:error(ast, "UNSAFE_ROW cannot generate keys into a grid")
     --    ret_type = errorT
@@ -317,7 +317,7 @@ function B.UNSAFE_ROW.check(ast, ctxt)
 end
 function B.UNSAFE_ROW.codegen(ast, ctxt)
     local rel = ast.params[2].node_type.value
-    local ndim = rel:nDims()
+    local ndim = #rel:Dims()
     local addrtype = keyT(rel):terratype()
     if ndim == 1 then
         return `[addrtype]({ [ast.params[1]:codegen(ctxt)] })

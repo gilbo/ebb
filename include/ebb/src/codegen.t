@@ -516,7 +516,7 @@ function Codegen.codegen (ufunc_ast, ufunc_version)
     local generate_output_future = quote end
     if ctxt:hasGlobalReduce() then
       local globl             = next(ctxt.ufv._global_reductions)
-      local gtyp              = globl.type:terratype()
+      local gtyp              = globl._type:terratype()
       local gptr              = ctxt.ufv:_getLegionGlobalTempSymbol(globl)
 
       if next(ctxt.ufv._global_reductions, globl) then
@@ -835,7 +835,7 @@ function ast.GenericFor:codegen (ctxt)
     for i,p in ipairs(self.set.node_type.projections) do
         local field = dstrel[p]
         projected   = `@[ ctxt:FieldElemPtr(field, projected) ]
-        dstrel      = field.type.relation
+        dstrel      = field._type.relation
         assert(dstrel)
     end
     local sym = symbol(keyT(dstrel):terratype())

@@ -132,7 +132,7 @@ end
 local function main()
   run_simulation(1000)
   -- Debug output:
-  M.vertices.temperature:print()
+  M.vertices.temperature:Print()
 end
 
 main()

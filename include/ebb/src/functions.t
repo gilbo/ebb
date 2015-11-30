@@ -79,7 +79,7 @@ end
 UFVersion._total_function_launch_count =
   Stats.NewCounter('total_function_launch_count')
 function F.PrintStats()
-  UFVersion._total_function_launch_count:print()
+  UFVersion._total_function_launch_count:Print()
 end
 
 -- Use the following to produce

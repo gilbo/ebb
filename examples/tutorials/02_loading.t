@@ -28,7 +28,7 @@ print(mesh.triangles:Size())
 --  rather than undirected edges.)
 
 
-mesh.vertices.pos:print()
+mesh.vertices.pos:Print()
 -- When we load in the triangle mesh, the vertices are assigned positions
 -- from the file.  Here, we print those out to inspect.  They should be
 -- unit distance away from the origin along each axis.  Take a look at
@@ -42,7 +42,7 @@ end
 
 mesh.vertices:foreach(translate)
 
-mesh.vertices.pos:print()
+mesh.vertices.pos:Print()
 -- Finally, we can write an Ebb function to translate all of the vertices,
 -- execute it, and then print the results.
 

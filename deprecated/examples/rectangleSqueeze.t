@@ -275,6 +275,6 @@ end
 main()
 
 -- Print results
-V.position:print()
+V.position:Print()
 
 

@@ -73,11 +73,11 @@ function Pre.Global (typ, init)
           "instance of type " .. tostring(typ), 2)
   end
 
-  local s  = setmetatable({type=typ}, Global)
+  local s  = setmetatable({_type=typ}, Global)
 
   if use_single then
     local tt = typ:terratype()
-    s.data = DataArray.New({size=1,type=tt})
+    rawset(s, '_data', DataArray.New({size=1,type=tt}))
     s:set(init)
 
   elseif use_legion then
@@ -87,32 +87,40 @@ function Pre.Global (typ, init)
   return s
 end
 
+function Global:__newindex(fieldname,value)
+  error("Cannot assign members to Global object", 2)
+end
+
 function Global:set(val)
-  if not T.luaValConformsToType(val, self.type) then error("value does not conform to type of global: " .. tostring(self.type), 2) end
+  if not T.luaValConformsToType(val, self._type) then
+    error("value does not conform to type of global: "..
+          tostring(self._type), 2)
+  end
 
   if VERBOSE then
     local data_deps = "Ebb LOG: function global-set accesses"
-    data_deps = data_deps .. " global " .. tostring(self) .. " in phase EXCLUSIVE ,"
+    data_deps = data_deps .. " global " .. tostring(self) ..
+                " in phase EXCLUSIVE ,"
     print(data_deps)
   end
 
   if use_single then
-    local ptr = self.data:open_write_ptr()
-    ptr[0] = T.luaToEbbVal(val, self.type)
-    self.data:close_write_ptr()
+    local ptr = self._data:open_write_ptr()
+    ptr[0] = T.luaToEbbVal(val, self._type)
+    self._data:close_write_ptr()
 
   elseif use_legion then
-    local typ    = self.type
+    local typ    = self._type
     local tt     = typ:terratype()
     local blob   = C.safemalloc( tt )
     blob[0]      = T.luaToEbbVal(val, typ)
     local future = LW.legion_future_from_buffer(legion_env.runtime,
                                                 blob,
                                                 terralib.sizeof(tt))
-    if self.data then
-      LW.legion_future_destroy(self.data)
+    if self._data then
+      LW.legion_future_destroy(self._data)
     end
-    self.data    = future
+    rawset(self, '_data', future)
   end
 
 end
@@ -127,43 +135,27 @@ function Global:get()
   end
 
   if use_single then
-    local ptr = self.data:open_read_ptr()
-    value = T.ebbToLuaVal(ptr[0], self.type)
-    self.data:close_read_ptr()
+    local ptr = self._data:open_read_ptr()
+    value = T.ebbToLuaVal(ptr[0], self._type)
+    self._data:close_read_ptr()
 
   elseif use_legion then
-    local tt = self.type:terratype()
-    local result = LW.legion_future_get_result(self.data)
+    local tt = self._type:terratype()
+    local result = LW.legion_future_get_result(self._data)
     local rptr   = terralib.cast(&tt, result.value)
-    value = T.ebbToLuaVal(rptr[0], self.type)
+    value = T.ebbToLuaVal(rptr[0], self._type)
     LW.legion_task_result_destroy(result)
   end
 
   return value
 end
 
---function Global:SetData(data)
---  self.data = data
---end
-
---function Global:Data()
---  return self.data
---end
-
---function Global:SetOffset(offset)
---  self.offset = 0
---end
-
---function Global:Offset()
---  return self.offset
---end
-
-function Global:DataPtr()
-    return self.data:_raw_ptr()
+function Global:_Raw_DataPtr()
+    return self._data:_raw_ptr()
 end
 
 function Global:Type()
-  return self.type
+  return self._type
 end
 
 -------------------------------------------------------------------------------
@@ -190,12 +182,20 @@ function Pre.Constant (typ, init)
     end
 
 
-    local c = setmetatable({type=typ, value=deep_copy(init)}, Constant)
+    local c = setmetatable({_type=typ, _value=deep_copy(init)}, Constant)
     return c
 end
 
+function Constant:__newindex(fieldname,value)
+  error("Cannot assign members to Constant object", 2)
+end
+
 function Constant:get()
-  return deep_copy(self.value)
+  return deep_copy(self._value)
+end
+
+function Constant:Type()
+  return deep_copy(self._value)
 end
 
 -------------------------------------------------------------------------------
@@ -203,5 +203,9 @@ end
 -------------------------------------------------------------------------------
 function Pre.Macro(generator)
     return setmetatable({genfunc=generator}, Macro)    
+end
+
+function Macro:__newindex(fieldname,value)
+  error("Cannot assign members to Macro object", 2)
 end
 

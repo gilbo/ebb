@@ -73,7 +73,7 @@ MultiGrid.NewMultiGrid2d {
     error('NewMultiGrid2d currently only supports grids with '..
           '2^n cells in the X and Y dimensions (for simplicity)', 2)
   end
-  local periodicity = params.base_rel:Periodicity()
+  local periodicity = params.base_rel:Periodic()
   if not periodicity[1] or not periodicity[2] then
     error('NewMultiGrid2d currently only supports periodic relations', 2)
   end

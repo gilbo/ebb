@@ -230,7 +230,7 @@ local mesh  = ioOff.LoadTrimesh( PN.scriptdir() .. &#39;octa.off&#39; )</code></
 print(mesh.edges:Size())
 print(mesh.triangles:Size())</code></pre>
 <p>Having loaded the octahedron, let's print out some simple statistics about how many elements of each kind it contains. If everything is working fine, we should expect to see <code>6</code>, <code>24</code>, and <code>8</code>. (Why 24? The standard triangle mesh represents directed rather than undirected edges.)</p>
-<pre><code>mesh.vertices.pos:print()</code></pre>
+<pre><code>mesh.vertices.pos:Print()</code></pre>
 <p>When we load in the triangle mesh, the vertices are assigned positions from the file. Here, we print those out to inspect. They should be unit distance away from the origin along each axis. Take a look at the OFF file itself (it's in plaintext) and you'll see that the positions there correspond to the positions printed out.</p>
 <pre><code>local ebb translate ( v : mesh.vertices )
   v.pos += {1,0,0}
@@ -238,7 +238,7 @@ end
 
 mesh.vertices:foreach(translate)
 
-mesh.vertices.pos:print()</code></pre>
+mesh.vertices.pos:Print()</code></pre>
 <p>Finally, we can write an Ebb function to translate all of the vertices, execute it, and then print the results.</p>
 <h2 id="visualizing-simulations">03: Visualizing Simulations</h2>
 <pre><code>import &quot;ebb&quot;
@@ -1041,8 +1041,8 @@ triangles.v:Load(readTriangleVertices, infile)
 
 C.fclose(infile)</code></pre>
 <p>When loading key data, we have to account for Ebb's optimized key encoding. Here, we provide for two variations that are sufficient to handle the octahedron and bunny meshes. If we were loading a substantially larger mesh, we would need to fill out the <code>KEY_32</code> case and for extremely large meshes, the <code>KEY_64</code> case.</p>
-<pre><code>--vertices.pos:print()
---triangles.v:print()
+<pre><code>--vertices.pos:Print()
+--triangles.v:Print()
 
 local ebb visualize ( t : triangles )
   var n = L.double(L.id(t) % 256) / 255.0

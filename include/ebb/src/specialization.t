@@ -259,20 +259,6 @@ function ast.GenericFor:specialize(ctxt)
   local r = self:clone()
   r.set   = self.set:specialize(ctxt)
 
-  -- NOTE: UNHANDLED.
-  -- The projection chain in the set along with the referred
-  -- relation should be baked in here.
-  -- However, that seems tricky/difficult to me right now...
-  --local rel = r.set.node_type.relation
-  --for i,p in ipairs(r.set.node_type.projections) do
-  --    if not rel[p] then
-  --        ctxt:error(self,"Could not find field '"..p.."'")
-  --        return r
-  --    end
-  --    rel = rel[p].type.relation
-  --    assert(rel)
-  --end
-
   ctxt:enterblock()
   -- REGISTER SYMBOL
   local name_str = r.name
@@ -345,13 +331,13 @@ local function luav_to_ast(luav, src_node)
     node.global = luav
 
   elseif is_constant(luav) then
-    local bt = luav.type:basetype()
-    if luav.type:ismatrix() then
-      node = mat_to_AST(src_node, luav.value, bt)
-    elseif luav.type:isvector() then
-      node = vec_to_AST(src_node, luav.value, bt)
+    local bt = luav._type:basetype()
+    if luav._type:ismatrix() then
+      node = mat_to_AST(src_node, luav._value, bt)
+    elseif luav._type:isvector() then
+      node = vec_to_AST(src_node, luav._value, bt)
     else
-      node = prim_to_AST(src_node, luav.value, bt)
+      node = prim_to_AST(src_node, luav._value, bt)
     end
 
   elseif B.is_builtin(luav) then

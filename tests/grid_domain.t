@@ -166,9 +166,9 @@ rel2:NewField('v2',L.vec2d):Load(function(x,y)   return {2*x,y}   end)
 rel3:NewField('v3',L.vec3d):Load(function(x,y,z) return {3*x,y,z} end)
 
 -- test printing
-rel1.v1:print()
-rel2.v2:print()
-rel3.v3:print()
+rel1.v1:Print()
+rel2.v2:Print()
+rel3.v3:Print()
 
 -- test loading from a list
 local tbl2 = {{1,2},{3,4},{5,6}}

@@ -109,6 +109,6 @@ print("Total compile + exec time = " .. timer_exec:GetTime() .. " seconds")
 end
 
 if not TEST_MODE then
-  Scatter:getCompileTime():print()
-  Scatter:getExecutionTime():print()
+  Scatter:getCompileTime():Print()
+  Scatter:getExecutionTime():Print()
 end

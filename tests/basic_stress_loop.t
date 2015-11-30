@@ -12,5 +12,5 @@ for i=1,1000 do
   --for j=1,10 do end
 end
 
---pass_func:getCompileTime():print()
---pass_func:getExecutionTime():print()
+--pass_func:getCompileTime():Print()
+--pass_func:getExecutionTime():Print()

@@ -592,7 +592,7 @@ function LW.NewInlinePhysicalRegion(params)
       0                         -- legion_mapping_tag_id_t launcher_tag /* = 0 */
     )
     -- add field to launcher
-    LW.legion_inline_launcher_add_field(ils[i], params.fields[i].fid, true)
+    LW.legion_inline_launcher_add_field(ils[i], params.fields[i]._fid, true)
     -- execute launcher to get physical region
     prs[i]  = LW.legion_inline_launcher_execute(legion_env.runtime,
                                                 legion_env.ctx, ils[i])
@@ -757,7 +757,7 @@ function LogicalRegion:CreatePartitionsByField(rfield)
   local color_space = CreateColorSpace(self.relation:TotalPartitions())
   local partn = LW.legion_index_partition_create_by_field(
     legion_env.runtime, legion_env.ctx,
-    self.handle, self.handle, rfield.fid,
+    self.handle, self.handle, rfield._fid,
     color_space,
     100, false)
   local lp = LW.legion_logical_partition_create(

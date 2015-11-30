@@ -23,5 +23,5 @@ end
 
 run_test()
 
---RunRed:getCompileTime():print()
---RunRed:getExecutionTime():print()
+--RunRed:getCompileTime():Print()
+--RunRed:getExecutionTime():Print()

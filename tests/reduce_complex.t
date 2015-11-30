@@ -114,4 +114,4 @@ mesh.tetrahedra:foreach(RecomputeAndResetTetTemporaries)
 mesh.tetrahedra:foreach(ComputeStiffnessMatrix)
 mesh.edges:foreach(ReduceStiffnessPrecision)
 
-mesh.edges.stiffrp:print()
+mesh.edges.stiffrp:Print()

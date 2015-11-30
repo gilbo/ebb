@@ -13,8 +13,8 @@ local root_test = ebb (r : R)
 end
 R:foreach(root_test)
 
-R.cbrt:print()
-R.sqrt:print()
+R.cbrt:Print()
+R.sqrt:Print()
 
 local trig_test = ebb (r : R)
 	r.sin = L.sin(L.id(r))
@@ -22,8 +22,8 @@ local trig_test = ebb (r : R)
 end
 R:foreach(trig_test)
 
-R.sin:print()
-R.cos:print()
+R.sin:Print()
+R.cos:Print()
 
 print()
 for i = 0, 32 do

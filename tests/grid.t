@@ -11,9 +11,6 @@ local rel3 = L.NewRelation { name="rel3", dims = {3,2,2} }
 test.eq(rel1:isGrid(), false)
 test.eq(rel2:isGrid(), true)
 test.eq(rel3:isGrid(), true)
-test.eq(rel1:nDims(), 1)
-test.eq(rel2:nDims(), 2)
-test.eq(rel3:nDims(), 3)
 test.aeq(rel1:Dims(), {5})
 test.aeq(rel2:Dims(), {2,3})
 test.aeq(rel3:Dims(), {3,2,2})
@@ -33,9 +30,9 @@ rel2:NewField('v2',L.vec2d):Load(function(x,y)   return {2*x,y}   end)
 rel3:NewField('v3',L.vec3d):Load(function(x,y,z) return {3*x,y,z} end)
 
 -- test printing
-rel1.v1:print()
-rel2.v2:print()
-rel3.v3:print()
+rel1.v1:Print()
+rel2.v2:Print()
+rel3.v3:Print()
 
 -- test loading from a list
 local tbl2 = {{1,2},{3,4},{5,6}}

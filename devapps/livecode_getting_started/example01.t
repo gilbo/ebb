@@ -11,8 +11,8 @@ print(mesh.triangles:Size())
 
 ----------------------------
 
-mesh.vertices.pos:print()
-mesh.triangles.v:print()
+mesh.vertices.pos:Print()
+mesh.triangles.v:Print()
 
 
 ----------------------------
@@ -29,4 +29,4 @@ end
 
 mesh.vertices:foreach(translate)
 
-mesh.vertices.pos:print()
+mesh.vertices.pos:Print()

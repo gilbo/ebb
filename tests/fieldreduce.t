@@ -63,7 +63,7 @@ end
 T:foreach(m_set)
 T:foreach(m_reduce_centered)
 
-T.mat:print()
+T.mat:Print()
 
 -----------------------------------
 --  Uncentered Matrix reduction: --
@@ -96,4 +96,4 @@ end
 V:foreach(m_set_v)
 E:foreach(m_reduce_uncentered)
 
-V.mat:print()
+V.mat:Print()

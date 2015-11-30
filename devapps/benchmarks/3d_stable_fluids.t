@@ -403,7 +403,7 @@ end
 --[[                             MAIN LOOP                               ]]--
 -----------------------------------------------------------------------------
 
---grid.cells:print()
+--grid.cells:Print()
 
 local source_strength = 100.0
 local source_velocity = ebb (c : grid.cells)
@@ -474,5 +474,5 @@ for i = 1, STEPS do
     --io.read()
 end
 
---grid.cells:print()
+--grid.cells:Print()
 

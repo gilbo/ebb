@@ -11,8 +11,6 @@ local ebblib            = require "ebblib"
 local specialization    = require "ebb.src.specialization"
 local semant            = require "ebb.src.semant"
 local F                 = require "ebb.src.functions"
--- include ebb library for programmer
---L = ebblib
 
 local statement = function(self, lexer)
     local ast, assign = P.ParseStatement(lexer)

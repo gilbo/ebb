@@ -443,7 +443,7 @@ function ast.GenericFor:phasePass(ctxt)
     local field = rel[p]
     ctxt:logfield(field, PhaseType.New { read = true }, self)
 
-    rel = field.type.relation
+    rel = field:Type().relation
   end
 
   self.body:phasePass(ctxt)

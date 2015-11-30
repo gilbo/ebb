@@ -162,8 +162,8 @@ C.fclose(infile)
 
 
 
---vertices.pos:print()
---triangles.v:print()
+--vertices.pos:Print()
+--triangles.v:Print()
 
 local ebb visualize ( t : triangles )
   var n = L.double(L.id(t) % 256) / 255.0
