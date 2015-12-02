@@ -197,7 +197,7 @@ EbbMapper::EbbMapper(Machine machine, HighLevelRuntime *rt, Processor local)
 
 void EbbMapper::select_task_options(Task *task) {
   DefaultMapper::select_task_options(task);
-  task->additional_procs = local_cpu_procs;
+  // task->additional_procs = local_cpu_procs;
 }
 
 void EbbMapper::notify_mapping_failed(const Mappable *mappable) {
@@ -249,7 +249,11 @@ bool EbbMapper::rank_copy_targets(const Mappable *mappable,
                                       std::vector<Memory> &to_create,
                                       bool &create_one,
                                       size_t &blocking_factor) {
-  return true;
+  DefaultMapper::rank_copy_targets(mappable, rebuild_region, current_instances,
+                                   complete, max_blocking_factor, to_reuse,
+                                   to_create, create_one, blocking_factor);
+  return false;
+  // return true;
 }
 
 static void create_mappers(Machine machine,
