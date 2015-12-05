@@ -243,8 +243,6 @@ lang.ebbExpression = function (P)
         code_type = 'simp_quote'
     elseif P:nextif('quote') then
         code_type = 'let_quote'
-    elseif P:nextif('function') then
-        code_type = 'function'
     else
         code_type = 'function'
     end

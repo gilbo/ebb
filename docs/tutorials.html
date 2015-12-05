@@ -66,6 +66,8 @@
 <p>Since Ebb doesn't support string values, let's do some arithmetic instead</p>
 <pre><code>import &#39;ebb&#39;
 
+local L = require &#39;ebblib&#39;
+
 local GridLibrary = require &#39;ebb.domains.grid&#39;
 
 local grid = GridLibrary.NewGrid2d {
@@ -85,6 +87,7 @@ grid.cells:foreach(printsum)</code></pre>
 <h2 id="using-ebb-from-c-code">Using Ebb from <code>C</code> code</h2>
 <p>Currently the Ebb interpreter cannot be called from C code as a library, though this is relatively easy to do. Please contact the developers if this use case is important to you.</p>
 <h1 id="overview">Overview</h1>
+<p>The tutorials are organized into 3 groups. The first group (<em>Intro</em>) provides a tour through all of the basic features of Ebb, sufficient to get started writing your own simulations using the standard domains. The second group (<em>Interop</em>) introduces the features that let Ebb interoperate with other C-code, including how to write custom high-performance File I/O libraries. The third and last group (<em>Domains</em>) explains the features that are used to write the standard geometric domain libraries; after reading these tutorials, a programmer should be prepared to start developing their own custom geometric domains.</p>
 <table>
 <thead>
 <tr class="header">
@@ -199,8 +202,10 @@ grid.cells:foreach(printsum)</code></pre>
 <h1 id="tutorials-writing-code-by-example">Tutorials (Writing Code by Example)</h1>
 <h2 id="hello-42-1">01: Hello, 42!</h2>
 <p>Let's take a look at everything going on in the &quot;Hello, 42!&quot; example program.</p>
-<pre><code>import &#39;ebb&#39;</code></pre>
-<p>The program starts by importing the Ebb language. Every file you write that includes Ebb code (rather than pure Lua) needs to begin with this command.</p>
+<pre><code>local L = require &#39;ebblib&#39;</code></pre>
+<p>In addition to importing the language, we probably also want to <code>require</code> Ebb's standard library. <code>require</code> is the standard Lua mechanism for pulling in modules, similar to C's <code>#include</code>, or Java/Python's <code>import</code>.</p>
+<pre><code>local GridLibrary = require &#39;ebb.domains.grid&#39;</code></pre>
+<p>In addition to the Ebb standard library, we usually <code>require</code> some number of other support libraries. In particular, we'll usually want to require at least one geometric domain library. Ebb provides a set of default domain libraries available at 'ebb.domains.xxxx'; Here we use the grid library.</p>
 <pre><code>local GridLibrary = require &#39;ebb.domains.grid&#39;</code></pre>
 <p>After importing Ebb, we usually <code>require</code> some number of support libraries. In particular, we'll usually want to require at least one geometric domain library. Ebb provides a set of default domain libraries available at <code>'ebb.domains.xxxx'</code>; Here we use the grid library.</p>
 <pre><code>local grid = GridLibrary.NewGrid2d {
@@ -217,7 +222,8 @@ end</code></pre>
 <p>Finally, we invoke this function for each cell in the grid. Since there are 4 cells, this will print out the sum 4 times.</p>
 <h2 id="domain-loading-from-files">02: Domain Loading From Files</h2>
 <p>Except in the case of grids, we'll want to load the domain data from a file. This example program demonstrates loading an octahedron triangle mesh.</p>
-<pre><code>import &quot;ebb&quot;
+<pre><code>import &#39;ebb&#39;
+local L = require &#39;ebblib&#39;
 
 local ioOff = require &#39;ebb.domains.ioOff&#39;
 local mesh  = ioOff.LoadTrimesh(&#39;examples/livecode_getting_started/octa.off&#39;)</code></pre>
@@ -241,7 +247,8 @@ mesh.vertices:foreach(translate)
 mesh.vertices.pos:Print()</code></pre>
 <p>Finally, we can write an Ebb function to translate all of the vertices, execute it, and then print the results.</p>
 <h2 id="visualizing-simulations">03: Visualizing Simulations</h2>
-<pre><code>import &quot;ebb&quot;
+<pre><code>import &#39;ebb&#39;
+local L = require &#39;ebblib&#39;
 
 local ioOff = require &#39;ebb.domains.ioOff&#39;
 local PN    = require &#39;ebb.lib.pathname&#39;
@@ -263,7 +270,8 @@ mesh.vertices:foreach(visualize)</code></pre>
 <pre><code>./vdb &amp;</code></pre>
 <h2 id="user-defined-fields-and-globals">04: User-defined Fields and Globals</h2>
 <p>We're going to try to make the octahedron oscillate using a sinusoid here. This won't really require simulating anything yet, but we'll see how to define some data.</p>
-<pre><code>import &quot;ebb&quot;
+<pre><code>import &#39;ebb&#39;
+local L = require &#39;ebblib&#39;
 
 local ioOff = require &#39;ebb.domains.ioOff&#39;
 local PN    = require &#39;ebb.lib.pathname&#39;
@@ -304,7 +312,8 @@ end</code></pre>
 <p>Suppose you wanted to have the color oscillate together with the positions of the points. Try modifying the program to do that.</p>
 <h2 id="accessing-neighbors">05: Accessing Neighbors</h2>
 <p>In order to do useful simulation computations, we need to not just execute computations at each element of a mesh. We also need those computations to access data from <em>neighboring</em> elements. That is, we need some way to access the mesh's <em>topology</em> inside of our functions.</p>
-<pre><code>import &quot;ebb&quot;
+<pre><code>import &#39;ebb&#39;
+local L = require &#39;ebblib&#39;
 
 local ioOff = require &#39;ebb.domains.ioOff&#39;
 local PN    = require &#39;ebb.lib.pathname&#39;
@@ -360,7 +369,8 @@ end</code></pre>
 <p>The simulation loop is almost identical to last time. If you run the program with visualization, you should see the heat (in red) spread out over the bunny's back.</p>
 <h2 id="phases-reads-writes-reductions">06: Phases, Reads, Writes, Reductions</h2>
 <p>In example 05, why did we have to break the heat diffusion step into two functions? Let's look at some alternate ways we could have written that, and which ways won't work.</p>
-<pre><code>import &quot;ebb&quot;
+<pre><code>import &#39;ebb&#39;
+local L = require &#39;ebblib&#39;
 
 local ioOff = require &#39;ebb.domains.ioOff&#39;
 local PN    = require &#39;ebb.lib.pathname&#39;
@@ -461,7 +471,8 @@ end</code></pre>
 <p>We've also added a bit of code to manage the measurement and reporting of simulation statistics. We can <code>set()</code> and <code>get()</code> the global's values from Lua code here before and after the reduction.</p>
 <h2 id="using-standard-grids">07: Using Standard Grids</h2>
 <p>Part of what makes Ebb unique is the ability to handle simulations over very different domains. In the previous tutorials, other than the hello world, we used a triangle mesh domain. In this tutorial, we look at how to make use of the standard grid library.</p>
-<pre><code>import &quot;ebb&quot;
+<pre><code>import &#39;ebb&#39;
+local L = require &#39;ebblib&#39;
 
 local GridLib   = require &#39;ebb.domains.grid&#39;
 
@@ -546,7 +557,8 @@ end</code></pre>
 <p>Grids and Triangle Meshes are both useful geometric domains to be able to compute over, but they're hardly exhaustive. What if you want to compute over a tetrahedral mesh? A less structured mesh of hexahedral elements? A polygon mesh with polygons of different numbers of sides? A particle system?</p>
 <p>The key idea behind Ebb is that a user can implement new geometric domains as re-usable libraries on top of a common <em>relational</em> data model. While most simulation programmers don't need to understand this relational model, understanding a little bit about relations can help reinforce the ideas from previous tutorials.</p>
 <p>In this tutorial, we'll implement heat diffusion on a torus. But rather than load a triangle-mesh or use the built in grid library, we'll build our geometric domain from scratch.</p>
-<pre><code>import &quot;ebb&quot;
+<pre><code>import &#39;ebb&#39;
+local L = require &#39;ebblib&#39;
 
 local vdb   = require(&#39;ebb.lib.vdb&#39;)</code></pre>
 <p>We'll start the program in the usual way</p>
@@ -643,7 +655,8 @@ end</code></pre>
 <p>The remaining tutorials are mostly independent of each other. Depending on your expected use cases, you may be able to get started with your own code now and come back to the other tutorials when you get more time.</p>
 <h2 id="particle-grid-coupling">09: Particle-Grid Coupling</h2>
 <p>In this tutorial, we'll look at how to couple two geometric domains together, which is often critical for simulating interacting physical phenomena.</p>
-<pre><code>import &quot;ebb&quot;
+<pre><code>import &#39;ebb&#39;
+local L = require &#39;ebblib&#39;
 
 local GridLib   = require &#39;ebb.domains.grid&#39;
 
@@ -732,7 +745,8 @@ end</code></pre>
 <p>Finally, our simulation loop is mostly unchanged, except we add two calls: to update the particle positions and to update the connection to the cells.</p>
 <h2 id="data-layout-descriptors-dlds">10: Data Layout Descriptors (DLDs)</h2>
 <p>In this example, we'll see how to get lower level access to the data that Ebb is storing and computing on. This data access is provided through metadata objects that we call data layout descriptors (DLDs). These descriptors communicate information about how data is stored in memory so that Ebb-external code can directly manipulate the data without incurring memory copy overheads.</p>
-<pre><code>import &quot;ebb&quot;
+<pre><code>import &#39;ebb&#39;
+local L = require &#39;ebblib&#39;
 
 local GridLib   = require &#39;ebb.domains.grid&#39;
 
@@ -849,7 +863,8 @@ end</code></pre>
   }
 }</code></pre>
 <h3 id="ebb-code">Ebb Code</h3>
-<pre><code>import &quot;ebb&quot;
+<pre><code>import &#39;ebb&#39;
+local L = require &#39;ebblib&#39;
 
 local GridLib   = require &#39;ebb.domains.grid&#39;
 
@@ -927,7 +942,8 @@ end</code></pre>
 <p>I/O is a tricky problem. Usually, one needs to support various pre-existing file formats, and load/dump data efficiently or else I/O times can quickly start to dominate the actual simulation computation. Rather than only supporting a small set of standard file formats, Ebb externalizes I/O code using the DLD interface. This allows for code to support various file formats to be factored out into libraries, whether provided in the standard distribution or by specific users.</p>
 <p>For example, Loading or Dumping a field of data to/from a CSV file is supported by the standard library <code>'ebb.io.csv'</code>. In this tutorial, we'll write a file loader and dumper for the OFF file format that we've been loading the bunny and octahedral meshes from. Rather than get into complexities of the standard library's triangle mesh implementation, we'll build an overly-simplified triangle mesh from scratch.</p>
 <p>Lastly, this tutorial makes more substantial use of Terra. Rather than try to explain Terra as well, we recommend that programmers interested in building custom file I/O read the Terra documentation themselves.</p>
-<pre><code>import &quot;ebb&quot;
+<pre><code>import &#39;ebb&#39;
+local L = require &#39;ebblib&#39;
 
 local PN        = require &#39;ebb.lib.pathname&#39;
 local DLD       = require &#39;ebb.lib.dld&#39;
@@ -1112,7 +1128,8 @@ C.fclose(outfile)</code></pre>
 <h2 id="group-by-and-query-loops">13: Group-By and Query-Loops</h2>
 <p>In tutorial 08 (relations) we saw the most basic mechanisms for building custom geometric domain libraries: the creation of new relations and using fields of keys (<em>key fields</em>) to connect those relations together. Tutorials 13-17 introduce the remaining mechanisms and tricks used to model geometric domains.</p>
 <p>In this tutorial, we'll explore the <em>group-by</em> operation. To do so, we'll use the earlier heat diffusion example from tutorial 8, except we'll use two relations this time: one for the vertices, and one for the edges. Then, since the edges are explicitly represented, we'll simply omit the edges that form the torus. Because we explicitly represent the edges in this way, we no longer need to assume that each vertex has exactly four neighbors in each of 4 cardinal directions.</p>
-<pre><code>import &quot;ebb&quot;
+<pre><code>import &#39;ebb&#39;
+local L = require &#39;ebblib&#39;
 
 local vdb   = require(&#39;ebb.lib.vdb&#39;)</code></pre>
 <p>We start the program as usual.</p>
@@ -1230,7 +1247,8 @@ end</code></pre>
 <p>The simulation loop is unchanged.</p>
 <h2 id="join-tables">14: Join Tables</h2>
 <p>Somewhat surprisingly, key-fields together with group-by/query-loops are sufficient to express arbitrary graph connectivity patterns. To do so, we use a well known trick from databases, called a <em>join table</em>. Unlike the relational tables we've been declaring up to this point, join tables don't represent a particular set of objects. Instead, they represent a relationship between two different other sets of objects. As an example, we'll load in a standard triangle-mesh and augment it with a way to get all of the triangles touching a given vertex.</p>
-<pre><code>import &quot;ebb&quot;
+<pre><code>import &#39;ebb&#39;
+local L = require &#39;ebblib&#39;
 
 local ioOff = require &#39;ebb.domains.ioOff&#39;
 local PN    = require &#39;ebb.lib.pathname&#39;
@@ -1290,7 +1308,8 @@ mesh.vertices:foreach(visualize)</code></pre>
 <p>In the last two tutorials, we saw a useful feature and trick which allows us to model arbitrary connectivity patterns between relations. However, these mechanisms require programmers to use an unintuitive interface: <code>L.Where(...)</code> loops. In earlier tutorials, we saw a much more intuitive loop syntax for triangle meshes: <code>v.edges</code>. The missing ingredient is a macro. In this tutorial, we explain how geometric domain authors can encapsulate and hide relational details behind more intuitive syntax.</p>
 <p>Besides macros, we'll also introduce field-functions. These two tools allow simulation and geometric domain authors to abstract functionality and retrofit old code.</p>
 <p>Unlike previous tutorials, this file will not compute much, though it can still be safely executed.</p>
-<pre><code>import &quot;ebb&quot;
+<pre><code>import &#39;ebb&#39;
+local L = require &#39;ebblib&#39;
 
 local ioOff = require &#39;ebb.domains.ioOff&#39;
 local PN    = require &#39;ebb.lib.pathname&#39;
@@ -1369,7 +1388,8 @@ end)</code></pre>
 <h2 id="grid-relations">16: Grid Relations</h2>
 <p>In this tutorial, we show how to create grid-structured domains and connect them. Grid-structured data is especially important for simulations. Grids also offer special opportunities for optimization by exploiting the regular addressing to eliminate memory accesses. Consequently, Ebb provides special mechanisms for indicating that certain relations are grid-structured, and for connecting those relations to themselves and other gridded relations.</p>
 <p>To illustrate these features, we're going to write two coupled simulations on grids of different scales. The lower-resolution grid will simulate a heat diffusion, while the higher-resolution grid will simulate the wave equation. The particular simulation isn't physically derived, but will show both how to write code for grids and how to construct multi-grid structures.</p>
-<pre><code>import &quot;ebb&quot;
+<pre><code>import &#39;ebb&#39;
+local L = require &#39;ebblib&#39;
 
 local vdb   = require(&#39;ebb.lib.vdb&#39;)</code></pre>
 <p>We'll start the program in the usual way.</p>
@@ -1505,7 +1525,8 @@ end</code></pre>
 <p>Our simulation loop down-samples the field, runs both simulations, and then up-samples the diffusion results to combine with the wave simulation step. Then we cycle our buffers, visualize and collect statistics.</p>
 <h2 id="subsets">17: Subsets</h2>
 <p>In tutorial 07, computing heat diffusion using the standard grid library, we imposed boundary conditions instead of having both directions be periodic. To do so, we made use of subsets. In this tutorial, we'll see how to define and use subsets of a relation.</p>
-<pre><code>import &quot;ebb&quot;
+<pre><code>import &#39;ebb&#39;
+local L = require &#39;ebblib&#39;
 
 local vdb   = require(&#39;ebb.lib.vdb&#39;)
 
