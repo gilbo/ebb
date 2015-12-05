@@ -708,7 +708,7 @@ end
 
 function UFVersion:_numGPUBlocks(argptr)
   if self:overElasticRelation() then
-    local size    = `argptr.bounds[0].hi - argptr.bounds[0].lo
+    local size    = `argptr.bounds[0].hi - argptr.bounds[0].lo + 1
     local nblocks = `[uint64]( C.ceil( [double](size) /
                                        [double](self._blocksize) ))
     return nblocks
@@ -716,7 +716,11 @@ function UFVersion:_numGPUBlocks(argptr)
     if self:isOverSubset() and self:isIndexSubset() then
       return math.ceil(self._subset._index:Size() / self._blocksize)
     else
-      return math.ceil(self._relation:ConcreteSize() / self._blocksize)
+      local size = `1
+      for d = 1, self._relation:nDims() do
+          size = `((size) * (argptr.bounds[d-1].hi - argptr.bounds[d-1].lo + 1))
+      end
+      return `[uint64](C.ceil( [double](size) / [double](self._blocksize)))
     end
   end
 end
