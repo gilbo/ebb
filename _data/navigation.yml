@@ -3,14 +3,17 @@
 - title: Getting Started
   url: /getting_started/
 
-- title: Examples
-  url: /examples/
+- title: Tutorials
+  url: /tutorials/
 
 - title: Manual
   url: /manual/
 
 - title: Publications
   url: /publications/
+
+- title: Contact
+  url: /contact/
 
 - title: Download
   url: http://www.github.com/gilbo/liszt-ebb

@@ -1,0 +1,81 @@
+# Data for tutorial sub-directory
+
+- title: Introduction
+  description: "These tutorials provide a tour through all of the basic features of Ebb, sufficient to get started writing your own simulations using the standard domains."
+  items:
+    - title: "01: Hello, 42!"
+      excerpt: "The basics of an Ebb program; print out 42 for each element of a grid."
+      url: 01-hello.html
+
+    - title: "02: Domain Loading From Files"
+      excerpt: "How to use a domain library to load in a mesh from a file and some very basic statistics and computations on that mesh; We use an octahedron to demonstrate."
+      url: 02-loading.html
+
+    - title: "03: Visualizing Simulations"
+      excerpt: "Basic usage of VDB to generate visual output from Ebb programs; We plot the 6 vertices of the octahedron."
+      url: 03-visualization.html
+
+    - title: "04: User-defined Fields and Globals"
+      excerpt: "Defining simulation specific data per-mesh-element (fields) and globally; Using these features we make our octahedron oscillate."
+      url: 04-fields-globals.html
+
+    - title: "05: Accessing Neighbors"
+      excerpt: "How to access data at neighboring elements of the mesh/domain; Now we can write a heat-diffusion on the surface of the Stanford bunny triangle mesh."
+      url: 05-neighbor-access.html
+
+    - title: "06: Phases, Reads, Writes, Reductions"
+      excerpt: "A key feature of Ebb is that all functions are safe to parallelize; We explain the rules and show alternative ways of writing the heat diffusion."
+      url: 06-phase-checking.html
+
+    - title: "07: Using Standard Grids"
+      excerpt: "Some features of the standard grid domain; we show how to write heat diffusion on a grid, handling both periodic and normal boundary conditions."
+      url: 07-standard-grid.html
+
+    - title: "08: Relations"
+      excerpt: "Relations are the basic data structure in Ebb that everything else is built out of; we build a torus from scratch and simulate heat diffusion on it."
+      url: 08-relations.html
+
+    - title: "09: Particle-Grid Coupling"
+      excerpt: "How to connect and update the relationship between particles and a grid; we advect tracer particles in an evolving heat gradient."
+      url: 09-particle-grid.html
+
+- title: Interoperability
+  description: "These tutorials introduce the features that let Ebb interoperate with C-code, including how to write custom high-performance File I/O libraries. (familiarity with the introduction tutorials is assumed)"
+  items:
+    - title: "10: Data Layout Descriptors (DLDs)"
+      excerpt: "DLDs give us raw access to the simulation memory used by Ebb; we use this access to integrate a piece of unsafe code into an Ebb program."
+      url: 10-dlds.html
+
+    - title: "11: Calling C-code"
+      excerpt: "DLDs can also be used from C code written entirely outside of Ebb and Lua; we link an unsafe C function into an Ebb simulation."
+      url: 11-calling-c.html
+
+    - title: "12: File I/O"
+      excerpt: "Using DLDs, we can efficiently load data into and dump data out of an Ebb simulation; we write code to load and write OFF triangle mesh files."
+      url: 12-file-io.html
+
+- title: Domain Modeling
+  description: "These tutorials explain the features that are used to write the standard geometric domain libraries; after reading these tutorials, a programmer should be prepared to start developing their own custom geometric domains. (familiarity with the introduction tutorials is assumed)"
+  items:
+    - title: "13: Group-By and Query-Loops"
+      excerpt: "Grouping and Querying lets us invert simple relationship between elements; we simulate heat diffusion on a graph encoded with grouping."
+      url: 13-group-by.html
+
+    - title: "14: Join Tables"
+      excerpt: "A common pattern that enables us to represent arbitrary graph connectivities; We use it to enable access to the triangles around a vertex."
+      url: 14-join-tables.html
+
+    - title: "15: Macros"
+      excerpt: "Macros let us hide unintuitive encodings behind more familiar syntax; we clean up the join-table example using macros."
+      url: 15-macros.html
+
+    - title: "16: Grid Relations"
+      excerpt: "How to use relations to represent data from a grid domain; we show how to build a two-scale coupled grid-to-grid domain for simulation."
+      url: 16-grid-relations.html
+
+    - title: "17: Subsets"
+      excerpt: "Subsets let us execute computations for only parts of a domain; we build subsets to let us express boundary conditions in a grid heat diffusion."
+      url: 17-subsets.html
+
+
+

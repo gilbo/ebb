@@ -29,13 +29,26 @@ article img {
 }
 
 .site-name img {
-  height: 4em;
+  height: 5em;
   margin: auto;
+  display: block;
   margin-top: -1.0em;
 }
 .liszt-logo {
-  height:2em;
+  display:block;
+  margin: auto;
+  height:3em;
   margin-top:0.3em;
+  margin-bottom: -0.6em;
+}
+.liszt-explanation {
+  text-align: center;
+  @include font-size(12);
+  margin-bottom: 0;
+}
+.github-btn {
+  display: block !important;
+  text-align: center;
 }
 
 svg:not(:root) {

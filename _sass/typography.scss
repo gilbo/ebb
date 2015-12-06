@@ -11,6 +11,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 h1 {
 	@include font-size(32);
+  line-height: 1.0;
 }
 h2 {
 	@include font-size(28);
@@ -131,7 +132,9 @@ blockquote {
    ========================================================================== */
 
 p {
+  @include font-size(16);
 	margin: 0 0 $indent-var;
+  margin-top: $indent-var;
 	// sibling indentation
   @if $paragraph-indent == true {
     & + p {
@@ -151,18 +154,26 @@ tt, code, kbd, samp, pre {
 p,
 li {
 	code {
-		@include font-rem(12);
+		@include font-rem(13);
 		line-height: 1.5;
 		white-space: nowrap;
 		margin: 0 2px;
 		padding: 0 5px;
-		border: 1px solid lighten($black, 90);
-		background-color: #efefef;
+		border: 1px solid $code-inline-border-color;
+		background-color: $code-background-color;
 		@include rounded(3px);
 	}
 }
 pre {
-	@include font-rem(12);
-	line-height: 1.5;
-	overflow-x: auto;
+  @include font-rem(13);
+  line-height: 1.5;
+  overflow-x: auto;
+  padding: 6px 10px;
+  border: 1px solid $code-block-border-color;
+  background-color: $code-background-color;
+  @include rounded(3px);
+
+  code {
+
+  }
 }

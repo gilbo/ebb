@@ -7,7 +7,7 @@
 {% include _head.html %}
 </head>
 
-<body class="page">
+<body class="post">
 
 {% include _browser-upgrade.html %}
 
@@ -32,14 +32,14 @@
   <div class="article-author-side">
     {% include _author-bio.html %}
   </div>
-  <article class="page">
-    <h1>{{ page.title }}</h1>
+  <article class="post">
+    <div class="headline-wrap">
+      <h1><a href="{{ site.url }}{{ page.url }}" rel="bookmark" title="{{ page.title }}">{{ page.title }}</a></h1>
+    </div><!--/ .headline-wrap -->
     <div class="article-wrap">
       {{ content }}
+      <hr />
     </div><!-- /.article-wrap -->
-    {% if site.owner.disqus-shortname and page.comments == true %}
-      <section id="disqus_thread"></section><!-- /#disqus_thread -->
-    {% endif %}
   </article>
 </div><!-- /#main -->
 

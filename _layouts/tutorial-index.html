@@ -32,15 +32,20 @@
   <div class="article-author-side">
     {% include _author-bio.html %}
   </div>
-  <article class="page">
+  <div id="index">
     <h1>{{ page.title }}</h1>
-    <div class="article-wrap">
-      {{ content }}
-    </div><!-- /.article-wrap -->
-    {% if site.owner.disqus-shortname and page.comments == true %}
-      <section id="disqus_thread"></section><!-- /#disqus_thread -->
-    {% endif %}
-  </article>
+    {{ content }}
+    {% for seq in site.data.tutorials %}
+      <h2>{{ seq.title }}</h2>
+      <p> {{ seq.description }} </p>
+      {% for tutorial in seq.items %}  
+        <article>
+          <h2><a href="{{ site.url }}/tutorials/{{ tutorial.url }}" title="{{ tutorial.title }}">{{ tutorial.title }}</a></h2>
+          <p>{{ tutorial.excerpt | strip_html | truncate: 160 }}</p>
+        </article>
+      {% endfor %}
+    {% endfor %}
+  </div><!-- /#index -->
 </div><!-- /#main -->
 
 <div class="footer-wrap">

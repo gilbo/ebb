@@ -7,8 +7,9 @@
    ========================================================================== */
 
 $doc-font-size: 16;
-$doc-line-height: 26;
-$paragraph-indent: true !default;
+$doc-line-height: 24;
+//$paragraph-indent: true !default;
+$paragraph-indent: false;
 $base-font: 'PT Serif', serif;
 $heading-font: 'PT Sans Narrow', sans-serif;
 $code-font: Monaco, "Courier New", "DejaVu Sans Mono", "Bitstream Vera Sans Mono", monospace;
@@ -29,6 +30,14 @@ $bordercolor    : $basecolor;
 $white          : #fff;
 $black          : #111;
 $accentcolor    : $black;
+
+$logo-blue      : rgb(36,153,204);
+$logo-tan       : rgb(244,215,193);
+
+$code-background-color      : lighten(desaturate( $logo-tan, 15), 10); //#f8f8f8;
+$code-block-border-color    : lighten(desaturate($logo-blue, 30), 30); //#cccccc;
+$code-inline-border-color   : lighten(desaturate($logo-blue, 30), 40); //#eaeaea;
+
 
 /* buttons */
 $primary			: $black;
@@ -52,10 +61,11 @@ $vimeo-color        : #1ab7ea;
 $youtube-color      : #ff3333;
 
 /* links */
-$linkcolor 		    : #343434;
+//$linkcolor 		    : #343434;
+$linkcolor        : $logo-blue;
 $link-color       : $linkcolor;
-$linkcolorhover 	: darken($linkcolor, 10);
-$linkcolorvisited : lighten($linkcolorhover, 20);
+$linkcolorhover 	: lighten($linkcolor, 10);
+$linkcolorvisited : darken($linkcolorhover, 20);
 $linkcolorfocus 	: darken($linkcolorvisited, 10);
 
 /*

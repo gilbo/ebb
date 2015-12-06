@@ -14,7 +14,8 @@ body {
 
 .navigation-wrapper {
 	@include container;
-	padding: 2em 0 1em;
+	padding-top: 1em;
+	margin: 1em auto 1em;
 	font-family: $heading-font;
 	font-weight: 700;
 	text-transform: uppercase;
@@ -346,9 +347,9 @@ $button-size: 1.5rem;
 		font-size: 80%;
 		font-style: italic;
 	}
-	a, a:hover {
-		border-bottom: 0 solid transparent;
-	}
+	//a, a:hover {
+	//	border-bottom: 0 solid transparent;
+	//}
 }
 
 /* Default social media links in author sidebar */
@@ -447,13 +448,14 @@ $button-size: 1.5rem;
 	p > em > a,
 	p > strong > a,
 	li > a {
-		text-decoration: underline;
+		//text-decoration: underline;
 	}
 }
 
 /* Table of contents */
 .toc {
 	font-size: 95%;
+	margin-bottom: 2em;
 	@media #{$large} {
 		display: block;
 		@include grid(12,2);
@@ -465,7 +467,8 @@ $button-size: 1.5rem;
 		background-color: $white;
 	}
 	header {
-		background: lighten($black, 10);
+		//background: lighten($black, 10);
+		background: darken($logo-blue, 10);
 	}
 	h3 {
 		margin: 0;
@@ -496,7 +499,8 @@ $button-size: 1.5rem;
 			display: block;
 			color: $white;
 			text-decoration: none;
-			background: lighten($black, 30);
+			//background: lighten($black, 30);
+			background: desaturate(darken($logo-tan, 20), 30);
 			@include opacity(0.7);
 			@include transition(opacity 0.2s ease-in-out);
 			&:hover {
