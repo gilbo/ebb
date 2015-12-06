@@ -482,11 +482,11 @@ function UFVersion:_PartitionData()
   if not use_legion then return end
   self:_addPrimaryPartition()
   for field, _ in pairs(self._field_use) do
-    self:_addRegionPartition(field)
+    self:_addRegionPartition(field, false)
   end
   if self:isOverSubset() then
     assert(self._subset._boolmask)
-    self:_addRegionPartition(self._subset._boolmask)
+    self:_addRegionPartition(self._subset._boolmask, true)
   end
 end
 
@@ -731,7 +731,7 @@ end
 
 function UFVersion:_numGPUBlocks(argptr)
   if self:overElasticRelation() then
-    local size    = `argptr.bounds[0].hi - argptr.bounds[0].lo
+    local size    = `argptr.bounds[0].hi - argptr.bounds[0].lo + 1
     local nblocks = `[uint64]( C.ceil( [double](size) /
                                        [double](self._blocksize) ))
     return nblocks
@@ -739,7 +739,11 @@ function UFVersion:_numGPUBlocks(argptr)
     if self:isOverSubset() and self:isIndexSubset() then
       return math.ceil(self._subset._index:Size() / self._blocksize)
     else
-      return math.ceil(self._relation:ConcreteSize() / self._blocksize)
+      local size = `1
+      for d = 1, self._relation:nDims() do
+          size = `((size) * (argptr.bounds[d-1].hi - argptr.bounds[d-1].lo + 1))
+      end
+      return `[uint64](C.ceil( [double](size) / [double](self._blocksize)))
     end
   end
 end
@@ -1462,7 +1466,7 @@ function UFVersion:_addPrimaryPartition()
   end
 end
 
-function UFVersion:_addRegionPartition(field)
+function UFVersion:_addRegionPartition(field, boolmask)
   local rel = field:Relation()
   local sig = tostring(rel:_INTERNAL_UID()) .. '_' .. tostring(field._fid)
   local datum = self._region_data[sig]
@@ -1481,7 +1485,7 @@ function UFVersion:_addRegionPartition(field)
     if use_partitioning then
       -- The three cases are read only, centered (read/ write) and reduce.
       -- Read is handle by above initialization.
-      if self._field_use[field]:isCentered() then
+      if boolmask or self._field_use[field]:isCentered() then
         assert(rel == self._relation)
         prim_partn = rel:GetOrCreateDisjointPartitioning()
       -- (not is centered) and (requires exclusive) is a phase error

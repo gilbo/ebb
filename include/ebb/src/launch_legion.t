@@ -116,6 +116,7 @@ end
 local logging_cat
 if use_legion_prof then
   logging_cat = 'legion_prof'
+  logging_level = 'legion_prof=2'
 end
 if use_legion_spy then
   logging_cat = 'legion_spy'
@@ -127,16 +128,18 @@ table.insert(legion_args, tostring(logging_level))
 -- # of cpus
 table.insert(legion_args, "-ll:cpu")
 table.insert(legion_args, tostring(run_config.num_cpus))
+table.insert(legion_args, "-ll:util")
+table.insert(legion_args, tostring(2))
 -- cpu memory
---table.insert(legion_args, "-ll:csize")
---table.insert(legion_args, "512") -- MB
+table.insert(legion_args, "-ll:csize")
+table.insert(legion_args, "8000") -- MB
 if terralib.cudacompile then
   -- # of gpus
   table.insert(legion_args, "-ll:gpu")
   table.insert(legion_args, tostring(1))
   -- gpu memory
-  --table.insert(legion_args, "-ll:fsize")
-  --table.insert(legion_args, "256") -- MB
+  table.insert(legion_args, "-ll:fsize")
+  table.insert(legion_args, "4000") -- MB
   -- zero-copy gpu/cpu memory (don't use)
   table.insert(legion_args, "-ll:zsize")
   table.insert(legion_args, "0") -- MB
@@ -152,6 +155,8 @@ if logging_cat == 'legion_prof' then
   table.insert(legion_args, "-hl:prof")
   table.insert(legion_args, "1")
 end
+table.insert(legion_args, "-logfile")
+table.insert(legion_args, "legion_log")
 
 
 -- Main function that launches Legion runtime

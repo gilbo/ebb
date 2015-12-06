@@ -15,6 +15,7 @@
 
 #include <cfloat>
 #include <cstdlib>
+#include <limits>
 
 #include "legion.h"
 #include "legion_c_util.h"
@@ -365,10 +366,10 @@ DECLARE_FIELD_REDUCTION(register_reduction_field_times_int32_mat4x4,
 // declare max reductions on scalars
 DECLARE_FIELD_REDUCTION(register_reduction_field_max_float,
                   safe_reduce_max_float, safe_reduce_domain_point_max_float,
-                  FieldMaxOpFloat, float, float_1, int, max, max, 1, FLT_MAX)
+                  FieldMaxOpFloat, float, float_1, int, max, max, 1, -std::numeric_limits<float>::infinity())
 DECLARE_FIELD_REDUCTION(register_reduction_field_max_double,
                   safe_reduce_max_double, safe_reduce_domain_point_max_double,
-                  FieldMaxOpDouble, double, double_1, size_t, max, max, 1, DBL_MAX)
+                  FieldMaxOpDouble, double, double_1, size_t, max, max, 1, -std::numeric_limits<double>::infinity())
 DECLARE_FIELD_REDUCTION(register_reduction_field_max_int32,
                   safe_reduce_max_int32, safe_reduce_domain_point_max_int32,
                   FieldMaxOpInt, int, int_1, int, max, max, 1, INT_MAX)
@@ -376,28 +377,28 @@ DECLARE_FIELD_REDUCTION(register_reduction_field_max_int32,
 // declare max reductions on vectors
 DECLARE_FIELD_REDUCTION(register_reduction_field_max_float_vec2,
                   safe_reduce_max_float_vec2, safe_reduce_domain_point_max_float_vec2,
-                  FieldMaxOpFloatVec2, float, float_2, int, max, max, 2, FLT_MAX)
+                  FieldMaxOpFloatVec2, float, float_2, int, max, max, 2, -std::numeric_limits<float>::infinity())
 DECLARE_FIELD_REDUCTION(register_reduction_field_max_double_vec2,
                   safe_reduce_max_double_vec2, safe_reduce_domain_point_max_double_vec2,
-                  FieldMaxOpDoubleVec2, double, double_2, size_t, max, max, 2, DBL_MAX)
+                  FieldMaxOpDoubleVec2, double, double_2, size_t, max, max, 2, -std::numeric_limits<double>::infinity())
 DECLARE_FIELD_REDUCTION(register_reduction_field_max_int32_vec2,
                   safe_reduce_max_int32_vec2, safe_reduce_domain_point_max_int32_vec2,
                   FieldMaxOpIntVec2, int, int_2, int, max, max, 2, INT_MAX)
 DECLARE_FIELD_REDUCTION(register_reduction_field_max_float_vec3,
                   safe_reduce_max_float_vec3, safe_reduce_domain_point_max_float_vec3,
-                  FieldMaxOpFloatVec3, float, float_3, int, max, max, 3, FLT_MAX)
+                  FieldMaxOpFloatVec3, float, float_3, int, max, max, 3, -std::numeric_limits<float>::infinity())
 DECLARE_FIELD_REDUCTION(register_reduction_field_max_double_vec3,
                   safe_reduce_max_double_vec3, safe_reduce_domain_point_max_double_vec3,
-                  FieldMaxOpDoubleVec3, double, double_3, size_t, max, max, 3, DBL_MAX)
+                  FieldMaxOpDoubleVec3, double, double_3, size_t, max, max, 3, -std::numeric_limits<double>::infinity())
 DECLARE_FIELD_REDUCTION(register_reduction_field_max_int32_vec3,
                   safe_reduce_max_int32_vec3, safe_reduce_domain_point_max_int32_vec3,
                   FieldMaxOpIntVec3, int, int_3, int, max, max, 3, INT_MAX)
 DECLARE_FIELD_REDUCTION(register_reduction_field_max_float_vec4,
                   safe_reduce_max_float_vec4, safe_reduce_domain_point_max_float_vec4,
-                  FieldMaxOpFloatVec4, float, float_4, int, max, max, 4, FLT_MAX)
+                  FieldMaxOpFloatVec4, float, float_4, int, max, max, 4, -std::numeric_limits<float>::infinity())
 DECLARE_FIELD_REDUCTION(register_reduction_field_max_double_vec4,
                   safe_reduce_max_double_vec4, safe_reduce_domain_point_max_double_vec4,
-                  FieldMaxOpDoubleVec4, double, double_4, size_t, max, max, 4, DBL_MAX)
+                  FieldMaxOpDoubleVec4, double, double_4, size_t, max, max, 4, -std::numeric_limits<double>::infinity())
 DECLARE_FIELD_REDUCTION(register_reduction_field_max_int32_vec4,
                   safe_reduce_max_int32_vec4, safe_reduce_domain_point_max_int32_vec4,
                   FieldMaxOpIntVec4, int, int_4, int, max, max, 4, INT_MAX)
@@ -405,82 +406,82 @@ DECLARE_FIELD_REDUCTION(register_reduction_field_max_int32_vec4,
 // declare max reductions on vectors
 DECLARE_FIELD_REDUCTION(register_reduction_field_max_float_mat2x2,
                   safe_reduce_max_float_mat2x2, safe_reduce_domain_point_max_float_mat2x2,
-                  FieldMaxOpFloatMat2x2, float, float_4, int, max, max, 4, FLT_MAX)
+                  FieldMaxOpFloatMat2x2, float, float_4, int, max, max, 4, -std::numeric_limits<float>::infinity())
 DECLARE_FIELD_REDUCTION(register_reduction_field_max_double_mat2x2,
                   safe_reduce_max_double_mat2x2, safe_reduce_domain_point_max_double_mat2x2,
-                  FieldMaxOpDoubleMat2x2, double, double_4, size_t, max, max, 4, DBL_MAX)
+                  FieldMaxOpDoubleMat2x2, double, double_4, size_t, max, max, 4, -std::numeric_limits<double>::infinity())
 DECLARE_FIELD_REDUCTION(register_reduction_field_max_int32_mat2x2,
                   safe_reduce_max_int32_mat2x2, safe_reduce_domain_point_max_int32_mat2x2,
                   FieldMaxOpIntMat2x2, int, int_4, int, max, max, 4, INT_MAX)
 DECLARE_FIELD_REDUCTION(register_reduction_field_max_float_mat2x3,
                   safe_reduce_max_float_mat2x3, safe_reduce_domain_point_max_float_mat2x3,
-                  FieldMaxOpFloatMat2x3, float, float_6, int, max, max, 6,  FLT_MAX)
+                  FieldMaxOpFloatMat2x3, float, float_6, int, max, max, 6,  -std::numeric_limits<float>::infinity())
 DECLARE_FIELD_REDUCTION(register_reduction_field_max_double_mat2x3,
                   safe_reduce_max_double_mat2x3, safe_reduce_domain_point_max_double_mat2x3,
-                  FieldMaxOpDoubleMat2x3, double, double_6, size_t, max, max, 6, DBL_MAX)
+                  FieldMaxOpDoubleMat2x3, double, double_6, size_t, max, max, 6, -std::numeric_limits<double>::infinity())
 DECLARE_FIELD_REDUCTION(register_reduction_field_max_int32_mat2x3,
                   safe_reduce_max_int32_mat2x3, safe_reduce_domain_point_max_int32_mat2x3,
                   FieldMaxOpIntMat2x3, int, int_6, int, max, max, 6, INT_MAX)
 DECLARE_FIELD_REDUCTION(register_reduction_field_max_float_mat2x4,
                   safe_reduce_max_float_mat2x4, safe_reduce_domain_point_max_float_mat2x4,
-                  FieldMaxOpFloatMat2x4, float, float_8, int, max, max, 8, FLT_MAX)
+                  FieldMaxOpFloatMat2x4, float, float_8, int, max, max, 8, -std::numeric_limits<float>::infinity())
 DECLARE_FIELD_REDUCTION(register_reduction_field_max_double_mat2x4,
                   safe_reduce_max_double_mat2x4, safe_reduce_domain_point_max_double_mat2x4,
-                  FieldMaxOpDoubleMat2x4, double, double_8, size_t, max, max, 8, DBL_MAX)
+                  FieldMaxOpDoubleMat2x4, double, double_8, size_t, max, max, 8, -std::numeric_limits<double>::infinity())
 DECLARE_FIELD_REDUCTION(register_reduction_field_max_int32_mat2x4,
                   safe_reduce_max_int32_mat2x4, safe_reduce_domain_point_max_int32_mat2x4,
                   FieldMaxOpIntMat2x4, int, int_8, int, max, max, 8, INT_MAX)
 DECLARE_FIELD_REDUCTION(register_reduction_field_max_float_mat3x2,
                   safe_reduce_max_float_mat3x2, safe_reduce_domain_point_max_float_mat3x2,
-                  FieldMaxOpFloatMat3x2, float, float_6, int, max, max, 6, FLT_MAX)
+                  FieldMaxOpFloatMat3x2, float, float_6, int, max, max, 6, -std::numeric_limits<float>::infinity())
 DECLARE_FIELD_REDUCTION(register_reduction_field_max_double_mat3x2,
                   safe_reduce_max_double_mat3x2, safe_reduce_domain_point_max_double_mat3x2,
-                  FieldMaxOpDoubleMat3x2, double, double_6, size_t, max, max, 6, DBL_MAX)
+                  FieldMaxOpDoubleMat3x2, double, double_6, size_t, max, max, 6, -std::numeric_limits<double>::infinity())
 DECLARE_FIELD_REDUCTION(register_reduction_field_max_int32_mat3x2,
                   safe_reduce_max_int32_mat3x2, safe_reduce_domain_point_max_int32_mat3x2,
                   FieldMaxOpIntMat3x2, int, int_6, int, max, max, 6, INT_MAX)
 DECLARE_FIELD_REDUCTION(register_reduction_field_max_float_mat3x3,
                   safe_reduce_max_float_mat3x3, safe_reduce_domain_point_max_float_mat3x3,
-                  FieldMaxOpFloatMat3x3, float, float_9, int, max, max, 9,  FLT_MAX)
+                  FieldMaxOpFloatMat3x3, float, float_9, int, max, max, 9,  -std::numeric_limits<float>::infinity())
 DECLARE_FIELD_REDUCTION(register_reduction_field_max_double_mat3x3,
                   safe_reduce_max_double_mat3x3, safe_reduce_domain_point_max_double_mat3x3,
-                  FieldMaxOpDoubleMat3x3, double, double_9, size_t, max, max, 9, DBL_MAX)
+                  FieldMaxOpDoubleMat3x3, double, double_9, size_t, max, max, 9, -std::numeric_limits<double>::infinity())
 DECLARE_FIELD_REDUCTION(register_reduction_field_max_int32_mat3x3,
                   safe_reduce_max_int32_mat3x3, safe_reduce_domain_point_max_int32_mat3x3,
                   FieldMaxOpIntMat3x3, int, int_9, int, max, max, 9, INT_MAX)
 DECLARE_FIELD_REDUCTION(register_reduction_field_max_float_mat3x4,
                   safe_reduce_max_float_mat3x4, safe_reduce_domain_point_max_float_mat3x4,
-                  FieldMaxOpFloatMat3x4, float, float_12, int, max, max, 12, FLT_MAX)
+                  FieldMaxOpFloatMat3x4, float, float_12, int, max, max, 12, -std::numeric_limits<float>::infinity())
 DECLARE_FIELD_REDUCTION(register_reduction_field_max_double_mat3x4,
                   safe_reduce_max_double_mat3x4, safe_reduce_domain_point_max_double_mat3x4,
-                  FieldMaxOpDoubleMat3x4, double, double_12, size_t, max, max, 12, DBL_MAX)
+                  FieldMaxOpDoubleMat3x4, double, double_12, size_t, max, max, 12, -std::numeric_limits<double>::infinity())
 DECLARE_FIELD_REDUCTION(register_reduction_field_max_int32_mat3x4,
                   safe_reduce_max_int32_mat3x4, safe_reduce_domain_point_max_int32_mat3x4,
                   FieldMaxOpIntMat3x4, int, int_12, int, max, max, 12, INT_MAX)
 DECLARE_FIELD_REDUCTION(register_reduction_field_max_float_mat4x2,
                   safe_reduce_max_float_mat4x2, safe_reduce_domain_point_max_float_mat4x2,
-                  FieldMaxOpFloatMat4x2, float, float_8, int, max, max, 8, FLT_MAX)
+                  FieldMaxOpFloatMat4x2, float, float_8, int, max, max, 8, -std::numeric_limits<float>::infinity())
 DECLARE_FIELD_REDUCTION(register_reduction_field_max_double_mat4x2,
                   safe_reduce_max_double_mat4x2, safe_reduce_domain_point_max_double_mat4x2,
-                  FieldMaxOpDoubleMat4x2, double, double_8, size_t, max, max, 8, DBL_MAX)
+                  FieldMaxOpDoubleMat4x2, double, double_8, size_t, max, max, 8, -std::numeric_limits<double>::infinity())
 DECLARE_FIELD_REDUCTION(register_reduction_field_max_int32_mat4x2,
                   safe_reduce_max_int32_mat4x2, safe_reduce_domain_point_max_int32_mat4x2,
                   FieldMaxOpIntMat4x2, int, int_8, int, max, max, 8, INT_MAX)
 DECLARE_FIELD_REDUCTION(register_reduction_field_max_float_mat4x3,
                   safe_reduce_max_float_mat4x3, safe_reduce_domain_point_max_float_mat4x3,
-                  FieldMaxOpFloatMat4x3, float, float_12, int, max, max, 12,  FLT_MAX)
+                  FieldMaxOpFloatMat4x3, float, float_12, int, max, max, 12,  -std::numeric_limits<float>::infinity())
 DECLARE_FIELD_REDUCTION(register_reduction_field_max_double_mat4x3,
                   safe_reduce_max_double_mat4x3, safe_reduce_domain_point_max_double_mat4x3,
-                  FieldMaxOpDoubleMat4x3, double, double_12, size_t, max, max, 12, DBL_MAX)
+                  FieldMaxOpDoubleMat4x3, double, double_12, size_t, max, max, 12, -std::numeric_limits<double>::infinity())
 DECLARE_FIELD_REDUCTION(register_reduction_field_max_int32_mat4x3,
                   safe_reduce_max_int32_mat4x3, safe_reduce_domain_point_max_int32_mat4x3,
                   FieldMaxOpIntMat4x3, int, int_12, int, max, max, 12, INT_MAX)
 DECLARE_FIELD_REDUCTION(register_reduction_field_max_float_mat4x4,
                   safe_reduce_max_float_mat4x4, safe_reduce_domain_point_max_float_mat4x4,
-                  FieldMaxOpFloatMat4x4, float, float_16, int, max, max, 16, FLT_MAX)
+                  FieldMaxOpFloatMat4x4, float, float_16, int, max, max, 16, -std::numeric_limits<float>::infinity())
 DECLARE_FIELD_REDUCTION(register_reduction_field_max_double_mat4x4,
                   safe_reduce_max_double_mat4x4, safe_reduce_domain_point_max_double_mat4x4,
-                  FieldMaxOpDoubleMat4x4, double, double_16, size_t, max, max, 16, DBL_MAX)
+                  FieldMaxOpDoubleMat4x4, double, double_16, size_t, max, max, 16, -std::numeric_limits<double>::infinity())
 DECLARE_FIELD_REDUCTION(register_reduction_field_max_int32_mat4x4,
                   safe_reduce_max_int32_mat4x4, safe_reduce_domain_point_max_int32_mat4x4,
                   FieldMaxOpIntMat4x4, int, int_16, int, max, max, 16, INT_MAX)
@@ -488,10 +489,10 @@ DECLARE_FIELD_REDUCTION(register_reduction_field_max_int32_mat4x4,
 // declare min reductions on scalars
 DECLARE_FIELD_REDUCTION(register_reduction_field_min_float,
                   safe_reduce_min_float, safe_reduce_domain_point_min_float,
-                  FieldMinOpFloat, float, float_1, int, min, min, 1, FLT_MIN)
+                  FieldMinOpFloat, float, float_1, int, min, min, 1, +std::numeric_limits<float>::infinity())
 DECLARE_FIELD_REDUCTION(register_reduction_field_min_double,
                   safe_reduce_min_double, safe_reduce_domain_point_min_double,
-                  FieldMinOpDouble, double, double_1, size_t, min, min, 1, DBL_MIN)
+                  FieldMinOpDouble, double, double_1, size_t, min, min, 1, +std::numeric_limits<double>::infinity())
 DECLARE_FIELD_REDUCTION(register_reduction_field_min_int32,
                   safe_reduce_min_int32, safe_reduce_domain_point_min_int32,
                   FieldMinOpInt, int, int_1, int, min, min, 1, INT_MIN)
@@ -499,28 +500,28 @@ DECLARE_FIELD_REDUCTION(register_reduction_field_min_int32,
 // declare min reductions on vectors
 DECLARE_FIELD_REDUCTION(register_reduction_field_min_float_vec2,
                   safe_reduce_min_float_vec2, safe_reduce_domain_point_min_float_vec2,
-                  FieldMinOpFloatVec2, float, float_2, int, min, min, 2, FLT_MIN)
+                  FieldMinOpFloatVec2, float, float_2, int, min, min, 2, +std::numeric_limits<float>::infinity())
 DECLARE_FIELD_REDUCTION(register_reduction_field_min_double_vec2,
                   safe_reduce_min_double_vec2, safe_reduce_domain_point_min_double_vec2,
-                  FieldMinOpDoubleVec2, double, double_2, size_t, min, min, 2, DBL_MIN)
+                  FieldMinOpDoubleVec2, double, double_2, size_t, min, min, 2, +std::numeric_limits<double>::infinity())
 DECLARE_FIELD_REDUCTION(register_reduction_field_min_int32_vec2,
                   safe_reduce_min_int32_vec2, safe_reduce_domain_point_min_int32_vec2,
                   FieldMinOpIntVec2, int, int_2, int, min, min, 2, INT_MIN)
 DECLARE_FIELD_REDUCTION(register_reduction_field_min_float_vec3,
                   safe_reduce_min_float_vec3, safe_reduce_domain_point_min_float_vec3,
-                  FieldMinOpFloatVec3, float, float_3, int, min, min, 3, FLT_MIN)
+                  FieldMinOpFloatVec3, float, float_3, int, min, min, 3, +std::numeric_limits<float>::infinity())
 DECLARE_FIELD_REDUCTION(register_reduction_field_min_double_vec3,
                   safe_reduce_min_double_vec3, safe_reduce_domain_point_min_double_vec3,
-                  FieldMinOpDoubleVec3, double, double_3, size_t, min, min, 3, DBL_MIN)
+                  FieldMinOpDoubleVec3, double, double_3, size_t, min, min, 3, +std::numeric_limits<double>::infinity())
 DECLARE_FIELD_REDUCTION(register_reduction_field_min_int32_vec3,
                   safe_reduce_min_int32_vec3, safe_reduce_domain_point_min_int32_vec3,
                   FieldMinOpIntVec3, int, int_3, int, min, min, 3, INT_MIN)
 DECLARE_FIELD_REDUCTION(register_reduction_field_min_float_vec4,
                   safe_reduce_min_float_vec4, safe_reduce_domain_point_min_float_vec4,
-                  FieldMinOpFloatVec4, float, float_4, int, min, min, 4, FLT_MIN)
+                  FieldMinOpFloatVec4, float, float_4, int, min, min, 4, +std::numeric_limits<float>::infinity())
 DECLARE_FIELD_REDUCTION(register_reduction_field_min_double_vec4,
                   safe_reduce_min_double_vec4, safe_reduce_domain_point_min_double_vec4,
-                  FieldMinOpDoubleVec4, double, double_4, size_t, min, min, 4, DBL_MIN)
+                  FieldMinOpDoubleVec4, double, double_4, size_t, min, min, 4, +std::numeric_limits<double>::infinity())
 DECLARE_FIELD_REDUCTION(register_reduction_field_min_int32_vec4,
                   safe_reduce_min_int32_vec4, safe_reduce_domain_point_min_int32_vec4,
                   FieldMinOpIntVec4, int, int_4, int, min, min, 4, INT_MIN)
@@ -528,82 +529,82 @@ DECLARE_FIELD_REDUCTION(register_reduction_field_min_int32_vec4,
 // declare min reductions on vectors
 DECLARE_FIELD_REDUCTION(register_reduction_field_min_float_mat2x2,
                   safe_reduce_min_float_mat2x2, safe_reduce_domain_point_min_float_mat2x2,
-                  FieldMinOpFloatMat2x2, float, float_4, int, min, min, 4, FLT_MIN)
+                  FieldMinOpFloatMat2x2, float, float_4, int, min, min, 4, +std::numeric_limits<float>::infinity())
 DECLARE_FIELD_REDUCTION(register_reduction_field_min_double_mat2x2,
                   safe_reduce_min_double_mat2x2, safe_reduce_domain_point_min_double_mat2x2,
-                  FieldMinOpDoubleMat2x2, double, double_4, size_t, min, min, 4, DBL_MIN)
+                  FieldMinOpDoubleMat2x2, double, double_4, size_t, min, min, 4, +std::numeric_limits<double>::infinity())
 DECLARE_FIELD_REDUCTION(register_reduction_field_min_int32_mat2x2,
                   safe_reduce_min_int32_mat2x2, safe_reduce_domain_point_min_int32_mat2x2,
                   FieldMinOpIntMat2x2, int, int_4, int, min, min, 4, INT_MIN)
 DECLARE_FIELD_REDUCTION(register_reduction_field_min_float_mat2x3,
                   safe_reduce_min_float_mat2x3, safe_reduce_domain_point_min_float_mat2x3,
-                  FieldMinOpFloatMat2x3, float, float_6, int, min, min, 6,  FLT_MIN)
+                  FieldMinOpFloatMat2x3, float, float_6, int, min, min, 6,  +std::numeric_limits<float>::infinity())
 DECLARE_FIELD_REDUCTION(register_reduction_field_min_double_mat2x3,
                   safe_reduce_min_double_mat2x3, safe_reduce_domain_point_min_double_mat2x3,
-                  FieldMinOpDoubleMat2x3, double, double_6, size_t, min, min, 6, DBL_MIN)
+                  FieldMinOpDoubleMat2x3, double, double_6, size_t, min, min, 6, +std::numeric_limits<double>::infinity())
 DECLARE_FIELD_REDUCTION(register_reduction_field_min_int32_mat2x3,
                   safe_reduce_min_int32_mat2x3, safe_reduce_domain_point_min_int32_mat2x3,
                   FieldMinOpIntMat2x3, int, int_6, int, min, min, 6, INT_MIN)
 DECLARE_FIELD_REDUCTION(register_reduction_field_min_float_mat2x4,
                   safe_reduce_min_float_mat2x4, safe_reduce_domain_point_min_float_mat2x4,
-                  FieldMinOpFloatMat2x4, float, float_8, int, min, min, 8, FLT_MIN)
+                  FieldMinOpFloatMat2x4, float, float_8, int, min, min, 8, +std::numeric_limits<float>::infinity())
 DECLARE_FIELD_REDUCTION(register_reduction_field_min_double_mat2x4,
                   safe_reduce_min_double_mat2x4, safe_reduce_domain_point_min_double_mat2x4,
-                  FieldMinOpDoubleMat2x4, double, double_8, size_t, min, min, 8, DBL_MIN)
+                  FieldMinOpDoubleMat2x4, double, double_8, size_t, min, min, 8, +std::numeric_limits<double>::infinity())
 DECLARE_FIELD_REDUCTION(register_reduction_field_min_int32_mat2x4,
                   safe_reduce_min_int32_mat2x4, safe_reduce_domain_point_min_int32_mat2x4,
                   FieldMinOpIntMat2x4, int, int_8, int, min, min, 8, INT_MIN)
 DECLARE_FIELD_REDUCTION(register_reduction_field_min_float_mat3x2,
                   safe_reduce_min_float_mat3x2, safe_reduce_domain_point_min_float_mat3x2,
-                  FieldMinOpFloatMat3x2, float, float_6, int, min, min, 6, FLT_MIN)
+                  FieldMinOpFloatMat3x2, float, float_6, int, min, min, 6, +std::numeric_limits<float>::infinity())
 DECLARE_FIELD_REDUCTION(register_reduction_field_min_double_mat3x2,
                   safe_reduce_min_double_mat3x2, safe_reduce_domain_point_min_double_mat3x2,
-                  FieldMinOpDoubleMat3x2, double, double_6, size_t, min, min, 6, DBL_MIN)
+                  FieldMinOpDoubleMat3x2, double, double_6, size_t, min, min, 6, +std::numeric_limits<double>::infinity())
 DECLARE_FIELD_REDUCTION(register_reduction_field_min_int32_mat3x2,
                   safe_reduce_min_int32_mat3x2, safe_reduce_domain_point_min_int32_mat3x2,
                   FieldMinOpIntMat3x2, int, int_6, int, min, min, 6, INT_MIN)
 DECLARE_FIELD_REDUCTION(register_reduction_field_min_float_mat3x3,
                   safe_reduce_min_float_mat3x3, safe_reduce_domain_point_min_float_mat3x3,
-                  FieldMinOpFloatMat3x3, float, float_9, int, min, min, 9,  FLT_MIN)
+                  FieldMinOpFloatMat3x3, float, float_9, int, min, min, 9,  +std::numeric_limits<float>::infinity())
 DECLARE_FIELD_REDUCTION(register_reduction_field_min_double_mat3x3,
                   safe_reduce_min_double_mat3x3, safe_reduce_domain_point_min_double_mat3x3,
-                  FieldMinOpDoubleMat3x3, double, double_9, size_t, min, min, 9, DBL_MIN)
+                  FieldMinOpDoubleMat3x3, double, double_9, size_t, min, min, 9, +std::numeric_limits<double>::infinity())
 DECLARE_FIELD_REDUCTION(register_reduction_field_min_int32_mat3x3,
                   safe_reduce_min_int32_mat3x3, safe_reduce_domain_point_min_int32_mat3x3,
                   FieldMinOpIntMat3x3, int, int_9, int, min, min, 9, INT_MIN)
 DECLARE_FIELD_REDUCTION(register_reduction_field_min_float_mat3x4,
                   safe_reduce_min_float_mat3x4, safe_reduce_domain_point_min_float_mat3x4,
-                  FieldMinOpFloatMat3x4, float, float_12, int, min, min, 12, FLT_MIN)
+                  FieldMinOpFloatMat3x4, float, float_12, int, min, min, 12, +std::numeric_limits<float>::infinity())
 DECLARE_FIELD_REDUCTION(register_reduction_field_min_double_mat3x4,
                   safe_reduce_min_double_mat3x4, safe_reduce_domain_point_min_double_mat3x4,
-                  FieldMinOpDoubleMat3x4, double, double_12, size_t, min, min, 12, DBL_MIN)
+                  FieldMinOpDoubleMat3x4, double, double_12, size_t, min, min, 12, +std::numeric_limits<double>::infinity())
 DECLARE_FIELD_REDUCTION(register_reduction_field_min_int32_mat3x4,
                   safe_reduce_min_int32_mat3x4, safe_reduce_domain_point_min_int32_mat3x4,
                   FieldMinOpIntMat3x4, int, int_12, int, min, min, 12, INT_MIN)
 DECLARE_FIELD_REDUCTION(register_reduction_field_min_float_mat4x2,
                   safe_reduce_min_float_mat4x2, safe_reduce_domain_point_min_float_mat4x2,
-                  FieldMinOpFloatMat4x2, float, float_8, int, min, min, 8, FLT_MIN)
+                  FieldMinOpFloatMat4x2, float, float_8, int, min, min, 8, +std::numeric_limits<float>::infinity())
 DECLARE_FIELD_REDUCTION(register_reduction_field_min_double_mat4x2,
                   safe_reduce_min_double_mat4x2, safe_reduce_domain_point_min_double_mat4x2,
-                  FieldMinOpDoubleMat4x2, double, double_8, size_t, min, min, 8, DBL_MIN)
+                  FieldMinOpDoubleMat4x2, double, double_8, size_t, min, min, 8, +std::numeric_limits<double>::infinity())
 DECLARE_FIELD_REDUCTION(register_reduction_field_min_int32_mat4x2,
                   safe_reduce_min_int32_mat4x2, safe_reduce_domain_point_min_int32_mat4x2,
                   FieldMinOpIntMat4x2, int, int_8, int, min, min, 8, INT_MIN)
 DECLARE_FIELD_REDUCTION(register_reduction_field_min_float_mat4x3,
                   safe_reduce_min_float_mat4x3, safe_reduce_domain_point_min_float_mat4x3,
-                  FieldMinOpFloatMat4x3, float, float_12, int, min, min, 12,  FLT_MIN)
+                  FieldMinOpFloatMat4x3, float, float_12, int, min, min, 12,  +std::numeric_limits<float>::infinity())
 DECLARE_FIELD_REDUCTION(register_reduction_field_min_double_mat4x3,
                   safe_reduce_min_double_mat4x3, safe_reduce_domain_point_min_double_mat4x3,
-                  FieldMinOpDoubleMat4x3, double, double_12, size_t, min, min, 12, DBL_MIN)
+                  FieldMinOpDoubleMat4x3, double, double_12, size_t, min, min, 12, +std::numeric_limits<double>::infinity())
 DECLARE_FIELD_REDUCTION(register_reduction_field_min_int32_mat4x3,
                   safe_reduce_min_int32_mat4x3, safe_reduce_domain_point_min_int32_mat4x3,
                   FieldMinOpIntMat4x3, int, int_12, int, min, min, 12, INT_MIN)
 DECLARE_FIELD_REDUCTION(register_reduction_field_min_float_mat4x4,
                   safe_reduce_min_float_mat4x4, safe_reduce_domain_point_min_float_mat4x4,
-                  FieldMinOpFloatMat4x4, float, float_16, int, min, min, 16, FLT_MIN)
+                  FieldMinOpFloatMat4x4, float, float_16, int, min, min, 16, +std::numeric_limits<float>::infinity())
 DECLARE_FIELD_REDUCTION(register_reduction_field_min_double_mat4x4,
                   safe_reduce_min_double_mat4x4, safe_reduce_domain_point_min_double_mat4x4,
-                  FieldMinOpDoubleMat4x4, double, double_16, size_t, min, min, 16, DBL_MIN)
+                  FieldMinOpDoubleMat4x4, double, double_16, size_t, min, min, 16, +std::numeric_limits<double>::infinity())
 DECLARE_FIELD_REDUCTION(register_reduction_field_min_int32_mat4x4,
                   safe_reduce_min_int32_mat4x4, safe_reduce_domain_point_min_int32_mat4x4,
                   FieldMinOpIntMat4x4, int, int_16, int, min, min, 16, INT_MIN)
@@ -611,87 +612,41 @@ DECLARE_FIELD_REDUCTION(register_reduction_field_min_int32_mat4x4,
 
 // GLOBAL (FUTURE) DATA
 
-// temporary hack till Legion reduction operations on variable sized futures
-// are fixed
-#pragma pack(4)
-typedef struct { size_t bytes; float  value[1 ]; } red_float_1 ;
-#pragma pack(4)
-typedef struct { size_t bytes; double value[1 ]; } red_double_1 ;
-#pragma pack(4)
-typedef struct { size_t bytes; int    value[1 ]; } red_int_1 ;
-#pragma pack(4)
-typedef struct { size_t bytes; float  value[2 ]; } red_float_2 ;
-#pragma pack(4)
-typedef struct { size_t bytes; double value[2 ]; } red_double_2 ;
-#pragma pack(4)
-typedef struct { size_t bytes; int    value[2 ]; } red_int_2 ;
-#pragma pack(4)
-typedef struct { size_t bytes; float  value[3 ]; } red_float_3 ;
-#pragma pack(4)
-typedef struct { size_t bytes; double value[3 ]; } red_double_3 ;
-#pragma pack(4)
-typedef struct { size_t bytes; int    value[3 ]; } red_int_3 ;
-#pragma pack(4)
-typedef struct { size_t bytes; float  value[4 ]; } red_float_4 ;
-#pragma pack(4)
-typedef struct { size_t bytes; double value[4 ]; } red_double_4 ;
-#pragma pack(4)
-typedef struct { size_t bytes; int    value[4 ]; } red_int_4 ;
-#pragma pack(4)
-typedef struct { size_t bytes; float  value[6 ]; } red_float_6 ;
-#pragma pack(4)
-typedef struct { size_t bytes; double value[6 ]; } red_double_6 ;
-#pragma pack(4)
-typedef struct { size_t bytes; int    value[6 ]; } red_int_6 ;
-#pragma pack(4)
-typedef struct { size_t bytes; float  value[8 ]; } red_float_8 ;
-#pragma pack(4)
-typedef struct { size_t bytes; double value[8 ]; } red_double_8 ;
-#pragma pack(4)
-typedef struct { size_t bytes; int    value[8 ]; } red_int_8 ;
-#pragma pack(4)
-typedef struct { size_t bytes; float  value[9 ]; } red_float_9 ;
-#pragma pack(4)
-typedef struct { size_t bytes; double value[9 ]; } red_double_9 ;
-#pragma pack(4)
-typedef struct { size_t bytes; int    value[9 ]; } red_int_9 ;
-#pragma pack(4)
-typedef struct { size_t bytes; float  value[12]; } red_float_12;
-#pragma pack(4)
-typedef struct { size_t bytes; double value[12]; } red_double_12;
-#pragma pack(4)
-typedef struct { size_t bytes; int    value[12]; } red_int_12;
-#pragma pack(4)
-typedef struct { size_t bytes; float  value[16]; } red_float_16;
-#pragma pack(4)
-typedef struct { size_t bytes; double value[16]; } red_double_16;
-#pragma pack(4)
-typedef struct { size_t bytes; int    value[16]; } red_int_16;
-
 // Pre-defined reduction operators
 #define DECLARE_GLOBAL_REDUCTION(REG, CLASS, T, T_N, U, APPLY_OP, FOLD_OP, N, ID) \
   class CLASS {                                                         \
   public:                                                               \
-  typedef T_N LHS;                                               \
-  typedef T_N RHS;                                               \
+  typedef TaskResult LHS;                                               \
+  typedef TaskResult RHS;                                               \
   template <bool EXCLUSIVE> static void apply(LHS &lhs, RHS rhs);       \
   template <bool EXCLUSIVE> static void fold(RHS &rhs1, RHS rhs2);      \
-  static const T_N identity;                                     \
+  static const T_N identity_buffer;                                     \
+  static const TaskResult identity;                                     \
   };                                                                    \
                                                                         \
-  const T_N CLASS::identity = { N * sizeof(T), {ID} };   \
+  const T_N CLASS::identity_buffer = { ID };                            \
+  const TaskResult CLASS::identity((void *)&CLASS::identity_buffer,     \
+                                   sizeof(CLASS::identity_buffer));     \
                                                                         \
   template <>                                                           \
-  void CLASS::apply<true>(LHS &lhs, RHS rhs)                            \
+  void CLASS::apply<true>(LHS &lhs_, RHS rhs_)                          \
   {                                                                     \
+    assert(lhs_.value_size == sizeof(T_N));                             \
+    assert(rhs_.value_size == sizeof(T_N));                             \
+    T_N &lhs = *(T_N *)(lhs_.value);                                    \
+    T_N &rhs = *(T_N *)(rhs_.value);                                     \
     for (int i = 0; i < N; ++i) {                                       \
       lhs.value[i] = APPLY_OP(lhs.value[i], rhs.value[i]);              \
     }                                                                   \
   }                                                                     \
                                                                         \
   template <>                                                           \
-  void CLASS::apply<false>(LHS &lhs, RHS rhs)                           \
+  void CLASS::apply<false>(LHS &lhs_, RHS rhs_)                         \
   {                                                                     \
+    assert(lhs_.value_size == sizeof(T_N));                             \
+    assert(rhs_.value_size == sizeof(T_N));                             \
+    T_N &lhs = *(T_N *)(lhs_.value);                                    \
+    T_N &rhs = *(T_N *)(rhs_.value);                                     \
     for (int i = 0; i < N; ++i) {                                       \
       U *target = (U *)&(lhs.value[i]);                                 \
       union { U as_U; T as_T; } oldval, newval;                         \
@@ -703,16 +658,24 @@ typedef struct { size_t bytes; int    value[16]; } red_int_16;
   }                                                                     \
                                                                         \
   template <>                                                           \
-  void CLASS::fold<true>(RHS &rhs1, RHS rhs2)                           \
+  void CLASS::fold<true>(RHS &rhs1_, RHS rhs2_)                         \
   {                                                                     \
+    assert(rhs1_.value_size == sizeof(T_N));                            \
+    assert(rhs2_.value_size == sizeof(T_N));                            \
+    T_N &rhs1 = *(T_N *)(rhs1_.value);                                  \
+    T_N &rhs2 = *(T_N *)(rhs2_.value);                                   \
     for (int i = 0; i < N; ++i) {                                       \
       rhs1.value[i] = FOLD_OP(rhs1.value[i], rhs2.value[i]);            \
     }                                                                   \
   }                                                                     \
                                                                         \
   template <>                                                           \
-  void CLASS::fold<false>(RHS &rhs1, RHS rhs2)                          \
+  void CLASS::fold<false>(RHS &rhs1_, RHS rhs2_)                        \
   {                                                                     \
+    assert(rhs1_.value_size == sizeof(T_N));                            \
+    assert(rhs2_.value_size == sizeof(T_N));                            \
+    T_N &rhs1 = *(T_N *)(rhs1_.value);                                  \
+    T_N &rhs2 = *(T_N *)(rhs2_.value);                                   \
     for (int i = 0; i < N; ++i) {                                       \
       U *target = (U *)&(rhs1.value[i]);                                \
       union { U as_U; T as_T; } oldval, newval;                         \
@@ -734,336 +697,336 @@ typedef struct { size_t bytes; int    value[16]; } red_int_16;
 
 // declare plus reductions on scalars
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_plus_float,
-                  GlobalPlusOpfloat, float, red_float_1, int, ADD, ADD, 1, 0.0f)
+                  GlobalPlusOpfloat, float, float_1, int, ADD, ADD, 1, 0.0f)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_plus_double,
-                  GlobalPlusOpdouble, double, red_double_1, size_t, ADD, ADD, 1, 0.0)
+                  GlobalPlusOpdouble, double, double_1, size_t, ADD, ADD, 1, 0.0)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_plus_int32,
-                  GlobalPlusOpint, int, red_int_1, int, ADD, ADD, 1, 0)
+                  GlobalPlusOpint, int, int_1, int, ADD, ADD, 1, 0)
 
 // declare plus reductions on vectors
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_plus_float_vec2,
-                  GlobalPlusOpred_floatVec2, float, red_float_2, int, ADD, ADD, 2, 0.0f)
+                  GlobalPlusOpred_floatVec2, float, float_2, int, ADD, ADD, 2, 0.0f)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_plus_double_vec2,
-                  GlobalPlusOpred_doubleVec2, double, red_double_2, size_t, ADD, ADD, 2, 0.0)
+                  GlobalPlusOpred_doubleVec2, double, double_2, size_t, ADD, ADD, 2, 0.0)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_plus_int32_vec2,
-                  GlobalPlusOpred_intVec2, int, red_int_2, int, ADD, ADD, 2, 0)
+                  GlobalPlusOpred_intVec2, int, int_2, int, ADD, ADD, 2, 0)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_plus_float_vec3,
-                  GlobalPlusOpred_floatVec3, float, red_float_3, int, ADD, ADD, 3, 0.0f)
+                  GlobalPlusOpred_floatVec3, float, float_3, int, ADD, ADD, 3, 0.0f)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_plus_double_vec3,
-                  GlobalPlusOpred_doubleVec3, double, red_double_3, size_t, ADD, ADD, 3, 0.0)
+                  GlobalPlusOpred_doubleVec3, double, double_3, size_t, ADD, ADD, 3, 0.0)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_plus_int32_vec3,
-                  GlobalPlusOpred_intVec3, int, red_int_3, int, ADD, ADD, 3, 0)
+                  GlobalPlusOpred_intVec3, int, int_3, int, ADD, ADD, 3, 0)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_plus_float_vec4,
-                  GlobalPlusOpred_floatVec4, float, red_float_4, int, ADD, ADD, 4, 0.0f)
+                  GlobalPlusOpred_floatVec4, float, float_4, int, ADD, ADD, 4, 0.0f)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_plus_double_vec4,
-                  GlobalPlusOpred_doubleVec4, double, red_double_4, size_t, ADD, ADD, 4, 0.0)
+                  GlobalPlusOpred_doubleVec4, double, double_4, size_t, ADD, ADD, 4, 0.0)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_plus_int32_vec4,
-                  GlobalPlusOpred_intVec4, int, red_int_4, int, ADD, ADD, 4, 0)
+                  GlobalPlusOpred_intVec4, int, int_4, int, ADD, ADD, 4, 0)
 
-// declare plus reductions on vectors
+// declare plus reductions on matrices
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_plus_float_mat2x2,
-                  GlobalPlusOpred_floatMat2x2, float, red_float_4, int, ADD, ADD, 4, 0.0f)
+                  GlobalPlusOpred_floatMat2x2, float, float_4, int, ADD, ADD, 4, 0.0f)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_plus_double_mat2x2,
-                  GlobalPlusOpred_doubleMat2x2, double, red_double_4, size_t, ADD, ADD, 4, 0.0)
+                  GlobalPlusOpred_doubleMat2x2, double, double_4, size_t, ADD, ADD, 4, 0.0)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_plus_int32_mat2x2,
-                  GlobalPlusOpred_intMat2x2, int, red_int_4, int, ADD, ADD, 4, 0)
+                  GlobalPlusOpred_intMat2x2, int, int_4, int, ADD, ADD, 4, 0)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_plus_float_mat2x3,
-                  GlobalPlusOpred_floatMat2x3, float, red_float_6, int, ADD, ADD, 6,  0.0f)
+                  GlobalPlusOpred_floatMat2x3, float, float_6, int, ADD, ADD, 6,  0.0f)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_plus_double_mat2x3,
-                  GlobalPlusOpred_doubleMat2x3, double, red_double_6, size_t, ADD, ADD, 6, 0.0)
+                  GlobalPlusOpred_doubleMat2x3, double, double_6, size_t, ADD, ADD, 6, 0.0)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_plus_int32_mat2x3,
-                  GlobalPlusOpred_intMat2x3, int, red_int_6, int, ADD, ADD, 6, 0)
+                  GlobalPlusOpred_intMat2x3, int, int_6, int, ADD, ADD, 6, 0)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_plus_float_mat2x4,
-                  GlobalPlusOpred_floatMat2x4, float, red_float_8, int, ADD, ADD, 8, 0.0f)
+                  GlobalPlusOpred_floatMat2x4, float, float_8, int, ADD, ADD, 8, 0.0f)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_plus_double_mat2x4,
-                  GlobalPlusOpred_doubleMat2x4, double, red_double_8, size_t, ADD, ADD, 8, 0.0)
+                  GlobalPlusOpred_doubleMat2x4, double, double_8, size_t, ADD, ADD, 8, 0.0)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_plus_int32_mat2x4,
-                  GlobalPlusOpred_intMat2x4, int, red_int_8, int, ADD, ADD, 8, 0)
+                  GlobalPlusOpred_intMat2x4, int, int_8, int, ADD, ADD, 8, 0)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_plus_float_mat3x2,
-                  GlobalPlusOpred_floatMat3x2, float, red_float_6, int, ADD, ADD, 6, 0.0f)
+                  GlobalPlusOpred_floatMat3x2, float, float_6, int, ADD, ADD, 6, 0.0f)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_plus_double_mat3x2,
-                  GlobalPlusOpred_doubleMat3x2, double, red_double_6, size_t, ADD, ADD, 6, 0.0)
+                  GlobalPlusOpred_doubleMat3x2, double, double_6, size_t, ADD, ADD, 6, 0.0)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_plus_int32_mat3x2,
-                  GlobalPlusOpred_intMat3x2, int, red_int_6, int, ADD, ADD, 6, 0)
+                  GlobalPlusOpred_intMat3x2, int, int_6, int, ADD, ADD, 6, 0)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_plus_float_mat3x3,
-                  GlobalPlusOpred_floatMat3x3, float, red_float_9, int, ADD, ADD, 9,  0.0f)
+                  GlobalPlusOpred_floatMat3x3, float, float_9, int, ADD, ADD, 9,  0.0f)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_plus_double_mat3x3,
-                  GlobalPlusOpred_doubleMat3x3, double, red_double_9, size_t, ADD, ADD, 9, 0.0)
+                  GlobalPlusOpred_doubleMat3x3, double, double_9, size_t, ADD, ADD, 9, 0.0)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_plus_int32_mat3x3,
-                  GlobalPlusOpred_intMat3x3, int, red_int_9, int, ADD, ADD, 9, 0)
+                  GlobalPlusOpred_intMat3x3, int, int_9, int, ADD, ADD, 9, 0)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_plus_float_mat3x4,
-                  GlobalPlusOpred_floatMat3x4, float, red_float_12, int, ADD, ADD, 12, 0.0f)
+                  GlobalPlusOpred_floatMat3x4, float, float_12, int, ADD, ADD, 12, 0.0f)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_plus_double_mat3x4,
-                  GlobalPlusOpred_doubleMat3x4, double, red_double_12, size_t, ADD, ADD, 12, 0.0)
+                  GlobalPlusOpred_doubleMat3x4, double, double_12, size_t, ADD, ADD, 12, 0.0)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_plus_int32_mat3x4,
-                  GlobalPlusOpred_intMat3x4, int, red_int_12, int, ADD, ADD, 12, 0)
+                  GlobalPlusOpred_intMat3x4, int, int_12, int, ADD, ADD, 12, 0)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_plus_float_mat4x2,
-                  GlobalPlusOpred_floatMat4x2, float, red_float_8, int, ADD, ADD, 8, 0.0f)
+                  GlobalPlusOpred_floatMat4x2, float, float_8, int, ADD, ADD, 8, 0.0f)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_plus_double_mat4x2,
-                  GlobalPlusOpred_doubleMat4x2, double, red_double_8, size_t, ADD, ADD, 8, 0.0)
+                  GlobalPlusOpred_doubleMat4x2, double, double_8, size_t, ADD, ADD, 8, 0.0)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_plus_int32_mat4x2,
-                  GlobalPlusOpred_intMat4x2, int, red_int_8, int, ADD, ADD, 8, 0)
+                  GlobalPlusOpred_intMat4x2, int, int_8, int, ADD, ADD, 8, 0)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_plus_float_mat4x3,
-                  GlobalPlusOpred_floatMat4x3, float, red_float_12, int, ADD, ADD, 12,  0.0f)
+                  GlobalPlusOpred_floatMat4x3, float, float_12, int, ADD, ADD, 12,  0.0f)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_plus_double_mat4x3,
-                  GlobalPlusOpred_doubleMat4x3, double, red_double_12, size_t, ADD, ADD, 12, 0.0)
+                  GlobalPlusOpred_doubleMat4x3, double, double_12, size_t, ADD, ADD, 12, 0.0)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_plus_int32_mat4x3,
-                  GlobalPlusOpred_intMat4x3, int, red_int_12, int, ADD, ADD, 12, 0)
+                  GlobalPlusOpred_intMat4x3, int, int_12, int, ADD, ADD, 12, 0)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_plus_float_mat4x4,
-                  GlobalPlusOpred_floatMat4x4, float, red_float_16, int, ADD, ADD, 16, 0.0f)
+                  GlobalPlusOpred_floatMat4x4, float, float_16, int, ADD, ADD, 16, 0.0f)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_plus_double_mat4x4,
-                  GlobalPlusOpred_doubleMat4x4, double, red_double_16, size_t, ADD, ADD, 16, 0.0)
+                  GlobalPlusOpred_doubleMat4x4, double, double_16, size_t, ADD, ADD, 16, 0.0)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_plus_int32_mat4x4,
-                  GlobalPlusOpred_intMat4x4, int, red_int_16, int, ADD, ADD, 16, 0)
+                  GlobalPlusOpred_intMat4x4, int, int_16, int, ADD, ADD, 16, 0)
 
 // declare times reductions on scalars
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_float,
-                  GlobalTimesOpfloat, float, red_float_1, int, MUL, MUL, 1, 0.0f)
+                  GlobalTimesOpfloat, float, float_1, int, MUL, MUL, 1, 0.0f)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_double,
-                  GlobalTimesOpdouble, double, red_double_1, size_t, MUL, MUL, 1, 0.0)
+                  GlobalTimesOpdouble, double, double_1, size_t, MUL, MUL, 1, 0.0)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_int32,
-                  GlobalTimesOpint, int, red_int_1, int, MUL, MUL, 1, 0)
+                  GlobalTimesOpint, int, int_1, int, MUL, MUL, 1, 0)
 
 // declare times reductions on vectors
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_float_vec2,
-                  GlobalTimesOpred_floatVec2, float, red_float_2, int, MUL, MUL, 2, 0.0f)
+                  GlobalTimesOpred_floatVec2, float, float_2, int, MUL, MUL, 2, 0.0f)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_double_vec2,
-                  GlobalTimesOpred_doubleVec2, double, red_double_2, size_t, MUL, MUL, 2, 0.0)
+                  GlobalTimesOpred_doubleVec2, double, double_2, size_t, MUL, MUL, 2, 0.0)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_int32_vec2,
-                  GlobalTimesOpred_intVec2, int, red_int_2, int, MUL, MUL, 2, 0)
+                  GlobalTimesOpred_intVec2, int, int_2, int, MUL, MUL, 2, 0)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_float_vec3,
-                  GlobalTimesOpred_floatVec3, float, red_float_3, int, MUL, MUL, 3, 0.0f)
+                  GlobalTimesOpred_floatVec3, float, float_3, int, MUL, MUL, 3, 0.0f)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_double_vec3,
-                  GlobalTimesOpred_doubleVec3, double, red_double_3, size_t, MUL, MUL, 3, 0.0)
+                  GlobalTimesOpred_doubleVec3, double, double_3, size_t, MUL, MUL, 3, 0.0)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_int32_vec3,
-                  GlobalTimesOpred_intVec3, int, red_int_3, int, MUL, MUL, 3, 0)
+                  GlobalTimesOpred_intVec3, int, int_3, int, MUL, MUL, 3, 0)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_float_vec4,
-                  GlobalTimesOpred_floatVec4, float, red_float_4, int, MUL, MUL, 4, 0.0f)
+                  GlobalTimesOpred_floatVec4, float, float_4, int, MUL, MUL, 4, 0.0f)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_double_vec4,
-                  GlobalTimesOpred_doubleVec4, double, red_double_4, size_t, MUL, MUL, 4, 0.0)
+                  GlobalTimesOpred_doubleVec4, double, double_4, size_t, MUL, MUL, 4, 0.0)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_int32_vec4,
-                  GlobalTimesOpred_intVec4, int, red_int_4, int, MUL, MUL, 4, 0)
+                  GlobalTimesOpred_intVec4, int, int_4, int, MUL, MUL, 4, 0)
 
-// declare times reductions on vectors
+// declare times reductions on matrices
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_float_mat2x2,
-                  GlobalTimesOpred_floatMat2x2, float, red_float_4, int, MUL, MUL, 4, 0.0f)
+                  GlobalTimesOpred_floatMat2x2, float, float_4, int, MUL, MUL, 4, 0.0f)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_double_mat2x2,
-                  GlobalTimesOpred_doubleMat2x2, double, red_double_4, size_t, MUL, MUL, 4, 0.0)
+                  GlobalTimesOpred_doubleMat2x2, double, double_4, size_t, MUL, MUL, 4, 0.0)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_int32_mat2x2,
-                  GlobalTimesOpred_intMat2x2, int, red_int_4, int, MUL, MUL, 4, 0)
+                  GlobalTimesOpred_intMat2x2, int, int_4, int, MUL, MUL, 4, 0)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_float_mat2x3,
-                  GlobalTimesOpred_floatMat2x3, float, red_float_6, int, MUL, MUL, 6,  0.0f)
+                  GlobalTimesOpred_floatMat2x3, float, float_6, int, MUL, MUL, 6,  0.0f)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_double_mat2x3,
-                  GlobalTimesOpred_doubleMat2x3, double, red_double_6, size_t, MUL, MUL, 6, 0.0)
+                  GlobalTimesOpred_doubleMat2x3, double, double_6, size_t, MUL, MUL, 6, 0.0)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_int32_mat2x3,
-                  GlobalTimesOpred_intMat2x3, int, red_int_6, int, MUL, MUL, 6, 0)
+                  GlobalTimesOpred_intMat2x3, int, int_6, int, MUL, MUL, 6, 0)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_float_mat2x4,
-                  GlobalTimesOpred_floatMat2x4, float, red_float_8, int, MUL, MUL, 8, 0.0f)
+                  GlobalTimesOpred_floatMat2x4, float, float_8, int, MUL, MUL, 8, 0.0f)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_double_mat2x4,
-                  GlobalTimesOpred_doubleMat2x4, double, red_double_8, size_t, MUL, MUL, 8, 0.0)
+                  GlobalTimesOpred_doubleMat2x4, double, double_8, size_t, MUL, MUL, 8, 0.0)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_int32_mat2x4,
-                  GlobalTimesOpred_intMat2x4, int, red_int_8, int, MUL, MUL, 8, 0)
+                  GlobalTimesOpred_intMat2x4, int, int_8, int, MUL, MUL, 8, 0)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_float_mat3x2,
-                  GlobalTimesOpred_floatMat3x2, float, red_float_6, int, MUL, MUL, 6, 0.0f)
+                  GlobalTimesOpred_floatMat3x2, float, float_6, int, MUL, MUL, 6, 0.0f)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_double_mat3x2,
-                  GlobalTimesOpred_doubleMat3x2, double, red_double_6, size_t, MUL, MUL, 6, 0.0)
+                  GlobalTimesOpred_doubleMat3x2, double, double_6, size_t, MUL, MUL, 6, 0.0)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_int32_mat3x2,
-                  GlobalTimesOpred_intMat3x2, int, red_int_6, int, MUL, MUL, 6, 0)
+                  GlobalTimesOpred_intMat3x2, int, int_6, int, MUL, MUL, 6, 0)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_float_mat3x3,
-                  GlobalTimesOpred_floatMat3x3, float, red_float_9, int, MUL, MUL, 9,  0.0f)
+                  GlobalTimesOpred_floatMat3x3, float, float_9, int, MUL, MUL, 9,  0.0f)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_double_mat3x3,
-                  GlobalTimesOpred_doubleMat3x3, double, red_double_9, size_t, MUL, MUL, 9, 0.0)
+                  GlobalTimesOpred_doubleMat3x3, double, double_9, size_t, MUL, MUL, 9, 0.0)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_int32_mat3x3,
-                  GlobalTimesOpred_intMat3x3, int, red_int_9, int, MUL, MUL, 9, 0)
+                  GlobalTimesOpred_intMat3x3, int, int_9, int, MUL, MUL, 9, 0)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_float_mat3x4,
-                  GlobalTimesOpred_floatMat3x4, float, red_float_12, int, MUL, MUL, 12, 0.0f)
+                  GlobalTimesOpred_floatMat3x4, float, float_12, int, MUL, MUL, 12, 0.0f)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_double_mat3x4,
-                  GlobalTimesOpred_doubleMat3x4, double, red_double_12, size_t, MUL, MUL, 12, 0.0)
+                  GlobalTimesOpred_doubleMat3x4, double, double_12, size_t, MUL, MUL, 12, 0.0)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_int32_mat3x4,
-                  GlobalTimesOpred_intMat3x4, int, red_int_12, int, MUL, MUL, 12, 0)
+                  GlobalTimesOpred_intMat3x4, int, int_12, int, MUL, MUL, 12, 0)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_float_mat4x2,
-                  GlobalTimesOpred_floatMat4x2, float, red_float_8, int, MUL, MUL, 8, 0.0f)
+                  GlobalTimesOpred_floatMat4x2, float, float_8, int, MUL, MUL, 8, 0.0f)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_double_mat4x2,
-                  GlobalTimesOpred_doubleMat4x2, double, red_double_8, size_t, MUL, MUL, 8, 0.0)
+                  GlobalTimesOpred_doubleMat4x2, double, double_8, size_t, MUL, MUL, 8, 0.0)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_int32_mat4x2,
-                  GlobalTimesOpred_intMat4x2, int, red_int_8, int, MUL, MUL, 8, 0)
+                  GlobalTimesOpred_intMat4x2, int, int_8, int, MUL, MUL, 8, 0)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_float_mat4x3,
-                  GlobalTimesOpred_floatMat4x3, float, red_float_12, int, MUL, MUL, 12,  0.0f)
+                  GlobalTimesOpred_floatMat4x3, float, float_12, int, MUL, MUL, 12,  0.0f)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_double_mat4x3,
-                  GlobalTimesOpred_doubleMat4x3, double, red_double_12, size_t, MUL, MUL, 12, 0.0)
+                  GlobalTimesOpred_doubleMat4x3, double, double_12, size_t, MUL, MUL, 12, 0.0)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_int32_mat4x3,
-                  GlobalTimesOpred_intMat4x3, int, red_int_12, int, MUL, MUL, 12, 0)
+                  GlobalTimesOpred_intMat4x3, int, int_12, int, MUL, MUL, 12, 0)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_float_mat4x4,
-                  GlobalTimesOpred_floatMat4x4, float, red_float_16, int, MUL, MUL, 16, 0.0f)
+                  GlobalTimesOpred_floatMat4x4, float, float_16, int, MUL, MUL, 16, 0.0f)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_double_mat4x4,
-                  GlobalTimesOpred_doubleMat4x4, double, red_double_16, size_t, MUL, MUL, 16, 0.0)
+                  GlobalTimesOpred_doubleMat4x4, double, double_16, size_t, MUL, MUL, 16, 0.0)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_int32_mat4x4,
-                  GlobalTimesOpred_intMat4x4, int, red_int_16, int, MUL, MUL, 16, 0)
+                  GlobalTimesOpred_intMat4x4, int, int_16, int, MUL, MUL, 16, 0)
 
 // declare max reductions on scalars
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_max_float,
-                  GlobalMaxOpfloat, float, red_float_1, int, max, max, 1, FLT_MAX)
+                  GlobalMaxOpfloat, float, float_1, int, max, max, 1, -std::numeric_limits<float>::infinity())
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_max_double,
-                  GlobalMaxOpdouble, double, red_double_1, size_t, max, max, 1, DBL_MAX)
+                  GlobalMaxOpdouble, double, double_1, size_t, max, max, 1, -std::numeric_limits<double>::infinity())
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_max_int32,
-                  GlobalMaxOpint, int, red_int_1, int, max, max, 1, INT_MAX)
+                  GlobalMaxOpint, int, int_1, int, max, max, 1, INT_MAX)
 
 // declare max reductions on vectors
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_max_float_vec2,
-                  GlobalMaxOpred_floatVec2, float, red_float_2, int, max, max, 2, FLT_MAX)
+                  GlobalMaxOpred_floatVec2, float, float_2, int, max, max, 2, -std::numeric_limits<float>::infinity())
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_max_double_vec2,
-                  GlobalMaxOpred_doubleVec2, double, red_double_2, size_t, max, max, 2, DBL_MAX)
+                  GlobalMaxOpred_doubleVec2, double, double_2, size_t, max, max, 2, -std::numeric_limits<double>::infinity())
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_max_int32_vec2,
-                  GlobalMaxOpred_intVec2, int, red_int_2, int, max, max, 2, INT_MAX)
+                  GlobalMaxOpred_intVec2, int, int_2, int, max, max, 2, INT_MAX)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_max_float_vec3,
-                  GlobalMaxOpred_floatVec3, float, red_float_3, int, max, max, 3, FLT_MAX)
+                  GlobalMaxOpred_floatVec3, float, float_3, int, max, max, 3, -std::numeric_limits<float>::infinity())
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_max_double_vec3,
-                  GlobalMaxOpred_doubleVec3, double, red_double_3, size_t, max, max, 3, DBL_MAX)
+                  GlobalMaxOpred_doubleVec3, double, double_3, size_t, max, max, 3, -std::numeric_limits<double>::infinity())
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_max_int32_vec3,
-                  GlobalMaxOpred_intVec3, int, red_int_3, int, max, max, 3, INT_MAX)
+                  GlobalMaxOpred_intVec3, int, int_3, int, max, max, 3, INT_MAX)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_max_float_vec4,
-                  GlobalMaxOpred_floatVec4, float, red_float_4, int, max, max, 4, FLT_MAX)
+                  GlobalMaxOpred_floatVec4, float, float_4, int, max, max, 4, -std::numeric_limits<float>::infinity())
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_max_double_vec4,
-                  GlobalMaxOpred_doubleVec4, double, red_double_4, size_t, max, max, 4, DBL_MAX)
+                  GlobalMaxOpred_doubleVec4, double, double_4, size_t, max, max, 4, -std::numeric_limits<double>::infinity())
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_max_int32_vec4,
-                  GlobalMaxOpred_intVec4, int, red_int_4, int, max, max, 4, INT_MAX)
+                  GlobalMaxOpred_intVec4, int, int_4, int, max, max, 4, INT_MAX)
 
-// declare max reductions on vectors
+// declare max reductions on matrices
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_max_float_mat2x2,
-                  GlobalMaxOpred_floatMat2x2, float, red_float_4, int, max, max, 4, FLT_MAX)
+                  GlobalMaxOpred_floatMat2x2, float, float_4, int, max, max, 4, -std::numeric_limits<float>::infinity())
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_max_double_mat2x2,
-                  GlobalMaxOpred_doubleMat2x2, double, red_double_4, size_t, max, max, 4, DBL_MAX)
+                  GlobalMaxOpred_doubleMat2x2, double, double_4, size_t, max, max, 4, -std::numeric_limits<double>::infinity())
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_max_int32_mat2x2,
-                  GlobalMaxOpred_intMat2x2, int, red_int_4, int, max, max, 4, INT_MAX)
+                  GlobalMaxOpred_intMat2x2, int, int_4, int, max, max, 4, INT_MAX)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_max_float_mat2x3,
-                  GlobalMaxOpred_floatMat2x3, float, red_float_6, int, max, max, 6,  FLT_MAX)
+                  GlobalMaxOpred_floatMat2x3, float, float_6, int, max, max, 6,  -std::numeric_limits<float>::infinity())
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_max_double_mat2x3,
-                  GlobalMaxOpred_doubleMat2x3, double, red_double_6, size_t, max, max, 6, DBL_MAX)
+                  GlobalMaxOpred_doubleMat2x3, double, double_6, size_t, max, max, 6, -std::numeric_limits<double>::infinity())
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_max_int32_mat2x3,
-                  GlobalMaxOpred_intMat2x3, int, red_int_6, int, max, max, 6, INT_MAX)
+                  GlobalMaxOpred_intMat2x3, int, int_6, int, max, max, 6, INT_MAX)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_max_float_mat2x4,
-                  GlobalMaxOpred_floatMat2x4, float, red_float_8, int, max, max, 8, FLT_MAX)
+                  GlobalMaxOpred_floatMat2x4, float, float_8, int, max, max, 8, -std::numeric_limits<float>::infinity())
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_max_double_mat2x4,
-                  GlobalMaxOpred_doubleMat2x4, double, red_double_8, size_t, max, max, 8, DBL_MAX)
+                  GlobalMaxOpred_doubleMat2x4, double, double_8, size_t, max, max, 8, -std::numeric_limits<double>::infinity())
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_max_int32_mat2x4,
-                  GlobalMaxOpred_intMat2x4, int, red_int_8, int, max, max, 8, INT_MAX)
+                  GlobalMaxOpred_intMat2x4, int, int_8, int, max, max, 8, INT_MAX)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_max_float_mat3x2,
-                  GlobalMaxOpred_floatMat3x2, float, red_float_6, int, max, max, 6, FLT_MAX)
+                  GlobalMaxOpred_floatMat3x2, float, float_6, int, max, max, 6, -std::numeric_limits<float>::infinity())
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_max_double_mat3x2,
-                  GlobalMaxOpred_doubleMat3x2, double, red_double_6, size_t, max, max, 6, DBL_MAX)
+                  GlobalMaxOpred_doubleMat3x2, double, double_6, size_t, max, max, 6, -std::numeric_limits<double>::infinity())
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_max_int32_mat3x2,
-                  GlobalMaxOpred_intMat3x2, int, red_int_6, int, max, max, 6, INT_MAX)
+                  GlobalMaxOpred_intMat3x2, int, int_6, int, max, max, 6, INT_MAX)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_max_float_mat3x3,
-                  GlobalMaxOpred_floatMat3x3, float, red_float_9, int, max, max, 9,  FLT_MAX)
+                  GlobalMaxOpred_floatMat3x3, float, float_9, int, max, max, 9,  -std::numeric_limits<float>::infinity())
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_max_double_mat3x3,
-                  GlobalMaxOpred_doubleMat3x3, double, red_double_9, size_t, max, max, 9, DBL_MAX)
+                  GlobalMaxOpred_doubleMat3x3, double, double_9, size_t, max, max, 9, -std::numeric_limits<double>::infinity())
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_max_int32_mat3x3,
-                  GlobalMaxOpred_intMat3x3, int, red_int_9, int, max, max, 9, INT_MAX)
+                  GlobalMaxOpred_intMat3x3, int, int_9, int, max, max, 9, INT_MAX)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_max_float_mat3x4,
-                  GlobalMaxOpred_floatMat3x4, float, red_float_12, int, max, max, 12, FLT_MAX)
+                  GlobalMaxOpred_floatMat3x4, float, float_12, int, max, max, 12, -std::numeric_limits<float>::infinity())
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_max_double_mat3x4,
-                  GlobalMaxOpred_doubleMat3x4, double, red_double_12, size_t, max, max, 12, DBL_MAX)
+                  GlobalMaxOpred_doubleMat3x4, double, double_12, size_t, max, max, 12, -std::numeric_limits<double>::infinity())
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_max_int32_mat3x4,
-                  GlobalMaxOpred_intMat3x4, int, red_int_12, int, max, max, 12, INT_MAX)
+                  GlobalMaxOpred_intMat3x4, int, int_12, int, max, max, 12, INT_MAX)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_max_float_mat4x2,
-                  GlobalMaxOpred_floatMat4x2, float, red_float_8, int, max, max, 8, FLT_MAX)
+                  GlobalMaxOpred_floatMat4x2, float, float_8, int, max, max, 8, -std::numeric_limits<float>::infinity())
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_max_double_mat4x2,
-                  GlobalMaxOpred_doubleMat4x2, double, red_double_8, size_t, max, max, 8, DBL_MAX)
+                  GlobalMaxOpred_doubleMat4x2, double, double_8, size_t, max, max, 8, -std::numeric_limits<double>::infinity())
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_max_int32_mat4x2,
-                  GlobalMaxOpred_intMat4x2, int, red_int_8, int, max, max, 8, INT_MAX)
+                  GlobalMaxOpred_intMat4x2, int, int_8, int, max, max, 8, INT_MAX)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_max_float_mat4x3,
-                  GlobalMaxOpred_floatMat4x3, float, red_float_12, int, max, max, 12,  FLT_MAX)
+                  GlobalMaxOpred_floatMat4x3, float, float_12, int, max, max, 12,  -std::numeric_limits<float>::infinity())
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_max_double_mat4x3,
-                  GlobalMaxOpred_doubleMat4x3, double, red_double_12, size_t, max, max, 12, DBL_MAX)
+                  GlobalMaxOpred_doubleMat4x3, double, double_12, size_t, max, max, 12, -std::numeric_limits<double>::infinity())
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_max_int32_mat4x3,
-                  GlobalMaxOpred_intMat4x3, int, red_int_12, int, max, max, 12, INT_MAX)
+                  GlobalMaxOpred_intMat4x3, int, int_12, int, max, max, 12, INT_MAX)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_max_float_mat4x4,
-                  GlobalMaxOpred_floatMat4x4, float, red_float_16, int, max, max, 16, FLT_MAX)
+                  GlobalMaxOpred_floatMat4x4, float, float_16, int, max, max, 16, -std::numeric_limits<float>::infinity())
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_max_double_mat4x4,
-                  GlobalMaxOpred_doubleMat4x4, double, red_double_16, size_t, max, max, 16, DBL_MAX)
+                  GlobalMaxOpred_doubleMat4x4, double, double_16, size_t, max, max, 16, -std::numeric_limits<double>::infinity())
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_max_int32_mat4x4,
-                  GlobalMaxOpred_intMat4x4, int, red_int_16, int, max, max, 16, INT_MAX)
+                  GlobalMaxOpred_intMat4x4, int, int_16, int, max, max, 16, INT_MAX)
 
 // declare min reductions on scalars
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_min_float,
-                  GlobalMinOpfloat, float, red_float_1, int, min, min, 1, FLT_MIN)
+                  GlobalMinOpfloat, float, float_1, int, min, min, 1, +std::numeric_limits<float>::infinity())
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_min_double,
-                  GlobalMinOpdouble, double, red_double_1, size_t, min, min, 1, DBL_MIN)
+                  GlobalMinOpdouble, double, double_1, size_t, min, min, 1, +std::numeric_limits<double>::infinity())
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_min_int32,
-                  GlobalMinOpint, int, red_int_1, int, min, min, 1, INT_MIN)
+                  GlobalMinOpint, int, int_1, int, min, min, 1, INT_MIN)
 
 // declare min reductions on vectors
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_min_float_vec2,
-                  GlobalMinOpred_floatVec2, float, red_float_2, int, min, min, 2, FLT_MIN)
+                  GlobalMinOpred_floatVec2, float, float_2, int, min, min, 2, +std::numeric_limits<float>::infinity())
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_min_double_vec2,
-                  GlobalMinOpred_doubleVec2, double, red_double_2, size_t, min, min, 2, DBL_MIN)
+                  GlobalMinOpred_doubleVec2, double, double_2, size_t, min, min, 2, +std::numeric_limits<double>::infinity())
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_min_int32_vec2,
-                  GlobalMinOpred_intVec2, int, red_int_2, int, min, min, 2, INT_MIN)
+                  GlobalMinOpred_intVec2, int, int_2, int, min, min, 2, INT_MIN)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_min_float_vec3,
-                  GlobalMinOpred_floatVec3, float, red_float_3, int, min, min, 3, FLT_MIN)
+                  GlobalMinOpred_floatVec3, float, float_3, int, min, min, 3, +std::numeric_limits<float>::infinity())
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_min_double_vec3,
-                  GlobalMinOpred_doubleVec3, double, red_double_3, size_t, min, min, 3, DBL_MIN)
+                  GlobalMinOpred_doubleVec3, double, double_3, size_t, min, min, 3, +std::numeric_limits<double>::infinity())
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_min_int32_vec3,
-                  GlobalMinOpred_intVec3, int, red_int_3, int, min, min, 3, INT_MIN)
+                  GlobalMinOpred_intVec3, int, int_3, int, min, min, 3, INT_MIN)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_min_float_vec4,
-                  GlobalMinOpred_floatVec4, float, red_float_4, int, min, min, 4, FLT_MIN)
+                  GlobalMinOpred_floatVec4, float, float_4, int, min, min, 4, +std::numeric_limits<float>::infinity())
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_min_double_vec4,
-                  GlobalMinOpred_doubleVec4, double, red_double_4, size_t, min, min, 4, DBL_MIN)
+                  GlobalMinOpred_doubleVec4, double, double_4, size_t, min, min, 4, +std::numeric_limits<double>::infinity())
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_min_int32_vec4,
-                  GlobalMinOpred_intVec4, int, red_int_4, int, min, min, 4, INT_MIN)
+                  GlobalMinOpred_intVec4, int, int_4, int, min, min, 4, INT_MIN)
 
-// declare min reductions on vectors
+// declare min reductions on matrices
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_min_float_mat2x2,
-                  GlobalMinOpred_floatMat2x2, float, red_float_4, int, min, min, 4, FLT_MIN)
+                  GlobalMinOpred_floatMat2x2, float, float_4, int, min, min, 4, +std::numeric_limits<float>::infinity())
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_min_double_mat2x2,
-                  GlobalMinOpred_doubleMat2x2, double, red_double_4, size_t, min, min, 4, DBL_MIN)
+                  GlobalMinOpred_doubleMat2x2, double, double_4, size_t, min, min, 4, +std::numeric_limits<double>::infinity())
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_min_int32_mat2x2,
-                  GlobalMinOpred_intMat2x2, int, red_int_4, int, min, min, 4, INT_MIN)
+                  GlobalMinOpred_intMat2x2, int, int_4, int, min, min, 4, INT_MIN)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_min_float_mat2x3,
-                  GlobalMinOpred_floatMat2x3, float, red_float_6, int, min, min, 6,  FLT_MIN)
+                  GlobalMinOpred_floatMat2x3, float, float_6, int, min, min, 6,  +std::numeric_limits<float>::infinity())
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_min_double_mat2x3,
-                  GlobalMinOpred_doubleMat2x3, double, red_double_6, size_t, min, min, 6, DBL_MIN)
+                  GlobalMinOpred_doubleMat2x3, double, double_6, size_t, min, min, 6, +std::numeric_limits<double>::infinity())
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_min_int32_mat2x3,
-                  GlobalMinOpred_intMat2x3, int, red_int_6, int, min, min, 6, INT_MIN)
+                  GlobalMinOpred_intMat2x3, int, int_6, int, min, min, 6, INT_MIN)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_min_float_mat2x4,
-                  GlobalMinOpred_floatMat2x4, float, red_float_8, int, min, min, 8, FLT_MIN)
+                  GlobalMinOpred_floatMat2x4, float, float_8, int, min, min, 8, +std::numeric_limits<float>::infinity())
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_min_double_mat2x4,
-                  GlobalMinOpred_doubleMat2x4, double, red_double_8, size_t, min, min, 8, DBL_MIN)
+                  GlobalMinOpred_doubleMat2x4, double, double_8, size_t, min, min, 8, +std::numeric_limits<double>::infinity())
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_min_int32_mat2x4,
-                  GlobalMinOpred_intMat2x4, int, red_int_8, int, min, min, 8, INT_MIN)
+                  GlobalMinOpred_intMat2x4, int, int_8, int, min, min, 8, INT_MIN)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_min_float_mat3x2,
-                  GlobalMinOpred_floatMat3x2, float, red_float_6, int, min, min, 6, FLT_MIN)
+                  GlobalMinOpred_floatMat3x2, float, float_6, int, min, min, 6, +std::numeric_limits<float>::infinity())
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_min_double_mat3x2,
-                  GlobalMinOpred_doubleMat3x2, double, red_double_6, size_t, min, min, 6, DBL_MIN)
+                  GlobalMinOpred_doubleMat3x2, double, double_6, size_t, min, min, 6, +std::numeric_limits<double>::infinity())
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_min_int32_mat3x2,
-                  GlobalMinOpred_intMat3x2, int, red_int_6, int, min, min, 6, INT_MIN)
+                  GlobalMinOpred_intMat3x2, int, int_6, int, min, min, 6, INT_MIN)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_min_float_mat3x3,
-                  GlobalMinOpred_floatMat3x3, float, red_float_9, int, min, min, 9,  FLT_MIN)
+                  GlobalMinOpred_floatMat3x3, float, float_9, int, min, min, 9,  +std::numeric_limits<float>::infinity())
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_min_double_mat3x3,
-                  GlobalMinOpred_doubleMat3x3, double, red_double_9, size_t, min, min, 9, DBL_MIN)
+                  GlobalMinOpred_doubleMat3x3, double, double_9, size_t, min, min, 9, +std::numeric_limits<double>::infinity())
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_min_int32_mat3x3,
-                  GlobalMinOpred_intMat3x3, int, red_int_9, int, min, min, 9, INT_MIN)
+                  GlobalMinOpred_intMat3x3, int, int_9, int, min, min, 9, INT_MIN)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_min_float_mat3x4,
-                  GlobalMinOpred_floatMat3x4, float, red_float_12, int, min, min, 12, FLT_MIN)
+                  GlobalMinOpred_floatMat3x4, float, float_12, int, min, min, 12, +std::numeric_limits<float>::infinity())
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_min_double_mat3x4,
-                  GlobalMinOpred_doubleMat3x4, double, red_double_12, size_t, min, min, 12, DBL_MIN)
+                  GlobalMinOpred_doubleMat3x4, double, double_12, size_t, min, min, 12, +std::numeric_limits<double>::infinity())
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_min_int32_mat3x4,
-                  GlobalMinOpred_intMat3x4, int, red_int_12, int, min, min, 12, INT_MIN)
+                  GlobalMinOpred_intMat3x4, int, int_12, int, min, min, 12, INT_MIN)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_min_float_mat4x2,
-                  GlobalMinOpred_floatMat4x2, float, red_float_8, int, min, min, 8, FLT_MIN)
+                  GlobalMinOpred_floatMat4x2, float, float_8, int, min, min, 8, +std::numeric_limits<float>::infinity())
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_min_double_mat4x2,
-                  GlobalMinOpred_doubleMat4x2, double, red_double_8, size_t, min, min, 8, DBL_MIN)
+                  GlobalMinOpred_doubleMat4x2, double, double_8, size_t, min, min, 8, +std::numeric_limits<double>::infinity())
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_min_int32_mat4x2,
-                  GlobalMinOpred_intMat4x2, int, red_int_8, int, min, min, 8, INT_MIN)
+                  GlobalMinOpred_intMat4x2, int, int_8, int, min, min, 8, INT_MIN)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_min_float_mat4x3,
-                  GlobalMinOpred_floatMat4x3, float, red_float_12, int, min, min, 12,  FLT_MIN)
+                  GlobalMinOpred_floatMat4x3, float, float_12, int, min, min, 12,  +std::numeric_limits<float>::infinity())
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_min_double_mat4x3,
-                  GlobalMinOpred_doubleMat4x3, double, red_double_12, size_t, min, min, 12, DBL_MIN)
+                  GlobalMinOpred_doubleMat4x3, double, double_12, size_t, min, min, 12, +std::numeric_limits<double>::infinity())
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_min_int32_mat4x3,
-                  GlobalMinOpred_intMat4x3, int, red_int_12, int, min, min, 12, INT_MIN)
+                  GlobalMinOpred_intMat4x3, int, int_12, int, min, min, 12, INT_MIN)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_min_float_mat4x4,
-                  GlobalMinOpred_floatMat4x4, float, red_float_16, int, min, min, 16, FLT_MIN)
+                  GlobalMinOpred_floatMat4x4, float, float_16, int, min, min, 16, +std::numeric_limits<float>::infinity())
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_min_double_mat4x4,
-                  GlobalMinOpred_doubleMat4x4, double, red_double_16, size_t, min, min, 16, DBL_MIN)
+                  GlobalMinOpred_doubleMat4x4, double, double_16, size_t, min, min, 16, +std::numeric_limits<double>::infinity())
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_min_int32_mat4x4,
-                  GlobalMinOpred_intMat4x4, int, red_int_16, int, min, min, 16, INT_MIN)
+                  GlobalMinOpred_intMat4x4, int, int_16, int, min, min, 16, INT_MIN)

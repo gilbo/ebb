@@ -504,7 +504,7 @@ function Codegen.codegen (ufunc_ast, ufunc_version)
       [ ctxt.ufv:_generateGPUReductionPreProcess(args_ptr) ]
 
       -- the main launch
-      var n_blocks = [ctxt:gpuNumBlocks(args_ptr)]
+      var n_blocks : uint = [ctxt:gpuNumBlocks(args_ptr)]
       var grid_x : uint,    grid_y : uint,    grid_z : uint   =
           G.get_grid_dimensions(n_blocks, MAX_GRID_DIM)
       var params = terralib.CUDAParams {

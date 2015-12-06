@@ -322,7 +322,6 @@ terra LW.future_task(
   var taskfunc = @[&LW.FutureTaskPtrType](LW.legion_task_get_args(task))
   var result = taskfunc( LW.TaskArgs {
                             task, regions, num_regions, ctx, runtime } )
-
   return result
 end
 
