@@ -1,3 +1,4 @@
+-- From Terra; see Terra license
 
 local P = {}
 

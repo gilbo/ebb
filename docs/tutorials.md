@@ -301,7 +301,7 @@ Then, we'll set the global variable using the current loop iteration, and use th
 
 Finally, we'll wrap our visualization call in a few extra VDB calls to tell VDB to start a frame `vdb.vbegin()`, to clear the screen `vdb.frame()` and finally end the frame `vdb.vend()`.
 
-Suppose you wanted to have the color oscillate together with the positions of the points.  Try modifying the program to do that.
+> Suppose you want to have the color oscillate together with the positions of the points.  Try modifying the program to do that.
 
 
 
@@ -814,6 +814,16 @@ The remaining tutorials are mostly independent of each other.  Depending on your
 
 
 
+
+
+
+
+
+
+
+
+
+
 ## 09: Particle-Grid Coupling
 
 In this tutorial, we'll look at how to couple two geometric domains together, which is often critical for simulating interacting physical phenomena.
@@ -945,6 +955,15 @@ Finally, our simulation loop is mostly unchanged, except we add two calls: to up
 
 
 
+
+
+
+
+
+
+
+
+
 ## 10: Data Layout Descriptors (DLDs)
 
 In this example, we'll see how to get lower level access to the data that Ebb is storing and computing on.  This data access is provided through metadata objects that we call data layout descriptors (DLDs).  These descriptors communicate information about how data is stored in memory so that Ebb-external code can directly manipulate the data without incurring memory copy overheads.
@@ -1054,6 +1073,10 @@ for i=1,360 do
 end
 ```
 Finally, we modify our simulation loop to swap the tiles on the 200th iteration.  This swap proceeds by requesting a Lua form of the DLD object via `:GetDLD()`, asserting that a number of values are what we expect them to be, and finally calling the tile_shuffle function with a Terra version of the DLD object.
+
+
+
+
 
 
 

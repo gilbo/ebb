@@ -1,9 +1,6 @@
 
 # Run the appropriate command in here to build a shared object for tutorial 11
 
-
-
-
 dummy:
 	# don't do anything
 
