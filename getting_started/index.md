@@ -42,7 +42,7 @@ If you don't have wget or unzip installed, you may run into trouble with the aut
 
 ## Longer Setup Instructions
 
-If you are working on multiple DSLs using Terra and want to avoid a redundant Terra install, you can configure the variable `TERRA_DIR` at the top of the [`Makefile`](Makefile) to locate your Terra install directory instead.  If you have a binary download, simply point `TERRA_DIR` variable at the root directory.  If you are building Terra from source, then point `TERRA_DIR` at the `release` subdirectory.  By default, `TERRA_DIR=../terra/release`.
+If you are working on multiple DSLs using Terra and want to avoid a redundant Terra install, you can configure the variable `TERRA_DIR` at the top of the `Makefile` to locate your Terra install directory instead.  If you have a binary download, simply point `TERRA_DIR` variable at the root directory.  If you are building Terra from source, then point `TERRA_DIR` at the `release` subdirectory.  By default, `TERRA_DIR=../terra/release`.
 
 You will still need to run `make` even if you already have your own Terra install.  Doing so will build the Ebb interpreter, which is needed to run Ebb programs.
 

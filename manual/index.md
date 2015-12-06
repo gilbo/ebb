@@ -943,7 +943,7 @@ which will then expose the Terra type as
 DLD.C_DLD
 ```
 
-Alternatively, if you are separately compiling C-code to link against an Ebb program, you can use the provided header file at [include/ebb/lib/dld.h](../include/ebb/lib/dld.h).  Both the `.t` and `.h` file include full documentation inline of the format.
+Alternatively, if you are separately compiling C-code to link against an Ebb program, you can use the provided header file at `include/ebb/lib/dld.h`.  Both the `.t` and `.h` file include full documentation inline of the format.
 
 A DLD is laid out as
 
