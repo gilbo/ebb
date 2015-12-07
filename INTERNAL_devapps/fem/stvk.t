@@ -1,11 +1,11 @@
 import "ebb"
 local L = require "ebblib"
 local PN = require 'ebb.lib.pathname'
-local U = require 'devapps.fem.utils'
+local U = require 'INTERNAL_devapps.fem.utils'
 
 local S = {}
 S.__index = S
-package.loaded["devapps.fem.stvk"] = S
+package.loaded["INTERNAL_devapps.fem.stvk"] = S
 S.profile = false
 
 

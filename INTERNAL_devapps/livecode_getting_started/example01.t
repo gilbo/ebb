@@ -3,7 +3,7 @@ local L = require "ebblib"
 
 local ioOff = require 'ebb.domains.ioOff'
 local mesh  = ioOff.LoadTrimesh(
-  'devapps/livecode_getting_started/octa.off')
+  'INTERNAL_devapps/livecode_getting_started/octa.off')
 
 print(mesh.vertices:Size())
 print(mesh.triangles:Size())

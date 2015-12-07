@@ -25,18 +25,18 @@ mkdir -p $outdir
 for model in "turtle" "dragon" "hose" # stvk
 # for model in "sphere" "bunny"         # neohookean
 do
-  config="devapps/fem/configs/${model}.config"
+  config="INTERNAL_devapps/fem/configs/${model}.config"
   for force in "stvk"
   do
     outfile="${outdir}/log_${model}_${force}_cpu"
     rm -rf $outfile
     echo "Running $config  with $force force model, $steps steps, cpu ..."
-    command=`./ebb devapps/fem/sim_main.t -config  $config -force $force -steps $steps >> ${outfile}`
+    command=`./ebb INTERNAL_devapps/fem/sim_main.t -config  $config -force $force -steps $steps >> ${outfile}`
     $command
     outfile="${outdir}/log_${model}_${force}_gpu"
     rm -rf $outfile
     echo "Running $config  with $force force model, $steps steps, gpu ..."
-    command=`./ebb --gpu devapps/fem/sim_main.t -config  $config -force $force -steps $steps >> ${outfile}`
+    command=`./ebb --gpu INTERNAL_devapps/fem/sim_main.t -config  $config -force $force -steps $steps >> ${outfile}`
     $command
   done
 done

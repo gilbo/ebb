@@ -2,8 +2,8 @@ import "ebb"
 local L = require "ebblib"
 local vdb = require 'ebb.lib.vdb'
 
-local Tetmesh = require 'devapps.fem.tetmesh'
-local VEGFileIO = require 'devapps.fem.vegfileio'
+local Tetmesh = require 'INTERNAL_devapps.fem.tetmesh'
+local VEGFileIO = require 'INTERNAL_devapps.fem.vegfileio'
 local PN = require 'ebb.lib.pathname'
 
 
@@ -12,7 +12,7 @@ local PN = require 'ebb.lib.pathname'
 --------------------------------------------------------------------------------
 
 if not arg[2] or arg[2] == "-h" or arg[2] == "--help" then
-  print("Usage : ./ebb devapps/fem/view-files.t path_to_dir_with_sim_output")
+  print("Usage : ./ebb INTERNAL_devapps/fem/view-files.t path_to_dir_with_sim_output")
   os.exit(1)
 end
 

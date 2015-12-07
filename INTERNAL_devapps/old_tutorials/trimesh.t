@@ -11,7 +11,7 @@ Trimesh.__index = Trimesh
 
 -- Finally, we declare that the Trimesh table should be returned
 -- when this file is 'required' elsewhere
-package.loaded["devapps.tutorials.trimesh"] = Trimesh
+package.loaded["INTERNAL_devapps.tutorials.trimesh"] = Trimesh
 
 
 ------------------------------------------------------------------------------

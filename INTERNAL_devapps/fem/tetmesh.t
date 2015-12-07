@@ -4,7 +4,7 @@ local PN = require 'ebb.lib.pathname'
 
 local Tetmesh = {}
 Tetmesh.__index = Tetmesh
-package.loaded["devapps.fem.tetmesh"] = Tetmesh
+package.loaded["INTERNAL_devapps.fem.tetmesh"] = Tetmesh
 
 
 ------------------------------------------------------------------------------

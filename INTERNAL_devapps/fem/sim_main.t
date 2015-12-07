@@ -2,17 +2,17 @@ import "ebb"
 local L = require "ebblib"
 local vdb = require 'ebb.lib.vdb'
 
-local Tetmesh = require 'devapps.fem.tetmesh'
-local VEGFileIO = require 'devapps.fem.vegfileio'
+local Tetmesh = require 'INTERNAL_devapps.fem.tetmesh'
+local VEGFileIO = require 'INTERNAL_devapps.fem.vegfileio'
 local PN = require 'ebb.lib.pathname'
-local U = require 'devapps.fem.utils'
+local U = require 'INTERNAL_devapps.fem.utils'
 
 --------------------------------------------------------------------------------
 --[[                  Setup mesh, simulation paramters etc                  ]]--
 --------------------------------------------------------------------------------
 
 local function printUsageAndExit()
-  print("Usage : ./ebb [-gpu] devapps/fem/view-files.t <options>")
+  print("Usage : ./ebb [-gpu] INTERNAL_devapps/fem/view-files.t <options>")
   print("          -config <config file with additional information> (** required **)")
   print("          -force <stvk or nh>")
   print("          -steps <number of time steps>")
@@ -102,13 +102,13 @@ mesh.vertices:NewField('internal_forces', L.vec3d):Load({0, 0, 0})
 local F = nil
 local outDirName = nil
 if forceModel == 'stvk' then
-  F = require 'devapps.fem.stvk'
+  F = require 'INTERNAL_devapps.fem.stvk'
   outDirName = 'ebb_output/stvk-out'
-  os.execute('mkdir -p devapps/fem/' .. outDirName)
+  os.execute('mkdir -p INTERNAL_devapps/fem/' .. outDirName)
 else
-  F = require 'devapps.fem.neohookean'
+  F = require 'INTERNAL_devapps.fem.neohookean'
   outDirName = 'ebb_output/nh-out'
-  os.execute('mkdir -p devapps/fem/' .. outDirName)
+  os.execute('mkdir -p INTERNAL_devapps/fem/' .. outDirName)
 end
 F.profile = false  -- measure and print out detailed timing?
 
@@ -573,10 +573,10 @@ function main()
   end
 
   -- Output frame number and mesh file for viewing later on
-  local numFramesFile = io.open('devapps/fem/' .. outDirName..'/num_frames', 'w')
+  local numFramesFile = io.open('INTERNAL_devapps/fem/' .. outDirName..'/num_frames', 'w')
   numFramesFile:write(tostring(numTimeSteps))
   numFramesFile:close()
-  os.execute('cp ' .. meshFileName .. ' ' .. 'devapps/fem/' .. outDirName .. '/mesh')
+  os.execute('cp ' .. meshFileName .. ' ' .. 'INTERNAL_devapps/fem/' .. outDirName .. '/mesh')
 end
 
 main()

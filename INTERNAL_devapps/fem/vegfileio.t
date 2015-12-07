@@ -3,10 +3,10 @@ local L = require "ebblib"
 
 local VEGFileIO = {}
 VEGFileIO.__index = VEGFileIO
-package.loaded["devapps.fem.vegfileio"] = VEGFileIO
+package.loaded["INTERNAL_devapps.fem.vegfileio"] = VEGFileIO
 
 
-local Tetmesh = require 'devapps.fem.tetmesh'
+local Tetmesh = require 'INTERNAL_devapps.fem.tetmesh'
 
 
 ------------------------------------------------------------------------------

@@ -4,7 +4,7 @@ local PN = require 'ebb.lib.pathname'
 
 local U = {}
 U.__index = U
-package.loaded["devapps.fem.utils"] = U
+package.loaded["INTERNAL_devapps.fem.utils"] = U
 
 
 --------------------------------------------------------------------------------

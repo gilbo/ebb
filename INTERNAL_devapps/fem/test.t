@@ -27,11 +27,11 @@ end
 
 --dump_list(split_on_spaces("asdf"))
 
-local Tetmesh = require 'devapps.fem.tetmesh'
-local VEGFileIO = require 'devapps.fem.vegfileio'
+local Tetmesh = require 'INTERNAL_devapps.fem.tetmesh'
+local VEGFileIO = require 'INTERNAL_devapps.fem.vegfileio'
 
 local turtle = VEGFileIO.LoadTetmesh
-  'devapps/fem/turtle-volumetric-homogeneous.veg'
+  'INTERNAL_devapps/fem/turtle-volumetric-homogeneous.veg'
 
 
 

@@ -26,13 +26,13 @@ import 'ebb'
 local L = require 'ebblib'
 require "tests.test"
 
-local Tetmesh = require 'devapps.fem.tetmesh'
-local VEGFileIO = require 'devapps.fem.vegfileio'
+local Tetmesh = require 'INTERNAL_devapps.fem.tetmesh'
+local VEGFileIO = require 'INTERNAL_devapps.fem.vegfileio'
 local PN = require 'ebb.lib.pathname'
-local U = require 'devapps.fem.utils'
+local U = require 'INTERNAL_devapps.fem.utils'
 
 
-local mesh   = VEGFileIO.LoadTetmesh('devapps/fem/turtle-volumetric-homogeneous.veg')
+local mesh   = VEGFileIO.LoadTetmesh('INTERNAL_devapps/fem/turtle-volumetric-homogeneous.veg')
 
 mesh.density = 1000
 mesh.E = 250000

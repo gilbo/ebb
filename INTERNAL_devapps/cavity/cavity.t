@@ -25,7 +25,7 @@ local PN = require 'ebb.lib.pathname'
 -- have multiple config files available in other locations, and copy them
 -- to this location with the name params.lua before running.
 
-local filename = './devapps/cavity/params.lua'
+local filename = './INTERNAL_devapps/cavity/params.lua'
 local config = loadfile(filename)()
 
 -- Immediately check that the output directory exists. Throw an error if not.

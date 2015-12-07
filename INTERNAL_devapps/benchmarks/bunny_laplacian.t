@@ -4,7 +4,7 @@ local L = require "ebblib" -- Every Ebb File should start with this command
 -- This line includes the trimesh.t file.
 -- As a result, the table 'Trimesh' defined in that file is bound to
 -- the variable Trimesh declared right here.
-local Trimesh = require 'devapps.benchmarks.trimesh'
+local Trimesh = require 'INTERNAL_devapps.benchmarks.trimesh'
 
 -- PN (Pathname) is a convenience library for working with paths
 local PN = require 'ebb.lib.pathname'
@@ -19,8 +19,8 @@ local cmath = terralib.includecstring '#include <math.h>'
 local tri_mesh_filename = PN.scriptdir() .. 'bunny.off'
 
 -- Here we create a new triangle mesh by loading in an OFF file
--- We can look in devapps/tutorials/trimesh.t to find the implementation
--- of this function.
+-- We can look in INTERNAL_devapps/tutorials/trimesh.t to find
+-- the implementation of this function.
 local bunny = Trimesh.LoadFromOFF(tri_mesh_filename)
 
 ------------------------------------------------------------------------------
