@@ -38,6 +38,10 @@ If you don't have wget or unzip installed, you may run into trouble with the aut
 
 (You may also run into trouble if you don't have libcurses and libz installed.  If this is the case, please report back to the developers---we currently don't believe this will ever happen.)
 
+## Windows Setup
+
+At this time, we haven't focused on having a Windows version of Ebb.  If you're interested in helping port Ebb (there's a relatively small amount of platform-specific code) please contact the developers.
+
 
 
 ## Longer Setup Instructions
