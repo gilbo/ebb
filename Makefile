@@ -52,6 +52,18 @@ ifneq ($(PLATFORM),LINUX)
   endif
 endif
 
+# test for Mac OS X command line tools
+# and issue debugging information for common problems
+ifeq ($(PLATFORM),OSX)
+  CMD_LINE_TOOLS_INSTALLED:=$(shell xcode-select -p >/dev/null; echo $$?)
+  ifneq ($(CMD_LINE_TOOLS_INSTALLED),0)
+  	$(error \
+  		The Command Line Tools were not found, or their installation was \
+  		incomplete; Executing 'xcode-select --install' may fix the problem \
+  	 )
+  endif
+endif
+
 # # ----------------------------------------------------------------------- # #
 #     Terra-Setup
 
