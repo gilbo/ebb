@@ -29,9 +29,7 @@
 {% endif %}
 
 <div id="main" role="main">
-  <div class="article-author-side">
-    {% include _author-bio.html %}
-  </div>
+  <div class="right-spacer"></div>
   <article class="post">
     <div class="headline-wrap">
       <h1><a href="{{ site.url }}{{ page.url }}" rel="bookmark" title="{{ page.title }}">{{ page.title }}</a></h1>
@@ -41,6 +39,10 @@
       <hr />
     </div><!-- /.article-wrap -->
   </article>
+  
+  <div class="article-author-side">
+    {% include _author-bio.html %}
+  </div>
 </div><!-- /#main -->
 
 <div class="footer-wrap">

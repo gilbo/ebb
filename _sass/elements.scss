@@ -34,12 +34,25 @@ article img {
   display: block;
   margin-top: -1.0em;
 }
-.liszt-logo {
+.credit-logo {
   display:block;
   margin: auto;
-  height:3em;
-  margin-top:0.3em;
-  margin-bottom: -0.6em;
+  max-width:100%;
+}
+.liszt-logo {
+  width:6em;
+  //margin-top:0.3em;
+  margin-bottom: -0.5em;
+}
+.stanford-logo {
+  margin-top: -0.5em;
+  margin-bottom: -0.5em;
+  width:9.25em;
+}
+.psaap-logo {
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
+  width:11em;
 }
 .liszt-explanation {
   text-align: center;

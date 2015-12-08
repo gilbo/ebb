@@ -4,22 +4,33 @@
 
 <div itemscope itemtype="http://schema.org/Person">
 
-<div class="liszt-explanation">
-a part of the Liszt project at Stanford University
-</div>
-<div>
-  <img src="{{ site.url }}/images/liszt-logo.png"
-    class="liszt-logo" alt="Liszt">
-</div>
-<div>
-  <img src="{{ site.url }}/images/SUSig_StnfrdOnly.png"
-    class="liszt-logo" alt="Stanford">
-</div>
-<hr>
 
 {% if author.github %}
 <a href="http://github.com/{{ author.github }}" class="btn btn-info github-btn" target="_blank"><i class="fa fa-fw fa-github"></i> View On Github</a>
 {% endif %}
+
+<hr>
+
+<div class="liszt-explanation">
+a part of the Liszt project and <a href="http://www-cs.stanford.edu/">PSAAP II center</a> at <a href="http://exascale.stanford.edu/">Stanford University</a>
+</div>
+<div>
+  <img src="{{ site.url }}/images/liszt-logo.png"
+    class="credit-logo liszt-logo" alt="Liszt">
+</div>
+<div>
+  <a href="http://www-cs.stanford.edu/">
+    <img src="{{ site.url }}/images/SUSig_StnfrdOnly.png"
+      class="credit-logo stanford-logo" alt="Stanford">
+  </a>
+</div>
+<div>
+  <a href="http://exascale.stanford.edu/">
+    <img src="{{ site.url }}/images/PSAAP_II_LogoType.png"
+    class="credit-logo psaap-logo" alt="PSAAP 2">
+  </a>
+</div>
+
 
 <!--
 {% if author.avatar contains 'http' %}

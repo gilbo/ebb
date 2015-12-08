@@ -231,17 +231,32 @@ $button-size: 1.5rem;
 	.post,
 	.page {
 		@include container;
-		@include grid(12,10);
+		@include grid(12,10,right);
 		@include prefix(12,1);
 		@include suffix(12,1);
 		margin-bottom: 2em;
 		@media #{$small} {
-			@include grid(12,6);
+			@include grid(12,6,right);
 			@include prefix(12,0);
 			@include suffix(12,0);
 		}
 		@media #{$x-large} {
-			@include grid(12,4.5);
+			@include grid(12,4.5,right);
+		}
+	}
+	.right-spacer {
+		display: none;
+		height: 1em;
+		@media #{$small} {
+			display: inline;
+			@include grid(12,3,right);
+			@include prefix(12,0);
+			@include suffix(12,0);
+		}
+		@media #{$x-large} {
+			display: inline;
+			@include grid(12,1.5,right);
+			@include suffix(12,2);
 		}
 	}
 }
@@ -249,17 +264,17 @@ $button-size: 1.5rem;
 /* Index listing specific styling */
 #index {
 	@include container;
-	@include grid(12,10);
+	@include grid(12,10,right);
 	@include prefix(12,1);
 	@include suffix(12,1);
 	margin-bottom: 2em;
 	@media #{$small} {
-		@include grid(12,6);
+		@include grid(12,6,right);
 		@include prefix(12,0);
 		@include suffix(12,0);
 	}
 	@media #{$x-large} {
-		@include grid(12,4.5);
+		@include grid(12,4.5,right);
 	}
 	h3 {
 		margin: 0;
@@ -379,9 +394,16 @@ $button-size: 1.5rem;
 		max-width: 110px;
 		@include rounded(150px);
 	}
+	@media #{$lt-small} {
+		clear: both;
+		display:block;
+		@include grid(12,10);
+		@include prefix(12,1);
+		@include suffix(12,1);
+	}
 	@media #{$small} {
 		display: block;
-		@include grid(12,2);
+		@include grid(12,2,right);
 		@include prefix(12,0.5);
 		@include suffix(12,0.5);
 		h3,
@@ -410,7 +432,7 @@ $button-size: 1.5rem;
 		}
 	}
 	@media #{$x-large} {
-		@include grid(12,1.5);
+		@include grid(12,1.5,right);
 		@include prefix(12,2);
 	}
 }
