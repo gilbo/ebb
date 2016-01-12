@@ -1149,6 +1149,7 @@ function UFVersion:_GenerateUnpackLegionTaskArgs(argsym, task_args)
 
   -- temporary collection of symbols from unpacking the regions
   local region_temporaries = {}
+  local first = symbol(bool)
 
   local code = quote
     do -- close after unpacking the fields
@@ -1249,42 +1250,68 @@ function UFVersion:_GenerateUnpackLegionTaskArgs(argsym, task_args)
 
     -- UNPACK FUTURES
     -- DO NOT WRAP THIS IN A LOCAL SCOPE or IN A DO BLOCK (SEE BELOW)
+    -- ALSO DETERMINE IF THIS IS THE FIRST PARTITION
     escape for globl, garg_name in pairs(ufv._global_ids) do
-      -- position in the Legion task arguments
-      local fut_i   = ufv:_getFutureNum(globl) 
-      local gtyp    = globl._type:terratype()
-      local gptr    = ufv:_getLegionGlobalTempSymbol(globl)
+        -- position in the Legion task arguments
+        local fut_i   = ufv:_getFutureNum(globl) 
+        local gtyp    = globl._type:terratype()
+        local gptr    = ufv:_getLegionGlobalTempSymbol(globl)
+        -- global reduction type
+        local lz_type = globl._type
+        local op = (self._global_reductions[globl] ~=nil) and
+                    self._global_reductions[globl].phase.reduceop
+        local isreduce = (op ~= false)
 
-      if ufv:isOnGPU() then
-        emit quote
-          -- TODO: check if this global is being reduced and if it is first
-          -- partition. if yes, initialize datum to identity.
-          var fut     = LW.legion_task_get_future([task_args].task, fut_i)
-          var result  = LW.legion_future_get_result(fut)
-          var datum   = @[&gtyp](result.value)
-          var [gptr]  = [&gtyp](G.malloc(sizeof(gtyp)))
-          G.memcpy_gpu_from_cpu(gptr, &datum, sizeof(gtyp))
-          --var [gptr] = &datum
+        if ufv:isOnGPU() then
+          emit quote
+            var first = true
+            do
+              var task_point = LW.legion_task_get_index_point(task_args.task)
+              for i = 0, task_point.dim do
+                  first = first and (task_point.point_data[i] == 0)
+              end
+            end
+            var fut     = LW.legion_task_get_future([task_args].task, fut_i)
+            var result  = LW.legion_future_get_result(fut)
+            var datum   = @[&gtyp](result.value)
+            var [gptr]  = [&gtyp](G.malloc(sizeof(gtyp)))
+            escape if isreduce and not first then
+                emite quote @gptr = [codesupport.reduction_identity(lz_type, op)] end
+            else
+                emit quote G.memcpy_gpu_from_cpu(gptr, &datum, sizeof(gtyp)) end
+            end end
+            --var [gptr] = &datum
 
-          [argsym].[garg_name] = gptr
-          LW.legion_task_result_destroy(result)
-        end
-      else
-        emit quote
-          -- TODO: check if this global is being reduced and if it is first
-          -- partition. if yes, initialize datum to identity.
-          var fut     = LW.legion_task_get_future([task_args].task, fut_i)
-          var result  = LW.legion_future_get_result(fut)
-          var datum   = @[&gtyp](result.value)
-          var [gptr]  = &datum
-          -- note that we're going to rely on this variable
-          -- being stably allocated on the stack
-          -- for the remainder of this function scope
-          [argsym].[garg_name] = gptr
-          LW.legion_task_result_destroy(result)
+            [argsym].[garg_name] = gptr
+            LW.legion_task_result_destroy(result)
+          end
+        else
+          emit quote
+            var first = true
+            do
+              var task_point = LW.legion_task_get_index_point(task_args.task)
+              for i = 0, task_point.dim do
+                  first = first and (task_point.point_data[i] == 0)
+              end
+            end
+            var fut     = LW.legion_task_get_future([task_args].task, fut_i)
+            var result  = LW.legion_future_get_result(fut)
+            var datum : gtyp
+            escape if isreduce and not first then
+              emit quote datum = [codesupport.reduction_identity(lz_type, op)] end
+            else
+              emit quote datum   = @[&gtyp](result.value) end
+            end end
+            var [gptr] = &datum
+            -- note that we're going to rely on this variable
+            -- being stably allocated on the stack
+            -- for the remainder of this function scope
+            [argsym].[garg_name] = gptr
+            LW.legion_task_result_destroy(result)
+          end
         end
       end
-    end end
+    end
   end -- end quote
 
   return code
@@ -1457,7 +1484,12 @@ function UFVersion:_addPrimaryPartition()
     if use_partitioning then
       -- set number of partitions on the relation to number of cpus
       if not prim_rel:IsPartitioningSet() then
-        prim_rel:SetPartitions(run_config.num_partitions)
+        local ndims = #prim_rel:Dims()
+        local num_partitions = {}
+        for i = 1,ndims do
+            num_partitions[i] = run_config.num_partitions_default
+        end
+        prim_rel:SetPartitions(num_partitions)
       end
       -- create a disjoint partition on the relation
       prim_partn = prim_rel:GetOrCreateDisjointPartitioning()
