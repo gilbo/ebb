@@ -740,7 +740,7 @@ function UFVersion:_numGPUBlocks(argptr)
       return math.ceil(self._subset._index:Size() / self._blocksize)
     else
       local size = `1
-      for d = 1, self._relation:nDims() do
+      for d = 1, #self._relation:Dims() do
           size = `((size) * (argptr.bounds[d-1].hi - argptr.bounds[d-1].lo + 1))
       end
       return `[uint64](C.ceil( [double](size) / [double](self._blocksize)))
