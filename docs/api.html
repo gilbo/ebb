@@ -137,7 +137,7 @@ cells:map(foo)</code></pre>
 <pre><code>local n = rel:Size()</code></pre>
 <p>Retrieve the number of rows in a relation. If the relation is in Grid mode, then this is the product of the dimensions.</p>
 <hr />
-<pre><code>rel:print()</code></pre>
+<pre><code>rel:Print()</code></pre>
 <p>print the contents of this relation's fields to the console (for debugging).</p>
 <h2 id="plain-relations">Plain Relations</h2>
 <pre><code>rel:isPlain()</code></pre>
@@ -225,7 +225,7 @@ end</code></pre>
 <pre><code>rel:nDims()</code></pre>
 <p>Return <code>2</code> or <code>3</code> identifying how many dimensions this grid has. If called on a relation not in Grid mode, then <code>1</code> will be returned</p>
 <hr />
-<pre><code>rel:Periodicity()</code></pre>
+<pre><code>rel:Periodic()</code></pre>
 <p>Retreive a copy of the <code>periodic</code> list specified when creating this grid relation. If called on a relation not in Grid mode, then <code>{ false }</code> is returned instead.</p>
 <h2 id="subsets">Subsets</h2>
 <p>So long as a relation is not in Elastic mode, we can define subsets of the relation.</p>
@@ -270,7 +270,7 @@ end</code></pre>
 <pre><code>field:Type()</code></pre>
 <p>return the type of this field.</p>
 <hr />
-<pre><code>field:print()</code></pre>
+<pre><code>field:Print()</code></pre>
 <p>print the contents of this field to the console (for debugging).</p>
 <hr />
 <pre><code>rel:Copy({from = f1, to = f2})</code></pre>

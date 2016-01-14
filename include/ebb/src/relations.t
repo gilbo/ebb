@@ -1,3 +1,26 @@
+-- The MIT License (MIT)
+-- 
+-- Copyright (c) 2015 Stanford University.
+-- All rights reserved.
+-- 
+-- Permission is hereby granted, free of charge, to any person obtaining a
+-- copy of this software and associated documentation files (the "Software"),
+-- to deal in the Software without restriction, including without limitation
+-- the rights to use, copy, modify, merge, publish, distribute, sublicense,
+-- and/or sell copies of the Software, and to permit persons to whom the
+-- Software is furnished to do so, subject to the following conditions:
+-- 
+-- The above copyright notice and this permission notice shall be included
+-- in all copies or substantial portions of the Software.
+-- 
+-- THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+-- IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+-- FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+-- AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+-- LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING 
+-- FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+-- DEALINGS IN THE SOFTWARE.
+
 -- file/module namespace table
 local R = {}
 package.loaded["ebb.src.relations"] = R
@@ -78,6 +101,8 @@ Field.__index     = Field
 R.Field           = Field
 local function is_field(obj) return getmetatable(obj) == Field end
 R.is_field        = is_field
+
+local CreateField
 
 
 local Subset      = {}
@@ -199,7 +224,7 @@ function R.NewRelation(params)
   if use_single then
     -- TODO: Remove the _is_live_mask for inelastic relations
     -- create a mask to track which rows are live.
-    rawset(rel, '_is_live_mask', Field.New(rel, '_is_live_mask', boolT))
+    rawset(rel, '_is_live_mask', CreateField(rel, '_is_live_mask', boolT))
     rel._is_live_mask:Load(true)
 
   elseif use_legion then
@@ -232,13 +257,6 @@ end
 function Relation:Name()
   return self._name
 end
-function Relation:nDims()
-  if self:isGrid() then
-    return #self._dims
-  else
-    return 1
-  end
-end
 function Relation:Dims()
   if not self:isGrid() then
     return { self:Size() }
@@ -248,7 +266,7 @@ function Relation:Dims()
   for i,n in ipairs(self._dims) do dimret[i] = n end
   return dimret
 end
-function Relation:Strides()
+function Relation:_INTERNAL_Strides()
   if not self:isGrid() then
     return { 1 }
   end
@@ -268,7 +286,7 @@ function Relation:_INTERNAL_GroupedLength()
   if not self:isGrouped() then return nil
                           else return self._grouped_length end
 end
-function Relation:Periodicity()
+function Relation:Periodic()
   if not self:isGrid() then return { false } end
   local wraps = {}
   for i,p in ipairs(self._dims) do wraps[i] = p end
@@ -290,7 +308,7 @@ end
 function Relation:StructuralType()
   local rec = {}
   for _, field in ipairs(self._fields) do
-    rec[field.name] = field.type
+    rec[field._name] = field._type
   end
   local typ = recordT(rec)
   return typ
@@ -298,7 +316,7 @@ end
 
 -- prevent user from modifying the lua table
 function Relation:__newindex(fieldname,value)
-  error("Cannot assign members to LRelation object "..
+  error("Cannot assign members to Relation object "..
       "(did you mean to call relation:New...?)", 2)
 end
 
@@ -403,29 +421,6 @@ function Relation:NewFieldReduceFunction(fname, op, userfunc)
   return userfunc
 end
 
---[[
-function Relation:NewFieldFunction (name, userfunc)
-  if not name or type(name) ~= "string" then
-    error("NewFieldFunction() expects a string as the first argument", 2)
-  end
-  if not is_valid_lua_identifier(name) then
-    error(valid_name_err_msg.field, 2)
-  end
-  if self[name] then
-    error("Cannot create a new field-function with name '"..name.."'  "..
-          "That name is already being used.", 2)
-  end
-
-  if not is_function(userfunc) then
-    error("NewFieldFunction() expects an Ebb Function "..
-          "as the 2nd argument", 2)
-  end
-
-  rawset(self, name, userfunc)
-  self._functions:insert(userfunc)
-  return userfunc
-end
---]]
 
 local terra initShuffleArray( a : &uint64, n : uint64 )
   for i=0,n do a[i] = i end
@@ -525,7 +520,7 @@ local function gen_shuffle( ftyp )
 end
 
 function Relation:_INTERNAL_SortBy(keyfield)
-  assert( is_field(keyfield) and keyfield.owner == self and
+  assert( is_field(keyfield) and keyfield._owner == self and
           keyfield:Type():isscalarkey(), 'expecting key field' )
   assert( not self:isFragmented(), 'cannot sort fragmented relation')
   assert( #self._subsets == 0, 'TODO: Support sorting relations w/subsets')
@@ -540,7 +535,7 @@ function Relation:_INTERNAL_SortBy(keyfield)
   local legion_region = nil
   if use_single then
     keydld          = keyfield:GetDLD()
-    keydld.address  = keyfield.array:open_readwrite_ptr()
+    keydld.address  = keyfield._array:open_readwrite_ptr()
     keydld:setlocation(DLD.CPU)
   elseif use_legion then
     legion_region = LW.NewInlinePhysicalRegion {
@@ -554,7 +549,7 @@ function Relation:_INTERNAL_SortBy(keyfield)
   -- verify that the layout is acceptable
   assert(keydld.version[1] == 1 and keydld.version[2] == 0)
   assert(keydld.type_stride == terralib.sizeof(keytyp:terratype()))
-  local ndim, size = self:nDims(), 1
+  local ndim, size = #self:Dims(), 1
   while ndim > 0 do -- check for tight packing of grids
     assert(keydld.dim_stride[ndim] == size)
     size = size * keydld.dim_size[ndim]
@@ -568,7 +563,7 @@ function Relation:_INTERNAL_SortBy(keyfield)
 
   -- release lock on the key data
   if use_single then
-    keyfield.array:close_readwrite_ptr()
+    keyfield._array:close_readwrite_ptr()
   elseif use_legion then
     legion_region:Destroy()
   end
@@ -583,7 +578,7 @@ function Relation:_INTERNAL_SortBy(keyfield)
     local dld = nil
     if use_single then
       dld         = f:GetDLD()
-      dld.address = f.array:open_readwrite_ptr()
+      dld.address = f._array:open_readwrite_ptr()
       dld:setlocation(DLD.CPU)
     elseif use_legion then
       legion_region = LW.NewInlinePhysicalRegion {
@@ -602,7 +597,7 @@ function Relation:_INTERNAL_SortBy(keyfield)
     shufflefunc( dld.address, shuffle_array, self:Size() )
 
     if use_single then
-      f.array:close_readwrite_ptr()
+      f._array:close_readwrite_ptr()
     elseif use_legion then
       legion_region:Destroy()
     end
@@ -627,12 +622,17 @@ function Relation:GroupBy(keyf_name)
 
   local key_field = type(keyf_name) == 'string' and self[keyf_name]
                                                  or keyf_name
-  if not is_field(key_field) or key_field.owner ~= self then
+  if not is_field(key_field) or key_field._owner ~= self then
     error("GroupBy(): Could not find a field named '"..
           tostring(keyf_name).."'", 2)
-  elseif not key_field.type:isscalarkey() then
+  elseif not key_field._type:isscalarkey() then
     error("GroupBy(): Grouping by non-scalar-key fields is "..
           "prohibited.", 2)
+  end
+
+  if key_field._owner:hasSubsets() then
+    error("GroupBy(): TODO support grouping a relation that has subsets. "..
+          "Please notify the developers if this is important.", 2)
   end
 
   self:_INTERNAL_SortBy(key_field)
@@ -642,13 +642,13 @@ function Relation:GroupBy(keyf_name)
   --  DST is 'self' here, the relation which is actively being grouped
   --    In a Where query, a key into the SRC relation is translated
   --    into a sequence of keys into the DST relation
-  local srcrel = key_field.type.relation
+  local srcrel = key_field._type.relation
   local dstrel = self
   local n_src  = srcrel:Size()
   local n_dst  = dstrel:Size()
   local dstname = dstrel:Name()
-  local offset_f = Field.New(srcrel, dstname..'_grouped_offset', uint64T)
-  local length_f = Field.New(srcrel, dstname..'_grouped_length', uint64T)
+  local offset_f = CreateField(srcrel, dstname..'_grouped_offset', uint64T)
+  local length_f = CreateField(srcrel, dstname..'_grouped_length', uint64T)
 
   rawset(self,'_grouped_field', key_field)
   rawset(self,'_grouped_offset', offset_f)
@@ -657,12 +657,9 @@ function Relation:GroupBy(keyf_name)
   if use_single then
     -- NOTE: THIS IMPLEMENTATION HEAVILY ASSUMES THAT A GRID IS LINEARIZED
     -- IN ROW-MAJOR ORDER
-    local offptr = offset_f.array:open_write_ptr()
-    local lenptr = length_f.array:open_write_ptr()
-    local keyptr = key_field.array:open_read_ptr()
-    --offset_f.array:write_ptr(function(offptr)
-    --length_f.array:write_ptr(function(lenptr)
-    --key_field.array:read_ptr(function(keyptr)
+    local offptr = offset_f._array:open_write_ptr()
+    local lenptr = length_f._array:open_write_ptr()
+    local keyptr = key_field._array:open_read_ptr()
       local dims = srcrel:Dims()
 
       local dst_i, prev_src = 0,0
@@ -683,12 +680,9 @@ function Relation:GroupBy(keyf_name)
         lenptr[src_i] = count -- # of rows
       end
       assert(dst_i == n_dst)
-    --end) -- key_field read
-    --end) -- length_f write
-    --end) -- offset_f write
-    key_field.array:close_read_ptr()
-    length_f.array:close_write_ptr()
-    offset_f.array:close_write_ptr()
+    key_field._array:close_read_ptr()
+    length_f._array:close_write_ptr()
+    offset_f._array:close_write_ptr()
   elseif use_legion then
 
     local keyf_list = key_field:Dump({})
@@ -748,14 +742,14 @@ function Relation:MoveTo( proc )
 end
 
 
-function Relation:print()
+function Relation:Print()
   if use_legion then
     error("print() currently unsupported using Legion", 2)
   end
   print(self._name, "size: ".. tostring(self:Size()),
                     "concrete size: "..tostring(self:ConcreteSize()))
   for i,f in ipairs(self._fields) do
-    f:print()
+    f:Print()
   end
 end
 
@@ -801,7 +795,7 @@ function Index.New(params)
   return index
 end
 
-function Index:DataPtr()
+function Index:_Raw_DataPtr()
   return self._array:_raw_ptr()
 end
 function Index:Size()
@@ -854,6 +848,11 @@ function Subset:FullName()
   return self._owner._name .. '.' .. self._name
 end
 
+-- prevent user from modifying the lua table
+function Subset:__newindex(name,value)
+  error("Cannot assign members to Subset object", 2)
+end
+
 function Subset:MoveTo( proc )
   if proc ~= CPU and proc ~= GPU then
     error('must specify valid processor to move to', 2)
@@ -900,7 +899,7 @@ function Relation:_INTERNAL_NewSubsetFromLuaFunction (name, predicate)
   local SUBSET_CUTOFF_FRAC = 0.1
   local SUBSET_CUTOFF = SUBSET_CUTOFF_FRAC * self:Size()
 
-  local boolmask  = Field.New(self, name..'_subset_boolmask', boolT)
+  local boolmask  = CreateField(self, name..'_subset_boolmask', boolT)
   local index_tbl = {}
   local subset_size = 0
   local dims = self:Dims()
@@ -916,17 +915,17 @@ function Relation:_INTERNAL_NewSubsetFromLuaFunction (name, predicate)
 
   if use_legion or subset_size > SUBSET_CUTOFF or self:isGrid() then
   -- USE MASK
-    subset._boolmask = boolmask
+    rawset(subset, '_boolmask', boolmask)
   else
   -- USE INDEX
-    subset._index = Index.New{
+    rawset(subset, '_index', Index.New{
       owner=self,
       terra_type = keyT(self):terratype(),
-      ndims=self:nDims(),
+      ndims=#self:Dims(),
       name=name..'_subset_index',
       data=index_tbl
-    }
-    boolmask:ClearData() -- free memory
+    })
+    boolmask:_INTERNAL_ClearData() -- free memory
   end
 
   return subset
@@ -949,7 +948,7 @@ local function is_subrectangle(rel, obj)
 end
 
 function Relation:_INTERNAL_NewSubsetFromRectangles(name, rectangles)
-  if self:nDims() == 2 then
+  if #self:Dims() == 2 then
     return self:_INTERNAL_NewSubsetFromLuaFunction(name, function(xi, yi)
       for _,r in ipairs(rectangles) do
         local xlo, xhi, ylo, yhi = r[1][1], r[1][2], r[2][1], r[2][2]
@@ -960,7 +959,7 @@ function Relation:_INTERNAL_NewSubsetFromRectangles(name, rectangles)
       return false -- couldn't find cell inside any rectangle
     end)
   else
-    assert(self:nDims() == 3, "grids must be 2 or 3 dimensional")
+    assert(#self:Dims() == 3, "grids must be 2 or 3 dimensional")
     return self:_INTERNAL_NewSubsetFromLuaFunction(name, function(xi, yi, zi)
       for _,r in ipairs(rectangles) do
         local xlo, xhi, ylo, yhi, zlo, zhi =
@@ -991,6 +990,10 @@ function Relation:NewSubset( name, arg )
     error("NewSubset(): "..
           "Subsets of elastic relations are currently unsupported", 2)
   end
+  if self:isGrouped() then
+    error("NewSubset(): TODO support grouping relations with subsets. "..
+          "Notify the developers if this is important to you.", 2)
+  end
 
   if type(arg) == 'table' then
     if self:isGrid() then
@@ -1001,7 +1004,7 @@ function Relation:NewSubset( name, arg )
         for i,r in ipairs(arg.rectangles) do
           if not is_subrectangle(self, r) then
             error("NewSubset(): Entry #"..i.." in 'rectangles' list was "..
-                  "not a rectangle, specified as a list of "..self:nDims()..
+                  "not a rectangle, specified as a list of "..(#self:Dims())..
                   " range pairs lying inside the grid", 2)
           end
         end
@@ -1009,7 +1012,7 @@ function Relation:NewSubset( name, arg )
       else -- assume a single rectangle
         if not is_subrectangle(self, arg) then
           error('NewSubset(): Was expecting a rectangle specified as a '..
-                'list of '..self:nDims()..' range pairs lying inside '..
+                'list of '..(#self:Dims())..' range pairs lying inside '..
                 'the grid', 2)
         end
         return self:_INTERNAL_NewSubsetFromRectangles(name, { arg })
@@ -1030,41 +1033,47 @@ end
 
 -- Client code should never call this constructor
 -- For internal use only.  Does not install on relation...
-function Field.New(rel, name, typ)
-  local field   = setmetatable({}, Field)
-  field.type    = typ
-  field.name    = name
-  field.owner   = rel
+function CreateField(rel, name, typ)
+  local field   = setmetatable({
+    _type   = typ,
+    _name   = name,
+    _owner  = rel,
+  }, Field)
   if use_single then
-    field.array   = nil
-    field:Allocate()
+    field:_INTERNAL_Allocate()
   elseif use_legion then
-    field.fid = rel._logical_region_wrapper:AllocateField(typ:terratype())
+    rawset( field, '_fid',
+            rel._logical_region_wrapper:AllocateField(typ:terratype()) )
   end
   return field
 end
 
+-- prevent user from modifying the lua table
+function Field:__newindex(name,value)
+  error("Cannot assign members to Field object", 2)
+end
+
 function Field:Name()
-  return self.name
+  return self._name
 end
 function Field:FullName()
-  return self.owner._name .. '.' .. self.name
+  return self._owner._name .. '.' .. self._name
 end
 function Field:Size()
-  return self.owner:Size()
+  return self._owner:Size()
 end
 function Field:ConcreteSize()
-  return self.owner:ConcreteSize()
+  return self._owner:ConcreteSize()
 end
 function Field:Type()
-  return self.type
+  return self._type
 end
-function Field:DataPtr()
+function Field:_Raw_DataPtr()
   if use_legion then error('DataPtr() unsupported using legion') end
-  return self.array:_raw_ptr()
+  return self._array:_raw_ptr()
 end
 function Field:Relation()
-  return self.owner
+  return self._owner
 end
 
 function Relation:NewField (name, typ)  
@@ -1100,7 +1109,7 @@ function Relation:NewField (name, typ)
   end
 
   -- create the field
-  local field = Field.New(self, name, typ)
+  local field = CreateField(self, name, typ)
   rawset(self, name, field)
   self._fields:insert(field)
 
@@ -1113,16 +1122,16 @@ function Relation:NewField (name, typ)
 end
 
 -- TODO: Hide this function so it's not public
-function Field:Allocate()
+function Field:_INTERNAL_Allocate()
   if use_legion then error('No Allocate() using legion') end
-  if not self.array then
-    --if self.owner:isElastic() then
-      self.array = DynamicArray.New{
+  if not self._array then
+    --if self._owner:isElastic() then
+      rawset(self, '_array', DynamicArray.New{
         size = self:ConcreteSize(),
         type = self:Type():terratype()
-      }
+      })
     --else
-    --  self.array = DataArray.New {
+    --  self._array = DataArray.New {
     --    size = self:ConcreteSize(),
     --    type = self:Type():terratype()
     --  }
@@ -1132,15 +1141,15 @@ end
 
 -- TODO: Hide this function so it's not public
 -- remove allocated data and clear any depedent data, such as indices
-function Field:ClearData ()
+function Field:_INTERNAL_ClearData()
   if use_legion then error('No ClearData() using legion') end
-  if self.array then
-    self.array:free()
-    self.array = nil
+  if self._array then
+    self._array:free()
+    rawset(self, '_array', nil)
   end
   -- clear grouping data if set on this field
-  if self.owner:isGrouped() and
-     self.owner:GroupedKeyField() == self
+  if self._owner:isGrouped() and
+     self._owner:GroupedKeyField() == self
   then
     error('UNGROUPING CURRENTLY UNIMPLEMENTED')
   end
@@ -1152,7 +1161,7 @@ function Field:MoveTo( proc )
     error('must specify valid processor to move to', 2)
   end
 
-  self.array:moveto(proc)
+  self._array:moveto(proc)
 end
 
 function Relation:Swap( f1_name, f2_name )
@@ -1162,21 +1171,21 @@ function Relation:Swap( f1_name, f2_name )
     error('Could not find a field named "'..f1_name..'"', 2) end
   if not is_field(f2) then
     error('Could not find a field named "'..f2_name..'"', 2) end
-  if f1.type ~= f2.type then
+  if f1._type ~= f2._type then
     error('Cannot Swap() fields of different type', 2)
   end
 
   if use_single then
-    local tmp = f1.array
-    f1.array = f2.array
-    f2.array = tmp
+    local tmp = f1._array
+    f1._array = f2._array
+    f2._array = tmp
   elseif use_legion then
     local region  = self._logical_region_wrapper
     local rhandle = region.handle
-    local fid_1   = f1.fid
-    local fid_2   = f2.fid
+    local fid_1   = f1._fid
+    local fid_2   = f2._fid
     -- create a temporary Legion field
-    local fid_tmp = region:AllocateField(f1.type:terratype())
+    local fid_tmp = region:AllocateField(f1._type:terratype())
 
     LW.CopyField { region = rhandle,  src_fid = fid_1,    dst_fid = fid_tmp }
     LW.CopyField { region = rhandle,  src_fid = fid_2,    dst_fid = fid_1   }
@@ -1206,23 +1215,23 @@ function Relation:Copy( p )
   if not to:Relation() == self then
     error('Field '..to:FullName()..' is not a field of '..
           'Relation '..self:Name(), 2) end
-  if from.type ~= to.type then
+  if from._type ~= to._type then
     error('Cannot Copy() fields of different type', 2)
   end
 
   if use_single then
-    if not from.array then
+    if not from._array then
       error('Cannot Copy() from field with no data', 2) end
-    if not to.array then
-      to:Allocate()
+    if not to._array then
+      to:_INTERNAL_Allocate()
     end
-    to.array:copy(from.array)
+    to._array:copy(from._array)
 
   elseif use_legion then
     LW.CopyField {
       region  = self._logical_region_wrapper.handle,
-      src_fid = from.fid,
-      dst_fid = to.fid,
+      src_fid = from._fid,
+      dst_fid = to._fid,
     }
   end
 end
@@ -1252,7 +1261,7 @@ function Relation:_INTERNAL_MapJointFunction(
   assert(terralib.israwlist(fields), 'arg should be list of fields')
   for _,f in ipairs(fields) do
     assert(is_field(f), 'arg should be list of fields')
-    assert(f.owner == self, 'fields should belong to this relation')
+    assert(f._owner == self, 'fields should belong to this relation')
   end
   assert(not self:isFragmented(), 'cannot expose a fragmented relation')
 
@@ -1260,8 +1269,8 @@ function Relation:_INTERNAL_MapJointFunction(
   if use_single then
     for i = 1, #fields do
       local dld     = fields[i]:GetDLD()
-      if iswrite then   dld.address   = fields[i].array:open_write_ptr()
-                 else   dld.address   = fields[i].array:open_read_ptr() end
+      if iswrite then   dld.address   = fields[i]._array:open_write_ptr()
+                 else   dld.address   = fields[i]._array:open_read_ptr() end
       dld:setlocation(DLD.CPU)
       if isterra then   dld_list[i-1] = dld:toTerra()
                  else   dld_list[i]   = dld end
@@ -1270,8 +1279,8 @@ function Relation:_INTERNAL_MapJointFunction(
     local retvals = { clbk(dld_list, ...) }
 
     for i = 1, #fields do
-      if iswrite then   fields[i].array:close_write_ptr()
-                 else   fields[i].array:close_read_ptr() end
+      if iswrite then   fields[i]._array:close_write_ptr()
+                 else   fields[i]._array:close_read_ptr() end
     end
     return unpack(retvals)
 
@@ -1299,7 +1308,7 @@ function Field:_INTERNAL_LoadLuaPerElemFunction(clbk)
   local typ       = self:Type()
   local ttyp      = typ:terratype()
 
-  self.owner:_INTERNAL_MapJointFunction(true, false, function(dldlist)
+  self._owner:_INTERNAL_MapJointFunction(true, false, function(dldlist)
     local dld         = dldlist[1]
     local ptr         = terralib.cast(&ttyp, dld.address)
 
@@ -1311,7 +1320,7 @@ function Field:_INTERNAL_LoadLuaPerElemFunction(clbk)
 end
 
 function Field:_INTERNAL_LoadTerraBulkFunction(clbk, ...)
-  return self.owner:_INTERNAL_MapJointFunction(true, true, clbk, {self}, ...)
+  return self._owner:_INTERNAL_MapJointFunction(true, true, clbk, {self}, ...)
 end
 
 function Relation:_INTERNAL_LoadTerraBulkFunction(fields, clbk, ...)
@@ -1320,7 +1329,7 @@ end
 
 -- this is broken for unstructured relations with legion
 function Field:_INTERNAL_LoadList(tbl)
-  local ndims = self.owner:nDims()
+  local ndims = #self._owner:Dims()
   if ndims == 1 then
     self:_INTERNAL_LoadLuaPerElemFunction(function(i)
       return tbl[i+1]
@@ -1374,7 +1383,7 @@ function Relation:_INTERNAL_DumpLuaPerElemFunction(fields, clbk)
 end
 
 function Field:_INTERNAL_DumpLuaPerElemFunction(clbk)
-  self.owner:_INTERNAL_DumpLuaPerElemFunction({self}, function(ids, val)
+  self._owner:_INTERNAL_DumpLuaPerElemFunction({self}, function(ids, val)
     clbk(val, unpack(ids))
   end)
 end
@@ -1384,12 +1393,12 @@ function Relation:_INTERNAL_DumpTerraBulkFunction(fields, clbk, ...)
 end
 
 function Field:_INTERNAL_DumpTerraBulkFunction(clbk, ...)
-  return self.owner:_INTERNAL_MapJointFunction(false, true, clbk, {self}, ...)
+  return self._owner:_INTERNAL_MapJointFunction(false, true, clbk, {self}, ...)
 end
 
 function Field:_INTERNAL_DumpList()
   local result = {}
-  local dims = self.owner:Dims()
+  local dims = self._owner:Dims()
 
   if #dims == 1 then
     self:_INTERNAL_DumpLuaPerElemFunction(function(val, i)
@@ -1449,7 +1458,7 @@ local function argcheck_rel_fields(obj,rel,lvl)
     if not is_field(f) then
       error(ferrprefix(lvl)..'Expected field at list entry '..i, lvl)
     end
-    if not f.owner == rel then
+    if not f._owner == rel then
       error(ferrprefix(lvl)..'Expected field to be a member of '..
             rel:Name(),lvl)
     end
@@ -1527,7 +1536,7 @@ end
 --[[  High-Level Loading and Dumping Operations (Lua and Terra)            ]]--
 
 function Field:Load(arg, ...)
-  if self.owner:isFragmented() then
+  if self._owner:isFragmented() then
     error('cannot load into fragmented relation', 2)
   end
 
@@ -1552,32 +1561,32 @@ function Field:Load(arg, ...)
 
     -- field
     elseif is_field(arg) then
-      if arg.owner ~= self.owner then
+      if arg._owner ~= self._owner then
         error('Can only load from another field on the same relation', 2)
       end
       if arg:Type() ~= self:Type() then
         error('Can only load from another field with identical type', 2)
       end
-      self.owner:Copy { from=arg, to=self }
+      self._owner:Copy { from=arg, to=self }
       return
 
     -- scalars, vectors and matrices
-    elseif (self.type:isscalarkey() and #arg == self.type.ndims) or
-       (self.type:isvector() and #arg == self.type.N) or
-       (self.type:ismatrix() and #arg == self.type.Nrow)
+    elseif (self._type:isscalarkey() and #arg == self._type.ndims) or
+       (self._type:isvector() and #arg == self._type.N) or
+       (self._type:ismatrix() and #arg == self._type.Nrow)
     then
       -- fall-through to constant loading
 
     else
       -- default tables to try loading as Lua lists
       -- TODO: TYPECHECKING HERE
-      argcheck_list_dims_and_type(arg, self.owner:Dims(), self.type, 2)
+      argcheck_list_dims_and_type(arg, self._owner:Dims(), self._type, 2)
       return self:_INTERNAL_LoadList(arg)
     end
   end
   -- default to try loading as a constant value
   -- TODO: TYPECHECKING HERE
-  argcheck_loadval_type(arg, self.type, 2)
+  argcheck_loadval_type(arg, self._type, 2)
   return self:_INTERNAL_LoadConstant(arg)
 end
 
@@ -1605,7 +1614,7 @@ end
 
 -- pass an empty table to signify that you want the data dumped as a Lua list
 function Field:Dump(arg, ...)
-  if self.owner:isFragmented() then
+  if self._owner:isFragmented() then
     error('cannot dump from a fragmented relation', 2)
   end
 
@@ -1654,499 +1663,17 @@ function Relation:Dump(fieldargs, arg, ...)
 end
 
 
---[[
-function Field:LoadFunction(lua_callback)
-  if self.owner:isFragmented() then
-    error('cannot load into fragmented relation', 2)
-  end
-
-  if use_legion then
-    if self.owner:isPlain() then
-      -- error("LoadList for unstructured relations is broken with legion")
-    end
-    -- Ok, we need to map some stuff down here
-    local scanner = LW.NewControlScanner {
-      relation       = self.owner,
-      fields         = { self },
-      privilege      = LW.WRITE_ONLY
-    }
-    for ids, ptrs in scanner:ScanThenClose() do
-      local lval = lua_callback(unpack(ids))
-      if not T.luaValConformsToType(lval, self.type) then
-        error("lua value does not conform to field type "..
-              tostring(self.type), 3)
-      end
-      local tval = T.luaToEbbVal(lval, self.type)
-      terralib.cast(&(self.type:terratype()), ptrs[1])[0] = tval
-    end
-  elseif use_single then
-    self:Allocate()
-
-    local dims = self.owner:Dims()
-    local dataptr = self.array:open_write_ptr()
-    --self.array:write_ptr(function(dataptr)
-      for lin,ids in self.owner:_INTERNAL_iter_gen() do
-        local val = lua_callback(unpack(ids))
-        if not T.luaValConformsToType(val, self.type) then
-          error("lua value does not conform to field type "..
-                tostring(self.type), 5)
-        end
-        dataptr[lin] = T.luaToEbbVal(val, self.type)
-      end
-    --end) -- write_ptr
-    self.array:close_write_ptr()
-  end
-end
-
-
--- To load fields using terra callback. Terra callback gets a list of dlds.
---   callback([dlds])
-function Relation:LoadJointTerraFunction( terra_callback, fields_arg, ...)
-  if not terralib.isfunction(terra_callback) then
-    error('LoadJointTerraFunction.. should be used with terra callback')
-  end
-  if self:isFragmented() then
-    error('cannot load to fragmented relation', 2)
-  elseif type(fields_arg) ~= 'table' or #fields_arg == 0 then
-    error('LoadJointTerraFunction(): Expects a list of fields as its first argument', 2)
-  end
-  local fields = {}
-  for i,f in ipairs(fields_arg) do
-    if type(f) == 'string' then f = self[f] end
-    if not is_field(f) then
-      error('LoadJointTerraFunction(): list entry '..tostring(i)..' was either '..
-            'not a field or not the name of a field in '..
-            'relation '..self:Name(),2)
-    end
-    if f.owner ~= self then
-      error('LoadJointTerraFunction(): list entry '..tostring(i)..', field '..
-            f:FullName()..' is not a field of relation '..self:Name(), 2)
-    end
-    fields[i] = f
-  end
-  local nfields = #fields
-
-  local dld_array = terralib.new(DLD.C_DLD[nfields])
-  if use_single then
-    --local cpu_buf = {}
-    for i = 1, nfields do
-      local dld = fields[i]:GetDLD()
-      dld.address = fields[i].array:open_write_ptr()
-      dld:setlocation(DLD.CPU)
-      dld_array[i-1] = dld:toTerra()
-    end
-
-    terra_callback(dld_array, ...)
-
-    for i = 1, nfields do
-      fields[i].array:close_write_ptr()
-    end
-  elseif use_legion then
-    -- TODO(Chinmayee): check if it is better to do a separate physical region
-    -- for each field
-    local params = { relation = self, fields = fields, privilege = LW.WRITE_ONLY }
-    local region = LW.NewInlinePhysicalRegion(params)
-    local data_ptrs = region:GetDataPointers()
-    local dims      = self:Dims()
-    local strides   = region:GetStrides()
-    local offsets   = region:GetOffsets()
-    for i = 1, nfields do
-      local dld = fields[i]:GetDLD()
-      dld:SetDataPointer(data_ptrs[i])
-      dld:SetDims(dims)
-      dld:SetStride(strides[i])
-      dld:SetOffset(offsets[i])
-      dld_array[i-1] = dld:Compile()
-    end
-
-    terra_callback(dld_array, ...)
-
-    region:Destroy()
-  end
-end
-
--- Load a single field using a terra callback
--- callback accepts argument dld
---   callback(dld)
-function Field:LoadTerraFunction(terra_callback, ...)
-  if not terralib.isfunction(terra_callback) then
-    error('LoadTerraFunction should be used with terra callback')
-  end
-  self.owner:LoadJointTerraFunction(terra_callback, {self}, ...)
-end
-
---[[
--- this is broken for unstructured relations with legion
-function Field:LoadList(tbl)
-  if self.owner:isFragmented() then
-    error('cannot load into fragmented relation', 2)
-  end
-  if type(tbl) ~= 'table' then
-    error('bad type passed to LoadList().  Expecting a table', 2)
-  end
-  if self.owner:isGrid() then
-    local dims = self.owner:Dims()
-    local dimstr = '{'..tostring(dims[1])..','..tostring(dims[2])
-    if dims[3] then dimstr = dimstr..','..tostring(dims[3]) end
-    dimstr = dimstr..'}'
-    local errmsg = 'argument list should have dimensions '..dimstr
-
-    if dims[3] then
-      if dims[3] ~= #tbl then error(errmsg, 2) end
-      for zi=1,dims[3] do
-        if dims[2] ~= #tbl[zi] then error(errmsg,2) end
-        for yi=1,dims[2] do
-          if dims[1] ~= #tbl[zi][yi] then error(errmsg,2) end
-        end
-      end
-    else
-      if dims[2] ~= #tbl then error(errmsg,2) end
-      for yi=1,dims[2] do
-        if dims[1] ~= #tbl[yi] then error(errmsg,2) end
-      end
-    end
-  else
-    if #tbl ~= self:Size() then
-      error('argument list has the wrong number of elements: '..
-            tostring(#tbl)..
-            ' (was expecting '..tostring(self:Size())..')', 2)
-    end
-  end
-
-  if self.owner:nDims() == 1 then
-    self:LoadFunction(function(i) return tbl[i+1] end)
-  elseif self.owner:nDims() == 2 then
-    self:LoadFunction(function(xi,yi) return tbl[yi+1][xi+1] end)
-  elseif self.owner:nDims() == 3 then
-    self:LoadFunction(function(xi,yi,zi) return tbl[zi+1][yi+1][xi+1] end)
-  else
-    error('INTERNAL > 3 dimensions')
-  end
-end
---]]
-
---[[
--- TODO: DEPRECATED FORM.  (USE DLD?)
-function Field:LoadFromMemory(mem)
-  if self.owner:isFragmented() then
-    error('cannot load into fragmented relation', 2)
-  end
-  if use_legion then
-    error('Load from memory while using Legion is unimplemented', 2)
-  end
-  self:Allocate()
-
-  if self.type:iskey() then
-    if not self.type:isscalar() then
-      error('no support for loading non-scalar keys from memory', 2)
-    end
-    if self.type.ndims ~= 1 then
-      error('no support for loading non-1d keys from memory', 2)
-    end
-    -- read out a list and then load that
-    local data      = {}
-    local n_array   = self:Size()
-    local arr       = terralib.cast(&uint64, mem)
-    for k=0,n_array-1 do
-      data[k+1] = tonumber(arr[k])
-    end
-    self:LoadList(data)
-  else
-  -- avoid extra copies by wrapping and using the standard copy
-    local wrapped = DynamicArray.Wrap{
-      size = self:ConcreteSize(),
-      type = self.type:terratype(),
-      data = mem,
-      processor = CPU,
-    }
-    self.array:copy(wrapped)
-  end
-end
-
---[[
-function Field:LoadConstant(constant)
-  if self.owner:isFragmented() then
-    error('cannot load into fragmented relation', 2)
-  end
-
-  local ttype = self.type:terratype()
-
-  -- TODO: We haven't guaranteed that size of ttype equals
-  --       the type stride
-  local terra LoadConstantFunction(darray : &DLD.C_DLD)
-    var d = darray[0]
-    var c : ttype = [T.luaToEbbVal(constant, self.type)]
-    var b = d.dim_size
-    var s = d.dim_stride
-    var addr = [&ttype](d.address)
-    for i = 0, b[0] do
-      for j = 0, b[1] do
-        for k = 0, b[2] do
-          var ptr = addr + i*s[0] + j*s[1] + k*s[2]
-          C.memcpy(ptr, &c, sizeof(ttype))
-        end
-      end
-    end
-  end
-
-  self:LoadTerraFunction(LoadConstantFunction)
-end
---]]
-
---[[
--- generic dispatch function for loads
-function Field:Load(arg)
-  if self.owner:isFragmented() then
-    error('cannot load into fragmented relation', 2)
-  end
-  -- load from lua callback
-  -- TODO(Chinmayee): deprecate this
-  if type(arg) == 'function' then
-    return self:LoadFunction(arg)
-  elseif  type(arg) == 'cdata' then
-    if use_legion then
-      error('Load from memory while using Legion is unimplemented', 2)
-    end
-    local typ = terralib.typeof(arg)
-
-    if typ and typ:ispointer() then
-      return self:LoadFromMemory(arg)
-    end
-  elseif  type(arg) == 'table' then
-    -- terra function
-    if (terralib.isfunction(arg)) then
-      return self:LoadTerraFunction(arg)
-    -- scalars, vectors and matrices
-    elseif (self.type:isscalarkey() and #arg == self.type.ndims) or
-       (self.type:isvector() and #arg == self.type.N) or
-       (self.type:ismatrix() and #arg == self.type.Nrow)
-    then
-      return self:LoadConstant(arg)
-    else
-      -- default tables to try loading as Lua lists
-      return self:LoadList(arg)
-    end
-  end
-  -- default to try loading as constants
-  return self:LoadConstant(arg)
-end
---]]
-
-
---[[  Dumping                                                               ]]--
-
---[[
--- helper to dump multiple fields jointly
-function Relation:DumpJoint(fields_arg, lua_callback)
-  if self:isFragmented() then
-    error('cannot dump from fragmented relation', 2)
-  end
-  if type(fields_arg) ~= 'table' or #fields_arg == 0 then
-    error('DumpJoint(): Expects a list of fields as its first argument', 2)
-  end
-  local fields = {}
-  for i,f in ipairs(fields_arg) do
-    if type(f) == 'string' then f = self[f] end
-    if not is_field(f) then
-      error('DumpJoint(): list entry '..tostring(i)..' was either '..
-            'not a field or not the name of a field in '..
-            'relation '..self:Name(),2)
-    end
-    if f.owner ~= self then
-      error('DumpJoint(): list entry '..tostring(i)..', field '..
-            f:FullName()..' is not a field of relation '..self:Name(), 2)
-    end
-    fields[i] = f
-  end
-
-  if use_legion then
-    local typs = {}
-    for k=1,#fields do
-      local f = fields[k]
-      typs[k] = f.type
-    end
-
-    local scanner = LW.NewControlScanner {
-      relation  = self,
-      fields    = fields,
-      privilege = LW.READ_ONLY
-    }
-    for ids, ptrs in scanner:ScanThenClose() do
-      local vals = {}
-      for k=1,#fields do
-        local tval = terralib.cast(&(typs[k]:terratype()), ptrs[k])[0]
-        vals[k] = T.ebbToLuaVal(tval, typs[k])
-      end
-      lua_callback(ids, unpack(vals))
-    end
-  else
-    local dims = self:Dims()
-    local nfields = #fields
-    local typs = {}
-    local ptrs = {}
-
-    -- main loop part
-    local loop = function()
-      for lin,ids in self:_INTERNAL_iter_gen() do
-        local vals = {}
-        for k=1,nfields do
-          vals[k] = T.ebbToLuaVal(ptrs[k][lin], typs[k])
-        end
-        lua_callback(ids, unpack(vals))
-      end
-    end
-
-    for k=1,nfields do
-      local f     = fields[k]
-      typs[k]     = f.type
-      local loopcapture = loop -- THIS IS NEEDED TO STOP INF. RECURSION
-      local outerloop = function()
-        local dataptr = f.array:open_read_ptr()
-        --f.array:read_ptr(function(dataptr)
-          ptrs[k] = dataptr
-          loopcapture()
-        --end)
-        f.array:close_read_ptr()
-      end
-      loop = outerloop
-    end
-
-    loop()
-  end
-end
---]]
-
---[[
--- callback(i, val)
---      i:      which row we're outputting (starting at 0)
---      val:    the value of this field for the ith row
-function Field:DumpFunction(lua_callback)
-  if self.owner:isFragmented() then
-    error('cannot dump from fragmented relation', 2)
-  end
-  self.owner:DumpJoint({self}, function(ids, val)
-    lua_callback(val, unpack(ids))
-  end)
-end
-
-function Field:DumpToList()
-  if self.owner:isFragmented() then
-    error('cannot dump from fragmented relation', 2)
-  end
-  local arr = {}
-  local dims = self.owner:Dims()
-  if #dims == 1 then
-    self:DumpFunction(function(val, i)
-      arr[i+1] = val
-    end)
-  elseif #dims == 2 then
-    for yi=1,dims[2] do arr[yi] = {} end
-    self:DumpFunction(function(val, xi,yi)
-      arr[yi+1][xi+1] = val
-    end)
-  elseif #dims == 3 then
-    for zi=1,dims[3] do
-      arr[zi] = {}
-      for yi=1,dims[2] do arr[zi][yi] = {} end
-    end
-    self:DumpFunction(function(val, xi,yi,zi)
-      arr[zi+1][yi+1][xi+1] = val
-    end)
-  else
-    error('INTERNAL: > 3 dims')
-  end
-  return arr
-end
-
-
-
--- To dump fields using terra callback. Terra callback gets a list of dlds.
---   callback([dlds])
-function Relation:DumpJointTerraFunction(terra_callback, fields_arg, ...)
-  if not terralib.isfunction(terra_callback) then
-    error('DumpJointTerraFunction.. should be used with terra callback')
-  end
-  if self:isFragmented() then
-    error('cannot dump from fragmented relation', 2)
-  elseif type(fields_arg) ~= 'table' or #fields_arg == 0 then
-    error('DumpJointTerraFunction(): Expects a list of fields as its first argument', 2)
-  end
-  local fields = {}
-  for i,f in ipairs(fields_arg) do
-    if type(f) == 'string' then f = self[f] end
-    if not is_field(f) then
-      error('DumpJointTerraFunction(): list entry '..tostring(i)..' was either '..
-            'not a field or not the name of a field in '..
-            'relation '..self:Name(),2)
-    end
-    if f.owner ~= self then
-      error('DumpJointFunction(): list entry '..tostring(i)..', field '..
-            f:FullName()..' is not a field of relation '..self:Name(), 2)
-    end
-    fields[i] = f
-  end
-  local nfields = #fields
-
-  local dld_array = terralib.new(DLD.C_DLD[nfields])
-  if use_single then
-    for i = 1, nfields do
-      local dld   = fields[i]:GetDLD()
-      dld.address = fields[i].array:open_read_ptr()
-      dld:setlocation(DLD.CPU)
-      dld_array[i-1] = dld:toTerra()
-    end
-
-    terra_callback(dld_array, ...)
-
-    for i = 1, nfields do
-      fields[i].array:close_read_ptr()
-    end
-  elseif use_legion then
-    -- TODO(Chinmayee): check if it is better to do a separate physical region
-    -- for each field
-    local params = { relation = self, fields = fields, privilege = LW.READ_ONLY }
-    local region = LW.NewInlinePhysicalRegion(params)
-    local data_ptrs = region:GetDataPointers()
-    local dims      = self:Dims()
-    local strides   = region:GetStrides()
-    local offsets   = region:GetOffsets()
-    for i = 1, nfields do
-      local dld = fields[i]:GetDLD()
-      dld:SetDataPointer(data_ptrs[i])
-      dld:SetDims(dims)
-      dld:SetStride(strides[i])
-      dld:SetOffset(offsets[i])
-      dld_array[i-1] = dld:Compile()
-    end
-    if opt_args then
-      terra_callback(dld_array, unpack(opt_args))
-    else
-      terra_callback(dld_array)
-    end
-    region:Destroy()
-  end
-end
-
--- Dump a single field using a terra callback
--- callback accepts argument dld
---   callback(dld)
-function Field:DumpTerraFunction(terra_callback, ...)
-  if not terralib.isfunction(terra_callback) then
-    error('DumpTerraFunction should be used with terra callback')
-  end
-  self.owner:DumpJointTerraFunction(terra_callback, {self}, ...)
-end
 
 
 --[[  I/O: Load from/ save to files, print to stdout                       ]]--
 
-function Field:print()
-  print(self.name..": <" .. tostring(self.type:terratype()) .. '>')
-  if use_single and not self.array then
+function Field:Print()
+  print(self._name..": <" .. tostring(self._type:terratype()) .. '>')
+  if use_single and not self._array then
     print("...not initialized")
     return
   end
-  local is_elastic = self.owner:isElastic()
+  local is_elastic = self._owner:isElastic()
   if is_elastic then
     print("  . == live  x == dead")
   end
@@ -2166,8 +1693,8 @@ function Field:print()
   end
 
   local fields     = { self }
-  if is_elastic then fields[2] = self.owner._is_live_mask end
-  self.owner:_INTERNAL_DumpLuaPerElemFunction(fields,
+  if is_elastic then fields[2] = self._owner._is_live_mask end
+  self._owner:_INTERNAL_DumpLuaPerElemFunction(fields,
   function(ids, datum, islive)
     local alive = ''
     if is_elastic then
@@ -2179,20 +1706,20 @@ function Field:print()
     if ids[2] then idstr = idstr..' '..tostring(ids[2]) end
     if ids[3] then idstr = idstr..' '..tostring(ids[3]) end
 
-    if self.type:ismatrix() then
+    if self._type:ismatrix() then
       local s = ''
-      for c=1,self.type.Ncol do s = s .. flattenkey(datum[1][c]) .. ' ' end
+      for c=1,self._type.Ncol do s = s .. flattenkey(datum[1][c]) .. ' ' end
       print("", idstr .. alive, s)
 
-      for r=2,self.type.Nrow do
+      for r=2,self._type.Nrow do
         local s = ''
-        for c=1,self.type.Ncol do s = s .. flattenkey(datum[r][c]) .. ' ' end
+        for c=1,self._type.Ncol do s = s .. flattenkey(datum[r][c]) .. ' ' end
         print("", "", s)
       end
 
-    elseif self.type:isvector() then
+    elseif self._type:isvector() then
       local s = ''
-      for k=1,self.type.N do s = s .. flattenkey(datum[k]) .. ' ' end
+      for k=1,self._type.N do s = s .. flattenkey(datum[k]) .. ' ' end
       print("", idstr .. alive, s)
 
     else
@@ -2201,153 +1728,6 @@ function Field:print()
   end)
 end
 
---[[
--- load/ save field from file (very basic error handling right now)
-
-function Field:LoadFromCSV(filename)
-  if self.owner:isFragmented() then
-    error('cannot load into fragmented relation', 2)
-  end
-  if type(filename) ~= 'string' then
-    error('LoadFromCSV expected a string argument')
-  end
-  local fp = C.fopen(filename, 'r')
-  if fp == nil then
-    error('Cannot read file ' .. filename)
-  end
-
-  local btype = self.type:terrabasetype()
-  local typeformat = ""
-  if btype == int then
-    typeformat = "%d"
-  elseif btype == uint64 then
-    typeformat = "%u"
-  elseif btype == bool then
-    typeformat = "%d"
-  elseif btype == float then
-    typeformat = "%f"
-  elseif btype == double then
-    typeformat = "%lf"
-  else
-    assert(false, "unrecognized base type in loadCSV")
-  end
-
-  local terra LoadCSVFunction(darray : &DLD.C_DLD)
-    var d    = darray[0]
-    var s    = d.dim_stride
-    var dim  = d.dim_size
-    var st   = d.type_stride
-    var dimt = d.type_dims
-    var nt   = dimt[0] * dimt[1]
-
-    var bt  : btype    -- base type
-    var c   : int8     -- delimiter in csv, comma
-
-    var ptr = [&btype](d.address)
-
-    for i = 0, dim[0] do
-      for j = 0, dim[1] do
-        for k = 0, dim[2] do
-          var linidx = i*s[0] + j*s[1] + k*s[2]
-          for it = 0, dimt[0] do
-            for jt = 0, dimt[1] do
-              var offset = it*dimt[1] + jt
-              C.assert(C.fscanf(fp, typeformat, &bt) == 1)
-              C.assert(C.ferror(fp) == 0 and C.feof(fp) == 0)
-              ptr[ nt*linidx + offset ] = bt
-              --C.memcpy(ptr, &bt, d.type.base_bytes)
-              if offset ~= nt-1 then
-                c = 0
-                while (c ~= 44) do
-                  c = C.fgetc(fp)
-                  C.assert (  (c == 32 or c == 44) and
-                                C.ferror(fp) == 0 and C.feof(fp) == 0,
-                              "Expected a comma or a space in CSV file" )
-                end
-              end
-            end
-          end
-        end
-      end
-    end
-    c = 0
-    while (C.feof(fp) == 0) do
-      c = C.fgetc(fp)
-      if (c > 0 and (c < 9 or (c > 13 and c ~= 32))) then
-        C.printf("CSV file %s longer than expected. Expected space or end of file.\n", filename)
-        C.exit(-1)
-      end
-    end
-  end
-  self:LoadTerraFunction(LoadCSVFunction)
-  C.fclose(fp)
-end
-
-function Field:SaveToCSV(filename, args)
-  if self.owner:isFragmented() then
-    error('cannot save a fragmented relation', 2)
-  end
-  if type(filename) ~= 'string' then
-    error('SaveToCSV expected a string argument')
-  end
-  local fp = C.fopen(filename, 'w')
-  if fp == nil then
-    error('Cannot write to file ' .. filename)
-  end
-  local precision_str = ""
-  if args and args.precision then precision_str = "." .. tostring(args.precision) end
-
-  local btype = self.type:terrabasetype()
-  local btype = self.type:terrabasetype()
-  local typeformat = ""
-  if btype == int then
-    typeformat = "%d"
-  elseif btype == uint64 then
-    typeformat = "%u"
-  elseif btype == bool then
-    typeformat = "%d"
-  elseif btype == float then
-    typeformat = "%" .. precision_str .. "f"
-  elseif btype == double then
-    typeformat = "%" .. precision_str .. "lf"
-  end
-  local terra SaveCSVFunction(darray : &DLD.C_DLD)
-    var d    = darray[0]
-    var s    = d.dim_stride
-    var dim  = d.dim_size
-    var st   = d.type_stride
-    var dimt = d.type_dims
-    var nt   = dimt[0] * dimt[1]
-
-    var bt  : btype    -- base type
-    var ptr = [&btype](d.address)
-
-    for i = 0, dim[0] do
-      for j = 0, dim[1] do
-        for k = 0, dim[2] do
-          var linidx = i*s[0] + j*s[1] + k*s[2]
-          for it = 0, dimt[0] do
-            for jt = 0, dimt[1] do
-              var offset = it*dimt[1] + jt
-              --ptr = [&uint8](d.address) + i*s[0] + j*s[1] + k*s[2]
-              --ptr = [&uint8](ptr) + it*st[0] + jt*st[1]
-              --C.memcpy(&bt, ptr, d.type.base_bytes)
-              bt = ptr[ nt*linidx + offset ]
-              C.assert(C.fprintf(fp, typeformat, bt) > 0)
-              if offset ~= nt-1 then
-                C.assert(C.fprintf(fp, ", ") > 0)
-              end
-            end
-          end
-          C.assert(C.fprintf(fp, "\n") > 0)
-        end
-      end
-    end
-  end
-  self:DumpTerraFunction(SaveCSVFunction)
-  C.fclose(fp)
-end
---]]
 
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
@@ -2356,7 +1736,7 @@ end
 -------------------------------------------------------------------------------
 
 function Field:GetDLD()
-  if self.owner:isFragmented() then
+  if self._owner:isFragmented() then
     error('Cannot get DLD from fragmented relation', 2)
   end
 
@@ -2364,16 +1744,16 @@ function Field:GetDLD()
   -- the data is contiguously stored and can be safely exposed to the
   -- external code
 
-  local typ         = self.type
+  local typ         = self._type
   local type_dims   = ( typ:ismatrix() and {typ.Nrow,typ.Ncol} ) or
                       ( typ:isvector() and {typ.N,1} ) or
                       {1,1}
 
   if use_single then
-    local location  = self.array:location()
+    local location  = self._array:location()
     location        = assert( (location == CPU and DLD.CPU) or
                               (location == GPU and DLD.GPU) )
-    local dims      = self.owner:Dims()
+    local dims      = self._owner:Dims()
 
     local dim_size, dim_stride = {}, {}
     local prod = 1
@@ -2388,7 +1768,7 @@ function Field:GetDLD()
       type_stride     = sizeof(typ:terratype()),
       type_dims       = type_dims,
 
-      address         = self:DataPtr(),
+      address         = self:_Raw_DataPtr(),
       dim_size        = dim_size,
       dim_stride      = dim_stride,
     }
@@ -2398,23 +1778,6 @@ function Field:GetDLD()
     assert(use_single or use_legion)
   end
 
-  --[[
-  -- TODO(Chinmayee): use concrete size here?
-  if use_single then
-    local dld = DLD.new({
-      address         = self:DataPtr(),
-      location        = tostring(self.array:location()),
-      type            = self.type,
-      dims            = self.owner:Dims(),
-      compact         = true,
-    })
-    return dld
-  elseif use_legion then
-    local dld = DLD.new({
-      type = self.type,
-    })
-    return dld
-  end]]
 end
 
 
@@ -2431,9 +1794,9 @@ function Relation:_INTERNAL_Resize(new_concrete_size, new_logical)
   end
   if use_legion then error("Can't resize while using Legion", 2) end
 
-  self._is_live_mask.array:resize(new_concrete_size)
+  self._is_live_mask._array:resize(new_concrete_size)
   for _,field in ipairs(self._fields) do
-    field.array:resize(new_concrete_size)
+    field._array:resize(new_concrete_size)
   end
   self._concrete_size = new_concrete_size
   if new_logical then self._logical_size = new_logical end
@@ -2492,10 +1855,10 @@ function Relation:Defrag()
   local on_gpu      = {}
   local live_gpu    = false
   for i,field in ipairs(self._fields) do
-    on_gpu[i]   = field.array:location() == GPU
+    on_gpu[i]   = field._array:location() == GPU
     any_on_gpu  = true
   end
-  if self._is_live_mask.array:location() == GPU then
+  if self._is_live_mask._array:location() == GPU then
     live_gpu    = true
     any_on_gpu  = true
   end
@@ -2577,9 +1940,9 @@ function Relation:Defrag()
   -- assemble the arguments
   local ptrargs = {}
   for i,field in ipairs(self._fields) do
-    ptrargs[i] = field:DataPtr()
+    ptrargs[i] = field:_Raw_DataPtr()
   end
-  ptrargs[#self._fields+1] = self._is_live_mask:DataPtr()
+  ptrargs[#self._fields+1] = self._is_live_mask:_Raw_DataPtr()
 
   -- run the defrag func
   defrag_func(self:ConcreteSize(), unpack(ptrargs))
@@ -2615,7 +1978,7 @@ function Relation:SetPartitions(num_partitions)
   if self._total_partitions ~= nil then
     error("Partitioning for " .. self._name .. " is already set", 2)
   end
-  local ndims = self:nDims()
+  local ndims = #self:Dims()
   local num_partitions_table = num_partitions
   if type(num_partitions) == 'number' then
     num_partitions_table = { num_partitions }
@@ -2652,7 +2015,7 @@ function Relation:SetGhostWidth(ghost_width)
   if not self:isGrid() then
     error("SetGhostWidth supported for only structured relations (grids).", 2)
   else
-    local ndims = self:nDims()
+    local ndims = #self:Dims()
     local num_elems = #ghost_width
     if num_elems ~= 2 * ndims then
       error("Expected a table of " .. tostring(2 * ndims) .. " elements for ghost width." ..
@@ -2711,7 +2074,7 @@ function Relation:GetOrCreateDisjointPartitioning()
     -- PLAIN/ GROUPED/ ELASTIC
     -- add a coloring field to logical region
     rawset(self, '_disjoint_coloring',
-           Field.New(self, '_disjoint_coloring', T.color_type))
+           CreateField(self, '_disjoint_coloring', T.color_type))
     -- set the coloring field
     self._disjoint_coloring:Load(ColorPlainIndexSpaceDisjoint,
                                  self:TotalPartitions())

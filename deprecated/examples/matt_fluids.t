@@ -45,5 +45,5 @@ for i = 1, 1000 do
 	M.vertices:foreach(clear)
 end
 
-M.vertices.temperature:print()
+M.vertices.temperature:Print()
 

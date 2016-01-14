@@ -1,3 +1,25 @@
+-- The MIT License (MIT)
+-- 
+-- Copyright (c) 2015 Stanford University.
+-- All rights reserved.
+-- 
+-- Permission is hereby granted, free of charge, to any person obtaining a
+-- copy of this software and associated documentation files (the "Software"),
+-- to deal in the Software without restriction, including without limitation
+-- the rights to use, copy, modify, merge, publish, distribute, sublicense,
+-- and/or sell copies of the Software, and to permit persons to whom the
+-- Software is furnished to do so, subject to the following conditions:
+-- 
+-- The above copyright notice and this permission notice shall be included
+-- in all copies or substantial portions of the Software.
+-- 
+-- THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+-- IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+-- FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+-- AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+-- LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING 
+-- FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+-- DEALINGS IN THE SOFTWARE.
 local S = {}
 package.loaded["ebb.src.semant"] = S
 
@@ -577,7 +599,8 @@ function ast.GenericFor:check(ctxt)
       ctxt:error(self,"Could not find field '"..p.."'")
       return r
     end
-    rel = rel[p].type.relation
+    assert(R.is_field(rel[p]))
+    rel = rel[p]:Type().relation
     assert(rel)
   end
   local keyType = keyT(rel)
@@ -1233,7 +1256,7 @@ function ast.TableLookup:check(ctxt)
           ast_node.key.is_centered = true
       end
       ast_node.field      = field
-      ast_node.node_type  = field.type
+      ast_node.node_type  = field:Type()
       return ast_node
 
     -- desugar macro-fields from key.macro to macro(key)
@@ -1280,7 +1303,7 @@ function ast.TableLookup:check(ctxt)
     local projs = {}
     for i,p in ipairs(ttype.projections) do
       table.insert(projs,p)
-      rel = rel[p].type.relation 
+      rel = rel[p]:Type().relation 
       assert(rel)
     end
     local field = rel[member]
@@ -1467,7 +1490,7 @@ end
 
 function ast.Global:check(ctxt)
   local n     = self:clone()
-  n.node_type = self.global.type
+  n.node_type = self.global._type
   return n
 end
 
@@ -1518,18 +1541,17 @@ function ast.Where:check(ctxt)
                     tostring(fieldobj))
   end
   local field = fieldobj.value
-  if keytype ~= field.type then
+  if keytype ~= field:Type() then
     ctxt:error(self,"Key of where is type "..tostring(keytype)..
-                    " but expected type "..tostring(field.type))
+                    " but expected type "..tostring(field:Type()))
   end
-  if not field.owner:isGrouped() or
-     field.owner:GroupedKeyField() ~= field
-  then
-    ctxt:error(self,"Relation '"..field.owner:Name().."' is not "..
+  local rel = field:Relation()
+  if not rel:isGrouped() or rel:GroupedKeyField() ~= field then
+    ctxt:error(self,"Relation '"..rel:Name().."' is not "..
                     "grouped by Field '"..field:Name().."'")
   end
   local w     = self:clone()
-  w.relation  = field.owner
+  w.relation  = rel
   w.field     = self.field -- for safety/completeness
   w.key       = self.key
   w.node_type = queryT(w.relation,{})

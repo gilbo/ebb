@@ -287,7 +287,7 @@ Retrieve the number of rows in a relation.  If the relation is in Grid mode, the
 ------------------
 
 ```
-rel:print()
+rel:Print()
 ```
 
 print the contents of this relation's fields to the console (for debugging).
@@ -462,15 +462,7 @@ Retrieve a copy of the `dims` list used to create this grid relation.  If called
 ------------------
 
 ```
-rel:nDims()
-```
-
-Return `2` or `3` identifying how many dimensions this grid has.  If called on a relation not in Grid mode, then `1` will be returned
-
-------------------
-
-```
-rel:Periodicity()
+rel:Periodic()
 ```
 
 Retreive a copy of the `periodic` list specified when creating this grid relation.  If called on a relation not in Grid mode, then `{ false }` is returned instead.
@@ -594,7 +586,7 @@ return the type of this field.
 ------------------
 
 ```
-field:print()
+field:Print()
 ```
 
 print the contents of this field to the console (for debugging).

@@ -1,3 +1,26 @@
+-- The MIT License (MIT)
+-- 
+-- Copyright (c) 2015 Stanford University.
+-- All rights reserved.
+-- 
+-- Permission is hereby granted, free of charge, to any person obtaining a
+-- copy of this software and associated documentation files (the "Software"),
+-- to deal in the Software without restriction, including without limitation
+-- the rights to use, copy, modify, merge, publish, distribute, sublicense,
+-- and/or sell copies of the Software, and to permit persons to whom the
+-- Software is furnished to do so, subject to the following conditions:
+-- 
+-- The above copyright notice and this permission notice shall be included
+-- in all copies or substantial portions of the Software.
+-- 
+-- THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+-- IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+-- FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+-- AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+-- LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING 
+-- FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+-- DEALINGS IN THE SOFTWARE.
+
 local UF   = {}
 package.loaded["ebb.src.ufversions"] = UF
 
@@ -251,7 +274,7 @@ function UFVersion:_CompileFieldsGlobalsSubsets(phase_data)
     -- record reductions
     if phase.reduceop then
       self._uses_global_reduce = true
-      local ttype             = globl.type:terratype()
+      local ttype             = globl._type:terratype()
 
       local reduce_data       = self:_getReduceData(globl)
       reduce_data.phase       = phase
@@ -279,7 +302,7 @@ local function get_region_data(ufv, relation, field)
   end
   -- NOTE WE create a new region data for each region/field pair
   local sig = tostring(relation:_INTERNAL_UID())
-  if field then sig = sig ..'_'..tostring(field.fid) end
+  if field then sig = sig ..'_'..tostring(field._fid) end
   local reg_data    = ufv._region_data[sig]
   if reg_data then return reg_data
   else
@@ -373,7 +396,7 @@ function UFVersion:_getReduceData(global)
 
     self._global_reductions[global] = data
     if self:isOnGPU() then
-      self._arg_layout:addReduce(id, global.type:terratype())
+      self._arg_layout:addReduce(id, global._type:terratype())
     end
   end
   return data
@@ -383,14 +406,14 @@ function UFVersion:_setFieldPtr(field)
   if use_legion then
     error('INTERNAL: Do not call setFieldPtr() when using Legion') end
   local id = self:_getFieldId(field)
-  local dataptr = field:DataPtr()
+  local dataptr = field:_Raw_DataPtr()
   self._args:_raw_ptr()[id] = dataptr
 end
 function UFVersion:_setGlobalPtr(global)
   if use_legion then
     error('INTERNAL: Do not call setGlobalPtr() when using Legion') end
   local id = self:_getGlobalId(global)
-  local dataptr = global:DataPtr()
+  local dataptr = global:_Raw_DataPtr()
   self._args:_raw_ptr()[id] = dataptr
 end
 
@@ -399,7 +422,7 @@ function UFVersion:_getLegionGlobalTempSymbol(global)
   if not self._legion_global_temps then self._legion_global_temps = {} end
   local sym = self._legion_global_temps[id]
   if not sym then
-    local ttype = global.type:terratype()
+    local ttype = global._type:terratype()
     sym = symbol(&ttype)
     self._legion_global_temps[id] = sym
   end
@@ -420,7 +443,7 @@ function UFVersion:_DynamicChecks()
     -- Check that the fields are resident on the correct processor
     local underscore_field_fail = nil
     for field, _ in pairs(self._field_ids) do
-      if field.array:location() ~= self._proc then
+      if field._array:location() ~= self._proc then
         if field:Name():sub(1,1) == '_' then
           underscore_field_fail = field
         else
@@ -492,7 +515,7 @@ function UFVersion:_bindFieldGlobalSubsetArgs()
 
   -- Case 1: subset indirection index
   if self._subset and self._subset._index then
-    argptr.index        = self._subset._index:DataPtr()
+    argptr.index        = self._subset._index:_Raw_DataPtr()
     -- Spoof the number of entries in the index, which is what
     -- we actually want to iterate over
     argptr.bounds[0].lo = 0
@@ -708,7 +731,7 @@ end
 
 function UFVersion:_numGPUBlocks(argptr)
   if self:overElasticRelation() then
-    local size    = `argptr.bounds[0].hi - argptr.bounds[0].lo
+    local size    = `argptr.bounds[0].hi - argptr.bounds[0].lo + 1
     local nblocks = `[uint64]( C.ceil( [double](size) /
                                        [double](self._blocksize) ))
     return nblocks
@@ -716,7 +739,11 @@ function UFVersion:_numGPUBlocks(argptr)
     if self:isOverSubset() and self:isIndexSubset() then
       return math.ceil(self._subset._index:Size() / self._blocksize)
     else
-      return math.ceil(self._relation:ConcreteSize() / self._blocksize)
+      local size = `1
+      for d = 1, #self._relation:Dims() do
+          size = `((size) * (argptr.bounds[d-1].hi - argptr.bounds[d-1].lo + 1))
+      end
+      return `[uint64](C.ceil( [double](size) / [double](self._blocksize)))
     end
   end
 end
@@ -765,7 +792,7 @@ function UFVersion:_CompileGPUReduction()
 
   -- Find all the global variables in this function that are being reduced
   for globl, data in pairs(self._global_reductions) do
-    local ttype             = globl.type:terratype()
+    local ttype             = globl._type:terratype()
     if self._useTreeReduce then
       data.sharedmem          = cudalib.sharedmemory(ttype, self._blocksize)
   
@@ -773,7 +800,7 @@ function UFVersion:_CompileGPUReduction()
                                   sizeof(ttype) * self._blocksize
     else
       local op      = data.phase.reduceop
-      local lz_type = globl.type
+      local lz_type = globl._type
       local reduceobj = G.ReductionObj.New {
         ttype             = ttype,
         blocksize         = self._blocksize,
@@ -800,7 +827,7 @@ function UFVersion:_GenerateSharedMemInitialization(tid_sym)
   local code = quote end
   for globl, data in pairs(self._global_reductions) do
     local op        = data.phase.reduceop
-    local lz_type   = globl.type
+    local lz_type   = globl._type
     local sharedmem = data.sharedmem
 
     if self._useTreeReduce then
@@ -826,7 +853,7 @@ function UFVersion:_GenerateSharedMemReduceTree(
   local code = quote end
   for globl, data in pairs(self._global_reductions) do
     local op          = data.phase.reduceop
-    local lz_type     = globl.type
+    local lz_type     = globl._type
     local sharedmem   = data.sharedmem
     local finalptr    = self:_getTerraGlobalPtr(args_sym, globl)
     local globalmem   = self:_getTerraReduceGlobalMemPtr(args_sym, globl)
@@ -913,7 +940,7 @@ function UFVersion:_CompileGlobalMemReductionKernel()
     for gi = gt, array_len, n_blocks * [ufv._blocksize] do
       escape for globl, data in pairs(ufv._global_reductions) do
         local op          = data.phase.reduceop
-        local lz_type     = globl.type
+        local lz_type     = globl._type
         local sharedmem   = data.sharedmem
         local globalmem   = ufv:_getTerraReduceGlobalMemPtr(args, globl)
 
@@ -970,7 +997,7 @@ function UFVersion:_generateGPUReductionPreProcess(argptrsym)
     var [n_blocks] = [self:_numGPUBlocks(argptrsym)]
   end
   for globl, _ in pairs(self._global_reductions) do
-    local ttype = globl.type:terratype()
+    local ttype = globl._type:terratype()
     local id    = self:_getReduceData(globl).id
     code = quote code
       [argptrsym].[id] = [&ttype](G.malloc(sizeof(ttype) * n_blocks))
@@ -1062,13 +1089,13 @@ function UFVersion:_CreateLegionTaskLauncher(task_func)
   -- ADD EACH FIELD to the launcher as a requirement
   -- as part of the correct, corresponding region
   for field, _ in pairs(self._field_ids) do
-    task_launcher:AddField( self:_getRegionData(field).num, field.fid )
+    task_launcher:AddField( self:_getRegionData(field).num, field._fid )
   end
 
   -- ADD EACH GLOBAL to the launcher as a future being passed to the task
   -- NOTE: Need to make sure to do this in the right order
   for globl, gi in pairs_val_sorted(self._future_nums) do
-    task_launcher:AddFuture( globl.data )
+    task_launcher:AddFuture( globl._data )
   end
 
   return task_launcher
@@ -1097,10 +1124,10 @@ function UFVersion:_CreateLegionLauncher(task_func)
         'global_' .. LW.reduction_ops[reduce_data.phase:reductionOp()] ..
         '_' .. T.typenames[global:Type()]
       local future  = task_launcher:Execute(leg_args.runtime, leg_args.ctx, redoptyp)
-      if global.data then
-        LW.legion_future_destroy(global.data)
+      if global._data then
+        LW.legion_future_destroy(global._data)
       end
-      global.data = future
+      global._data = future
       task_launcher:Destroy()
     end
   else
@@ -1122,6 +1149,7 @@ function UFVersion:_GenerateUnpackLegionTaskArgs(argsym, task_args)
 
   -- temporary collection of symbols from unpacking the regions
   local region_temporaries = {}
+  local first = symbol(bool)
 
   local code = quote
     do -- close after unpacking the fields
@@ -1222,42 +1250,68 @@ function UFVersion:_GenerateUnpackLegionTaskArgs(argsym, task_args)
 
     -- UNPACK FUTURES
     -- DO NOT WRAP THIS IN A LOCAL SCOPE or IN A DO BLOCK (SEE BELOW)
+    -- ALSO DETERMINE IF THIS IS THE FIRST PARTITION
     escape for globl, garg_name in pairs(ufv._global_ids) do
-      -- position in the Legion task arguments
-      local fut_i   = ufv:_getFutureNum(globl) 
-      local gtyp    = globl.type:terratype()
-      local gptr    = ufv:_getLegionGlobalTempSymbol(globl)
+        -- position in the Legion task arguments
+        local fut_i   = ufv:_getFutureNum(globl) 
+        local gtyp    = globl._type:terratype()
+        local gptr    = ufv:_getLegionGlobalTempSymbol(globl)
+        -- global reduction type
+        local lz_type = globl._type
+        local op = (self._global_reductions[globl] ~=nil) and
+                    self._global_reductions[globl].phase.reduceop
+        local isreduce = (op ~= false)
 
-      if ufv:isOnGPU() then
-        emit quote
-          -- TODO: check if this global is being reduced and if it is first
-          -- partition. if yes, initialize datum to identity.
-          var fut     = LW.legion_task_get_future([task_args].task, fut_i)
-          var result  = LW.legion_future_get_result(fut)
-          var datum   = @[&gtyp](result.value)
-          var [gptr]  = [&gtyp](G.malloc(sizeof(gtyp)))
-          G.memcpy_gpu_from_cpu(gptr, &datum, sizeof(gtyp))
-          --var [gptr] = &datum
+        if ufv:isOnGPU() then
+          emit quote
+            var first = true
+            do
+              var task_point = LW.legion_task_get_index_point(task_args.task)
+              for i = 0, task_point.dim do
+                  first = first and (task_point.point_data[i] == 0)
+              end
+            end
+            var fut     = LW.legion_task_get_future([task_args].task, fut_i)
+            var result  = LW.legion_future_get_result(fut)
+            var datum   = @[&gtyp](result.value)
+            var [gptr]  = [&gtyp](G.malloc(sizeof(gtyp)))
+            escape if isreduce and not first then
+                emite quote @gptr = [codesupport.reduction_identity(lz_type, op)] end
+            else
+                emit quote G.memcpy_gpu_from_cpu(gptr, &datum, sizeof(gtyp)) end
+            end end
+            --var [gptr] = &datum
 
-          [argsym].[garg_name] = gptr
-          LW.legion_task_result_destroy(result)
-        end
-      else
-        emit quote
-          -- TODO: check if this global is being reduced and if it is first
-          -- partition. if yes, initialize datum to identity.
-          var fut     = LW.legion_task_get_future([task_args].task, fut_i)
-          var result  = LW.legion_future_get_result(fut)
-          var datum   = @[&gtyp](result.value)
-          var [gptr]  = &datum
-          -- note that we're going to rely on this variable
-          -- being stably allocated on the stack
-          -- for the remainder of this function scope
-          [argsym].[garg_name] = gptr
-          LW.legion_task_result_destroy(result)
+            [argsym].[garg_name] = gptr
+            LW.legion_task_result_destroy(result)
+          end
+        else
+          emit quote
+            var first = true
+            do
+              var task_point = LW.legion_task_get_index_point(task_args.task)
+              for i = 0, task_point.dim do
+                  first = first and (task_point.point_data[i] == 0)
+              end
+            end
+            var fut     = LW.legion_task_get_future([task_args].task, fut_i)
+            var result  = LW.legion_future_get_result(fut)
+            var datum : gtyp
+            escape if isreduce and not first then
+              emit quote datum = [codesupport.reduction_identity(lz_type, op)] end
+            else
+              emit quote datum   = @[&gtyp](result.value) end
+            end end
+            var [gptr] = &datum
+            -- note that we're going to rely on this variable
+            -- being stably allocated on the stack
+            -- for the remainder of this function scope
+            [argsym].[garg_name] = gptr
+            LW.legion_task_result_destroy(result)
+          end
         end
       end
-    end end
+    end
   end -- end quote
 
   return code
@@ -1330,7 +1384,7 @@ end
 
 function ArgLayout:setRelation(rel)
   self._key_type  = keyT(rel):terratype()
-  self.n_dims     = rel:nDims()
+  self.n_dims     = #rel:Dims()
 end
 
 function ArgLayout:addField(name, field)
@@ -1341,7 +1395,7 @@ function ArgLayout:addField(name, field)
     local typ = field:Type():terratype()
     table.insert(self.fields, { field=name, type=&typ })
   elseif use_legion then
-    local ndims = field:Relation():nDims()
+    local ndims = #field:Relation():Dims()
     table.insert(self.fields, { field=name, type=LW.FieldAccessor[ndims] })
   end
 end
@@ -1350,7 +1404,7 @@ function ArgLayout:addGlobal(name, global)
   if self:isCompiled() then
     error('INTERNAL ERROR: cannot add new globals to compiled layout')
   end
-  local typ = global.type:terratype()
+  local typ = global._type:terratype()
   table.insert(self.globals, { field=name, type=&typ })
 end
 
@@ -1430,7 +1484,12 @@ function UFVersion:_addPrimaryPartition()
     if use_partitioning then
       -- set number of partitions on the relation to number of cpus
       if not prim_rel:IsPartitioningSet() then
-        prim_rel:SetPartitions(run_config.num_partitions)
+        local ndims = #prim_rel:Dims()
+        local num_partitions = {}
+        for i = 1,ndims do
+            num_partitions[i] = run_config.num_partitions_default
+        end
+        prim_rel:SetPartitions(num_partitions)
       end
       -- create a disjoint partition on the relation
       prim_partn = prim_rel:GetOrCreateDisjointPartitioning()
@@ -1441,7 +1500,7 @@ end
 
 function UFVersion:_addRegionPartition(field, boolmask)
   local rel = field:Relation()
-  local sig = tostring(rel:_INTERNAL_UID()) .. '_' .. tostring(field.fid)
+  local sig = tostring(rel:_INTERNAL_UID()) .. '_' .. tostring(field._fid)
   local datum = self._region_data[sig]
   if not datum.partition then
     -- Grid ghost partitions are made using specified ghost width. Stencil

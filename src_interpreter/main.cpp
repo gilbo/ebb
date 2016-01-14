@@ -1,5 +1,25 @@
-/* See Copyright Notice in ../LICENSE.txt */
-
+// The MIT License (MIT)
+// 
+// Copyright (c) 2015 Stanford University.
+// All rights reserved.
+// 
+// Permission is hereby granted, free of charge, to any person obtaining a
+// copy of this software and associated documentation files (the "Software"),
+// to deal in the Software without restriction, including without limitation
+// the rights to use, copy, modify, merge, publish, distribute, sublicense,
+// and/or sell copies of the Software, and to permit persons to whom the
+// Software is furnished to do so, subject to the following conditions:
+// 
+// The above copyright notice and this permission notice shall be included
+// in all copies or substantial portions of the Software.
+// 
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING 
+// FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+// DEALINGS IN THE SOFTWARE.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -38,6 +58,7 @@ struct ebb_Options {
   int legionprof;
   int logebb;
   int loglegion;
+  int partition;
 };
 
 static void errquit(lua_State * L, const char *fmt, ...) {
@@ -238,10 +259,14 @@ void setupebb(lua_State * L, ebb_Options * ebboptions) {
             lua_pushboolean(L, true);
             lua_setglobal(L, "EBB_LEGION_USE_PROF");
         }
-	if (ebboptions->loglegion) {
+	    if (ebboptions->loglegion) {
             lua_pushboolean(L, true);
             lua_setglobal(L, "EBB_LOG_LEGION");
-	}
+	    }
+        if (ebboptions->partition) {
+            lua_pushboolean(L, true);
+            lua_setglobal(L, "EBB_PARTITION");
+        }
     }
 
     if (ebboptions->usegpu) {
@@ -333,9 +358,9 @@ void usage() {
       "    -i enter the REPL after processing source files\n"
       "    -g run tasks on a gpu by default\n"
       "    -l enable Legion support\n"
-      "    -n disable Legion debug mode\n"
-      "    -s produce output for Legion spy\n"
-      "    -p produce output for Legion prof\n"
+      "    -r runtime options\n"
+      "       for legion : nodebug, legionspy, legionprof\n"
+      "    -p use partitioning\n"
       "    -  Execute stdin instead of script and stop parsing options\n");
 }
 
@@ -352,25 +377,24 @@ void parse_args(
         { "interactive",    no_argument,          NULL,           'i' },
         { "gpu",            no_argument,          NULL,           'g' },
         { "legion",         no_argument,          NULL,           'l' },
-        { "ndebug",         no_argument,          NULL,           'n' },
-        { "spy",            no_argument,          NULL,           's' },
-        { "prof",           no_argument,          NULL,           'p' },
+        { "runoptions",     optional_argument,    NULL,           'r' },
+        { "partition",      no_argument,          NULL,           'p' },
         { NULL,             no_argument,          NULL,            0  }
     };
     /*  Parse commandline options  */
     opterr = 0;
-    while ((ch = getopt_long(argc, argv, "+hv::idglnsp",
+    while ((ch = getopt_long(argc, argv, "+hv::idglr::p",
                              longopts, NULL)) != -1) {
         switch (ch) {
             case 'v':
-	        if (optarg) {
-		  if (strstr(optarg, "terra"))
-		    options->verbose++;
-		  if (strstr(optarg, "ebb"))
-		    ebboptions->logebb = 1;
-		  if (strstr(optarg, "legion"))
-		    ebboptions->loglegion = 1;
-		}
+	            if (optarg) {
+		            if (strstr(optarg, "terra"))
+		                options->verbose++;
+		            if (strstr(optarg, "ebb"))
+		                ebboptions->logebb = 1;
+		            if (strstr(optarg, "legion"))
+		                ebboptions->loglegion = 1;
+		            }
                 break;
             case 'i':
                 *interactive = true;
@@ -384,14 +408,18 @@ void parse_args(
             case 'l':
                 ebboptions->uselegion = 1;
                 break;
-            case 'n':
-                ebboptions->ndebug = 1;
-                break;
-            case 's':
-                ebboptions->legionspy = 1;
+            case 'r':
+	            if (optarg) {
+		            if (strstr(optarg, "nodebug"))
+		                ebboptions->ndebug = 1;
+		            if (strstr(optarg, "legionspy"))
+		                ebboptions->legionspy = 1;
+		            if (strstr(optarg, "legionprof"))
+		                ebboptions->legionprof = 1;
+		            }
                 break;
             case 'p':
-                ebboptions->legionprof = 1;
+                ebboptions->partition = 1;
                 break;
             case ':':
             case 'h':

@@ -1,3 +1,25 @@
+-- The MIT License (MIT)
+-- 
+-- Copyright (c) 2015 Stanford University.
+-- All rights reserved.
+-- 
+-- Permission is hereby granted, free of charge, to any person obtaining a
+-- copy of this software and associated documentation files (the "Software"),
+-- to deal in the Software without restriction, including without limitation
+-- the rights to use, copy, modify, merge, publish, distribute, sublicense,
+-- and/or sell copies of the Software, and to permit persons to whom the
+-- Software is furnished to do so, subject to the following conditions:
+-- 
+-- The above copyright notice and this permission notice shall be included
+-- in all copies or substantial portions of the Software.
+-- 
+-- THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+-- IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+-- FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+-- AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+-- LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING 
+-- FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+-- DEALINGS IN THE SOFTWARE.
 
 local S = {}
 package.loaded["ebb.src.specialization"] = S
@@ -259,20 +281,6 @@ function ast.GenericFor:specialize(ctxt)
   local r = self:clone()
   r.set   = self.set:specialize(ctxt)
 
-  -- NOTE: UNHANDLED.
-  -- The projection chain in the set along with the referred
-  -- relation should be baked in here.
-  -- However, that seems tricky/difficult to me right now...
-  --local rel = r.set.node_type.relation
-  --for i,p in ipairs(r.set.node_type.projections) do
-  --    if not rel[p] then
-  --        ctxt:error(self,"Could not find field '"..p.."'")
-  --        return r
-  --    end
-  --    rel = rel[p].type.relation
-  --    assert(rel)
-  --end
-
   ctxt:enterblock()
   -- REGISTER SYMBOL
   local name_str = r.name
@@ -345,13 +353,13 @@ local function luav_to_ast(luav, src_node)
     node.global = luav
 
   elseif is_constant(luav) then
-    local bt = luav.type:basetype()
-    if luav.type:ismatrix() then
-      node = mat_to_AST(src_node, luav.value, bt)
-    elseif luav.type:isvector() then
-      node = vec_to_AST(src_node, luav.value, bt)
+    local bt = luav._type:basetype()
+    if luav._type:ismatrix() then
+      node = mat_to_AST(src_node, luav._value, bt)
+    elseif luav._type:isvector() then
+      node = vec_to_AST(src_node, luav._value, bt)
     else
-      node = prim_to_AST(src_node, luav.value, bt)
+      node = prim_to_AST(src_node, luav._value, bt)
     end
 
   elseif B.is_builtin(luav) then

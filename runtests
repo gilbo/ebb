@@ -1,7 +1,32 @@
 #!./bin/ebb
+
+-- The MIT License (MIT)
+-- 
+-- Copyright (c) 2015 Stanford University.
+-- All rights reserved.
+-- 
+-- Permission is hereby granted, free of charge, to any person obtaining a
+-- copy of this software and associated documentation files (the "Software"),
+-- to deal in the Software without restriction, including without limitation
+-- the rights to use, copy, modify, merge, publish, distribute, sublicense,
+-- and/or sell copies of the Software, and to permit persons to whom the
+-- Software is furnished to do so, subject to the following conditions:
+-- 
+-- The above copyright notice and this permission notice shall be included
+-- in all copies or substantial portions of the Software.
+-- 
+-- THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+-- IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+-- FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+-- AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+-- LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING 
+-- FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+-- DEALINGS IN THE SOFTWARE.
+
 local ffi = require "ffi"
 
 local USE_LEGION = false
+local USE_PARTITION = false
 local USE_GPU    = false
 local NO_DEBUG   = false
 local ONE_LINE_ERR = false
@@ -10,6 +35,9 @@ if #arg > 0 then
   for i=1,#arg do
     if arg[i] == '-legion' or arg[i] == '--legion' then
       USE_LEGION = true
+    end
+    if arg[i] == '-partition' or arg[i] == '--partition' then
+      USE_PARTITION = true
     end
     if arg[i] == '-gpu' or arg[i] == '--gpu' then
       USE_GPU = true
@@ -20,9 +48,11 @@ if #arg > 0 then
     if arg[i] == '-h' or arg[i] == '--help' then
       print("Usage : run_tests [options]")
       print("Options:")
-      print("  -h, --help             show this help message and exit")
-      print("  -legion, --legion      run tests with legion")
-      print("  -gpu, --gpu            run tests on the GPU")
+      print("  -h, --help               show this help message and exit")
+      print("  -legion, --legion        run tests with legion")
+      print("  -nodebug, --nodebyg      run tests with release build of runtime library")
+      print("  -partition, --partition  run tests with partitioning")
+      print("  -gpu, --gpu              run tests on the GPU")
       os.exit(0)
     end
   end
@@ -106,7 +136,13 @@ for line in io.popen(lscmd):lines() do
       local should_fail = (file:match("fails/") ~= nil)
       local execstring = "./ebb "
       if USE_LEGION then
-        execstring = execstring .. " --legion -n "
+        execstring = execstring .. " --legion "
+      end
+      if NO_DEBUG then
+        execstring = execstring .. " --runoptions=nodebug "
+      end
+      if USE_PARTITION then
+        execstring = execstring .. " --partition "
       end
       if USE_GPU then
         execstring = execstring .. " --gpu "

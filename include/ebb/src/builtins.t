@@ -1,3 +1,25 @@
+-- The MIT License (MIT)
+-- 
+-- Copyright (c) 2015 Stanford University.
+-- All rights reserved.
+-- 
+-- Permission is hereby granted, free of charge, to any person obtaining a
+-- copy of this software and associated documentation files (the "Software"),
+-- to deal in the Software without restriction, including without limitation
+-- the rights to use, copy, modify, merge, publish, distribute, sublicense,
+-- and/or sell copies of the Software, and to permit persons to whom the
+-- Software is furnished to do so, subject to the following conditions:
+-- 
+-- The above copyright notice and this permission notice shall be included
+-- in all copies or substantial portions of the Software.
+-- 
+-- THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+-- IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+-- FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+-- AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+-- LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING 
+-- FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+-- DEALINGS IN THE SOFTWARE.
 local B = {}
 package.loaded["ebb.src.builtins"] = B
 
@@ -241,7 +263,7 @@ function B.Affine.codegen(ast, ctxt)
     local src_rel   = args[3].node_type.relation
     local dst_dims  = dst_rel:Dims()
     local src_dims  = src_rel:Dims()
-    local dst_wrap  = dst_rel:Periodicity()
+    local dst_wrap  = dst_rel:Periodic()
     local nrow      = args[2].node_type.Nrow
     local ncol      = args[2].node_type.Ncol
 
@@ -296,7 +318,7 @@ function B.UNSAFE_ROW.check(ast, ctxt)
         ret_type = errorT
     end
     local rel = rel_type.value
-    local ndim = rel:nDims()
+    local ndim = #rel:Dims()
     --if rel:isGrid() then
     --    ctxt:error(ast, "UNSAFE_ROW cannot generate keys into a grid")
     --    ret_type = errorT
@@ -317,7 +339,7 @@ function B.UNSAFE_ROW.check(ast, ctxt)
 end
 function B.UNSAFE_ROW.codegen(ast, ctxt)
     local rel = ast.params[2].node_type.value
-    local ndim = rel:nDims()
+    local ndim = #rel:Dims()
     local addrtype = keyT(rel):terratype()
     if ndim == 1 then
         return `[addrtype]({ [ast.params[1]:codegen(ctxt)] })

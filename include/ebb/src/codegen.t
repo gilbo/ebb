@@ -1,3 +1,25 @@
+-- The MIT License (MIT)
+-- 
+-- Copyright (c) 2015 Stanford University.
+-- All rights reserved.
+-- 
+-- Permission is hereby granted, free of charge, to any person obtaining a
+-- copy of this software and associated documentation files (the "Software"),
+-- to deal in the Software without restriction, including without limitation
+-- the rights to use, copy, modify, merge, publish, distribute, sublicense,
+-- and/or sell copies of the Software, and to permit persons to whom the
+-- Software is furnished to do so, subject to the following conditions:
+-- 
+-- The above copyright notice and this permission notice shall be included
+-- in all copies or substantial portions of the Software.
+-- 
+-- THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+-- IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+-- FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+-- AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+-- LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING 
+-- FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+-- DEALINGS IN THE SOFTWARE.
 local Codegen = {}
 package.loaded["ebb.src.codegen"] = Codegen
 
@@ -482,7 +504,7 @@ function Codegen.codegen (ufunc_ast, ufunc_version)
       [ ctxt.ufv:_generateGPUReductionPreProcess(args_ptr) ]
 
       -- the main launch
-      var n_blocks = [ctxt:gpuNumBlocks(args_ptr)]
+      var n_blocks : uint = [ctxt:gpuNumBlocks(args_ptr)]
       var grid_x : uint,    grid_y : uint,    grid_z : uint   =
           G.get_grid_dimensions(n_blocks, MAX_GRID_DIM)
       var params = terralib.CUDAParams {
@@ -516,7 +538,7 @@ function Codegen.codegen (ufunc_ast, ufunc_version)
     local generate_output_future = quote end
     if ctxt:hasGlobalReduce() then
       local globl             = next(ctxt.ufv._global_reductions)
-      local gtyp              = globl.type:terratype()
+      local gtyp              = globl._type:terratype()
       local gptr              = ctxt.ufv:_getLegionGlobalTempSymbol(globl)
 
       if next(ctxt.ufv._global_reductions, globl) then
@@ -835,7 +857,7 @@ function ast.GenericFor:codegen (ctxt)
     for i,p in ipairs(self.set.node_type.projections) do
         local field = dstrel[p]
         projected   = `@[ ctxt:FieldElemPtr(field, projected) ]
-        dstrel      = field.type.relation
+        dstrel      = field._type.relation
         assert(dstrel)
     end
     local sym = symbol(keyT(dstrel):terratype())
