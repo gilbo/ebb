@@ -22,27 +22,34 @@
 -- DEALINGS IN THE SOFTWARE.
 import 'ebb'
 local L = require 'ebblib'
+local test = require('tests.test')
 
 local R = L.NewRelation { size = 4, name = 'relation' }
 R:NewField("result", L. uint64)
 
+local G = L.Global(L.double, 0)
+
 -- This macro emits a side effect every time it is evaluated
 local side_effect = L.Macro(function(x)
 	return ebb quote
-		L.print(L.id(x))
+  G += L.double(L.id(x))
 	in
 		x
 	end
 end)
 
-local test_macro = L.Macro(function (y)
+local some_macro = L.Macro(function (y)
 	return ebb `L.id(y)+ L.id(y)
 end)
 
-local ebb test (r : R)
+local ebb per_elem (r : R)
 	--side effect should be evaluated twice!
-	r.result = test_macro(side_effect(r))
+	r.result = some_macro(side_effect(r))
 
 end
 
-R:foreach(test)
+R:foreach(per_elem)
+
+test.eq(G:get(), 12)
+
+

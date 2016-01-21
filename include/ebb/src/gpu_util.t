@@ -29,6 +29,11 @@ if not terralib.cudacompile then return end
 
 local WARPSIZE = 32
 
+
+local use_legion = not not rawget(_G, '_legion_env')
+local use_single = not use_legion
+
+
 --[[-----------------------------------------------------------------------]]--
 --[[ Thread/Grid/Block                                                     ]]--
 --[[-----------------------------------------------------------------------]]--
@@ -490,72 +495,80 @@ end
 --[[ Rand                                                                  ]]--
 --[[-----------------------------------------------------------------------]]--
 -- Taken from: http://www.reedbeta.com/blog/2013/01/12/quick-and-easy-gpu-random-numbers-in-d3d11/
-local size_randbuffer = 1e6 -- one million; ~ 4MB storage...
-local randbuffer = terralib.cast(&uint32,
-        cuda_terra_malloc( size_randbuffer*terralib.sizeof(uint32) ))
-local currentseed = 0
-local randisinitialized = false
+
+local seedrand  = function() error("rand() functionality unsupported") end
+local getseed   = function() error("rand() functionality unsupported") end
+local naiverand = function() error("rand() functionality unsupported") end
 local RAND_MAX = 1.0e32-1.0
+local randisinitialized = false
+if use_legion then
+  -- leave functionality unsupported
+else
+  local size_randbuffer = 1e6 -- one million; ~ 4MB storage...
+  local randbuffer = terralib.cast(&uint32,
+          cuda_terra_malloc( size_randbuffer*terralib.sizeof(uint32) ))
+  local currentseed = 0
 
-local function seedrand( globalseed )
-  randisinitialized = true
-  currentseed = globalseed
+  function seedrand( globalseed )
+    randisinitialized = true
+    currentseed = globalseed
 
-  local terra rand_init_body()
-    var tid = [uint32](global_tid())
-    if tid < size_randbuffer then
-      -- compute a seed from the thread id and the global seed value
-      var seed = tid + [uint32](globalseed)
-      -- do the wang hash to get more uncorrelated initial seed values
-      seed = (seed ^ 61) ^ (seed >> 16)
-      seed = seed * 9
-      seed = seed ^ (seed >> 4)
-      seed = seed * 0x27d4eb2d
-      seed = seed ^ (seed >> 15)
+    local terra rand_init_body()
+      var tid = [uint32](global_tid())
+      if tid < size_randbuffer then
+        -- compute a seed from the thread id and the global seed value
+        var seed = tid + [uint32](globalseed)
+        -- do the wang hash to get more uncorrelated initial seed values
+        seed = (seed ^ 61) ^ (seed >> 16)
+        seed = seed * 9
+        seed = seed ^ (seed >> 4)
+        seed = seed * 0x27d4eb2d
+        seed = seed ^ (seed >> 15)
 
-      -- then write out the initialized seed into the buffer
-      randbuffer[tid] = seed
+        -- then write out the initialized seed into the buffer
+        randbuffer[tid] = seed
+      end
     end
+    -- compile for GPU
+    rand_init_body = GPU.kernelwrap(rand_init_body)
+
+    local blocksize   = 64
+    local nblocks     = math.ceil(size_randbuffer / blocksize)
+    local MAXGRIDDIM  = 65536
+    local terra rand_init_launcher()
+      var grid_x : uint32, grid_y : uint32, grid_z : uint32 =
+          get_grid_dimensions(nblocks, MAXGRIDDIM)
+      var params = terralib.CUDAParams {
+        grid_x, grid_y, grid_z,
+        blocksize, 1, 1,
+        0, nil
+      }
+      rand_init_body(&params)
+    end
+    -- do the initial seed
+    rand_init_launcher()
   end
-  -- compile for GPU
-  rand_init_body = GPU.kernelwrap(rand_init_body)
 
-  local blocksize   = 64
-  local nblocks     = math.ceil(size_randbuffer / blocksize)
-  local MAXGRIDDIM  = 65536
-  local terra rand_init_launcher()
-    var grid_x : uint32, grid_y : uint32, grid_z : uint32 =
-        get_grid_dimensions(nblocks, MAXGRIDDIM)
-    var params = terralib.CUDAParams {
-      grid_x, grid_y, grid_z,
-      blocksize, 1, 1,
-      0, nil
-    }
-    rand_init_body(&params)
-  end
-  -- do the initial seed
-  rand_init_launcher()
-end
+  function getseed() return currentseed end
 
-local function getseed() return currentseed end
+  -- very simple random number generation macro
+  naiverand = macro(function(tid)
+    -- make sure that we've initialized the generator
+    if not randisinitialized then seedrand(currentseed) end
 
--- very simple random number generation macro
-local naiverand = macro(function(tid)
-  -- make sure that we've initialized the generator
-  if not randisinitialized then seedrand(currentseed) end
-
-  -- XOR-shift PRNG from same source as above
-  return quote
-    var tidmod = [uint32](tid) % [uint32](size_randbuffer)
-    var rng_state = randbuffer[tidmod]
-    rng_state = rng_state ^ (rng_state << 13)
-    rng_state = rng_state ^ (rng_state >> 17)
-    rng_state = rng_state ^ (rng_state << 5)
-    randbuffer[tidmod] = rng_state
-  in
-    rng_state
-  end
-end)
+    -- XOR-shift PRNG from same source as above
+    return quote
+      var tidmod = [uint32](tid) % [uint32](size_randbuffer)
+      var rng_state = randbuffer[tidmod]
+      rng_state = rng_state ^ (rng_state << 13)
+      rng_state = rng_state ^ (rng_state >> 17)
+      rng_state = rng_state ^ (rng_state << 5)
+      randbuffer[tidmod] = rng_state
+    in
+      rng_state
+    end
+  end)
+end -- end rand on single mode def
 
 
 --[[-----------------------------------------------------------------------]]--
