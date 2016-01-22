@@ -50,7 +50,7 @@ if #arg > 0 then
       print("Options:")
       print("  -h, --help               show this help message and exit")
       print("  -legion, --legion        run tests with legion")
-      print("  -nodebug, --nodebyg      run tests with release build of runtime library")
+      print("  -nodebug, --nodebug      run tests with release build of runtime library")
       print("  -partition, --partition  run tests with partitioning")
       print("  -gpu, --gpu              run tests on the GPU")
       os.exit(0)
