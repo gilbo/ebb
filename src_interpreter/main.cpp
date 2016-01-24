@@ -50,6 +50,8 @@
 #endif
 #include "terra.h"
 
+#define ADDITIONAL_ARG_LEN 100
+
 struct ebb_Options {
   int uselegion;
   int usegpu;
@@ -59,6 +61,7 @@ struct ebb_Options {
   int logebb;
   int loglegion;
   int partition;
+  char *additional;
 };
 
 static void errquit(lua_State * L, const char *fmt, ...) {
@@ -277,6 +280,10 @@ void setupebb(lua_State * L, ebb_Options * ebboptions) {
         lua_pushboolean(L, true);
         lua_setglobal(L, "EBB_LOG_EBB");
     }
+    if (strcmp(ebboptions->additional, "")) {
+        lua_pushstring(L, ebboptions->additional);
+        lua_setglobal(L, "EBB_ADDITIONAL_ARGS");
+    }
 }
 int load_launchscript( lua_State * L, ebb_Options * ebboptions ) {
     char * bindir = getexec_dirpath();
@@ -307,6 +314,8 @@ int main(int argc, char ** argv) {
 
     ebb_Options ebboptions;
     memset(&ebboptions, 0, sizeof(ebb_Options));
+    char additional_args[ADDITIONAL_ARG_LEN] = "";
+    ebboptions.additional = additional_args;
     
     bool interactive = false;
     int scriptidx;
@@ -352,15 +361,16 @@ void usage() {
     print_welcome();
     printf(
       "ebb [OPTIONS] [source-file] [arguments-to-source-file]\n"
-      "    -v=terra,ebb,legion enable verbose debugging output for one or more of terra, ebb and legion\n"
+      "    -v terra,ebb,legion enable verbose debugging output for one or more of terra, ebb and legion\n"
       "    -d enable debugging symbols\n"
       "    -h print this help message\n"
       "    -i enter the REPL after processing source files\n"
       "    -g run tasks on a gpu by default\n"
       "    -l enable Legion support\n"
       "    -r runtime options\n"
-      "       for legion : nodebug, legionspy, legionprof\n"
-      "    -p use partitioning\n"
+      "       for legion : -r nodebug,legionspy,legionprof\n"
+      "    -p number of application processors to use when partitioning\n"
+      "    -a additional arguments (if spaces or special characters, include in quotes)\n"
       "    -  Execute stdin instead of script and stop parsing options\n");
 }
 
@@ -379,11 +389,12 @@ void parse_args(
         { "legion",         no_argument,          NULL,           'l' },
         { "runoptions",     optional_argument,    NULL,           'r' },
         { "partition",      no_argument,          NULL,           'p' },
+        { "additional",     optional_argument,    NULL,           'a' },
         { NULL,             no_argument,          NULL,            0  }
     };
     /*  Parse commandline options  */
     opterr = 0;
-    while ((ch = getopt_long(argc, argv, "+hv::idglr::p",
+    while ((ch = getopt_long(argc, argv, "+hv:idglr:pa:",
                              longopts, NULL)) != -1) {
         switch (ch) {
             case 'v':
@@ -420,6 +431,11 @@ void parse_args(
                 break;
             case 'p':
                 ebboptions->partition = 1;
+                break;
+            case 'a':
+	            if (optarg) {
+                    strncpy(ebboptions->additional, optarg, ADDITIONAL_ARG_LEN);
+		            }
                 break;
             case ':':
             case 'h':

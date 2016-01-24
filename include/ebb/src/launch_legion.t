@@ -34,6 +34,7 @@ rawset(_G, '_run_config', {
                             num_partitions_default = 2,
                             num_cpus = 0,  -- 0 indicates auomatically find the number of cpus
                           })
+local additional_args = rawget(_G, 'EBB_ADDITIONAL_ARGS')
 local run_config = rawget(_G, '_run_config')
 
 local C = require "ebb.src.c"
@@ -105,6 +106,7 @@ if run_config.num_cpus == 0 then
   end
   run_config.num_cpus = n_cpu
 end
+local util_cpus = 2
 
 local use_legion_spy  = rawget(_G, 'EBB_LEGION_USE_SPY')
 local use_legion_prof = rawget(_G, 'EBB_LEGION_USE_PROF')
@@ -126,9 +128,9 @@ table.insert(legion_args, "-level")
 table.insert(legion_args, tostring(logging_level))
 -- # of cpus
 table.insert(legion_args, "-ll:cpu")
-table.insert(legion_args, tostring(run_config.num_cpus))
+table.insert(legion_args, tostring(run_config.num_cpus - util_cpus))
 table.insert(legion_args, "-ll:util")
-table.insert(legion_args, tostring(2))
+table.insert(legion_args, tostring(util_cpus))
 -- cpu memory
 table.insert(legion_args, "-ll:csize")
 table.insert(legion_args, "8000") -- MB
@@ -156,6 +158,11 @@ if logging_cat == 'legion_prof' then
 end
 table.insert(legion_args, "-logfile")
 table.insert(legion_args, "legion_log")
+if additional_args then
+    for word in additional_args:gmatch("%S+") do
+        table.insert(legion_args, word)
+    end
+end
 
 
 -- Main function that launches Legion runtime
