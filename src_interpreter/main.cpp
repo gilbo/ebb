@@ -369,7 +369,7 @@ void usage() {
       "    -l enable Legion support\n"
       "    -r runtime options\n"
       "       for legion : -r nodebug,legionspy,legionprof\n"
-      "    -p number of application processors to use when partitioning\n"
+      "    -p use partitioning\n"
       "    -a additional arguments (if spaces or special characters, include in quotes)\n"
       "    -  Execute stdin instead of script and stop parsing options\n");
 }
