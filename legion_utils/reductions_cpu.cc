@@ -157,7 +157,7 @@ DECLARE_FIELD_REDUCTION(register_reduction_field_plus_int32_vec4,
                   safe_reduce_plus_int32_vec4, safe_reduce_domain_point_plus_int32_vec4,
                   FieldPlusOpIntVec4, int, int_4, int, ADD, ADD, 4, 0)
 
-// declare plus reductions on vectors
+// declare plus reductions on matrices
 DECLARE_FIELD_REDUCTION(register_reduction_field_plus_float_mat2x2,
                   safe_reduce_plus_float_mat2x2, safe_reduce_domain_point_plus_float_mat2x2,
                   FieldPlusOpFloatMat2x2, float, float_4, int, ADD, ADD, 4, 0.0f)
@@ -243,125 +243,125 @@ DECLARE_FIELD_REDUCTION(register_reduction_field_plus_int32_mat4x4,
 // declare times reductions on scalars
 DECLARE_FIELD_REDUCTION(register_reduction_field_times_float,
                   safe_reduce_times_float, safe_reduce_domain_point_times_float,
-                  FieldTimesOpFloat, float, float_1, int, MUL, MUL, 1, 0.0f)
+                  FieldTimesOpFloat, float, float_1, int, MUL, MUL, 1, 1.0f)
 DECLARE_FIELD_REDUCTION(register_reduction_field_times_double,
                   safe_reduce_times_double, safe_reduce_domain_point_times_double,
-                  FieldTimesOpDouble, double, double_1, size_t, MUL, MUL, 1, 0.0)
+                  FieldTimesOpDouble, double, double_1, size_t, MUL, MUL, 1, 1.0)
 DECLARE_FIELD_REDUCTION(register_reduction_field_times_int32,
                   safe_reduce_times_int32, safe_reduce_domain_point_times_int32,
-                  FieldTimesOpInt, int, int_1, int, MUL, MUL, 1, 0)
+                  FieldTimesOpInt, int, int_1, int, MUL, MUL, 1, 1)
 
 // declare times reductions on vectors
 DECLARE_FIELD_REDUCTION(register_reduction_field_times_float_vec2,
                   safe_reduce_times_float_vec2, safe_reduce_domain_point_times_float_vec2,
-                  FieldTimesOpFloatVec2, float, float_2, int, MUL, MUL, 2, 0.0f)
+                  FieldTimesOpFloatVec2, float, float_2, int, MUL, MUL, 2, 1.0f)
 DECLARE_FIELD_REDUCTION(register_reduction_field_times_double_vec2,
                   safe_reduce_times_double_vec2, safe_reduce_domain_point_times_double_vec2,
-                  FieldTimesOpDoubleVec2, double, double_2, size_t, MUL, MUL, 2, 0.0)
+                  FieldTimesOpDoubleVec2, double, double_2, size_t, MUL, MUL, 2, 1.0)
 DECLARE_FIELD_REDUCTION(register_reduction_field_times_int32_vec2,
                   safe_reduce_times_int32_vec2, safe_reduce_domain_point_times_int32_vec2,
-                  FieldTimesOpIntVec2, int, int_2, int, MUL, MUL, 2, 0)
+                  FieldTimesOpIntVec2, int, int_2, int, MUL, MUL, 2, 1)
 DECLARE_FIELD_REDUCTION(register_reduction_field_times_float_vec3,
                   safe_reduce_times_float_vec3, safe_reduce_domain_point_times_float_vec3,
-                  FieldTimesOpFloatVec3, float, float_3, int, MUL, MUL, 3, 0.0f)
+                  FieldTimesOpFloatVec3, float, float_3, int, MUL, MUL, 3, 1.0f)
 DECLARE_FIELD_REDUCTION(register_reduction_field_times_double_vec3,
                   safe_reduce_times_double_vec3, safe_reduce_domain_point_times_double_vec3,
-                  FieldTimesOpDoubleVec3, double, double_3, size_t, MUL, MUL, 3, 0.0)
+                  FieldTimesOpDoubleVec3, double, double_3, size_t, MUL, MUL, 3, 1.0)
 DECLARE_FIELD_REDUCTION(register_reduction_field_times_int32_vec3,
                   safe_reduce_times_int32_vec3, safe_reduce_domain_point_times_int32_vec3,
-                  FieldTimesOpIntVec3, int, int_3, int, MUL, MUL, 3, 0)
+                  FieldTimesOpIntVec3, int, int_3, int, MUL, MUL, 3, 1)
 DECLARE_FIELD_REDUCTION(register_reduction_field_times_float_vec4,
                   safe_reduce_times_float_vec4, safe_reduce_domain_point_times_float_vec4,
-                  FieldTimesOpFloatVec4, float, float_4, int, MUL, MUL, 4, 0.0f)
+                  FieldTimesOpFloatVec4, float, float_4, int, MUL, MUL, 4, 1.0f)
 DECLARE_FIELD_REDUCTION(register_reduction_field_times_double_vec4,
                   safe_reduce_times_double_vec4, safe_reduce_domain_point_times_double_vec4,
-                  FieldTimesOpDoubleVec4, double, double_4, size_t, MUL, MUL, 4, 0.0)
+                  FieldTimesOpDoubleVec4, double, double_4, size_t, MUL, MUL, 4, 1.0)
 DECLARE_FIELD_REDUCTION(register_reduction_field_times_int32_vec4,
                   safe_reduce_times_int32_vec4, safe_reduce_domain_point_times_int32_vec4,
-                  FieldTimesOpIntVec4, int, int_4, int, MUL, MUL, 4, 0)
+                  FieldTimesOpIntVec4, int, int_4, int, MUL, MUL, 4, 1)
 
-// declare times reductions on vectors
+// declare times reductions on matrices
 DECLARE_FIELD_REDUCTION(register_reduction_field_times_float_mat2x2,
                   safe_reduce_times_float_mat2x2, safe_reduce_domain_point_times_float_mat2x2,
-                  FieldTimesOpFloatMat2x2, float, float_4, int, MUL, MUL, 4, 0.0f)
+                  FieldTimesOpFloatMat2x2, float, float_4, int, MUL, MUL, 4, 1.0f)
 DECLARE_FIELD_REDUCTION(register_reduction_field_times_double_mat2x2,
                   safe_reduce_times_double_mat2x2, safe_reduce_domain_point_times_double_mat2x2,
-                  FieldTimesOpDoubleMat2x2, double, double_4, size_t, MUL, MUL, 4, 0.0)
+                  FieldTimesOpDoubleMat2x2, double, double_4, size_t, MUL, MUL, 4, 1.0)
 DECLARE_FIELD_REDUCTION(register_reduction_field_times_int32_mat2x2,
                   safe_reduce_times_int32_mat2x2, safe_reduce_domain_point_times_int32_mat2x2,
-                  FieldTimesOpIntMat2x2, int, int_4, int, MUL, MUL, 4, 0)
+                  FieldTimesOpIntMat2x2, int, int_4, int, MUL, MUL, 4, 1)
 DECLARE_FIELD_REDUCTION(register_reduction_field_times_float_mat2x3,
                   safe_reduce_times_float_mat2x3, safe_reduce_domain_point_times_float_mat2x3,
-                  FieldTimesOpFloatMat2x3, float, float_6, int, MUL, MUL, 6,  0.0f)
+                  FieldTimesOpFloatMat2x3, float, float_6, int, MUL, MUL, 6,  1.0f)
 DECLARE_FIELD_REDUCTION(register_reduction_field_times_double_mat2x3,
                   safe_reduce_times_double_mat2x3, safe_reduce_domain_point_times_double_mat2x3,
-                  FieldTimesOpDoubleMat2x3, double, double_6, size_t, MUL, MUL, 6, 0.0)
+                  FieldTimesOpDoubleMat2x3, double, double_6, size_t, MUL, MUL, 6, 1.0)
 DECLARE_FIELD_REDUCTION(register_reduction_field_times_int32_mat2x3,
                   safe_reduce_times_int32_mat2x3, safe_reduce_domain_point_times_int32_mat2x3,
-                  FieldTimesOpIntMat2x3, int, int_6, int, MUL, MUL, 6, 0)
+                  FieldTimesOpIntMat2x3, int, int_6, int, MUL, MUL, 6, 1)
 DECLARE_FIELD_REDUCTION(register_reduction_field_times_float_mat2x4,
                   safe_reduce_times_float_mat2x4, safe_reduce_domain_point_times_float_mat2x4,
-                  FieldTimesOpFloatMat2x4, float, float_8, int, MUL, MUL, 8, 0.0f)
+                  FieldTimesOpFloatMat2x4, float, float_8, int, MUL, MUL, 8, 1.0f)
 DECLARE_FIELD_REDUCTION(register_reduction_field_times_double_mat2x4,
                   safe_reduce_times_double_mat2x4, safe_reduce_domain_point_times_double_mat2x4,
-                  FieldTimesOpDoubleMat2x4, double, double_8, size_t, MUL, MUL, 8, 0.0)
+                  FieldTimesOpDoubleMat2x4, double, double_8, size_t, MUL, MUL, 8, 1.0)
 DECLARE_FIELD_REDUCTION(register_reduction_field_times_int32_mat2x4,
                   safe_reduce_times_int32_mat2x4, safe_reduce_domain_point_times_int32_mat2x4,
-                  FieldTimesOpIntMat2x4, int, int_8, int, MUL, MUL, 8, 0)
+                  FieldTimesOpIntMat2x4, int, int_8, int, MUL, MUL, 8, 1)
 DECLARE_FIELD_REDUCTION(register_reduction_field_times_float_mat3x2,
                   safe_reduce_times_float_mat3x2, safe_reduce_domain_point_times_float_mat3x2,
-                  FieldTimesOpFloatMat3x2, float, float_6, int, MUL, MUL, 6, 0.0f)
+                  FieldTimesOpFloatMat3x2, float, float_6, int, MUL, MUL, 6, 1.0f)
 DECLARE_FIELD_REDUCTION(register_reduction_field_times_double_mat3x2,
                   safe_reduce_times_double_mat3x2, safe_reduce_domain_point_times_double_mat3x2,
-                  FieldTimesOpDoubleMat3x2, double, double_6, size_t, MUL, MUL, 6, 0.0)
+                  FieldTimesOpDoubleMat3x2, double, double_6, size_t, MUL, MUL, 6, 1.0)
 DECLARE_FIELD_REDUCTION(register_reduction_field_times_int32_mat3x2,
                   safe_reduce_times_int32_mat3x2, safe_reduce_domain_point_times_int32_mat3x2,
-                  FieldTimesOpIntMat3x2, int, int_6, int, MUL, MUL, 6, 0)
+                  FieldTimesOpIntMat3x2, int, int_6, int, MUL, MUL, 6, 1)
 DECLARE_FIELD_REDUCTION(register_reduction_field_times_float_mat3x3,
                   safe_reduce_times_float_mat3x3, safe_reduce_domain_point_times_float_mat3x3,
-                  FieldTimesOpFloatMat3x3, float, float_9, int, MUL, MUL, 9,  0.0f)
+                  FieldTimesOpFloatMat3x3, float, float_9, int, MUL, MUL, 9,  1.0f)
 DECLARE_FIELD_REDUCTION(register_reduction_field_times_double_mat3x3,
                   safe_reduce_times_double_mat3x3, safe_reduce_domain_point_times_double_mat3x3,
-                  FieldTimesOpDoubleMat3x3, double, double_9, size_t, MUL, MUL, 9, 0.0)
+                  FieldTimesOpDoubleMat3x3, double, double_9, size_t, MUL, MUL, 9, 1.0)
 DECLARE_FIELD_REDUCTION(register_reduction_field_times_int32_mat3x3,
                   safe_reduce_times_int32_mat3x3, safe_reduce_domain_point_times_int32_mat3x3,
-                  FieldTimesOpIntMat3x3, int, int_9, int, MUL, MUL, 9, 0)
+                  FieldTimesOpIntMat3x3, int, int_9, int, MUL, MUL, 9, 1)
 DECLARE_FIELD_REDUCTION(register_reduction_field_times_float_mat3x4,
                   safe_reduce_times_float_mat3x4, safe_reduce_domain_point_times_float_mat3x4,
-                  FieldTimesOpFloatMat3x4, float, float_12, int, MUL, MUL, 12, 0.0f)
+                  FieldTimesOpFloatMat3x4, float, float_12, int, MUL, MUL, 12, 1.0f)
 DECLARE_FIELD_REDUCTION(register_reduction_field_times_double_mat3x4,
                   safe_reduce_times_double_mat3x4, safe_reduce_domain_point_times_double_mat3x4,
-                  FieldTimesOpDoubleMat3x4, double, double_12, size_t, MUL, MUL, 12, 0.0)
+                  FieldTimesOpDoubleMat3x4, double, double_12, size_t, MUL, MUL, 12, 1.0)
 DECLARE_FIELD_REDUCTION(register_reduction_field_times_int32_mat3x4,
                   safe_reduce_times_int32_mat3x4, safe_reduce_domain_point_times_int32_mat3x4,
-                  FieldTimesOpIntMat3x4, int, int_12, int, MUL, MUL, 12, 0)
+                  FieldTimesOpIntMat3x4, int, int_12, int, MUL, MUL, 12, 1)
 DECLARE_FIELD_REDUCTION(register_reduction_field_times_float_mat4x2,
                   safe_reduce_times_float_mat4x2, safe_reduce_domain_point_times_float_mat4x2,
-                  FieldTimesOpFloatMat4x2, float, float_8, int, MUL, MUL, 8, 0.0f)
+                  FieldTimesOpFloatMat4x2, float, float_8, int, MUL, MUL, 8, 1.0f)
 DECLARE_FIELD_REDUCTION(register_reduction_field_times_double_mat4x2,
                   safe_reduce_times_double_mat4x2, safe_reduce_domain_point_times_double_mat4x2,
-                  FieldTimesOpDoubleMat4x2, double, double_8, size_t, MUL, MUL, 8, 0.0)
+                  FieldTimesOpDoubleMat4x2, double, double_8, size_t, MUL, MUL, 8, 1.0)
 DECLARE_FIELD_REDUCTION(register_reduction_field_times_int32_mat4x2,
                   safe_reduce_times_int32_mat4x2, safe_reduce_domain_point_times_int32_mat4x2,
-                  FieldTimesOpIntMat4x2, int, int_8, int, MUL, MUL, 8, 0)
+                  FieldTimesOpIntMat4x2, int, int_8, int, MUL, MUL, 8, 1)
 DECLARE_FIELD_REDUCTION(register_reduction_field_times_float_mat4x3,
                   safe_reduce_times_float_mat4x3, safe_reduce_domain_point_times_float_mat4x3,
-                  FieldTimesOpFloatMat4x3, float, float_12, int, MUL, MUL, 12,  0.0f)
+                  FieldTimesOpFloatMat4x3, float, float_12, int, MUL, MUL, 12,  1.0f)
 DECLARE_FIELD_REDUCTION(register_reduction_field_times_double_mat4x3,
                   safe_reduce_times_double_mat4x3, safe_reduce_domain_point_times_double_mat4x3,
-                  FieldTimesOpDoubleMat4x3, double, double_12, size_t, MUL, MUL, 12, 0.0)
+                  FieldTimesOpDoubleMat4x3, double, double_12, size_t, MUL, MUL, 12, 1.0)
 DECLARE_FIELD_REDUCTION(register_reduction_field_times_int32_mat4x3,
                   safe_reduce_times_int32_mat4x3, safe_reduce_domain_point_times_int32_mat4x3,
-                  FieldTimesOpIntMat4x3, int, int_12, int, MUL, MUL, 12, 0)
+                  FieldTimesOpIntMat4x3, int, int_12, int, MUL, MUL, 12, 1)
 DECLARE_FIELD_REDUCTION(register_reduction_field_times_float_mat4x4,
                   safe_reduce_times_float_mat4x4, safe_reduce_domain_point_times_float_mat4x4,
-                  FieldTimesOpFloatMat4x4, float, float_16, int, MUL, MUL, 16, 0.0f)
+                  FieldTimesOpFloatMat4x4, float, float_16, int, MUL, MUL, 16, 1.0f)
 DECLARE_FIELD_REDUCTION(register_reduction_field_times_double_mat4x4,
                   safe_reduce_times_double_mat4x4, safe_reduce_domain_point_times_double_mat4x4,
-                  FieldTimesOpDoubleMat4x4, double, double_16, size_t, MUL, MUL, 16, 0.0)
+                  FieldTimesOpDoubleMat4x4, double, double_16, size_t, MUL, MUL, 16, 1.0)
 DECLARE_FIELD_REDUCTION(register_reduction_field_times_int32_mat4x4,
                   safe_reduce_times_int32_mat4x4, safe_reduce_domain_point_times_int32_mat4x4,
-                  FieldTimesOpIntMat4x4, int, int_16, int, MUL, MUL, 16, 0)
+                  FieldTimesOpIntMat4x4, int, int_16, int, MUL, MUL, 16, 1)
 
 // declare max reductions on scalars
 DECLARE_FIELD_REDUCTION(register_reduction_field_max_float,
@@ -403,7 +403,7 @@ DECLARE_FIELD_REDUCTION(register_reduction_field_max_int32_vec4,
                   safe_reduce_max_int32_vec4, safe_reduce_domain_point_max_int32_vec4,
                   FieldMaxOpIntVec4, int, int_4, int, max, max, 4, INT_MAX)
 
-// declare max reductions on vectors
+// declare max reductions on matrices
 DECLARE_FIELD_REDUCTION(register_reduction_field_max_float_mat2x2,
                   safe_reduce_max_float_mat2x2, safe_reduce_domain_point_max_float_mat2x2,
                   FieldMaxOpFloatMat2x2, float, float_4, int, max, max, 4, -std::numeric_limits<float>::infinity())
@@ -526,7 +526,7 @@ DECLARE_FIELD_REDUCTION(register_reduction_field_min_int32_vec4,
                   safe_reduce_min_int32_vec4, safe_reduce_domain_point_min_int32_vec4,
                   FieldMinOpIntVec4, int, int_4, int, min, min, 4, INT_MIN)
 
-// declare min reductions on vectors
+// declare min reductions on matrices
 DECLARE_FIELD_REDUCTION(register_reduction_field_min_float_mat2x2,
                   safe_reduce_min_float_mat2x2, safe_reduce_domain_point_min_float_mat2x2,
                   FieldMinOpFloatMat2x2, float, float_4, int, min, min, 4, +std::numeric_limits<float>::infinity())
@@ -781,11 +781,11 @@ DECLARE_GLOBAL_REDUCTION(register_reduction_global_plus_int32_mat4x4,
 
 // declare times reductions on scalars
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_float,
-                  GlobalTimesOpfloat, float, float_1, int, MUL, MUL, 1, 0.0f)
+                  GlobalTimesOpfloat, float, float_1, int, MUL, MUL, 1, 1.0f)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_double,
-                  GlobalTimesOpdouble, double, double_1, size_t, MUL, MUL, 1, 0.0)
+                  GlobalTimesOpdouble, double, double_1, size_t, MUL, MUL, 1, 1.0)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_int32,
-                  GlobalTimesOpint, int, int_1, int, MUL, MUL, 1, 0)
+                  GlobalTimesOpint, int, int_1, int, MUL, MUL, 1, 1)
 
 // declare times reductions on vectors
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_float_vec2,
@@ -809,59 +809,59 @@ DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_int32_vec4,
 
 // declare times reductions on matrices
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_float_mat2x2,
-                  GlobalTimesOpred_floatMat2x2, float, float_4, int, MUL, MUL, 4, 0.0f)
+                  GlobalTimesOpred_floatMat2x2, float, float_4, int, MUL, MUL, 4, 1.0f)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_double_mat2x2,
-                  GlobalTimesOpred_doubleMat2x2, double, double_4, size_t, MUL, MUL, 4, 0.0)
+                  GlobalTimesOpred_doubleMat2x2, double, double_4, size_t, MUL, MUL, 4, 1.0)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_int32_mat2x2,
-                  GlobalTimesOpred_intMat2x2, int, int_4, int, MUL, MUL, 4, 0)
+                  GlobalTimesOpred_intMat2x2, int, int_4, int, MUL, MUL, 4, 1)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_float_mat2x3,
-                  GlobalTimesOpred_floatMat2x3, float, float_6, int, MUL, MUL, 6,  0.0f)
+                  GlobalTimesOpred_floatMat2x3, float, float_6, int, MUL, MUL, 6,  1.0f)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_double_mat2x3,
-                  GlobalTimesOpred_doubleMat2x3, double, double_6, size_t, MUL, MUL, 6, 0.0)
+                  GlobalTimesOpred_doubleMat2x3, double, double_6, size_t, MUL, MUL, 6, 1.0)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_int32_mat2x3,
-                  GlobalTimesOpred_intMat2x3, int, int_6, int, MUL, MUL, 6, 0)
+                  GlobalTimesOpred_intMat2x3, int, int_6, int, MUL, MUL, 6, 1)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_float_mat2x4,
-                  GlobalTimesOpred_floatMat2x4, float, float_8, int, MUL, MUL, 8, 0.0f)
+                  GlobalTimesOpred_floatMat2x4, float, float_8, int, MUL, MUL, 8, 1.0f)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_double_mat2x4,
-                  GlobalTimesOpred_doubleMat2x4, double, double_8, size_t, MUL, MUL, 8, 0.0)
+                  GlobalTimesOpred_doubleMat2x4, double, double_8, size_t, MUL, MUL, 8, 1.0)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_int32_mat2x4,
-                  GlobalTimesOpred_intMat2x4, int, int_8, int, MUL, MUL, 8, 0)
+                  GlobalTimesOpred_intMat2x4, int, int_8, int, MUL, MUL, 8, 1)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_float_mat3x2,
-                  GlobalTimesOpred_floatMat3x2, float, float_6, int, MUL, MUL, 6, 0.0f)
+                  GlobalTimesOpred_floatMat3x2, float, float_6, int, MUL, MUL, 6, 1.0f)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_double_mat3x2,
-                  GlobalTimesOpred_doubleMat3x2, double, double_6, size_t, MUL, MUL, 6, 0.0)
+                  GlobalTimesOpred_doubleMat3x2, double, double_6, size_t, MUL, MUL, 6, 1.0)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_int32_mat3x2,
-                  GlobalTimesOpred_intMat3x2, int, int_6, int, MUL, MUL, 6, 0)
+                  GlobalTimesOpred_intMat3x2, int, int_6, int, MUL, MUL, 6, 1)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_float_mat3x3,
-                  GlobalTimesOpred_floatMat3x3, float, float_9, int, MUL, MUL, 9,  0.0f)
+                  GlobalTimesOpred_floatMat3x3, float, float_9, int, MUL, MUL, 9,  1.0f)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_double_mat3x3,
-                  GlobalTimesOpred_doubleMat3x3, double, double_9, size_t, MUL, MUL, 9, 0.0)
+                  GlobalTimesOpred_doubleMat3x3, double, double_9, size_t, MUL, MUL, 9, 1.0)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_int32_mat3x3,
-                  GlobalTimesOpred_intMat3x3, int, int_9, int, MUL, MUL, 9, 0)
+                  GlobalTimesOpred_intMat3x3, int, int_9, int, MUL, MUL, 9, 1)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_float_mat3x4,
-                  GlobalTimesOpred_floatMat3x4, float, float_12, int, MUL, MUL, 12, 0.0f)
+                  GlobalTimesOpred_floatMat3x4, float, float_12, int, MUL, MUL, 12, 1.0f)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_double_mat3x4,
-                  GlobalTimesOpred_doubleMat3x4, double, double_12, size_t, MUL, MUL, 12, 0.0)
+                  GlobalTimesOpred_doubleMat3x4, double, double_12, size_t, MUL, MUL, 12,1.0)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_int32_mat3x4,
-                  GlobalTimesOpred_intMat3x4, int, int_12, int, MUL, MUL, 12, 0)
+                  GlobalTimesOpred_intMat3x4, int, int_12, int, MUL, MUL, 12, 1)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_float_mat4x2,
-                  GlobalTimesOpred_floatMat4x2, float, float_8, int, MUL, MUL, 8, 0.0f)
+                  GlobalTimesOpred_floatMat4x2, float, float_8, int, MUL, MUL, 8, 1.0f)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_double_mat4x2,
-                  GlobalTimesOpred_doubleMat4x2, double, double_8, size_t, MUL, MUL, 8, 0.0)
+                  GlobalTimesOpred_doubleMat4x2, double, double_8, size_t, MUL, MUL, 8, 1.0)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_int32_mat4x2,
-                  GlobalTimesOpred_intMat4x2, int, int_8, int, MUL, MUL, 8, 0)
+                  GlobalTimesOpred_intMat4x2, int, int_8, int, MUL, MUL, 8, 1)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_float_mat4x3,
-                  GlobalTimesOpred_floatMat4x3, float, float_12, int, MUL, MUL, 12,  0.0f)
+                  GlobalTimesOpred_floatMat4x3, float, float_12, int, MUL, MUL, 12,  1.0f)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_double_mat4x3,
-                  GlobalTimesOpred_doubleMat4x3, double, double_12, size_t, MUL, MUL, 12, 0.0)
+                  GlobalTimesOpred_doubleMat4x3, double, double_12, size_t, MUL, MUL, 12, 1.0)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_int32_mat4x3,
-                  GlobalTimesOpred_intMat4x3, int, int_12, int, MUL, MUL, 12, 0)
+                  GlobalTimesOpred_intMat4x3, int, int_12, int, MUL, MUL, 12, 1)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_float_mat4x4,
-                  GlobalTimesOpred_floatMat4x4, float, float_16, int, MUL, MUL, 16, 0.0f)
+                  GlobalTimesOpred_floatMat4x4, float, float_16, int, MUL, MUL, 16, 1.0f)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_double_mat4x4,
-                  GlobalTimesOpred_doubleMat4x4, double, double_16, size_t, MUL, MUL, 16, 0.0)
+                  GlobalTimesOpred_doubleMat4x4, double, double_16, size_t, MUL, MUL, 16, 1.0)
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_times_int32_mat4x4,
-                  GlobalTimesOpred_intMat4x4, int, int_16, int, MUL, MUL, 16, 0)
+                  GlobalTimesOpred_intMat4x4, int, int_16, int, MUL, MUL, 16, 1)
 
 // declare max reductions on scalars
 DECLARE_GLOBAL_REDUCTION(register_reduction_global_max_float,
