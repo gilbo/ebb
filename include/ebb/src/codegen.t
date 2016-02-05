@@ -911,7 +911,6 @@ function ast.GlobalIndex:codegen (ctxt)
 end
 
 function ast.Where:codegen(ctxt)
-  --if use_legion then error("LEGION UNSUPPORTED TODO") end
   local key       = self.key:codegen(ctxt)
   local sType     = self.node_type:terratype()
 
@@ -934,7 +933,6 @@ end
 function ast.GlobalReduce:codegen(ctxt)
   -- GPU impl:
   if ctxt:onGPU() then
-    --if use_legion then error("LEGION UNSUPPORTED TODO") end
     local lval = ctxt:gpuReduceSharedMemPtr(self.global.global)
     local rexp = self.exp:codegen(ctxt)
     local rhs  = Support.bin_exp(self.reduceop, self.global.node_type,
@@ -956,7 +954,6 @@ end
 
 function ast.FieldWrite:codegen (ctxt)
   -- If this is a field-reduction on the GPU
-  -- TODO: add GPU atomic for legion
   if ctxt:onGPU() and
      self.reduceop and
      not ctxt:hasExclusivePhase(self.fieldaccess.field)
