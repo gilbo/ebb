@@ -1153,105 +1153,104 @@ function UFVersion:_GenerateUnpackLegionTaskArgs(argsym, task_args)
 
   local code = quote
     do -- close after unpacking the fields
-    -- UNPACK REGIONS
-    escape for ri, datum in pairs(ufv._sorted_region_data) do
-      local reg_dim       = datum.wrapper.dimensions
-      local physical_reg  = symbol(LW.legion_physical_region_t)
-      local domain        = symbol(LW.legion_domain_t)
+      -- UNPACK REGIONS
+      escape for ri, datum in pairs(ufv._sorted_region_data) do
+        local reg_dim       = datum.wrapper.dimensions
+        local physical_reg  = symbol(LW.legion_physical_region_t)
+        local domain        = symbol(LW.legion_domain_t)
 
-      local rect          = reg_dim and symbol(LW.LegionRect[reg_dim]) or nil
-      local rectFromDom   = reg_dim and LW.LegionRectFromDom[reg_dim] or nil
+        local rect          = reg_dim and symbol(LW.LegionRect[reg_dim]) or nil
+        local rectFromDom   = reg_dim and LW.LegionRectFromDom[reg_dim] or nil
 
-      region_temporaries[ri] = {
-        physical_reg  = physical_reg,
-        reg_dim       = reg_dim,  -- nil for unstructured
-        rect          = rect      -- nil for unstructured
-      }
+        region_temporaries[ri] = {
+          physical_reg  = physical_reg,
+          reg_dim       = reg_dim,  -- nil for unstructured
+          rect          = rect      -- nil for unstructured
+        }
 
-      emit quote
-        var [physical_reg]  = [task_args].regions[ri]
-      end
-
-      -- structured case
-      if reg_dim then emit quote
-        var index_space     =
-          LW.legion_physical_region_get_logical_region(
-                                           physical_reg).index_space
-        var [domain]        =
-          LW.legion_index_space_get_domain([task_args].lg_runtime,
-                                           [task_args].lg_ctx,
-                                           index_space)
-        var [rect]          = rectFromDom([domain])
-      end end
-    end end
-
-    -- UNPACK FIELDS
-    escape for field, farg_name in pairs(ufv._field_ids) do
-      local rtemp         = region_temporaries[ufv:_getRegionData(field).num]
-      local physical_reg  = rtemp.physical_reg
-      local reg_dim       = rtemp.reg_dim
-      local rect          = rtemp.rect
-
-      -- structured
-      if reg_dim then emit quote
-        var field_accessor =
-          LW.legion_physical_region_get_accessor_generic(physical_reg)
-        var subrect : LW.LegionRect[reg_dim]
-        var strides : LW.legion_byte_offset_t[reg_dim]
-        var base = [&uint8](
-          [ LW.LegionRawPtrFromAcc[reg_dim] ](
-                              field_accessor, rect, &subrect, strides))
-        var offset : int = 0
-        for d = 0, reg_dim do
-          offset = offset + [rect].lo.x[d] * strides[d].offset 
+        emit quote
+          var [physical_reg]  = [task_args].regions[ri]
         end
-        -- C.printf("Pointer %p, rect %i, %i, %i, %i, offset %i\n", base, [rect].lo.x[0], [rect].lo.x[1],
-        --   [rect].hi.x[0], [rect].hi.x[1], offset)
-        base = base - offset
-        [argsym].[farg_name] = [ LW.FieldAccessor[reg_dim] ] { base, strides, field_accessor }
-      end
-      -- unstructured
-      else emit quote
-        var field_accessor =
-          LW.legion_physical_region_get_accessor_generic(physical_reg)
-        var base : &opaque = nil
-        var stride_val : C.size_t = 0
-        var ok = LW.legion_accessor_generic_get_soa_parameters(
-          field_accessor, &base, &stride_val)
-        var strides : LW.legion_byte_offset_t[1]
-        strides[0].offset = (stride_val)
-        [argsym].[farg_name] = [ LW.FieldAccessor[1] ] { [&uint8](base), strides, field_accessor }
-      end end
-    end end
 
-    -- UNPACK PRIMARY REGION BOUNDS RECTANGLE FOR STRUCTURED
-    -- FOR UNSTRUCTURED, CORRECT INITIALIZATION IS POSPONED TO LATER
-    -- FOR UNSRRUCTURED, BOUNDS INITIALIZED TO TOTAL ROWS HERE
-    escape
-      local ri    = ufv:_getPrimaryRegionData().num
-      local rect  = region_temporaries[ri].rect
-      -- structured
-      if rect then
-        local ndims = region_temporaries[ri].reg_dim
-        for i=1,ndims do emit quote
-          [argsym].bounds[i-1].lo = rect.lo.x[i-1]
-          [argsym].bounds[i-1].hi = rect.hi.x[i-1]
+        -- structured case
+        if reg_dim then emit quote
+          var index_space     =
+            LW.legion_physical_region_get_logical_region(
+                                             physical_reg).index_space
+          var [domain]        =
+            LW.legion_index_space_get_domain([task_args].lg_runtime,
+                                             [task_args].lg_ctx,
+                                             index_space)
+          var [rect]          = rectFromDom([domain])
         end end
-      -- unstructured
-      else emit quote
-        -- initialize to total relation rows here, which would work without
-        -- partitions
-        [argsym].bounds[0].lo = 0
-        [argsym].bounds[0].hi = [ufv:_getPrimaryRegionData().wrapper.live_rows] - 1 -- bound is 1 off: the actual highest index value
       end end
-    end
-    
+
+      -- UNPACK FIELDS
+      escape for field, farg_name in pairs(ufv._field_ids) do
+        local rtemp         = region_temporaries[ufv:_getRegionData(field).num]
+        local physical_reg  = rtemp.physical_reg
+        local reg_dim       = rtemp.reg_dim
+        local rect          = rtemp.rect
+
+        -- structured
+        if reg_dim then emit quote
+          var field_accessor =
+            LW.legion_physical_region_get_accessor_generic(physical_reg)
+          var subrect : LW.LegionRect[reg_dim]
+          var strides : LW.legion_byte_offset_t[reg_dim]
+          var base = [&uint8](
+            [ LW.LegionRawPtrFromAcc[reg_dim] ](
+                                field_accessor, rect, &subrect, strides))
+          var offset : int = 0
+          for d = 0, reg_dim do
+            offset = offset + [rect].lo.x[d] * strides[d].offset 
+          end
+          base = base - offset
+          [argsym].[farg_name] = [ LW.FieldAccessor[reg_dim] ] { base, strides, field_accessor }
+        end
+        -- unstructured
+        else emit quote
+          var field_accessor =
+            LW.legion_physical_region_get_accessor_generic(physical_reg)
+          var base : &opaque = nil
+          var stride_val : C.size_t = 0
+          var ok = LW.legion_accessor_generic_get_soa_parameters(
+            field_accessor, &base, &stride_val)
+          var strides : LW.legion_byte_offset_t[1]
+          strides[0].offset = (stride_val)
+          [argsym].[farg_name] = [ LW.FieldAccessor[1] ] { [&uint8](base), strides, field_accessor }
+        end end  -- quote, if-else
+      end end  -- escape, for
+
+      -- UNPACK PRIMARY REGION BOUNDS RECTANGLE FOR STRUCTURED
+      -- FOR UNSTRUCTURED, CORRECT INITIALIZATION IS POSPONED TO LATER
+      -- FOR UNSRRUCTURED, BOUNDS INITIALIZED TO TOTAL ROWS HERE
+      escape
+        local ri    = ufv:_getPrimaryRegionData().num
+        local rect  = region_temporaries[ri].rect
+        -- structured
+        if rect then
+          local ndims = region_temporaries[ri].reg_dim
+          for i=1,ndims do emit quote
+            [argsym].bounds[i-1].lo = rect.lo.x[i-1]
+            [argsym].bounds[i-1].hi = rect.hi.x[i-1]
+          end end
+        -- unstructured
+        else emit quote
+          -- initialize to total relation rows here, which would work without
+          -- partitions
+          [argsym].bounds[0].lo = 0
+          [argsym].bounds[0].hi = [ufv:_getPrimaryRegionData().wrapper.live_rows] - 1 -- bound is 1 off: the actual highest index value
+        end end
+      end
+      
     end -- closing do started before unpacking the regions
 
     -- UNPACK FUTURES
     -- DO NOT WRAP THIS IN A LOCAL SCOPE or IN A DO BLOCK (SEE BELOW)
     -- ALSO DETERMINE IF THIS IS THE FIRST PARTITION
-    escape for globl, garg_name in pairs(ufv._global_ids) do
+    escape
+      for globl, garg_name in pairs(ufv._global_ids) do
         -- position in the Legion task arguments
         local fut_i   = ufv:_getFutureNum(globl) 
         local gtyp    = globl._type:terratype()
@@ -1271,47 +1270,73 @@ function UFVersion:_GenerateUnpackLegionTaskArgs(argsym, task_args)
                   first = first and (task_point.point_data[i] == 0)
               end
             end
-            var fut     = LW.legion_task_get_future([task_args].task, fut_i)
-            var result  = LW.legion_future_get_result(fut)
-            var datum   = @[&gtyp](result.value)
             var [gptr]  = [&gtyp](G.malloc(sizeof(gtyp)))
-            escape if isreduce and not first then
-                emite quote @gptr = [codesupport.reduction_identity(lz_type, op)] end
-            else
-                emit quote G.memcpy_gpu_from_cpu(gptr, &datum, sizeof(gtyp)) end
-            end end
-            --var [gptr] = &datum
-
+            escape 
+              if isreduce then
+                emit quote
+                  if not [first] then
+                    var temp = [codesupport.reduction_identity(lz_type, op)]
+                    G.memcpy_gpu_from_cpu(gptr, &temp, sizeof(gtyp))
+                  else
+                    var fut     = LW.legion_task_get_future([task_args].task, fut_i)
+                    var result  = LW.legion_future_get_result(fut)
+                    var datum   = @[&gtyp](result.value)
+                    G.memcpy_gpu_from_cpu(gptr, &datum, sizeof(gtyp))
+                    LW.legion_task_result_destroy(result)
+                  end
+                end  -- quote in branch end
+              else
+                emit quote
+                  var fut     = LW.legion_task_get_future([task_args].task, fut_i)
+                  var result  = LW.legion_future_get_result(fut)
+                  var datum   = @[&gtyp](result.value)
+                  G.memcpy_gpu_from_cpu(gptr, &datum, sizeof(gtyp))
+                  LW.legion_task_result_destroy(result)
+                end  -- quote end
+              end
+            end  -- escape
             [argsym].[garg_name] = gptr
-            LW.legion_task_result_destroy(result)
-          end
+          end  -- emit quote gpu case
         else
           emit quote
             var first = true
             do
               var task_point = LW.legion_task_get_index_point(task_args.task)
               for i = 0, task_point.dim do
-                  first = first and (task_point.point_data[i] == 0)
+                first = first and (task_point.point_data[i] == 0)
               end
             end
-            var fut     = LW.legion_task_get_future([task_args].task, fut_i)
-            var result  = LW.legion_future_get_result(fut)
             var datum : gtyp
-            escape if isreduce and not first then
-              emit quote datum = [codesupport.reduction_identity(lz_type, op)] end
-            else
-              emit quote datum   = @[&gtyp](result.value) end
-            end end
+            escape
+              if isreduce then
+                emit quote
+                  if not first then
+                    datum = [codesupport.reduction_identity(lz_type, op)]
+                  else
+                    var fut     = LW.legion_task_get_future([task_args].task, fut_i)
+                    var result  = LW.legion_future_get_result(fut)
+                    datum   = @[&gtyp](result.value)
+                    LW.legion_task_result_destroy(result)
+                  end
+                end  -- quote in branch end
+              else
+                emit quote
+                  var fut     = LW.legion_task_get_future([task_args].task, fut_i)
+                  var result  = LW.legion_future_get_result(fut)
+                  datum   = @[&gtyp](result.value)
+                  LW.legion_task_result_destroy(result)
+                end  -- quote end
+              end
+            end  -- escape
             var [gptr] = &datum
             -- note that we're going to rely on this variable
             -- being stably allocated on the stack
             -- for the remainder of this function scope
             [argsym].[garg_name] = gptr
-            LW.legion_task_result_destroy(result)
-          end
-        end
-      end
-    end
+          end  -- emit quote cpu case
+        end  -- if gpu else cpu case
+      end  -- for loop for globals
+    end  -- escape
   end -- end quote
 
   return code

@@ -250,10 +250,6 @@ function LW.TaskLauncher:AddRegionReq(reg_partn, parent, permission, coherence, 
   local index_or_task_str = (self._index_launch and '_index') or '_task'
   local reg_or_partn_str = ((reg_partn == parent) and '_region') or '_partition'
   local p = permission
-  -- TODO: this is temporary till we implement legion atomics for gpu
-  if self:IsOnGPU() and (p == LW.REDUCE) then
-    p = LW.READ_WRITE
-  end
   local red_str = ((p == LW.REDUCE) and '_reduction') or ''
   local add_region_requirement =
     LW['legion' .. index_or_task_str ..
