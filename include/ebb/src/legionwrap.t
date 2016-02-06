@@ -463,13 +463,37 @@ function LogicalRegion:AllocateRows(num)
   self.live_rows = self.live_rows + num
 end
 
+function LogicalRegion:_HIDDEN_ReserveFields()
+  if self._field_reserve then
+    error('Function ReserveFields() should only be called once')
+  end
+
+  -- indexed by number of bytes
+  self._field_reserve = {
+    [1] = {},
+    [2] = {},
+    [4] = {},
+    [8] = {},
+    [16] = {},
+    [32] = {},
+  }
+  for nbytes, list in pairs(self._field_reserve) do
+    for i=1,40 do
+      table.insert(list, self:AllocateField(nbytes))
+    end
+  end
+end
+
 local allocate_field_fid_counter = 0
 -- NOTE: Assuming here that the compile time limit is never hit.
 -- NOTE: Call from top level task only.
 function LogicalRegion:AllocateField(typ)
+  local typsize = typ
+  if type(typ) ~= 'number' then typsize = terralib.sizeof(typ) end
+
   local fid = LW.legion_field_allocator_allocate_field(
                 self.fsa,
-                terralib.sizeof(typ),
+                typsize,
                 allocate_field_fid_counter
               )
   assert(fid == allocate_field_fid_counter)
@@ -518,15 +542,17 @@ function LW.NewLogicalRegion(params)
   -- Max rows for index space = n_rows right now ==> no inserts
   -- Should eventually figure out an upper bound on number of rows and use that
   -- when creating index space.
-  local l = {
-              type      = 'unstructured',
-              relation  = params.relation,
-              field_ids = 0,
-              n_rows    = params.n_rows,
-              live_rows = 0,
-              max_rows  = params.n_rows
-            }
-  if l.max_rows == 0 then l.max_rows = 1 end  -- legion throws an error with 0 max rows
+  local l = setmetatable({
+    type      = 'unstructured',
+    relation  = params.relation,
+    field_ids = 0,
+    n_rows    = params.n_rows,
+    live_rows = 0,
+    max_rows  = params.n_rows
+  }, LogicalRegion)
+
+  -- legion throws an error with 0 max rows
+  if l.max_rows == 0 then l.max_rows = 1 end
   l.is  = LW.legion_index_space_create(legion_env.runtime,
                                        legion_env.ctx, l.max_rows)
   l.isa = LW.legion_index_allocator_create(legion_env.runtime,
@@ -536,10 +562,12 @@ function LW.NewLogicalRegion(params)
                                        legion_env.ctx)
   l.fsa = LW.legion_field_allocator_create(legion_env.runtime,
                                            legion_env.ctx, l.fs)
+  --l:_HIDDEN_ReserveFields()
+
   -- logical region
   l.handle = LW.legion_logical_region_create(legion_env.runtime,
                                              legion_env.ctx, l.is, l.fs)
-  setmetatable(l, LogicalRegion)
+
   -- actually allocate rows
   l:AllocateRows(l.n_rows)
   return l
