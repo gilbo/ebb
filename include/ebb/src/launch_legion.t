@@ -110,17 +110,15 @@ local util_cpus = 2
 
 local use_legion_spy  = rawget(_G, 'EBB_LEGION_USE_SPY')
 local use_legion_prof = rawget(_G, 'EBB_LEGION_USE_PROF')
-local logging_level = 5
-if use_legion_prof or use_legion_spy then
-  logging_level = 2
-end
-local logging_cat
+
+local logging_level = "3"
+-- hide warnings for region requirements without any fields
+logging_level = logging_level .. ",tasks=5"
 if use_legion_prof then
-  logging_cat = 'legion_prof'
-  logging_level = 'legion_prof=2'
+  logging_level = logging_level .. ",legion_prof=2"
 end
 if use_legion_spy then
-  logging_cat = 'legion_spy'
+  logging_level = logging_level .. ",legion_spy=2"
 end
 
 local legion_args = {}
@@ -148,11 +146,7 @@ end
 -- stack memory
 --table.insert(legion_args, "-ll:stack")
 --table.insert(legion_args, "2") -- MB
-if logging_cat then
-  table.insert(legion_args, "-cat")
-  table.insert(legion_args, logging_cat)
-end
-if logging_cat == 'legion_prof' then
+if use_legion_prof then
   table.insert(legion_args, "-hl:prof")
   table.insert(legion_args, "1")
 end
