@@ -459,41 +459,60 @@ function LogicalRegion:AllocateRows(num)
   self.live_rows = self.live_rows + num
 end
 
+
+local allocate_field_fid_counter = 0
+-- NOTE: Assuming here that the compile time limit is never hit.
+-- NOTE: Call from top level task only.
 function LogicalRegion:_HIDDEN_ReserveFields()
   if self._field_reserve then
     error('Function ReserveFields() should only be called once')
   end
 
   -- indexed by number of bytes
+  -- (this particular set of sizes chosen by inspecting applications)
   self._field_reserve = {
     [1] = {},
     [2] = {},
+    [3] = {},
     [4] = {},
     [8] = {},
     [16] = {},
-    [32] = {},
+    [24] = {},
   }
   for nbytes, list in pairs(self._field_reserve) do
     for i=1,40 do
-      table.insert(list, self:AllocateField(nbytes))
+
+      local fid = LW.legion_field_allocator_allocate_field(
+                    self.fsa,
+                    nbytes,
+                    allocate_field_fid_counter
+                  )
+      assert(fid == allocate_field_fid_counter)
+      allocate_field_fid_counter = allocate_field_fid_counter + 1
+
+      table.insert(list, fid)
     end
   end
 end
 
-local allocate_field_fid_counter = 0
--- NOTE: Assuming here that the compile time limit is never hit.
--- NOTE: Call from top level task only.
 function LogicalRegion:AllocateField(typ)
   local typsize = typ
   if type(typ) ~= 'number' then typsize = terralib.sizeof(typ) end
 
-  local fid = LW.legion_field_allocator_allocate_field(
-                self.fsa,
-                typsize,
-                allocate_field_fid_counter
-              )
-  assert(fid == allocate_field_fid_counter)
-  allocate_field_fid_counter = allocate_field_fid_counter + 1
+  local fid = table.remove( self._field_reserve[typsize] )
+  if not fid then
+    error('Ran out of fields of size '..typsize..' to allocate;\n'..
+          'This error is the result of a hack to investigate performance '..
+          'issues in field allocation.  Fixing it 100% will probably '..
+          'require Mike making changes in the Legion runtime.\n')
+  end
+  --local fid = LW.legion_field_allocator_allocate_field(
+  --              self.fsa,
+  --              typsize,
+  --              allocate_field_fid_counter
+  --            )
+  --assert(fid == allocate_field_fid_counter)
+  --allocate_field_fid_counter = allocate_field_fid_counter + 1
   return fid
 end
 function LogicalRegion:FreeField(fid)
@@ -558,7 +577,7 @@ function LW.NewLogicalRegion(params)
                                        legion_env.ctx)
   l.fsa = LW.legion_field_allocator_create(legion_env.runtime,
                                            legion_env.ctx, l.fs)
-  --l:_HIDDEN_ReserveFields()
+  l:_HIDDEN_ReserveFields()
 
   -- logical region
   l.handle = LW.legion_logical_region_create(legion_env.runtime,
@@ -572,13 +591,14 @@ end
 -- Allocate a structured logical region
 -- NOTE: Call from top level task only.
 function LW.NewGridLogicalRegion(params)
-  local l = {
-              type        = 'grid',
-              relation    = params.relation,
-              field_ids   = 0,
-              bounds      = params.dims,
-              dimensions  = #params.dims,
-            }
+  local l = setmetatable({
+    type        = 'grid',
+    relation    = params.relation,
+    field_ids   = 0,
+    bounds      = params.dims,
+    dimensions  = #params.dims,
+  }, LogicalRegion)
+
   -- index space
   local bounds = l.bounds
   l.is = CreateGridIndexSpace[l.dimensions](unpack(bounds))
@@ -587,6 +607,8 @@ function LW.NewGridLogicalRegion(params)
                                       legion_env.ctx)
   l.fsa = LW.legion_field_allocator_create(legion_env.runtime,
                                            legion_env.ctx, l.fs)
+  l:_HIDDEN_ReserveFields()
+
   -- logical region
   l.handle = LW.legion_logical_region_create(legion_env.runtime,
                                              legion_env.ctx,
