@@ -47,8 +47,10 @@ local VERBOSE = rawget(_G, 'EBB_LOG_LEGION')
 --[[  Legion environment                                                   ]]--
 -------------------------------------------------------------------------------
 
-
 local LE = rawget(_G, '_legion_env')
+local run_config = rawget(_G, '_run_config')
+local use_partitioning = run_config.use_partitioning
+
 local struct LegionEnv {
   runtime : LW.legion_runtime_t,
   ctx     : LW.legion_context_t
@@ -116,6 +118,50 @@ LegionCreatePoint[2] = terra(pt1 : int, pt2 : int)
 end
 LegionCreatePoint[3] = terra(pt1 : int, pt2 : int, pt3 : int)
   return [LW.LegionPoint[3]]{array(pt1, pt2, pt3)}
+end
+
+
+-------------------------------------------------------------------------------
+--[[  Region Requirements                                                  ]]--
+-------------------------------------------------------------------------------
+
+LW.RegionReq         = {}
+LW.RegionReq.__index = LW.RegionReq
+
+function LW.NewRegionReq(params)
+  local relation = params.relation
+  local reg_req = setmetatable({
+    wrapper   = relation._logical_region_wrapper,
+    num       = params.num,
+    relation  = relation,
+    privilege = params.privilege,
+    coherence = params.coherence,
+    redoptyp  = params.redoptyp,
+    partition = nil,
+    centered  = params.centered,
+  }, LW.RegionReq)
+  return reg_req
+end
+
+function LW.RegionReq:PartitionData()  -- TODO: make default case single partition
+  local relation = self.relation
+  if not self.partition then
+    local partition = self.wrapper
+    if use_partitioning then
+      if self.centered then
+        if not relation:IsPartitioningSet() then
+          local ndims = #relation:Dims()
+          local num_partitions = {}
+          for i = 1,ndims do
+              num_partitions[i] = run_config.num_partitions_default
+          end
+          relation:SetPartitions(num_partitions)
+        end
+        partition = relation:GetOrCreateDisjointPartitioning()
+      end
+    end
+    self.partition = partition
+  end
 end
 
 
@@ -245,11 +291,11 @@ function LW.TaskLauncher:IsOnGPU()
 end
 
 
-function LW.TaskLauncher:AddRegionReq(reg_partn, parent, permission, coherence, redoptyp)
-  local region_args = terralib.newlist({self._launcher, reg_partn.handle})
+function LW.TaskLauncher:AddRegionReq(req)
+  local region_args = terralib.newlist({self._launcher, req.partition.handle})
   local index_or_task_str = (self._index_launch and '_index') or '_task'
-  local reg_or_partn_str = ((reg_partn == parent) and '_region') or '_partition'
-  local p = permission
+  local reg_or_partn_str = ((req.partition == req.wrapper) and '_region') or '_partition'
+  local p = req.privilege
   local red_str = ((p == LW.REDUCE) and '_reduction') or ''
   local add_region_requirement =
     LW['legion' .. index_or_task_str ..
@@ -259,9 +305,9 @@ function LW.TaskLauncher:AddRegionReq(reg_partn, parent, permission, coherence, 
     region_args:insert(0)
   end
   local red_or_permission =
-    ((p == LW.REDUCE) and LW.reduction_ids[redoptyp]) or p
-  region_args:insertall({red_or_permission, coherence,
-                         parent.handle, 0, false})
+    ((p == LW.REDUCE) and LW.reduction_ids[req.redoptyp]) or p
+  region_args:insertall({red_or_permission, req.coherence,
+                         req.wrapper.handle, 0, false})
   return add_region_requirement(unpack(region_args))
 end
 
@@ -476,11 +522,32 @@ function LogicalRegion:_HIDDEN_ReserveFields()
     [3] = {},
     [4] = {},
     [8] = {},
+    [12] = {},
     [16] = {},
     [24] = {},
+    [32] = {},
+    [36] = {},
+    [48] = {},
+    [64] = {},
+    [72] = {}
+  }
+  self._field_reserve_count = {
+    [1] = 20,
+    [2] = 20,
+    [3] = 20,
+    [4] = 40,
+    [8] = 40,
+    [12] = 40,
+    [16] = 40,
+    [24] = 40,
+    [32] = 40,
+    [36] = 40,
+    [48] = 40,
+    [64] = 20,
+    [72] = 20
   }
   for nbytes, list in pairs(self._field_reserve) do
-    for i=1,40 do
+    for i=1,self._field_reserve_count[nbytes] do
 
       local fid = LW.legion_field_allocator_allocate_field(
                     self.fsa,
@@ -498,21 +565,17 @@ end
 function LogicalRegion:AllocateField(typ)
   local typsize = typ
   if type(typ) ~= 'number' then typsize = terralib.sizeof(typ) end
-
-  local fid = table.remove( self._field_reserve[typsize] )
+  local field_reserve = self._field_reserve[typsize]
+  if not field_reserve then
+    error('No field reserve for type size ' .. typsize)
+  end
+  local fid = table.remove(field_reserve)
   if not fid then
     error('Ran out of fields of size '..typsize..' to allocate;\n'..
           'This error is the result of a hack to investigate performance '..
           'issues in field allocation.  Fixing it 100% will probably '..
           'require Mike making changes in the Legion runtime.\n')
   end
-  --local fid = LW.legion_field_allocator_allocate_field(
-  --              self.fsa,
-  --              typsize,
-  --              allocate_field_fid_counter
-  --            )
-  --assert(fid == allocate_field_fid_counter)
-  --allocate_field_fid_counter = allocate_field_fid_counter + 1
   return fid
 end
 function LogicalRegion:FreeField(fid)
@@ -680,7 +743,7 @@ function LW.NewInlinePhysicalRegion(params)
     local subrect = terralib.new((LW.LegionRect[ndims])[1])
     local stride = terralib.new(LW.legion_byte_offset_t[ndims])
     for i, field in ipairs(params.fields) do
-      accs[i] = LW.legion_physical_region_get_accessor_generic(prs[i])
+      accs[i] = LW.legion_physical_region_get_field_accessor_generic(prs[i], field._fid)
       ptrs[i] = terralib.cast(&uint8,
                               LW.LegionRawPtrFromAcc[ndims](accs[i], rect, subrect, stride))
       local s = {}
@@ -695,7 +758,7 @@ function LW.NewInlinePhysicalRegion(params)
     local base = terralib.new((&opaque)[1])
     local stride = terralib.new(uint64[1])
     for i, field in ipairs(params.fields) do
-      accs[i] = LW.legion_physical_region_get_accessor_generic(prs[i])
+      accs[i] = LW.legion_physical_region_get_field_accessor_generic(prs[i], field._fid)
       base[0] = nil
       stride[0] = 0
       LW.legion_accessor_generic_get_soa_parameters(accs[i], base, stride)
