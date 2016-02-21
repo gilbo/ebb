@@ -46,6 +46,7 @@ local R                 = require 'ebb.src.relations'
 local specialization    = require 'ebb.src.specialization'
 local semant            = require 'ebb.src.semant'
 local phase             = require 'ebb.src.phase'
+local stencil           = require 'ebb.src.stencil'
 
 
 F._INTERNAL_DEV_OUTPUT_PTX = false
@@ -162,13 +163,15 @@ function Function:_get_typechecked(calldepth, relset, strargs)
   end
 
   -- now actually type and phase check
-  local typed_ast     = semant.check( aname_ast )
-  local phase_results = phase.phasePass( typed_ast )
+  local typed_ast       = semant.check( aname_ast )
+  local phase_results   = phase.phasePass( typed_ast )
+  local field_accesses  = stencil.stencilPass( typed_ast )
 
   -- cache the type/phase-checking computations
   local cached = {
     typed_ast       = typed_ast,
     phase_results   = phase_results,
+    field_accesses  = field_accesses,
     versions        = {},
   }
   self._versions[keystr] = cached
@@ -206,8 +209,9 @@ local function get_ufunc_version(ufunc, typeversion_table, relset, params)
   -- if the lookup failed, then we need to construct a new
   -- version matching this signature
   version = F.NewUFVersion(ufunc, sig)
-  version._typed_ast  = typeversion_table.typed_ast
-  version._phase_data = typeversion_table.phase_results
+  version._typed_ast        = typeversion_table.typed_ast
+  version._phase_data       = typeversion_table.phase_results
+  version._field_accesses   = typeversion_table.field_accesses
 
   -- and make sure to cache it
   typeversion_table.versions[str_sig] = version
@@ -217,7 +221,7 @@ end
 
 -- this will cause typechecking to fire
 function Function:GetVersion(relset, ...)
-  self:_Get_Version(3, relset, ...)
+  return self:_Get_Version(3, relset, ...)
 end
 function Function:GetAllVersions()
   local vs = {}

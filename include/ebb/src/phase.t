@@ -445,10 +445,11 @@ end
 
 function ast.Where:phasePass(ctxt)
   -- Which field is the index effectively having us read?
-  local keyfield = self.relation:GroupedKeyField()
+  --local keyfield = self.relation:GroupedKeyField()
   local offfield = self.relation:_INTERNAL_GroupedOffset()
   local lenfield = self.relation:_INTERNAL_GroupedLength()
-  ctxt:logfield(keyfield, PhaseType.New{ read = true }, self)
+  --ctxt:logfield(keyfield, PhaseType.New{ read = true }, self)
+  -- NOTE: I'm PRETTY SURE that the keyfield isn't being touched...
   ctxt:logfield(offfield, PhaseType.New{ read = true }, self)
   ctxt:logfield(lenfield, PhaseType.New{ read = true }, self)
 
