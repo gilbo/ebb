@@ -123,9 +123,9 @@ end
 -- Modal Data
 
 function Context:onGPU()
-  return self.ufv:isOnGPU()
+  return self.ufv:onGPU()
 end
-function Context:hasGlobalReduce()
+function Context:UsesGlobalReduce()
   return self.ufv:UsesGlobalReduce()
 end
 function Context:isOverElastic() -- meaning the relation mapped over
@@ -149,7 +149,8 @@ function Context:hasExclusivePhase(field)
 end
 
 function Context:FieldElemPtr(field, key)
-  local farg        = `[ self:argsym() ].[ self.ufv:_getFieldId(field) ]
+  --local farg        = `[ self:argsym() ].[ self.ufv:_getFieldId(field) ]
+  local farg        = self.ufv:_getTerraField(self:argsym(), field)
   if use_single then
     local ptr       = farg
     return `(ptr + key:terraLinearize())
@@ -460,7 +461,7 @@ function Codegen.codegen (ufunc_ast, ufunc_version)
     -- Extra GPU wrapper
     if ctxt:onGPU() then
       -- Extra GPU Reduction setup/post-process
-      if ctxt:hasGlobalReduce() then
+      if ctxt:UsesGlobalReduce() then
         body = quote
           [ctxt:codegenSharedMemInit()]
           G.barrier()
@@ -536,7 +537,7 @@ function Codegen.codegen (ufunc_ast, ufunc_version)
   -- OPTIONALLY WRAP UP AS A LEGION TASK
   if use_legion then
     local generate_output_future = quote end
-    if ctxt:hasGlobalReduce() then
+    if ctxt:UsesGlobalReduce() then
       local globl             = next(ctxt.ufv._global_reductions)
       local gtyp              = globl._type:terratype()
       local gptr              = ctxt.ufv:_getLegionGlobalTempSymbol(globl)
@@ -968,7 +969,10 @@ function ast.FieldWrite:codegen (ctxt)
   then
     local rexp = self.exp:codegen(ctxt)
     local key = self.fieldaccess.key:codegen(ctxt)
-    local farg = `[ ctxt:argsym() ].[ ctxt.ufv:_getFieldId(self.fieldaccess.field) ]
+
+    local farg = ctxt.ufv:_getTerraField(ctxt:argsym(),
+                                         self.fieldaccess.field)
+    --local farg = `[ ctxt:argsym() ].[ ctxt.ufv:_getFieldId(self.fieldaccess.field) ]
     return
         Support.legion_cpu_atomic_exp(self.reduceop,
                                       self.fieldaccess.node_type,

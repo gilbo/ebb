@@ -51,17 +51,225 @@ end
 local use_partitioning = use_legion and run_config.use_partitioning
 local DataArray       = require('ebb.src.rawdata').DataArray
 
+local R         = require 'ebb.src.relations'
 local F         = require 'ebb.src.functions'
 local UFunc     = F.Function
 local UFVersion = F.UFVersion
 local _INTERNAL_DEV_OUTPUT_PTX = F._INTERNAL_DEV_OUTPUT_PTX
+local Phase     = require 'ebb.src.phase'
+local PhaseType = Phase.PhaseType
 
 local VERBOSE = rawget(_G, 'EBB_LOG_EBB')
 
--- Create a Lua Object that generates the needed Terra structure to pass
--- fields, globals and temporary allocated memory to the function as arguments
+
+local function shallowcopy_table(tbl)
+  local x = {}
+  for k,v in pairs(tbl) do x[k] = v end
+  return x
+end
+
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+--[[ Signature                                                             ]]--
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+
+local struct bounds_struct { lo : uint64, hi : uint64 }
+
+--[[
 local ArgLayout = {}
 ArgLayout.__index = ArgLayout
+
+
+function ArgLayout.New()
+  return setmetatable({
+    fields            = terralib.newlist(),
+    globals           = terralib.newlist(),
+    reduce            = terralib.newlist()
+  }, ArgLayout)
+end
+
+function ArgLayout:setRelation(rel)
+  self._key_type  = keyT(rel):terratype()
+  self.n_dims     = #rel:Dims()
+end
+
+function ArgLayout:addField(name, field)
+  if self:isCompiled() then
+    error('INTERNAL ERROR: cannot add new fields to compiled layout')
+  end
+  if use_single then
+    local typ = field:Type():terratype()
+    table.insert(self.fields, { field=name, type=&typ })
+  elseif use_legion then
+    local ndims = #field:Relation():Dims()
+    table.insert(self.fields, { field=name, type=LW.FieldAccessor[ndims] })
+  end
+end
+
+function ArgLayout:addGlobal(name, global)
+  if self:isCompiled() then
+    error('INTERNAL ERROR: cannot add new globals to compiled layout')
+  end
+  local typ = global._type:terratype()
+  table.insert(self.globals, { field=name, type=&typ })
+end
+
+function ArgLayout:addReduce(name, typ)
+  if self:isCompiled() then
+    error('INTERNAL ERROR: cannot add new reductions to compiled layout')
+  end
+  table.insert(self.reduce, { field=name, type=&typ})
+end
+
+function ArgLayout:turnSubsetOn()
+  if self:isCompiled() then
+    error('INTERNAL ERROR: cannot add a subset to compiled layout')
+  end
+  self.subset_on = true
+end
+
+function ArgLayout:addInsertion()
+  if self:isCompiled() then
+    error('INTERNAL ERROR: cannot add insertions to compiled layout')
+  end
+  self.insert_on = true
+end
+
+function ArgLayout:TerraStruct()
+  if not self:isCompiled() then self:Compile() end
+  return self.terrastruct
+end
+
+
+function ArgLayout:Compile()
+  local terrastruct = terralib.types.newstruct(self.name)
+
+  -- add counter
+  table.insert(terrastruct.entries,
+               {field='bounds', type=(bounds_struct[self.n_dims])})
+  -- add subset data
+  local taddr = self._key_type
+  if self.subset_on then
+    table.insert(terrastruct.entries, {field='index',        type=&taddr})
+    table.insert(terrastruct.entries, {field='index_size',   type=uint64})
+  end
+  --if self.insert_on then
+  --end
+  -- add fields
+  for _,v in ipairs(self.fields) do table.insert(terrastruct.entries, v) end
+  -- add globals
+  for _,v in ipairs(self.globals) do table.insert(terrastruct.entries, v) end
+  -- add global reduction space
+  for _,v in ipairs(self.reduce) do table.insert(terrastruct.entries, v) end
+
+  self.terrastruct = terrastruct
+end
+
+function ArgLayout:isCompiled()
+  return self.terrastruct ~= nil
+end
+
+--]]
+
+--[[
+args = {
+  relation,     -- relation being executed over
+  use_subset,   -- boolean
+  name,         -- name for struct
+  fields,       -- list of fields
+  globals,      -- list of globals
+  global_reductions,  -- list of globals to reduce
+}
+--]]
+local function BuildTerraSignature(args)
+  local arg_keyT        = keyT(args.relation):terratype()
+  local n_dims          = #args.relation:Dims()
+
+  local name = (args.name or '') .. '_terra_signature'
+  local terrasig = terralib.types.newstruct(name)
+  local _field_num,             f_count = {}, 0
+  local _global_num,            g_count = {}, 0
+  local _global_reduction_num,  r_count = {}, 0
+  local field_names             = {}
+  local global_names            = {}
+  local global_reduction_names  = {}
+
+  -- add counter
+  terrasig.entries:insert{field='bounds', type=(bounds_struct[n_dims])}
+  -- add subset data
+  if args.use_subset then -- make sure it's available
+    terrasig.entries:insert{field='index',      type=&arg_keyT}
+    terrasig.entries:insert{field='index_size', type=uint64}
+  end
+  -- add fields
+  for i,f in ipairs(args.fields) do
+    _field_num[f] = i
+    local name = 'field_'..i..'_'..string.gsub(f:FullName(),'%W','_')
+    field_names[f] = name
+    if use_single then
+      terrasig.entries:insert{ field=name, type=&( f:Type():terratype() ) }
+    elseif use_legion then
+      terrasig.entries:insert{ field=name, type=LW.FieldAccessor[n_dims] }
+    end
+  end
+  -- add globals
+  for i,g in ipairs(args.globals) do
+    _global_num[g] = i
+    local name = 'global_'..i..'_'..
+                 string.gsub(tostring(g:Type()),'%W','_')
+    global_names[g] = name
+    terrasig.entries:insert{ field=name, type=&( g:Type():terratype() ) }
+  end
+  -- add global reductions (possibly secondary location)
+  for i,gr in ipairs(args.global_reductions) do
+    _global_reduction_num[gr] = i
+    local name = 'reduce_global_'..i..'_'..
+                 string.gsub(tostring(gr:Type()),'%W','_')
+    global_reduction_names[gr] = name
+    terrasig.entries:insert{ field=name, type=&( gr:Type():terratype() ) }
+  end
+
+  terrasig:complete()
+  terrasig._field_num             = _field_num
+  terrasig._global_num            = _global_num
+  terrasig._global_reduction_num  = _global_reduction_num
+
+  function terrasig.luaget(sig, fg)
+    if        R.is_field(fg) then return sig[field_names[fg]]
+    elseif Pre.is_global(fg) then return sig[global_names[fg]]
+    else error('luaget() expects a field or global') end
+  end
+  function terrasig.luaget_reduction(sig, g)
+    return sig[global_reduction_names[g]]
+  end
+  function terrasig.luaset(sig, fg, val)
+    if        R.is_field(fg) then sig[field_names[fg]] = val
+    elseif Pre.is_global(fg) then sig[global_names[fg]] = val
+    else error('luaset() expects a field or global') end
+  end
+  function terrasig.luaset_reduction(sig, g, val)
+    sig[global_reduction_names[g]] = val
+  end
+  function terrasig.terraptr(sig, fg)
+    if        R.is_field(fg) then
+      local name = field_names[fg]
+      return `sig.[name]
+    elseif Pre.is_global(fg) then
+      local name = global_names[fg]
+      return `sig.[name]
+    else
+      error('terraptr() expects a field or global')
+    end
+  end
+  function terrasig.terraptr_reduction(sig, g)
+    local name = global_reduction_names[fg]
+    return `sig.[name]
+  end
+
+  return terrasig
+end
+
 
 
 -------------------------------------------------------------------------------
@@ -125,7 +333,7 @@ end
 function UFVersion:UsesGlobalReduce()
   return next(self._global_reductions) ~= nil
 end
-function UFVersion:isOnGPU()
+function UFVersion:onGPU()
   return self._proc == GPU
 end
 function UFVersion:overElasticRelation()
@@ -150,31 +358,35 @@ end
 --[[ UF Compilation                                                        ]]--
 --                  ---------------------------------------                  --
 
+
 function UFVersion:Compile()
   self._compile_timer:start()
 
   local typed_ast   = self._typed_ast
   local phase_data  = self._phase_data
-  self._field_use = phase_data.field_use
-  self._global_use = phase_data.global_use
+  -- shallow copy so that we can add entries
+  self._field_use   = shallowcopy_table(phase_data.field_use)
+  self._global_use  = shallowcopy_table(phase_data.global_use)
 
-  self._arg_layout = ArgLayout.New()
-  self._arg_layout:setRelation(self._relation)
+  --self._arg_layout = ArgLayout.New()
+  --self._arg_layout:setRelation(self._relation)
 
   -- determine region requirements
   if use_legion then
     self:_DetermineLegionRequirements()
   end
 
+  self:_CompileTerraSignature(phase_data)
+
   -- compile various kinds of data into the arg layout
-  self:_CompileFieldsGlobalsSubsets()
+  --self:_CompileFieldsGlobalsSubsets()
 
   -- also compile insertion and/or deletion if used
-  if phase_data.inserts then self:_CompileInserts(phase_data.inserts) end
-  if phase_data.deletes then self:_CompileDeletes(phase_data.deletes) end
+  --if phase_data.inserts then self:_CompileInserts(phase_data.inserts) end
+  --if phase_data.deletes then self:_CompileDeletes(phase_data.deletes) end
 
   -- handle GPU specific compilation
-  if self:isOnGPU() and self:UsesGlobalReduce() then
+  if self:onGPU() and self:UsesGlobalReduce() then
     self._sharedmem_size = 0
     self:_CompileGPUReduction()
   end
@@ -184,8 +396,8 @@ function UFVersion:Compile()
     -- to hold the parameter values that will be passed to the Ebb function.
     self._args = DataArray.New{
       size = 1,
-      type = self._arg_layout:TerraStruct(),
-      processor = CPU -- DON'T MOVE
+      type = self._terra_signature,
+      processor = CPU, -- DON'T MOVE
     }
     
     -- compile an executable
@@ -200,6 +412,99 @@ function UFVersion:Compile()
   self._compile_timer:stop()
 end
 
+function UFVersion:_CompileTerraSignature()
+  local fields, globals   = terralib.newlist(), terralib.newlist()
+  local global_reductions = terralib.newlist()
+  self._global_reductions = {}
+
+  if self:overElasticRelation() then
+    if use_legion then error("LEGION UNSUPPORTED ELASTIC") end
+    local use_deletes = not not self._phase_data.deletes
+    self._field_use[self._relation._is_live_mask] = PhaseType.New {
+      centered  = true,
+      read      = true,
+      write     = use_deletes,
+    }
+    --fields:insert(self._relation._is_live_mask)
+  end
+  if self:isOverSubset() and self._subset._boolmask then
+    --fields:insert(self._subset._boolmask)
+    self._compiled_with_boolmask = true
+    self._field_use[self._subset._boolmask] = PhaseType.New {
+      centered  = true,
+      read      = true,
+    }
+  end
+
+  -- INSERTS
+  if self._phase_data.inserts then
+    -- max 1 insert allowed right now
+    local insert_rel, ast_nodes = next(self._phase_data.inserts)
+    self._insert_data = {
+      relation    = insert_rel,
+      record_type = ast_nodes[1].record_type,
+      write_idx   = EbbGlobal(uint64T, 0),
+    }
+    -- also need to support reductions?
+    self._global_use[self._insert_data.write_idx] = PhaseType.New {
+      reduceop    = '+',
+    }
+    --globals:insert(self._insert_data.write_idx)
+
+    for _,f in ipairs(insert_rel._fields) do
+      assert(self._field_use[f] == nil, 'trying to add duplicate field')
+      fields:insert(f) -- might this be a duplicate?  No?
+      self._field_use[f] = PhaseType.New {
+        centered = false,
+        write    = true,
+      }
+    end
+    --fields:insert(insert_rel._is_live_mask)
+    self._field_use[insert_rel._is_live_mask] = PhaseType.New {
+      centered = false,
+      write    = true,
+    }
+  end
+  -- DELETES
+  if self._phase_data.deletes then
+    -- max 1 delete allowed right now
+    local del_rel = next(self._phase_data.deletes)
+    self._delete_data = {
+      relation  = del_rel,
+      n_deleted = EbbGlobal(uint64T, 0)
+    }
+    -- also need to support reductions?
+    self._global_use[self._delete_data.n_deleted] = PhaseType.New {
+      reduceop    = '+',
+    }
+    --globals:insert(self._delete_data.n_deleted)
+  end
+
+
+  for f, use in pairs(self._field_use) do  fields:insert(f) end
+  for g, phase in pairs(self._global_use) do
+    globals:insert(g)
+    if phase.reduceop then
+      global_reductions:insert(g)
+      self._uses_global_reduce  = true
+
+      self._global_reductions[g] = {
+        phase = phase,
+      }
+    end
+  end
+
+  self._terra_signature = BuildTerraSignature{
+    relation          = self._relation,
+    use_subset        = self:isOverSubset(),
+    name              = self._name,
+    fields            = fields,
+    globals           = globals,
+    global_reductions = global_reductions,
+  }
+end
+
+--[[
 function UFVersion:_CompileFieldsGlobalsSubsets(phase_data)
 
   -- initialize id structures
@@ -209,7 +514,7 @@ function UFVersion:_CompileFieldsGlobalsSubsets(phase_data)
   self._global_ids   = {}
   self._n_global_ids = 0
 
-  self._global_reductions = {}
+  --self._global_reductions = {}
 
 
   -- reserve ids
@@ -244,15 +549,18 @@ function UFVersion:_CompileFieldsGlobalsSubsets(phase_data)
     self._arg_layout:turnSubsetOn()
   end
 end
+--]]
 
 --                  ---------------------------------------                  --
 --[[ UFVersion Interface for Codegen / Compilation                         ]]--
 --                  ---------------------------------------                  --
 
 function UFVersion:_argsType ()
-  return self._arg_layout:TerraStruct()
+  return self._terra_signature
+  --return self._arg_layout:TerraStruct()
 end
 
+--[[
 function UFVersion:_getFieldId(field)
   local id = self._field_ids[field]
   if id then return id
@@ -282,8 +590,17 @@ function UFVersion:_getGlobalId(global)
     return id
   end
 end
+--]]
 
 function UFVersion:_getReduceData(global)
+  local data = self._global_reductions[global]
+  --if data and not data.id then
+  --  local gid = self:_getGlobalId(global)
+  --  data.id   = 'reduce_globalmem_'..gid:sub(#'global_' + 1)
+  --end
+  return assert(self._global_reductions[global],
+                'reduction was not predeclared')
+--[[
   local data = self._global_reductions[global]
   if not data then
     local gid = self:_getGlobalId(global)
@@ -291,26 +608,27 @@ function UFVersion:_getReduceData(global)
          data = { id = id }
 
     self._global_reductions[global] = data
-    if self:isOnGPU() then
+    if self:onGPU() then
       self._arg_layout:addReduce(id, global._type:terratype())
     end
   end
   return data
+--]]
 end
 
 function UFVersion:_setFieldPtr(field)
   if use_legion then
     error('INTERNAL: Do not call setFieldPtr() when using Legion') end
-  local id = self:_getFieldId(field)
-  local dataptr = field:_Raw_DataPtr()
-  self._args:_raw_ptr()[id] = dataptr
+  self._terra_signature.luaset(self._args:_raw_ptr(),
+                               field,
+                               field:_Raw_DataPtr())
 end
 function UFVersion:_setGlobalPtr(global)
   if use_legion then
     error('INTERNAL: Do not call setGlobalPtr() when using Legion') end
-  local id = self:_getGlobalId(global)
-  local dataptr = global:_Raw_DataPtr()
-  self._args:_raw_ptr()[id] = dataptr
+  self._terra_signature.luaset(self._args:_raw_ptr(),
+                               global,
+                               global:_Raw_DataPtr())
 end
 
 function UFVersion:_getLegionGlobalTempSymbol(global)
@@ -324,9 +642,11 @@ function UFVersion:_getLegionGlobalTempSymbol(global)
   end
   return sym
 end
+function UFVersion:_getTerraField(args_sym, field)
+  return self._terra_signature.terraptr(args_sym, field)
+end
 function UFVersion:_getTerraGlobalPtr(args_sym, global)
-  local id = self:_getGlobalId(global)
-  return `[args_sym].[id]
+  return self._terra_signature.terraptr(args_sym, global)
 end
 
 
@@ -338,7 +658,7 @@ function UFVersion:_DynamicChecks()
   if use_single then
     -- Check that the fields are resident on the correct processor
     local underscore_field_fail = nil
-    for field, _ in pairs(self._field_ids) do
+    for field, _ in pairs(self._field_use) do
       if field._array:location() ~= self._proc then
         if field:Name():sub(1,1) == '_' then
           underscore_field_fail = field
@@ -428,10 +748,10 @@ function UFVersion:_bindFieldGlobalSubsetArgs()
   end
 
   -- set field and global pointers
-  for field, _ in pairs(self._field_ids) do
+  for field, _ in pairs(self._field_use) do
     self:_setFieldPtr(field)
   end
-  for globl, _ in pairs(self._global_ids) do
+  for globl, _ in pairs(self._global_use) do
     self:_setGlobalPtr(globl)
   end
 end
@@ -467,7 +787,7 @@ end
 
 function UFVersion:_PostLaunchCleanup()
   -- GPU Reduction finishing and cleanup
-  --if self:isOnGPU() then
+  --if self:onGPU() then
   --  if self:UsesGlobalReduce() then  self:postprocessGPUReduction()  end
   --end
 
@@ -488,6 +808,7 @@ end
 --[[ Insert Processing ; all 4 stages (-launch)                            ]]--
 --                  ---------------------------------------                  --
 
+--[[
 function UFVersion:_CompileInserts(inserts)
   local ufv = self
   --ufv._inserts = inserts
@@ -510,6 +831,7 @@ function UFVersion:_CompileInserts(inserts)
   ufv:_getFieldId(rel._is_live_mask)
   ufv._arg_layout:addInsertion()
 end
+--]]
 
 function UFVersion:_DynamicInsertChecks()
   if use_legion then error('INSERT unsupported on legion currently', 4) end
@@ -563,6 +885,7 @@ end
 --[[ Delete Processing ; all 4 stages (-launch)                            ]]--
 --                  ---------------------------------------                  --
 
+--[[
 function UFVersion:_CompileDeletes(deletes)
   local ufv = self
   --ufv._deletes = deletes
@@ -575,6 +898,7 @@ function UFVersion:_CompileDeletes(deletes)
   -- register global variable
   ufv:_getGlobalId(ufv._delete_data.n_deleted)
 end
+--]]
 
 function UFVersion:_DynamicDeleteChecks()
   if use_legion then error('DELETE unsupported on legion currently', 4) end
@@ -952,7 +1276,7 @@ function UFVersion:_DetermineLegionRequirements()
   -- TODO: should this be here or in CompilefieldsGlobalsSubsets?
   self._future_nums  = {}
   self._n_futures    = 0
-  self._global_reduce = nil
+  --self._global_reduce = nil
 
   -- first determine region requirements
 
@@ -1216,7 +1540,7 @@ function UFVersion:_GenerateUnpackLegionTaskArgs(argsym, task_args)
                     self._global_reductions[globl].phase.reduceop
         local isreduce = (op ~= false)
 
-        if ufv:isOnGPU() then
+        if ufv:onGPU() then
           emit quote
             var first = true
             do
@@ -1354,7 +1678,7 @@ function UFVersion:_CreateLegionTaskLauncher(task_func)
 
   local task_launcher = LW.NewTaskLauncher {
     taskfunc  = task_func,
-    gpu       = self:isOnGPU(),
+    gpu       = self:onGPU(),
     task_ids  = self._task_ids,
     use_index_launch = use_partitioning,  -- TODO: make default case single partition
     domain           = use_partitioning and prim_partn:Domain()
@@ -1427,104 +1751,5 @@ end
 
 function UFVersion:_postprocessLegion()
   -- meh for now
-end
-
-
-
--------------------------------------------------------------------------------
--------------------------------------------------------------------------------
---[[ ArgLayout                                                             ]]--
--------------------------------------------------------------------------------
--------------------------------------------------------------------------------
-
-
-function ArgLayout.New()
-  return setmetatable({
-    fields            = terralib.newlist(),
-    globals           = terralib.newlist(),
-    reduce            = terralib.newlist()
-  }, ArgLayout)
-end
-
-function ArgLayout:setRelation(rel)
-  self._key_type  = keyT(rel):terratype()
-  self.n_dims     = #rel:Dims()
-end
-
-function ArgLayout:addField(name, field)
-  if self:isCompiled() then
-    error('INTERNAL ERROR: cannot add new fields to compiled layout')
-  end
-  if use_single then
-    local typ = field:Type():terratype()
-    table.insert(self.fields, { field=name, type=&typ })
-  elseif use_legion then
-    local ndims = #field:Relation():Dims()
-    table.insert(self.fields, { field=name, type=LW.FieldAccessor[ndims] })
-  end
-end
-
-function ArgLayout:addGlobal(name, global)
-  if self:isCompiled() then
-    error('INTERNAL ERROR: cannot add new globals to compiled layout')
-  end
-  local typ = global._type:terratype()
-  table.insert(self.globals, { field=name, type=&typ })
-end
-
-function ArgLayout:addReduce(name, typ)
-  if self:isCompiled() then
-    error('INTERNAL ERROR: cannot add new reductions to compiled layout')
-  end
-  table.insert(self.reduce, { field=name, type=&typ})
-end
-
-function ArgLayout:turnSubsetOn()
-  if self:isCompiled() then
-    error('INTERNAL ERROR: cannot add a subset to compiled layout')
-  end
-  self.subset_on = true
-end
-
-function ArgLayout:addInsertion()
-  if self:isCompiled() then
-    error('INTERNAL ERROR: cannot add insertions to compiled layout')
-  end
-  self.insert_on = true
-end
-
-function ArgLayout:TerraStruct()
-  if not self:isCompiled() then self:Compile() end
-  return self.terrastruct
-end
-
-local struct bounds_struct { lo : uint64, hi : uint64 }
-
-function ArgLayout:Compile()
-  local terrastruct = terralib.types.newstruct(self.name)
-
-  -- add counter
-  table.insert(terrastruct.entries,
-               {field='bounds', type=(bounds_struct[self.n_dims])})
-  -- add subset data
-  local taddr = self._key_type
-  if self.subset_on then
-    table.insert(terrastruct.entries, {field='index',        type=&taddr})
-    table.insert(terrastruct.entries, {field='index_size',   type=uint64})
-  end
-  --if self.insert_on then
-  --end
-  -- add fields
-  for _,v in ipairs(self.fields) do table.insert(terrastruct.entries, v) end
-  -- add globals
-  for _,v in ipairs(self.globals) do table.insert(terrastruct.entries, v) end
-  -- add global reduction space
-  for _,v in ipairs(self.reduce) do table.insert(terrastruct.entries, v) end
-
-  self.terrastruct = terrastruct
-end
-
-function ArgLayout:isCompiled()
-  return self.terrastruct ~= nil
 end
 

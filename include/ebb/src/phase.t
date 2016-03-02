@@ -34,6 +34,7 @@ local ast = require "ebb.src.ast"
 local PhaseType = {}
 PhaseType.__index = PhaseType
 local PT = PhaseType
+Phase.PhaseType = PhaseType
 
 function PhaseType.New(params)
   local pt = setmetatable({

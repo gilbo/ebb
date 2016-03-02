@@ -268,7 +268,7 @@ end
 local function checkrelation(relation)
   if not T.is_relation(relation) then
     error("invalid argument to type constructor."..
-          "A relation must be provided", 4)
+          "A relation must be provided", 3)
   end
 end
 
