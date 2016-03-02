@@ -263,7 +263,7 @@ local function BuildTerraSignature(args)
     end
   end
   function terrasig.terraptr_reduction(sig, g)
-    local name = global_reduction_names[fg]
+    local name = global_reduction_names[g]
     return `sig.[name]
   end
 
@@ -648,6 +648,9 @@ end
 function UFVersion:_getTerraGlobalPtr(args_sym, global)
   return self._terra_signature.terraptr(args_sym, global)
 end
+function UFVersion:_getTerraGreductionPtr(args_sym, global)
+  return self._terra_signature.terraptr_reduction(args_sym, global)
+end
 
 
 --                  ---------------------------------------                  --
@@ -968,8 +971,9 @@ function UFVersion:_getBlockSize()
 end
 
 function UFVersion:_getTerraReduceGlobalMemPtr(args_sym, global)
-  local data = self:_getReduceData(global)
-  return `[args_sym].[data.id]
+  return self:_getTerraGreductionPtr(args_sym, global)
+  --local data = self:_getReduceData(global)
+  --return `[args_sym].[data.id]
 end
 
 function UFVersion:_getTerraReduceSharedMemPtr(global)
@@ -1209,10 +1213,10 @@ function UFVersion:_generateGPUReductionPreProcess(argptrsym)
     var [n_blocks] = [self:_numGPUBlocks(argptrsym)]
   end
   for globl, _ in pairs(self._global_reductions) do
-    local ttype = globl._type:terratype()
-    local id    = self:_getReduceData(globl).id
+    local ttype     = globl._type:terratype()
+    local reduceptr = self:_getTerraGreductionPtr(argptrsym, globl)
     code = quote code
-      [argptrsym].[id] = [&ttype](G.malloc(sizeof(ttype) * n_blocks))
+      [reduceptr] = [&ttype](G.malloc(sizeof(ttype) * n_blocks))
     end
   end
   return code
@@ -1235,10 +1239,10 @@ function UFVersion:_generateGPUReductionPostProcess(argptrsym)
 
   -- free GPU global memory allocated for the reduction
   for globl, _ in pairs(self._global_reductions) do
-    local id    = self:_getReduceData(globl).id
+    local reduceptr = self:_getTerraGreductionPtr(argptrsym, globl)
     code = quote code
-      G.free( [argptrsym].[id] )
-      [argptrsym].[id] = nil -- just to be safe
+      G.free( [reduceptr] )
+      [reduceptr] = nil -- just to be safe
     end
   end
   return code
