@@ -27,10 +27,11 @@ package.loaded["ebb.src.ufversions"] = UF
 local use_legion = not not rawget(_G, '_legion_env')
 local use_single = not use_legion
 
-local Pre = require "ebb.src.prelude"
-local C   = require "ebb.src.c"
-local G   = require "ebb.src.gpu_util"
-local T   = require "ebb.src.types"
+local Pre   = require "ebb.src.prelude"
+local C     = require "ebb.src.c"
+local G     = require "ebb.src.gpu_util"
+local T     = require "ebb.src.types"
+local Util  = require 'ebb.src.util'
 
 local CPU       = Pre.CPU
 local GPU       = Pre.GPU
@@ -210,7 +211,8 @@ local function BuildTerraSignature(args)
     if use_single then
       terrasig.entries:insert{ field=name, type=&( f:Type():terratype() ) }
     elseif use_legion then
-      terrasig.entries:insert{ field=name, type=LW.FieldAccessor[n_dims] }
+      local f_dims = #f:Relation():Dims()
+      terrasig.entries:insert{ field=name, type=LW.FieldAccessor[f_dims] }
     end
   end
   -- add globals
@@ -288,7 +290,7 @@ function UFVersion:Execute()
   self._exec_timer:start()
 
   -- Next, we partition the primary relation and other relations that are
-  -- referenced fro UFunc.
+  -- referenced from UFunc.
   self:_PartitionData()
 
   -- Regardless of the caching, we need to make sure
@@ -372,11 +374,12 @@ function UFVersion:Compile()
   --self._arg_layout:setRelation(self._relation)
 
   -- determine region requirements
-  if use_legion then
-    self:_DetermineLegionRequirements()
-  end
+  --if use_legion then
+  --  self:_DetermineLegionRequirements()
+  --end
 
-  self:_CompileTerraSignature(phase_data)
+  self:_CompileTerraSignature()
+  if use_legion then self:_CompileLegionSignature() end
 
   -- compile various kinds of data into the arg layout
   --self:_CompileFieldsGlobalsSubsets()
@@ -699,9 +702,10 @@ end
 
 function UFVersion:_PartitionData()
   if not use_legion then return end
-  for i, req in pairs(self._sorted_region_reqs) do
-    req:PartitionData(use_partitioning)  -- TODO: make default case single partition
-  end
+  self._legion_signature:PartitionRegReqs()
+  --for i, req in pairs(self._sorted_region_reqs) do
+  --  req:PartitionData(use_partitioning)  -- TODO: make default case single partition
+  --end
 end
 
 
@@ -1265,6 +1269,172 @@ function UFVersion:_CompileLegionAndGetLauncher(typed_ast)
   self._executable        = self:_CreateLegionLauncher(task_function)
 end
 
+
+local function phase_to_legion_privilege(phase)
+  assert(not phase:iserror(), 'INTERNAL: phase should not be in error')
+  if phase:isReadOnly() then      return LW.READ_ONLY
+  elseif phase:isCentered() then  return LW.READ_WRITE
+  else                            return LW.REDUCE        end
+end
+local get_regreq_helper = Util.memoize_named({
+  'build_data', 'relation', 'centered', 'privilege', 'reducefield',
+  -- hidden phase
+},
+function(args)
+  local reduceop  = args.phase:reductionOp()
+  local fieldtype = R.is_field(args.reducefield) and args.reducefield:Type()
+                                                  or nil
+  local regreq = LW.NewRegionReq {
+    num             = args.build_data.n_reg_req,
+    relation        = args.relation,
+    privilege       = args.privilege,
+    coherence       = LW.EXCLUSIVE,
+    reduce_op       = reduceop,
+    reduce_typ      = fieldtype,       
+    centered        = args.centered,
+  }
+  args.build_data.reg_req_list[regreq.num] = regreq
+  args.build_data.n_reg_req = args.build_data.n_reg_req + 1
+  return regreq
+end)
+local function get_regreq(build_data, field, phase)
+  local privilege = phase_to_legion_privilege(phase)
+  local regreq = get_regreq_helper {
+    build_data      = build_data,
+    relation        = field:Relation(),
+    privilege       = privilege,
+    reducefield     = privilege == LW.REDUCE and field,
+    centered        = phase:isCentered(),
+    phase           = phase,
+  }
+  return regreq
+end
+local function get_primary_regreq(build_data, relation)
+  -- NOTE: Legion might be assuming right now that NO_ACCESS regions are
+  -- added before other region requirements
+  assert(build_data.n_reg_req == 0,
+         'primary region requirement must be added first')
+  build_data.n_reg_req = 1
+  local regreq = LW.NewRegionReq {
+    num             = 0,
+    relation        = relation,
+    privilege       = LW.NO_ACCESS,
+    coherence       = LW.EXCLUSIVE,      
+    centered        = true,
+  }
+  build_data.reg_req_list[0] = regreq
+  return regreq
+end
+--[[
+{
+  field_use
+  global_use
+  relation
+}
+--]]
+-- ONE OF THE PRIMARY RESPONSIBILITIES of the legion signature is to
+-- manage the ordering of region requirements and futures in the
+-- legion task launch
+local function BuildLegionSignature(params)
+  if use_single then error('INTERNAL: Should only call '..
+    'BuildLegionSignature() when running on Legion runtime') end
+
+  local future_seq_i      = {}  -- future -> seq_num
+  local seq_globals       = {}  -- seq_num -> future
+  local n_futures         = 0
+
+  -- used as context and unique key for memoization
+  local build_data        = {
+    reg_req_list    = {}, -- in order by regreq_seq_i
+    n_reg_req       = 0,
+  }
+  local field_reqs  = {} -- field -> reg_req
+  local seq_fields  = {} -- regreq_seq_i -> field
+
+  -- add primary data-less region requirement
+  local prim_relation = params.relation
+  local prim_reg_req  = get_primary_regreq(build_data, prim_relation)
+  -- add field-driven region requirements
+  for field, phase in pairs(params.field_use) do
+    local reg_req             = get_regreq(build_data, field, phase)
+    field_reqs[field]         = reg_req
+    seq_fields[reg_req.num]   = field
+  end
+
+  -- determine order of future arguments
+  for globl, _ in pairs(params.global_use) do
+    future_seq_i[globl]     = n_futures
+    seq_globals[n_futures]  = globl
+    n_futures               = n_futures + 1
+  end
+
+  local LegionSignature = {}
+  function LegionSignature:getRegSeqId(field)
+    return field_reqs[field].num
+  end
+  function LegionSignature:getPrimaryRegionSeqId(field)
+    return prim_reg_req.num
+  end
+  function LegionSignature:getRegionRelation(regreq_seq_i)
+    if regreq_seq_i == 0 then return prim_relation end
+
+    local field = seq_fields[regreq_seq_i]
+    return field:Relation()
+  end
+  --function LegionSignature:getPrivilege(field)
+  --  return field_reqs[field].privilege
+  --end
+  function LegionSignature:AddRegReqsToTaskLauncher(task_launcher)
+    for i, req in self:RegionRequirementIterator() do
+      local out_id = task_launcher:AddRegionReq(req)
+      assert(i == out_id)
+    end
+  end
+  function LegionSignature:PartitionRegReqs()
+    for i, req in self:RegionRequirementIterator() do
+      -- TODO: make default case single partition
+      req:PartitionData(use_partitioning)
+    end
+  end
+  function LegionSignature:getPrimaryRegionPartition()
+    return prim_reg_req.partition
+  end
+  -- I DON'T LIKE THIS ITERATOR ONE BIT...
+  function LegionSignature:RegionRequirementIterator()
+    local i=0
+    return function()
+      local req = build_data.reg_req_list[i]
+      i=i+1
+      if not req then return nil
+                 else return i-1,req end
+    end
+  end
+  function LegionSignature:GetFutureSeqId(globl)
+    return future_seq_i[globl]
+  end
+  function LegionSignature:GlobalFutureIterator()
+    local i=0
+    return function()
+      local glob = seq_globals[i]
+      i=i+1
+      if not glob then return nil
+                  else return i-1,glob end
+    end
+  end
+
+  return LegionSignature
+end
+
+function UFVersion:_CompileLegionSignature()
+  self._legion_signature = BuildLegionSignature {
+    field_use   = self._field_use,
+    global_use  = self._global_use,
+    relation    = self._relation
+  }
+end
+
+
+--[[
 function UFVersion:_DetermineLegionRequirements()
   if use_single then
     error('INTERNAL: Should try to determine' ..
@@ -1298,7 +1468,11 @@ function UFVersion:_DetermineLegionRequirements()
                                   } )
   end
 
-  -- TODO: now determine futures (their order)
+  -- determine order of future arguments
+  for globl, _ in pairs(self._global_use) do
+    self._future_nums[globl]  = self._n_futures
+    self._n_futures           = self._n_futures + 1
+  end
 end
 
 function UFVersion:_RecordPrimaryRegionRequirement()
@@ -1359,9 +1533,9 @@ function UFVersion:_RecordRegionRequirement(field, use)
       privilege = LW.READ_ONLY
     -- reduction
     else
-      redoptyp  = 'field_' .. (LW.reduction_ops[use:reductionOp()]  or 'none') ..
-                  '_' .. T.typenames[field:Type()]
-      reg_sig = reg_sig .. '_uncentered_' .. redoptyp .. '_' .. field_sig
+      --redoptyp  = 'field_' .. (LW.reduction_ops[use:reductionOp()]  or 'none') ..
+      --            '_' .. T.typenames[field:Type()]
+      reg_sig = reg_sig ..'_uncentered_'..use:reductionOp()..'_'.. field_sig
       privilege = LW.REDUCE
     end
   end
@@ -1370,13 +1544,14 @@ function UFVersion:_RecordRegionRequirement(field, use)
   if not req_num then
     req_num = self._n_region_reqs
     local params = {
-      relation = relation,
-      num = req_num,
-      privilege = privilege,
-      coherence = LW.EXCLUSIVE,
-      redoptyp = redoptyp,
-      centered = centered
-      }
+      relation    = relation,
+      num         = req_num,
+      privilege   = privilege,
+      coherence   = LW.EXCLUSIVE,
+      reduce_op   = use:reductionOp(),
+      reduce_typ  = privilege==LW.REDUCE and field:Type(),
+      centered    = centered,
+    }
     self._n_region_reqs = self._n_region_reqs + 1
     local reg_req = LW.NewRegionReq(params)
     self._sorted_region_reqs[req_num] = reg_req
@@ -1395,125 +1570,200 @@ function UFVersion:_getRegionData(field)
                     '_' .. tostring(field._fid)
   return self._field_region_reqs[field_sig]
 end
-
 function UFVersion:_getFutureNum(globl)
   if use_single then error("INTERNAL: Cannot use futures w/o Legion") end
   local fut_num     = self._future_nums[globl]
   if fut_num then return fut_num
-  else
-    if self._arg_layout:isCompiled() then
-      error('INTERNAL ERROR: cannot add future after compiling '..
-            'argument layout.')
+  else error('UNRECOGNIZED GLOBAL requesting future num') end
+end
+--]]
+function UFVersion:_WrapLegionTask(argsym, basic_launcher)
+  local ufv = self
+
+  -- generate the end-of-launch code
+  local return_future_code    = quote end
+  local global_red_ptr        = nil
+  if ufv:UsesGlobalReduce() then
+    local globl = next(ufv._global_reductions)
+    local gtyp  = globl:Type():terratype()
+    global_red_ptr = symbol(&gtyp, 'global_red_ptr')
+
+    if next(ufv._global_reductions, globl) then
+      error("INTERNAL: More than 1 global reduction at a time unsupported")
     end
-
-    fut_num         = self._n_futures
-    self._n_futures = self._n_futures + 1
-
-    self._future_nums[globl] = fut_num
-    return fut_num
+    if ufv:onGPU() then
+      return_future_code = quote
+        var datum : gtyp
+        G.memcpy_cpu_from_gpu(&datum, global_red_ptr, sizeof(gtyp))
+        G.free(global_red_ptr)
+        return LW.legion_task_result_create( &datum, sizeof(gtyp) )
+      end
+    else
+      return_future_code = quote
+        return LW.legion_task_result_create( global_red_ptr, sizeof(gtyp) )
+      end
+    end
   end
+
+  -- execute the basic launcher multiple times if given a weird
+  -- iteration construct induced by legion
+  local function index_iterator_wrap(argsym, task_args)
+    local pnum = ufv._legion_signature:getPrimaryRegionSeqId()
+    return quote
+      var lg_index_space = LW.legion_physical_region_get_logical_region(
+          task_args.regions[pnum]
+        ).index_space
+      var lg_it = LW.legion_index_iterator_create(
+          task_args.lg_runtime,
+          task_args.lg_ctx,
+          lg_index_space
+        )
+      while LW.legion_index_iterator_has_next(lg_it) do
+        var count : C.size_t = 0
+        var base =
+            LW.legion_index_iterator_next_span(lg_it, &count, -1).value
+        argsym.bounds[0].lo = base
+        argsym.bounds[0].hi = base + count - 1
+
+        basic_launcher(&argsym)
+      end
+    end
+  end
+
+  -- generate the launcher wrapper
+  local argtyp = ufv:_argsType()
+  local launcher = terra( task_args : LW.TaskArgs )
+    var argsym : argtyp
+    -- Unpack from task args into argsym
+    [ ufv:_GenerateUnpackLegionTaskArgs(argsym, task_args, global_red_ptr) ]
+
+    -- Weird wrapper if given a fragmented view of non-grid partition
+    escape if not ufv._relation:isGrid() and run_config.use_partitioning then
+      emit(index_iterator_wrap(argsym, task_args))
+    else
+      emit quote basic_launcher(&argsym) end
+    end end -- end of escape
+
+    -- destroy field accessors
+    [ ufv:_CleanLegionTask(argsym) ]
+
+    -- possibly return a future object if a global was reduced
+    [ return_future_code ]
+  end
+  launcher:setname(ufv._name)
+
+  return launcher
 end
 
 -- Here we translate the Legion task arguments into our
 -- custom argument layout structure.  This allows us to write
 -- the body of generated code in a way that's agnostic to whether
 -- the code is being executed in a Legion task or not.
-function UFVersion:_GenerateUnpackLegionTaskArgs(argsym, task_args)
+function UFVersion:_GenerateUnpackLegionTaskArgs(argsym, task_args, gredptr)
   local ufv = self
 
   -- temporary collection of symbols from unpacking the regions
   local region_temporaries = {}
   local first = symbol(bool)
 
+  -- UNPACK REGIONS
+  local unpack_regions_code = terralib.newlist()
+  for ri,req in ufv._legion_signature:RegionRequirementIterator() do
+  --for ri,req in pairs(ufv._sorted_region_reqs) do
+    local relation      = ufv._legion_signature:getRegionRelation(ri)
+    local n_reldim      = #relation:Dims()
+    local physical_reg  = symbol(LW.legion_physical_region_t, 'phys_reg')
+    local rect, rectFromDom
+    if relation:isGrid() then
+      rect          = symbol(LW.LegionRect[n_reldim])
+      rectFromDom   = LW.LegionRectFromDom[n_reldim]
+    end
+
+    region_temporaries[ri] = {
+      physical_reg  = physical_reg,
+      rect          = rect,     -- nil for unstructured
+    }
+
+    unpack_regions_code:insert quote
+      var [physical_reg]  = [task_args].regions[ri]
+    end
+
+    -- structured case
+    if relation:isGrid() then unpack_regions_code:insert quote
+      var index_space = LW.legion_physical_region_get_logical_region(
+                                                    physical_reg).index_space
+      var domain = LW.legion_index_space_get_domain([task_args].lg_runtime,
+                                                    [task_args].lg_ctx,
+                                                    index_space)
+      var [rect] = [LW.LegionRectFromDom[n_reldim]]([domain])
+    end end
+  end
+
+  -- UNPACK FIELDS
+  local unpack_fields_code = terralib.newlist()
+  for field, phase in pairs(ufv._field_use) do
+    local rnum          = ufv._legion_signature:getRegSeqId(field)
+    local rtemp         = region_temporaries[rnum]
+    local physical_reg  = rtemp.physical_reg
+    local relation      = field:Relation()
+    local n_reldim      = #relation:Dims()
+    local rect          = rtemp.rect
+
+    local f_access = symbol(LW.legion_accessor_generic_t, 'field_accessor')
+    if phase:isUncenteredReduction() then
+      unpack_fields_code:insert(quote var [f_access] =
+        LW.legion_physical_region_get_accessor_generic(physical_reg)
+    end) else
+      unpack_fields_code:insert(quote var [f_access] =
+        LW.legion_physical_region_get_field_accessor_generic(physical_reg,
+                                                             field._fid)
+    end) end
+    -- structured
+    if relation:isGrid() then unpack_fields_code:insert(quote
+      var subrect : LW.LegionRect[n_reldim]
+      var strides : LW.legion_byte_offset_t[n_reldim]
+      var base = [&uint8]([ LW.LegionRawPtrFromAcc[n_reldim] ](
+                            f_access, rect, &subrect, strides))
+      for d = 0, n_reldim do
+        base = base - [rect].lo.x[d] * strides[d].offset
+      end
+      [ ufv._terra_signature.terraptr(argsym, field) ] =
+        [ LW.FieldAccessor[n_reldim] ] { base, strides, f_access }
+    end)
+    -- unstructured
+    else unpack_fields_code:insert(quote
+      var stride_val : C.size_t = 0
+      var strides : LW.legion_byte_offset_t[1]
+      var base : &uint8 = nil
+      C.assert(LW.legion_accessor_generic_get_soa_parameters(
+        f_access, [&&opaque](&base), &stride_val ))
+      strides[0].offset = stride_val
+      [ ufv._terra_signature.terraptr(argsym, field) ] =
+        [ LW.FieldAccessor[1] ] { base, strides, f_access }
+    end) end  -- quote, if-else
+  end  -- for
+
+
+  assert(not ufv._relation:isElastic(),
+         'LEGION TODO: have to change launch bound-unpack for '..
+         'elastic relations')
   local code = quote
     do -- close after unpacking the fields
-      -- UNPACK REGIONS
-      escape for ri, datum in pairs(ufv._sorted_region_reqs) do
-        local reg_dim       = datum.wrapper.dimensions
-        local physical_reg  = symbol(LW.legion_physical_region_t)
-        local domain        = symbol(LW.legion_domain_t)
-
-        local rect          = reg_dim and symbol(LW.LegionRect[reg_dim]) or nil
-        local rectFromDom   = reg_dim and LW.LegionRectFromDom[reg_dim] or nil
-
-        region_temporaries[ri] = {
-          physical_reg  = physical_reg,
-          reg_dim       = reg_dim,  -- nil for unstructured
-          rect          = rect      -- nil for unstructured
-        }
-
-        emit quote
-          var [physical_reg]  = [task_args].regions[ri]
-        end
-
-        -- structured case
-        if reg_dim then emit quote
-          var index_space     =
-            LW.legion_physical_region_get_logical_region(
-                                             physical_reg).index_space
-          var [domain]        =
-            LW.legion_index_space_get_domain([task_args].lg_runtime,
-                                             [task_args].lg_ctx,
-                                             index_space)
-          var [rect]          = rectFromDom([domain])
-        end end
-      end end
-
-      -- UNPACK FIELDS
-      escape for field, farg_name in pairs(ufv._field_ids) do
-        local datum         = ufv:_getRegionData(field)
-        local rnum          = datum.num
-        local rtemp         = region_temporaries[rnum]
-        local physical_reg  = rtemp.physical_reg
-        local reg_dim       = rtemp.reg_dim
-        local rect          = rtemp.rect
-
-        local accessor_function, accessor_args
-        if datum.privilege == LW.REDUCE then
-          accessor_function = LW.legion_physical_region_get_accessor_generic
-          accessor_args = { physical_reg }
-        else
-          accessor_function = LW.legion_physical_region_get_field_accessor_generic
-          accessor_args = { physical_reg, field._fid }
-        end
-        -- structured
-        if reg_dim then emit quote
-          var field_accessor = accessor_function(accessor_args)
-          var subrect : LW.LegionRect[reg_dim]
-          var strides : LW.legion_byte_offset_t[reg_dim]
-          var base = [&uint8](
-            [ LW.LegionRawPtrFromAcc[reg_dim] ](
-                                field_accessor, rect, &subrect, strides))
-          var offset : int = 0
-          for d = 0, reg_dim do
-            offset = offset + [rect].lo.x[d] * strides[d].offset 
-          end
-          base = base - offset
-          [argsym].[farg_name] = [ LW.FieldAccessor[reg_dim] ] { base, strides, field_accessor }
-        end
-        -- unstructured
-        else emit quote
-          var field_accessor = accessor_function(accessor_args)
-          var base : &opaque = nil
-          var stride_val : C.size_t = 0
-          var ok = LW.legion_accessor_generic_get_soa_parameters(
-            field_accessor, &base, &stride_val)
-          C.assert(ok)
-          var strides : LW.legion_byte_offset_t[1]
-          strides[0].offset = (stride_val)
-          [argsym].[farg_name] = [ LW.FieldAccessor[1] ] { [&uint8](base), strides, field_accessor }
-        end end  -- quote, if-else
-      end end  -- escape, for
-
+      [unpack_regions_code]
+      [unpack_fields_code]
+      
       -- UNPACK PRIMARY REGION BOUNDS RECTANGLE FOR STRUCTURED
-      -- FOR UNSTRUCTURED, CORRECT INITIALIZATION IS POSPONED TO LATER
+      -- FOR UNSTRUCTURED, CORRECT INITIALIZATION IS POSTPONED TO LATER
       -- FOR UNSRRUCTURED, BOUNDS INITIALIZED TO TOTAL ROWS HERE
       escape
-        local ri    = ufv:_getPrimaryRegionData().num
-        local rect  = region_temporaries[ri].rect
+        local relation  = ufv._relation
+        local ri        = ufv._legion_signature:getPrimaryRegionSeqId()
+        local rect      = region_temporaries[ri].rect
+        -- need to fix the following method of getting size when assert fails
+        local rel_size  = relation:Size()
         -- structured
-        if rect then
-          local ndims = region_temporaries[ri].reg_dim
+        if relation:isGrid() then
+          local ndims = #relation:Dims()
           for i=1,ndims do emit quote
             [argsym].bounds[i-1].lo = rect.lo.x[i-1]
             [argsym].bounds[i-1].hi = rect.hi.x[i-1]
@@ -1523,101 +1773,80 @@ function UFVersion:_GenerateUnpackLegionTaskArgs(argsym, task_args)
           -- initialize to total relation rows here, which would work without
           -- partitions
           [argsym].bounds[0].lo = 0
-          [argsym].bounds[0].hi = [ufv:_getPrimaryRegionData().wrapper.live_rows] - 1 -- bound is 1 off: the actual highest index value
+          [argsym].bounds[0].hi = [rel_size-1]
         end end
       end
-      
     end -- closing do started before unpacking the regions
 
     -- UNPACK FUTURES
     -- DO NOT WRAP THIS IN A LOCAL SCOPE or IN A DO BLOCK (SEE BELOW)
     -- ALSO DETERMINE IF THIS IS THE FIRST PARTITION
     escape
-      for globl, garg_name in pairs(ufv._global_ids) do
+      for globl, _ in pairs(ufv._global_use) do
+        local isreduce  = ufv._global_reductions[globl]
         -- position in the Legion task arguments
-        local fut_i   = ufv:_getFutureNum(globl) 
-        local gtyp    = globl._type:terratype()
-        local gptr    = ufv:_getLegionGlobalTempSymbol(globl)
-        -- global reduction type
-        local lz_type = globl._type
-        local op = (self._global_reductions[globl] ~=nil) and
-                    self._global_reductions[globl].phase.reduceop
-        local isreduce = (op ~= false)
+        local fut_i     = ufv._legion_signature:GetFutureSeqId(globl)
+        --local fut_i     = ufv._future_nums[globl]
+        local gtyp      = globl:Type():terratype()
+        local gptr      = symbol(&gtyp, 'global_var_ptr')
+        if isreduce then gptr = gredptr end
+        emit quote var [gptr] end
 
-        if ufv:onGPU() then
-          emit quote
-            var first = true
-            do
-              var task_point = LW.legion_task_get_index_point(task_args.task)
-              for i = 0, task_point.dim do
-                  first = first and (task_point.point_data[i] == 0)
-              end
+        -- code to initialize the global pointer
+        local init_gptr_code = quote
+          -- process the future into a piece of data
+          var fut     = LW.legion_task_get_future([task_args].task, fut_i)
+          var result  = LW.legion_future_get_result(fut)
+          var datum   = @[&gtyp](result.value)
+          LW.legion_task_result_destroy(result)
+
+          -- now set up the pointer to the global data
+          escape emit( ufv:onGPU() and quote
+            [gptr] = [&gtyp](G.malloc(sizeof(gtyp)))
+            G.memcpy_gpu_from_cpu(gptr, &datum, sizeof(gtyp))
+          end or quote -- onCPU
+            [gptr] = &datum
+          end ) end
+        end
+
+        -- SIMPLE NON-REDUCTION CASE
+        emit(init_gptr_code)
+        -- NOTE: THE FOLLOWING CODE IS BROKEN
+        --[[
+        if not isreduce then emit(init_gptr_code)
+        -- REDUCTION CASE
+        else emit quote
+          var first = true
+          do
+            var task_point = LW.legion_task_get_index_point(task_args.task)
+            for i = 0, task_point.dim do
+              first = first and (task_point.point_data[i] == 0)
             end
-            var [gptr]  = [&gtyp](G.malloc(sizeof(gtyp)))
-            escape 
-              if isreduce then
-                emit quote
-                  if not [first] then
-                    var temp = [codesupport.reduction_identity(lz_type, op)]
-                    G.memcpy_gpu_from_cpu(gptr, &temp, sizeof(gtyp))
-                  else
-                    var fut     = LW.legion_task_get_future([task_args].task, fut_i)
-                    var result  = LW.legion_future_get_result(fut)
-                    var datum   = @[&gtyp](result.value)
-                    G.memcpy_gpu_from_cpu(gptr, &datum, sizeof(gtyp))
-                    LW.legion_task_result_destroy(result)
-                  end
-                end  -- quote in branch end
-              else
-                emit quote
-                  var fut     = LW.legion_task_get_future([task_args].task, fut_i)
-                  var result  = LW.legion_future_get_result(fut)
-                  var datum   = @[&gtyp](result.value)
-                  G.memcpy_gpu_from_cpu(gptr, &datum, sizeof(gtyp))
-                  LW.legion_task_result_destroy(result)
-                end  -- quote end
-              end
-            end  -- escape
-            [argsym].[garg_name] = gptr
-          end  -- emit quote gpu case
-        else
-          emit quote
-            var first = true
-            do
-              var task_point = LW.legion_task_get_index_point(task_args.task)
-              for i = 0, task_point.dim do
-                first = first and (task_point.point_data[i] == 0)
-              end
-            end
-            var datum : gtyp
-            escape
-              if isreduce then
-                emit quote
-                  if not first then
-                    datum = [codesupport.reduction_identity(lz_type, op)]
-                  else
-                    var fut     = LW.legion_task_get_future([task_args].task, fut_i)
-                    var result  = LW.legion_future_get_result(fut)
-                    datum   = @[&gtyp](result.value)
-                    LW.legion_task_result_destroy(result)
-                  end
-                end  -- quote in branch end
-              else
-                emit quote
-                  var fut     = LW.legion_task_get_future([task_args].task, fut_i)
-                  var result  = LW.legion_future_get_result(fut)
-                  datum   = @[&gtyp](result.value)
-                  LW.legion_task_result_destroy(result)
-                end  -- quote end
-              end
-            end  -- escape
-            var [gptr] = &datum
-            -- note that we're going to rely on this variable
-            -- being stably allocated on the stack
-            -- for the remainder of this function scope
-            [argsym].[garg_name] = gptr
-          end  -- emit quote cpu case
-        end  -- if gpu else cpu case
+          end
+
+          if not first then escape
+            local reduceid = codesupport.reduction_identity(
+              globl:Type(), ufv._global_reductions[globl].phase.reduceop
+            )
+
+            -- alternate way of intializing gptr
+            if ufv:onGPU() then emit quote
+              var temp = [reduceid]
+              [gptr] = [&gtyp](G.malloc(sizeof(gtyp)))
+              G.memcpy_gpu_from_cpu(gptr, &temp, sizeof(gtyp))
+            end else emit quote
+              var temp = [reduceid]
+              [gptr] = &temp
+            end end
+          end else
+            [init_gptr_code]
+          end
+        end end
+        --]]
+
+        emit quote
+          [ ufv._terra_signature.terraptr(argsym, globl) ] = gptr
+        end
       end  -- for loop for globals
     end  -- escape
   end -- end quote
@@ -1626,13 +1855,12 @@ function UFVersion:_GenerateUnpackLegionTaskArgs(argsym, task_args)
 end
 
 function UFVersion:_CleanLegionTask(argsym)
-  local ufv = self
-
-  local stmts = {}
-  for field, farg_name in pairs(ufv._field_ids) do
-    table.insert(stmts, quote
-      LW.legion_accessor_generic_destroy([argsym].[farg_name].handle)
-    end)
+  local stmts = terralib.newlist()
+  for field, _ in pairs(self._field_use) do
+  --for field, farg_name in pairs(ufv._field_ids) do
+    stmts:insert(quote LW.legion_accessor_generic_destroy(
+      [ self._terra_signature.terraptr(argsym, field) ].handle
+    ) end)
   end  -- escape
   return stmts
 end
@@ -1677,35 +1905,44 @@ end
 
 -- Creates a task launcher with task region requirements.
 function UFVersion:_CreateLegionTaskLauncher(task_func)
-  local prim_reg   = self:_getPrimaryRegionData()
-  local prim_partn = prim_reg.partition
+  local prim_partn = self._legion_signature:getPrimaryRegionPartition()
 
   local task_launcher = LW.NewTaskLauncher {
-    taskfunc  = task_func,
-    gpu       = self:onGPU(),
-    task_ids  = self._task_ids,
-    use_index_launch = use_partitioning,  -- TODO: make default case single partition
-    domain           = use_partitioning and prim_partn:Domain()
+    taskfunc          = task_func,
+    gpu               = self:onGPU(),
+    use_index_launch  = use_partitioning, -- TODO: make default case single partition
+    domain            = use_partitioning and prim_partn:Domain()
   }
 
   -- ADD EACH REGION to the launcher as a requirement
   -- WITH THE appropriate permissions set
   -- NOTE: Need to make sure to do this in the right order
-  for ri, datum in pairs(self._sorted_region_reqs) do
-    local reg_req = task_launcher:AddRegionReq(datum)
-    assert(reg_req == ri)  -- TODO
-  end
+  self._legion_signature:AddRegReqsToTaskLauncher(task_launcher)
+  --for ri, datum in pairs(self._sorted_region_reqs) do
+  --  local reg_req = task_launcher:AddRegionReq(datum)
+  --  assert(reg_req == ri)  -- TODO
+  --end
 
   -- ADD EACH FIELD to the launcher as a requirement
   -- as part of the correct, corresponding region
-  for field, _ in pairs(self._field_ids) do
-    task_launcher:AddField( self:_getRegionData(field).num, field._fid )
+  for field, _ in pairs(self._field_use) do
+    task_launcher:AddField( self._legion_signature:getRegSeqId(field),
+                            field._fid )
   end
 
   -- ADD EACH GLOBAL to the launcher as a future being passed to the task
   -- NOTE: Need to make sure to do this in the right order
-  for globl, gi in pairs_val_sorted(self._future_nums) do
+  for gi, globl in self._legion_signature:GlobalFutureIterator() do
+  --for globl, gi in pairs_val_sorted(self._future_nums) do
     task_launcher:AddFuture( globl._data )
+  end
+
+  -- ADD Global reduction data to the launcher
+  local reduced_global = next(self._global_reductions)
+  if reduced_global then
+    local op  = self:_getReduceData(reduced_global).phase:reductionOp()
+    local typ = reduced_global:Type()
+    task_launcher:AddFutureReduction(op, typ)
   end
 
   return task_launcher
@@ -1714,30 +1951,21 @@ end
 -- Launches Legion task and returns.
 function UFVersion:_CreateLegionLauncher(task_func)
   local ufv = self
-  ufv._task_ids = {}
 
   -- NOTE: Instead of creating Legion task launcher every time
   -- within the returned function, why not create it once and then reuse the
   -- task launcher?
   if ufv:UsesGlobalReduce() then
     return function(leg_args)
-      local task_launcher = ufv:_CreateLegionTaskLauncher(task_func)
-      local global  = next(ufv._global_reductions)
-      local reduce_data = ufv:_getReduceData(global)
-      if LW.reduction_ops[reduce_data.phase:reductionOp()] == nil or
-        T.typenames[global:Type()] == nil then
-        error('Reduction operation ' .. reduce_data.phase:reductionOp() ..
-              ' on '.. tostring(global:Type()) ..
-              ' currently unspported with Legion')
+      local task_launcher   = ufv:_CreateLegionTaskLauncher(task_func)
+      local future = task_launcher:Execute(leg_args.runtime, leg_args.ctx)
+
+      local reduced_global  = next(ufv._global_reductions)
+      if reduced_global._data then
+        LW.legion_future_destroy(reduced_global._data)
       end
-      local redoptyp =
-        'global_' .. LW.reduction_ops[reduce_data.phase:reductionOp()] ..
-        '_' .. T.typenames[global:Type()]
-      local future  = task_launcher:Execute(leg_args.runtime, leg_args.ctx, redoptyp)
-      if global._data then
-        LW.legion_future_destroy(global._data)
-      end
-      global._data = future
+      reduced_global._data = future
+
       task_launcher:Destroy()
     end
   else

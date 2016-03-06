@@ -31,6 +31,7 @@ package.loaded["ebb.src.legionwrap"] = LW
 
 local C     = require "ebb.src.c"
 local DLD   = require "ebb.lib.dld"
+local Util  = require 'ebb.src.util'
 
 -- have this module expose the full C-API.  Then, we'll augment it below.
 local APIblob = terralib.includecstring([[
@@ -62,9 +63,6 @@ local legion_env = LE.legion_env[0]
 -------------------------------------------------------------------------------
 --[[  Data Accessors - Logical / Physical Regions, Fields, Futures         ]]--
 -------------------------------------------------------------------------------
-
--- Field IDs
-local fid_t = LW.legion_field_id_t
 
 -- Logical Regions
 local LogicalRegion     = {}
@@ -128,23 +126,41 @@ end
 LW.RegionReq         = {}
 LW.RegionReq.__index = LW.RegionReq
 
+--[[
+{
+  relation,
+  privilege
+  coherence,
+  reduce_op,
+  reduce_typ,
+  centered
+  num
+}
+--]]
 function LW.NewRegionReq(params)
+  local reduce_func_id = (params.privilege == LW.REDUCE)
+            and LW.GetFieldReductionId(params.reduce_op, params.reduce_typ)
+             or nil
   local relation = params.relation
   local reg_req = setmetatable({
-    wrapper   = relation._logical_region_wrapper,
-    num       = params.num,
-    relation  = relation,
-    privilege = params.privilege,
-    coherence = params.coherence,
-    redoptyp  = params.redoptyp,
-    partition = nil,
-    centered  = params.centered,
+    wrapper         = relation._logical_region_wrapper,
+    num             = params.num,
+    -- GOAL: Remove the next data item as a dependency
+    --        through more refactoring
+    relation_for_partitioning = relation,
+    privilege       = params.privilege,
+    coherence       = params.coherence,
+    reduce_func_id  = reduce_func_id,       
+    partition       = nil,
+    centered        = params.centered,
   }, LW.RegionReq)
   return reg_req
 end
 
+function LW.RegionReq:isreduction() return self.privilege == LW.REDUCE end
+
 function LW.RegionReq:PartitionData()  -- TODO: make default case single partition
-  local relation = self.relation
+  local relation = self.relation_for_partitioning
   if not self.partition then
     local partition = self.wrapper
     if use_partitioning then
@@ -209,41 +225,40 @@ local USED_TIDS = {
   future_cpu = 0,
   future_gpu = 0
 }
+local getUniqueTaskId = Util.memoize_from(2,
+function(taskptrtype, taskfunc, use_gpu)
+  local has_global_reduction = (taskptrtype == LW.SimpleTaskPtrType)
+  local tid_str = (has_global_reduction and 'simple_' or 'future_')..
+                  (use_gpu and 'gpu' or 'cpu')
+  local count = USED_TIDS[tid_str] + 1
+  USED_TIDS[tid_str] = count
 
+  local TID = TIDS[tid_str][count]
+  if VERBOSE then
+    print("Ebb LOG: task id " .. tostring(taskfunc.name) ..
+          " = " .. tostring(TID))
+  end
+  return TID
+end)
+
+--[[
+{
+  taskfunc
+  gpu               -- boolean
+  use_index_launch  -- boolean
+  domain            -- ??
+}
+--]]
 function LW.NewTaskLauncher(params)
   if not terralib.isfunction(params.taskfunc) then
     error('must provide Terra function as "taskfunc" argument', 2)
   end
   local taskfunc    = params.taskfunc
   local taskptrtype = &taskfunc:getdefinitions()[1]:gettype()
-  local TID
   local taskfuncptr = C.safemalloc( taskptrtype )
   taskfuncptr[0]    = taskfunc:getdefinitions()[1]:getpointer()
-  local task_ids    = params.task_ids
-
   -- get task id
-  TID = params.gpu and params.task_ids.gpu or params.task_ids.cpu
-  if not TID then
-    local tid_str = ((taskptrtype == LW.SimpleTaskPtrType) and 'simple_') or
-                    'future_'
-    if params.gpu then
-      tid_str = tid_str .. 'gpu'
-    else
-      tid_str = tid_str .. 'cpu'
-    end
-    local id = USED_TIDS[tid_str]
-    TID = TIDS[tid_str][id + 1]
-    if params.gpu then
-      task_ids.gpu = TID
-    else
-      task_ids.cpu = TID
-    end
-    USED_TIDS[tid_str] = id + 1
-    if VERBOSE then
-      print("Ebb LOG: task id " .. tostring(taskfunc.name) ..
-            " = " .. tostring(TID))
-    end
-  end
+  local TID         = getUniqueTaskId(taskptrtype, taskfunc, params.gpu)
 
   -- create task launcher
   -- by looking carefully at the legion_c wrapper
@@ -272,7 +287,8 @@ function LW.NewTaskLauncher(params)
     _TID          = TID,
     _launcher     = launcher,
     _index_launch = params.use_index_launch,
-    _on_gpu       = params.gpu
+    _on_gpu       = params.gpu,
+    _reduce_func_id = nil,
   }, LW.TaskLauncher)
 end
 
@@ -290,25 +306,45 @@ function LW.TaskLauncher:IsOnGPU()
   return self._on_gpu
 end
 
-
 function LW.TaskLauncher:AddRegionReq(req)
-  local region_args = terralib.newlist({self._launcher, req.partition.handle})
-  local index_or_task_str = (self._index_launch and '_index') or '_task'
-  local reg_or_partn_str = ((req.partition == req.wrapper) and '_region') or '_partition'
-  local p = req.privilege
-  local red_str = ((p == LW.REDUCE) and '_reduction') or ''
-  local add_region_requirement =
-    LW['legion' .. index_or_task_str ..
-       '_launcher_add_region_requirement_logical' ..
-       reg_or_partn_str ..red_str]
-  if self._index_launch then
-    region_args:insert(0)
-  end
-  local red_or_permission =
-    ((p == LW.REDUCE) and LW.reduction_ids[req.redoptyp]) or p
-  region_args:insertall({red_or_permission, req.coherence,
+  local use_part = req.partition ~= req.wrapper -- shitty test abstraction
+
+  -- Assemble the call
+  local args = terralib.newlist { self._launcher, req.partition.handle }
+  local str  = 'legion'
+  if self._index_launch then    region_args:insert(0)
+                                str = str .. '_index'
+                        else    str = str .. '_task' end
+  str = str .. '_launcher_add_region_requirement_logical'
+  if use_part then              str = str .. '_partition'
+              else              str = str .. '_region' end
+  if req:isreduction() then     args:insert(req.reduce_func_id)
+                                str = str .. '_reduction'
+                       else     args:insert(req.privilege) end
+  args:insertall { req.coherence, req.wrapper.handle, 0, false }
+  -- Do the call
+  return LW[str](unpack(args))
+  --[[
+
+  --local index_task_str  = self._index_launch and '_index'
+  --                                            or '_task'
+  --local reg_or_part_str = req.partition == req.wrapper and '_region'
+  --                                                      or '_partition'
+
+  local red_str         = (req:isreduction() and '_reduction') or ''
+  local add_req_func    = LW['legion'..index_or_task_str..
+                             '_launcher_add_region_requirement_logical'..
+                             reg_or_partn_str ..red_str]
+  --if self._index_launch then
+  --  region_args:insert(0)
+  --end
+  local red_or_priv     = req:isreduction() and req.reduce_func_id
+                                             or req.privilege
+  region_args:insertall({red_or_priv, req.coherence,
                          req.wrapper.handle, 0, false})
-  return add_region_requirement(unpack(region_args))
+  -- do the call
+  return add_req_func(unpack(region_args))
+  --]]
 end
 
 function LW.TaskLauncher:AddField(reg_req, fid)
@@ -325,15 +361,20 @@ function LW.TaskLauncher:AddFuture(future)
   AddFutureVariant(self._launcher, future)
 end
 
+function LW.TaskLauncher:AddFutureReduction(op, ebb_typ)
+  self._reduce_func_id = LW.GetGlobalReductionId(op, ebb_typ)
+end
+
 -- If there's a future it will be returned
-function LW.TaskLauncher:Execute(runtime, ctx, redoptype)
-  local exec_str =
-    'legion' .. ((self._index_launch and '_index') or '_task') .. '_launcher_execute'
+function LW.TaskLauncher:Execute(runtime, ctx, redop_id)
+  local exec_str = 'legion'..
+                   (self._index_launch and '_index' or '_task')..
+                   '_launcher_execute'
   local exec_args = terralib.newlist({runtime, ctx, self._launcher})
-  local reduce_id = nil
-  if redoptype and self._index_launch then
-    exec_args:insert(LW.reduction_ids[redoptype])
+  -- possibly add reduction to future
+  if self._reduce_func_id and self._index_launch then
     exec_str = exec_str .. '_reduction'
+    exec_args:insert(self._reduce_func_id)
   end
   return LW[exec_str](unpack(exec_args))
 end
@@ -1198,6 +1239,112 @@ end
 --[[  Reductions                                                           ]]--
 -------------------------------------------------------------------------------
 
+
+local reduction_function_counter = 0
+local no_more_reduction_ids = false
+local function unsupported_reduce_err(is_field, op, typ)
+error([[
+invalid reduction operation / data type combination:
+    ]]..(is_field and 'FieldReduction ' or 'GlobalReduction ')..
+        op..' '..tostring(typ)..'\n'..[[
+  IF YOU ARE SEEING THIS, then please tell the developers.
+  This error is due to the inability to dynamically register Legion
+  reduction functions.
+]], 3)
+end
+LW.GetFieldReductionId = Util.memoize_from(1, function(op, ebb_typ)
+  if no_more_reduction_ids then unsupported_reduce_err(true, op, ebb_typ) end
+  reduction_function_counter = reduction_function_counter + 1
+  return reduction_function_counter
+end)
+LW.GetGlobalReductionId = Util.memoize_from(1, function(op, ebb_typ)
+  if no_more_reduction_ids then unsupported_reduce_err(false, op, ebb_typ) end
+  reduction_function_counter = reduction_function_counter + 1
+  return reduction_function_counter
+end)
+
+
+function LW.RegisterReductions()
+  local T = require 'ebb.src.types'
+  local reduction_op_translate = {
+    ['+']   = 'plus',
+    ['*']   = 'times',
+    ['max'] = 'max',
+    ['min'] = 'min'
+  }
+  local basetyps = {
+    [T.int]     = 'int32',
+    [T.float]   = 'float',
+    [T.double]  = 'double',
+  }
+
+  -- construct list of all types with their mappings to string names
+  local typ_map = {}
+  for ebbt,lgt in pairs(basetyps) do typ_map[ebbt] = lgt end
+  for i=2,4 do
+    for ebbt,lgt in pairs(basetyps) do
+      typ_map[T.vector(ebbt,i)] = lgt..'_vec'..i
+    end
+    for j=2,4 do
+      for ebbt,lgt in pairs(basetyps) do
+        typ_map[T.matrix(ebbt,i,j)] = lgt..'_mat'..i..'x'..j
+      end
+    end
+  end
+
+  -- now register all the corresponding functions
+  for ebb_op, lg_op in pairs(reduction_op_translate) do
+    for ebbt, lgt in pairs(typ_map) do
+      local f_reg_func = LW['register_reduction_field_'..lg_op..'_'..lgt]
+      if f_reg_func then
+        f_reg_func( LW.GetFieldReductionId(ebb_op, ebbt) )
+      end
+      local g_reg_func = LW['register_reduction_global_'..lg_op..'_'..lgt]
+      if g_reg_func then
+        g_reg_func( LW.GetGlobalReductionId(ebb_op, ebbt) )
+      end
+    end
+  end
+  no_more_reduction_ids = true -- seal the memoization caches
+
+  -- define accessor function here
+  -- MESSY FUNCTION
+  --    Pros: Hides a lot of the complexity of Legion reductions in one spot
+  --    Cons: interrogates Ebb value and key types to work correctly
+  --          would be nice to not have those dependencies here ???
+  --          (unsure of that claim as broader policy)
+  LW.GetSafeReductionFunc = Util.memoize_from(1,
+  function(op, ebb_typ, key_typ)
+    local valstruct = LW[tostring(ebb_typ:basetype())..'_'..
+                         (ebb_typ.valsize or 1)]
+    local valarray  = ebb_typ:terrabasetype()[key_typ.valsize or 1]
+
+    local opstr     = reduction_op_translate[op]
+    local typstr    = typ_map[ebb_typ]
+    if not opstr or not typstr or not valstruct then
+      error('INTERNAL: unrecognized reduction combo: '..
+            op..' '..tostring(ebb_typ)..'\n'..
+            '  PLEASE REPORT to the developers')
+    end
+
+    local is_grid   = key_typ.ndims > 1
+    local str = 'safe_reduce_'..
+                (is_grid and 'domain_point_' or '')..
+                opstr..'_'..typstr
+    local reduction_function = LW[str]
+
+    return macro(function(accessor, key, coords)
+      local legion_ptr_pt = is_grid and (`key:domainPoint())
+                                     or (`LW.legion_ptr_t({key.a0}))
+      return `reduction_function( accessor,
+                                  [legion_ptr_pt],
+                                  valstruct({coords}) )
+    end)
+  end)
+end
+
+--[[
+
 -- reduction ids
 LW.reduction_ids = {}
 -- NOTE: supporting only cpu reductions for +, *, max, min
@@ -1220,14 +1367,8 @@ for i = 2,4 do
       = 'int32_mat' .. tostring(i) .. 'x' .. tostring(j)
   end
 end
-LW.reduction_ops = {
-  ['+']   = 'plus',
-  ['*']   = 'times',
-  ['max'] = 'max',
-  ['min'] = 'min'
-}
 local num_reduction_functions = 0
-for _, o in pairs(LW.reduction_ops) do
+for ebb_op, lg_op in pairs(reduction_op_translate) do
   for t, tt in pairs(LW.reduction_types) do
     local field_register_reduction =
       LW['register_reduction_field_' .. o .. '_' .. tt]
@@ -1245,7 +1386,7 @@ for _, o in pairs(LW.reduction_ops) do
 end
 terra LW.RegisterReductions()
   escape
-    for _, o in pairs(LW.reduction_ops) do
+    for ebb_op, lg_op in pairs(reduction_op_translate) do
       for t, tt in pairs(LW.reduction_types) do
         local field_register_reduction =
           LW['register_reduction_field_' .. o .. '_' .. tt]
@@ -1263,7 +1404,7 @@ terra LW.RegisterReductions()
     end
   end
 end
-
+--]]
 
 -------------------------------------------------------------------------------
 --[[  Miscellaneous methods                                                ]]--

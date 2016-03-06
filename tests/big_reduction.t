@@ -27,7 +27,7 @@ require 'tests.test'
 local N = 1000000
 
 local vertices = L.NewRelation { size = N, name = 'vertices' }
-local gerr = L.Global(L.int, 0)
+local gerr = L.Global(L.int, 1)
 
 local ebb RunRed(v : vertices)
   gerr += 1
@@ -36,7 +36,7 @@ end
 function run_test()
   gerr:set(0)
   vertices:foreach(RunRed)
-  test.eq(N, gerr:get())
+  test.eq(N+1, gerr:get())
 end
 
 run_test()

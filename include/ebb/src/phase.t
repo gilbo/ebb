@@ -58,12 +58,16 @@ function PhaseType:isReadOnly()
   return self.read and not self.write and not self.reduceop
 end
 
-function PhaseType:isReduce()
-  return self.reduceop
+function PhaseType:isUncenteredReduction()
+  return not self._centered and (not not self.reduceop)
 end
 
 function PhaseType:isCentered()
   return self.centered
+end
+
+function PhaseType:isWriting()
+  return self.write
 end
 
 function PhaseType:reductionOp()
@@ -190,7 +194,7 @@ local function log_helper(ctxt, is_field, f_or_g, phase_type, node)
   end
 
   -- check if more than one globals need to be reduced
-  if not is_field and phase_type:isReduce() then
+  if not is_field and phase_type:isUncenteredReduction() then
     local reduce_entry = ctxt.global_reduce
     if reduce_entry and lookup ~= reduce_entry then
       ctxt:error(node, 'Cannot reduce more than one global in a function.  '..
