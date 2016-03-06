@@ -143,7 +143,7 @@ function LW.NewRegionReq(params)
              or nil
   local relation = params.relation
   local reg_req = setmetatable({
-    wrapper         = relation._logical_region_wrapper,
+    log_reg_handle  = relation._logical_region_wrapper.handle,
     num             = params.num,
     -- GOAL: Remove the next data item as a dependency
     --        through more refactoring
@@ -161,22 +161,18 @@ function LW.RegionReq:isreduction() return self.privilege == LW.REDUCE end
 
 function LW.RegionReq:PartitionData()  -- TODO: make default case single partition
   local relation = self.relation_for_partitioning
-  if not self.partition then
-    local partition = self.wrapper
-    if use_partitioning then
-      if self.centered then
-        if not relation:IsPartitioningSet() then
-          local ndims = #relation:Dims()
-          local num_partitions = {}
-          for i = 1,ndims do
-              num_partitions[i] = run_config.num_partitions_default
-          end
-          relation:SetPartitions(num_partitions)
+  if not self.partition and use_partitioning then
+    if self.centered then
+      if not relation:IsPartitioningSet() then
+        local ndims = #relation:Dims()
+        local num_partitions = {}
+        for i = 1,ndims do
+            num_partitions[i] = run_config.num_partitions_default
         end
-        partition = relation:GetOrCreateDisjointPartitioning()
+        relation:SetPartitions(num_partitions)
       end
+      self.partition = relation:GetOrCreateDisjointPartitioning()
     end
-    self.partition = partition
   end
 end
 
@@ -307,10 +303,12 @@ function LW.TaskLauncher:IsOnGPU()
 end
 
 function LW.TaskLauncher:AddRegionReq(req)
-  local use_part = req.partition ~= req.wrapper -- shitty test abstraction
+  local use_part = req.partition ~= nil
+  local partition_handle = use_part and req.partition.handle
+                                     or req.log_reg_handle
 
   -- Assemble the call
-  local args = terralib.newlist { self._launcher, req.partition.handle }
+  local args = terralib.newlist { self._launcher, partition_handle }
   local str  = 'legion'
   if self._index_launch then    region_args:insert(0)
                                 str = str .. '_index'
@@ -321,30 +319,9 @@ function LW.TaskLauncher:AddRegionReq(req)
   if req:isreduction() then     args:insert(req.reduce_func_id)
                                 str = str .. '_reduction'
                        else     args:insert(req.privilege) end
-  args:insertall { req.coherence, req.wrapper.handle, 0, false }
+  args:insertall { req.coherence, req.log_reg_handle, 0, false }
   -- Do the call
   return LW[str](unpack(args))
-  --[[
-
-  --local index_task_str  = self._index_launch and '_index'
-  --                                            or '_task'
-  --local reg_or_part_str = req.partition == req.wrapper and '_region'
-  --                                                      or '_partition'
-
-  local red_str         = (req:isreduction() and '_reduction') or ''
-  local add_req_func    = LW['legion'..index_or_task_str..
-                             '_launcher_add_region_requirement_logical'..
-                             reg_or_partn_str ..red_str]
-  --if self._index_launch then
-  --  region_args:insert(0)
-  --end
-  local red_or_priv     = req:isreduction() and req.reduce_func_id
-                                             or req.privilege
-  region_args:insertall({red_or_priv, req.coherence,
-                         req.wrapper.handle, 0, false})
-  -- do the call
-  return add_req_func(unpack(region_args))
-  --]]
 end
 
 function LW.TaskLauncher:AddField(reg_req, fid)
@@ -1343,68 +1320,6 @@ function LW.RegisterReductions()
   end)
 end
 
---[[
-
--- reduction ids
-LW.reduction_ids = {}
--- NOTE: supporting only cpu reductions for +, *, max, min
--- on int, float and double supported right now
-LW.reduction_types = {
-  ['int']    = 'int32',
-  ['float']  = 'float',
-  ['double'] = 'double'
-}
-for i = 2,4 do
-  LW.reduction_types['vec' .. tostring(i) .. 'f'] = 'float_vec' .. tostring(i)
-  LW.reduction_types['vec' .. tostring(i) .. 'd'] = 'double_vec' .. tostring(i)
-  LW.reduction_types['vec' .. tostring(i) .. 'i'] = 'int32_vec' .. tostring(i)
-  for j = 2,4 do
-    LW.reduction_types['mat' .. tostring(i) .. 'x' .. tostring(j) .. 'f']
-      = 'float_mat' .. tostring(i) .. 'x' .. tostring(j)
-    LW.reduction_types['mat' .. tostring(i) .. 'x' .. tostring(j) .. 'd']
-      = 'double_mat' .. tostring(i) .. 'x' .. tostring(j)
-    LW.reduction_types['mat' .. tostring(i) .. 'x' .. tostring(j) .. 'i']
-      = 'int32_mat' .. tostring(i) .. 'x' .. tostring(j)
-  end
-end
-local num_reduction_functions = 0
-for ebb_op, lg_op in pairs(reduction_op_translate) do
-  for t, tt in pairs(LW.reduction_types) do
-    local field_register_reduction =
-      LW['register_reduction_field_' .. o .. '_' .. tt]
-    if field_register_reduction then
-      num_reduction_functions = num_reduction_functions + 1
-      LW.reduction_ids['field_' .. o .. '_' .. t] = num_reduction_functions
-    end
-    local global_register_reduction =
-      LW['register_reduction_global_' .. o .. '_' .. tt]
-    if global_register_reduction then
-      num_reduction_functions = num_reduction_functions + 1
-      LW.reduction_ids['global_' .. o .. '_' .. t] = num_reduction_functions
-    end
-  end
-end
-terra LW.RegisterReductions()
-  escape
-    for ebb_op, lg_op in pairs(reduction_op_translate) do
-      for t, tt in pairs(LW.reduction_types) do
-        local field_register_reduction =
-          LW['register_reduction_field_' .. o .. '_' .. tt]
-        if field_register_reduction then
-          local reduction_id = LW.reduction_ids['field_' .. o .. '_' .. t]
-          emit `field_register_reduction(reduction_id)
-        end
-        local global_register_reduction =
-          LW['register_reduction_global_' .. o .. '_' .. tt]
-        if global_register_reduction then
-          local reduction_id = LW.reduction_ids['global_' .. o .. '_' .. t]
-          emit `global_register_reduction(reduction_id)
-        end
-      end
-    end
-  end
-end
---]]
 
 -------------------------------------------------------------------------------
 --[[  Miscellaneous methods                                                ]]--

@@ -71,107 +71,11 @@ end
 
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
---[[ Signature                                                             ]]--
+--[[ Terra Signature                                                       ]]--
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
 
 local struct bounds_struct { lo : uint64, hi : uint64 }
-
---[[
-local ArgLayout = {}
-ArgLayout.__index = ArgLayout
-
-
-function ArgLayout.New()
-  return setmetatable({
-    fields            = terralib.newlist(),
-    globals           = terralib.newlist(),
-    reduce            = terralib.newlist()
-  }, ArgLayout)
-end
-
-function ArgLayout:setRelation(rel)
-  self._key_type  = keyT(rel):terratype()
-  self.n_dims     = #rel:Dims()
-end
-
-function ArgLayout:addField(name, field)
-  if self:isCompiled() then
-    error('INTERNAL ERROR: cannot add new fields to compiled layout')
-  end
-  if use_single then
-    local typ = field:Type():terratype()
-    table.insert(self.fields, { field=name, type=&typ })
-  elseif use_legion then
-    local ndims = #field:Relation():Dims()
-    table.insert(self.fields, { field=name, type=LW.FieldAccessor[ndims] })
-  end
-end
-
-function ArgLayout:addGlobal(name, global)
-  if self:isCompiled() then
-    error('INTERNAL ERROR: cannot add new globals to compiled layout')
-  end
-  local typ = global._type:terratype()
-  table.insert(self.globals, { field=name, type=&typ })
-end
-
-function ArgLayout:addReduce(name, typ)
-  if self:isCompiled() then
-    error('INTERNAL ERROR: cannot add new reductions to compiled layout')
-  end
-  table.insert(self.reduce, { field=name, type=&typ})
-end
-
-function ArgLayout:turnSubsetOn()
-  if self:isCompiled() then
-    error('INTERNAL ERROR: cannot add a subset to compiled layout')
-  end
-  self.subset_on = true
-end
-
-function ArgLayout:addInsertion()
-  if self:isCompiled() then
-    error('INTERNAL ERROR: cannot add insertions to compiled layout')
-  end
-  self.insert_on = true
-end
-
-function ArgLayout:TerraStruct()
-  if not self:isCompiled() then self:Compile() end
-  return self.terrastruct
-end
-
-
-function ArgLayout:Compile()
-  local terrastruct = terralib.types.newstruct(self.name)
-
-  -- add counter
-  table.insert(terrastruct.entries,
-               {field='bounds', type=(bounds_struct[self.n_dims])})
-  -- add subset data
-  local taddr = self._key_type
-  if self.subset_on then
-    table.insert(terrastruct.entries, {field='index',        type=&taddr})
-    table.insert(terrastruct.entries, {field='index_size',   type=uint64})
-  end
-  --if self.insert_on then
-  --end
-  -- add fields
-  for _,v in ipairs(self.fields) do table.insert(terrastruct.entries, v) end
-  -- add globals
-  for _,v in ipairs(self.globals) do table.insert(terrastruct.entries, v) end
-  -- add global reduction space
-  for _,v in ipairs(self.reduce) do table.insert(terrastruct.entries, v) end
-
-  self.terrastruct = terrastruct
-end
-
-function ArgLayout:isCompiled()
-  return self.terrastruct ~= nil
-end
-
---]]
 
 --[[
 args = {
@@ -370,23 +274,10 @@ function UFVersion:Compile()
   self._field_use   = shallowcopy_table(phase_data.field_use)
   self._global_use  = shallowcopy_table(phase_data.global_use)
 
-  --self._arg_layout = ArgLayout.New()
-  --self._arg_layout:setRelation(self._relation)
-
-  -- determine region requirements
-  --if use_legion then
-  --  self:_DetermineLegionRequirements()
-  --end
-
+  -- Build Signatures defining interface boundaries for
+  -- constructing various kinds of task wrappers
   self:_CompileTerraSignature()
   if use_legion then self:_CompileLegionSignature() end
-
-  -- compile various kinds of data into the arg layout
-  --self:_CompileFieldsGlobalsSubsets()
-
-  -- also compile insertion and/or deletion if used
-  --if phase_data.inserts then self:_CompileInserts(phase_data.inserts) end
-  --if phase_data.deletes then self:_CompileDeletes(phase_data.deletes) end
 
   -- handle GPU specific compilation
   if self:onGPU() and self:UsesGlobalReduce() then
@@ -428,10 +319,8 @@ function UFVersion:_CompileTerraSignature()
       read      = true,
       write     = use_deletes,
     }
-    --fields:insert(self._relation._is_live_mask)
   end
   if self:isOverSubset() and self._subset._boolmask then
-    --fields:insert(self._subset._boolmask)
     self._compiled_with_boolmask = true
     self._field_use[self._subset._boolmask] = PhaseType.New {
       centered  = true,
@@ -452,7 +341,6 @@ function UFVersion:_CompileTerraSignature()
     self._global_use[self._insert_data.write_idx] = PhaseType.New {
       reduceop    = '+',
     }
-    --globals:insert(self._insert_data.write_idx)
 
     for _,f in ipairs(insert_rel._fields) do
       assert(self._field_use[f] == nil, 'trying to add duplicate field')
@@ -462,7 +350,6 @@ function UFVersion:_CompileTerraSignature()
         write    = true,
       }
     end
-    --fields:insert(insert_rel._is_live_mask)
     self._field_use[insert_rel._is_live_mask] = PhaseType.New {
       centered = false,
       write    = true,
@@ -480,7 +367,6 @@ function UFVersion:_CompileTerraSignature()
     self._global_use[self._delete_data.n_deleted] = PhaseType.New {
       reduceop    = '+',
     }
-    --globals:insert(self._delete_data.n_deleted)
   end
 
 
@@ -507,116 +393,18 @@ function UFVersion:_CompileTerraSignature()
   }
 end
 
---[[
-function UFVersion:_CompileFieldsGlobalsSubsets(phase_data)
-
-  -- initialize id structures
-  self._field_ids    = {}
-  self._n_field_ids  = 0
-
-  self._global_ids   = {}
-  self._n_global_ids = 0
-
-  --self._global_reductions = {}
-
-
-  -- reserve ids
-  for field, use in pairs(self._field_use) do
-    self:_getFieldId(field)
-  end
-  if self:overElasticRelation() then
-    if use_legion then error("LEGION UNSUPPORTED TODO") end
-    self:_getFieldId(self._relation._is_live_mask)
-  end
-  if self:isOverSubset() then
-    if self._subset._boolmask then
-      self:_getFieldId(self._subset._boolmask)
-      self._compiled_with_boolmask = true
-    end
-  end
-  for globl, phase in pairs(self._global_use) do
-    local gid = self:_getGlobalId(globl)
-
-    -- record reductions
-    if phase.reduceop then
-      self._uses_global_reduce = true
-      local ttype             = globl._type:terratype()
-
-      local reduce_data       = self:_getReduceData(globl)
-      reduce_data.phase       = phase
-    end
-  end
-
-  -- compile subsets in if appropriate
-  if self._subset then
-    self._arg_layout:turnSubsetOn()
-  end
-end
---]]
-
 --                  ---------------------------------------                  --
 --[[ UFVersion Interface for Codegen / Compilation                         ]]--
 --                  ---------------------------------------                  --
 
 function UFVersion:_argsType ()
   return self._terra_signature
-  --return self._arg_layout:TerraStruct()
 end
-
---[[
-function UFVersion:_getFieldId(field)
-  local id = self._field_ids[field]
-  if id then return id
-  else
-    id = 'field_'..tostring(self._n_field_ids)..'_'..field:Name()
-    self._n_field_ids = self._n_field_ids+1
-
-    self._field_ids[field] = id
-    self._arg_layout:addField(id, field)
-    return id
-  end
-end
-
-function UFVersion:_getGlobalId(global)
-  local id = self._global_ids[global]
-  if id then return id
-  else
-    id = 'global_'..tostring(self._n_global_ids) -- no global names
-    self._n_global_ids = self._n_global_ids+1
-
-    -- TODO: remove redundant logic in getfuturenum
-    -- may be set future num is more appropriate here?
-    if use_legion then self:_getFutureNum(global) end
-
-    self._global_ids[global] = id
-    self._arg_layout:addGlobal(id, global)
-    return id
-  end
-end
---]]
 
 function UFVersion:_getReduceData(global)
   local data = self._global_reductions[global]
-  --if data and not data.id then
-  --  local gid = self:_getGlobalId(global)
-  --  data.id   = 'reduce_globalmem_'..gid:sub(#'global_' + 1)
-  --end
   return assert(self._global_reductions[global],
                 'reduction was not predeclared')
---[[
-  local data = self._global_reductions[global]
-  if not data then
-    local gid = self:_getGlobalId(global)
-    local id  = 'reduce_globalmem_'..gid:sub(#'global_' + 1)
-         data = { id = id }
-
-    self._global_reductions[global] = data
-    if self:onGPU() then
-      self._arg_layout:addReduce(id, global._type:terratype())
-    end
-  end
-  return data
---]]
 end
 
 function UFVersion:_setFieldPtr(field)
@@ -815,31 +603,6 @@ end
 --[[ Insert Processing ; all 4 stages (-launch)                            ]]--
 --                  ---------------------------------------                  --
 
---[[
-function UFVersion:_CompileInserts(inserts)
-  local ufv = self
-  --ufv._inserts = inserts
-
-  -- max 1 insert allowed
-  local rel, ast_nodes = next(inserts)
-  -- stash some useful data
-  ufv._insert_data = {
-    relation    = rel, -- relation we're going to insert into, not map over
-    record_type = ast_nodes[1].record_type,
-    write_idx   = EbbGlobal(uint64T, 0),
-  }
-  -- register the global variable
-  ufv:_getGlobalId(ufv._insert_data.write_idx)
-
-  -- prep all the fields we want to be able to write to.
-  for _,field in ipairs(rel._fields) do
-    ufv:_getFieldId(field)
-  end
-  ufv:_getFieldId(rel._is_live_mask)
-  ufv._arg_layout:addInsertion()
-end
---]]
-
 function UFVersion:_DynamicInsertChecks()
   if use_legion then error('INSERT unsupported on legion currently', 4) end
 
@@ -891,21 +654,6 @@ end
 --                  ---------------------------------------                  --
 --[[ Delete Processing ; all 4 stages (-launch)                            ]]--
 --                  ---------------------------------------                  --
-
---[[
-function UFVersion:_CompileDeletes(deletes)
-  local ufv = self
-  --ufv._deletes = deletes
-
-  local rel = next(deletes)
-  ufv._delete_data = {
-    relation  = rel,
-    n_deleted = EbbGlobal(uint64T, 0)
-  }
-  -- register global variable
-  ufv:_getGlobalId(ufv._delete_data.n_deleted)
-end
---]]
 
 function UFVersion:_DynamicDeleteChecks()
   if use_legion then error('DELETE unsupported on legion currently', 4) end
@@ -1253,16 +1001,12 @@ function UFVersion:_generateGPUReductionPostProcess(argptrsym)
 end
 
 
--------------------------------------------------------------------------------
--------------------------------------------------------------------------------
---[[ Legion Extensions                                                     ]]--
--------------------------------------------------------------------------------
--------------------------------------------------------------------------------
 
-
---                  ---------------------------------------                  --
---[[ Legion Compilation                                                    ]]--
---                  ---------------------------------------                  --
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+--[[ Legion Signature                                                      ]]--
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
 
 function UFVersion:_CompileLegionAndGetLauncher(typed_ast)
   local task_function     = codegen.codegen(typed_ast, self)
@@ -1381,9 +1125,6 @@ local function BuildLegionSignature(params)
     local field = seq_fields[regreq_seq_i]
     return field:Relation()
   end
-  --function LegionSignature:getPrivilege(field)
-  --  return field_reqs[field].privilege
-  --end
   function LegionSignature:AddRegReqsToTaskLauncher(task_launcher)
     for i, req in self:RegionRequirementIterator() do
       local out_id = task_launcher:AddRegionReq(req)
@@ -1434,149 +1175,12 @@ function UFVersion:_CompileLegionSignature()
 end
 
 
---[[
-function UFVersion:_DetermineLegionRequirements()
-  if use_single then
-    error('INTERNAL: Should try to determine' ..
-          'region requirements only when running on Legion runtime')
-  end
-  self._field_region_reqs  = {}  -- maps field to region requirements
-  self._region_req_num     = {}  -- maps region req type to region (req) number
-                                 -- eg: relation_centered_read to a number
-  self._sorted_region_reqs = {}  -- a sorted list of region requirements for
-                                 -- cases when order matters
-  self._n_region_reqs      = 0   -- number of region reqs added so far
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+--[[ Legion Extensions                                                     ]]--
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
 
-  -- TODO: should this be here or in CompilefieldsGlobalsSubsets?
-  self._future_nums  = {}
-  self._n_futures    = 0
-  --self._global_reduce = nil
-
-  -- first determine region requirements
-
-  -- record a requirement for primary relation
-  self:_RecordPrimaryRegionRequirement()
-  -- record requirements for each field accessed
-  for field, use in pairs(self._field_use) do
-    self:_RecordRegionRequirement(field, use)
-  end
-  if self:isOverSubset() then
-    self:_RecordRegionRequirement(self._subset._boolmask,
-                                  {
-                                    is_centered = true,
-                                    is_read_only = true
-                                  } )
-  end
-
-  -- determine order of future arguments
-  for globl, _ in pairs(self._global_use) do
-    self._future_nums[globl]  = self._n_futures
-    self._n_futures           = self._n_futures + 1
-  end
-end
-
-function UFVersion:_RecordPrimaryRegionRequirement()
-  local relation = self._relation
-  local field_sig = tostring(relation:_INTERNAL_UID())
-  local reg_sig = field_sig .. '_primary'
-  if self._field_region_reqs[field_sig] or
-     self._region_req_num[reg_sig] then
-    error('INTERNAL ERROR: record region requirement should be called' ..
-          'only once for primary region')
-  end
-  -- NOTE: Legion might be assuming right now that NO_ACCESS regions are
-  -- added before other region requirements
-  local req_num = self._n_region_reqs
-  local params = {
-    relation = relation,
-    num = req_num,
-    privilege = LW.NO_ACCESS,
-    coherence = LW.EXCLUSIVE,
-    centered  = true,
-  }
-  self._n_region_reqs = self._n_region_reqs + 1
-  local reg_req = LW.NewRegionReq(params)
-  self._sorted_region_reqs[req_num] = reg_req
-  self._region_req_num[reg_sig] = req_num
-  self._field_region_reqs[field_sig] = reg_req
-end
-
-function UFVersion:_RecordRegionRequirement(field, use)
-  local relation = field:Relation()
-  local field_sig = tostring(relation:_INTERNAL_UID()) ..
-                    '_' .. tostring(field._fid)
-  if self._field_region_reqs[field_sig] then
-    error('INTERNAL ERROR: record region requirement should be called' ..
-          'only once per field')
-  end
-  local reg_sig = tostring(relation:_INTERNAL_UID())
-  -- centered access has 2 cases: read only and read-write
-  local privilege, centered
-  local redoptyp = nil
-  if use.is_centered or use:isCentered() then
-    centered = true
-    -- read only
-    if use.is_read_only or use:isReadOnly() then
-      reg_sig = reg_sig .. '_centered_read' 
-      privilege = LW.READ_ONLY
-    -- write
-    else
-      reg_sig = reg_sig .. '_centered_write'
-      privilege = LW.READ_WRITE
-    end
-  -- non-centered access jas 2 cases: read only and reduction
-  else
-    centered = false
-    -- read only
-    if use.is_read_only or use:isReadOnly() then
-      reg_sig = reg_sig .. '_uncentered_read'
-      privilege = LW.READ_ONLY
-    -- reduction
-    else
-      --redoptyp  = 'field_' .. (LW.reduction_ops[use:reductionOp()]  or 'none') ..
-      --            '_' .. T.typenames[field:Type()]
-      reg_sig = reg_sig ..'_uncentered_'..use:reductionOp()..'_'.. field_sig
-      privilege = LW.REDUCE
-    end
-  end
-  local req_num = self._region_req_num[reg_sig]
-  -- a region requirement has already been created
-  if not req_num then
-    req_num = self._n_region_reqs
-    local params = {
-      relation    = relation,
-      num         = req_num,
-      privilege   = privilege,
-      coherence   = LW.EXCLUSIVE,
-      reduce_op   = use:reductionOp(),
-      reduce_typ  = privilege==LW.REDUCE and field:Type(),
-      centered    = centered,
-    }
-    self._n_region_reqs = self._n_region_reqs + 1
-    local reg_req = LW.NewRegionReq(params)
-    self._sorted_region_reqs[req_num] = reg_req
-    self._region_req_num[reg_sig] = req_num
-  end
-  self._field_region_reqs[field_sig] = self._sorted_region_reqs[req_num]
-end
-
-function UFVersion:_getPrimaryRegionData()
-  local field_sig = tostring(self._relation:_INTERNAL_UID())
-  return self._field_region_reqs[field_sig]
-end
-
-function UFVersion:_getRegionData(field)
-  local field_sig = tostring(field:Relation():_INTERNAL_UID()) ..
-                    '_' .. tostring(field._fid)
-  return self._field_region_reqs[field_sig]
-end
-function UFVersion:_getFutureNum(globl)
-  if use_single then error("INTERNAL: Cannot use futures w/o Legion") end
-  local fut_num     = self._future_nums[globl]
-  if fut_num then return fut_num
-  else error('UNRECOGNIZED GLOBAL requesting future num') end
-end
---]]
 function UFVersion:_WrapLegionTask(argsym, basic_launcher)
   local ufv = self
 
@@ -1669,7 +1273,6 @@ function UFVersion:_GenerateUnpackLegionTaskArgs(argsym, task_args, gredptr)
   -- UNPACK REGIONS
   local unpack_regions_code = terralib.newlist()
   for ri,req in ufv._legion_signature:RegionRequirementIterator() do
-  --for ri,req in pairs(ufv._sorted_region_reqs) do
     local relation      = ufv._legion_signature:getRegionRelation(ri)
     local n_reldim      = #relation:Dims()
     local physical_reg  = symbol(LW.legion_physical_region_t, 'phys_reg')
@@ -1786,7 +1389,6 @@ function UFVersion:_GenerateUnpackLegionTaskArgs(argsym, task_args, gredptr)
         local isreduce  = ufv._global_reductions[globl]
         -- position in the Legion task arguments
         local fut_i     = ufv._legion_signature:GetFutureSeqId(globl)
-        --local fut_i     = ufv._future_nums[globl]
         local gtyp      = globl:Type():terratype()
         local gptr      = symbol(&gtyp, 'global_var_ptr')
         if isreduce then gptr = gredptr end
@@ -1918,10 +1520,6 @@ function UFVersion:_CreateLegionTaskLauncher(task_func)
   -- WITH THE appropriate permissions set
   -- NOTE: Need to make sure to do this in the right order
   self._legion_signature:AddRegReqsToTaskLauncher(task_launcher)
-  --for ri, datum in pairs(self._sorted_region_reqs) do
-  --  local reg_req = task_launcher:AddRegionReq(datum)
-  --  assert(reg_req == ri)  -- TODO
-  --end
 
   -- ADD EACH FIELD to the launcher as a requirement
   -- as part of the correct, corresponding region
@@ -1933,7 +1531,6 @@ function UFVersion:_CreateLegionTaskLauncher(task_func)
   -- ADD EACH GLOBAL to the launcher as a future being passed to the task
   -- NOTE: Need to make sure to do this in the right order
   for gi, globl in self._legion_signature:GlobalFutureIterator() do
-  --for globl, gi in pairs_val_sorted(self._future_nums) do
     task_launcher:AddFuture( globl._data )
   end
 
