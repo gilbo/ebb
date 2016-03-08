@@ -300,7 +300,7 @@ function LW.TaskLauncher:AddRegionReq(req)
   local add_region_requirement =
     LW['legion' .. index_or_task_str ..
        '_launcher_add_region_requirement_logical' ..
-       reg_or_partn_str ..red_str]
+       reg_or_partn_str .. red_str]
   if self._index_launch then
     region_args:insert(0)
   end
@@ -645,6 +645,7 @@ function LW.NewLogicalRegion(params)
   -- logical region
   l.handle = LW.legion_logical_region_create(legion_env.runtime,
                                              legion_env.ctx, l.is, l.fs)
+  LW.legion_logical_region_attach_name(legion_env.runtime, l.handle, l.relation:Name())
 
   -- actually allocate rows
   l:AllocateRows(l.n_rows)
@@ -676,6 +677,7 @@ function LW.NewGridLogicalRegion(params)
   l.handle = LW.legion_logical_region_create(legion_env.runtime,
                                              legion_env.ctx,
                                              l.is, l.fs)
+  LW.legion_logical_region_attach_name(legion_env.runtime, l.handle, l.relation:Name())
   setmetatable(l, LogicalRegion)
   return l
 end
@@ -1271,4 +1273,45 @@ end
 
 function LW.heavyweightBarrier()
   LW.legion_runtime_issue_execution_fence(legion_env.runtime, legion_env.ctx)
+end
+
+
+-------------------------------------------------------------------------------
+--[[  Internal debugging methods                                           ]]--
+-------------------------------------------------------------------------------
+
+local terra _DO_NOT_USE_EmptyTaskFunction(task_args : LW.TaskArgs)
+  C.printf("Empty Task\n")
+end
+
+local task_ids = {}
+
+function LW._DO_NOT_USE_LaunchEmptySingleTaskOnRelation(relation)
+  local task_launcher = LW.NewTaskLauncher {
+    taskfunc = _DO_NOT_USE_EmptyTaskFunction,
+    gpu      = false,
+    task_ids = task_ids,
+    use_index_launch = false
+  }
+  -- one region requirement for the relation
+  local reg_req = task_launcher:AddRegionReq({
+    wrapper   = relation._logical_region_wrapper,
+    partition = relation._logical_region_wrapper,
+    privilege = LW.READ_WRITE,
+    coherence = LW.EXCLUSIVE,
+    redoptyp  = 'none'
+  })
+
+  -- iterate over user define fields and subset boolmasks
+  -- assumption: these are the only fields that are needed to force on physical
+  -- instance with valid data for all fields over the region
+  for _, field in pairs(relation._fields) do
+    task_launcher:AddField(reg_req, field._fid)
+  end
+  for _, subset in pairs(relation._subsets) do
+    task_launcher:AddField(reg_req, subset._boolmask._fid)
+  end
+  -- launch the task
+  task_launcher:Execute(legion_env.runtime, legion_env.ctx)
+  task_launcher:Destroy()
 end

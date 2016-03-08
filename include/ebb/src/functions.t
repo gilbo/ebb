@@ -35,9 +35,6 @@ if use_legion then
   LW            = require 'ebb.src.legionwrap'
 end
 
-local VERBOSE = rawget(_G, 'EBB_LOG_EBB')
-
-
 local T                 = require 'ebb.src.types'
 local Stats             = require 'ebb.src.stats'
 
