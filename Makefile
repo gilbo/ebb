@@ -122,7 +122,7 @@ ifdef LEGION_INSTALLED
   LIBLEGION_TERRA_DEBUG:=$(LEGION_BIND_DIR)/liblegion_terra_debug.so
   # environment variables to be set for recursive call to Legion build
   SET_ENV_VAR:=LUAJIT_DIR=$(LUAJIT_DIR) TERRA_DIR=$(REAL_TERRA_DIR) \
-    SHARED_LOWLEVEL=0 USE_GASNET=0 USE_CUDA=$(USE_CUDA)
+    LG_RT_DIR=$(REAL_LEGION_DIR)/runtime SHARED_LOWLEVEL=0 USE_GASNET=0 USE_CUDA=$(USE_CUDA)
 endif # LEGION_INSTALLED
 
 # # ----------------------------------------------------------------------- # #
@@ -163,7 +163,7 @@ ifdef LEGION_INSTALLED
   LIBMAPPER_DEBUG:=mappers/libmapper_debug.so
 
   MAPPER_CFLAGS:=-fPIC
-  MAPPER_CFLAGS+=-I$(LEGION_RUNTIME_DIR) -I$(LEGION_RUNTIME_DIR)/legion -I$(LEGION_RUNTIME_DIR)/mappers
+  MAPPER_CFLAGS+=-I$(LEGION_RUNTIME_DIR) -I$(LEGION_RUNTIME_DIR)/legion -I$(LEGION_RUNTIME_DIR)/mappers -I$(LEGION_RUNTIME_DIR)/realm
 
   MAPPER_LFLAGS:=-L$(LEGION_BIND_DIR)
   ifeq ($(PLATFORM),OSX)
@@ -190,7 +190,7 @@ ifdef LEGION_INSTALLED
   LIBLEGION_UTILS_DEBUG:=legion_utils/liblegion_utils_debug.so
 
   LEGION_UTILS_CFLAGS:=-fPIC
-  LEGION_UTILS_CFLAGS+=-I$(LEGION_RUNTIME_DIR) -I$(LEGION_RUNTIME_DIR)/legion -I$(LEGION_RUNTIME_DIR)/mappers
+  LEGION_UTILS_CFLAGS+=-I$(LEGION_RUNTIME_DIR) -I$(LEGION_RUNTIME_DIR)/legion -I$(LEGION_RUNTIME_DIR)/mappers -I$(LEGION_RUNTIME_DIR)/realm
 
   LEGION_UTILS_LFLAGS:=-L$(LEGION_BIND_DIR)
   ifeq ($(PLATFORM),OSX)
@@ -225,7 +225,7 @@ all: $(ALL_DEP)
 
 # This is a deprecated legacy build
 lmesh:
-	$(MAKE) -C deprecated_runtime
+	$(MAKE) -C deprecated/deprecated_runtime
 
 # auto-download rule, or make symlink to local copy rule
 terra:
@@ -376,7 +376,7 @@ ifdef LEGION_SYMLINK_EXISTS # don't try to recursively call into nowhere
 endif
 
 clean: mapperclean legionutilsclean
-	$(MAKE) -C deprecated_runtime clean
+	$(MAKE) -C deprecated/deprecated_runtime clean
 	-rm -r vdb*
 	-rm -r bin
 	-rm -r build

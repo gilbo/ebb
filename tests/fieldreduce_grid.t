@@ -22,34 +22,60 @@
 -- DEALINGS IN THE SOFTWARE.
 import 'ebb'
 local L = require 'ebblib'
-local test = require('tests.test')
 
-local R = L.NewRelation { size = 4, name = 'relation' }
-R:NewField("result", L. uint64)
+-- includes
+local Grid  = require 'ebb.domains.grid'
 
-local G = L.Global(L.double, 0)
+-- grid
+local Nx = 6
+local Ny = 6
+local grid = Grid.NewGrid2d {
+    size   = {Nx, Ny},
+    origin = {0, 0},
+    width  = {4, 4},
+    periodic_boundary = {true, true},
+}
+local C = grid.cells
+local V = grid.vertices
 
--- This macro emits a side effect every time it is evaluated
-local side_effect = L.Macro(function(x)
-	return ebb quote
-  G += L.double(L.id(x))
-	in
-		x
-	end
-end)
+-----------------------------------
+--  Uncentered Matrix reduction: --
+-----------------------------------
 
-local some_macro = L.Macro(function (y)
-	return ebb `L.id(y)+ L.id(y)
-end)
+V:NewField("mat", L.mat3d)
 
-local ebb per_elem (r : R)
-	--side effect should be evaluated twice!
-	r.result = some_macro(side_effect(r))
-
+local ebb m_set_v(v : V)
+  var dx = L.double(L.xid(v))
+  var dy = L.double(L.yid(v))
+  var d = Ny*dx + dy
+  v.mat = {{d, 0.0, 0.0},
+             {0.0, d, 0.0},
+             {0.0, 0.0, d}}
+end
+local ebb m_reduce_uncentered (c : C)
+  c.vertex(-1,-1).mat += .25*{
+    {.11, .11, .11},
+    {.22, .22, .22},
+    {.33, .33, .33}
+  }
+  c.vertex(-1,1).mat += .25*{
+    {.11, .11, .11},
+    {.22, .22, .22},
+    {.33, .33, .33}
+  }
+  c.vertex(1,-1).mat += .25*{
+    {.11, .11, .11},
+    {.22, .22, .22},
+    {.33, .33, .33}
+  }
+  c.vertex(1,1).mat += .25*{
+    {.11, .11, .11},
+    {.22, .22, .22},
+    {.33, .33, .33}
+  }
 end
 
-R:foreach(per_elem)
+V:foreach(m_set_v)
+C:foreach(m_reduce_uncentered)
 
-test.eq(G:get(), 12)
-
-
+V.mat:Print()

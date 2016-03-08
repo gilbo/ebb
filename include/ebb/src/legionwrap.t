@@ -47,8 +47,10 @@ local VERBOSE = rawget(_G, 'EBB_LOG_LEGION')
 --[[  Legion environment                                                   ]]--
 -------------------------------------------------------------------------------
 
-
 local LE = rawget(_G, '_legion_env')
+local run_config = rawget(_G, '_run_config')
+local use_partitioning = run_config.use_partitioning
+
 local struct LegionEnv {
   runtime : LW.legion_runtime_t,
   ctx     : LW.legion_context_t
@@ -116,6 +118,50 @@ LegionCreatePoint[2] = terra(pt1 : int, pt2 : int)
 end
 LegionCreatePoint[3] = terra(pt1 : int, pt2 : int, pt3 : int)
   return [LW.LegionPoint[3]]{array(pt1, pt2, pt3)}
+end
+
+
+-------------------------------------------------------------------------------
+--[[  Region Requirements                                                  ]]--
+-------------------------------------------------------------------------------
+
+LW.RegionReq         = {}
+LW.RegionReq.__index = LW.RegionReq
+
+function LW.NewRegionReq(params)
+  local relation = params.relation
+  local reg_req = setmetatable({
+    wrapper   = relation._logical_region_wrapper,
+    num       = params.num,
+    relation  = relation,
+    privilege = params.privilege,
+    coherence = params.coherence,
+    redoptyp  = params.redoptyp,
+    partition = nil,
+    centered  = params.centered,
+  }, LW.RegionReq)
+  return reg_req
+end
+
+function LW.RegionReq:PartitionData()  -- TODO: make default case single partition
+  local relation = self.relation
+  if not self.partition then
+    local partition = self.wrapper
+    if use_partitioning then
+      if self.centered then
+        if not relation:IsPartitioningSet() then
+          local ndims = #relation:Dims()
+          local num_partitions = {}
+          for i = 1,ndims do
+              num_partitions[i] = run_config.num_partitions_default
+          end
+          relation:SetPartitions(num_partitions)
+        end
+        partition = relation:GetOrCreateDisjointPartitioning()
+      end
+    end
+    self.partition = partition
+  end
 end
 
 
@@ -245,27 +291,23 @@ function LW.TaskLauncher:IsOnGPU()
 end
 
 
-function LW.TaskLauncher:AddRegionReq(reg_partn, parent, permission, coherence, redoptyp)
-  local region_args = terralib.newlist({self._launcher, reg_partn.handle})
+function LW.TaskLauncher:AddRegionReq(req)
+  local region_args = terralib.newlist({self._launcher, req.partition.handle})
   local index_or_task_str = (self._index_launch and '_index') or '_task'
-  local reg_or_partn_str = ((reg_partn == parent) and '_region') or '_partition'
-  local p = permission
-  -- TODO: this is temporary till we implement legion atomics for gpu
-  if self:IsOnGPU() and (p == LW.REDUCE) then
-    p = LW.READ_WRITE
-  end
+  local reg_or_partn_str = ((req.partition == req.wrapper) and '_region') or '_partition'
+  local p = req.privilege
   local red_str = ((p == LW.REDUCE) and '_reduction') or ''
   local add_region_requirement =
     LW['legion' .. index_or_task_str ..
        '_launcher_add_region_requirement_logical' ..
-       reg_or_partn_str ..red_str]
+       reg_or_partn_str .. red_str]
   if self._index_launch then
     region_args:insert(0)
   end
   local red_or_permission =
-    ((p == LW.REDUCE) and LW.reduction_ids[redoptyp]) or p
-  region_args:insertall({red_or_permission, coherence,
-                         parent.handle, 0, false})
+    ((p == LW.REDUCE) and LW.reduction_ids[req.redoptyp]) or p
+  region_args:insertall({red_or_permission, req.coherence,
+                         req.wrapper.handle, 0, false})
   return add_region_requirement(unpack(region_args))
 end
 
@@ -463,17 +505,77 @@ function LogicalRegion:AllocateRows(num)
   self.live_rows = self.live_rows + num
 end
 
+
 local allocate_field_fid_counter = 0
 -- NOTE: Assuming here that the compile time limit is never hit.
 -- NOTE: Call from top level task only.
+function LogicalRegion:_HIDDEN_ReserveFields()
+  if self._field_reserve then
+    error('Function ReserveFields() should only be called once')
+  end
+
+  -- indexed by number of bytes
+  -- (this particular set of sizes chosen by inspecting applications)
+  self._field_reserve = {
+    [1] = {},
+    [2] = {},
+    [3] = {},
+    [4] = {},
+    [8] = {},
+    [12] = {},
+    [16] = {},
+    [24] = {},
+    [32] = {},
+    [36] = {},
+    [48] = {},
+    [64] = {},
+    [72] = {}
+  }
+  self._field_reserve_count = {
+    [1] = 20,
+    [2] = 20,
+    [3] = 20,
+    [4] = 40,
+    [8] = 40,
+    [12] = 40,
+    [16] = 40,
+    [24] = 40,
+    [32] = 40,
+    [36] = 40,
+    [48] = 40,
+    [64] = 20,
+    [72] = 20
+  }
+  for nbytes, list in pairs(self._field_reserve) do
+    for i=1,self._field_reserve_count[nbytes] do
+
+      local fid = LW.legion_field_allocator_allocate_field(
+                    self.fsa,
+                    nbytes,
+                    allocate_field_fid_counter
+                  )
+      assert(fid == allocate_field_fid_counter)
+      allocate_field_fid_counter = allocate_field_fid_counter + 1
+
+      table.insert(list, fid)
+    end
+  end
+end
+
 function LogicalRegion:AllocateField(typ)
-  local fid = LW.legion_field_allocator_allocate_field(
-                self.fsa,
-                terralib.sizeof(typ),
-                allocate_field_fid_counter
-              )
-  assert(fid == allocate_field_fid_counter)
-  allocate_field_fid_counter = allocate_field_fid_counter + 1
+  local typsize = typ
+  if type(typ) ~= 'number' then typsize = terralib.sizeof(typ) end
+  local field_reserve = self._field_reserve[typsize]
+  if not field_reserve then
+    error('No field reserve for type size ' .. typsize)
+  end
+  local fid = table.remove(field_reserve)
+  if not fid then
+    error('Ran out of fields of size '..typsize..' to allocate;\n'..
+          'This error is the result of a hack to investigate performance '..
+          'issues in field allocation.  Fixing it 100% will probably '..
+          'require Mike making changes in the Legion runtime.\n')
+  end
   return fid
 end
 function LogicalRegion:FreeField(fid)
@@ -518,15 +620,17 @@ function LW.NewLogicalRegion(params)
   -- Max rows for index space = n_rows right now ==> no inserts
   -- Should eventually figure out an upper bound on number of rows and use that
   -- when creating index space.
-  local l = {
-              type      = 'unstructured',
-              relation  = params.relation,
-              field_ids = 0,
-              n_rows    = params.n_rows,
-              live_rows = 0,
-              max_rows  = params.n_rows
-            }
-  if l.max_rows == 0 then l.max_rows = 1 end  -- legion throws an error with 0 max rows
+  local l = setmetatable({
+    type      = 'unstructured',
+    relation  = params.relation,
+    field_ids = 0,
+    n_rows    = params.n_rows,
+    live_rows = 0,
+    max_rows  = params.n_rows
+  }, LogicalRegion)
+
+  -- legion throws an error with 0 max rows
+  if l.max_rows == 0 then l.max_rows = 1 end
   l.is  = LW.legion_index_space_create(legion_env.runtime,
                                        legion_env.ctx, l.max_rows)
   l.isa = LW.legion_index_allocator_create(legion_env.runtime,
@@ -536,10 +640,13 @@ function LW.NewLogicalRegion(params)
                                        legion_env.ctx)
   l.fsa = LW.legion_field_allocator_create(legion_env.runtime,
                                            legion_env.ctx, l.fs)
+  l:_HIDDEN_ReserveFields()
+
   -- logical region
   l.handle = LW.legion_logical_region_create(legion_env.runtime,
                                              legion_env.ctx, l.is, l.fs)
-  setmetatable(l, LogicalRegion)
+  LW.legion_logical_region_attach_name(legion_env.runtime, l.handle, l.relation:Name())
+
   -- actually allocate rows
   l:AllocateRows(l.n_rows)
   return l
@@ -548,13 +655,14 @@ end
 -- Allocate a structured logical region
 -- NOTE: Call from top level task only.
 function LW.NewGridLogicalRegion(params)
-  local l = {
-              type        = 'grid',
-              relation    = params.relation,
-              field_ids   = 0,
-              bounds      = params.dims,
-              dimensions  = #params.dims,
-            }
+  local l = setmetatable({
+    type        = 'grid',
+    relation    = params.relation,
+    field_ids   = 0,
+    bounds      = params.dims,
+    dimensions  = #params.dims,
+  }, LogicalRegion)
+
   -- index space
   local bounds = l.bounds
   l.is = CreateGridIndexSpace[l.dimensions](unpack(bounds))
@@ -563,10 +671,13 @@ function LW.NewGridLogicalRegion(params)
                                       legion_env.ctx)
   l.fsa = LW.legion_field_allocator_create(legion_env.runtime,
                                            legion_env.ctx, l.fs)
+  l:_HIDDEN_ReserveFields()
+
   -- logical region
   l.handle = LW.legion_logical_region_create(legion_env.runtime,
                                              legion_env.ctx,
                                              l.is, l.fs)
+  LW.legion_logical_region_attach_name(legion_env.runtime, l.handle, l.relation:Name())
   setmetatable(l, LogicalRegion)
   return l
 end
@@ -634,7 +745,7 @@ function LW.NewInlinePhysicalRegion(params)
     local subrect = terralib.new((LW.LegionRect[ndims])[1])
     local stride = terralib.new(LW.legion_byte_offset_t[ndims])
     for i, field in ipairs(params.fields) do
-      accs[i] = LW.legion_physical_region_get_accessor_generic(prs[i])
+      accs[i] = LW.legion_physical_region_get_field_accessor_generic(prs[i], field._fid)
       ptrs[i] = terralib.cast(&uint8,
                               LW.LegionRawPtrFromAcc[ndims](accs[i], rect, subrect, stride))
       local s = {}
@@ -649,7 +760,7 @@ function LW.NewInlinePhysicalRegion(params)
     local base = terralib.new((&opaque)[1])
     local stride = terralib.new(uint64[1])
     for i, field in ipairs(params.fields) do
-      accs[i] = LW.legion_physical_region_get_accessor_generic(prs[i])
+      accs[i] = LW.legion_physical_region_get_field_accessor_generic(prs[i], field._fid)
       base[0] = nil
       stride[0] = 0
       LW.legion_accessor_generic_get_soa_parameters(accs[i], base, stride)
@@ -1162,4 +1273,45 @@ end
 
 function LW.heavyweightBarrier()
   LW.legion_runtime_issue_execution_fence(legion_env.runtime, legion_env.ctx)
+end
+
+
+-------------------------------------------------------------------------------
+--[[  Internal debugging methods                                           ]]--
+-------------------------------------------------------------------------------
+
+local terra _DO_NOT_USE_EmptyTaskFunction(task_args : LW.TaskArgs)
+  C.printf("Empty Task\n")
+end
+
+local task_ids = {}
+
+function LW._DO_NOT_USE_LaunchEmptySingleTaskOnRelation(relation)
+  local task_launcher = LW.NewTaskLauncher {
+    taskfunc = _DO_NOT_USE_EmptyTaskFunction,
+    gpu      = false,
+    task_ids = task_ids,
+    use_index_launch = false
+  }
+  -- one region requirement for the relation
+  local reg_req = task_launcher:AddRegionReq({
+    wrapper   = relation._logical_region_wrapper,
+    partition = relation._logical_region_wrapper,
+    privilege = LW.READ_WRITE,
+    coherence = LW.EXCLUSIVE,
+    redoptyp  = 'none'
+  })
+
+  -- iterate over user define fields and subset boolmasks
+  -- assumption: these are the only fields that are needed to force on physical
+  -- instance with valid data for all fields over the region
+  for _, field in pairs(relation._fields) do
+    task_launcher:AddField(reg_req, field._fid)
+  end
+  for _, subset in pairs(relation._subsets) do
+    task_launcher:AddField(reg_req, subset._boolmask._fid)
+  end
+  -- launch the task
+  task_launcher:Execute(legion_env.runtime, legion_env.ctx)
+  task_launcher:Destroy()
 end
