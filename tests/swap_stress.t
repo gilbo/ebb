@@ -22,34 +22,16 @@
 -- DEALINGS IN THE SOFTWARE.
 import 'ebb'
 local L = require 'ebblib'
-local test = require('tests.test')
+require "tests/test"
 
-local R = L.NewRelation { size = 4, name = 'relation' }
-R:NewField("result", L. uint64)
+local R = L.NewRelation { name = 'R', size = 5 }
+R:NewField('a', L.double):Load(0)
+R:NewField('b', L.double):Load(0)
 
-local G = L.Global(L.double, 0)
+for i=1,500 do
+  R:Swap('a','b')
 
--- This macro emits a side effect every time it is evaluated
-local side_effect = L.Macro(function(x)
-	return ebb quote
-  G += L.double(L.id(x))
-	in
-		x
-	end
-end)
-
-local some_macro = L.Macro(function (y)
-	return ebb `L.id(y)+ L.id(y)
-end)
-
-local ebb per_elem (r : R)
-	--side effect should be evaluated twice!
-	r.result = some_macro(side_effect(r))
-
+  --if i % 10 == 0 then -- measure statistics every 10 steps
+  --  print('iteration #'..tostring(i))
+  --end
 end
-
-R:foreach(per_elem)
-
-test.eq(G:get(), 12)
-
-

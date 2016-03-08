@@ -1,0 +1,64 @@
+***************************************************
+**  This is an Ebb application intended to test  **
+**  partitioning over non-grid relations         **
+***************************************************
+cur_pos: <vector_double_3>
+	0	0.7 0 0 
+	1	0 0.7 0 
+	2	0 0 0.7 
+	3	-0.7 0 0 
+	4	0 -0.7 0 
+	5	0 0 -0.7 
+f: <vector_double_3>
+	0	-10 0 0 
+	1	0 -10 0 
+	2	0 0 -10 
+	3	10 0 0 
+	4	0 10 0 
+	5	0 0 10 
+Sum of deltas = 8.4852813742386 in iteration 1
+cur_pos: <vector_double_3>
+	0	0.56 0 0 
+	1	0 0.56 0 
+	2	0 0 0.56 
+	3	-0.56 0 0 
+	4	0 -0.56 0 
+	5	0 0 -0.56 
+f: <vector_double_3>
+	0	-8 0 0 
+	1	0 -8 0 
+	2	0 0 -8 
+	3	8 0 0 
+	4	0 8 0 
+	5	0 0 8 
+Sum of deltas = 6.7882250993908 in iteration 2
+cur_pos: <vector_double_3>
+	0	0.368 0 0 
+	1	0 0.368 0 
+	2	0 0 0.368 
+	3	-0.368 0 0 
+	4	0 -0.368 0 
+	5	0 0 -0.368 
+f: <vector_double_3>
+	0	-2.4 0 0 
+	1	0 -2.4 0 
+	2	0 0 -2.4 
+	3	2.4 0 0 
+	4	0 2.4 0 
+	5	0 0 2.4 
+Sum of deltas = 2.0364675298173 in iteration 3
+cur_pos: <vector_double_3>
+	0	0.1904 0 0 
+	1	0 0.1904 0 
+	2	0 0 0.1904 
+	3	-0.1904 0 0 
+	4	0 -0.1904 0 
+	5	0 0 -0.1904 
+f: <vector_double_3>
+	0	5.28 0 0 
+	1	0 5.28 0 
+	2	0 0 5.28 
+	3	-5.28 0 0 
+	4	0 -5.28 0 
+	5	0 0 -5.28 
+Sum of deltas = -4.480228565598 in iteration 4

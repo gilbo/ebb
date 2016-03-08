@@ -12,9 +12,6 @@ print("***************************************************")
 --   - correctly setting read/ write privileges for fields
 --   - partitioning write into disjoint regions
 --   - correctly reading globals/ constants
--- When using partitioning, this example should throw errors when:
---   - reducing fields
---   - reducing globals
 local do_global_reduction = true
 local do_field_reduction  = false
 
@@ -32,8 +29,6 @@ local grid = Grid.NewGrid2d {
 }
 local C = grid.cells
 local V = grid.vertices
--- C:SetGhostWidth({1, 1, 1, 1})
--- V:SetGhostWidth({1, 1, 1, 1})
 
 -------------------------------------------------------------------------------
 --  Initialization                                                           --
@@ -56,14 +51,9 @@ local ebb InitVertexVal(v)
   v.value = 0
 end
 
-local ebb PrintField(r, field)
-  L.print(L.xid(r), L.yid(r), r[field])
-end
-
 -- invoke initialization
 C:foreach(InitCellVal)
 V:foreach(InitVertexVal)
-C:foreach(PrintField, 'value')
 
 -------------------------------------------------------------------------------
 --  Diffuse values                                                           --
@@ -106,6 +96,7 @@ for iter = 1, 2 do
     if do_global_reduction then
         C:foreach(SumValue)
     end
-    C:foreach(PrintField, 'value')
+    C.value:Print()
+    V.value:Print()
     print("Sum of values at cells = " .. tostring(sum_val:get()))
 end

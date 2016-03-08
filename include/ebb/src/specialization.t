@@ -229,6 +229,36 @@ end
 
 
 
+------------------------------------------------------------------------------
+--[[ Unary operations applied to simple literals should be collapsed:     ]]--
+------------------------------------------------------------------------------
+function ast.UnaryOp:specialize(ctxt)
+  local exp = self.exp:specialize(ctxt)
+
+  if     self.op == 'not' and exp:is(ast.Bool) then
+    local blit = ast.Bool:DeriveFrom(self)
+    blit.value = not exp.value
+    return blit
+  elseif self.op == '-' and exp:is(ast.Number) then
+    if exp.valuetype == int or
+       exp.valuetype == float or
+       exp.valuetype == double or
+       exp.valuetype == nil
+    then
+      local nlit = ast.Number:DeriveFrom(self)
+      nlit.valuetype = exp.valuetype
+      nlit.value = - exp.value
+      return nlit
+    end -- dangerous if none of the above apply.  Don't try to collapse
+        -- e.g. uint64; don't want to negate as a Lua number
+  end
+
+  -- otherwise
+  local uop = self:clone()
+  uop.exp   = exp
+  return uop
+end
+
 
 ------------------------------------------------------------------------------
 --[[ AST Name Related:                                                    ]]--

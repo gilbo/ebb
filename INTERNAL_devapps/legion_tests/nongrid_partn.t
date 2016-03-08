@@ -12,10 +12,7 @@ print("***************************************************")
 --   - correctly setting read/ write privileges for fields
 --   - partitioning write into disjoint regions
 --   - correctly reading globals/ constants
--- When using partitioning, this example should throw errors when:
---   - reducing fields
---   - reducing globals
-local do_global_reduction = false
+local do_global_reduction = true
 local do_field_reduction  = false
 
 -- includes
@@ -50,18 +47,9 @@ local ebb InitCurPos(v)
   v.cur_pos = 1.5 * v.pos
 end
 
--- printer functions
-local ebb PrintField(r, field)
-  L.print(L.id(r), r[field])
-end
-
 -- invoke initialization
 E:foreach(InitLength)
 V:foreach(InitCurPos)
-
--- print out fields
-E:foreach(PrintField, 'rest_len')
-V:foreach(PrintField, 'pos')
 
 -- globals and constants
 local K  = L.Constant(L.double, 10)
@@ -119,7 +107,7 @@ for iter = 1, 4 do
     V:foreach(GatherForce)
   end
   V:foreach(UpdateKinematics)
-  V:foreach(PrintField, 'cur_pos')
-  V:foreach(PrintField, 'f')
+  V.cur_pos:Print()
+  V.f:Print()
   print("Sum of deltas = " .. tostring(sum_delta:get()) .. " in iteration " .. tostring(iter))
 end

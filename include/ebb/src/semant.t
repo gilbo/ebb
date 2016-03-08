@@ -134,7 +134,9 @@ function Context:checkReduceHint(node)
 end
 
 local function try_coerce(target_typ, node, ctxt)
-  if node.node_type:isCoercableTo(target_typ) then
+  if node.node_type == target_typ then
+    return node -- simple-case, avoid superfluous casts
+  elseif node.node_type:isCoercableTo(target_typ) then
     local cast = ast.Cast:DeriveFrom(node)
     cast.node_type  = target_typ
     cast.value      = node
@@ -608,6 +610,7 @@ function ast.GenericFor:check(ctxt)
   ctxt:enterloop()
   ctxt:ebb()[r.name] = keyType
   r.body = self.body:check(ctxt)
+  r.node_type = keyType
   ctxt:leaveloop()
   ctxt:leaveblock()
   return r

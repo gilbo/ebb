@@ -161,6 +161,27 @@ A.FieldAccess.is_lvalue = true
 A.Global.is_lvalue      = true
 A.Name.is_lvalue        = true
 
+
+----------------------------------
+--[[ Definition of a Literal  ]]--
+----------------------------------
+function AST:isLiteral() return false end
+function A.Number:isLiteral() return true end
+function A.String:isLiteral() return true end
+function A.Bool:isLiteral() return true end
+function A.VectorLiteral:isLiteral()
+  for i,e in ipairs(self.elems) do
+    if not e:isLiteral() then return false end
+  end
+  return true
+end
+function A.MatrixLiteral:isLiteral()
+  for i,e in ipairs(self.elems) do
+    if not e:isLiteral() then return false end
+  end
+  return true
+end
+
 -----------------------------
 --[[ General AST Methods ]]--
 -----------------------------

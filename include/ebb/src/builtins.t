@@ -238,19 +238,27 @@ function B.Affine.check(ast, ctxt)
         ctxt:error(ast[2], "Affine expects a matrix of numeric values")
         return errorT
     end
-    -- WE NEED TO CHECK CONST-NESS, but this seems to be
-    -- the wrong time to do it
-    --if not matrix:is(AST.MatrixLiteral) then
-    --    ctxt:error(ast[2], "Compiler could not verify that "..
-    --        "the matrix argument (2nd) to Affine is constant")
-    --    return errorT
-    --end
-    --for yi = 0,matrix.n-1 do for xi = 0,matrix.m-1 do
-    --    if not matrix.elems[yi*matrix.m + xi + 1]:is(AST.Number) then
-    --        ctxt:error(ast[2], "Compiler could not verify that "..
-    --            "the matrix argument (2nd) to Affine is constant")
-    --    end
-    --end end
+    -- Opting for a weak literal test instead of a const-ness test for now
+    if not matrix:is(AST.MatrixLiteral) or
+       not matrix:isLiteral()
+    then
+        ctxt:error(args[2], "Compiler could not verify that "..
+            "the matrix argument (2nd) to Affine is a literal")
+        return errorT
+    end
+
+    -- cache the matrix literal value for easy access
+    local Nrow,Ncol = matrix.node_type.Nrow, matrix.node_type.Ncol
+    matrix.matvals   = {}
+    for i=1,Nrow do
+        matrix.matvals[i] = {}
+        for j=1,Ncol do
+            local entry_ast = matrix.elems[(i-1)*Ncol + j]
+            local val = assert(entry_ast:is(AST.Number) and entry_ast.value,
+                               'INTERNAL: found non-literal matrix entry')
+            matrix.matvals[i][j] = val
+        end
+    end
 
     return keyT(dst_rel)
 end
