@@ -36,7 +36,6 @@ class EbbMapper : public DefaultMapper {
 public:
   EbbMapper(Machine machine, HighLevelRuntime *rt, Processor local);
   virtual void select_task_options(Task *task);
-  virtual bool pre_map_task(Task *task);
   virtual bool map_task(Task *task);
   virtual bool map_inline(Inline *inline_operation);
   virtual void notify_mapping_failed(const Mappable *mappable);
@@ -89,36 +88,6 @@ LogicalRegion EbbMapper::get_root_region(const LogicalPartition &handle) {
 
 void EbbMapper::select_task_options(Task *task) {
   DefaultMapper::select_task_options(task);
-}
-
-bool EbbMapper::pre_map_task(Task *task) {
-  std::vector<RegionRequirement> &regions = task->regions;
-  for (std::vector<RegionRequirement>::iterator it = regions.begin();
-        it != regions.end(); it++) {
-    RegionRequirement &req = *it;
-    if (req.handle_type == SINGULAR) {
-      req.must_early_map = true;
-    }
-  }
-
-  bool success = DefaultMapper::pre_map_task(task);
-
-  for (std::vector<RegionRequirement>::iterator it = regions.begin();
-        it != regions.end(); it++) {
-    RegionRequirement &req = *it;
-    if (req.must_early_map && !req.redop) {
-      LogicalRegion root = get_logical_region(req);
-      const char *name_c;
-      runtime->retrieve_name(root, name_c);
-      std::string name(name_c);
-      assert(active_fields.find(name) != active_fields.end());
-      std::set<FieldID> &additional = active_fields[name];
-      req.additional_fields.insert(additional.begin(),
-                                   additional.end());
-    }
-  }
-
-  return success;
 }
 
 bool EbbMapper::map_task(Task *task) {
