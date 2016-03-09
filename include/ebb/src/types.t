@@ -113,6 +113,7 @@ local function vectorType (typ, len)
 
   local vt                = NewType("vector")
   vt.N                    = len
+  vt.valsize              = len
   vt.type                 = typ
   local ttype             = typ:terratype()
   local struct_name       = "vector_" .. tostring(ttype) ..
@@ -144,6 +145,7 @@ local function matrixType (typ, nrow, ncol)
   local smt               = NewType("matrix")
   smt.Nrow                = nrow
   smt.Ncol                = ncol
+  smt.valsize             = nrow*ncol
   smt.type                = typ
   local ttype             = typ:terratype()
   local struct_name       = "matrix_" .. tostring(ttype) ..
@@ -243,18 +245,19 @@ end
 local function legion_domain_point_gen(keytyp)
   local key  = symbol(keytyp)
   local dims = #keytyp.entries
-  if dims == 2 then return
-    terra([key]) : LW.legion_domain_point_t
-      return
-       LW.legion_domain_point_t { dim = 2,
-                                  point_data = arrayof(int, [int](key.a0), [int](key.a1), 0) }
-    end
-  elseif dims == 3 then return
-    terra([key]) : LW.legion_domain_point_t
-      return
-        LW.legion_domain_point_t { dim = 3,
-                                   point_data = arrayof(int, [int](key.a0), [int](key.a1), [int](key.a2)) }
-    end
+  if dims == 2 then return terra([key]) : LW.legion_domain_point_t
+    return LW.legion_domain_point_t {
+      dim = 2,
+      point_data = arrayof(int, [int](key.a0), [int](key.a1), 0)
+    } end
+  elseif dims == 3 then return terra([key]) : LW.legion_domain_point_t
+    return LW.legion_domain_point_t {
+      dim = 3,
+      point_data = arrayof(int, [int](key.a0), [int](key.a1), [int](key.a2))
+    } end
+  else return macro(function()
+      error('INTERNAL :DomainPoint() undefined for key of dimension '..dims)
+    end)
   end
 end
 
@@ -268,7 +271,7 @@ end
 local function checkrelation(relation)
   if not T.is_relation(relation) then
     error("invalid argument to type constructor."..
-          "A relation must be provided", 4)
+          "A relation must be provided", 3)
   end
 end
 
@@ -822,28 +825,6 @@ for n=2,4 do
   T[shortname..'d'] = T[fullname..'d']
   T[shortname..'b'] = T[fullname..'b']
 end
-
--------------------------------------------------------------------------------
---[[ type names                                                            ]]--
--------------------------------------------------------------------------------
-local typenames = {
-  [T.int] = 'int',
-  [T.float] = 'float',
-  [T.double] = 'double'
-}
-for i = 2,4 do
-  local vtype = 'vec' .. tostring(i)
-  typenames[T[vtype .. 'i']] = vtype .. 'i'
-  typenames[T[vtype .. 'f']] = vtype .. 'f'
-  typenames[T[vtype .. 'd']] = vtype .. 'd'
-  for j = 2,4 do
-    local mtype = 'mat' .. tostring(i) .. 'x' .. tostring(j)
-    typenames[T[mtype .. 'i']] = mtype .. 'i'
-    typenames[T[mtype .. 'f']] = mtype .. 'f'
-    typenames[T[mtype .. 'd']] = mtype .. 'd'
-  end
-end
-T.typenames = typenames
 
 -------------------------------------------------------------------------------
 --[[ export type api                                                       ]]--

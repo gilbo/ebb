@@ -37,6 +37,7 @@ end
 
 local T                 = require 'ebb.src.types'
 local Stats             = require 'ebb.src.stats'
+local Util              = require 'ebb.src.util'
 
 local Pre               = require 'ebb.src.prelude'
 local R                 = require 'ebb.src.relations'
@@ -82,12 +83,15 @@ function F.NewFunction(func_ast, luaenv)
   return ufunc
 end
 
+local ufunc_version_id = 1
 function F.NewUFVersion(ufunc, signature)
   local version = setmetatable({
     _ufunc          = ufunc,
     _compile_timer  = Stats.NewTimer(ufunc._name..'_compile_time'),
     _exec_timer     = Stats.NewTimer(ufunc._name..'_execution_time'),
+    _name           = ufunc._name .. '_ufv'..ufunc_version_id
   }, UFVersion)
+  ufunc_version_id = ufunc_version_id + 1
 
   for k,v in pairs(signature) do
     version['_'..k] = v
@@ -102,38 +106,16 @@ function F.PrintStats()
   UFVersion._total_function_launch_count:Print()
 end
 
--- Use the following to produce
--- deterministic order of table entries
--- From the Lua Documentation
-local function pairs_sorted(tbl, compare)
-  local arr = {}
-  for k in pairs(tbl) do table.insert(arr, k) end
-  table.sort(arr, compare)
 
-  local i = 0
-  local iter = function() -- iterator
-    i = i + 1
-    if arr[i] == nil then return nil
-    else return arr[i], tbl[arr[i]] end
-  end
-  return iter
-end
 
-function Function:_get_typechecked(calldepth, relset, strargs)
-  -- lookup based on relation, not subset
-  local relation = relset
-  if R.is_subset(relset) then relation = relset:Relation() end
-  -- build lookup key string
-  local keystr = tostring(relset)
-  for _,arg in ipairs(strargs) do   keystr = keystr..','..arg   end
-  -- and perform lookup
-  local lookup = self._versions[keystr]
-  if lookup then return lookup end
+local get_ufunc_typetable =
+Util.memoize_from(2, function(calldepth, ufunc, relset, ...)
+  calldepth = calldepth+1 -- account for the memoization wrapper
+  -- ... are string arguments to function call
 
-  -- Otherwise, the Lookup failed, so...
-
+  local relation      = R.is_subset(relset) and relset:Relation() or relset
   -- make a safe copy that we can explicitly type annotate
-  local aname_ast     = self._decl_ast:alpha_rename()
+  local aname_ast     = ufunc._decl_ast:alpha_rename()
 
   -- process the first argument's type annotation.  Consistent? Present?
   local annotation    = aname_ast.ptypes[1]
@@ -150,7 +132,7 @@ function Function:_get_typechecked(calldepth, relset, strargs)
   end
 
   -- process the remaining arguments' type annotations.
-  for i,str in ipairs(strargs) do
+  for i,str in ipairs({...}) do
     local annotation = aname_ast.ptypes[i+1]
     if annotation then
       error('Secondary string arguments to functions should be '..
@@ -164,56 +146,45 @@ function Function:_get_typechecked(calldepth, relset, strargs)
   local phase_results   = phase.phasePass( typed_ast )
   local field_accesses  = stencil.stencilPass( typed_ast )
 
-  -- cache the type/phase-checking computations
-  local cached = {
+  return {
     typed_ast       = typed_ast,
     phase_results   = phase_results,
     field_accesses  = field_accesses,
-    versions        = {},
+    versions        = terralib.newlist(),
   }
-  self._versions[keystr] = cached
+end)
 
-  return cached
+function Function:_get_typechecked(calldepth, relset, strargs)
+  return get_ufunc_typetable(calldepth+1, self, relset, unpack(strargs))
 end
 
-local function get_ufunc_version(ufunc, typeversion_table, relset, params)
-  params = params or {}
-
-  local proc = params.location or Pre.default_processor
-
-  -- To lookup the version we want, we need to construct a signature
-  local sig = {
-    proc      = proc,
-  }
-  sig.relation  = relset
-  if R.is_subset(relset) then
-    sig.relation  = relset:Relation()
-    sig.subset    = relset
-  end
-  if proc == Pre.GPU then   sig.blocksize = params.blocksize or 64  end
-  if sig.relation:isElastic() then  sig.is_elastic = true  end
-
-  -- and convert that signature into a string for lookup
-  local str_sig = ''
-  for k,v in pairs_sorted(sig) do
-    str_sig = str_sig .. k .. '=' .. tostring(v) .. ';'
-  end
-
-  -- do the actual lookup
-  local version = typeversion_table.versions[str_sig]
-  if version then return version end
-
-  -- if the lookup failed, then we need to construct a new
-  -- version matching this signature
-  version = F.NewUFVersion(ufunc, sig)
-  version._typed_ast        = typeversion_table.typed_ast
-  version._phase_data       = typeversion_table.phase_results
-  version._field_accesses   = typeversion_table.field_accesses
-
-  -- and make sure to cache it
-  typeversion_table.versions[str_sig] = version
-
+local get_cached_ufversion = Util.memoize_named({
+  'ufunc', 'typtable', 'relation', 'proc', 'subset',
+  'blocksize'
+},
+function(sig)
+  local version             = F.NewUFVersion(sig.ufunc, sig)
+  version._typed_ast        = sig.typtable.typed_ast
+  version._phase_data       = sig.typtable.phase_results
+  version._field_accesses   = sig.typtable.field_accesses
+  sig.typtable.versions:insert(version)
   return version
+end)
+
+local function get_ufunc_version(ufunc, typeversion_table, relset, params)
+  params          = params or {}
+  local proc      = params.location or Pre.default_processor
+  local relation  = R.is_subset(relset) and relset:Relation() or relset
+
+  return get_cached_ufversion {
+    ufunc           = ufunc,
+    typtable        = typeversion_table,
+    relation        = relation,
+    subset          = R.is_subset(relset) and relset or nil,
+    proc            = proc,
+    blocksize       = proc == Pre.GPU and (params.blocksize or 64) or nil,
+    is_elastic      = relation:isElastic(),
+  }
 end
 
 -- this will cause typechecking to fire

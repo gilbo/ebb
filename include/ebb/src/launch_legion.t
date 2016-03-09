@@ -116,7 +116,6 @@ local logging_level = "3"
 logging_level = logging_level .. ",tasks=5"
 if use_legion_prof then
   logging_level = logging_level .. ",legion_prof=2"
-  -- logging_level = logging_level .. ",malloc=2,meta=2"
 end
 if use_legion_spy then
   logging_level = logging_level .. ",legion_spy=2"

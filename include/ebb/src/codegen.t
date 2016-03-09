@@ -123,9 +123,9 @@ end
 -- Modal Data
 
 function Context:onGPU()
-  return self.ufv:isOnGPU()
+  return self.ufv:onGPU()
 end
-function Context:hasGlobalReduce()
+function Context:UsesGlobalReduce()
   return self.ufv:UsesGlobalReduce()
 end
 function Context:isOverElastic() -- meaning the relation mapped over
@@ -149,7 +149,8 @@ function Context:hasExclusivePhase(field)
 end
 
 function Context:FieldElemPtr(field, key)
-  local farg        = `[ self:argsym() ].[ self.ufv:_getFieldId(field) ]
+  --local farg        = `[ self:argsym() ].[ self.ufv:_getFieldId(field) ]
+  local farg        = self.ufv:_getTerraField(self:argsym(), field)
   if use_single then
     local ptr       = farg
     return `(ptr + key:terraLinearize())
@@ -460,7 +461,7 @@ function Codegen.codegen (ufunc_ast, ufunc_version)
     -- Extra GPU wrapper
     if ctxt:onGPU() then
       -- Extra GPU Reduction setup/post-process
-      if ctxt:hasGlobalReduce() then
+      if ctxt:UsesGlobalReduce() then
         body = quote
           [ctxt:codegenSharedMemInit()]
           G.barrier()
@@ -533,10 +534,16 @@ function Codegen.codegen (ufunc_ast, ufunc_version)
 
   end -- CPU / GPU LAUNCHER END
 
+  if use_legion then
+    return ctxt.ufv:_WrapLegionTask(ctxt:argsym(), launcher)
+  else
+    return launcher
+  end
+  --[[
   -- OPTIONALLY WRAP UP AS A LEGION TASK
   if use_legion then
     local generate_output_future = quote end
-    if ctxt:hasGlobalReduce() then
+    if ctxt:UsesGlobalReduce() then
       local globl             = next(ctxt.ufv._global_reductions)
       local gtyp              = globl._type:terratype()
       local gptr              = ctxt.ufv:_getLegionGlobalTempSymbol(globl)
@@ -599,6 +606,7 @@ function Codegen.codegen (ufunc_ast, ufunc_version)
   end -- Legion branch end
 
   return launcher
+  --]]
 
 end -- CODEGEN ENDS
 
@@ -966,16 +974,18 @@ function ast.FieldWrite:codegen (ctxt)
   elseif use_legion and self.reduceop and
          not ctxt:hasExclusivePhase(self.fieldaccess.field)
   then
-    local rexp = self.exp:codegen(ctxt)
-    local key = self.fieldaccess.key:codegen(ctxt)
-    local farg = `[ ctxt:argsym() ].[ ctxt.ufv:_getFieldId(self.fieldaccess.field) ]
+    local rexp    = self.exp:codegen(ctxt)
+    local key     = self.fieldaccess.key:codegen(ctxt)
+    local keytyp  = self.fieldaccess.key.node_type
+
+    local farg = ctxt.ufv:_getTerraField(ctxt:argsym(),
+                                         self.fieldaccess.field)
     return
-        Support.legion_cpu_atomic_exp(self.reduceop,
-                                      self.fieldaccess.node_type,
-                                      `key,
-                                      `farg.handle,
-                                      rexp, self.exp.node_type,
-                                      ctxt:isGridRelation())
+        Support.legion_cpu_atomic_stmt(self.reduceop,
+                                       self.fieldaccess.node_type,
+                                       `key, keytyp,
+                                       `farg.handle,
+                                       rexp, self.exp.node_type)
   else
     -- just re-direct to an assignment statement otherwise
     local assign = ast.Assignment:DeriveFrom(self)

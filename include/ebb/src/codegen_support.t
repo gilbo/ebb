@@ -106,7 +106,12 @@ Support.mat_foldgen = mat_foldgen
 --[[--------------------------------------------------------------------]]--
 
 
--- ONLY ONE PLACE...
+-- the purpose of this support function is to deconstruct
+-- a vector-value into expressions for each of its components, so that
+-- simple reduction instructions (e.g. on the GPU) can be applied
+-- component-wise.
+-- A binding is returned as well to ensure correct execution semantics for
+-- the exp expression; i.e. that it is only executed ONCE.
 local function let_vec_binding(typ, N, exp)
   local val = symbol(typ:terratype())
   local let_binding = quote var [val] = [exp] end
@@ -136,57 +141,6 @@ local function let_mat_binding(typ, N, M, exp)
     end
   end
   return let_binding, coords
-end
-
--- ONLY ONE PLACE...
-local function let_vec_binding_linearized(typ, N, exp)
-  local val = symbol(typ:terratype())
-  local coords = symbol(typ:terrabasetype()[N])
-  local binding = quote
-    var [val] = [exp]
-    var [coords]
-  end
-  if typ:isvector() then
-    for i=1, N do
-      binding = quote
-        [binding]
-        coords[i-1] = val.d[i-1]
-      end
-    end
-  else
-    for i=1, N do
-      binding = quote
-        [binding]
-        coords[i-1] = val
-      end
-    end
-  end
-  return binding, coords
-end
-
-local function let_mat_binding_linearized(typ, N, M, exp)
-  local val = symbol(typ:terratype())
-  local coords = symbol(typ:terrabasetype()[M*N])
-  local binding = quote
-    var [val] = [exp]
-    var [coords]
-  end
-  for i = 1, N do
-    for j = 1, M do
-      if typ:ismatrix() then
-        binding = quote
-          [binding]
-          coords[(i-1) * M + (j-1)] = val.d[i-1][j-1]
-        end
-      else
-        binding = quote
-          [binding]
-          coords[(i-1) * M + (j-1)] = val
-        end
-      end
-    end
-  end
-  return binding, coords
 end
 
 local function symgen_bind(typ, exp, f)
@@ -610,41 +564,24 @@ end
 --[[--------------------------------------------------------------------]]--
 
 -- atomic legion reductions on scalar types
-local function legion_cpu_atomic_red_exp (op, result_typ, key, laccessor,
-                                          rhe, rhtyp, isgrid)
-  local typename = T.typenames[result_typ]
-  if LW.reduction_ops[op] == nil or LW.reduction_types[typename] == nil then
-    error('Reduction operator ' .. op .. ' on type ' .. typename ..
-          ' not supported.')
-  end
-  local domain_point = (isgrid and "domain_point_") or ""
-  local reduction_function = LW['safe_reduce_' .. domain_point .. LW.reduction_ops[op] ..
-                                '_' .. LW.reduction_types[typename]]
-  local lindex = (isgrid and `key:domainPoint()) or `key.a0
-  local base_type = result_typ:basetype()
-  local binding, coords, size
+local function legion_cpu_atomic_red_stmt (op, result_typ, key, key_typ,
+                                           laccessor, rhe, rhtyp)
+  local size = result_typ.valsize or 1
+  local coords
   if result_typ:isscalar() then  -- scalar
-    local N = 1
-    binding, coords = let_vec_binding_linearized(rhtyp, N, rhe)
-    size = N
+    coords  = `array(rhe)
   elseif result_typ:isvector() then  -- vector
-    local N = result_typ.N
-    binding, coords = let_vec_binding_linearized(rhtyp, N, rhe)
-    size = N
+    coords  = `rhe.d
   else  -- small matrix
-    local N = result_typ.Nrow
-    local M = result_typ.Ncol
-    size = M*N
-    binding, coords = let_mat_binding_linearized(rhtyp, N, M, rhe)
+    -- do some weird casting gymnastics in this case
+    -- don't know why we got rid of the linearized small matrix storage...
+    local btyp = result_typ:terrabasetype()
+    coords  = quote var val = [rhe]
+                 in @[&btyp[size]]([&opaque](&val.d[0][0])) end
   end
-  local legion_ptr_pt = (isgrid and `LW.legion_domain_point_t(lindex))
-                        or `LW.legion_ptr_t({lindex})
-  local dtype = LW[T.typenames[base_type] .. '_' .. tostring(size)]
-  return quote
-          [binding]
-         in
-            reduction_function(laccessor, legion_ptr_pt, dtype({coords}))
-         end
+
+  local reductionfunc = LW.GetSafeReductionFunc(op, result_typ, key_typ)
+  return quote reductionfunc(laccessor, key, coords) end
 end
 
 
@@ -655,4 +592,4 @@ end
 Support.unary_exp = unary_exp
 Support.bin_exp = mat_bin_exp
 Support.gpu_atomic_exp = atomic_gpu_mat_red_exp
-Support.legion_cpu_atomic_exp = legion_cpu_atomic_red_exp
+Support.legion_cpu_atomic_stmt = legion_cpu_atomic_red_stmt
