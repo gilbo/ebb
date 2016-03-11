@@ -310,7 +310,7 @@ function LW.TaskLauncher:AddRegionReq(req)
   -- Assemble the call
   local args = terralib.newlist { self._launcher, partition_handle }
   local str  = 'legion'
-  if self._index_launch then    region_args:insert(0)
+  if self._index_launch then    args:insert(0)
                                 str = str .. '_index'
                         else    str = str .. '_task' end
   str = str .. '_launcher_add_region_requirement_logical'
@@ -1333,50 +1333,53 @@ end
 
 
 -------------------------------------------------------------------------------
---[[  Internal debugging methods                                           ]]--
+--[[  Temporary hacks                                                      ]]--
 -------------------------------------------------------------------------------
 
-local terra _DO_NOT_USE_EmptyTaskFunction(task_args : LW.TaskArgs)
+local terra _TEMPORARY_EmptyTaskFunction(task_args : LW.TaskArgs)
   C.printf("** WARNING: Executing empty task. ")
-  C.printf("This is for debugging Ebb. ")
+  C.printf("This is a hack for Ebb/Legion. ")
   C.printf("If you are seeing this message and do not know what this is, ")
   C.printf("please contact the developers.")
 end
 
-local _DO_NOT_USE_memoize_empty_task_launcher = Util.memoize_named({
+local _TEMPORARY_memoize_empty_task_launcher = Util.memoize_named({
   'relation' },
   function(args)
     -- one region requirement for the relation
     local reg_req = LW.NewRegionReq {
-      num             = 1,
+      num             = 0,
       relation        = args.relation,
       privilege       = LW.READ_WRITE,
       coherence       = LW.EXCLUSIVE,
-      reduce_op       = nil,
-      reduce_typ      = nil,       
       centered        = true
     }
     -- task launcher
     local task_launcher = LW.NewTaskLauncher {
-      taskfunc         = _DO_NOT_USE_EmptyTaskFunction,
+      taskfunc         = _TEMPORARY_EmptyTaskFunction,
       gpu              = false,
       use_index_launch = false,
       domain           = nil
     }
+    -- add region requirement to task launcher
+    task_launcher:AddRegionReq(reg_req)
     -- iterate over user define fields and subset boolmasks
     -- assumption: these are the only fields that are needed to force on physical
     -- instance with valid data for all fields over the region
-    for _, field in pairs(relation._fields) do
-      task_launcher:AddField(reg_req, field._fid)
+    for _, field in pairs(args.relation._fields) do
+      task_launcher:AddField(0, field._fid)
     end
-    for _, subset in pairs(relation._subsets) do
-      task_launcher:AddField(reg_req, subset._boolmask._fid)
+    for _, subset in pairs(args.relation._subsets) do
+      task_launcher:AddField(0, subset._boolmask._fid)
     end
     return task_launcher
   end
 )
 
-function LW._DO_NOT_USE_LaunchEmptySingleTaskOnRelation(relation)
-  local launcher = _DO_NOT_USE_GetEmptyTaskLauncher(relation)
+function LW._TEMPORARY_LaunchEmptySingleTaskOnRelation(relation)
+  local task_launcher = _TEMPORARY_memoize_empty_task_launcher(
+  {
+    relation = relation
+  })
   task_launcher:Execute(legion_env.runtime, legion_env.ctx)
 end

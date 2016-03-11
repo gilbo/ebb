@@ -2112,3 +2112,16 @@ function Relation:GetOrCreateGhostPartitioning(ghost_width)
     return ghost_partitionings[lookup_str]
   end
 end
+
+
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+--[[  Temporary Legion hacks                                               ]]--
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+
+function Relation:TEMPORARY_PrepareForSimulation()
+  if use_legion then
+    LW._TEMPORARY_LaunchEmptySingleTaskOnRelation(self)
+  end
+end
