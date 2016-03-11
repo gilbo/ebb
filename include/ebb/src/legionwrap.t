@@ -255,6 +255,7 @@ function LW.NewTaskLauncher(params)
   taskfuncptr[0]    = taskfunc:getdefinitions()[1]:getpointer()
   -- get task id
   local TID         = getUniqueTaskId(taskptrtype, taskfunc, params.gpu)
+  LW.legion_task_id_attach_name(legion_env.runtime, TID, taskfunc.name, false)
 
   -- create task launcher
   -- by looking carefully at the legion_c wrapper
@@ -396,22 +397,19 @@ terra LW.RegisterTasks()
         local task = tasks[t]
         local task_ids = TIDS[task .. '_' .. proc]
         local task_function = LW[task .. '_task']
-        local name_format = task .. '_' .. proc .. '_%d'
         local reg_function =
           ((task == 'simple') and LW.legion_runtime_register_task_void) or
           LW.legion_runtime_register_task
         emit quote
           var ids = arrayof(LW.legion_task_id_t, [task_ids])
           for i = 0, NUM_TASKS do
-            var name : int8[25]
-            C.sprintf(name, name_format, ids[i])
             reg_function(
               ids[i], [legion_proc], true, false, 1,
               LW.legion_task_config_options_t {
                 leaf = true,
                 inner = false,
                 idempotent = false },
-              name, task_function)
+              nil, task_function)
           end  -- inner for loop
         end  -- quote
       end  -- task loop
@@ -580,7 +578,7 @@ function LogicalRegion:_HIDDEN_ReserveFields()
   end
 end
 
-function LogicalRegion:AllocateField(typ)
+function LogicalRegion:AllocateField(name, typ)
   local typsize = typ
   if type(typ) ~= 'number' then typsize = terralib.sizeof(typ) end
   local field_reserve = self._field_reserve[typsize]
@@ -588,6 +586,8 @@ function LogicalRegion:AllocateField(typ)
     error('No field reserve for type size ' .. typsize)
   end
   local fid = table.remove(field_reserve)
+  LW.legion_field_id_attach_name(legion_env.runtime, self.fs, fid,
+                                 name, false)
   if not fid then
     error('Ran out of fields of size '..typsize..' to allocate;\n'..
           'This error is the result of a hack to investigate performance '..
@@ -695,7 +695,8 @@ function LW.NewGridLogicalRegion(params)
   l.handle = LW.legion_logical_region_create(legion_env.runtime,
                                              legion_env.ctx,
                                              l.is, l.fs)
-  LW.legion_logical_region_attach_name(legion_env.runtime, l.handle, l.relation:Name())
+  LW.legion_logical_region_attach_name(legion_env.runtime, l.handle,
+                                       l.relation:Name(), false)
   setmetatable(l, LogicalRegion)
   return l
 end
@@ -1336,13 +1337,17 @@ end
 --[[  Temporary hacks                                                      ]]--
 -------------------------------------------------------------------------------
 
+-- empty task function
+-- to make it work with legion without blowing up memory
 local terra _TEMPORARY_EmptyTaskFunction(task_args : LW.TaskArgs)
   C.printf("** WARNING: Executing empty task. ")
   C.printf("This is a hack for Ebb/Legion. ")
   C.printf("If you are seeing this message and do not know what this is, ")
-  C.printf("please contact the developers.")
+  C.printf("please contact the developers.\n")
 end
 
+-- empty task function launcher
+-- to make it work with legion without blowing up memory
 local _TEMPORARY_memoize_empty_task_launcher = Util.memoize_named({
   'relation' },
   function(args)
@@ -1376,6 +1381,8 @@ local _TEMPORARY_memoize_empty_task_launcher = Util.memoize_named({
   end
 )
 
+-- empty task function launch
+-- to make it work with legion without blowing up memory
 function LW._TEMPORARY_LaunchEmptySingleTaskOnRelation(relation)
   local task_launcher = _TEMPORARY_memoize_empty_task_launcher(
   {

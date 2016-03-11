@@ -1043,7 +1043,7 @@ function CreateField(rel, name, typ)
     field:_INTERNAL_Allocate()
   elseif use_legion then
     rawset( field, '_fid',
-            rel._logical_region_wrapper:AllocateField(typ:terratype()) )
+            rel._logical_region_wrapper:AllocateField(name, typ:terratype()) )
   end
   return field
 end
@@ -2120,6 +2120,8 @@ end
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
 
+-- temporary hack
+-- to make it work with legion without blowing up memory
 function Relation:TEMPORARY_PrepareForSimulation()
   if use_legion then
     LW._TEMPORARY_LaunchEmptySingleTaskOnRelation(self)
