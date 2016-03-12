@@ -34,7 +34,6 @@ local ebb RunRed(v : vertices)
 end
 
 function run_test()
-  gerr:set(0)
   vertices:foreach(RunRed)
   test.eq(N+1, gerr:get())
 end

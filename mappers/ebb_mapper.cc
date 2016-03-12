@@ -99,14 +99,27 @@ bool EbbMapper::map_task(Task *task) {
         it != regions.end(); it++) {
     RegionRequirement &req = *it;
     if (!req.redop) {
-        LogicalRegion root = get_logical_region(req);
-        const char *name_c;
-        runtime->retrieve_name(root, name_c);
-        std::string name(name_c);
-        assert(active_fields.find(name) != active_fields.end());
-        std::set<FieldID> &additional = active_fields[name];
-        req.additional_fields.insert(additional.begin(),
-                                     additional.end());
+      LogicalRegion root = get_logical_region(req);
+      const char *name_c;
+      runtime->retrieve_name(root, name_c);
+      std::string name(name_c);
+
+      std::set<FieldID> &additional = active_fields[name];
+      for (std::set<FieldID>::iterator pf_it = req.privilege_fields.begin();
+           pf_it != req.privilege_fields.end(); pf_it++) {
+        FieldID pf = *pf_it;
+        if (additional.find(pf) == additional.end()) {
+          // broadcast and record a new field
+          Realm::Serialization::DynamicBufferSerializer buffer(name.size() + 16);
+          buffer << (int)MAPPER_RECORD_FIELD;
+          buffer << name;
+          buffer << req.privilege_fields;
+          broadcast_message(buffer.get_buffer(), buffer.bytes_used());
+          additional.insert(pf);
+        }
+      }
+      req.additional_fields.insert(additional.begin(),
+                                   additional.end());
     }
   }
 

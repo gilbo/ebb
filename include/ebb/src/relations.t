@@ -1043,7 +1043,8 @@ function CreateField(rel, name, typ)
     field:_INTERNAL_Allocate()
   elseif use_legion then
     rawset( field, '_fid',
-            rel._logical_region_wrapper:AllocateField(name, typ:terratype()) )
+            rel._logical_region_wrapper:AllocateField(typ:terratype()) )
+    rel._logical_region_wrapper:AttachNameToField(field._fid, name)
   end
   return field
 end

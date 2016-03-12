@@ -255,7 +255,7 @@ function LW.NewTaskLauncher(params)
   taskfuncptr[0]    = taskfunc:getdefinitions()[1]:getpointer()
   -- get task id
   local TID         = getUniqueTaskId(taskptrtype, taskfunc, params.gpu)
-  LW.legion_task_id_attach_name(legion_env.runtime, TID, taskfunc.name, false)
+  LW.legion_task_id_attach_name(legion_env.runtime, TID, params.name, false)
 
   -- create task launcher
   -- by looking carefully at the legion_c wrapper
@@ -319,7 +319,8 @@ function LW.TaskLauncher:AddRegionReq(req)
               else              str = str .. '_region' end
   if req:isreduction() then     args:insert(req.reduce_func_id)
                                 str = str .. '_reduction'
-                       else     args:insert(req.privilege) end
+                       else     args:insert(req.privilege)
+                       end
   args:insertall { req.coherence, req.log_reg_handle, 0, false }
   -- Do the call
   return LW[str](unpack(args))
@@ -578,7 +579,7 @@ function LogicalRegion:_HIDDEN_ReserveFields()
   end
 end
 
-function LogicalRegion:AllocateField(name, typ)
+function LogicalRegion:AllocateField(typ)
   local typsize = typ
   if type(typ) ~= 'number' then typsize = terralib.sizeof(typ) end
   local field_reserve = self._field_reserve[typsize]
@@ -586,8 +587,6 @@ function LogicalRegion:AllocateField(name, typ)
     error('No field reserve for type size ' .. typsize)
   end
   local fid = table.remove(field_reserve)
-  LW.legion_field_id_attach_name(legion_env.runtime, self.fs, fid,
-                                 name, false)
   if not fid then
     error('Ran out of fields of size '..typsize..' to allocate;\n'..
           'This error is the result of a hack to investigate performance '..
@@ -596,8 +595,14 @@ function LogicalRegion:AllocateField(name, typ)
   end
   return fid
 end
+
 function LogicalRegion:FreeField(fid)
   LW.legion_field_allocator_free_field(self.fsa, fid)
+end
+
+function LogicalRegion:AttachNameToField(fid, name)
+  LW.legion_field_id_attach_name(legion_env.runtime, self.fs, fid,
+                                 name, true)
 end
 
 local CreateGridIndexSpace = {}
@@ -663,7 +668,8 @@ function LW.NewLogicalRegion(params)
   -- logical region
   l.handle = LW.legion_logical_region_create(legion_env.runtime,
                                              legion_env.ctx, l.is, l.fs)
-  LW.legion_logical_region_attach_name(legion_env.runtime, l.handle, l.relation:Name())
+  LW.legion_logical_region_attach_name(legion_env.runtime, l.handle,
+                                       l.relation:Name(), false)
 
   -- actually allocate rows
   l:AllocateRows(l.n_rows)
@@ -1361,6 +1367,7 @@ local _TEMPORARY_memoize_empty_task_launcher = Util.memoize_named({
     }
     -- task launcher
     local task_launcher = LW.NewTaskLauncher {
+      name             = "_TEMPORARY_PrepareSimulation",
       taskfunc         = _TEMPORARY_EmptyTaskFunction,
       gpu              = false,
       use_index_launch = false,
