@@ -255,10 +255,6 @@ function UFVersion:isIndexSubset()
   return nil ~= self._subset._index
 end
 
-function UFVersion:_TESTING_GetFieldAccesses()
-  return self._field_accesses -- these have the stencils in them
-end
-
 
 --                  ---------------------------------------                  --
 --[[ UF Compilation                                                        ]]--
