@@ -59,7 +59,7 @@ function PhaseType:isReadOnly()
 end
 
 function PhaseType:isUncenteredReduction()
-  return not self._centered and (not not self.reduceop)
+  return (not self.centered) and (not not self.reduceop)
 end
 
 function PhaseType:isCentered()

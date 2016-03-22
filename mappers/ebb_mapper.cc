@@ -14,18 +14,30 @@
  */
 
 
+#include <map>
+#include <set>
+
 #include "default_mapper.h"
 #include "ebb_mapper.h"
+#include "serialize.h"
 
 using namespace LegionRuntime::HighLevel;
 
 // legion logger
 LegionRuntime::Logger::Category log_mapper("mapper");
 
+// message types
+enum MapperMessageType {
+  MAPPER_RECORD_FIELD,
+  MAPPER_TOTAL_MESSAGES
+};
+
 class EbbMapper : public DefaultMapper {
 public:
   EbbMapper(Machine machine, HighLevelRuntime *rt, Processor local);
   virtual void select_task_options(Task *task);
+  virtual bool map_task(Task *task);
+  virtual bool map_inline(Inline *inline_operation);
   virtual void notify_mapping_failed(const Mappable *mappable);
   virtual bool rank_copy_targets(const Mappable *mappable,
                                  LogicalRegion rebuild_region,
@@ -36,168 +48,105 @@ public:
                                  std::vector<Memory> &to_create,
                                  bool &create_one,
                                  size_t &blocking_factor);
+  virtual void handle_message(Processor source,
+                              const void *message, size_t length);
 private:
-  Memory local_sysmem;
-  Memory local_gpumem;
-  std::set<Processor> local_cpu_procs;
-  std::set<Processor> local_gpu_procs;
+  // active fields for a logical region
+  std::map<std::string, std::set<FieldID> > active_fields;
+  // get logical region corresponding to a region requirement
+  LogicalRegion get_logical_region(const RegionRequirement &req);
+  LogicalRegion get_root_region(const LogicalRegion &handle);
+  LogicalRegion get_root_region(const LogicalPartition &handle);
 };  // class EbbMapper
 
 // EbbMapper constructor
 EbbMapper::EbbMapper(Machine machine, HighLevelRuntime *rt, Processor local)
   : DefaultMapper(machine, rt, local) {
-  // local system memory
-  local_sysmem =
-    machine_interface.find_memory_kind(local_proc, Memory::SYSTEM_MEM);
-  // gpu memory -- gpu framebuffer memory
-  local_gpumem = 
-    machine_interface.find_memory_kind(local_proc, Memory::GPU_FB_MEM);
-  // set of local cpu processors that tasks can run on
-  machine.get_shared_processors(local_sysmem, local_cpu_procs);
-  if (!local_cpu_procs.empty()) {
-    machine_interface.filter_processors(machine, Processor::LOC_PROC, local_cpu_procs);
+}
+
+LogicalRegion EbbMapper::get_logical_region(const RegionRequirement &req) {
+  LogicalRegion root;
+  if (req.handle_type == SINGULAR || req.handle_type == REG_PROJECTION) {
+    root = get_root_region(req.region);
+  } else {
+    assert(req.handle_type == PART_PROJECTION);
+    root = get_root_region(req.partition);
   }
-  // set of local gpu processors that tasks can run on
-  machine.get_shared_processors(local_sysmem, local_gpu_procs);
-  if (!local_gpu_procs.empty()) {
-    machine_interface.filter_processors(machine, Processor::TOC_PROC, local_gpu_procs);
+  return root;
+}
+
+LogicalRegion EbbMapper::get_root_region(const LogicalRegion &handle) {
+  if (has_parent_logical_partition(handle)) {
+    return get_root_region(get_parent_logical_partition(handle));
   }
+  return handle;
+}
 
-  // print out machine information
-  std::set<Processor> all_procs;
-  machine.get_all_processors(all_procs);
-
-  Processor first_loc(*all_procs.begin());
-  for (std::set<Processor>::const_iterator it = all_procs.begin();
-       it != all_procs.end(); it++) {
-    if (it->kind() == Processor::LOC_PROC) {
-      first_loc = *it;
-      break;
-    }
-  }
-#if 0
-  if (first_loc == local_proc) {
-
-    // processors
-    for (std::set<Processor>::const_iterator it = all_procs.begin();
-          it != all_procs.end(); it++) {
-      // For every processor there is an associated kind
-      Processor::Kind kind = it->kind();
-      switch (kind) {
-        // Latency-optimized cores (LOCs) are CPUs
-        case Processor::LOC_PROC:
-            printf("  Processor ID " IDFMT " is CPU\n", it->id); 
-            break;
-        // Throughput-optimized cores (TOCs) are GPUs
-        case Processor::TOC_PROC:
-            printf("  Processor ID " IDFMT " is GPU\n", it->id);
-            break;
-        // Utility processors are helper processors for
-        // running Legion runtime meta-level tasks and 
-        // should not be used for running application tasks
-        case Processor::UTIL_PROC:
-            printf("  Processor ID " IDFMT " is utility\n", it->id);
-            break;
-        default:
-          assert(false);
-      }
-    }
-
-    // memories
-    std::set<Memory> all_mems;
-    machine.get_all_memories(all_mems);
-    printf("There are %ld memories:\n", all_mems.size());
-    for (std::set<Memory>::const_iterator it = all_mems.begin();
-          it != all_mems.end(); it++) {
-      Memory::Kind kind = it->kind();
-      size_t memory_size_in_kb = it->capacity() >> 10;
-      switch (kind) {
-        // RDMA addressable memory when running with GASNet
-        case Memory::GLOBAL_MEM:
-            printf("  GASNet Global Memory ID " IDFMT " has %ld KB\n", 
-                    it->id, memory_size_in_kb);
-            break;
-        // DRAM on a single node
-        case Memory::SYSTEM_MEM:
-            printf("  System Memory ID " IDFMT " has %ld KB\n",
-                    it->id, memory_size_in_kb);
-            break;
-        // Pinned memory on a single node
-        case Memory::REGDMA_MEM:
-            printf("  Pinned Memory ID " IDFMT " has %ld KB\n",
-                    it->id, memory_size_in_kb);
-            break;
-        // A memory associated with a single socket
-        case Memory::SOCKET_MEM:
-            printf("  Socket Memory ID " IDFMT " has %ld KB\n",
-                    it->id, memory_size_in_kb);
-            break;
-        // Zero-copy memory betweeen CPU DRAM and
-        // all GPUs on a single node
-        case Memory::Z_COPY_MEM:
-            printf("  Zero-Copy Memory ID " IDFMT " has %ld KB\n",
-                    it->id, memory_size_in_kb);
-            break;
-        // GPU framebuffer memory for a single GPU
-        case Memory::GPU_FB_MEM:
-            printf("  GPU Frame Buffer Memory ID " IDFMT " has %ld KB\n",
-                    it->id, memory_size_in_kb);
-            break;
-        // Disk memory on a single node
-        case Memory::DISK_MEM:
-            printf("  Disk Memory ID " IDFMT " has %ld KB\n",
-                    it->id, memory_size_in_kb);
-            break;
-        // Block of memory sized for L3 cache
-        case Memory::LEVEL3_CACHE:
-            printf("  Level 3 Cache ID " IDFMT " has %ld KB\n",
-                    it->id, memory_size_in_kb);
-            break;
-        // Block of memory sized for L2 cache
-        case Memory::LEVEL2_CACHE:
-            printf("  Level 2 Cache ID " IDFMT " has %ld KB\n",
-                    it->id, memory_size_in_kb);
-            break;
-        // Block of memory sized for L1 cache
-        case Memory::LEVEL1_CACHE:
-            printf("  Level 1 Cache ID " IDFMT " has %ld KB\n",
-                    it->id, memory_size_in_kb);
-            break;
-        default:
-          assert(false);
-      }
-    }
-
-    // visible memories from each processor
-    std::set<Memory> vis_mems;
-    machine.get_visible_memories(local_proc, vis_mems);
-    printf("There are %ld memories visible from processor " IDFMT "\n",
-            vis_mems.size(), local_proc.id);
-    for (std::set<Memory>::const_iterator it = vis_mems.begin();
-          it != vis_mems.end(); it++) {
-      // Edges between nodes are called affinities in the
-      // machine model.  Affinities also come with approximate
-      // indications of the latency and bandwidth between the 
-      // two nodes.  Right now these are unit-less measurements,
-      // but our plan is to teach the Legion runtime to profile
-      // these values on start-up to give them real values
-      // and further increase the portability of Legion applications.
-      std::vector<ProcessorMemoryAffinity> affinities;
-      int results = 
-        machine.get_proc_mem_affinity(affinities, local_proc, *it);
-      // We should only have found 1 results since we
-      // explicitly specified both values.
-      assert(results == 1);
-      printf("  Memory " IDFMT " has bandwidth %d and latency %d\n",
-              it->id, affinities[0].bandwidth, affinities[0].latency);
-    }
-  }
-#endif
+LogicalRegion EbbMapper::get_root_region(const LogicalPartition &handle) {
+  return get_root_region(get_parent_logical_region(handle));
 }
 
 void EbbMapper::select_task_options(Task *task) {
   DefaultMapper::select_task_options(task);
-  // task->additional_procs = local_cpu_procs;
+}
+
+bool EbbMapper::map_task(Task *task) {
+  bool success = DefaultMapper::map_task(task);
+
+  // add additional fields to region requirements
+  std::vector<RegionRequirement> &regions = task->regions;
+  for (std::vector<RegionRequirement>::iterator it = regions.begin();
+        it != regions.end(); it++) {
+    RegionRequirement &req = *it;
+    if (!req.redop) {
+      LogicalRegion root = get_logical_region(req);
+      const char *name_c;
+      runtime->retrieve_name(root, name_c);
+      std::string name(name_c);
+
+      std::set<FieldID> &additional = active_fields[name];
+      for (std::set<FieldID>::iterator pf_it = req.privilege_fields.begin();
+           pf_it != req.privilege_fields.end(); pf_it++) {
+        FieldID pf = *pf_it;
+        if (additional.find(pf) == additional.end()) {
+          // broadcast and record a new field
+          Realm::Serialization::DynamicBufferSerializer buffer(name.size() + 16);
+          buffer << (int)MAPPER_RECORD_FIELD;
+          buffer << name;
+          buffer << req.privilege_fields;
+          broadcast_message(buffer.get_buffer(), buffer.bytes_used());
+          additional.insert(pf);
+        }
+      }
+      req.additional_fields.insert(additional.begin(),
+                                   additional.end());
+    }
+  }
+
+  return success;
+}
+
+bool EbbMapper::map_inline(Inline *inline_operation) {
+  bool success = DefaultMapper::map_inline(inline_operation);
+
+  // determine logical region and fields
+  RegionRequirement &req = inline_operation->requirement;
+  LogicalRegion root = get_logical_region(req);
+  const char *name_c;
+  runtime->retrieve_name(root, name_c);
+  std::string name(name_c);
+
+  // broadcast this information
+  Realm::Serialization::DynamicBufferSerializer buffer(name.size() + 16);
+  buffer << (int)MAPPER_RECORD_FIELD;
+  buffer << name;
+  buffer << req.privilege_fields;
+  broadcast_message(buffer.get_buffer(), buffer.bytes_used());
+
+  // add information to local map
+  active_fields[name].insert(req.privilege_fields.begin(),
+                             req.privilege_fields.end());
+  return success;
 }
 
 void EbbMapper::notify_mapping_failed(const Mappable *mappable) {
@@ -253,7 +202,6 @@ bool EbbMapper::rank_copy_targets(const Mappable *mappable,
                                    complete, max_blocking_factor, to_reuse,
                                    to_create, create_one, blocking_factor);
   return false;
-  // return true;
 }
 
 static void create_mappers(Machine machine,
@@ -267,6 +215,30 @@ static void create_mappers(Machine machine,
     runtime->replace_default_mapper(
       new EbbMapper(machine, runtime, *it), *it
     );
+  }
+}
+
+void EbbMapper::handle_message(Processor source,
+                               const void *message, size_t length) {
+  Realm::Serialization::FixedBufferDeserializer buffer(message, length);
+  int msg_type;
+  buffer >> msg_type;
+  switch(msg_type) {
+    case MAPPER_RECORD_FIELD:
+    {
+      std::string name;
+      buffer >> name;
+      std::set<FieldID> privilege_fields;
+      buffer >> privilege_fields;
+      active_fields[name].insert(privilege_fields.begin(),
+                                 privilege_fields.end());
+      break;
+    }
+    default:
+    {
+      printf("Invalid message recieved by mapper\n");
+      assert(false);
+    }
   }
 }
 

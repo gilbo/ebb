@@ -255,6 +255,7 @@ function LW.NewTaskLauncher(params)
   taskfuncptr[0]    = taskfunc:getdefinitions()[1]:getpointer()
   -- get task id
   local TID         = getUniqueTaskId(taskptrtype, taskfunc, params.gpu)
+  LW.legion_task_id_attach_name(legion_env.runtime, TID, params.name, false)
 
   -- create task launcher
   -- by looking carefully at the legion_c wrapper
@@ -310,7 +311,7 @@ function LW.TaskLauncher:AddRegionReq(req)
   -- Assemble the call
   local args = terralib.newlist { self._launcher, partition_handle }
   local str  = 'legion'
-  if self._index_launch then    region_args:insert(0)
+  if self._index_launch then    args:insert(0)
                                 str = str .. '_index'
                         else    str = str .. '_task' end
   str = str .. '_launcher_add_region_requirement_logical'
@@ -318,7 +319,8 @@ function LW.TaskLauncher:AddRegionReq(req)
               else              str = str .. '_region' end
   if req:isreduction() then     args:insert(req.reduce_func_id)
                                 str = str .. '_reduction'
-                       else     args:insert(req.privilege) end
+                       else     args:insert(req.privilege)
+                       end
   args:insertall { req.coherence, req.log_reg_handle, 0, false }
   -- Do the call
   return LW[str](unpack(args))
@@ -396,22 +398,19 @@ terra LW.RegisterTasks()
         local task = tasks[t]
         local task_ids = TIDS[task .. '_' .. proc]
         local task_function = LW[task .. '_task']
-        local name_format = task .. '_' .. proc .. '_%d'
         local reg_function =
           ((task == 'simple') and LW.legion_runtime_register_task_void) or
           LW.legion_runtime_register_task
         emit quote
           var ids = arrayof(LW.legion_task_id_t, [task_ids])
           for i = 0, NUM_TASKS do
-            var name : int8[25]
-            C.sprintf(name, name_format, ids[i])
             reg_function(
               ids[i], [legion_proc], true, false, 1,
               LW.legion_task_config_options_t {
                 leaf = true,
                 inner = false,
                 idempotent = false },
-              name, task_function)
+              nil, task_function)
           end  -- inner for loop
         end  -- quote
       end  -- task loop
@@ -596,8 +595,14 @@ function LogicalRegion:AllocateField(typ)
   end
   return fid
 end
+
 function LogicalRegion:FreeField(fid)
   LW.legion_field_allocator_free_field(self.fsa, fid)
+end
+
+function LogicalRegion:AttachNameToField(fid, name)
+  LW.legion_field_id_attach_name(legion_env.runtime, self.fs, fid,
+                                 name, true)
 end
 
 local CreateGridIndexSpace = {}
@@ -663,6 +668,8 @@ function LW.NewLogicalRegion(params)
   -- logical region
   l.handle = LW.legion_logical_region_create(legion_env.runtime,
                                              legion_env.ctx, l.is, l.fs)
+  LW.legion_logical_region_attach_name(legion_env.runtime, l.handle,
+                                       l.relation:Name(), false)
 
   -- actually allocate rows
   l:AllocateRows(l.n_rows)
@@ -694,6 +701,8 @@ function LW.NewGridLogicalRegion(params)
   l.handle = LW.legion_logical_region_create(legion_env.runtime,
                                              legion_env.ctx,
                                              l.is, l.fs)
+  LW.legion_logical_region_attach_name(legion_env.runtime, l.handle,
+                                       l.relation:Name(), false)
   setmetatable(l, LogicalRegion)
   return l
 end
@@ -1327,4 +1336,64 @@ end
 
 function LW.heavyweightBarrier()
   LW.legion_runtime_issue_execution_fence(legion_env.runtime, legion_env.ctx)
+end
+
+
+-------------------------------------------------------------------------------
+--[[  Temporary hacks                                                      ]]--
+-------------------------------------------------------------------------------
+
+-- empty task function
+-- to make it work with legion without blowing up memory
+local terra _TEMPORARY_EmptyTaskFunction(task_args : LW.TaskArgs)
+  C.printf("** WARNING: Executing empty task. ")
+  C.printf("This is a hack for Ebb/Legion. ")
+  C.printf("If you are seeing this message and do not know what this is, ")
+  C.printf("please contact the developers.\n")
+end
+
+-- empty task function launcher
+-- to make it work with legion without blowing up memory
+local _TEMPORARY_memoize_empty_task_launcher = Util.memoize_named({
+  'relation' },
+  function(args)
+    -- one region requirement for the relation
+    local reg_req = LW.NewRegionReq {
+      num             = 0,
+      relation        = args.relation,
+      privilege       = LW.READ_WRITE,
+      coherence       = LW.EXCLUSIVE,
+      centered        = true
+    }
+    -- task launcher
+    local task_launcher = LW.NewTaskLauncher {
+      name             = "_TEMPORARY_PrepareSimulation",
+      taskfunc         = _TEMPORARY_EmptyTaskFunction,
+      gpu              = false,
+      use_index_launch = false,
+      domain           = nil
+    }
+    -- add region requirement to task launcher
+    task_launcher:AddRegionReq(reg_req)
+    -- iterate over user define fields and subset boolmasks
+    -- assumption: these are the only fields that are needed to force on physical
+    -- instance with valid data for all fields over the region
+    for _, field in pairs(args.relation._fields) do
+      task_launcher:AddField(0, field._fid)
+    end
+    for _, subset in pairs(args.relation._subsets) do
+      task_launcher:AddField(0, subset._boolmask._fid)
+    end
+    return task_launcher
+  end
+)
+
+-- empty task function launch
+-- to make it work with legion without blowing up memory
+function LW._TEMPORARY_LaunchEmptySingleTaskOnRelation(relation)
+  local task_launcher = _TEMPORARY_memoize_empty_task_launcher(
+  {
+    relation = relation
+  })
+  task_launcher:Execute(legion_env.runtime, legion_env.ctx)
 end

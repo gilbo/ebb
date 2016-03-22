@@ -1044,6 +1044,7 @@ function CreateField(rel, name, typ)
   elseif use_legion then
     rawset( field, '_fid',
             rel._logical_region_wrapper:AllocateField(typ:terratype()) )
+    rel._logical_region_wrapper:AttachNameToField(field._fid, name)
   end
   return field
 end
@@ -2110,5 +2111,20 @@ function Relation:GetOrCreateGhostPartitioning(ghost_width)
         self._logical_region_wrapper:CreateBlockPartitions(self._ghost_width_default)
     end
     return ghost_partitionings[lookup_str]
+  end
+end
+
+
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+--[[  Temporary Legion hacks                                               ]]--
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+
+-- temporary hack
+-- to make it work with legion without blowing up memory
+function Relation:TEMPORARY_PrepareForSimulation()
+  if use_legion then
+    LW._TEMPORARY_LaunchEmptySingleTaskOnRelation(self)
   end
 end

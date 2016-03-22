@@ -1408,11 +1408,11 @@ function UFVersion:_GenerateUnpackLegionTaskArgs(argsym, task_args, gredptr)
         end
 
         -- SIMPLE NON-REDUCTION CASE
-        emit(init_gptr_code)
-        -- NOTE: THE FOLLOWING CODE IS BROKEN
-        --[[
         if not isreduce then emit(init_gptr_code)
         -- REDUCTION CASE
+        -- NOTE: This code initializes the global variable in first partition
+        -- to passed future value, and remaining partitions to identity.
+        -- This is necessary to reduce across partitions correctly.
         else emit quote
           var first = true
           do
@@ -1440,7 +1440,6 @@ function UFVersion:_GenerateUnpackLegionTaskArgs(argsym, task_args, gredptr)
             [init_gptr_code]
           end
         end end
-        --]]
 
         emit quote
           [ ufv._terra_signature.terraptr(argsym, globl) ] = gptr
@@ -1506,6 +1505,7 @@ function UFVersion:_CreateLegionTaskLauncher(task_func)
   local prim_partn = self._legion_signature:getPrimaryRegionPartition()
 
   local task_launcher = LW.NewTaskLauncher {
+    name              = self._name,
     taskfunc          = task_func,
     gpu               = self:onGPU(),
     use_index_launch  = use_partitioning, -- TODO: make default case single partition
