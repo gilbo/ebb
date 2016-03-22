@@ -491,9 +491,6 @@ end
 function UFVersion:_PartitionData()
   if not use_legion then return end
   self._legion_signature:PartitionRegReqs()
-  --for i, req in pairs(self._sorted_region_reqs) do
-  --  req:PartitionData(use_partitioning)  -- TODO: make default case single partition
-  --end
 end
 
 
@@ -1008,12 +1005,6 @@ end
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
 
-function UFVersion:_CompileLegionAndGetLauncher(typed_ast)
-  local task_function     = codegen.codegen(typed_ast, self)
-  self._executable        = self:_CreateLegionLauncher(task_function)
-end
-
-
 local function phase_to_legion_privilege(phase)
   assert(not phase:iserror(), 'INTERNAL: phase should not be in error')
   if phase:isReadOnly() then      return LW.READ_ONLY
@@ -1180,6 +1171,11 @@ end
 --[[ Legion Extensions                                                     ]]--
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
+
+function UFVersion:_CompileLegionAndGetLauncher(typed_ast)
+  local task_function     = codegen.codegen(typed_ast, self)
+  self._executable        = self:_CreateLegionLauncher(task_function)
+end
 
 function UFVersion:_WrapLegionTask(argsym, basic_launcher)
   local ufv = self
