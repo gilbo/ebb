@@ -212,7 +212,7 @@ function signature:
   returns a task id
 --]]
 local RegisterAndGetTaskId = Util.memoize_from(3,
-function(task_func, on_gpu, ufv_name)
+function(ufv_name, on_gpu, task_func)
   -- new task id
   local TID = LW.get_new_task_id()
   -- register given task function with the task id
@@ -258,8 +258,8 @@ function LW.NewTaskLauncher(params)
   end
 
   -- register task and get task id
-  local TID = RegisterAndGetTaskId(params.task_func, params.gpu,
-                                   params.ufv_name)
+  local TID = RegisterAndGetTaskId(params.ufv_name, params.gpu,
+                                   params.task_func)
   -- common task arguments across all partitions
   local argstruct   = C.safemalloc( LW.legion_task_argument_t )
   argstruct.args    = null()

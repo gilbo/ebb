@@ -33,9 +33,8 @@ local terra legion_has_llvm_support() : bool
           "legion_runtime_register_task_variant_llvmir") ~= [&opaque](0))
 end
 local use_llvm = legion_has_llvm_support()
--- TODO: Turn this into an error once dyn. reg. is complete
 if not use_llvm then
-  error("WARNING: Your build of Legion library does not support " ..
+  error("ERROR: Your build of Legion library does not support " ..
         "registering tasks dynamically. Please update your Legion repository," ..
         "and rebuild Legion.")
 end
