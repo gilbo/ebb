@@ -67,8 +67,8 @@ local function NewPlanner()
       f_call_count    = {}, -- set of invoked funcs with invocation counts
 
     -- maintained indices
-      local_strategy_index  = Util.new_named_cache({
-        'typedfunc', 'node_type', 'partition_strategy',
+      partition_index       = Util.new_named_cache({
+        'typedfunc', 'relation', 'node_type', 'partition_strategy',
       }), -- stores RelLocalPartition objects
       local_ghost_index     = Util.new_named_cache {
         'rel_local_partition', 'ghost_strategy',
@@ -144,7 +144,7 @@ function Exports.query_for_partitions(typedfunc, node_desc, node_id, proc_id)
 
   -- make sure all indices are fresh before satisfying a query
   if #self.new_func_queue > 0 then
-    self:refresh_local_strategy_index()
+    self:refresh_local_ghost_index()
   end
   if #self.new_local_partition_queue > 0 then
     self:rebuild_partitions()
@@ -153,13 +153,6 @@ function Exports.query_for_partitions(typedfunc, node_desc, node_id, proc_id)
   -- make / get partitioning decision
   local partition_strategy  =
     self:choose_partition_strategy(typedfunc, node_desc)
-
-  -- do first index lookup
-  local local_partition = self.local_strategy_index:lookup{
-    typedfunc           = typedfunc,
-    node_type           = node_desc,
-    partition_strategy  = partition_strategy,
-  }
 
   -- make / get ghost region decision
   local ghost_strategies =
@@ -170,11 +163,21 @@ function Exports.query_for_partitions(typedfunc, node_desc, node_id, proc_id)
   local per_access_data = {}
   local field_accesses  = typedfunc:all_accesses()
   for f,access in pairs(field_accesses) do
-    local lpart_ghost = self.local_ghost_index:lookup{
+    local relation = f:Relation()
+    -- index 1 (apply node-local partitioning strategy)
+    local local_partition = self.local_ghost_index:lookup {
+      typedfunc           = typedfunc,
+      relation            = relation,
+      node_type           = node_desc,
+      partition_strategy  = partition_strategy,
+    }
+    -- index 2 (apply ghost strategy)
+    local lpart_ghost = self.local_ghost_index:lookup {
       rel_local_partition   = local_partition,
       ghost_strategy        = ghost_strategies[access],
     }
-    local legion_data = self.local_ghost_index:lookup{
+    -- index 3 (translate to legion data)
+    local legion_data = self.local_ghost_index:lookup {
       local_ghost_partition = lpart_ghost,
       node_id               = node_id,
       proc_id               = proc_id,
@@ -227,18 +230,25 @@ function Planner:choose_ghost_strategies(
 end
 
 local all_partition_strategies = { CPU_Only }--, GPU_Only }
-function Planner:refresh_local_strategy_index()
+function Planner:refresh_local_ghost_index()
   -- handle all newly registered functions
   --  iterate over all possible types of nodes
   --  and strategies, and derive a local partition for each
 
-  -- PER-FUNC,NODE-TYPE,PARTITION-STRATEGY
+  -- PER-FUNC,RELATION,NODE-TYPE,PARTITION-STRATEGY
   for _,typedfunc in ipairs(self.new_func_queue) do
-    local relation          = typedfunc:relation()
+    -- unpack all relations mentioned by the function
+    local all_relations   = { [typedfunc:relation()] = true }
+    local field_accesses  = typedfunc:all_accesses()
+    for f,access in pairs(field_accesses) do
+      all_relations[f:Relation()] = true
+    end
+  for relation,_ in pairs(all_relations) do
     local global_partition  = relation:_GetGlobalPartition()
   for _,node_type in ipairs(self.active_node_types) do
   for _,part_strategy in ipairs(all_partition_strategies) do
     -- compute parameters from the strategy
+    -- TODO: COMPUTE PARAMETERS HERE
 
     -- create and cache a local partition for this combination
     -- of keys and strategy
@@ -247,8 +257,9 @@ function Planner:refresh_local_strategy_index()
       node_type         = node_type,
       -- some other parameters...
     }
-    self.local_strategy_index:insert( local_partition, {
+    self.local_ghost_index:insert( local_partition, {
       typedfunc           = typedfunc,
+      relation            = relation,
       node_type           = node_type,
       partition_strategy  = part_strategy,
     })
@@ -258,7 +269,7 @@ function Planner:refresh_local_strategy_index()
       self.active_local_partitions[ local_partition ] = true
       self.new_local_partition_queue:insert( local_partition )
     end
-  end end end
+  end end end end
 
   self.new_func_queue = newlist() -- re-validate the index
 end

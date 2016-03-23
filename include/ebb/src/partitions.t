@@ -98,13 +98,13 @@ end)
 --[[ Global / Local Partition Ghosts:                                      ]]--
 -------------------------------------------------------------------------------
 
---local GlobalPartitionGhost    = {}
---GlobalPartitionGhost.__index  = GlobalPartitionGhost
+--local GlobalGhosts    = {}
+--GlobalGhosts.__index  = GlobalGhosts
 
-local LocalPartitionGhost     = {}
-LocalPartitionGhost.__index   = LocalPartitionGhost
+local LocalGhosts     = {}
+LocalGhosts.__index   = LocalGhosts
 
-Exports.LocalPartitionGhost = Util.memoize(function(
+Exports.LocalGhosts = Util.memoize(function(
   rel_local_partition, params
 )
   error('no good right now')
