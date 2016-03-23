@@ -60,9 +60,6 @@ local _INTERNAL_DEV_OUTPUT_PTX = F._INTERNAL_DEV_OUTPUT_PTX
 local Phase     = require 'ebb.src.phase'
 local PhaseType = Phase.PhaseType
 
-local VERBOSE = rawget(_G, 'EBB_LOG_EBB')
-
-
 local function shallowcopy_table(tbl)
   local x = {}
   for k,v in pairs(tbl) do x[k] = v end
@@ -556,19 +553,6 @@ end
 --                  ---------------------------------------                  --
 
 function UFVersion:_Launch()
-  if VERBOSE then
-    local data_deps = "Ebb LOG: function " .. self._ufunc._name .. " accesses"
-    for field, use in pairs(self._field_use) do
-      data_deps = data_deps .. " relation " .. field:Relation():Name()
-      data_deps = data_deps .. " field " .. field:Name() .. " in phase "
-      data_deps = data_deps .. tostring(use) .. " ,"
-    end
-    for global, use in pairs(self._global_use) do
-      data_deps = data_deps .. " global " .. tostring(global) .. " in phase "
-      data_deps = data_deps .. tostring(use) .. " ,"
-    end
-    print(data_deps)
-  end
   if use_legion then
     self._executable({ ctx = legion_env.ctx, runtime = legion_env.runtime })
   else
@@ -1181,12 +1165,17 @@ end
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
 
-function UFVersion:_WrapLegionTask(argsym, basic_launcher)
+
+-- This function wraps generated code into a legion task function, that first
+-- invokes the task preamble (Legion), unpacks task arguments ubti custom
+-- layout for the generated code, returns task results, and finally invokes
+-- the postamle (Legion).
+function UFVersion:_WrapIntoLegionTask(argsym, basic_launcher)
   local ufv = self
 
-  -- generate the end-of-launch code
+  -- generate the end-of-launch code and postamble
   local return_future_code    = quote end
-  local global_red_ptr        = nil
+  local global_red_ptr = nil
   if ufv:UsesGlobalReduce() then
     local globl = next(ufv._global_reductions)
     local gtyp  = globl:Type():terratype()
@@ -1199,12 +1188,11 @@ function UFVersion:_WrapLegionTask(argsym, basic_launcher)
       return_future_code = quote
         var datum : gtyp
         G.memcpy_cpu_from_gpu(&datum, global_red_ptr, sizeof(gtyp))
-        G.free(global_red_ptr)
-        return LW.legion_task_result_create( &datum, sizeof(gtyp) )
+        return datum
       end
     else
       return_future_code = quote
-        return LW.legion_task_result_create( global_red_ptr, sizeof(gtyp) )
+        return @global_red_ptr
       end
     end
   end
@@ -1234,29 +1222,56 @@ function UFVersion:_WrapLegionTask(argsym, basic_launcher)
     end
   end
 
-  -- generate the launcher wrapper
+  -- wrap code into a legion task
   local argtyp = ufv:_argsType()
-  local launcher = terra( task_args : LW.TaskArgs )
-    var argsym : argtyp
+  local task = terra(task_args : LW.TaskArgs)
     -- Unpack from task args into argsym
+    var argsym : argtyp
     [ ufv:_GenerateUnpackLegionTaskArgs(argsym, task_args, global_red_ptr) ]
-
     -- Weird wrapper if given a fragmented view of non-grid partition
     escape if not ufv._relation:isGrid() and run_config.use_partitioning then
       emit(index_iterator_wrap(argsym, task_args))
     else
       emit quote basic_launcher(&argsym) end
     end end -- end of escape
-
     -- destroy field accessors
     [ ufv:_CleanLegionTask(argsym) ]
-
-    -- possibly return a future object if a global was reduced
     [ return_future_code ]
   end
-  launcher:setname(ufv._name)
+  task:setname(ufv._name)
 
-  return launcher
+  -- wrap task with preamble and postamle
+  local task_wrapped = terra(data : & opaque, datalen : C.size_t,
+                             userdata : &opaque, userlen : C.size_t,
+                             proc_id : LW.legion_lowlevel_id_t)
+    var task_args : LW.TaskArgs
+    -- legion preamble
+    LW.legion_task_preamble(data, datalen, proc_id, &task_args.task,
+                            &task_args.regions, &task_args.num_regions,
+                            &task_args.lg_ctx, &task_args.lg_runtime)
+    -- legion task call and postamble
+    escape
+      if ufv:UsesGlobalReduce() then
+        local globl = next(ufv._global_reductions)
+        local gtyp  = globl:Type():terratype()
+        emit quote
+          var result = task(task_args)
+          LW.legion_task_postamble(task_args.lg_runtime, task_args.lg_ctx,
+                                   [&opaque](&result),
+                                   terralib.sizeof(gtyp))
+        end  -- emit quote
+      else
+        emit quote
+          task(task_args)
+          LW.legion_task_postamble(task_args.lg_runtime, task_args.lg_ctx,
+                                   [&opaque](0), 0)
+        end  -- emit quote
+      end  -- if else
+    end  -- escape
+  end  -- end terra function
+  task_wrapped:setname(ufv._name)
+
+  return task_wrapped
 end
 
 -- Here we translate the Legion task arguments into our
@@ -1397,10 +1412,9 @@ function UFVersion:_GenerateUnpackLegionTaskArgs(argsym, task_args, gredptr)
         -- code to initialize the global pointer
         local init_gptr_code = quote
           -- process the future into a piece of data
-          var fut     = LW.legion_task_get_future([task_args].task, fut_i)
-          var result  = LW.legion_future_get_result(fut)
-          var datum   = @[&gtyp](result.value)
-          LW.legion_task_result_destroy(result)
+          var fut   = LW.legion_task_get_future([task_args].task, fut_i)
+          var datum : gtyp
+          var result  = LW.legion_future_get_result_bytes(fut, &datum, [terralib.sizeof(gtyp)])
 
           -- now set up the pointer to the global data
           escape emit( ufv:onGPU() and quote
@@ -1509,8 +1523,8 @@ function UFVersion:_CreateLegionTaskLauncher(task_func)
   local prim_partn = self._legion_signature:getPrimaryRegionPartition()
 
   local task_launcher = LW.NewTaskLauncher {
-    name              = self._name,
-    taskfunc          = task_func,
+    ufv_name          = self._name,
+    task_func         = task_func,
     gpu               = self:onGPU(),
     use_index_launch  = use_partitioning, -- TODO: make default case single partition
     domain            = use_partitioning and prim_partn:Domain()

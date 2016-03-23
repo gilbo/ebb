@@ -535,79 +535,10 @@ function Codegen.codegen (ufunc_ast, ufunc_version)
   end -- CPU / GPU LAUNCHER END
 
   if use_legion then
-    return ctxt.ufv:_WrapLegionTask(ctxt:argsym(), launcher)
+    return ctxt.ufv:_WrapIntoLegionTask(ctxt:argsym(), launcher)
   else
     return launcher
   end
-  --[[
-  -- OPTIONALLY WRAP UP AS A LEGION TASK
-  if use_legion then
-    local generate_output_future = quote end
-    if ctxt:UsesGlobalReduce() then
-      local globl             = next(ctxt.ufv._global_reductions)
-      local gtyp              = globl._type:terratype()
-      local gptr              = ctxt.ufv:_getLegionGlobalTempSymbol(globl)
-
-      if next(ctxt.ufv._global_reductions, globl) then
-        error("INTERNAL: More than 1 global reduction at a time unsupported")
-      end
-      if ctxt:onGPU() then
-        generate_output_future  = quote
-          var datum : gtyp
-          G.memcpy_cpu_from_gpu(&datum, gptr, sizeof(gtyp))
-          G.free(gptr)
-          return LW.legion_task_result_create( &datum, sizeof(gtyp) )
-        end
-      else
-        generate_output_future  = quote
-          return LW.legion_task_result_create( gptr, sizeof(gtyp) )
-        end
-      end
-    end
-
-    local basic_launcher = launcher
-    launcher = terra (task_args : LW.TaskArgs)
-      var [ctxt:argsym()]
-      [ ctxt.ufv:_GenerateUnpackLegionTaskArgs(ctxt:argsym(), task_args) ]
-
-      escape
-        if (not ctxt:isGridRelation()) and run_config.use_partitioning then
-          local pnum = ctxt.ufv:_getPrimaryRegionData().num
-          emit quote
-            var lg_index_space =
-              LW.legion_physical_region_get_logical_region(task_args.regions[pnum]).index_space
-            var lg_it = LW.legion_index_iterator_create(task_args.lg_runtime,
-                                                        task_args.lg_ctx,
-                                                        lg_index_space)
-            while LW.legion_index_iterator_has_next(lg_it) do
-              do
-                 var count : C.size_t = 0
-                 var base = LW.legion_index_iterator_next_span([lg_it], &count, -1).value
-                 [ctxt:argsym()].bounds[0].lo = base
-                 [ctxt:argsym()].bounds[0].hi = base + count - 1
-               end
-               basic_launcher(&[ctxt:argsym()])
-            end
-          end
-        else
-          emit quote
-            basic_launcher(&[ctxt:argsym()])
-          end
-        end
-      end -- End escape
-
-      [generate_output_future]
-
-      [ ctxt.ufv:_CleanLegionTask(ctxt:argsym()) ]
-
-    end -- Launcher done
-
-    launcher:setname(ufunc_name)
-  end -- Legion branch end
-
-  return launcher
-  --]]
-
 end -- CODEGEN ENDS
 
 

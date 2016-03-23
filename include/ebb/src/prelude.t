@@ -34,8 +34,6 @@ if use_legion then
   LW            = require 'ebb.src.legionwrap'
 end
 
-local VERBOSE = rawget(_G, 'EBB_LOG_EBB')
-
 -------------------------------------------------------------------------------
 
 local ProcConstant = {}
@@ -120,13 +118,6 @@ function Global:set(val)
           tostring(self._type), 2)
   end
 
-  if VERBOSE then
-    local data_deps = "Ebb LOG: function global-set accesses"
-    data_deps = data_deps .. " global " .. tostring(self) ..
-                " in phase EXCLUSIVE ,"
-    print(data_deps)
-  end
-
   if use_single then
     local ptr = self._data:open_write_ptr()
     ptr[0] = T.luaToEbbVal(val, self._type)
@@ -137,7 +128,7 @@ function Global:set(val)
     local tt     = typ:terratype()
     local blob   = C.safemalloc( tt )
     blob[0]      = T.luaToEbbVal(val, typ)
-    local future = LW.legion_future_from_buffer(legion_env.runtime,
+    local future = LW.legion_future_from_bytes( legion_env.runtime,
                                                 blob,
                                                 terralib.sizeof(tt))
     if self._data then
@@ -149,13 +140,7 @@ function Global:set(val)
 end
 
 function Global:get()
-  local value
-
-  if VERBOSE then
-    local data_deps = "Ebb LOG: function global-get accesses"
-    data_deps = data_deps .. " global " .. tostring(self) .. " in phase READ ,"
-    print(data_deps)
-  end
+  local value = nil
 
   if use_single then
     local ptr = self._data:open_read_ptr()
@@ -164,10 +149,9 @@ function Global:get()
 
   elseif use_legion then
     local tt = self._type:terratype()
-    local result = LW.legion_future_get_result(self._data)
-    local rptr   = terralib.cast(&tt, result.value)
-    value = T.ebbToLuaVal(rptr[0], self._type)
-    LW.legion_task_result_destroy(result)
+    local blob   = C.safemalloc( tt )
+    LW.legion_future_get_result_bytes(self._data, blob, terralib.sizeof(tt))
+    value = T.ebbToLuaVal(blob[0], self._type)
   end
 
   return value

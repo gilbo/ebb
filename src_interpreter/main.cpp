@@ -58,8 +58,6 @@ struct ebb_Options {
   int ndebug;
   int legionspy;
   int legionprof;
-  int logebb;
-  int loglegion;
   int partition;
   char *additional;
 };
@@ -262,10 +260,6 @@ void setupebb(lua_State * L, ebb_Options * ebboptions) {
             lua_pushboolean(L, true);
             lua_setglobal(L, "EBB_LEGION_USE_PROF");
         }
-	    if (ebboptions->loglegion) {
-            lua_pushboolean(L, true);
-            lua_setglobal(L, "EBB_LOG_LEGION");
-	    }
         if (ebboptions->partition) {
             lua_pushboolean(L, true);
             lua_setglobal(L, "EBB_PARTITION");
@@ -275,10 +269,6 @@ void setupebb(lua_State * L, ebb_Options * ebboptions) {
     if (ebboptions->usegpu) {
         lua_pushboolean(L, true);
         lua_setglobal(L, "EBB_USE_GPU_SIGNAL");
-    }
-    if (ebboptions->logebb) {
-        lua_pushboolean(L, true);
-        lua_setglobal(L, "EBB_LOG_EBB");
     }
     if (strcmp(ebboptions->additional, "")) {
         lua_pushstring(L, ebboptions->additional);
@@ -361,7 +351,7 @@ void usage() {
     print_welcome();
     printf(
       "ebb [OPTIONS] [source-file] [arguments-to-source-file]\n"
-      "    -v terra,ebb,legion enable verbose debugging output for one or more of terra, ebb and legion\n"
+      "    -v terra enable verbose debugging output for terra\n"
       "    -d enable debugging symbols\n"
       "    -h print this help message\n"
       "    -i enter the REPL after processing source files\n"
@@ -400,12 +390,8 @@ void parse_args(
             case 'v':
 	            if (optarg) {
 		            if (strstr(optarg, "terra"))
-		                options->verbose++;
-		            if (strstr(optarg, "ebb"))
-		                ebboptions->logebb = 1;
-		            if (strstr(optarg, "legion"))
-		                ebboptions->loglegion = 1;
-		            }
+		                 options->verbose++;
+                }
                 break;
             case 'i':
                 *interactive = true;

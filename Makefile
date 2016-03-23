@@ -122,7 +122,8 @@ ifdef LEGION_INSTALLED
   LIBLEGION_TERRA_DEBUG:=$(LEGION_BIND_DIR)/liblegion_terra_debug.so
   # environment variables to be set for recursive call to Legion build
   SET_ENV_VAR:=LUAJIT_DIR=$(LUAJIT_DIR) TERRA_DIR=$(REAL_TERRA_DIR) \
-    LG_RT_DIR=$(REAL_LEGION_DIR)/runtime SHARED_LOWLEVEL=0 USE_GASNET=0 USE_CUDA=$(USE_CUDA)
+    LG_RT_DIR=$(REAL_LEGION_DIR)/runtime SHARED_LOWLEVEL=0 USE_GASNET=0 \
+    USE_CUDA=$(USE_CUDA) USE_LLVM=1
 endif # LEGION_INSTALLED
 
 # # ----------------------------------------------------------------------- # #

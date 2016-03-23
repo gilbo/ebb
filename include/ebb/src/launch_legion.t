@@ -21,7 +21,33 @@
 -- FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 -- DEALINGS IN THE SOFTWARE.
 
--- Launch ebb program as a top level legion task.
+-- This file launches ebb program as a top level legion task.
+
+local C     = require "ebb.src.c"
+
+-- Check that Legion library is updated and built correctly so that dynamic
+-- task registration is available.
+local dlfcn = terralib.includec("dlfcn.h")
+local terra legion_has_llvm_support() : bool
+  return (dlfcn.dlsym([&opaque](0),
+          "legion_runtime_register_task_variant_llvmir") ~= [&opaque](0))
+end
+local use_llvm = legion_has_llvm_support()
+-- TODO: Turn this into an error once dyn. reg. is complete
+if not use_llvm then
+  error("WARNING: Your build of Legion library does not support " ..
+        "registering tasks dynamically. Please update your Legion repository," ..
+        "and rebuild Legion.")
+end
+
+-------------------------------------------------------------------------------
+--[[  Legion options/ environment                                           ]]--
+-------------------------------------------------------------------------------
+
+-- get legion command line options passed to ebb
+local use_legion_spy  = rawget(_G, 'EBB_LEGION_USE_SPY')
+local use_legion_prof = rawget(_G, 'EBB_LEGION_USE_PROF')
+local additional_args = rawget(_G, 'EBB_ADDITIONAL_ARGS')
 
 -- set up a global structure to stash legion variables into
 rawset(_G, '_legion_env', {})
@@ -32,18 +58,92 @@ rawset(_G, '_run_config', {
                             use_ebb_mapper = true,
                             use_partitioning = rawget(_G, 'EBB_PARTITION'),
                             num_partitions_default = 2,
-                            num_cpus = 0,  -- 0 indicates auomatically find the number of cpus
+                            use_llvm = use_llvm
                           })
-local additional_args = rawget(_G, 'EBB_ADDITIONAL_ARGS')
 local run_config = rawget(_G, '_run_config')
 
-local C = require "ebb.src.c"
-
--- Legion library
+-- Load Legion library (this needs run_config to be set up correctly)
 local LW = require "ebb.src.legionwrap"
 
--- Top level task
-TID_TOP_LEVEL = 50
+
+-- Note 4 types of processors
+--      TOC_PROC = ::TOC_PROC, // Throughput core
+--      LOC_PROC = ::LOC_PROC, // Latency core
+--      UTIL_PROC = ::UTIL_PROC, // Utility core
+--      PROC_GROUP = ::PROC_GROUP, // Processor group
+
+
+local function exec(cmd)
+  local handle  = io.popen(cmd)
+  local out     = handle:read()
+  handle:close()
+  return out
+end
+
+-- number of processors
+local os_type = exec('uname')
+local num_cpus = 1
+if os_type == 'Darwin' then
+  num_cpus = tonumber(exec("sysctl -n hw.ncpu"))
+elseif os_type == 'Linux' then
+  num_cpus = tonumber(exec("nproc"))
+else
+  error('unrecognized operating system: '..os_type..'\n'..
+        ' Contact Developers for Support')
+end
+local util_cpus = 2
+local num_gpus  = 1
+
+-- legion logging options
+local logging_level = "1"
+-- hide warnings for region requirements without any fields
+logging_level = logging_level .. ",tasks=5"
+if use_legion_prof then
+  logging_level = logging_level .. ",legion_prof=2"
+end
+if use_legion_spy then
+  logging_level = logging_level .. ",legion_spy=2"
+end
+
+-- set up legion args
+local legion_args = {}
+table.insert(legion_args, "-level")
+table.insert(legion_args, tostring(logging_level))
+-- # of cpus
+table.insert(legion_args, "-ll:cpu")
+table.insert(legion_args, tostring(num_cpus - util_cpus))
+table.insert(legion_args, "-ll:util")
+table.insert(legion_args, tostring(util_cpus))
+-- cpu memory
+table.insert(legion_args, "-ll:csize")
+table.insert(legion_args, "8000") -- MB
+if terralib.cudacompile then
+  -- # of gpus
+  table.insert(legion_args, "-ll:gpu")
+  table.insert(legion_args, tostring(num_gpus))
+  -- gpu memory
+  table.insert(legion_args, "-ll:fsize")
+  table.insert(legion_args, "4000") -- MB
+  -- zero-copy gpu/cpu memory (don't use)
+  table.insert(legion_args, "-ll:zsize")
+  table.insert(legion_args, "0") -- MB
+end
+if use_legion_prof then
+  table.insert(legion_args, "-hl:prof")
+  table.insert(legion_args, "1")
+end
+table.insert(legion_args, "-logfile")
+table.insert(legion_args, "legion_log")
+if additional_args then
+    for word in additional_args:gmatch("%S+") do
+        table.insert(legion_args, word)
+    end
+end
+
+
+-------------------------------------------------------------------------------
+--[[  Top Level Task                                                       ]]--
+-------------------------------------------------------------------------------
 
 -- Error handler to display stack trace
 local function top_level_err_handler(errobj)
@@ -65,113 +165,38 @@ function load_ebb()
 end
 
 -- Run Ebb compiler/ Lua-Terra interpreter as a top level task
-local terra top_level_task(
-  task_args   : LW.legion_task_t,
-  regions     : &LW.legion_physical_region_t,
-  num_regions : uint32,
-  ctx         : LW.legion_context_t,
-  runtime     : LW.legion_runtime_t
-)
-  LE.legion_env.ctx = ctx
-  LE.legion_env.runtime = runtime
+local terra top_level_task(data : & opaque, datalen : C.size_t,
+                           userdata : &opaque, userlen : C.size_t,
+                           proc_id : LW.legion_lowlevel_id_t)
+  -- legion preamble
+  var task_args : LW.TaskArgs
+  LW.legion_task_preamble(data, datalen, proc_id, &task_args.task,
+                          &task_args.regions, &task_args.num_regions,
+                          &task_args.lg_ctx, &task_args.lg_runtime)
+  -- set global variables ctx and runtime                        
+  LE.legion_env.ctx     = task_args.lg_ctx
+  LE.legion_env.runtime = task_args.lg_runtime
   load_ebb()
+
+  -- legion postamble
+  LW.legion_task_postamble(task_args.lg_runtime, task_args.lg_ctx,
+                           [&opaque](0), 0)
 end
-
--- Note 4 types of processors
-
---      TOC_PROC = ::TOC_PROC, // Throughput core
---      LOC_PROC = ::LOC_PROC, // Latency core
---      UTIL_PROC = ::UTIL_PROC, // Utility core
---      PROC_GROUP = ::PROC_GROUP, // Processor group
+local TID_TOP_LEVEL = LW.get_new_task_id()
 
 
-local function exec(cmd)
-  local handle  = io.popen(cmd)
-  local out     = handle:read()
-  handle:close()
-  return out
-end
-
-if run_config.num_cpus == 0 then
-  local os_type = exec('uname')
-  local n_cpu   = 1
-  
-  if os_type == 'Darwin' then
-    n_cpu = tonumber(exec("sysctl -n hw.ncpu"))
-  elseif os_type == 'Linux' then
-    n_cpu = tonumber(exec("nproc"))
-  else
-    error('unrecognized operating system: '..os_type..'\n'..
-          ' Contact Developers for Support')
-  end
-  run_config.num_cpus = n_cpu
-end
-local util_cpus = 2
-
-local use_legion_spy  = rawget(_G, 'EBB_LEGION_USE_SPY')
-local use_legion_prof = rawget(_G, 'EBB_LEGION_USE_PROF')
-
-local logging_level = "3"
--- hide warnings for region requirements without any fields
-logging_level = logging_level .. ",tasks=5"
-if use_legion_prof then
-  logging_level = logging_level .. ",legion_prof=2"
-end
-if use_legion_spy then
-  logging_level = logging_level .. ",legion_spy=2"
-end
-
-local legion_args = {}
-table.insert(legion_args, "-level")
-table.insert(legion_args, tostring(logging_level))
--- # of cpus
-table.insert(legion_args, "-ll:cpu")
-table.insert(legion_args, tostring(run_config.num_cpus - util_cpus))
-table.insert(legion_args, "-ll:util")
-table.insert(legion_args, tostring(util_cpus))
--- cpu memory
-table.insert(legion_args, "-ll:csize")
-table.insert(legion_args, "8000") -- MB
-if terralib.cudacompile then
-  -- # of gpus
-  table.insert(legion_args, "-ll:gpu")
-  table.insert(legion_args, tostring(1))
-  -- gpu memory
-  table.insert(legion_args, "-ll:fsize")
-  table.insert(legion_args, "4000") -- MB
-  -- zero-copy gpu/cpu memory (don't use)
-  table.insert(legion_args, "-ll:zsize")
-  table.insert(legion_args, "0") -- MB
-end
--- stack memory
---table.insert(legion_args, "-ll:stack")
---table.insert(legion_args, "2") -- MB
-if use_legion_prof then
-  table.insert(legion_args, "-hl:prof")
-  table.insert(legion_args, "1")
-end
-table.insert(legion_args, "-logfile")
-table.insert(legion_args, "legion_log")
-if additional_args then
-    for word in additional_args:gmatch("%S+") do
-        table.insert(legion_args, word)
-    end
-end
-
+-------------------------------------------------------------------------------
+--[[  Launch Legion and top level control task                             ]]--
+-------------------------------------------------------------------------------
 
 -- Main function that launches Legion runtime
 local terra main()
-  -- register legion tasks
-  LW.RegisterTasks()
 
-  -- top level task
-  LW.legion_runtime_register_task_void(
-    TID_TOP_LEVEL, LW.LOC_PROC, true, false, 1,
-    LW.legion_task_config_options_t {
-      leaf = false,
-      inner = false,
-      idempotent = false },
-    'top_level_task', top_level_task)
+  -- preregister top level task
+  LW.legion_runtime_preregister_task_variant_fnptr(
+    TID_TOP_LEVEL, LW.LOC_PROC,
+    LW.legion_task_config_options_t { leaf = false, inner = false, idempotent = false },
+    "top_level_task", [&opaque](0), 0, top_level_task) 
   LW.legion_runtime_set_top_level_task_id(TID_TOP_LEVEL)
 
   -- register reductions
@@ -181,7 +206,6 @@ local terra main()
   var n_args  = [1 + #legion_args]
   var args    = arrayof(rawstring,
     [arg[0]], -- include the Ebb invocation here;
-                           -- doesn't matter though
     [legion_args]
   )
 

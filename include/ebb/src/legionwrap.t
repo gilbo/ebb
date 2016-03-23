@@ -41,8 +41,6 @@ local APIblob = terralib.includecstring([[
 ]])
 for k,v in pairs(APIblob) do LW[k] = v end
 
-local VERBOSE = rawget(_G, 'EBB_LOG_LEGION')
-
 
 -------------------------------------------------------------------------------
 --[[  Legion environment                                                   ]]--
@@ -58,6 +56,10 @@ local struct LegionEnv {
 }
 LE.legion_env = C.safemalloc( LegionEnv )
 local legion_env = LE.legion_env[0]
+
+local terra null()
+  return [&opaque](0)
+end
 
 
 -------------------------------------------------------------------------------
@@ -180,26 +182,6 @@ end
 -------------------------------------------------------------------------------
 --[[  Legion Tasks                                                         ]]--
 -------------------------------------------------------------------------------
---[[ A simple task is a task that does not have any return value. A future_task
---   is a task that returns a Legion future, or return value.
---]]--
-
-local NUM_TASKS = 100
-
-local TIDS = {
-  simple_cpu = {},
-  simple_gpu = {},
-  future_cpu = {},
-  future_gpu = {}
-}
-for i = 1, NUM_TASKS do
-    TIDS.simple_cpu[i] = 99+i
-    TIDS.simple_gpu[i] = 199+i
-end
-for i = 1, NUM_TASKS do
-    TIDS.future_cpu[i] = 299+i
-    TIDS.future_gpu[i] = 399+i
-end
 
 struct LW.TaskArgs {
   task        : LW.legion_task_t,
@@ -209,67 +191,89 @@ struct LW.TaskArgs {
   lg_runtime  : LW.legion_runtime_t
 }
 
-LW.TaskLauncher         = {}
-LW.TaskLauncher.__index = LW.TaskLauncher
+-- Get a new unique task id.
+local new_task_id   = 100  -- start registering tasks at 101 ...
+function LW.get_new_task_id()
+  new_task_id = new_task_id + 1
+  return new_task_id
+end
 
-LW.SimpleTaskPtrType = { LW.TaskArgs } -> {}
-LW.FutureTaskPtrType = { LW.TaskArgs } -> LW.legion_task_result_t
-
-local USED_TIDS = {
-  simple_cpu = 0,
-  simple_gpu = 0,
-  future_cpu = 0,
-  future_gpu = 0
-}
-local getUniqueTaskId = Util.memoize_from(2,
-function(taskptrtype, taskfunc, use_gpu)
-  local has_global_reduction = (taskptrtype == LW.SimpleTaskPtrType)
-  local tid_str = (has_global_reduction and 'simple_' or 'future_')..
-                  (use_gpu and 'gpu' or 'cpu')
-  local count = USED_TIDS[tid_str] + 1
-  USED_TIDS[tid_str] = count
-
-  local TID = TIDS[tid_str][count]
-  if VERBOSE then
-    print("Ebb LOG: task id " .. tostring(taskfunc.name) ..
-          " = " .. tostring(TID))
+-- Get task if for a given task. Register the task and create a new id if the
+-- task is not memoized. Tasks are memoized by the function version name, which
+-- corresponds to a { function, type, proc, blocksize, relation, subset }. Note
+-- that we have different tasks for gpus and cpus. This is intentional, it
+-- allows Ebb planner to make decisions about which tasks to launch on what
+-- partitions.
+--[[
+function signature:
+  task_func : task function
+  on_gpu    : is this task function on gpu?
+  ufv_name  : task function version name
+  returns a task id
+--]]
+local RegisterAndGetTaskId = Util.memoize_from(3,
+function(task_func, on_gpu, ufv_name)
+  -- new task id
+  local TID = LW.get_new_task_id()
+  -- register given task function with the task id
+  local ir = terralib.saveobj(nil, "llvmir", { entry = task_func })
+  local terra register()
+    -- LW.legion_runtime_register_task_variant_llvmir(
+    --   legion_env.runtime, TID, [(on_gpu and LW.TOC_PROC) or LW.LOC_PROC],
+    --   true,
+    --   LW.legion_task_config_options_t { leaf = true, inner = false, idempotent = false },
+    --   ufv_name, [&opaque](0), 0,
+    --   ir, "entry")
+    LW.legion_runtime_register_task_variant_fnptr(
+      legion_env.runtime, TID, [(on_gpu and LW.TOC_PROC) or LW.LOC_PROC],
+      LW.legion_task_config_options_t { leaf = true, inner = false, idempotent = false },
+      ufv_name, [&opaque](0), 0,
+      task_func)
   end
+  register()
   return TID
 end)
 
+LW.TaskLauncher         = {}
+LW.TaskLauncher.__index = LW.TaskLauncher
+
 --[[
 {
+  taskname
   taskfunc
   gpu               -- boolean
   use_index_launch  -- boolean
   domain            -- ??
 }
 --]]
-function LW.NewTaskLauncher(params)
-  if not terralib.isfunction(params.taskfunc) then
-    error('must provide Terra function as "taskfunc" argument', 2)
-  end
-  local taskfunc    = params.taskfunc
-  local taskptrtype = &taskfunc:getdefinitions()[1]:gettype()
-  local taskfuncptr = C.safemalloc( taskptrtype )
-  taskfuncptr[0]    = taskfunc:getdefinitions()[1]:getpointer()
-  -- get task id
-  local TID         = getUniqueTaskId(taskptrtype, taskfunc, params.gpu)
-  LW.legion_task_id_attach_name(legion_env.runtime, TID, params.name, false)
+LW.TaskLauncher         = {}
+LW.TaskLauncher.__index = LW.TaskLauncher
 
-  -- create task launcher
-  -- by looking carefully at the legion_c wrapper
-  -- I was able to determine that we don't need to
-  -- persist this structure
+function LW.NewTaskLauncher(params)
+  if not terralib.isfunction(params.task_func) then
+    error('must provide Terra function as "task_func" argument', 2)
+  end
+  if type(params.ufv_name) ~= 'string' then
+    error('must provide a task name as "ufv_name" argument', 2)
+  end
+
+  -- register task and get task id
+  local TID = RegisterAndGetTaskId(params.task_func, params.gpu,
+                                   params.ufv_name)
+  -- common task arguments across all partitions
   local argstruct   = C.safemalloc( LW.legion_task_argument_t )
-  argstruct.args    = taskfuncptr -- taskptrtype*
-  argstruct.arglen  = terralib.sizeof(taskptrtype)
+  argstruct.args    = null()
+  argstruct.arglen  = 0
+
+  -- create launcher
   local launcher_create =
     (params.use_index_launch and LW.legion_index_launcher_create) or
     LW.legion_task_launcher_create
+
+  -- task launcher arguments
   local launcher_args = terralib.newlist({TID})
   if params.use_index_launch then
-    local argmap = LW.legion_argument_map_create()
+    local argmap = LW.legion_argument_map_create()  -- partition specific arguments
     launcher_args:insertall({params.domain, argstruct[0], argmap,
     LW.legion_predicate_true(), false})
   else
@@ -279,8 +283,6 @@ function LW.NewTaskLauncher(params)
   local launcher = launcher_create(unpack(launcher_args))
 
   return setmetatable({
-    _taskfunc     = taskfunc,     -- important to prevent garbage collection
-    _taskfuncptr  = taskfuncptr,  -- important to prevent garbage collection
     _TID          = TID,
     _launcher     = launcher,
     _index_launch = params.use_index_launch,
@@ -356,66 +358,6 @@ function LW.TaskLauncher:Execute(runtime, ctx, redop_id)
     exec_args:insert(self._reduce_func_id)
   end
   return LW[exec_str](unpack(exec_args))
-end
-
-
-terra LW.simple_task(
-  task        : LW.legion_task_t,
-  regions     : &LW.legion_physical_region_t,
-  num_regions : uint32,
-  ctx         : LW.legion_context_t,
-  runtime     : LW.legion_runtime_t
-)
-  var arglen = LW.legion_task_get_arglen(task)
-  C.assert(arglen == sizeof(LW.SimpleTaskPtrType))
-  var taskfunc = @[&LW.SimpleTaskPtrType](LW.legion_task_get_args(task))
-  taskfunc( LW.TaskArgs { task, regions, num_regions, ctx, runtime } )
-end
-
-terra LW.future_task(
-  task        : LW.legion_task_t,
-  regions     : &LW.legion_physical_region_t,
-  num_regions : uint32,
-  ctx         : LW.legion_context_t,
-  runtime     : LW.legion_runtime_t
-) : LW.legion_task_result_t
-  var arglen = LW.legion_task_get_arglen(task)
-  C.assert(arglen == sizeof(LW.FutureTaskPtrType))
-  var taskfunc = @[&LW.FutureTaskPtrType](LW.legion_task_get_args(task))
-  var result = taskfunc( LW.TaskArgs {
-                            task, regions, num_regions, ctx, runtime } )
-  return result
-end
-
-terra LW.RegisterTasks()
-  escape
-    local procs = {'cpu', 'gpu'}
-    local tasks = {'simple', 'future'}
-    for p = 1, 2 do
-      local proc = procs[p]
-      local legion_proc = ((proc == 'cpu') and LW.LOC_PROC)  or LW.TOC_PROC
-      for t = 1, 2 do
-        local task = tasks[t]
-        local task_ids = TIDS[task .. '_' .. proc]
-        local task_function = LW[task .. '_task']
-        local reg_function =
-          ((task == 'simple') and LW.legion_runtime_register_task_void) or
-          LW.legion_runtime_register_task
-        emit quote
-          var ids = arrayof(LW.legion_task_id_t, [task_ids])
-          for i = 0, NUM_TASKS do
-            reg_function(
-              ids[i], [legion_proc], true, false, 1,
-              LW.legion_task_config_options_t {
-                leaf = true,
-                inner = false,
-                idempotent = false },
-              nil, task_function)
-          end  -- inner for loop
-        end  -- quote
-      end  -- task loop
-    end  -- proc loop
-  end  -- escape
 end
 
 
@@ -1367,8 +1309,8 @@ local _TEMPORARY_memoize_empty_task_launcher = Util.memoize_named({
     }
     -- task launcher
     local task_launcher = LW.NewTaskLauncher {
-      name             = "_TEMPORARY_PrepareSimulation",
-      taskfunc         = _TEMPORARY_EmptyTaskFunction,
+      ufv_name         = "_TEMPORARY_PrepareSimulation",
+      task_func        = _TEMPORARY_EmptyTaskFunction,
       gpu              = false,
       use_index_launch = false,
       domain           = nil

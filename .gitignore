@@ -24,6 +24,7 @@ devapps/gpu/cudamath.t
 devapps/gpu/red_ops.t
 
 local_files
+legion_log
 
 simple_trimesh_diffusion_output
 vega_output
