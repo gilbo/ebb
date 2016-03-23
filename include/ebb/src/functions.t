@@ -46,6 +46,7 @@ local semant            = require 'ebb.src.semant'
 local phase             = require 'ebb.src.phase'
 local stencil           = require 'ebb.src.stencil'
 
+local Planner           = require 'ebb.src.planner'
 
 F._INTERNAL_DEV_OUTPUT_PTX = false
 
@@ -151,6 +152,10 @@ Util.memoize_from(2, function(calldepth, ufunc, relset, ...)
     phase_results   = phase_results,
     field_accesses  = field_accesses,
     versions        = terralib.newlist(),
+
+    -- hacks for planner right now
+    relation        = function() return relation end,
+    all_accesses    = function() return field_accesses end,
   }
 end)
 
@@ -264,6 +269,8 @@ function Function:_doForEach(relset, ...)
   local typeversion = self:_Get_Type_Version_Table(4, relset, ...)
 
   -- Insert partitioning hooks here and communication to planning component
+  --Planner.note_launch { typedfunc = typeversion }
+  --Planner.query_for_partitions(typeversion, node_desc, node_id, proc_id)
 
   -- now we either retrieve or construct the appropriate function version
   local version = get_ufunc_version(self, typeversion, relset, params)

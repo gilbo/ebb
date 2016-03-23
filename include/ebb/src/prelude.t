@@ -21,6 +21,18 @@
 -- FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 -- DEALINGS IN THE SOFTWARE.
 
+
+--[[
+--
+--  prelude.t
+--
+--    This file encapsulates assorted objects/concepts that will get
+--    included into the public API.  Rather than pollute the ebblib.t
+--    file specifying that interface in total, the implementations are
+--    hidden here.
+--
+--]]
+
 local Pre = {}
 package.loaded["ebb.src.prelude"] = Pre
 
