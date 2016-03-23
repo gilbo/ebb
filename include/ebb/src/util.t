@@ -28,6 +28,7 @@ package.loaded["ebb.src.util"] = Exports
 
 local C             = require "ebb.src.c"
 
+local lookuptoken   = {}
 local niltoken      = {}
 local function nilconvert(val) return val==nil and niltoken or val end
 
@@ -37,26 +38,28 @@ local function nilconvert(val) return val==nil and niltoken or val end
 -- function must take at least idx_arguments
 function Exports.memoize_from(idx,f)
   local cache = {}
-  local function memoization_lookup(subcache, ...)
-    local subval = subcache[select(1,...)]
-    if select('#',...) == 1 then
-      return subval, subcache
-    else
-      if not subval then
-        subval = {}; subcache[select(1,...)] = subval
-      end
-      return memoization_lookup(subval, select(2,...))
-    end
-  end
   local function memoization_wrapper(...)
-    local lookup, subcache = memoization_lookup(cache, select(idx,...))
+    local args     = {select(idx,...)}
+    local subcache = cache
+    for i=1,#args do
+      local sub = subcache[nilconvert(args[i])]
+      if not sub then
+        sub = {}
+        subcache[nilconvert(args[i])] = sub
+      end
+      subcache = sub
+    end
+    local lookup = subcache[lookuptoken]
     if not lookup then
       lookup = f(...)
-      subcache[select(select('#',...),...)] = lookup
+      subcache[lookuptoken] = lookup
     end
     return lookup
   end
   return memoization_wrapper
+end
+function Exports.memoize(f)
+  return Exports.memoize_from(1,f)
 end
 
 -- function must return exactly one value
@@ -84,6 +87,66 @@ function Exports.memoize_named(keys, f)
   end
   return named_memoization_wrapper
 end
+
+-------------------------------------------------------------------------------
+
+local Cache   = {}
+Cache.__index = Cache
+
+local function cache_basic_get(subcache, k, ...)
+  local args = {...}
+  for i=1,k-1 do
+    local key = nilconvert(args[i])
+    local val = subcache[key]
+    if not val then
+      val = {}
+      subcache[key] = val
+    end
+    subcache = val
+  end
+  return nilconvert(args[k]), subcache
+end
+
+local function cache_insert_entry(cache, val, ...) -- ... = keys
+  local key, subcache = cache_basic_get(cache._cache, cache._n_args, ...)
+  subcache[key] = val
+end
+
+local function cache_delete_entry(cache, ...) -- ... = keys
+  local key, subcache = cache_basic_get(cache._cache, cache._n_args, ...)
+  subcache[key] = nil
+end
+
+local function cache_lookup(cache, ...)
+  local key, subcache = cache_basic_get(cache._cache, cache._n_args, ...)
+  return subcache[key]
+end
+
+function Exports.new_named_cache(names)
+  local function unpack_args(args)
+    local keys = {}
+    for i,n in ipairs(names) do keys[i] = args[n] end
+    return unpack(keys)
+  end
+  return setmetatable({
+    _cache = {},
+    _n_args = #names,
+    insert = function(self, val, args)
+      return cache_insert_entry(self, val, unpack_args(args))
+    end,
+    delete = function(args)
+      return cache_delete_entry(self, unpack_args(args))
+    end,
+    lookup = function(args)
+      return cache_lookup(self, unpack_args(args))
+    end,
+  }, Cache)
+end
+
+
+
+
+
 
 
 
