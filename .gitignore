@@ -9,6 +9,8 @@ legion
 .metadata
 build/
 
+Makefile.inc
+
 coverageinfo.lua
 coverage_src/
 vdb

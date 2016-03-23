@@ -25,10 +25,19 @@
 # # ----------------------------------------------------------------------- # #
 #     User Configurable Makefile variables
 
-TERRA_DIR?=../terra/release
+# If any of the below defaults are not right for your configuration,
+# Create a Makefile.inc file and set the variables in it
+-include Makefile.inc
+
+# location of terra directory in binary release, or the /release subdir in
+# a custom build of Terra
+TERRA_DIR?=../terra
 # The following variables are only necessary for Legion development
-LEGION_DIR?=../legion
-TERRA_ROOT_DIR?=../terra
+LEGION_DIR?=
+TERRA_ROOT_DIR?=
+# You need LLVM installed.  If your installation of LLVM is not on the
+# path, then you can point this variable at the config tool.
+LLVM_CONFIG?=
 
 
 # # ----------------------------------------------------------------------- # #
@@ -123,7 +132,7 @@ ifdef LEGION_INSTALLED
   # environment variables to be set for recursive call to Legion build
   SET_ENV_VAR:=LUAJIT_DIR=$(LUAJIT_DIR) TERRA_DIR=$(REAL_TERRA_DIR) \
     LG_RT_DIR=$(REAL_LEGION_DIR)/runtime SHARED_LOWLEVEL=0 USE_GASNET=0 \
-    USE_CUDA=$(USE_CUDA) USE_LLVM=1
+    USE_CUDA=$(USE_CUDA) USE_LLVM=1 LLVM_CONFIG=$(LLVM_CONFIG)
 endif # LEGION_INSTALLED
 
 # # ----------------------------------------------------------------------- # #
