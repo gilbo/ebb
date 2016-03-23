@@ -77,7 +77,7 @@ endif
 #     Terra-Setup
 
 # Detect Whether or not Terra is installed and in what way
-TERRA_DIR_EXISTS:=$(wildcard $(TERRA_DIR))
+TERRA_DIR_EXISTS:=$(wildcard $(TERRA_DIR)/bin)
 TERRA_SYMLINK_EXISTS:=$(wildcard terra)
 # Then make sure we can see Terra as a subdir in the expected way
 ifndef TERRA_SYMLINK_EXISTS
