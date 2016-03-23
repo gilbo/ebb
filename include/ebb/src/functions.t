@@ -187,20 +187,28 @@ local function get_ufunc_version(ufunc, typeversion_table, relset, params)
   }
 end
 
+-- NOTE: THESE CALLS ARE DISABLED DUE TO LEGION DESIGN
+--        SHOULD THEY BE RE-EXPOSED IN ANOTHER FORM ???
 -- this will cause typechecking to fire
-function Function:GetVersion(relset, ...)
-  return self:_Get_Version(3, relset, ...)
+--function Function:GetVersion(relset, ...)
+--  return self:_Get_Version(3, relset, ...)
+--end
+--function Function:GetAllVersions()
+--  local vs = {}
+--  for _,typeversion in pairs(self._versions) do
+--    for _,version in pairs(typeversion.versions) do
+--      table.insert(vs, version)
+--    end
+--  end
+--  return vs
+--end
+local function get_func_call_params_from_args(...)
+  local N = select('#',...)
+  local last_arg = N > 0 and select(N,...) or nil
+  if type(last_arg) == 'table' then return last_arg
+                               else return {} end
 end
-function Function:GetAllVersions()
-  local vs = {}
-  for _,typeversion in pairs(self._versions) do
-    for _,version in pairs(typeversion.versions) do
-      table.insert(vs, version)
-    end
-  end
-  return vs
-end
-function Function:_Get_Version(calldepth, relset, ...)
+function Function:_Get_Type_Version_Table(calldepth, relset, ...)
   if not (R.is_subset(relset) or R.is_relation(relset)) then
     error('Functions must be executed over a relation or subset, but '..
           'argument was neither: '..tostring(relset), calldepth)
@@ -239,22 +247,26 @@ function Function:_Get_Version(calldepth, relset, ...)
   -- and a collection of all the versions associated with it...
   local typeversion = self:_get_typechecked(calldepth+1, relset, args)
 
-  -- now we either retreive or construct the appropriate function version
-  local version = get_ufunc_version(self, typeversion, relset, params)
-
-  return version
+  return typeversion
 end
 
-function Function:Compile(relset, ...)
-  local version = self:_Get_Version(3, relset, ...)
-  version:Compile()
-end
+-- NOTE: SEE NOTE ABOVE ; DISABLED DUE TO LEGION INTERFACE
+--function Function:Compile(relset, ...)
+--  local version = self:_Get_Version(3, relset, ...)
+--  version:Compile()
+--end
 
 function Function:doForEach(relset, ...)
   self:_doForEach(relset, ...)
 end
 function Function:_doForEach(relset, ...)
-  local version = self:_Get_Version(4, relset, ...)
+  local params      = get_func_call_params_from_args(...)
+  local typeversion = self:_Get_Type_Version_Table(4, relset, ...)
+
+  -- Insert partitioning hooks here and communication to planning component
+
+  -- now we either retrieve or construct the appropriate function version
+  local version = get_ufunc_version(self, typeversion, relset, params)
 
   version:Execute()
 end
@@ -278,5 +290,16 @@ function Function:getExecutionTime()
   sumtime:setName(self._name..'_execution_time')
   return sumtime
 end
+
+function Function:_TESTING_GetFieldAccesses(relset, ...)
+  local typeversion = self:_Get_Type_Version_Table(4, relset, ...)
+  return typeversion.field_accesses -- these have the stencils in them
+end
+
+
+
+
+
+
 
 

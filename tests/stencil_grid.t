@@ -50,7 +50,7 @@ local ebb shiftX2d( c : g2d.cells )
   c.a = c(-1,0).b
 end
 do
-  local fa_s = shiftX2d:GetVersion(g2d.cells):_TESTING_GetFieldAccesses()
+  local fa_s = shiftX2d:_TESTING_GetFieldAccesses(g2d.cells)
   local astencil = fa_s[g2d.cells.a]:getstencil()
   local bstencil = fa_s[g2d.cells.b]:getstencil()
   local arect = astencil:envelopeRect():getranges()
@@ -63,7 +63,7 @@ local ebb shiftXY3d( c : g3d.cells )
   c.a = c(-1,-2,0).b
 end
 do
-  local fa_s = shiftXY3d:GetVersion(g3d.cells):_TESTING_GetFieldAccesses()
+  local fa_s = shiftXY3d:_TESTING_GetFieldAccesses(g3d.cells)
   local astencil = fa_s[g3d.cells.a]:getstencil()
   local bstencil = fa_s[g3d.cells.b]:getstencil()
   local arect = astencil:envelopeRect():getranges()
@@ -76,7 +76,7 @@ local ebb fourPoint( c : g2d.cells )
   c.a = -c.b + 0.25 * ( c(-1,0).b + c(1,0).b + c(0,-1).b + c(0,1).b )
 end
 do
-  local fa_s = fourPoint:GetVersion(g2d.cells):_TESTING_GetFieldAccesses()
+  local fa_s = fourPoint:_TESTING_GetFieldAccesses(g2d.cells)
   local astencil = fa_s[g2d.cells.a]:getstencil()
   local bstencil = fa_s[g2d.cells.b]:getstencil()
   local arect = astencil:envelopeRect():getranges()
