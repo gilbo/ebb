@@ -37,7 +37,7 @@ LEGION_DIR?=
 TERRA_ROOT_DIR?=
 # You need LLVM installed.  If your installation of LLVM is not on the
 # path, then you can point this variable at the config tool.
-LLVM_CONFIG?=
+LLVM_CONFIG ?= $(shell which llvm-config-3.5 llvm-config | head -1)
 
 
 # # ----------------------------------------------------------------------- # #
