@@ -28,11 +28,12 @@ package.loaded["ebb.src.machine"] = Exports
 local use_legion = not not rawget(_G, '_legion_env')
 local use_single = not use_legion
 
-local LE, legion_env, LW
+local LE, legion_env, LW, use_partitioning
 if use_legion then
-  LE            = rawget(_G, '_legion_env')
-  legion_env    = LE.legion_env[0]
-  LW            = require 'ebb.src.legionwrap'
+  LE                = rawget(_G, '_legion_env')
+  legion_env        = LE.legion_env[0]
+  LW                = require 'ebb.src.legionwrap'
+  use_partitioning  = rawget(_G, '_run_config').use_partitioning
 end
 
 local Util              = require 'ebb.src.util'
@@ -61,16 +62,208 @@ end
 local NodeType    = {}
 NodeType.__index  = NodeType
 
--- a simple default node type that should always work
--- though it severely under-estimates the compute power of a node
-local SingleCPUNode = setmetatable({},NodeType)
-Exports.SingleCPUNode = SingleCPUNode
+local all_node_types = newlist()
+
+-- I expect to add more parameters and details here
+-- as we get more specific about how we want to model the machine
+local CreateNodeType = Util.memoize_named({
+  'n_cpus', 'n_gpus',
+},function(args)
+  local nt = setmetatable({
+    n_cpus = args.n_cpus,
+    n_gpus = args.n_gpus,
+  }, NodeType)
+  all_node_types:insert(nt)
+  return nt
+end)
+
+function Exports.GetAllNodeTypes() return all_node_types end
+
+---- a simple default node type that should always work
+---- though it severely under-estimates the compute power of a node
+--local SingleCPUNode = setmetatable({},NodeType)
+--Exports.SingleCPUNode = SingleCPUNode
+--
+
+-------------------------------------------------------------------------------
+--[[ Machine Setup / Detection:                                            ]]--
+-------------------------------------------------------------------------------
+
+-- from legion headers, a processor kind is one of the following enumeration
+--[[
+    typedef enum legion_lowlevel_processor_kind_t {
+      NO_KIND,
+      TOC_PROC,     // Throughput core
+      LOC_PROC,     // Latency core
+      UTIL_PROC,    // Utility core
+      IO_PROC,      // I/O core
+      PROC_GROUP,   // Processor group
+    } legion_lowlevel_processor_kind_t;
+--]]
+local proc_kind_str = {
+  [LW.TOC_PROC]   = 'GPU',
+  [LW.LOC_PROC]   = 'CPU',
+  [LW.UTIL_PROC]  = 'UPU',
+  -- otherwise we ignore it I guess...
+}
+
+-- from from legion headers, a memory kind is one of these
+--[[
+    typedef enum legion_lowlevel_memory_kind_t {
+      GLOBAL_MEM, // Guaranteed visible to all processors on all nodes (e.g. GASNet memory, universally slow)
+      SYSTEM_MEM, // Visible to all processors on a node
+      REGDMA_MEM, // Registered memory visible to all processors on a node, can be a target of RDMA
+      SOCKET_MEM, // Memory visible to all processors within a node, better performance to processors on same socket 
+      Z_COPY_MEM, // Zero-Copy memory visible to all CPUs within a node and one or more GPUs 
+      GPU_FB_MEM,   // Framebuffer memory for one GPU and all its SMs
+      DISK_MEM,   // Disk memory visible to all processors on a node
+      HDF_MEM,    // HDF memory visible to all processors on a node
+      FILE_MEM,   // file memory visible to all processors on a node
+      LEVEL3_CACHE, // CPU L3 Visible to all processors on the node, better performance to processors on same socket 
+      LEVEL2_CACHE, // CPU L2 Visible to all processors on the node, better performance to one processor
+      LEVEL1_CACHE, // CPU L1 Visible to all processors on the node, better performance to one processor
+    } legion_lowlevel_memory_kind_t;
+--]]
+local mem_kind_str = {
+  --[LW.GLOBAL_MEM]     = 'GLOBAL_MEM',
+  [LW.SYSTEM_MEM]     = 'SYSTEM_MEM',
+  [LW.GPU_FB_MEM]     = 'GPU_FB_MEM',
+  -- otherwise, meh
+}
+
+local function extract_all_processors( machine )
+  local n_proc  = tonumber(LW.legion_machine_get_all_processors_size(machine))
+  local procs   = terralib.cast( &LW.legion_processor_t,
+                      C.malloc(sizeof(LW.legion_processor_t) * n_proc) )
+  LW.legion_machine_get_all_processors(machine, procs, n_proc)
+
+  local ps = newlist()
+  for i=0,(n_proc-1) do
+    local pobj  = procs[i]
+    local ptyp  = proc_kind_str[ LW.legion_processor_kind(pobj) ]
+    local paddr = LW.legion_processor_address_space(pobj) -- is a uint
+    if ptyp then
+      ps:insert {
+        id    = pobj.id,
+        type  = ptyp,
+        addr  = paddr,
+      }
+    end
+  end
+
+  --for _,p in ipairs(ps) do
+  --  print(tohexstr(p.id), p.type, p.addr)
+  --end
+
+  return ps
+end
+
+local function extract_all_memories( machine )
+  local n_mems  = tonumber(LW.legion_machine_get_all_memories_size(machine))
+  local memarr  = terralib.cast( &LW.legion_memory_t,
+                      C.malloc(sizeof(LW.legion_memory_t) * n_mems) )
+  LW.legion_machine_get_all_memories(machine, memarr, n_mems)
+
+  local mems = newlist()
+  for i=0,(n_mems-1) do
+    local mobj  = memarr[i]
+    local mtyp  = mem_kind_str[ LW.legion_memory_kind(mobj) ]
+    local maddr = LW.legion_memory_address_space(mobj) -- is a uint
+    print(tohexstr(mobj.id), LW.legion_memory_kind(mobj), maddr)
+    if mtyp then
+      mems:insert {
+        id    = mobj.id,
+        type  = mtyp,
+        addr  = maddr,
+      }
+    end
+  end
+
+  --for _,m in ipairs(mems) do
+  --  print(tohexstr(m.id), m.type, m.addr)
+  --end
+
+  return mems
+end
+
+-- Group nodes based on address space
+local function group_nodes(procs, mems)
+  local node_map = {}
+  local function get_node(addr_space)
+    if not node_map[addr_space] then
+      node_map[addr_space] = {
+        addr = addr_space, procs=newlist(), mems=newlist()
+      }
+    end
+    return node_map[addr_space]
+  end
+
+  for _,p in ipairs(procs) do   get_node(p.addr).procs:insert(p)  end
+  for _,m in ipairs(mems) do    get_node(m.addr).procs:insert(m)  end
+
+  -- analyze on a per-node basis
+  local nodes = newlist()
+  for _,node in pairs(node_map) do
+    node.cpus = newlist()
+    node.gpus = newlist()
+    for _,p in ipairs(node.procs) do
+      if      p.type == 'CPU' then node.cpus:insert(p)
+      elseif  p.type == 'GPU' then node.gpus:insert(p) end
+    end
+    -- types are memoized, so this will collapse the total number of
+    -- node types
+    node.node_type = CreateNodeType{
+      n_cpus = #node.cpus,
+      n_gpus = #node.gpus,
+    }
+    nodes:insert(node)
+  end
+end
+
+-------------------------------------------------------------------------------
+--[[ Defining a Machine                                                    ]]--
+-------------------------------------------------------------------------------
+
+local Machine   = {}
+Machine.__index = Machine
+local TheMachine
+
+local function initialize_machine_model()
+  local machine = LW.legion_machine_create()
+  
+  local procs = extract_all_processors(machine)
+  local mems  = extract_all_memories(machine)
+
+  local nodes = group_nodes(procs, mems)
+
+  TheMachine = setmetatable({
+    nodes = nodes,
+  }, Machine)
+
+  --print('OK\nOK\nOK\nOK')
+
+  LW.legion_machine_destroy(machine)
+end
+
+if use_partitioning then
+  initialize_machine_model()
+end
+
+
+
+
+
+
+
+
+
 
 
 -------------------------------------------------------------------------------
---[[ Machine Setup Query:                                                  ]]--
+--[[ Example Code from Legion Team (for reference)                         ]]--
 -------------------------------------------------------------------------------
 
+--[[
 local terra get_n_proc( machine : LW.legion_machine_t )
   var query   = LW.legion_processor_query_create(machine)
   var n_proc  = LW.legion_processor_query_count(query)
@@ -206,177 +399,6 @@ local function dummy_query()
 
   LW.legion_machine_destroy(machine)
 end
-
-
-dummy_query()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
--- from legion headers, a processor kind is one of the following enumeration
---[[
-    typedef enum legion_lowlevel_processor_kind_t {
-      NO_KIND,
-      TOC_PROC,     // Throughput core
-      LOC_PROC,     // Latency core
-      UTIL_PROC,    // Utility core
-      IO_PROC,      // I/O core
-      PROC_GROUP,   // Processor group
-    } legion_lowlevel_processor_kind_t;
 --]]
-local proc_kind_str = {
-  [LW.TOC_PROC]   = 'GPU',
-  [LW.LOC_PROC]   = 'CPU',
-  [LW.UTIL_PROC]  = 'UPU',
-  -- otherwise we ignore it I guess...
-}
-
--- from from legion headers, a memory kind is one of these
---[[
-    typedef enum legion_lowlevel_memory_kind_t {
-      GLOBAL_MEM, // Guaranteed visible to all processors on all nodes (e.g. GASNet memory, universally slow)
-      SYSTEM_MEM, // Visible to all processors on a node
-      REGDMA_MEM, // Registered memory visible to all processors on a node, can be a target of RDMA
-      SOCKET_MEM, // Memory visible to all processors within a node, better performance to processors on same socket 
-      Z_COPY_MEM, // Zero-Copy memory visible to all CPUs within a node and one or more GPUs 
-      GPU_FB_MEM,   // Framebuffer memory for one GPU and all its SMs
-      DISK_MEM,   // Disk memory visible to all processors on a node
-      HDF_MEM,    // HDF memory visible to all processors on a node
-      FILE_MEM,   // file memory visible to all processors on a node
-      LEVEL3_CACHE, // CPU L3 Visible to all processors on the node, better performance to processors on same socket 
-      LEVEL2_CACHE, // CPU L2 Visible to all processors on the node, better performance to one processor
-      LEVEL1_CACHE, // CPU L1 Visible to all processors on the node, better performance to one processor
-    } legion_lowlevel_memory_kind_t;
---]]
-local mem_kind_str = {
-  --[LW.GLOBAL_MEM]     = 'GLOBAL_MEM',
-  [LW.SYSTEM_MEM]     = 'SYSTEM_MEM',
-  [LW.GPU_FB_MEM]     = 'GPU_FB_MEM',
-  -- otherwise, meh
-}
-
-local function extract_all_processors( machine )
-  local n_proc  = tonumber(LW.legion_machine_get_all_processors_size(machine))
-  local procs   = terralib.cast( &LW.legion_processor_t,
-                      C.malloc(sizeof(LW.legion_processor_t) * n_proc) )
-  LW.legion_machine_get_all_processors(machine, procs, n_proc)
-
-  local ps = newlist()
-  for i=0,(n_proc-1) do
-    local pobj  = procs[i]
-    local ptyp  = proc_kind_str[ LW.legion_processor_kind(pobj) ]
-    local paddr = LW.legion_processor_address_space(pobj) -- is a uint
-    if ptyp then
-      ps:insert {
-        id    = pobj.id,
-        type  = ptyp,
-        addr  = paddr,
-      }
-    end
-  end
-
-  for _,p in ipairs(ps) do
-    print(tohexstr(p.id), p.type, p.addr)
-  end
-
-  return ps
-end
-
-local function extract_all_memories( machine )
-  local n_mems  = tonumber(LW.legion_machine_get_all_memories_size(machine))
-  local memarr  = terralib.cast( &LW.legion_memory_t,
-                      C.malloc(sizeof(LW.legion_memory_t) * n_mems) )
-  LW.legion_machine_get_all_memories(machine, memarr, n_mems)
-
-  local mems = newlist()
-  for i=0,(n_mems-1) do
-    local mobj  = memarr[i]
-    local mtyp  = mem_kind_str[ LW.legion_memory_kind(mobj) ]
-    local maddr = LW.legion_memory_address_space(mobj) -- is a uint
-    print(tohexstr(mobj.id), LW.legion_memory_kind(mobj), maddr)
-    if mtyp then
-      mems:insert {
-        id    = mobj.id,
-        type  = mtyp,
-        addr  = maddr,
-      }
-    end
-  end
-
-  for _,m in ipairs(mems) do
-    print(tohexstr(m.id), m.type, m.addr)
-  end
-
-  return mems
-end
-
-
-
-
-
-local function mydummy()
-  local machine = LW.legion_machine_create()
-  
-  local procs = extract_all_processors(machine)
-  local mems  = extract_all_memories(machine)
-
-  print('OK\nOK\nOK\nOK')
-
-  LW.legion_machine_destroy(machine)
-end
-
-
-mydummy()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 

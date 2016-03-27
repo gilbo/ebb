@@ -47,9 +47,6 @@ end, "a table of 2 to 3 numbers")
 rel2:NewField('v2',L.vec2d):Load(function(x,y)   return {2*x,y}   end)
 rel3:NewField('v3',L.vec3d):Load(function(x,y,z) return {3*x,y,z} end)
 
--- test printing
-rel2.v2:Print()
-rel3.v3:Print()
 
 -- test loading from a list
 local tbl2 = {{1,2},{3,4},{5,6}}

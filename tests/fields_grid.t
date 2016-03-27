@@ -40,10 +40,10 @@ local T = L.NewRelation { dims = {5,3}, name = 'cells' }
 -- check args --
 ----------------
 function fail_type1()
-  local f = V:NewField('field', 'asdf')
+  local f = T:NewField('field', 'asdf')
 end
 function fail_type2()
-  local f = V:NewField('field', bool)
+  local f = T:NewField('field', bool)
 end
 
 test.fail_function(fail_type1, "type")

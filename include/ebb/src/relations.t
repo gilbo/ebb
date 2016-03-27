@@ -32,7 +32,6 @@ local Pre   = require "ebb.src.prelude"
 local T     = require "ebb.src.types"
 local C     = require "ebb.src.c"
 local F     = require "ebb.src.functions"
-local P     = require "ebb.src.partitions"
 
 local DLD = require "ebb.lib.dld"
 local DLDiter = require 'ebb.src.dlditer'
@@ -56,6 +55,16 @@ local rawdata = require('ebb.src.rawdata')
 local DynamicArray = use_single and rawdata.DynamicArray
 local DataArray    = use_single and rawdata.DataArray
 local LW = use_legion and require "ebb.src.legionwrap"
+
+local P
+local use_partitioning
+if use_legion then
+  run_config = rawget(_G, '_run_config')
+  use_partitioning = run_config.use_partitioning
+  if use_partitioning then
+    P     = require "ebb.src.partitions"
+  end
+end
 
 local valid_name_err_msg_base =
   "must be valid Lua Identifiers: a letter or underscore,"..
@@ -1996,12 +2005,14 @@ function Relation:SetPartitions(num_partitions)
   end
   rawset(self, '_total_partitions', total_partitions)
   rawset(self, '_num_partitions', num_partitions_table)
-  rawset(self, '_rel_global_partition',
-               P.RelGlobalPartition(self, unpack(num_partitions)))
+  if use_partitioning then
+    rawset(self, '_rel_global_partition',
+                 P.RelGlobalPartition(self, unpack(num_partitions)))
+  end
 end
 
 function Relation:_GetGlobalPartition()
-  if not self._rel_global_partition then
+  if not self._rel_global_partition and use_partitioning then
     error("If running on Legion, you need to call SetPartitions() on all of "..
           "your relations.  Relation '"..self:Name().."' did not have any "..
           "partition set.")

@@ -228,7 +228,6 @@ function Exports.query_for_partitions(typedfunc, node_type, node_id, proc_id)
   --                  done...
   node_id = node_id or 1
   proc_id = proc_id or 1
-  node_type = node_type or M.SingleCPUNode
 
   -- make sure all indices are fresh before satisfying a query
   self:update_indices()
@@ -302,24 +301,11 @@ end)
 -------------------------------------------------------------------------------
 
 
--- MAYBE this should be perfomed automatically on startup instead of
--- being exposed at the module interface? dunno
---    e.g. 1) simply do this work in-line
---    e.g. 2) call this on the first note_launch() call
-function Exports.register_node_types(node_types)
-  local self = ThePlanner
-
-  self.active_node_types = newlist()
-  for i,d in ipairs(node_types) do self.active_node_types[i] = d end
-end
-
 function Planner:init()
-  self.active_node_types = newlist{ M.SingleCPUNode }
+  self.active_node_types = M.GetAllNodeTypes()
 
   self._is_initialized = true
 end
-
-
 
 function Planner:choose_partition_strategy(typedfunc, node_type)
   -- dumb default for development
@@ -338,6 +324,8 @@ function Planner:choose_ghost_strategies(
   end
   return choices
 end
+
+
 
 function Planner:update_indices()
   if #self.new_func_queue > 0 then
@@ -371,6 +359,7 @@ function Planner:refresh_partition_index()
   for _,partition_strategy in ipairs(all_partition_strategies) do
     -- compute parameters from the strategy
     -- TODO: COMPUTE PARAMETERS HERE
+    -- FOR NOW: assume we'll only use one cpu per-node
 
     -- create and cache a local partition for this combination
     -- of keys and strategy
@@ -409,6 +398,8 @@ function Planner:refresh_ghost_pattern_index()
 
     local local_ghost_pattern = P.LocalGhostPattern {
       rel_local_partition = local_partition,
+      -- Gonna need to change this parameter around in the future...
+      uniform_depth       = ghost_strategy.depth,
       -- params...
     }
     self.ghost_pattern_index:insert( local_ghost_pattern, {
@@ -444,10 +435,16 @@ function Planner:rebuild_partitions()
 
   local pstore = get_partition_store(self)
 
+  -- HACKITY HACK STUFF HERE FOR NOW
   -- writing as a single-time attempt to partition...
   -- needs to be edited into better shape
+  -- ALWAYS MAKE SURE THE DISJOINT PARTITION IS FRESH...
   for local_partition,_ in pairs(self.active_local_partitions) do
     local_partition:execute_partition()
+  end
+
+  for local_ghost_pattern in ipairs(self.new_ghost_pattern_queue) do
+    local_ghost_pattern:execute_partition()
   end
 
   -- TODO: Definitely needs code here

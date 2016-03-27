@@ -44,6 +44,49 @@ local SingleCPUNode   = Machine.SingleCPUNode
 
 ------------------------------------------------------------------------------
 
+
+-------------------------------------------------------------------------------
+--[[ SplitTrees                                                            ]]--
+-------------------------------------------------------------------------------
+
+local SplitTree   = {}
+SplitTree.__index = SplitTree
+
+local SplitNode   = setmetatable({},SplitTree)
+SplitNode.__index = SplitNode
+
+local SplitLeaf   = setmetatable({},SplitTree)
+SplitLeaf.__index = SplitLeaf
+
+local function is_splitleaf(obj) return getmetatable(obj) == SplitLeaf end
+local function is_splitnode(obj) return getmetatable(obj) == SplitNode end
+local function is_splittree(obj)
+  return is_splitleaf(obj) or is_splitnode(obj)
+end
+Exports.is_splitleaf = is_splitleaf
+Exports.is_splitnode = is_splitnode
+Exports.is_splittree = is_splittree
+
+Exports.NewSplitNode = Util.memoize(function(
+  axis_i, split_percent, leftnode, rightnode
+)
+  return setmetatable({
+    axis  = axis_i,
+    frac  = split_percent,
+    left  = leftnode,
+    right = rightnode,
+  }, SplitNode)
+end)
+
+-- could be extended?
+Exports.NewSplitLeaf = Util.memoize(function(proc_type)
+  return setmetatable({ proc = proc_type }, SplitLeaf)
+end)
+
+
+
+
+
 -------------------------------------------------------------------------------
 --[[ Relation Local / Global Partitions:                                   ]]--
 -------------------------------------------------------------------------------
@@ -72,14 +115,15 @@ end)
 
 
 Exports.RelLocalPartition = Util.memoize_named({
-  'rel_global_partition', 'node_type', --'params',
+  'rel_global_partition', 'node_type'--, 'split_tree',
 }, function(args)
-  --error('no good right now')
   assert(args.rel_global_partition)
   assert(args.node_type)
   return setmetatable({
     _global_part  = args.rel_global_partition,
     _node_type    = args.node_type,
+    -- TODO: ADD WAYS OF USING MULTIPLE PROCESSORS ON A NODE
+    --_split_tree   = args.split_tree,
   },RelationLocalPartition)
 end)
 
@@ -90,18 +134,29 @@ function RelationGlobalPartition:execute_partition()
   self._lpart = lpart
 end
 
+function RelationGlobalPartition:get_legion_partition()
+  return self._lpart
+end
+
+function RelationGlobalPartition:subregions()
+  return self._lpart:subregions()
+end
 
 function RelationLocalPartition:execute_partition()
   if self._lpart then return end -- make idempotent
 
   self._global_part:execute_partition()
-  local gpart = self._global_part._lpart
-  for _,p in ipairs(gpart:subregions()) do
-    local i,j,k = unpack(p.idx)
-    if true then -- if node-type matches... TODO
-
-    end
-  end
+  --local gpart = self._global_part:get_legion_partition()
+  -- don't do sub-partition right now...
+--  for _,p in ipairs(gpart:subregions()) do
+--    local i,j,k = unpack(p.idx)
+--    if true then -- if node-type matches... TODO
+--
+--    end
+--  end
+end
+function RelationLocalPartition:get_legion_partition()
+  return self._global_part:get_legion_partition()
 end
 
 
@@ -109,17 +164,41 @@ end
 --[[ Global / Local Partition Ghosts:                                      ]]--
 -------------------------------------------------------------------------------
 
---local GlobalGhostPattern    = {}
---GlobalGhostPattern.__index  = GlobalGhostPattern
+local GlobalGhostPattern    = {}
+GlobalGhostPattern.__index  = GlobalGhostPattern
 
 local LocalGhostPattern     = {}
 LocalGhostPattern.__index   = LocalGhostPattern
 
+
+local NewGlobalGhostPattern = Util.memoize_named({
+  'rel_global_partition',
+  'uniform_depth',
+}, function(args)
+  assert(args.rel_global_partition)
+  assert(args.uniform_depth)
+  return setmetatable({
+    _rel_global_partition = args.rel_global_partition,
+    _depth                = args.uniform_depth,
+  },GlobalGhostPattern)
+end)
+
 Exports.LocalGhostPattern   = Util.memoize_named({
   'rel_local_partition', --'params',
+  -- NEED TO CHANGE THIS IN THE FUTURE
+  'uniform_depth',
 }, function(args)
-  --error('no good right now')
-  return setmetatable({},LocalGhostPattern)
+  assert(args.rel_local_partition)
+  assert(args.uniform_depth)
+  local global_pattern = NewGlobalGhostPattern{
+    rel_global_partition  = args.rel_local_partition._global_part,
+    uniform_depth         = args.uniform_depth,
+  }
+  return setmetatable({
+    _rel_local_partition  = args.rel_local_partition,
+    _depth                = args.uniform_depth,
+    _global_pattern       = global_pattern,
+  },LocalGhostPattern)
 end)
 
 function LocalGhostPattern:supports(stencil)
@@ -128,6 +207,27 @@ end
 
 
 
+-- set up ghost regions for each node
+function GlobalGhostPattern:execute_partition()
+  if self._ghost_partitions then return end -- make idempotent
+
+  local regs = self._rel_global_partition:subregions()
+  for _,p in ipairs(regs) do
+    local reg, i,j,k = p.region, unpack(p.idx)
+    
+  end
+end
+
+-- set up ghost regions internal to a node
+function LocalGhostPattern:execute_partition()
+  -- basically do nothing for now...
+  self._global_pattern:execute_partition()
+
+  --if self._lpart then return end -- make idempotent
+  --local lreg  = self._lreg
+  --local lpart = lreg:CreateDisjointBlockPartition(self._dims)
+  --self._lpart = lpart
+end
 
 
 

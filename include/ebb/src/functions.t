@@ -32,7 +32,7 @@ if use_legion then
   LE            = rawget(_G, '_legion_env')
   legion_env    = LE.legion_env[0]
   LW            = require 'ebb.src.legionwrap'
-  use_partitioning = rawget(_G, '_run_config')
+  use_partitioning = rawget(_G, '_run_config').use_partitioning
 end
 
 local T                 = require 'ebb.src.types'
@@ -46,7 +46,12 @@ local semant            = require 'ebb.src.semant'
 local phase             = require 'ebb.src.phase'
 local stencil           = require 'ebb.src.stencil'
 
-local Planner           = require 'ebb.src.planner'
+local Planner, Machine
+if use_partitioning then
+  Planner               = require 'ebb.src.planner'
+  -- TODO: should get rid of machine dependency here.
+  Machine               = require 'ebb.src.machine'
+end
 
 F._INTERNAL_DEV_OUTPUT_PTX = false
 
@@ -270,8 +275,10 @@ function Function:_doForEach(relset, ...)
 
   -- Insert partitioning hooks here and communication to planning component
   if use_partitioning then
+    -- probably want to get rid of node-type here eventually...
+    local node_type = Machine.GetAllNodeTypes()[1]
     Planner.note_launch { typedfunc = typeversion }
-    Planner.query_for_partitions(typeversion)--, node_type, node_id, proc_id)
+    Planner.query_for_partitions(typeversion, node_type)--, node_id, proc_id)
   end
   
   -- now we either retrieve or construct the appropriate function version
