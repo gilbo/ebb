@@ -35,15 +35,105 @@ if use_legion then
 end
 
 
-local Util              = require 'ebb.src.util'
-local P                 = require 'ebb.src.partitions'
+local Util  = require 'ebb.src.util'
+local P     = require 'ebb.src.partitions'
+local M     = require 'ebb.src.machine'
 
 -------------------------------------------------------------------------------
 
 local newlist = terralib.newlist
 
 -------------------------------------------------------------------------------
---[[ The Planner:                                                          ]]--
+
+--**--**--**--**--**--**--**--**--
+--  How Does the Planner Work?  --
+--**--**--**--**--**--**--**--**--
+--[[
+
+  The planner has two key external interfaces:
+
+    1) note_launch(...) is called to inform the planner that some function
+            is going to be executed.  By making this a separate function from
+            the second (query) we can allow callers to notify the planner
+            about a sequence of functions it is about to call before it
+            starts trying to actually do so.
+    2) query_for_partitions(...) is called to retreive the Legion runtime
+            data that is necessary to actually execute a task launch across
+            the machine.  Implicit in this retreieved data is a number of
+            decisions about *how* the task should be executed.
+
+  The planner abstracts the question of *HOW* a task should be launched into
+  special objects called STRATEGIES.  There are currently two strategic
+  decisions the planner must make when launching a function:
+
+    1) PartitionStrategy -- how data should be partitioned within a given
+            node of the supercomputer.  Examples are to place all the data
+            (and hence all the computation) on the GPU or all the
+            data/compute on the CPU, or to balance between the two.
+    2) GhostStrategy -- how latency buffers, commonly called "ghost cells"
+            for data on neighboring nodes should be managed.  Examples are to
+            keep ghost cells for all cells 1,2,... hops away, or perhaps
+            to only keep ghost cells for a single hop in cardinal directions.
+
+    (note: these strategies neither encode the details of how they should be
+            achieved, nor how a decision should be made about which strategy
+            to pursue in any given case.  Instead they represent the
+            interface between those two concerns. )
+
+  Given these decisions, the planner's implementation becomes structured
+  around a "pipeline" of *INDICES* that progressively combine strategic
+  decisions with input to derive the appropriate launch data.
+    
+    Query Pipeline Input)
+      function & node_type (to launch on)
+
+    Decomposition 1)
+      extract all relations accessed by the function
+
+    Decomposition 2)
+      extract all field-accesses performed by the function
+
+    Decision 1)
+      given a function & node_type, decide what PartitionStrategy to use
+
+    Decision 2)
+      given a function, all field-accesses, node_type, and the resulting
+              strategy of the first decision, decide what GhostStrategy
+              to use.
+
+    Index 1)
+      for each  (function, relation, node_type, PartitionStrategy)
+      produce   RelLocalPartition -- an object expressing a node-local
+                                     partition of a relation
+
+    Index 2)
+      for each  (RelLocalPartition, GhostStrategy)
+      produce   LocalGhostPattern -- an object expressing a node-local
+                                     template for sets of ghost-cells
+
+    Index 3)
+      for each  (LocalGhostPattern, ...(query_params)...)
+      produce   the relevant legion data to return
+  
+
+  Making Decisions: The planner chooses how to make decisions by collecting
+    statistics about the launches that are made.  By decoupling these
+    decisions into the choice of & execution of strategies, we hope that
+    the decision-making logic can be decoupled and simplified.  Early
+    implementations will keep decision making limited to simple policies.
+
+  Maintaining Indices: By decoupling the pipeline into a series of indices
+    we introduce 2 key points / objects (RelLocalPartition &
+    LocalGhostPartition) which we can memoize, thereby removing/reducing
+    dependency.  Since the actual partition of data on the machine as
+    observed by Legion only needs to be updated when Index 3 changes, this
+    also serves to reduce the frequency with which that partition needs
+    to change.
+
+--]]
+
+-------------------------------------------------------------------------------
+--[[ The Planner: (Data Representation)                                    ]]--
 -------------------------------------------------------------------------------
 
 -- The planner is a singleton object.  I declare it as an object here in
@@ -58,28 +148,34 @@ Planner.__index = Planner
 local function NewPlanner()
 
   return setmetatable({
-    -- sets of active objects
-      active_local_partitions   = {},
+      _is_initialized = false,
+
+  -- sets of active objects
       active_node_types         = {},
       active_funcs              = {},
+      -- the following two sets correspond to memoized intermediaries
+      -- in the index pipeline
+      active_local_partitions   = {},
+      active_ghost_patterns     = {},
 
-    -- statistics & other observed data:
+  -- statistics & other observed data:
       f_call_count    = {}, -- set of invoked funcs with invocation counts
 
-    -- maintained indices
+  -- maintained indices (the query pipeline)
       partition_index       = Util.new_named_cache({
         'typedfunc', 'relation', 'node_type', 'partition_strategy',
       }), -- stores RelLocalPartition objects
-      local_ghost_index     = Util.new_named_cache {
+      ghost_pattern_index     = Util.new_named_cache {
         'rel_local_partition', 'ghost_strategy',
-      }, -- stores local_ghost_partition
+      }, -- stores LocalGhostPattern objects
       legion_data_index     = Util.new_named_cache {
-        'local_ghost_partition', 'node_id', 'proc_id',
+        'local_ghost_pattern', 'node_id', 'proc_id',
       }, -- stores legion_stuff...?
 
-    -- "state_flags" (used to signal potentially invalid indices)
+  -- "state_flags" (used to signal/control updates to indices)
       new_func_queue            = newlist(),
       new_local_partition_queue = newlist(),
+      new_ghost_pattern_queue   = newlist(),
   },Planner)
 end
 local ThePlanner = NewPlanner()
@@ -87,17 +183,6 @@ local ThePlanner = NewPlanner()
 -------------------------------------------------------------------------------
 --[[ Planner Interface:                                                    ]]--
 -------------------------------------------------------------------------------
-
--- MAYBE this should be perfomed automatically on startup instead of
--- being exposed at the module interface? dunno
---    e.g. 1) simply do this work in-line
---    e.g. 2) call this on the first note_launch() call
-function Exports.register_node_types(node_types)
-  local self = ThePlanner
-
-  self.active_node_types = newlist()
-  for i,d in ipairs(ndescs) do self.active_node_types[i] = d end
-end
 
 -----------------------------------------
 --  This function should be called every time
@@ -113,6 +198,8 @@ end
 --]]
 function Exports.note_launch(args)
   local self = ThePlanner
+
+  if not self._is_initialized then self:init() end
 
   -- note statistics
   local call_count = self.f_call_count[args.typedfunc]
@@ -131,7 +218,7 @@ end
 --  a Legion launch can be performed.
 --
 -- do we need to query for node and proc id?
-function Exports.query_for_partitions(typedfunc, node_desc, node_id, proc_id)
+function Exports.query_for_partitions(typedfunc, node_type, node_id, proc_id)
   local self = ThePlanner
 
   -- THIS IS A HACK.  Do we even want to supply node and proc ids?
@@ -140,24 +227,20 @@ function Exports.query_for_partitions(typedfunc, node_desc, node_id, proc_id)
   --                  This depends a lot on how the actual legion launch is
   --                  done...
   node_id = node_id or 1
-  node_id = proc_id or 1
+  proc_id = proc_id or 1
+  node_type = node_type or M.SingleCPUNode
 
   -- make sure all indices are fresh before satisfying a query
-  if #self.new_func_queue > 0 then
-    self:refresh_local_ghost_index()
-  end
-  if #self.new_local_partition_queue > 0 then
-    self:rebuild_partitions()
-  end
+  self:update_indices()
 
   -- make / get partitioning decision
   local partition_strategy  =
-    self:choose_partition_strategy(typedfunc, node_desc)
+    self:choose_partition_strategy(typedfunc, node_type)
 
   -- make / get ghost region decision
   local ghost_strategies =
     self:choose_ghost_strategies(typedfunc, typedfunc:all_accesses(),
-                                 node_desc, partition_strategy)
+                                 node_type, partition_strategy)
 
   -- do second index lookup, on per-access basis
   local per_access_data = {}
@@ -165,23 +248,30 @@ function Exports.query_for_partitions(typedfunc, node_desc, node_id, proc_id)
   for f,access in pairs(field_accesses) do
     local relation = f:Relation()
     -- index 1 (apply node-local partitioning strategy)
-    local local_partition = self.local_ghost_index:lookup {
+    local local_partition = self.partition_index:lookup {
       typedfunc           = typedfunc,
       relation            = relation,
-      node_type           = node_desc,
+      node_type           = node_type,
       partition_strategy  = partition_strategy,
     }
+    assert(local_partition, 'no local partition found')
     -- index 2 (apply ghost strategy)
-    local lpart_ghost = self.local_ghost_index:lookup {
+    local local_ghost_pattern = self.ghost_pattern_index:lookup {
       rel_local_partition   = local_partition,
       ghost_strategy        = ghost_strategies[access],
     }
+    if not local_ghost_pattern:supports( access:getstencil() ) then
+      error('INTERNAL: ghost pattern does not support required stencil '..
+            ' access pattern.')
+    end
+    assert(local_ghost_pattern, 'no ghost pattern found')
     -- index 3 (translate to legion data)
-    local legion_data = self.local_ghost_index:lookup {
-      local_ghost_partition = lpart_ghost,
-      node_id               = node_id,
-      proc_id               = proc_id,
+    local legion_data = self.legion_data_index:lookup {
+      local_ghost_pattern = local_ghost_pattern,
+      node_id             = node_id,
+      proc_id             = proc_id,
     }
+    assert(legion_data, 'no legion data found')
     per_access_data[access] = legion_data
   end
 
@@ -211,13 +301,33 @@ end)
 --[[ Planner Implementation:                                               ]]--
 -------------------------------------------------------------------------------
 
-function Planner:choose_partition_strategy(typedfunc, node_desc)
+
+-- MAYBE this should be perfomed automatically on startup instead of
+-- being exposed at the module interface? dunno
+--    e.g. 1) simply do this work in-line
+--    e.g. 2) call this on the first note_launch() call
+function Exports.register_node_types(node_types)
+  local self = ThePlanner
+
+  self.active_node_types = newlist()
+  for i,d in ipairs(node_types) do self.active_node_types[i] = d end
+end
+
+function Planner:init()
+  self.active_node_types = newlist{ M.SingleCPUNode }
+
+  self._is_initialized = true
+end
+
+
+
+function Planner:choose_partition_strategy(typedfunc, node_type)
   -- dumb default for development
   return CPU_Only
 end
 
 function Planner:choose_ghost_strategies(
-  typedfunc, field_accesses, node_desc, partition_strategy
+  typedfunc, field_accesses, node_type, partition_strategy
 )
   -- CAN'T QUITE HAVE A DEFAULT;
   -- but I bet this works for plumbing through to begin with
@@ -229,8 +339,20 @@ function Planner:choose_ghost_strategies(
   return choices
 end
 
+function Planner:update_indices()
+  if #self.new_func_queue > 0 then
+    self:refresh_partition_index()
+  end
+  if #self.new_local_partition_queue > 0 then
+    self:refresh_ghost_pattern_index()
+  end
+  if #self.new_ghost_pattern_queue > 0 then
+    self:rebuild_partitions()
+  end
+end
+
 local all_partition_strategies = { CPU_Only }--, GPU_Only }
-function Planner:refresh_local_ghost_index()
+function Planner:refresh_partition_index()
   -- handle all newly registered functions
   --  iterate over all possible types of nodes
   --  and strategies, and derive a local partition for each
@@ -246,22 +368,22 @@ function Planner:refresh_local_ghost_index()
   for relation,_ in pairs(all_relations) do
     local global_partition  = relation:_GetGlobalPartition()
   for _,node_type in ipairs(self.active_node_types) do
-  for _,part_strategy in ipairs(all_partition_strategies) do
+  for _,partition_strategy in ipairs(all_partition_strategies) do
     -- compute parameters from the strategy
     -- TODO: COMPUTE PARAMETERS HERE
 
     -- create and cache a local partition for this combination
     -- of keys and strategy
     local local_partition = P.RelLocalPartition {
-      global_partition  = global_partition,
-      node_type         = node_type,
+      rel_global_partition  = global_partition,
+      node_type             = node_type,
       -- some other parameters...
     }
-    self.local_ghost_index:insert( local_partition, {
+    self.partition_index:insert( local_partition, {
       typedfunc           = typedfunc,
       relation            = relation,
       node_type           = node_type,
-      partition_strategy  = part_strategy,
+      partition_strategy  = partition_strategy,
     })
 
     -- potentially invalidate the partitions
@@ -274,14 +396,75 @@ function Planner:refresh_local_ghost_index()
   self.new_func_queue = newlist() -- re-validate the index
 end
 
+local all_ghost_strategies = {
+  GhostDepth(0), GhostDepth(1), GhostDepth(2)
+}
+function Planner:refresh_ghost_pattern_index()
+  -- handle all newly registered local_ghost_patterns
+
+  -- PER-REL_LOCAL_PARTITION,GHOST_STRATEGY
+  for _,local_partition in ipairs(self.new_local_partition_queue) do
+  for _,ghost_strategy in ipairs(all_ghost_strategies) do
+    -- TODO: COMPUTE PARAMETERS HERE
+
+    local local_ghost_pattern = P.LocalGhostPattern {
+      rel_local_partition = local_partition,
+      -- params...
+    }
+    self.ghost_pattern_index:insert( local_ghost_pattern, {
+      rel_local_partition   = local_partition,
+      ghost_strategy        = ghost_strategy,
+    })
+
+    -- invalidate the partitions
+    -- b/c of construction we're guaranteed this is new
+    self.active_ghost_patterns[ local_ghost_pattern ] = true
+    self.new_ghost_pattern_queue:insert( local_ghost_pattern )
+  end end
+
+  self.new_local_partition_queue = newlist() -- re-validate the index
+end
+
+-------------------------------------------------------------------------------
+
+-- initialization of private Legion partition data
+local function get_partition_store(planner)
+  if planner._partition_storage then return planner._partition_storage end
+
+  planner._partition_storage = {
+    trees = {} -- maps RelGlobalPartitions to partition objects
+  }
+  return planner._partition_storage
+end
+
 function Planner:rebuild_partitions()
   -- Code here should do the following
     -- * potentially reconstruct the partition tree
-    -- * update the index caches
+    -- * update the final index appropriately
+
+  local pstore = get_partition_store(self)
+
+  -- writing as a single-time attempt to partition...
+  -- needs to be edited into better shape
+  for local_partition,_ in pairs(self.active_local_partitions) do
+    local_partition:execute_partition()
+  end
 
   -- TODO: Definitely needs code here
+  --local relations
 
-  self.new_local_partition_queue = newlist() -- re-validate the index
+
+  -- TODO: STUB FOR DEVELOPMENT
+  for _,local_ghost_pattern in ipairs(self.new_ghost_pattern_queue) do
+    local data = {}
+    self.legion_data_index:insert( data, {
+      local_ghost_pattern = local_ghost_pattern,
+      node_id             = 1,
+      proc_id             = 1,
+    })
+  end
+
+  self.new_ghost_pattern_queue = newlist() -- re-validate the index
 end
 
 

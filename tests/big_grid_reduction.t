@@ -1,4 +1,3 @@
---DISABLE-PARTITIONED
 -- The MIT License (MIT)
 -- 
 -- Copyright (c) 2015 Stanford University.
@@ -23,25 +22,20 @@
 -- DEALINGS IN THE SOFTWARE.
 import 'ebb'
 local L = require 'ebblib'
+require 'tests.test'
 
-local assert = L.assert
-local cross  = L.cross
-local R = L.NewRelation { name="R", size=5 }
+local NX,NY = 1000,1000
 
+local vertices = L.NewRelation { dims = {NX,NY}, name = 'vertices' }
+local gerr = L.Global(L.int, 1)
 
-local v1 = L.Constant(L.vec3f, {1, 2, 3})
-local v2 = L.Constant(L.vec3f, {5, 7, 11})
-
-local v3 = L.Constant(L.vec3i, {1, 2, 3})
-local v4 = L.Constant(L.vec3i, {5, 7, 11})
-
-local test_cross = ebb(r : R)
-    assert(cross(v1, v2) == {1, 4, -3}) -- simple test
-    assert(cross(v3, v4) == {1, 4, -3}) -- int only
-    assert(cross(v1, v4) == {1, 4, -3}) -- cross types
-    
-    var expr = v1 + 2 * v2
-    assert(cross(v1, expr) == {2, 8, -6}) -- test working with local variables
-    assert(cross(v1, v1 + 2 * v2) == {2, 8, -6}) -- test working with expressions
+local ebb RunRed(v : vertices)
+  gerr += 1
 end
-R:foreach(test_cross)
+
+function run_test()
+  vertices:foreach(RunRed)
+  test.eq(NX*NY+1, gerr:get())
+end
+
+run_test()

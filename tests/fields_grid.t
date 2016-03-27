@@ -1,4 +1,3 @@
---DISABLE-PARTITIONED
 -- The MIT License (MIT)
 -- 
 -- Copyright (c) 2015 Stanford University.
@@ -34,11 +33,8 @@ local L = require 'ebblib'
 require "tests.test"
 
 local assert = L.assert
-local ioOff = require 'ebb.domains.ioOff'
-local mesh  = ioOff.LoadTrimesh('tests/octa.off')
 
-local V      = mesh.vertices
-local T      = mesh.triangles
+local T = L.NewRelation { dims = {5,3}, name = 'cells' }
 
 ----------------
 -- check args --

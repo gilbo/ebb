@@ -77,6 +77,7 @@ local exclude = {
 local disable_str = '--DISABLE-TEST'
 local disable_gpu_str = '--DISABLE-ON-GPU'
 local disable_legion_str = '--DISABLE-ON-LEGION'
+local disable_partition_str = '--DISABLE-PARTITIONED'
 local function str_starts_with(str, prefix)
   return string.sub(str,1,#prefix) == prefix
 end
@@ -88,20 +89,26 @@ local function is_disabled (filename)
   local disabled_all    = false
   local disabled_gpu    = false
   local disabled_legion = false
+  local disabled_part   = false
   if line1 then
     disabled_all    = disabled_all or str_starts_with(line1, disable_str)
     disabled_gpu    = disabled_gpu or str_starts_with(line1, disable_gpu_str)
     disabled_legion = disabled_legion or
                       str_starts_with(line1, disable_legion_str)
+    disabled_part   = disabled_part or
+                      str_starts_with(line1, disable_partition_str)
   end
   if line2 then
     disabled_all    = disabled_all or str_starts_with(line2, disable_str)
     disabled_gpu    = disabled_gpu or str_starts_with(line2, disable_gpu_str)
     disabled_legion = disabled_legion or
                       str_starts_with(line2, disable_legion_str)
+    disabled_part   = disabled_part or
+                      str_starts_with(line2, disable_partition_str)
   end
   return disabled_all or (USE_GPU     and disabled_gpu)
                       or (USE_LEGION  and disabled_legion)
+                      or (USE_PARTITION and disabled_part)
 end
 
 local function output_name (filename)

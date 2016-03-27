@@ -32,6 +32,7 @@ local Pre   = require "ebb.src.prelude"
 local T     = require "ebb.src.types"
 local C     = require "ebb.src.c"
 local F     = require "ebb.src.functions"
+local P     = require "ebb.src.partitions"
 
 local DLD = require "ebb.lib.dld"
 local DLDiter = require 'ebb.src.dlditer'
@@ -1995,6 +1996,17 @@ function Relation:SetPartitions(num_partitions)
   end
   rawset(self, '_total_partitions', total_partitions)
   rawset(self, '_num_partitions', num_partitions_table)
+  rawset(self, '_rel_global_partition',
+               P.RelGlobalPartition(self, unpack(num_partitions)))
+end
+
+function Relation:_GetGlobalPartition()
+  if not self._rel_global_partition then
+    error("If running on Legion, you need to call SetPartitions() on all of "..
+          "your relations.  Relation '"..self:Name().."' did not have any "..
+          "partition set.")
+  end
+  return self._rel_global_partition
 end
 
 function Relation:TotalPartitions()

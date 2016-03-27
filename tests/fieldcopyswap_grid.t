@@ -1,4 +1,3 @@
---DISABLE-PARTITIONED
 -- The MIT License (MIT)
 -- 
 -- Copyright (c) 2015 Stanford University.
@@ -23,25 +22,56 @@
 -- DEALINGS IN THE SOFTWARE.
 import 'ebb'
 local L = require 'ebblib'
+require "tests/test"
 
-local assert = L.assert
-local cross  = L.cross
-local R = L.NewRelation { name="R", size=5 }
+local cells = L.NewRelation { dims = {5,3}, name = 'cells' }
 
+cells:NewField('f1', L.double):Load(0)
+cells:NewField('f2', L.double):Load(0)
 
-local v1 = L.Constant(L.vec3f, {1, 2, 3})
-local v2 = L.Constant(L.vec3f, {5, 7, 11})
-
-local v3 = L.Constant(L.vec3i, {1, 2, 3})
-local v4 = L.Constant(L.vec3i, {5, 7, 11})
-
-local test_cross = ebb(r : R)
-    assert(cross(v1, v2) == {1, 4, -3}) -- simple test
-    assert(cross(v3, v4) == {1, 4, -3}) -- int only
-    assert(cross(v1, v4) == {1, 4, -3}) -- cross types
-    
-    var expr = v1 + 2 * v2
-    assert(cross(v1, expr) == {2, 8, -6}) -- test working with local variables
-    assert(cross(v1, v1 + 2 * v2) == {2, 8, -6}) -- test working with expressions
+local setup = ebb ( c : cells )
+  c.f1 = 5
 end
-R:foreach(test_cross)
+cells:foreach(setup)
+
+cells:Swap('f1','f2')
+
+local check1 = ebb ( c : cells )
+  L.assert(c.f2 == 5)
+  L.assert(c.f1 == 0)
+end
+cells:foreach(check1)
+
+cells:Copy{to='f1',from='f2'}
+
+local check2 = ebb ( c : cells )
+  L.assert(c.f2 == 5)
+  L.assert(c.f1 == 5)
+end
+cells:foreach(check2)
+
+-- Check for errors
+cells:NewField('ftype', L.float):Load(0)
+
+-- Swap Failures
+test.fail_function(function()
+  cells:Swap('f1','noname')
+end, 'Could not find a field named "noname"')
+test.fail_function(function()
+  cells:Swap('f1','ftype')
+end, 'Cannot Swap%(%) fields of different type')
+
+-- Copy Failures
+test.fail_function(function()
+  cells:Copy{from='f1',to='noname'}
+end, 'Could not find a field named "noname"')
+test.fail_function(function()
+  cells:Copy{from='ftype',to='f1'}
+end, 'Cannot Copy%(%) fields of different type')
+test.fail_function(function()
+  cells:Copy('f1','f2')
+end, 'Copy%(%) should be called.*relation%:Copy%{from=\'f1\',to=\'f2\'%}')
+
+-- Copy Success using auto-allocate
+cells:Copy{from='f1',to='f2'}
+

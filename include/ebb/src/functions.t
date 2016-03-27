@@ -27,12 +27,12 @@ package.loaded["ebb.src.functions"] = F
 local use_legion = not not rawget(_G, '_legion_env')
 local use_single = not use_legion
 
-
-local LE, legion_env, LW
+local LE, legion_env, LW, use_partitioning
 if use_legion then
   LE            = rawget(_G, '_legion_env')
   legion_env    = LE.legion_env[0]
   LW            = require 'ebb.src.legionwrap'
+  use_partitioning = rawget(_G, '_run_config')
 end
 
 local T                 = require 'ebb.src.types'
@@ -269,9 +269,11 @@ function Function:_doForEach(relset, ...)
   local typeversion = self:_Get_Type_Version_Table(4, relset, ...)
 
   -- Insert partitioning hooks here and communication to planning component
-  --Planner.note_launch { typedfunc = typeversion }
-  --Planner.query_for_partitions(typeversion, node_desc, node_id, proc_id)
-
+  if use_partitioning then
+    Planner.note_launch { typedfunc = typeversion }
+    Planner.query_for_partitions(typeversion)--, node_type, node_id, proc_id)
+  end
+  
   -- now we either retrieve or construct the appropriate function version
   local version = get_ufunc_version(self, typeversion, relset, params)
 

@@ -36,25 +36,13 @@ if use_legion then
   LW            = require 'ebb.src.legionwrap'
 end
 
-local T                 = require 'ebb.src.types'
-local Stats             = require 'ebb.src.stats'
-local Util              = require 'ebb.src.util'
+local R   = require 'ebb.src.relations'
 
-local Pre               = require 'ebb.src.prelude'
-local R                 = require 'ebb.src.relations'
-local specialization    = require 'ebb.src.specialization'
-local semant            = require 'ebb.src.semant'
-local phase             = require 'ebb.src.phase'
-local stencil           = require 'ebb.src.stencil'
+local Util            = require 'ebb.src.util'
+local Machine         = require 'ebb.src.machine'
+local SingleCPUNode   = Machine.SingleCPUNode
 
 ------------------------------------------------------------------------------
-
--------------------------------------------------------------------------------
---[[ Node Types:                                                           ]]--
--------------------------------------------------------------------------------
-
--- would be nice to define these here...
-
 
 -------------------------------------------------------------------------------
 --[[ Relation Local / Global Partitions:                                   ]]--
@@ -69,49 +57,74 @@ RelationLocalPartition.__index  = RelationLocalPartition
 Exports.RelGlobalPartition = Util.memoize(function(
   relation, nX, nY, nZ
 )
+  assert(R.is_relation(relation))
+  assert(nX and nY)
   return setmetatable({
-    n_nodes   = nX * nY * nZ,
-    dims      = { nX, nY, nZ },
-    n_x       = nX,
-    n_y       = nY,
-    n_z       = nZ,
-    relation  = relation,
-  })
+    _n_nodes    = nX * (nY or 1) * (nZ or 1),
+    _dims       = { nX, nY, nZ },
+    _n_x        = nX,
+    _n_y        = nY,
+    _n_z        = nZ,
+    _lreg       = relation._logical_region_wrapper,
+    --_relation   = relation,
+  },RelationGlobalPartition)
 end)
 
-Exports.RelLocalPartition = Util.memoize(function(
-  rel_global_partition, node_type, params
-)
-  error('no good right now')
+
+Exports.RelLocalPartition = Util.memoize_named({
+  'rel_global_partition', 'node_type', --'params',
+}, function(args)
+  --error('no good right now')
+  assert(args.rel_global_partition)
+  assert(args.node_type)
   return setmetatable({
-    n_nodes   = nX * nY * nZ,
-    dims      = { nX, nY, nZ },
-    n_x       = nX,
-    n_y       = nY,
-    n_z       = nZ,
-    relation  = relation,
-  })
+    _global_part  = args.rel_global_partition,
+    _node_type    = args.node_type,
+  },RelationLocalPartition)
 end)
+
+function RelationGlobalPartition:execute_partition()
+  if self._lpart then return end -- make idempotent
+  local lreg  = self._lreg
+  local lpart = lreg:CreateDisjointBlockPartition(self._dims)
+  self._lpart = lpart
+end
+
+
+function RelationLocalPartition:execute_partition()
+  if self._lpart then return end -- make idempotent
+
+  self._global_part:execute_partition()
+  local gpart = self._global_part._lpart
+  for _,p in ipairs(gpart:subregions()) do
+    local i,j,k = unpack(p.idx)
+    if true then -- if node-type matches... TODO
+
+    end
+  end
+end
 
 
 -------------------------------------------------------------------------------
 --[[ Global / Local Partition Ghosts:                                      ]]--
 -------------------------------------------------------------------------------
 
---local GlobalGhosts    = {}
---GlobalGhosts.__index  = GlobalGhosts
+--local GlobalGhostPattern    = {}
+--GlobalGhostPattern.__index  = GlobalGhostPattern
 
-local LocalGhosts     = {}
-LocalGhosts.__index   = LocalGhosts
+local LocalGhostPattern     = {}
+LocalGhostPattern.__index   = LocalGhostPattern
 
-Exports.LocalGhosts = Util.memoize(function(
-  rel_local_partition, params
-)
-  error('no good right now')
+Exports.LocalGhostPattern   = Util.memoize_named({
+  'rel_local_partition', --'params',
+}, function(args)
+  --error('no good right now')
+  return setmetatable({},LocalGhostPattern)
 end)
 
-
-
+function LocalGhostPattern:supports(stencil)
+  return true -- TODO: implement actual check
+end
 
 
 

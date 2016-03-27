@@ -26,101 +26,13 @@ package.loaded['ebb.src.stencil'] = Module
 local use_legion = not not rawget(_G, '_legion_env')
 local use_single = not use_legion
 
-local ast = require "ebb.src.ast"
-local T   = require "ebb.src.types"
-local B   = require "ebb.src.builtins"
+local ast   = require "ebb.src.ast"
+local T     = require "ebb.src.types"
+local B     = require "ebb.src.builtins"
+local Util  = require "ebb.src.util"
 
-
-------------------------------------------------------------------------------
---[[ Rectangles                                                           ]]--
-------------------------------------------------------------------------------
-
-local Rect2d = {}
-Rect2d.__index = Rect2d
-local Rect3d = {}
-Rect3d.__index = Rect3d
-
-local function isrect2d(obj) return getmetatable(obj) == Rect2d end
-local function isrect3d(obj) return getmetatable(obj) == Rect3d end
-
-local function NewRect2d(xrange, yrange)
-  local r = setmetatable({
-    _x = { unpack(xrange) },
-    _y = { unpack(yrange) },
-  }, Rect2d)
-  return r
-end
-local function NewRect3d(xrange, yrange, zrange)
-  local r = setmetatable({
-    _x = { unpack(xrange) },
-    _y = { unpack(yrange) },
-    _z = { unpack(zrange) },
-  }, Rect3d)
-  return r
-end
-
-function Rect2d:xminmax() return unpack(self._x) end
-function Rect2d:yminmax() return unpack(self._y) end
-function Rect3d:xminmax() return unpack(self._x) end
-function Rect3d:yminmax() return unpack(self._y) end
-function Rect3d:zminmax() return unpack(self._z) end
-
-function Rect2d:getranges()
-  return { { self:xminmax() }, { self:yminmax() } }
-end
-function Rect3d:getranges()
-  return { { self:xminmax() }, { self:yminmax() }, { self:zminmax() } }
-end
-
-function Rect2d:containsPoint(i,j)
-  return self._x[1] <= i and i <= self._x[2] and
-         self._y[1] <= j and j <= self._y[2]
-end
-function Rect3d:containsPoint(i,j,k)
-  return self._x[1] <= i and i <= self._x[2] and
-         self._y[1] <= j and j <= self._y[2] and
-         self._z[1] <= k and k <= self._z[2]
-end
-
-function Rect2d:join(rhs)
-  return NewRect2d({ math.min(self._x[1], rhs._x[1]),
-                     math.max(self._x[2], rhs._x[2]) },
-                   { math.min(self._y[1], rhs._y[1]),
-                     math.max(self._y[2], rhs._y[2]) })
-end
-function Rect3d:join(rhs)
-  return NewRect2d({ math.min(self._x[1], rhs._x[1]),
-                     math.max(self._x[2], rhs._x[2]) },
-                   { math.min(self._y[1], rhs._y[1]),
-                     math.max(self._y[2], rhs._y[2]) },
-                   { math.min(self._z[1], rhs._z[1]),
-                     math.max(self._z[2], rhs._z[2]) })
-end
-
-function Rect2d:clip(bound_rect)
-  return NewRect2d({ math.max(self._x[1], bound_rect._x[1]),
-                     math.min(self._x[2], bound_rect._x[2]) },
-                   { math.max(self._y[1], bound_rect._y[1]),
-                     math.min(self._y[2], bound_rect._y[2]) })
-end
-function Rect3d:clip(bound_rect)
-  return NewRect2d({ math.max(self._x[1], bound_rect._x[1]),
-                     math.min(self._x[2], bound_rect._x[2]) },
-                   { math.max(self._y[1], bound_rect._y[1]),
-                     math.min(self._y[2], bound_rect._y[2]) },
-                   { math.max(self._z[1], bound_rect._z[1]),
-                     math.min(self._z[2], bound_rect._z[2]) })
-end
-
-function Rect2d:isempty()
-  return self._x[1] > self._x[2] or
-         self._y[1] > self._y[2]
-end
-function Rect3d:isempty()
-  return self._x[1] > self._x[2] or
-         self._y[1] > self._y[2] or
-         self._z[1] > self._z[2]
-end
+local NewRect2d, NewRect3d = Util.NewRect2d, Util.NewRect3d
+local isrect2d,  isrect3d  = Util.isrect2d,  Util.isrect3d
 
 ------------------------------------------------------------------------------
 --[[ Stencils                                                             ]]--
