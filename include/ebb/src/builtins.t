@@ -135,7 +135,7 @@ function B.xid.check(ast, ctxt)
     return uint64T
 end
 function B.xid.codegen(ast, ctxt)
-    return `[ast.params[1]:codegen(ctxt)].a0
+    return `[uint64]( [ast.params[1]:codegen(ctxt)].a0 )
 end
 
 B.yid = Builtin.new()
@@ -152,7 +152,7 @@ function B.yid.check(ast, ctxt)
     return uint64T
 end
 function B.yid.codegen(ast, ctxt)
-    return `[ast.params[1]:codegen(ctxt)].a1
+    return `[uint64]( [ast.params[1]:codegen(ctxt)].a1 )
 end
 
 B.zid = Builtin.new()
@@ -174,7 +174,7 @@ function B.zid.check(ast, ctxt)
     return uint64T
 end
 function B.zid.codegen(ast, ctxt)
-    return `[ast.params[1]:codegen(ctxt)].a2
+    return `[uint64]( [ast.params[1]:codegen(ctxt)].a2 )
 end
 
 

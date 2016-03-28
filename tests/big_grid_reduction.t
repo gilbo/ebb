@@ -27,6 +27,8 @@ require 'tests.test'
 local NX,NY = 1000,1000
 
 local vertices = L.NewRelation { dims = {NX,NY}, name = 'vertices' }
+vertices:SetPartitions{2,2}
+
 local gerr = L.Global(L.int, 1)
 
 local ebb RunRed(v : vertices)

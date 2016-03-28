@@ -34,7 +34,8 @@ require "tests.test"
 
 local assert = L.assert
 
-local T = L.NewRelation { dims = {5,3}, name = 'cells' }
+local T = L.NewRelation { dims = {10,10}, name = 'cells' }
+T:SetPartitions{2,2}
 
 ----------------
 -- check args --

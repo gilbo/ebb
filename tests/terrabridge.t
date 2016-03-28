@@ -1,4 +1,5 @@
 --DISABLE-ON-GPU  (b/c standard lib functions can't be embedded in CUDA code)
+--DISABLE-PARTITIONED
 
 -- The MIT License (MIT)
 -- 

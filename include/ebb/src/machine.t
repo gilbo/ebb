@@ -169,7 +169,7 @@ local function extract_all_memories( machine )
     local mobj  = memarr[i]
     local mtyp  = mem_kind_str[ LW.legion_memory_kind(mobj) ]
     local maddr = LW.legion_memory_address_space(mobj) -- is a uint
-    print(tohexstr(mobj.id), LW.legion_memory_kind(mobj), maddr)
+    --print(tohexstr(mobj.id), LW.legion_memory_kind(mobj), maddr)
     if mtyp then
       mems:insert {
         id    = mobj.id,

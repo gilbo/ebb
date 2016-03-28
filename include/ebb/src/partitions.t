@@ -44,6 +44,7 @@ local SingleCPUNode   = Machine.SingleCPUNode
 
 ------------------------------------------------------------------------------
 
+local newlist = terralib.newlist
 
 -------------------------------------------------------------------------------
 --[[ SplitTrees                                                            ]]--
@@ -104,15 +105,19 @@ Exports.RelGlobalPartition = Util.memoize(function(
   assert(nX and nY)
   return setmetatable({
     _n_nodes    = nX * (nY or 1) * (nZ or 1),
-    _dims       = { nX, nY, nZ },
+    _blocking   = { nX, nY, nZ },
     _n_x        = nX,
     _n_y        = nY,
     _n_z        = nZ,
     _lreg       = relation._logical_region_wrapper,
+    _rel_dims   = relation:Dims()
     --_relation   = relation,
   },RelationGlobalPartition)
 end)
 
+function RelationGlobalPartition:get_n_blocks()
+  return self._n_nodes
+end
 
 Exports.RelLocalPartition = Util.memoize_named({
   'rel_global_partition', 'node_type'--, 'split_tree',
@@ -127,10 +132,46 @@ Exports.RelLocalPartition = Util.memoize_named({
   },RelationLocalPartition)
 end)
 
+function RelationLocalPartition:get_global_partition()
+  return self._global_part
+end
+
+local function linearize_idx_3d(i,j,k,nx,ny,nz)
+  return i*ny*nz + j*nz + k
+end
+local function linearize_idx_2d(i,j,nx,ny)
+  return i*ny + j
+end
+function RelationGlobalPartition:get_subrects()
+  local nX, nY, nZ    = self._n_x, self._n_y, self._n_z
+  local dX, dY, dZ    = unpack(self._rel_dims)
+  local is3d          = #self._rel_dims == 3
+
+  local subrects   = newlist()
+  -- loop to fill out the partition coloring
+  for i=1,nX do
+    local xrange  = { math.floor( dX * (i-1) / nX ),
+                      math.floor( dX * i / nX ) - 1 }
+    for j=1,nY do
+      local yrange  = { math.floor( dY * (j-1) / nY ),
+                        math.floor( dY * j / nY ) - 1 }
+      if not is3d then
+        subrects:insert( Util.NewRect2d( xrange,yrange ) )
+      else for k=1,nZ do
+        local zrange  = { math.floor( dZ * (k-1) / nZ ),
+                          math.floor( dZ * k / nZ ) - 1 }
+        subrects:insert( Util.NewRect3d( xrange,yrange,zrange ) )
+      end end
+    end
+  end
+
+  return subrects
+end
+
 function RelationGlobalPartition:execute_partition()
   if self._lpart then return end -- make idempotent
   local lreg  = self._lreg
-  local lpart = lreg:CreateDisjointBlockPartition(self._dims)
+  local lpart = lreg:CreateDisjointPartition(self:get_subrects())
   self._lpart = lpart
 end
 
@@ -155,9 +196,9 @@ function RelationLocalPartition:execute_partition()
 --    end
 --  end
 end
-function RelationLocalPartition:get_legion_partition()
-  return self._global_part:get_legion_partition()
-end
+--function RelationLocalPartition:get_legion_partition()
+--  return self._global_part:get_legion_partition()
+--end
 
 
 -------------------------------------------------------------------------------
@@ -205,29 +246,149 @@ function LocalGhostPattern:supports(stencil)
   return true -- TODO: implement actual check
 end
 
+function LocalGhostPattern:get_local_partition()
+  return self._rel_local_partition
+end
 
+
+local ghost_nums_2d = {
+  [-1]  = {
+    [-1]  = 0,
+    [0]   = 1,
+    [1]   = 2,
+  },
+  [0] = {
+    [-1]  = 3,
+    --[0]   = 1,
+    [1]   = 4,
+  },
+  [1] = {
+    [-1]  = 5,
+    [0]   = 6,
+    [1]   = 7,
+  },
+}
+local n_2d_ghost_rects = 8
+
+local ghost_nums_3d = {
+  [-1]  = {
+    [-1]  = { [-1] =  0,  [0] =  1,  [1] =  2 },
+    [0]   = { [-1] =  3,  [0] =  4,  [1] =  5 },
+    [1]   = { [-1] =  6,  [0] =  7,  [1] =  8 },
+  },
+  [0] = {
+    [-1]  = { [-1] =  9,  [0] = 10,  [1] = 11 },
+    [0]   = { [-1] = 12, --[[0] =,]] [1] = 13 },
+    [1]   = { [-1] = 14,  [0] = 15,  [1] = 16 },
+  },
+  [1] = {
+    [-1]  = { [-1] = 17,  [0] = 18,  [1] = 19 },
+    [0]   = { [-1] = 20,  [0] = 21,  [1] = 22 },
+    [1]   = { [-1] = 23,  [0] = 24,  [1] = 25 },
+  },
+}
+local n_3d_ghost_rects = 26
+
+function GlobalGhostPattern:get_all_subrects()
+  local is3d  = #self._rel_global_partition._rel_dims == 3
+  local depth = self._depth
+
+  if depth == 0 then return newlist() end
+
+  local subrects = newlist()
+  local all = {-math.huge,math.huge}
+  if is3d then
+    for i,reg in ipairs(self._rel_global_partition:subregions()) do
+      local rect = reg.rect
+      local xlo,ylo,zlo,xhi,yhi,zhi = rect:mins_maxes()
+      local xn, xp  = Util.NewRect3d({-math.huge,xlo+depth},all,all),
+                      Util.NewRect3d({ xhi-depth,math.huge},all,all)
+      local yn, yp  = Util.NewRect3d(all,{-math.huge,ylo+depth},all),
+                      Util.NewRect3d(all,{ yhi-depth,math.huge},all)
+      local zn, zp  = Util.NewRect3d(all,all,{-math.huge,zlo+depth}),
+                      Util.NewRect3d(all,all,{ zhi-depth,math.huge})
+      subrects:insert( newlist {
+        rect:clip(xn):clip(yn):clip(zn), -- -1,-1,-1
+        rect:clip(xn):clip(yn)         , -- -1,-1, 0
+        rect:clip(xn):clip(yn):clip(zp), -- -1,-1, 1
+        rect:clip(xn)         :clip(zn), -- -1, 0,-1
+        rect:clip(xn)                  , -- -1, 0, 0
+        rect:clip(xn)         :clip(zp), -- -1, 0, 1
+        rect:clip(xn):clip(yp):clip(zn), -- -1, 1,-1
+        rect:clip(xn):clip(yp)         , -- -1, 1, 0
+        rect:clip(xn):clip(yp):clip(zp), -- -1, 1, 1
+
+        rect         :clip(yn):clip(zn), --  0,-1,-1
+        rect         :clip(yn)         , --  0,-1, 0
+        rect         :clip(yn):clip(zp), --  0,-1, 1
+        rect                  :clip(zn), --  0, 0,-1
+                                         --  0, 0, 0
+        rect                  :clip(zp), --  0, 0, 1
+        rect         :clip(yp):clip(zn), --  0, 1,-1
+        rect         :clip(yp)         , --  0, 1, 0
+        rect         :clip(yp):clip(zp), --  0, 1, 1
+
+        rect:clip(xp):clip(yn):clip(zn), --  1,-1,-1
+        rect:clip(xp):clip(yn)         , --  1,-1, 0
+        rect:clip(xp):clip(yn):clip(zp), --  1,-1, 1
+        rect:clip(xp)         :clip(zn), --  1, 0,-1
+        rect:clip(xp)                  , --  1, 0, 0
+        rect:clip(xp)         :clip(zp), --  1, 0, 1
+        rect:clip(xp):clip(yp):clip(zn), --  1, 1,-1
+        rect:clip(xp):clip(yp)         , --  1, 1, 0
+        rect:clip(xp):clip(yp):clip(zp), --  1, 1, 1
+      })
+    end
+  else
+    for i,reg in ipairs(self._rel_global_partition:subregions()) do
+      local rect = reg.rect
+      local xlo,ylo,xhi,yhi = rect:mins_maxes()
+      local xn, xp  = Util.NewRect2d({-math.huge,xlo+depth},all),
+                      Util.NewRect2d({ xhi-depth,math.huge},all)
+      local yn, yp  = Util.NewRect2d(all,{-math.huge,ylo+depth}),
+                      Util.NewRect2d(all,{ yhi-depth,math.huge})
+      subrects:insert( newlist {
+        rect:clip(xn):clip(yn), -- -1,-1
+        rect:clip(xn)         , -- -1, 0
+        rect:clip(xn):clip(yp), -- -1, 1
+        rect         :clip(yn), --  0,-1
+                                --  0, 0
+        rect         :clip(yp), --  0, 1
+        rect:clip(xp):clip(yn), --  1,-1
+        rect:clip(xp)         , --  1, 0
+        rect:clip(xp):clip(yp), --  1, 1
+      })
+    end
+  end
+  return subrects
+end
 
 -- set up ghost regions for each node
 function GlobalGhostPattern:execute_partition()
-  if self._ghost_partitions then return end -- make idempotent
+  if self._ghost_partition then return end -- make idempotent
 
-  local regs = self._rel_global_partition:subregions()
-  for _,p in ipairs(regs) do
-    local reg, i,j,k = p.region, unpack(p.idx)
-    
+  local all_subrects = self:get_all_subrects()
+  if #all_subrects == 0 then self._ghost_partitions = newlist() return end
+
+  self._ghost_partitions = newlist()
+  for i,reg in ipairs(self._rel_global_partition:subregions()) do
+    local subrects  = all_subrects[i]
+    local lpart     = reg:CreateOverlappingPartition(subrects)
+    self._ghost_partitions:insert(lpart)
   end
 end
 
 -- set up ghost regions internal to a node
 function LocalGhostPattern:execute_partition()
-  -- basically do nothing for now...
+  -- just defer for now...
   self._global_pattern:execute_partition()
 
   --if self._lpart then return end -- make idempotent
   --local lreg  = self._lreg
-  --local lpart = lreg:CreateDisjointBlockPartition(self._dims)
+  --local lpart = lreg:CreateDisjointBlockPartition(self._blocking)
   --self._lpart = lpart
 end
+
 
 
 

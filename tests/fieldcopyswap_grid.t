@@ -24,7 +24,8 @@ import 'ebb'
 local L = require 'ebblib'
 require "tests/test"
 
-local cells = L.NewRelation { dims = {5,3}, name = 'cells' }
+local cells = L.NewRelation { dims = {10,10}, name = 'cells' }
+cells:SetPartitions{2,2}
 
 cells:NewField('f1', L.double):Load(0)
 cells:NewField('f2', L.double):Load(0)

@@ -169,7 +169,7 @@ local function NewPlanner()
         'rel_local_partition', 'ghost_strategy',
       }, -- stores LocalGhostPattern objects
       legion_data_index     = Util.new_named_cache {
-        'local_ghost_pattern', 'node_id', 'proc_id',
+        'local_ghost_pattern', --'node_id', 'proc_id',
       }, -- stores legion_stuff...?
 
   -- "state_flags" (used to signal/control updates to indices)
@@ -267,8 +267,8 @@ function Exports.query_for_partitions(typedfunc, node_type, node_id, proc_id)
     -- index 3 (translate to legion data)
     local legion_data = self.legion_data_index:lookup {
       local_ghost_pattern = local_ghost_pattern,
-      node_id             = node_id,
-      proc_id             = proc_id,
+      --node_id             = node_id,
+      --proc_id             = proc_id,
     }
     assert(legion_data, 'no legion data found')
     per_access_data[access] = legion_data
@@ -436,6 +436,7 @@ function Planner:rebuild_partitions()
   local pstore = get_partition_store(self)
 
   -- HACKITY HACK STUFF HERE FOR NOW
+  -- TODO: Something to handle ghost-regions
   -- writing as a single-time attempt to partition...
   -- needs to be edited into better shape
   -- ALWAYS MAKE SURE THE DISJOINT PARTITION IS FRESH...
@@ -443,21 +444,22 @@ function Planner:rebuild_partitions()
     local_partition:execute_partition()
   end
 
-  for local_ghost_pattern in ipairs(self.new_ghost_pattern_queue) do
+  for _,local_ghost_pattern in ipairs(self.new_ghost_pattern_queue) do
     local_ghost_pattern:execute_partition()
   end
 
-  -- TODO: Definitely needs code here
-  --local relations
 
 
   -- TODO: STUB FOR DEVELOPMENT
   for _,local_ghost_pattern in ipairs(self.new_ghost_pattern_queue) do
-    local data = {}
+    -- TODO: generalize to not just one CPU per node...
+    local local_partition   = local_ghost_pattern:get_local_partition()
+    local global_partition  = local_partition:get_global_partition()
+    local data = {
+      global_partition = global_partition:get_legion_partition()
+    }
     self.legion_data_index:insert( data, {
       local_ghost_pattern = local_ghost_pattern,
-      node_id             = 1,
-      proc_id             = 1,
     })
   end
 

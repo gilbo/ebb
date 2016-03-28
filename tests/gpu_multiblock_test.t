@@ -37,6 +37,7 @@ local grid = Grid.NewGrid2d{size           = {N, N},
                             width          = {1, 1},
                             boundary_depth = {1, 1},
                             periodic_boundary = {true, true} }
+grid.cells:SetPartitions{2,2}
 
 function main ()
 	-- declare a global to store the computed centroid of the grid

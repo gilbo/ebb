@@ -26,6 +26,7 @@ require "tests/test"
 
 -- Need a high N to test the index-based representation as well as boolmask
 local N = 40
+--[[
 local cells = L.NewRelation { size = N*N, name = 'cells' }
 
 local function yidx(i) return math.floor(i/N) end
@@ -64,6 +65,8 @@ cells.interior:foreach(test_interior)
 -- Now run the same test, but with a truly grid structured relation
 
 local gridcells  = L.NewRelation { dims = {N,N}, name = 'gridcells' }
+gridcells:SetPartitions {2,2}
+
 
 gridcells:NewField('value', L.double):Load(function(xi,yi)
   if xi == 0 or xi == N-1 or yi == 0 or yi == N-1 then

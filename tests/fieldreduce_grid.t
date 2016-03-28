@@ -37,6 +37,8 @@ local grid = Grid.NewGrid2d {
 }
 local C = grid.cells
 local V = grid.vertices
+C:SetPartitions{2,2}
+V:SetPartitions{2,2}
 
 -----------------------------------
 --  Uncentered Scalar reduction: --

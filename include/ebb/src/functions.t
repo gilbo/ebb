@@ -274,17 +274,21 @@ function Function:_doForEach(relset, ...)
   local typeversion = self:_Get_Type_Version_Table(4, relset, ...)
 
   -- Insert partitioning hooks here and communication to planning component
+  local legion_partition_data
   if use_partitioning then
     -- probably want to get rid of node-type here eventually...
     local node_type = Machine.GetAllNodeTypes()[1]
     Planner.note_launch { typedfunc = typeversion }
-    Planner.query_for_partitions(typeversion, node_type)--, node_id, proc_id)
+    legion_partition_data =
+      Planner.query_for_partitions(typeversion, node_type)
   end
   
   -- now we either retrieve or construct the appropriate function version
   local version = get_ufunc_version(self, typeversion, relset, params)
 
-  version:Execute()
+  version:Execute {
+    partition_data = legion_partition_data,
+  }
 end
 
 

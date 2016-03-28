@@ -188,7 +188,7 @@ function LW.NewRegionReq(params)
     privilege       = params.privilege,
     coherence       = params.coherence,
     reduce_func_id  = reduce_func_id,       
-    partition       = nil,
+    --partition       = nil,
     centered        = params.centered,
   }, LW.RegionReq)
   return reg_req
@@ -196,6 +196,7 @@ end
 
 function LW.RegionReq:isreduction() return self.privilege == LW.REDUCE end
 
+--[[
 function LW.RegionReq:PartitionData()  -- TODO: make default case single partition
   local relation = self.relation_for_partitioning
   if not self.partition and use_partitioning then
@@ -212,6 +213,7 @@ function LW.RegionReq:PartitionData()  -- TODO: make default case single partiti
     end
   end
 end
+--]]
 
 
 -------------------------------------------------------------------------------
@@ -278,7 +280,7 @@ LW.TaskLauncher.__index = LW.TaskLauncher
   taskfunc
   gpu               -- boolean
   use_index_launch  -- boolean
-  domain            -- ??
+  n_copies          -- how many copies to launch if doing index launch
 }
 --]]
 LW.TaskLauncher         = {}
@@ -308,9 +310,11 @@ function LW.NewTaskLauncher(params)
   -- task launcher arguments
   local launcher_args = newlist({TID})
   if params.use_index_launch then
-    local argmap = LW.legion_argument_map_create()  -- partition specific arguments
-    launcher_args:insertall({params.domain, argstruct[0], argmap,
-    LW.legion_predicate_true(), false})
+    -- partition specific arguments
+    local argmap = LW.legion_argument_map_create()
+    local domain = LW.DomainRect[1](0,params.n_copies-1)
+    launcher_args:insertall({domain, argstruct[0], argmap,
+                             LW.legion_predicate_true(), false})
   else
     launcher_args:insertall({argstruct[0], LW.legion_predicate_true()})
   end
@@ -340,10 +344,11 @@ function LW.TaskLauncher:IsOnGPU()
   return self._on_gpu
 end
 
-function LW.TaskLauncher:AddRegionReq(req)
-  local use_part = req.partition ~= nil
-  local partition_handle = use_part and req.partition.handle
-                                     or req.log_reg_handle
+function LW.TaskLauncher:AddRegionReq(req, partition_obj)
+  local use_part = partition_obj ~= nil
+  local partition_handle = use_part and
+                           partition_obj:get_logical_partition_obj()
+                        or req.log_reg_handle
 
   -- Assemble the call
   local args = newlist { self._launcher, partition_handle }
@@ -859,122 +864,6 @@ end
 local LogicalPartition = {}
 LogicalPartition.__index = LogicalPartition
 
-function LogicalRegion:CreateDisjointBlockPartition(n_blocks)
-  assert(self.type == 'grid')
-  assert(terralib.israwlist(n_blocks) and #n_blocks == #self.dims)
-  local lreg_obj = self
-
-  -- unpack
-  local dims    = lreg_obj.dims       -- dimensions of grid
-  local lreg    = lreg_obj.handle     -- logical-region
-  local lis     = lreg_obj.is         -- index-space
-
-  -- dimensioning of blocks
-  local nX, nY, nZ    = unpack(n_blocks)
-  local dX, dY, dZ    = unpack(dims)
-  local is3d          = #dims == 3
-  local color_space   = is3d and LW.DomainRect[3](0,0,0,nX,nY,nZ)
-                              or LW.DomainRect[2](0,0,nX,nY)
-
-  local coloring      = LW.legion_domain_point_coloring_create()
-
-  -- construct set of sub-domain rectangles
-  local sub_domains   = newlist()
-  -- loop to fill out the partition coloring
-  for i=1,nX do
-    local xlo, xhi  = math.floor( dX * (i-1) / nX ),
-                      math.floor( dX * i / nX ) - 1
-    sub_domains[i]  = newlist()
-    for j=1,nY do
-      local ylo, yhi  = math.floor( dY * (j-1) / nY ),
-                        math.floor( dY * j / nY ) - 1
-      if #dims == 2 then
-        local rect        = Util.NewRect2d( {xlo,xhi}, {ylo,yhi} )
-        sub_domains[i][j] = rect
-        LW.legion_domain_point_coloring_color_domain(
-          coloring,
-          LegionDomainPoint(i-1, j-1),
-          LW.DomainRect[2]( rect:mins_maxes() )
-        )
-      else
-        sub_domains[i][j] = newlist()
-        for k=1,n_blocks[3] do
-          local zlo,zhi   = math.floor( dZ * (k-1) / nZ ),
-                            math.floor( dZ * k / nZ ) - 1
-          local rect      = Util.NewRect3d( {xlo,xhi}, {ylo,yhi}, {zlo,zhi} )
-          sub_domains[i][j][k] = rect
-          LW.legion_domain_point_coloring_color_domain(
-            coloring,
-            LegionDomainPoint(i-1, j-1, k-1),
-            LW.DomainRect[3]( rect:mins_maxes() )
-          )
-        end
-      end
-    end
-  end
-
-  local idx_part = LW.legion_index_partition_create_domain_point_coloring(
-    legion_env.runtime,
-    legion_env.ctx,
-    lis, -- parent idx space
-    color_space,
-    coloring,
-    LW.DISJOINT_KIND,
-    -- alternative there was ALIASED_KIND for overlaps
-    -1 -- AUTO-GENERATE
-  )
-  -- can free the coloring now
-  LW.legion_domain_point_coloring_destroy(coloring)
-
-  local l_part = LW.legion_logical_partition_create(
-    legion_env.runtime,
-    legion_env.ctx,
-    lreg, -- parent logial region
-    idx_part
-  )
-
-  local new_obj = setmetatable({
-    mode        = 'disjoint',
-    lreg        = lreg_obj,
-    lpart       = l_part,
-    ipart       = idx_part,
-    n_blocks    = {nX,nY,nZ},
-    sub_domains = sub_domains,
-  }, LogicalPartition)
-  new_obj:_Cache_SubRegions()
-  return new_obj
-end
-
-function LogicalPartition:destroy()
-  LW.legion_logical_partition_destroy(
-    legion_env.runtime,
-    legion_env.ctx,
-    self.lpart
-  )
-  LW.legion_index_partition_destroy(
-    legion_env.runtime,
-    legion_env.ctx,
-    self.ipart
-  )
-end
-
-function LogicalPartition:attach_name(name)
-  self.legion_logical_partition_attach_name(
-    legion_env.runtime,
-    self.lpart,
-    name..'_logical_partition',
-    false
-  )
-  self.legion_index_partition_attach_name(
-    legion_env.runtime,
-    self.ipart,
-    name..'_idx_partition',
-    false
-  )
-end
-
----------------------------------------------
-
 local LogicalSubRegion    = {}
 LogicalSubRegion.__index  = LogicalSubRegion
 
@@ -1011,220 +900,169 @@ local function new_logical_sub_region(rect, color_pt, ipart, lpart)
   }, LogicalSubRegion)
 end
 
-function LogicalPartition:_Cache_SubRegions()
-  assert(self.mode == 'disjoint', 'need to rewrite for overlapping...')
-  local is3d      = #self.n_blocks == 3
-  local nX,nY,nZ  = unpack(self.n_blocks)
+local function create_grid_region_partition(lreg_obj, subrects, part_kind)
+  assert(lreg_obj.type == 'grid')
+  assert(terralib.israwlist(subrects) and #subrects>0,'expect rectangle list')
+  local is3d = #lreg_obj.dims == 3
+
+  -- unpack
+  --local dims      = lreg_obj.dims       -- dimensions of grid
+  --local offsets   = lreg_obj.offsets    -- offset in global grid coordinates
+  local lreg      = lreg_obj.handle     -- logical-region
+  local lis       = lreg_obj.is         -- index-space
+
+  -- indexing scheme
+  local n_rect        = #subrects
+  local color_space   = LW.DomainRect[1](0,n_rect-1)
+  local coloring      = LW.legion_domain_point_coloring_create()
+
+  -- loop to fill out the partition coloring
+  for i,rect in ipairs(subrects) do
+    assert(is3d and Util.isrect3d(rect) or Util.isrect2d(rect),
+           "dimensions of subrect and grid don't match")
+    LW.legion_domain_point_coloring_color_domain(
+      coloring,
+      LegionDomainPoint(i-1),
+      LW.DomainRect[is3d and 3 or 2]( rect:mins_maxes() )
+    )
+  end
+
+  local idx_part = LW.legion_index_partition_create_domain_point_coloring(
+    legion_env.runtime,
+    legion_env.ctx,
+    lis, -- parent idx space
+    color_space,
+    coloring,
+    part_kind, --LW.DISJOINT_KIND,
+    -- alternative there was ALIASED_KIND for overlaps
+    -1 -- AUTO-GENERATE
+  )
+  -- can free the coloring now
+  LW.legion_domain_point_coloring_destroy(coloring)
+
+  local l_part = LW.legion_logical_partition_create(
+    legion_env.runtime,
+    legion_env.ctx,
+    lreg, -- parent logial region
+    idx_part
+  )
 
   -- iterate over and cache all of the subregion objects
-  self._subregions = {}
-  self._subregion_list = newlist()
-  for i=1,nX do
-    self._subregions[i] = {}
-    for j=1,nY do
-      if is3d then 
-        self._subregions[i][j] = {}
-        for k=1,nZ do
-          local rect      = self.sub_domains[i][j][k]
-          local color_pt  = LegionDomainPoint(i-1, j-1, k-1)
-          self._subregions[i][j][k] = new_logical_sub_region(
-            rect, color_pt, self.ipart, self.lpart
-          )
-          self._subregion_list:insert({
-            region  = self._subregions[i][j][k],
-            idx     = {i,j,k},
-          })
-        end
-      else
-        local rect      = self.sub_domains[i][j]
-        local color_pt  = LegionDomainPoint(i-1, j-1)
-        self._subregions[i][j] = new_logical_sub_region(
-          rect, color_pt, self.ipart, self.lpart
-        )
-        self._subregion_list:insert({
-          region  = self._subregions[i][j],
-          idx     = {i,j},
-        })
-      end
-  end end
+  local subregions = newlist()
+  for i,rect in ipairs(subrects) do
+    subregions:insert( new_logical_sub_region(
+      rect, LegionDomainPoint(i-1), idx_part, l_part
+    ))
+  end
+
+  local mode = (part_kind == LW.DISJOINT_KIND) and 'disjoint' or 'overlap'
+  local new_obj = setmetatable({
+    _mode         = mode,
+    _lreg         = lreg_obj,
+    _lpart        = l_part,
+    _ipart        = idx_part,
+    _subregions   = subregions,
+    --n_blocks    = {nX,nY,nZ},
+    --subrects    = subrects,
+  }, LogicalPartition)
+  return new_obj
 end
 
-function LogicalPartition:GetSubRegion(i,j,k) -- Lua Indexing coming in
-  assert(self.mode == 'disjoint')
-  local is3d = #self.n_blocks
-  if is3d then return self._subregions[i][j][k]
-          else return self._subregions[i][j]      end
+function LogicalPartition:destroy()
+  LW.legion_logical_partition_destroy(
+    legion_env.runtime,
+    legion_env.ctx,
+    self.lpart
+  )
+  LW.legion_index_partition_destroy(
+    legion_env.runtime,
+    legion_env.ctx,
+    self.ipart
+  )
+end
+
+function LogicalPartition:get_logical_partition_obj()
+  return self._lpart
+end
+
+function LogicalPartition:attach_name(name)
+  self.legion_logical_partition_attach_name(
+    legion_env.runtime,
+    self.lpart,
+    name..'_logical_partition',
+    false
+  )
+  self.legion_index_partition_attach_name(
+    legion_env.runtime,
+    self.ipart,
+    name..'_idx_partition',
+    false
+  )
 end
 
 function LogicalPartition:subregions()
-  return self._subregion_list
+  return self._subregions
 end
 
+---------------------------------------------
 
+function LogicalRegion:CreateDisjointPartition(subrects)
+  return create_grid_region_partition(self, subrects, LW.DISJOINT_KIND)
+end
 
+function LogicalRegion:CreateOverlappingPartition(subrects)
+  return create_grid_region_partition(self, subrects, LW.ALIASED_KIND)
+end
+
+function LogicalSubRegion:CreateDisjointPartition(subrects)
+  return create_grid_region_partition(self, subrects, LW.DISJOINT_KIND)
+end
+
+function LogicalSubRegion:CreateOverlappingPartition(subrects)
+  return create_grid_region_partition(self, subrects, LW.ALIASED_KIND)
+end
+
+-- maybe not really necessary... (maybe shouldn't be in here... probably)
 --[[
--- method used to create logical partition
---function LogicalPartition:IsPartitionedByField()
---  self.ptype = 'FIELD'
---end
---function LogicalPartition:IsPartitionedBlock()
---  self.ptype = 'BLOCK'
---end
+function LogicalRegion:GetBlockedRects(n_blocks)
+  assert(self.type == 'grid')
+  assert(terralib.israwlist(n_blocks) and #n_blocks == #self.dims)
+  -- unpack
+  local dims      = self.dims       -- dimensions of grid
+  local offsets   = self.offsets    -- global coordinates in each dim
 
--- coloring field used to create this logical partition
---function LogicalPartition:ColoringField()
---  return self.color_field
---end
+  local nX, nY, nZ    = unpack(n_blocks)
+  local dX, dY, dZ    = unpack(dims)
+  local oX, oY, oZ    = unpack(offsets)
+  local is3d          = #dims == 3
 
--- color space (partition domain)
---function LogicalPartition:Domain()
---  return self.domain
---end
-
--- create a color space with num_colors number of colors
--- this corresponds to the number of partitions
-local terra CreateColorSpace(num_colors : LW.legion_color_t)
-  return LW.DomainRect[1](0, num_colors-1)
-end
-
--- create partition by coloring field
-function LogicalRegion:CreatePartitionsByField(rfield)
-  local color_space = CreateColorSpace(self.relation:TotalPartitions())
-  local partn = LW.legion_index_partition_create_by_field(
-    legion_env.runtime, legion_env.ctx,
-    self.handle, self.handle, rfield._fid,
-    color_space,
-    100, false)
-  local lp = LW.legion_logical_partition_create(
-    legion_env.runtime, legion_env.ctx, self.handle, partn)
-  local lp = {
-               ptype       = 'FIELD',  -- partition type (by field or block)
-               color_field = rfield,   -- field used to generate the partition
-               domain      = color_space,  -- partition domain (color space)
-               index_partn = partn,    -- legion index partition handle
-               handle      = lp,       -- legion logical partition handle
-             }
-  setmetatable(lp, LogicalPartition)
-  return lp
-end
-
--- block partition helpers
-local AddDomainColor = {}
-for d=1,3 do
-  local args = {}
-  for k=1,d do
-    args[k] = symbol(int,'lo'..k)
-    args[k+d] = symbol(int,'hi'..k)
-  end
-  AddDomainColor[d] = terra(coloring : LW.legion_domain_coloring_t,
-                            color : LW.legion_color_t, [args] )
-    var domain = LW.DomainRect[d]( [args] )
-    LW.legion_domain_coloring_color_domain(coloring, color, domain)
-  end
-end
-
--- create block partitions
-function LogicalRegion:CreateBlockPartitions(ghost_width) 
-  -- NOTE: partitions include boundary regions. Partitioning is not subset
-  -- specific right now, but it is a partitioning over the entire logical
-  -- region.
-  local num_partitions = self.relation:NumPartitions()
-  local dims = self.relation:Dims()
-  local ndims = #dims
-  -- check if number of elements along each dimension is a multiple of number
-  -- of partitions. compute number of elements along each dimension in each
-  -- partition for the disjoint case.
-  local divisible = {}
-  local elems_lo = {}
-  local elems_hi = {}
-  local num_lo   = {}
-  for d = 1, ndims do
-    local num_elems = dims[d]
-    local num_partns = num_partitions[d]
-    divisible[d] = (num_elems % num_partns == 0)
-    elems_lo[d] = math.floor(num_elems/num_partns)
-    elems_hi[d] = math.ceil(num_elems/num_partns)
-    num_lo[d]   = num_partns - (num_elems % num_partns)
-  end
-  -- check if partitioning will be disjoint
-  local disjoint = true
-  local ghost_width = ghost_width
-  if ghost_width then
-    for d = 1, 2*ndims do
-      disjoint = disjoint and (ghost_width[d] == 0)
-    end
-  else
-    ghost_width = {}
-    for d = 1, 2*ndims do
-      ghost_width[d] = 0
+  local subrects   = newlist()
+  -- loop to fill out the partition coloring
+  for i=1,nX do
+    local xrange  = { math.floor( dX * (i-1) / nX ) + oX,
+                      math.floor( dX * i / nX ) - 1 + oX }
+    for j=1,nY do
+      local yrange  = { math.floor( dY * (j-1) / nY ) + oY,
+                        math.floor( dY * j / nY ) - 1 + oY }
+      if #dims == 2 then
+        subrects:insert( Util.NewRect2d( xrange,yrange ) )
+      else for k=1,nZ do
+        local zrange  = { math.floor( dZ * (k-1) / nZ ) + oZ,
+                          math.floor( dZ * k / nZ ) - 1 + oZ }
+        subrects:insert( Util.NewRect3d( xrange,yrange,zrange ) )
+      end end
     end
   end
-  -- color space
-  local total_partitions = self.relation:TotalPartitions()
-  local color_space = CreateColorSpace(total_partitions)
-  local coloring = LW.legion_domain_coloring_create();
-  -- determine number of elements in each partition/ color and create logical partition
-  -- TODO: what should we do for periodic boundary conditions?
-  local color = 0
-  -- number of partitions in each dimension, initialization of loop variables
-  local nps = {1, 1, 1}
-  local lo = {}
-  local hi = {}
-  for d = 1,ndims do
-    nps[d] = num_partitions[d]
-    lo[d]  = 0
-    hi[d]  = -1
-  end
-  for p3 = 1, nps[3] do
-    if ndims > 2 then
-      local d = 3
-      local elems = (p3 > num_lo[d] and elems_hi[d]) or elems_lo[d]
-      lo[d] = math.max(0, hi[d] + 1 - ghost_width[2*d - 1])
-      hi[d] = math.min(dims[d] - 1, lo[d] + elems - 1 + ghost_width[2*d])
-      lo[d-1] = 0
-      hi[d-1] = -1
-    end
-    for p2 = 1, nps[2] do
-      if ndims > 1 then
-        local d = 2
-        local elems = (p2 > num_lo[d] and elems_hi[d]) or elems_lo[d]
-        lo[d] = math.max(0, hi[d] + 1 - ghost_width[2*d - 1])
-        hi[d] = math.min(dims[d] - 1, lo[d] + elems - 1 + ghost_width[2*d])
-        lo[d-1] = 0
-        hi[d-1] = -1
-      end
-      for p1 = 1, nps[1] do
-        local d = 1
-        local elems = (p1 > num_lo[d] and elems_hi[d]) or elems_lo[d]
-        lo[d] = math.max(0, hi[d] + 1 - ghost_width[2*d - 1])
-        hi[d] = math.min(dims[d] - 1, lo[d] + elems - 1 + ghost_width[2*d])
-        local color_args = newlist({coloring, color})
-        color_args:insertall(lo)
-        color_args:insertall(hi)
-        AddDomainColor[ndims](unpack(color_args))
-        color = color + 1
-      end
-    end
-  end
-  -- create logical partition with the coloring
-  local partn = LW.legion_index_partition_create_domain_coloring(
-    legion_env.runtime, legion_env.ctx, self.is, color_space, coloring, disjoint, -1)
-  local lp = LW.legion_logical_partition_create(
-    legion_env.runtime, legion_env.ctx, self.handle, partn)
-  local lp = {
-    ptype       = 'BLOCK',  -- partition type (by field or block)
-    domain      = color_space,  -- partition domain (color_space)
-    index_partn = partn,
-    handle      = lp,
-  }
-  setmetatable(lp, LogicalPartition)
-  return lp
+
+  return subrects
 end
 --]]
 
 
+
+
 -------------------------------------------------------------------------------
---[[  Methods for copying fields and scanning through fields/ regions       ]]--
+--[[  Methods for copying fields and scanning through fields/ regions      ]]--
 -------------------------------------------------------------------------------
 
 function LW.CopyField (params)
