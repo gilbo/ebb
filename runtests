@@ -28,7 +28,6 @@ local ffi = require "ffi"
 local USE_LEGION = false
 local USE_PARTITION = false
 local USE_GPU    = false
-local NO_DEBUG   = false
 local ONE_LINE_ERR = false
 
 if #arg > 0 then
@@ -42,15 +41,11 @@ if #arg > 0 then
     if arg[i] == '-gpu' or arg[i] == '--gpu' then
       USE_GPU = true
     end
-    if arg[i] == '-nodebug' or arg[i] == '--nodebug' then
-      NO_DEBUG = true
-    end
     if arg[i] == '-h' or arg[i] == '--help' then
       print("Usage : run_tests [options]")
       print("Options:")
       print("  -h, --help               show this help message and exit")
       print("  -legion, --legion        run tests with legion")
-      print("  -nodebug, --nodebug      run tests with release build of runtime library")
       print("  -partition, --partition  run tests with partitioning")
       print("  -gpu, --gpu              run tests on the GPU")
       os.exit(0)
@@ -137,9 +132,6 @@ for line in io.popen(lscmd):lines() do
       local execstring = "./ebb "
       if USE_LEGION then
         execstring = execstring .. " --legion "
-      end
-      if NO_DEBUG then
-        execstring = execstring .. " --runoptions=nodebug "
       end
       if USE_PARTITION then
         execstring = execstring .. " --partition "

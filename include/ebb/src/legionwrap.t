@@ -218,17 +218,28 @@ function(ufv_name, on_gpu, task_func)
   -- register given task function with the task id
   local ir = terralib.saveobj(nil, "llvmir", { entry = task_func })
   local terra register()
-    -- LW.legion_runtime_register_task_variant_llvmir(
-    --   legion_env.runtime, TID, [(on_gpu and LW.TOC_PROC) or LW.LOC_PROC],
-    --   true,
-    --   LW.legion_task_config_options_t { leaf = true, inner = false, idempotent = false },
-    --   ufv_name, [&opaque](0), 0,
-    --   ir, "entry")
-    LW.legion_runtime_register_task_variant_fnptr(
-      legion_env.runtime, TID, [(on_gpu and LW.TOC_PROC) or LW.LOC_PROC],
-      LW.legion_task_config_options_t { leaf = true, inner = false, idempotent = false },
-      ufv_name, [&opaque](0), 0,
-      task_func)
+    escape
+      if use_llvm then
+        emit quote
+          LW.legion_runtime_register_task_variant_llvmir(
+            legion_env.runtime, TID, [(on_gpu and LW.TOC_PROC) or LW.LOC_PROC],
+            true,
+            LW.legion_task_config_options_t { leaf = true, inner = false,
+                                              idempotent = false },
+            ufv_name, [&opaque](0), 0,
+            ir, "entry")
+        end  -- emit quote
+      else
+        emit quote
+          LW.legion_runtime_register_task_variant_fnptr(
+            legion_env.runtime, TID, [(on_gpu and LW.TOC_PROC) or LW.LOC_PROC],
+            LW.legion_task_config_options_t { leaf = true, inner = false,
+                                              idempotent = false },
+            ufv_name, [&opaque](0), 0,
+            task_func)
+        end  -- emit quote
+      end  -- if else
+    end  -- escape
   end
   register()
   return TID
