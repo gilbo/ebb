@@ -1298,11 +1298,23 @@ end
 
 -- empty task function
 -- to make it work with legion without blowing up memory
-local terra _TEMPORARY_EmptyTaskFunction(task_args : LW.TaskArgs)
-  C.printf("** WARNING: Executing empty task. ")
+local terra _TEMPORARY_EmptyTaskFunction(data : & opaque, datalen : C.size_t,
+                                         userdata : &opaque, userlen : C.size_t,
+                                         proc_id : LW.legion_lowlevel_id_t)
+
+  var task_args : LW.TaskArgs
+  LW.legion_task_preamble(data, datalen, proc_id, &task_args.task,
+                          &task_args.regions, &task_args.num_regions,
+                          &task_args.lg_ctx, &task_args.lg_runtime)
+
+  C.printf("** WARNING: Executing empty tproc_id : LW.legion_lowlevel_id_t) ask. ")
   C.printf("This is a hack for Ebb/Legion. ")
   C.printf("If you are seeing this message and do not know what this is, ")
   C.printf("please contact the developers.\n")
+
+  -- legion postamble
+  LW.legion_task_postamble(task_args.lg_runtime, task_args.lg_ctx,
+                           [&opaque](0), 0)
 end
 
 -- empty task function launcher
