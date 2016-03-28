@@ -27,20 +27,12 @@ local C     = require "ebb.src.c"
 
 -- Check that Legion library is updated and built correctly so that dynamic
 -- task registration is available.
---local dlfcn = terralib.includec("dlfcn.h")
---for k,v in pairs(dlfcn) do print(k,v) end
---local terra legion_has_llvm_support() : bool
---  return (dlfcn.dlsym([&opaque](0),
---          "legion_runtime_register_task_variant_llvmir") ~= [&opaque](0))
---end
---local use_llvm = legion_has_llvm_support()
---if not use_llvm then
---  error("ERROR: Your build of Legion library does not support " ..
---        "registering tasks dynamically. Please update your Legion "..
---        "repository," ..
---        "and rebuild Legion.")
---end
-local use_llvm = false
+local dlfcn = terralib.includec("dlfcn.h")
+local terra legion_has_llvm_support() : bool
+  return (dlfcn.dlsym([&opaque](0),
+          "legion_runtime_register_task_variant_llvmir") ~= [&opaque](0))
+end
+local use_llvm = legion_has_llvm_support()
 
 -------------------------------------------------------------------------------
 --[[  Legion options/ environment                                           ]]--

@@ -55,7 +55,7 @@
 struct ebb_Options {
   int uselegion;
   int usegpu;
-  int ndebug;
+  int debug;
   int legionspy;
   int legionprof;
   int partition;
@@ -218,23 +218,7 @@ void setupebb(lua_State * L, ebb_Options * ebboptions) {
         //    doerror(L);
 
         // Link the Legion Shared Library into Terra
-        if (ebboptions->ndebug) {
-            snprintf(buffer, bufsize,"terralib.linklibrary("
-              "'%s/../legion/bindings/terra/liblegion_terra_release.so')",
-              bindir);
-            if (terra_dostring(L, buffer))
-                doerror(L);
-            snprintf(buffer, bufsize,"terralib.linklibrary("
-              "'%s/../mappers/libmapper_release.so')",
-              bindir);
-            if (terra_dostring(L, buffer))
-                doerror(L);
-            snprintf(buffer, bufsize,"terralib.linklibrary("
-              "'%s/../legion_utils/liblegion_utils_release.so')",
-              bindir);
-            if (terra_dostring(L, buffer))
-                doerror(L);
-        } else {
+        if (ebboptions->debug) {
             snprintf(buffer, bufsize,"terralib.linklibrary("
               "'%s/../legion/bindings/terra/liblegion_terra_debug.so')",
               bindir);
@@ -247,6 +231,22 @@ void setupebb(lua_State * L, ebb_Options * ebboptions) {
                 doerror(L);
             snprintf(buffer, bufsize,"terralib.linklibrary("
               "'%s/../legion_utils/liblegion_utils_debug.so')",
+              bindir);
+            if (terra_dostring(L, buffer))
+                doerror(L);
+        } else {
+            snprintf(buffer, bufsize,"terralib.linklibrary("
+              "'%s/../legion/bindings/terra/liblegion_terra_release.so')",
+              bindir);
+            if (terra_dostring(L, buffer))
+                doerror(L);
+            snprintf(buffer, bufsize,"terralib.linklibrary("
+              "'%s/../mappers/libmapper_release.so')",
+              bindir);
+            if (terra_dostring(L, buffer))
+                doerror(L);
+            snprintf(buffer, bufsize,"terralib.linklibrary("
+              "'%s/../legion_utils/liblegion_utils_release.so')",
               bindir);
             if (terra_dostring(L, buffer))
                 doerror(L);
@@ -358,7 +358,7 @@ void usage() {
       "    -g run tasks on a gpu by default\n"
       "    -l enable Legion support\n"
       "    -r runtime options\n"
-      "       for legion : -r nodebug,legionspy,legionprof\n"
+      "       for legion : -r debug,legionspy,legionprof\n"
       "    -p use partitioning\n"
       "    -a additional arguments (if spaces or special characters, include in quotes)\n"
       "    -  Execute stdin instead of script and stop parsing options\n");
@@ -407,8 +407,8 @@ void parse_args(
                 break;
             case 'r':
 	            if (optarg) {
-		            if (strstr(optarg, "nodebug"))
-		                ebboptions->ndebug = 1;
+		            if (strstr(optarg, "debug"))
+		                ebboptions->debug = 1;
 		            if (strstr(optarg, "legionspy"))
 		                ebboptions->legionspy = 1;
 		            if (strstr(optarg, "legionprof"))
@@ -440,7 +440,7 @@ void check_legion_arg_consistency(ebb_Options * options) {
         "cannot generate Legion spy output when not running with Legion\n");
       exit(1);
     }
-    if (options->ndebug) {
+    if (!options->debug) {
       fprintf(stderr, "Legion spy output can only be generated when running"
                       " in Legion debug mode\n");
       exit(1);
@@ -452,7 +452,7 @@ void check_legion_arg_consistency(ebb_Options * options) {
         "cannot generate Legion prof output when not running with Legion\n");
       exit(1);
     }
-    if (!options->ndebug) {
+    if (options->debug) {
       fprintf(stderr, "Legion prof output can only be generated when running"
                       " Legion not in debug mode\n");
       exit(1);

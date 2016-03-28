@@ -255,17 +255,28 @@ function(ufv_name, on_gpu, task_func)
   -- register given task function with the task id
   local ir = terralib.saveobj(nil, "llvmir", { entry = task_func })
   local terra register()
-    -- LW.legion_runtime_register_task_variant_llvmir(
-    --   legion_env.runtime, TID, [(on_gpu and LW.TOC_PROC) or LW.LOC_PROC],
-    --   true,
-    --   LW.legion_task_config_options_t { leaf = true, inner = false, idempotent = false },
-    --   ufv_name, [&opaque](0), 0,
-    --   ir, "entry")
-    LW.legion_runtime_register_task_variant_fnptr(
-      legion_env.runtime, TID, [(on_gpu and LW.TOC_PROC) or LW.LOC_PROC],
-      LW.legion_task_config_options_t { leaf = true, inner = false, idempotent = false },
-      ufv_name, [&opaque](0), 0,
-      task_func)
+    escape
+      if use_llvm then
+        emit quote
+          LW.legion_runtime_register_task_variant_llvmir(
+            legion_env.runtime, TID, [(on_gpu and LW.TOC_PROC) or LW.LOC_PROC],
+            true,
+            LW.legion_task_config_options_t { leaf = true, inner = false,
+                                              idempotent = false },
+            ufv_name, [&opaque](0), 0,
+            ir, "entry")
+        end  -- emit quote
+      else
+        emit quote
+          LW.legion_runtime_register_task_variant_fnptr(
+            legion_env.runtime, TID, [(on_gpu and LW.TOC_PROC) or LW.LOC_PROC],
+            LW.legion_task_config_options_t { leaf = true, inner = false,
+                                              idempotent = false },
+            ufv_name, [&opaque](0), 0,
+            task_func)
+        end  -- emit quote
+      end  -- if else
+    end  -- escape
   end
   register()
   return TID
@@ -1336,11 +1347,23 @@ end
 
 -- empty task function
 -- to make it work with legion without blowing up memory
-local terra _TEMPORARY_EmptyTaskFunction(task_args : LW.TaskArgs)
-  C.printf("** WARNING: Executing empty task. ")
+local terra _TEMPORARY_EmptyTaskFunction(data : & opaque, datalen : C.size_t,
+                                         userdata : &opaque, userlen : C.size_t,
+                                         proc_id : LW.legion_lowlevel_id_t)
+
+  var task_args : LW.TaskArgs
+  LW.legion_task_preamble(data, datalen, proc_id, &task_args.task,
+                          &task_args.regions, &task_args.num_regions,
+                          &task_args.lg_ctx, &task_args.lg_runtime)
+
+  C.printf("** WARNING: Executing empty tproc_id : LW.legion_lowlevel_id_t) ask. ")
   C.printf("This is a hack for Ebb/Legion. ")
   C.printf("If you are seeing this message and do not know what this is, ")
   C.printf("please contact the developers.\n")
+
+  -- legion postamble
+  LW.legion_task_postamble(task_args.lg_runtime, task_args.lg_ctx,
+                           [&opaque](0), 0)
 end
 
 -- empty task function launcher
