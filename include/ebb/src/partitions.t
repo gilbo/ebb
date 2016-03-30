@@ -196,9 +196,12 @@ function RelationLocalPartition:execute_partition()
 --    end
 --  end
 end
---function RelationLocalPartition:get_legion_partition()
---  return self._global_part:get_legion_partition()
---end
+
+-- TODO: HACK: for now, just return global partition.
+-- Global partition = local partition till we are on a single node.
+function RelationLocalPartition:get_legion_partition()
+  return self._global_part:get_legion_partition()
+end
 
 
 -------------------------------------------------------------------------------
@@ -212,6 +215,7 @@ local LocalGhostPattern     = {}
 LocalGhostPattern.__index   = LocalGhostPattern
 
 
+-- TODO: QUESTION: Why is this there?
 local NewGlobalGhostPattern = Util.memoize_named({
   'rel_global_partition',
   'uniform_depth',
@@ -249,7 +253,6 @@ end
 function LocalGhostPattern:get_local_partition()
   return self._rel_local_partition
 end
-
 
 local ghost_nums_2d = {
   [-1]  = {
@@ -297,45 +300,50 @@ function GlobalGhostPattern:get_all_subrects()
 
   local subrects = newlist()
   local all = {-math.huge,math.huge}
+  -- TODO: QUESTION: was the intention for the following rectangles to be overlapping?
+  -- TODO: QUESTION: what happens when regions are so tiny that these don't make sense?
   if is3d then
     for i,reg in ipairs(self._rel_global_partition:subregions()) do
       local rect = reg.rect
       local xlo,ylo,zlo,xhi,yhi,zhi = rect:mins_maxes()
-      local xn, xp  = Util.NewRect3d({-math.huge,xlo+depth},all,all),
-                      Util.NewRect3d({ xhi-depth,math.huge},all,all)
-      local yn, yp  = Util.NewRect3d(all,{-math.huge,ylo+depth},all),
-                      Util.NewRect3d(all,{ yhi-depth,math.huge},all)
-      local zn, zp  = Util.NewRect3d(all,all,{-math.huge,zlo+depth}),
-                      Util.NewRect3d(all,all,{ zhi-depth,math.huge})
+      local xn, xm, xp  = Util.NewRect3d({-math.huge,xlo+depth},all,all),
+                          Util.NewRect3d({ xlo+depth,xhi-depth},all,all),
+                          Util.NewRect3d({ xhi-depth,math.huge},all,all)
+      local yn, ym, yp  = Util.NewRect3d(all,{-math.huge,ylo+depth},all),
+                          Util.NewRect3d(all,{ ylo+depth,yhi-depth},all),
+                          Util.NewRect3d(all,{ yhi-depth,math.huge},all)
+      local zn, zm, zp  = Util.NewRect3d(all,all,{-math.huge,zlo+depth}),
+                          Util.NewRect3d(all,all,{ zlo+depth,zhi-depth}),
+                          Util.NewRect3d(all,all,{ zhi-depth,math.huge})
       subrects:insert( newlist {
         rect:clip(xn):clip(yn):clip(zn), -- -1,-1,-1
-        rect:clip(xn):clip(yn)         , -- -1,-1, 0
+        rect:clip(xn):clip(yn):clip(zm), -- -1,-1, 0
         rect:clip(xn):clip(yn):clip(zp), -- -1,-1, 1
-        rect:clip(xn)         :clip(zn), -- -1, 0,-1
-        rect:clip(xn)                  , -- -1, 0, 0
-        rect:clip(xn)         :clip(zp), -- -1, 0, 1
+        rect:clip(xn):clip(xm):clip(zn), -- -1, 0,-1
+        rect:clip(xn):clip(xm):clip(zm), -- -1, 0, 0
+        rect:clip(xn):clip(xm):clip(zp), -- -1, 0, 1
         rect:clip(xn):clip(yp):clip(zn), -- -1, 1,-1
-        rect:clip(xn):clip(yp)         , -- -1, 1, 0
+        rect:clip(xn):clip(yp):clip(zm), -- -1, 1, 0
         rect:clip(xn):clip(yp):clip(zp), -- -1, 1, 1
 
-        rect         :clip(yn):clip(zn), --  0,-1,-1
-        rect         :clip(yn)         , --  0,-1, 0
-        rect         :clip(yn):clip(zp), --  0,-1, 1
-        rect                  :clip(zn), --  0, 0,-1
+        rect:clip(xm):clip(yn):clip(zn), --  0,-1,-1
+        rect:clip(xm):clip(yn):clip(zm), --  0,-1, 0
+        rect:clip(xm):clip(yn):clip(zp), --  0,-1, 1
+        rect:clip(xm):clip(ym):clip(zn), --  0, 0,-1
                                          --  0, 0, 0
-        rect                  :clip(zp), --  0, 0, 1
-        rect         :clip(yp):clip(zn), --  0, 1,-1
-        rect         :clip(yp)         , --  0, 1, 0
-        rect         :clip(yp):clip(zp), --  0, 1, 1
+        rect:clip(xm):clip(ym):clip(zp), --  0, 0, 1
+        rect:clip(xm):clip(yp):clip(zn), --  0, 1,-1
+        rect:clip(xm):clip(yp):clip(zm), --  0, 1, 0
+        rect:clip(xm):clip(yp):clip(zp), --  0, 1, 1
 
         rect:clip(xp):clip(yn):clip(zn), --  1,-1,-1
-        rect:clip(xp):clip(yn)         , --  1,-1, 0
+        rect:clip(xp):clip(yn):clip(zm), --  1,-1, 0
         rect:clip(xp):clip(yn):clip(zp), --  1,-1, 1
-        rect:clip(xp)         :clip(zn), --  1, 0,-1
-        rect:clip(xp)                  , --  1, 0, 0
-        rect:clip(xp)         :clip(zp), --  1, 0, 1
+        rect:clip(xp):clip(ym):clip(zn), --  1, 0,-1
+        rect:clip(xp):clip(ym):clip(zm), --  1, 0, 0
+        rect:clip(xp):clip(ym):clip(zp), --  1, 0, 1
         rect:clip(xp):clip(yp):clip(zn), --  1, 1,-1
-        rect:clip(xp):clip(yp)         , --  1, 1, 0
+        rect:clip(xp):clip(yp):clip(zm), --  1, 1, 0
         rect:clip(xp):clip(yp):clip(zp), --  1, 1, 1
       })
     end
@@ -343,19 +351,21 @@ function GlobalGhostPattern:get_all_subrects()
     for i,reg in ipairs(self._rel_global_partition:subregions()) do
       local rect = reg.rect
       local xlo,ylo,xhi,yhi = rect:mins_maxes()
-      local xn, xp  = Util.NewRect2d({-math.huge,xlo+depth},all),
-                      Util.NewRect2d({ xhi-depth,math.huge},all)
-      local yn, yp  = Util.NewRect2d(all,{-math.huge,ylo+depth}),
-                      Util.NewRect2d(all,{ yhi-depth,math.huge})
+      local xn, xm, xp  = Util.NewRect2d({-math.huge,xlo+depth},all),
+                          Util.NewRect2d({ xlo+depth,xhi-depth},all),
+                          Util.NewRect2d({ xhi-depth,math.huge},all)
+      local yn, ym, yp  = Util.NewRect2d(all,{-math.huge,ylo+depth}),
+                          Util.NewRect2d(all,{ ylo+depth,yhi-depth}),
+                          Util.NewRect2d(all,{ yhi-depth,math.huge})
       subrects:insert( newlist {
         rect:clip(xn):clip(yn), -- -1,-1
-        rect:clip(xn)         , -- -1, 0
+        rect:clip(xn):clip(ym), -- -1, 0
         rect:clip(xn):clip(yp), -- -1, 1
-        rect         :clip(yn), --  0,-1
+        rect:clip(xm):clip(yn), --  0,-1
                                 --  0, 0
-        rect         :clip(yp), --  0, 1
+        rect:clip(xm):clip(yp), --  0, 1
         rect:clip(xp):clip(yn), --  1,-1
-        rect:clip(xp)         , --  1, 0
+        rect:clip(xp):clip(ym), --  1, 0
         rect:clip(xp):clip(yp), --  1, 1
       })
     end
@@ -368,11 +378,14 @@ function GlobalGhostPattern:execute_partition()
   if self._ghost_partition then return end -- make idempotent
 
   local all_subrects = self:get_all_subrects()
-  if #all_subrects == 0 then self._ghost_partitions = newlist() return end
+  if #all_subrects == 0 then
+    return
+  end
 
   self._ghost_partitions = newlist()
   for i,reg in ipairs(self._rel_global_partition:subregions()) do
     local subrects  = all_subrects[i]
+    -- TODO: QUESTION: why overlapping?
     local lpart     = reg:CreateOverlappingPartition(subrects)
     self._ghost_partitions:insert(lpart)
   end
@@ -389,20 +402,14 @@ function LocalGhostPattern:execute_partition()
   --self._lpart = lpart
 end
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+function LocalGhostPattern:get_legion_partition()
+  if self._depth == 0 then
+    return self._rel_local_partition:get_legion_partition()
+  else
+    -- TODO: HACK: for now, just return nil for non-zero stencils
+    -- This will make legionwrap add entire logical region isntead of
+    -- a partition.
+    -- We should use computed ghost regions instead
+    return nil
+  end
+end

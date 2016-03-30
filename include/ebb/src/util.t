@@ -227,7 +227,7 @@ function Rect2d:join(rhs)
                      math.max(self._y[2], rhs._y[2]) })
 end
 function Rect3d:join(rhs)
-  return NewRect2d({ math.min(self._x[1], rhs._x[1]),
+  return NewRect3d({ math.min(self._x[1], rhs._x[1]),
                      math.max(self._x[2], rhs._x[2]) },
                    { math.min(self._y[1], rhs._y[1]),
                      math.max(self._y[2], rhs._y[2]) },
@@ -242,7 +242,7 @@ function Rect2d:clip(bound_rect)
                      math.min(self._y[2], bound_rect._y[2]) })
 end
 function Rect3d:clip(bound_rect)
-  return NewRect2d({ math.max(self._x[1], bound_rect._x[1]),
+  return NewRect3d({ math.max(self._x[1], bound_rect._x[1]),
                      math.min(self._x[2], bound_rect._x[2]) },
                    { math.max(self._y[1], bound_rect._y[1]),
                      math.min(self._y[2], bound_rect._y[2]) },
@@ -259,12 +259,3 @@ function Rect3d:isempty()
          self._y[1] > self._y[2] or
          self._z[1] > self._z[2]
 end
-
-
-
-
-
-
-
-
-

@@ -356,10 +356,11 @@ function LW.TaskLauncher:IsOnGPU()
 end
 
 function LW.TaskLauncher:AddRegionReq(req, partition_obj)
-  local use_part = partition_obj ~= nil
-  local partition_handle = use_part and
+  -- NOTE: currently, non-zero stencils will have a nil partition object.
+  local logical_partition = (partition_obj ~= nil)
+  local partition_handle = logical_partition and
                            partition_obj:get_logical_partition_obj()
-                        or req.log_reg_handle
+                           or req.log_reg_handle
 
   -- Assemble the call
   local args = newlist { self._launcher, partition_handle }
@@ -368,8 +369,8 @@ function LW.TaskLauncher:AddRegionReq(req, partition_obj)
                                 str = str .. '_index'
                         else    str = str .. '_task' end
   str = str .. '_launcher_add_region_requirement_logical'
-  if use_part then              str = str .. '_partition'
-              else              str = str .. '_region' end
+  if logical_partition then     str = str .. '_partition'
+                       else     str = str .. '_region' end
   if req:isreduction() then     args:insert(req.reduce_func_id)
                                 str = str .. '_reduction'
                        else     args:insert(req.privilege)
@@ -901,8 +902,8 @@ local function new_logical_sub_region(rect, color_pt, ipart, lpart)
   return setmetatable({
     -- always a grid
     type        = 'grid',
-    relation    = nil, -- do not expect this to be relevant...
-    -- field-ids -- also not really relevant
+    -- relation    = nil, -- do not expect this to be relevant
+    -- field-ids       -- also not really relevant
     offsets     = offsets,
     dims        = dims,
     rect        = rect,
@@ -922,6 +923,7 @@ local function create_grid_region_partition(lreg_obj, subrects, part_kind)
   local lreg      = lreg_obj.handle     -- logical-region
   local lis       = lreg_obj.is         -- index-space
 
+  -- TODO: QUESTION: Why is color space linearized?
   -- indexing scheme
   local n_rect        = #subrects
   local color_space   = LW.DomainRect[1](0,n_rect-1)
@@ -973,8 +975,8 @@ local function create_grid_region_partition(lreg_obj, subrects, part_kind)
     _lpart        = l_part,
     _ipart        = idx_part,
     _subregions   = subregions,
-    --n_blocks    = {nX,nY,nZ},
-    --subrects    = subrects,
+    -- _n_blocks     = {nX,nY,nZ},  -- useful during debugging
+    _subrects     = subrects,    -- useful during debugging
   }, LogicalPartition)
   return new_obj
 end
@@ -983,12 +985,12 @@ function LogicalPartition:destroy()
   LW.legion_logical_partition_destroy(
     legion_env.runtime,
     legion_env.ctx,
-    self.lpart
+    self._lpart
   )
   LW.legion_index_partition_destroy(
     legion_env.runtime,
     legion_env.ctx,
-    self.ipart
+    self._ipart
   )
 end
 

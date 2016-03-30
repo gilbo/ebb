@@ -1111,6 +1111,7 @@ local function BuildLegionSignature(params)
   function LegionSignature:getRegionRequestAccesses(regreq_seq_i)
     return seq_accesses[regreq_seq_i]
   end
+  -- TODO: QUESTION: Is this function needed? Delete? Looks like dead code.
   function LegionSignature:AddRegReqsToTaskLauncher(task_launcher)
     for i, req in self:RegionRequirementIterator() do
       local out_id = task_launcher:AddRegionReq(req)
@@ -1548,12 +1549,19 @@ function UFVersion:_CreateLegionTaskLauncher(task_func, exec_args)
       local g_part   = nil
 
       if #accesses > 0 then
-        g_part = pdata[accesses[1]].global_partition
+        g_part = pdata[accesses[1]].partition
         for k=2,#accesses do
-          if g_part_tbl[accesses[k]].global_partition ~= g_part then
+          if pdata[accesses[k]].partition ~= g_part then
             error('INTERNAL ERROR: planner gave different partitions '..
                   'to field-accesses with the same region requirement')
-      end end end
+          end
+        end
+      else
+        if i == 0 then
+          -- primary region requirement
+          g_part = pdata.primary.partition
+        end
+      end
 
       local out_id = task_launcher:AddRegionReq(req, g_part)
       assert(i == out_id)

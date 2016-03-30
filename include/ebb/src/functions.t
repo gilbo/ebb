@@ -277,10 +277,9 @@ function Function:_doForEach(relset, ...)
   local legion_partition_data
   if use_partitioning then
     -- probably want to get rid of node-type here eventually...
-    local node_type = Machine.GetAllNodeTypes()[1]
     Planner.note_launch { typedfunc = typeversion }
     legion_partition_data =
-      Planner.query_for_partitions(typeversion, node_type)
+      Planner.query_for_partitions(typeversion)
   end
   
   -- now we either retrieve or construct the appropriate function version
