@@ -100,6 +100,16 @@ local newlist = terralib.newlist
       given a function, all field-accesses, node_type, and the resulting
               strategy of the first decision, decide what GhostStrategy
               to use.
+   
+   Assumption 1) Number of nodes in global partitioning equals number of machine
+     nodes, so that there is a one-to-one mapping between them.
+     (May not be true in the beginnning, but planner makes decisions for
+      partition nodes rather than machine nodes, and we assume Legion mapper
+      makes reasonable decisions.)
+
+   Assumption 2) Legion mapper does a reasonable job of mapping global partition
+     nodes to machine nodes. Planner does not deal with this decision making
+     right now.
 
     Index 1) partition_index
       for each  (function, relation, node_type, PartitionStrategy)
@@ -114,6 +124,7 @@ local newlist = terralib.newlist
     Index 3) legion_data_index
       for each  (LocalGhostPattern, ...(query_params)...)
       produce   the relevant legion data to return
+      NOTE: Might have to redesign this when we start using index partitions.
   
 
   Making Decisions: The planner chooses how to make decisions by collecting
@@ -129,6 +140,9 @@ local newlist = terralib.newlist
     observed by Legion only needs to be updated when Index 3 changes, this
     also serves to reduce the frequency with which that partition needs
     to change.
+
+  FOR NOW: Assume a single node type to simplify agglomerating partitions, and
+    one cpu per partition node for simplifying local partitioning..
 
 --]]
 
@@ -171,11 +185,6 @@ local function NewPlanner()
       legion_data_index     = Util.new_named_cache {
         'local_ghost_pattern', --'node_id', 'proc_id',
       }, -- stores legion_stuff...?
-      -- TODO: QUESTION:
-      -- We probably want one more index to cache legion data by table/
-      -- set of local ghost patterns, or one that caches agglomerated legion data
-      -- per typedfunction, invalidating it if planner wants to update a policy,
-      -- or if legion_data_index is updated.
 
   -- "state_flags" (used to signal/control updates to indices)
       new_func_queue            = newlist(),
@@ -240,8 +249,10 @@ end
 --  This function is called to get necessary
 --  launch parameters: partition data so that
 --  a Legion launch can be performed.
---
--- do we need to query for node and proc id?
+--  FOR NOW: This assumes that there is only one node type.
+--  Returns data first indexed by field accesses, then by nodes.
+--  There is no processor indexing yet (see refresh_partition_index/
+--  rebuild_partitions/ execute_partition in partitions.t).
 function Exports.query_for_partitions(typedfunc)
   local self = ThePlanner
 
@@ -249,80 +260,75 @@ function Exports.query_for_partitions(typedfunc)
   self:update_indices()
 
   -- make / get ghost region decision
-  -- TODO: QUESTION: for each node?
-  -- We have only one noe right now
   local per_access_data = {}
 
-  -- do for each node type
+  -- NOTE: handle only one node type right now.
+  -- If there are multiple node types, we need to figure out how to make
+  -- decisions for each node type, and agglomerate the results.
+  assert(#M.GetAllNodeTypes() == 1)
+  local node_type = M.GetAllNodeTypes()[1]
 
-    local node_type = M.GetAllNodeTypes()[1]
+  -- make / get partitioning decision
+  local partition_strategy  =
+    self:choose_partition_strategy(typedfunc, node_type)
 
-    -- make / get partitioning decision
-    local partition_strategy  =
-      self:choose_partition_strategy(typedfunc, node_type)
+  local per_access_data = {}
 
-    local node_per_access_data = {}
-
-    -- choose what ghost strategies to use for each access
-    local ghost_strategies =
-      self:choose_ghost_strategies(typedfunc, typedfunc:all_accesses(),
-                                   node_type, partition_strategy)
-    -- do second index lookup, on per-access basis
-    local field_accesses  = typedfunc:all_accesses()
-    -- for each access, figure out what partitions to use
-    for f,access in pairs(field_accesses) do
-      local relation = f:Relation()
-      -- index 1 (apply node-local partitioning strategy)
-      local local_partition = self.partition_index:lookup {
-        typedfunc           = typedfunc,
-        relation            = relation,
-        node_type           = node_type,
-        partition_strategy  = partition_strategy,
-      }
-      assert(local_partition, 'no local partition found')
-      -- index 2 (apply ghost strategy)
-      local local_ghost_pattern = self.ghost_pattern_index:lookup {
-        rel_local_partition   = local_partition,
-        ghost_strategy        = ghost_strategies[access],
-      }
-      if not local_ghost_pattern:supports( access:getstencil() ) then
-        error('INTERNAL: ghost pattern does not support required stencil '..
-              ' access pattern.')
-      end
-      assert(local_ghost_pattern, 'no ghost pattern found')
-      -- index 3 (translate to legion data)
-      local legion_data = self.legion_data_index:lookup {
-        local_ghost_pattern = local_ghost_pattern,
-        --node_id             = node_id,
-        --proc_id             = proc_id,
-      }
-      assert(legion_data, 'no legion data found')
-      node_per_access_data[access] = legion_data
+  -- choose what ghost strategies to use for each access
+  local ghost_strategies =
+    self:choose_ghost_strategies(typedfunc, typedfunc:all_accesses(),
+                                 node_type, partition_strategy)
+  -- do second index lookup, on per-access basis
+  local field_accesses  = typedfunc:all_accesses()
+  -- for each access, figure out what partitions to use
+  for f,access in pairs(field_accesses) do
+    local relation = f:Relation()
+    -- index 1 (apply node-local partitioning strategy)
+    local local_partition = self.partition_index:lookup {
+      typedfunc           = typedfunc,
+      relation            = relation,
+      node_type           = node_type,
+      partition_strategy  = partition_strategy,
+    }
+    assert(local_partition, 'no local partition found')
+    -- index 2 (apply ghost strategy)
+    local local_ghost_pattern = self.ghost_pattern_index:lookup {
+      rel_local_partition   = local_partition,
+      ghost_strategy        = ghost_strategies[access],
+    }
+    if not local_ghost_pattern:supports( access:getstencil() ) then
+      error('INTERNAL: ghost pattern does not support required stencil '..
+            ' access pattern.')
     end
+    assert(local_ghost_pattern, 'no ghost pattern found')
+    -- index 3 (translate to legion data)
+    local legion_data = self.legion_data_index:lookup {
+      local_ghost_pattern = local_ghost_pattern,
+      --node_id             = node_id,
+      --proc_id             = proc_id,
+    }
+    assert(legion_data, 'no legion data found')
+    per_access_data[access] = legion_data
+  end
 
-    -- also add primary partition
-    local prim_relation = typedfunc:relation()
-    local prim_local_partition = self.partition_index:lookup {
-      typedfunc                = typedfunc,
-      relation                 = prim_relation,
-      node_type                = node_type,
-      partition_strategy       = partition_strategy,
-    }
-    assert(prim_local_partition, 'no primary local partition found')
-    local prim_local_ghost_pattern = self.ghost_pattern_index:lookup {
-      rel_local_partition          = prim_local_partition,
-      ghost_strategy               = GhostDepth(0)
-    }
-    local prim_legion_data = self.legion_data_index:lookup {
-      local_ghost_pattern  = prim_local_ghost_pattern
-    }
-    assert(prim_legion_data ~= nil)
-    node_per_access_data.primary = prim_legion_data
-
-    -- since we are on a single node, per access data is same as per access
-    -- data for this one node
-    -- we will need to figure out how to agglomerate all local partition data
-    per_access_data = node_per_access_data
+  -- also add primary partition
+  local prim_relation = typedfunc:relation()
+  local prim_local_partition = self.partition_index:lookup {
+    typedfunc                = typedfunc,
+    relation                 = prim_relation,
+    node_type                = node_type,
+    partition_strategy       = partition_strategy,
+  }
+  assert(prim_local_partition, 'no primary local partition found')
+  local prim_local_ghost_pattern = self.ghost_pattern_index:lookup {
+    rel_local_partition          = prim_local_partition,
+    ghost_strategy               = GhostDepth(0)
+  }
+  local prim_legion_data = self.legion_data_index:lookup {
+    local_ghost_pattern  = prim_local_ghost_pattern
+  }
+  assert(prim_legion_data ~= nil)
+  per_access_data.primary = prim_legion_data
 
   return per_access_data
 end
@@ -384,6 +390,8 @@ end
 
 -- Refresh partition index for all new typed functions, according to enumerated
 -- partition strategies.
+-- FOR NOW: This assumes that there is just one cpu per node (each cpu is a
+-- different node).
 local all_partition_strategies = { CPU_Only }--, GPU_Only }
 function Planner:refresh_partition_index()
   -- handle all newly registered functions
@@ -402,15 +410,25 @@ function Planner:refresh_partition_index()
       local global_partition  = relation:_GetGlobalPartition()
       for _,node_type in ipairs(self.active_node_types) do
         for _,partition_strategy in ipairs(all_partition_strategies) do
+
           -- compute parameters from the strategy
-          -- TODO: COMPUTE PARAMETERS HERE
           -- FOR NOW: assume we'll only use one cpu per-node
 
-          -- create and cache a local partition for this combination
-          -- of keys and strategy
+          -- FOR NOW: also assume this local partition is over all the nodes
+          -- in global partition, since there is only one node type.
+          -- If there are heterogeneous nodes, we'll need to map machine nodes
+          -- to global partition nodes.
+
+          -- create and cache a local partition for this combination of keys
+          -- strategy, and record which nodes use this local partition
+          local nodes = terralib.newlist()  -- a list of node ids
+          for n = 1,global_partition:get_n_nodes() do
+            nodes:insert(n)
+          end
           local local_partition = P.RelLocalPartition {
             rel_global_partition  = global_partition,
             node_type             = node_type,
+            nodes                 = nodes
             -- some other parameters...
           }
           self.partition_index:insert( local_partition, {
@@ -484,17 +502,9 @@ function Planner:rebuild_partitions()
   -- Code here should do the following
     -- * potentially reconstruct the partition tree
     -- * update the final index appropriately
-
+  
   local pstore = get_partition_store(self)
 
-  -- HACKITY HACK STUFF HERE FOR NOW
-  -- TODO: Something to handle ghost-regions
-  -- writing as a single-time attempt to partition...
-  -- needs to be edited into better shape
-  -- ALWAYS MAKE SURE THE DISJOINT PARTITION IS FRESH...
-  -- TODO: QUESTION: what does it mean to say that the disjoint partition is fresh?
-  -- Why local_partition:execute?????
-  
   -- make sure that legion data is built for these local partitions
   for local_partition,_ in pairs(self.active_local_partitions) do
     local_partition:execute_partition()
@@ -505,15 +515,15 @@ function Planner:rebuild_partitions()
     local_ghost_pattern:execute_partition()
   end
 
-  -- TODO: STUB FOR DEVELOPMENT
+  -- get legion regions (for all nodes), for each local ghost pattern
   for _,local_ghost_pattern in ipairs(self.new_ghost_pattern_queue) do
-    local local_partition   = local_ghost_pattern:get_legion_partition()
     local data = {
-      partition = local_partition
+      partition = local_ghost_pattern:TEMPORARY_get_legion_subregions()
     }
-    self.legion_data_index:insert( data, {
-      local_ghost_pattern = local_ghost_pattern,
-    })
+    self.legion_data_index:insert(
+      data,
+      { local_ghost_pattern = local_ghost_pattern }
+    )
   end
 
   self.new_ghost_pattern_queue = newlist() -- re-validate the index

@@ -65,7 +65,7 @@ end
 
 
 -------------------------------------------------------------------------------
---[[  Data Accessors - Logical / Physical Regions, Fields, Futures         ]]--
+--[[            Data Accessors - Fields, Futures Declarations              ]]--
 -------------------------------------------------------------------------------
 
 -- Logical Regions
@@ -82,7 +82,6 @@ LW.InlinePhysicalRegion       = InlinePhysicalRegion
 -- Futures
 local FutureBlob        = {}
 FutureBlob.__index      = FutureBlob
-LW.FutureBlob           = FutureBlob
 
 -- 1D, 2D and 3D field accessors to access fields within Legion tasks
 LW.FieldAccessor = {}
@@ -160,8 +159,8 @@ end)
 --[[  Region Requirements                                                  ]]--
 -------------------------------------------------------------------------------
 
-LW.RegionReq         = {}
-LW.RegionReq.__index = LW.RegionReq
+local RegionReq         = {}
+RegionReq.__index = RegionReq
 
 --[[
 {
@@ -177,10 +176,10 @@ LW.RegionReq.__index = LW.RegionReq
 function LW.NewRegionReq(params)
   local reduce_func_id = (params.privilege == LW.REDUCE)
             and LW.GetFieldReductionId(params.reduce_op, params.reduce_typ)
-             or nil
+            or nil
   local relation = params.relation
   local reg_req = setmetatable({
-    log_reg_handle  = relation._logical_region_wrapper.handle,
+    log_reg_handle  = relation._logical_region_wrapper:get_handle(),
     num             = params.num,
     -- GOAL: Remove the next data item as a dependency
     --        through more refactoring
@@ -190,30 +189,11 @@ function LW.NewRegionReq(params)
     reduce_func_id  = reduce_func_id,       
     --partition       = nil,
     centered        = params.centered,
-  }, LW.RegionReq)
+  }, RegionReq)
   return reg_req
 end
 
-function LW.RegionReq:isreduction() return self.privilege == LW.REDUCE end
-
---[[
-function LW.RegionReq:PartitionData()  -- TODO: make default case single partition
-  local relation = self.relation_for_partitioning
-  if not self.partition and use_partitioning then
-    if self.centered then
-      if not relation:IsPartitioningSet() then
-        local ndims = #relation:Dims()
-        local num_partitions = {}
-        for i = 1,ndims do
-            num_partitions[i] = run_config.num_partitions_default
-        end
-        relation:SetPartitions(num_partitions)
-      end
-      self.partition = relation:GetOrCreateDisjointPartitioning()
-    end
-  end
-end
---]]
+function RegionReq:isreduction() return self.privilege == LW.REDUCE end
 
 
 -------------------------------------------------------------------------------
@@ -282,8 +262,9 @@ function(ufv_name, on_gpu, task_func)
   return TID
 end)
 
-LW.TaskLauncher         = {}
-LW.TaskLauncher.__index = LW.TaskLauncher
+
+local TaskLauncher         = {}
+TaskLauncher.__index = TaskLauncher
 
 --[[
 {
@@ -294,8 +275,6 @@ LW.TaskLauncher.__index = LW.TaskLauncher
   n_copies          -- how many copies to launch if doing index launch
 }
 --]]
-LW.TaskLauncher         = {}
-LW.TaskLauncher.__index = LW.TaskLauncher
 
 function LW.NewTaskLauncher(params)
   if not terralib.isfunction(params.task_func) then
@@ -338,10 +317,10 @@ function LW.NewTaskLauncher(params)
     _index_launch = params.use_index_launch,
     _on_gpu       = params.gpu,
     _reduce_func_id = nil,
-  }, LW.TaskLauncher)
+  }, TaskLauncher)
 end
 
-function LW.TaskLauncher:Destroy()
+function TaskLauncher:Destroy()
   self._taskfunc = nil
   self._taskfuncptr = nil
   local DestroyVariant = self._index_launch and
@@ -351,55 +330,56 @@ function LW.TaskLauncher:Destroy()
   self._launcher = nil
 end
 
-function LW.TaskLauncher:IsOnGPU()
+function TaskLauncher:IsOnGPU()
   return self._on_gpu
 end
 
-function LW.TaskLauncher:AddRegionReq(req, partition_obj)
-  -- NOTE: currently, non-zero stencils will have a nil partition object.
-  local logical_partition = (partition_obj ~= nil)
-  local partition_handle = logical_partition and
-                           partition_obj:get_logical_partition_obj()
-                           or req.log_reg_handle
+function TaskLauncher:AddRegionReq(req, partn_or_reg)
+  local is_logical_partition   = getmetatable(partn_or_reg) == LW.LogicalPartition
+  local is_partition_subregion = (partn_or_reg ~= nil and
+                                  partn_or_reg ~= false)  -- TEMPORARY: till we use ghost regions
+  local handle = is_partition_subregion and
+                 partn_or_reg:get_handle() or
+                 req.log_reg_handle
 
   -- Assemble the call
-  local args = newlist { self._launcher, partition_handle }
+  local args = newlist { self._launcher, handle }
   local str  = 'legion'
-  if self._index_launch then    args:insert(0)
-                                str = str .. '_index'
-                        else    str = str .. '_task' end
+  if self._index_launch   then    args:insert(0)
+                                  str = str .. '_index'
+                          else    str = str .. '_task' end
   str = str .. '_launcher_add_region_requirement_logical'
-  if logical_partition then     str = str .. '_partition'
-                       else     str = str .. '_region' end
-  if req:isreduction() then     args:insert(req.reduce_func_id)
-                                str = str .. '_reduction'
-                       else     args:insert(req.privilege)
-                       end
+  if is_logical_partition then     str = str .. '_partition'
+                          else     str = str .. '_region' end
+  if req:isreduction()    then     args:insert(req.reduce_func_id)
+                                   str = str .. '_reduction'
+                          else     args:insert(req.privilege)
+                          end
   args:insertall { req.coherence, req.log_reg_handle, 0, false }
   -- Do the call
   return LW[str](unpack(args))
 end
 
-function LW.TaskLauncher:AddField(reg_req, fid)
+function TaskLauncher:AddField(reg_req, fid)
   local AddFieldVariant =
     (self._index_launch and LW.legion_index_launcher_add_field) or
     LW.legion_task_launcher_add_field
   AddFieldVariant(self._launcher, reg_req, fid, true)
 end
 
-function LW.TaskLauncher:AddFuture(future)
+function TaskLauncher:AddFuture(future)
   local AddFutureVariant =
     (self._index_launch and LW.legion_index_launcher_add_future) or
     LW.legion_task_launcher_add_future
   AddFutureVariant(self._launcher, future)
 end
 
-function LW.TaskLauncher:AddFutureReduction(op, ebb_typ)
+function TaskLauncher:AddFutureReduction(op, ebb_typ)
   self._reduce_func_id = LW.GetGlobalReductionId(op, ebb_typ)
 end
 
 -- If there's a future it will be returned
-function LW.TaskLauncher:Execute(runtime, ctx, redop_id)
+function TaskLauncher:Execute(runtime, ctx, redop_id)
   local exec_str = 'legion'..
                    (self._index_launch and '_index' or '_task')..
                    '_launcher_execute'
@@ -701,6 +681,10 @@ function LW.NewGridLogicalRegion(params)
   return l
 end
 
+function LogicalRegion:get_handle()
+  return self.handle
+end
+
 
 -------------------------------------------------------------------------------
 --[[  Physical Region Methods                                              ]]--
@@ -734,10 +718,10 @@ function LW.NewInlinePhysicalRegion(params)
   for i, field in ipairs(params.fields) do
     -- create inline launcher
     ils[i]  = LW.legion_inline_launcher_create_logical_region(
-      params.relation._logical_region_wrapper.handle,  -- legion_logical_region_t handle
+      params.relation._logical_region_wrapper:get_handle(),  -- legion_logical_region_t handle
       params.privilege,         -- legion_privilege_mode_t
       LW.EXCLUSIVE,             -- legion_coherence_property_t
-      params.relation._logical_region_wrapper.handle,  -- legion_logical_region_t parent
+      params.relation._logical_region_wrapper:get_handle(),  -- legion_logical_region_t parent
       0,                        -- legion_mapping_tag_id_t region_tag /* = 0 */
       false,                    -- bool verified /* = false*/
       0,                        -- legion_mapper_id_t id /* = 0 */
@@ -799,7 +783,7 @@ function LW.NewInlinePhysicalRegion(params)
     strides           = strides,
     offsets           = offsets,
     fields            = params.fields,
-  }, LW.InlinePhysicalRegion)
+  }, InlinePhysicalRegion)
 
   return iprs
 end
@@ -873,13 +857,12 @@ end
 -------------------------------------------------------------------------------
 --[[  Partitioning logical regions                                         ]]--
 -------------------------------------------------------------------------------
-local LogicalPartition = {}
-LogicalPartition.__index = LogicalPartition
 
 local LogicalSubRegion    = {}
 LogicalSubRegion.__index  = LogicalSubRegion
+LW.LogicalSubRegion       = LogicalSubRegion
 
-local function new_logical_sub_region(rect, color_pt, ipart, lpart)
+local function NewLogicalSubRegion(rect, color_pt, ipart, lpart)
   assert(Util.isrect2d(rect) or Util.isrect3d(rect))
   local is3d    = Util.isrect3d(rect)
 
@@ -902,8 +885,6 @@ local function new_logical_sub_region(rect, color_pt, ipart, lpart)
   return setmetatable({
     -- always a grid
     type        = 'grid',
-    -- relation    = nil, -- do not expect this to be relevant
-    -- field-ids       -- also not really relevant
     offsets     = offsets,
     dims        = dims,
     rect        = rect,
@@ -912,7 +893,19 @@ local function new_logical_sub_region(rect, color_pt, ipart, lpart)
   }, LogicalSubRegion)
 end
 
-local function create_grid_region_partition(lreg_obj, subrects, part_kind)
+function LogicalSubRegion:get_handle()
+  return self.handle
+end
+
+function LogicalSubRegion:get_rect()
+  return self.rect
+end
+
+local LogicalPartition   = {}
+LogicalPartition.__index = LogicalPartition
+LW.LogicalPartition      = LogicalPartition
+
+local function CreateGridRegionPartition(lreg_obj, subrects, part_kind)
   assert(lreg_obj.type == 'grid')
   assert(terralib.israwlist(subrects) and #subrects>0,'expect rectangle list')
   local is3d = #lreg_obj.dims == 3
@@ -920,10 +913,9 @@ local function create_grid_region_partition(lreg_obj, subrects, part_kind)
   -- unpack
   --local dims      = lreg_obj.dims       -- dimensions of grid
   --local offsets   = lreg_obj.offsets    -- offset in global grid coordinates
-  local lreg      = lreg_obj.handle     -- logical-region
+  local lreg      = lreg_obj.handle     -- parent logical region/subregion
   local lis       = lreg_obj.is         -- index-space
 
-  -- TODO: QUESTION: Why is color space linearized?
   -- indexing scheme
   local n_rect        = #subrects
   local color_space   = LW.DomainRect[1](0,n_rect-1)
@@ -946,8 +938,7 @@ local function create_grid_region_partition(lreg_obj, subrects, part_kind)
     lis, -- parent idx space
     color_space,
     coloring,
-    part_kind, --LW.DISJOINT_KIND,
-    -- alternative there was ALIASED_KIND for overlaps
+    part_kind,
     -1 -- AUTO-GENERATE
   )
   -- can free the coloring now
@@ -963,7 +954,7 @@ local function create_grid_region_partition(lreg_obj, subrects, part_kind)
   -- iterate over and cache all of the subregion objects
   local subregions = newlist()
   for i,rect in ipairs(subrects) do
-    subregions:insert( new_logical_sub_region(
+    subregions:insert( NewLogicalSubRegion(
       rect, LegionDomainPoint(i-1), idx_part, l_part
     ))
   end
@@ -975,7 +966,6 @@ local function create_grid_region_partition(lreg_obj, subrects, part_kind)
     _lpart        = l_part,
     _ipart        = idx_part,
     _subregions   = subregions,
-    -- _n_blocks     = {nX,nY,nZ},  -- useful during debugging
     _subrects     = subrects,    -- useful during debugging
   }, LogicalPartition)
   return new_obj
@@ -994,7 +984,7 @@ function LogicalPartition:destroy()
   )
 end
 
-function LogicalPartition:get_logical_partition_obj()
+function LogicalPartition:get_handle()
   return self._lpart
 end
 
@@ -1020,58 +1010,20 @@ end
 ---------------------------------------------
 
 function LogicalRegion:CreateDisjointPartition(subrects)
-  return create_grid_region_partition(self, subrects, LW.DISJOINT_KIND)
+  return CreateGridRegionPartition(self, subrects, LW.DISJOINT_KIND)
 end
 
 function LogicalRegion:CreateOverlappingPartition(subrects)
-  return create_grid_region_partition(self, subrects, LW.ALIASED_KIND)
+  return CreateGridRegionPartition(self, subrects, LW.ALIASED_KIND)
 end
 
 function LogicalSubRegion:CreateDisjointPartition(subrects)
-  return create_grid_region_partition(self, subrects, LW.DISJOINT_KIND)
+  return CreateGridRegionPartition(self, subrects, LW.DISJOINT_KIND)
 end
 
 function LogicalSubRegion:CreateOverlappingPartition(subrects)
-  return create_grid_region_partition(self, subrects, LW.ALIASED_KIND)
+  return CreateGridRegionPartition(self, subrects, LW.ALIASED_KIND)
 end
-
--- maybe not really necessary... (maybe shouldn't be in here... probably)
---[[
-function LogicalRegion:GetBlockedRects(n_blocks)
-  assert(self.type == 'grid')
-  assert(terralib.israwlist(n_blocks) and #n_blocks == #self.dims)
-  -- unpack
-  local dims      = self.dims       -- dimensions of grid
-  local offsets   = self.offsets    -- global coordinates in each dim
-
-  local nX, nY, nZ    = unpack(n_blocks)
-  local dX, dY, dZ    = unpack(dims)
-  local oX, oY, oZ    = unpack(offsets)
-  local is3d          = #dims == 3
-
-  local subrects   = newlist()
-  -- loop to fill out the partition coloring
-  for i=1,nX do
-    local xrange  = { math.floor( dX * (i-1) / nX ) + oX,
-                      math.floor( dX * i / nX ) - 1 + oX }
-    for j=1,nY do
-      local yrange  = { math.floor( dY * (j-1) / nY ) + oY,
-                        math.floor( dY * j / nY ) - 1 + oY }
-      if #dims == 2 then
-        subrects:insert( Util.NewRect2d( xrange,yrange ) )
-      else for k=1,nZ do
-        local zrange  = { math.floor( dZ * (k-1) / nZ ) + oZ,
-                          math.floor( dZ * k / nZ ) - 1 + oZ }
-        subrects:insert( Util.NewRect3d( xrange,yrange,zrange ) )
-      end end
-    end
-  end
-
-  return subrects
-end
---]]
-
-
 
 
 -------------------------------------------------------------------------------

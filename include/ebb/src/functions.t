@@ -274,8 +274,11 @@ function Function:_doForEach(relset, ...)
   local typeversion = self:_Get_Type_Version_Table(4, relset, ...)
 
   -- Insert partitioning hooks here and communication to planning component
-  local legion_partition_data
+  local legion_partition_data = nil
   if use_partitioning then
+    if params.location == Pre.GPU then
+      error('GPU launches are currently unsupported with partitioning and legion.')
+    end
     -- probably want to get rid of node-type here eventually...
     Planner.note_launch { typedfunc = typeversion }
     legion_partition_data =
@@ -300,6 +303,7 @@ function Function:getCompileTime()
   sumtime:setName(self._name..'_compile_time')
   return sumtime
 end
+
 function Function:getExecutionTime()
   local versions  = self:GetAllVersions()
   local sumtime   = Stats.NewTimer('')
@@ -314,11 +318,3 @@ function Function:_TESTING_GetFieldAccesses(relset, ...)
   local typeversion = self:_Get_Type_Version_Table(4, relset, ...)
   return typeversion.field_accesses -- these have the stencils in them
 end
-
-
-
-
-
-
-
-

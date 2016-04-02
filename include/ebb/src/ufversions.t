@@ -1380,7 +1380,7 @@ function UFVersion:_GenerateUnpackLegionTaskArgs(argsym, task_args, gredptr)
       
       -- UNPACK PRIMARY REGION BOUNDS RECTANGLE FOR STRUCTURED
       -- FOR UNSTRUCTURED, CORRECT INITIALIZATION IS POSTPONED TO LATER
-      -- FOR UNSRRUCTURED, BOUNDS INITIALIZED TO TOTAL ROWS HERE
+      -- FOR UNSTRUCTURED, BOUNDS INITIALIZED TO TOTAL ROWS HERE
       escape
         local relation  = ufv._relation
         local ri        = ufv._legion_signature:getPrimaryRegionSeqId()
@@ -1529,14 +1529,14 @@ end
 -- Creates a task launcher with task region requirements.
 function UFVersion:_CreateLegionTaskLauncher(task_func, exec_args)
   local n_blocks = use_partitioning and
-                   self._relation:_GetGlobalPartition():get_n_blocks() or nil
+                   self._relation:_GetGlobalPartition():get_n_nodes() or nil
 
   local task_launcher = LW.NewTaskLauncher {
     ufv_name          = self._name,
     task_func         = task_func,
     gpu               = self:onGPU(),
-    use_index_launch  = use_partitioning, -- TODO: make default case single partition
-    n_copies          = n_blocks
+    use_index_launch  = exec_args.use_index_launch,
+    --n_copies          = n_blocks
   }
 
   -- ADD EACH REGION to the launcher as a requirement
@@ -1546,24 +1546,20 @@ function UFVersion:_CreateLegionTaskLauncher(task_func, exec_args)
     local pdata = exec_args.partition_data
     for i, req in self._legion_signature:RegionRequirementIterator() do
       local accesses = self._legion_signature:getRegionRequestAccesses(i)
-      local g_part   = nil
-
+      local regions = nil
       if #accesses > 0 then
-        g_part = pdata[accesses[1]].partition
-        for k=2,#accesses do
-          if pdata[accesses[k]].partition ~= g_part then
-            error('INTERNAL ERROR: planner gave different partitions '..
-                  'to field-accesses with the same region requirement')
-          end
-        end
+        regions = pdata[accesses[1]].regions
       else
         if i == 0 then
           -- primary region requirement
-          g_part = pdata.primary.partition
+          regions = pdata.primary.regions
+        else
+          error('INTERNAL ERROR: there is a non-primary region requirement ' ..
+                'with zero field accesses for requirement ' .. i ..
+                ' for function ' .. self._name)
         end
       end
-
-      local out_id = task_launcher:AddRegionReq(req, g_part)
+      local out_id = task_launcher:AddRegionReq(req, regions)
       assert(i == out_id)
     end
   else
@@ -1601,11 +1597,10 @@ end
 function UFVersion:_CreateLegionLauncher(task_func)
   local ufv = self
 
-  -- NOTE: Instead of creating Legion task launcher every time
-  -- within the returned function, why not create it once and then reuse the
-  -- task launcher?
+  -- Create legion task launcher, execute it and then destroy the launcher
+  local ExecuteLegionLauncher = nil
   if ufv:UsesGlobalReduce() then
-    return function(leg_args, exec_args)
+    ExecuteLegionLauncher = function(leg_args, exec_args)
       local task_launcher =
         ufv:_CreateLegionTaskLauncher(task_func, exec_args)
       local future = task_launcher:Execute(leg_args.runtime, leg_args.ctx)
@@ -1619,11 +1614,51 @@ function UFVersion:_CreateLegionLauncher(task_func)
       task_launcher:Destroy()
     end
   else
-    return function(leg_args, exec_args)
+    ExecuteLegionLauncher = function(leg_args, exec_args)
       local task_launcher =
         ufv:_CreateLegionTaskLauncher(task_func, exec_args)
       task_launcher:Execute(leg_args.runtime, leg_args.ctx)
       task_launcher:Destroy()
+    end
+  end
+
+  if not use_partitioning then
+    return ExecuteLegionLauncher
+  else
+  -- Emulate index space launch. This is a hack, till we start using Legion
+  -- index task launches.
+    return function(leg_args, exec_args)
+      -- Repack exec args partition data to emulate index space launch
+      -- into:
+      --[[ node {
+             partition_data : {
+               field_access_1 : {
+                  regions : ....
+               },
+               field_access_2 : {
+                  regions : ...
+               },
+             }
+           }
+      --]]
+      local node_exec_args = {}
+      for access, access_data in pairs(exec_args.partition_data) do
+        for node, node_access_data in ipairs(access_data.partition) do
+          if not node_exec_args[node] then
+            node_exec_args[node] = {
+              use_index_launch   = false,
+              partition_data     = {},
+            } 
+          end
+          local node_args = node_exec_args[node].partition_data
+          node_args[access] = { regions = node_access_data }
+        end
+      end
+
+      -- Launch individual tasks for every node [TODO: and processor]
+      for node, node_data in ipairs(node_exec_args) do
+        ExecuteLegionLauncher(leg_args, node_data)
+      end
     end
   end
 end

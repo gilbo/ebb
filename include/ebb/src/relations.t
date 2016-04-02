@@ -1192,7 +1192,7 @@ function Relation:Swap( f1_name, f2_name )
     f2._array = tmp
   elseif use_legion then
     local region  = self._logical_region_wrapper
-    local rhandle = region.handle
+    local rhandle = region:get_handle()
     local fid_1   = f1._fid
     local fid_2   = f2._fid
     -- create a temporary Legion field
@@ -1240,7 +1240,7 @@ function Relation:Copy( p )
 
   elseif use_legion then
     LW.CopyField {
-      region  = self._logical_region_wrapper.handle,
+      region  = self._logical_region_wrapper:get_handle(),
       src_fid = from._fid,
       dst_fid = to._fid,
     }
@@ -2076,64 +2076,6 @@ if use_legion then
       var ptr = [&LW.legion_color_t](d.address) + i*s
       @ptr = i / partn_size
     end
-  end
-end
-
--- NOTE: partitions include boundary regions. Partitioning is not subset
--- specific right now, but it is a partitioning over the entire logical region.
-
--- looks up/ creates a disjoint partitioning on a relation
-function Relation:GetOrCreateDisjointPartitioning()
-  -- check if there is a disjoint partition
-  if self._disjoint_partitioning then
-    return self._disjoint_partitioning
-  end
-  -- else creaate disjoint partition
-  local partn = nil
-  if self:isGrid() then
-    -- STRUCTURED GRIDS
-    -- create block partition
-    partn = self._logical_region_wrapper:CreateBlockPartitions()
-  else
-    -- PLAIN/ GROUPED/ ELASTIC
-    -- add a coloring field to logical region
-    rawset(self, '_disjoint_coloring',
-           CreateField(self, '_disjoint_coloring', T.color_type))
-    -- set the coloring field
-    self._disjoint_coloring:Load(ColorPlainIndexSpaceDisjoint,
-                                 self:TotalPartitions())
-    -- create index partition using the coloring field and save it
-    partn = 
-      self._logical_region_wrapper:CreatePartitionsByField(self._disjoint_coloring)
-  end
-  rawset(self, '_disjoint_partitioning', partn)
-  return partn
-end
-
--- looks up/ creates an aliased partitioning on a relation
--- only grids with specified ghost width supported right now
-function Relation:GetOrCreateGhostPartitioning(ghost_width)
-  if not self:isGrid() then
-    error("INTERNAL: Ghost partitions on non-grid relations not supported yet.")
-  else
-    local ghost_width = ghost_width or self._ghost_width_default
-    if not ghost_width then
-      error("INTERNAL: Ghost width not specified. Stencil analysis does not work yet.")
-    end
-    local lookup_str = ""
-    local num_elems = #ghost_width
-    for i = 1, num_elems do
-      lookup_str = lookup_str .. "_" .. tostring(ghost_width[i])
-    end
-    if not self._ghost_partitionings then
-      rawset(self, '_ghost_partitionings', {})
-    end
-    local ghost_partitionings = self._ghost_partitionings
-    if not ghost_partitionings[lookup_str] then
-      ghost_partitionings[lookup_str] =
-        self._logical_region_wrapper:CreateBlockPartitions(self._ghost_width_default)
-    end
-    return ghost_partitionings[lookup_str]
   end
 end
 
