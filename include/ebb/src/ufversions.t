@@ -66,6 +66,8 @@ local function shallowcopy_table(tbl)
   return x
 end
 
+local newlist = terralib.newlist
+
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
 --[[ Terra Signature                                                       ]]--
@@ -181,7 +183,9 @@ end
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
 
-function UFVersion:Execute()
+function UFVersion:Execute(exec_args)
+  exec_args = exec_args or {}
+
   if not self:isCompiled() then
     self:Compile()
   end
@@ -212,7 +216,7 @@ function UFVersion:Execute()
   -- can actually launch the computation.  Oddly enough, this
   -- may require some amount of further marshalling and binding
   -- of data depending on what runtime this version is being launched on.
-  self:_Launch()
+  self:_Launch(exec_args)
   --LAUNCH_TIMER = LAUNCH_TIMER + (terralib.currenttimeinseconds() - prelaunch)
 
   -- Finally, some features may require some post-processing after the
@@ -300,8 +304,8 @@ function UFVersion:Compile()
 end
 
 function UFVersion:_CompileTerraSignature()
-  local fields, globals   = terralib.newlist(), terralib.newlist()
-  local global_reductions = terralib.newlist()
+  local fields, globals   = newlist(), newlist()
+  local global_reductions = newlist()
   self._global_reductions = {}
 
   if self:overElasticRelation() then
@@ -483,7 +487,7 @@ end
 
 function UFVersion:_PartitionData()
   if not use_legion then return end
-  self._legion_signature:PartitionRegReqs()
+  --self._legion_signature:PartitionRegReqs()
 end
 
 
@@ -545,9 +549,10 @@ end
 --[[ UFVersion Launch                                                      ]]--
 --                  ---------------------------------------                  --
 
-function UFVersion:_Launch()
+function UFVersion:_Launch(exec_args)
   if use_legion then
-    self._executable({ ctx = legion_env.ctx, runtime = legion_env.runtime })
+    self._executable({ ctx = legion_env.ctx, runtime = legion_env.runtime },
+                     exec_args)
   else
     self._executable(self._args:_raw_ptr())
   end
@@ -1060,20 +1065,27 @@ local function BuildLegionSignature(params)
 
   -- used as context and unique key for memoization
   local build_data        = {
-    reg_req_list    = {}, -- in order by regreq_seq_i
-    n_reg_req       = 0,
+    reg_req_list      = {}, -- in order by regreq_seq_i
+    n_reg_req         = 0,
   }
-  local field_reqs  = {} -- field -> reg_req
-  local seq_fields  = {} -- regreq_seq_i -> field
+  local field_reqs    = {} -- field -> reg_req
+  local seq_fields    = {} -- regreq_seq_i -> { field }
+  local seq_accesses  = {} -- regreq_seq_i -> { field_access }
 
   -- add primary data-less region requirement
   local prim_relation = params.relation
   local prim_reg_req  = get_primary_regreq(build_data, prim_relation)
+  seq_accesses[prim_reg_req.num] = newlist() -- empty
   -- add field-driven region requirements
   for field, phase in pairs(params.field_use) do
     local reg_req             = get_regreq(build_data, field, phase)
     field_reqs[field]         = reg_req
-    seq_fields[reg_req.num]   = field
+    if not seq_fields[reg_req.num] then
+      seq_fields[reg_req.num] = newlist()
+      seq_accesses[reg_req.num] = newlist()
+    end
+    seq_fields[reg_req.num]:insert(field)
+    seq_accesses[reg_req.num]:insert(params.field_accesses[field])
   end
 
   -- determine order of future arguments
@@ -1093,21 +1105,25 @@ local function BuildLegionSignature(params)
   function LegionSignature:getRegionRelation(regreq_seq_i)
     if regreq_seq_i == 0 then return prim_relation end
 
-    local field = seq_fields[regreq_seq_i]
-    return field:Relation()
+    local a_field = seq_fields[regreq_seq_i][1]
+    return a_field:Relation()
   end
+  function LegionSignature:getRegionRequestAccesses(regreq_seq_i)
+    return seq_accesses[regreq_seq_i]
+  end
+  -- TODO: QUESTION: Is this function needed? Delete? Looks like dead code.
   function LegionSignature:AddRegReqsToTaskLauncher(task_launcher)
     for i, req in self:RegionRequirementIterator() do
       local out_id = task_launcher:AddRegionReq(req)
       assert(i == out_id)
     end
   end
-  function LegionSignature:PartitionRegReqs()
-    for i, req in self:RegionRequirementIterator() do
-      -- TODO: make default case single partition
-      req:PartitionData(use_partitioning)
-    end
-  end
+  --function LegionSignature:PartitionRegReqs()
+  --  for i, req in self:RegionRequirementIterator() do
+  --    -- TODO: make default case single partition
+  --    req:PartitionData(use_partitioning)
+  --  end
+  --end
   function LegionSignature:getPrimaryRegionPartition()
     return prim_reg_req.partition
   end
@@ -1139,9 +1155,10 @@ end
 
 function UFVersion:_CompileLegionSignature()
   self._legion_signature = BuildLegionSignature {
-    field_use   = self._field_use,
-    global_use  = self._global_use,
-    relation    = self._relation
+    field_use       = self._field_use,
+    global_use      = self._global_use,
+    relation        = self._relation,
+    field_accesses  = self._field_accesses,
   }
 end
 
@@ -1277,7 +1294,7 @@ function UFVersion:_GenerateUnpackLegionTaskArgs(argsym, task_args, gredptr)
   local first = symbol(bool)
 
   -- UNPACK REGIONS
-  local unpack_regions_code = terralib.newlist()
+  local unpack_regions_code = newlist()
   for ri,req in ufv._legion_signature:RegionRequirementIterator() do
     local relation      = ufv._legion_signature:getRegionRelation(ri)
     local n_reldim      = #relation:Dims()
@@ -1309,7 +1326,7 @@ function UFVersion:_GenerateUnpackLegionTaskArgs(argsym, task_args, gredptr)
   end
 
   -- UNPACK FIELDS
-  local unpack_fields_code = terralib.newlist()
+  local unpack_fields_code = newlist()
   for field, phase in pairs(ufv._field_use) do
     local rnum          = ufv._legion_signature:getRegSeqId(field)
     local rtemp         = region_temporaries[rnum]
@@ -1363,7 +1380,7 @@ function UFVersion:_GenerateUnpackLegionTaskArgs(argsym, task_args, gredptr)
       
       -- UNPACK PRIMARY REGION BOUNDS RECTANGLE FOR STRUCTURED
       -- FOR UNSTRUCTURED, CORRECT INITIALIZATION IS POSTPONED TO LATER
-      -- FOR UNSRRUCTURED, BOUNDS INITIALIZED TO TOTAL ROWS HERE
+      -- FOR UNSTRUCTURED, BOUNDS INITIALIZED TO TOTAL ROWS HERE
       escape
         local relation  = ufv._relation
         local ri        = ufv._legion_signature:getPrimaryRegionSeqId()
@@ -1461,7 +1478,7 @@ function UFVersion:_GenerateUnpackLegionTaskArgs(argsym, task_args, gredptr)
 end
 
 function UFVersion:_CleanLegionTask(argsym)
-  local stmts = terralib.newlist()
+  local stmts = newlist()
   for field, _ in pairs(self._field_use) do
   --for field, farg_name in pairs(ufv._field_ids) do
     stmts:insert(quote LW.legion_accessor_generic_destroy(
@@ -1510,21 +1527,47 @@ local function pairs_val_sorted(tbl)
 end
 
 -- Creates a task launcher with task region requirements.
-function UFVersion:_CreateLegionTaskLauncher(task_func)
-  local prim_partn = self._legion_signature:getPrimaryRegionPartition()
+function UFVersion:_CreateLegionTaskLauncher(task_func, exec_args)
+  local n_blocks = use_partitioning and
+                   self._relation:_GetGlobalPartition():get_n_nodes() or nil
 
   local task_launcher = LW.NewTaskLauncher {
     ufv_name          = self._name,
     task_func         = task_func,
     gpu               = self:onGPU(),
-    use_index_launch  = use_partitioning, -- TODO: make default case single partition
-    domain            = use_partitioning and prim_partn:Domain()
+    use_index_launch  = exec_args.use_index_launch,
+    --n_copies          = n_blocks
   }
 
   -- ADD EACH REGION to the launcher as a requirement
   -- WITH THE appropriate permissions set
   -- NOTE: Need to make sure to do this in the right order
-  self._legion_signature:AddRegReqsToTaskLauncher(task_launcher)
+  if use_partitioning then
+    local pdata = exec_args.partition_data
+    for i, req in self._legion_signature:RegionRequirementIterator() do
+      local accesses = self._legion_signature:getRegionRequestAccesses(i)
+      local regions = nil
+      if #accesses > 0 then
+        regions = pdata[accesses[1]].regions
+      else
+        if i == 0 then
+          -- primary region requirement
+          regions = pdata.primary.regions
+        else
+          error('INTERNAL ERROR: there is a non-primary region requirement ' ..
+                'with zero field accesses for requirement ' .. i ..
+                ' for function ' .. self._name)
+        end
+      end
+      local out_id = task_launcher:AddRegionReq(req, regions)
+      assert(i == out_id)
+    end
+  else
+    for i, req in self._legion_signature:RegionRequirementIterator() do
+      local out_id = task_launcher:AddRegionReq(req)
+      assert(i == out_id)
+    end
+  end
 
   -- ADD EACH FIELD to the launcher as a requirement
   -- as part of the correct, corresponding region
@@ -1554,12 +1597,12 @@ end
 function UFVersion:_CreateLegionLauncher(task_func)
   local ufv = self
 
-  -- NOTE: Instead of creating Legion task launcher every time
-  -- within the returned function, why not create it once and then reuse the
-  -- task launcher?
+  -- Create legion task launcher, execute it and then destroy the launcher
+  local ExecuteLegionLauncher = nil
   if ufv:UsesGlobalReduce() then
-    return function(leg_args)
-      local task_launcher   = ufv:_CreateLegionTaskLauncher(task_func)
+    ExecuteLegionLauncher = function(leg_args, exec_args)
+      local task_launcher =
+        ufv:_CreateLegionTaskLauncher(task_func, exec_args)
       local future = task_launcher:Execute(leg_args.runtime, leg_args.ctx)
 
       local reduced_global  = next(ufv._global_reductions)
@@ -1571,10 +1614,51 @@ function UFVersion:_CreateLegionLauncher(task_func)
       task_launcher:Destroy()
     end
   else
-    return function(leg_args)
-      local task_launcher = ufv:_CreateLegionTaskLauncher(task_func)
+    ExecuteLegionLauncher = function(leg_args, exec_args)
+      local task_launcher =
+        ufv:_CreateLegionTaskLauncher(task_func, exec_args)
       task_launcher:Execute(leg_args.runtime, leg_args.ctx)
       task_launcher:Destroy()
+    end
+  end
+
+  if not use_partitioning then
+    return ExecuteLegionLauncher
+  else
+  -- Emulate index space launch. This is a hack, till we start using Legion
+  -- index task launches.
+    return function(leg_args, exec_args)
+      -- Repack exec args partition data to emulate index space launch
+      -- into:
+      --[[ node {
+             partition_data : {
+               field_access_1 : {
+                  regions : ....
+               },
+               field_access_2 : {
+                  regions : ...
+               },
+             }
+           }
+      --]]
+      local node_exec_args = {}
+      for access, access_data in pairs(exec_args.partition_data) do
+        for node, node_access_data in ipairs(access_data.partition) do
+          if not node_exec_args[node] then
+            node_exec_args[node] = {
+              use_index_launch   = false,
+              partition_data     = {},
+            } 
+          end
+          local node_args = node_exec_args[node].partition_data
+          node_args[access] = { regions = node_access_data }
+        end
+      end
+
+      -- Launch individual tasks for every node [TODO: and processor]
+      for node, node_data in ipairs(node_exec_args) do
+        ExecuteLegionLauncher(leg_args, node_data)
+      end
     end
   end
 end

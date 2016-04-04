@@ -28,7 +28,6 @@ local ffi = require "ffi"
 local USE_LEGION = false
 local USE_PARTITION = false
 local USE_GPU    = false
-local NO_DEBUG   = false
 local ONE_LINE_ERR = false
 
 if #arg > 0 then
@@ -42,15 +41,11 @@ if #arg > 0 then
     if arg[i] == '-gpu' or arg[i] == '--gpu' then
       USE_GPU = true
     end
-    if arg[i] == '-nodebug' or arg[i] == '--nodebug' then
-      NO_DEBUG = true
-    end
     if arg[i] == '-h' or arg[i] == '--help' then
       print("Usage : run_tests [options]")
       print("Options:")
       print("  -h, --help               show this help message and exit")
       print("  -legion, --legion        run tests with legion")
-      print("  -nodebug, --nodebug      run tests with release build of runtime library")
       print("  -partition, --partition  run tests with partitioning")
       print("  -gpu, --gpu              run tests on the GPU")
       os.exit(0)
@@ -77,6 +72,7 @@ local exclude = {
 local disable_str = '--DISABLE-TEST'
 local disable_gpu_str = '--DISABLE-ON-GPU'
 local disable_legion_str = '--DISABLE-ON-LEGION'
+local disable_partition_str = '--DISABLE-PARTITIONED'
 local function str_starts_with(str, prefix)
   return string.sub(str,1,#prefix) == prefix
 end
@@ -88,20 +84,26 @@ local function is_disabled (filename)
   local disabled_all    = false
   local disabled_gpu    = false
   local disabled_legion = false
+  local disabled_part   = false
   if line1 then
     disabled_all    = disabled_all or str_starts_with(line1, disable_str)
     disabled_gpu    = disabled_gpu or str_starts_with(line1, disable_gpu_str)
     disabled_legion = disabled_legion or
                       str_starts_with(line1, disable_legion_str)
+    disabled_part   = disabled_part or
+                      str_starts_with(line1, disable_partition_str)
   end
   if line2 then
     disabled_all    = disabled_all or str_starts_with(line2, disable_str)
     disabled_gpu    = disabled_gpu or str_starts_with(line2, disable_gpu_str)
     disabled_legion = disabled_legion or
                       str_starts_with(line2, disable_legion_str)
+    disabled_part   = disabled_part or
+                      str_starts_with(line2, disable_partition_str)
   end
   return disabled_all or (USE_GPU     and disabled_gpu)
                       or (USE_LEGION  and disabled_legion)
+                      or (USE_PARTITION and disabled_part)
 end
 
 local function output_name (filename)
@@ -137,9 +139,6 @@ for line in io.popen(lscmd):lines() do
       local execstring = "./ebb "
       if USE_LEGION then
         execstring = execstring .. " --legion "
-      end
-      if NO_DEBUG then
-        execstring = execstring .. " --runoptions=nodebug "
       end
       if USE_PARTITION then
         execstring = execstring .. " --partition "

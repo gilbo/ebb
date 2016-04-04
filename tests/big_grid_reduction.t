@@ -1,4 +1,3 @@
---DISABLE-PARTITIONED
 -- The MIT License (MIT)
 -- 
 -- Copyright (c) 2015 Stanford University.
@@ -23,24 +22,22 @@
 -- DEALINGS IN THE SOFTWARE.
 import 'ebb'
 local L = require 'ebblib'
-require "tests/test"
+require 'tests.test'
 
-local cells = L.NewRelation { size = 10, name = 'cells' }
-cells:NewField('val', L.double):Load(5)
+local NX,NY = 1000,1000
 
+local vertices = L.NewRelation { dims = {NX,NY}, name = 'vertices' }
+vertices:SetPartitions{2,2}
 
--- Directly shadowing variables like this shouldn't be
--- a problem but some tricky ordering details in how envirnoments
--- are managed in the compiler can cause errors
+local gerr = L.Global(L.int, 1)
 
-local center_shadow = ebb ( c : cells )
-  var c = c
-  L.assert(c.val == 5)
+local ebb RunRed(v : vertices)
+  gerr += 1
 end
-cells:foreach(center_shadow)
 
-local center_other = ebb ( c : cells )
-  var v = 25
-  var v = 2
+function run_test()
+  vertices:foreach(RunRed)
+  test.eq(NX*NY+1, gerr:get())
 end
-cells:foreach(center_other)
+
+run_test()

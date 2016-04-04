@@ -1,4 +1,3 @@
---DISABLE-PARTITIONED
 -- The MIT License (MIT)
 -- 
 -- Copyright (c) 2015 Stanford University.
@@ -25,22 +24,55 @@ import 'ebb'
 local L = require 'ebblib'
 require "tests/test"
 
-local cells = L.NewRelation { size = 10, name = 'cells' }
-cells:NewField('val', L.double):Load(5)
+local cells = L.NewRelation { dims = {10,10}, name = 'cells' }
+cells:SetPartitions{2,2}
 
+cells:NewField('f1', L.double):Load(0)
+cells:NewField('f2', L.double):Load(0)
 
--- Directly shadowing variables like this shouldn't be
--- a problem but some tricky ordering details in how envirnoments
--- are managed in the compiler can cause errors
-
-local center_shadow = ebb ( c : cells )
-  var c = c
-  L.assert(c.val == 5)
+local setup = ebb ( c : cells )
+  c.f1 = 5
 end
-cells:foreach(center_shadow)
+cells:foreach(setup)
 
-local center_other = ebb ( c : cells )
-  var v = 25
-  var v = 2
+cells:Swap('f1','f2')
+
+local check1 = ebb ( c : cells )
+  L.assert(c.f2 == 5)
+  L.assert(c.f1 == 0)
 end
-cells:foreach(center_other)
+cells:foreach(check1)
+
+cells:Copy{to='f1',from='f2'}
+
+local check2 = ebb ( c : cells )
+  L.assert(c.f2 == 5)
+  L.assert(c.f1 == 5)
+end
+cells:foreach(check2)
+
+-- Check for errors
+cells:NewField('ftype', L.float):Load(0)
+
+-- Swap Failures
+test.fail_function(function()
+  cells:Swap('f1','noname')
+end, 'Could not find a field named "noname"')
+test.fail_function(function()
+  cells:Swap('f1','ftype')
+end, 'Cannot Swap%(%) fields of different type')
+
+-- Copy Failures
+test.fail_function(function()
+  cells:Copy{from='f1',to='noname'}
+end, 'Could not find a field named "noname"')
+test.fail_function(function()
+  cells:Copy{from='ftype',to='f1'}
+end, 'Cannot Copy%(%) fields of different type')
+test.fail_function(function()
+  cells:Copy('f1','f2')
+end, 'Copy%(%) should be called.*relation%:Copy%{from=\'f1\',to=\'f2\'%}')
+
+-- Copy Success using auto-allocate
+cells:Copy{from='f1',to='f2'}
+

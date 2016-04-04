@@ -1,4 +1,3 @@
---DISABLE-PARTITIONED
 -- The MIT License (MIT)
 -- 
 -- Copyright (c) 2015 Stanford University.
@@ -23,24 +22,31 @@
 -- DEALINGS IN THE SOFTWARE.
 import 'ebb'
 local L = require 'ebblib'
-require "tests/test"
+require 'tests.test'
 
-local cells = L.NewRelation { size = 10, name = 'cells' }
-cells:NewField('val', L.double):Load(5)
+local R = L.NewRelation { name="R", dims={10,10} }
+R:SetPartitions{2,2}
 
+R:NewField('pos', L.vec3d):Load{0.1,0.1,0.1}
 
--- Directly shadowing variables like this shouldn't be
--- a problem but some tricky ordering details in how envirnoments
--- are managed in the compiler can cause errors
-
-local center_shadow = ebb ( c : cells )
-  var c = c
-  L.assert(c.val == 5)
+local ebb initpos( r : R )
+  r.pos = L.vec3d({ L.xid(r), L.yid(r), L.yid(r) })*0.1 - {0.5,0.5,0.5}
 end
-cells:foreach(center_shadow)
+R:foreach(initpos)
 
-local center_other = ebb ( c : cells )
-  var v = 25
-  var v = 2
+local max_pos = L.Global(L.vec3d, {-10, -10, -10})
+local min_pos = L.Global(L.vec3d, { 10,  10,  10})
+
+-- Test max reduction operator
+local max_func = ebb (v : R)
+	max_pos max= v.pos
 end
-cells:foreach(center_other)
+R:foreach(max_func)
+test.aeq(max_pos:get(), {0.4,0.4,0.4})
+
+-- Test min reduction operator
+local min_func = ebb (v : R)
+	min_pos min= v.pos
+end
+R:foreach(min_func)
+test.aeq(min_pos:get(), {-0.5,-0.5,-0.5})

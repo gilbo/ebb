@@ -27,12 +27,12 @@ package.loaded["ebb.src.functions"] = F
 local use_legion = not not rawget(_G, '_legion_env')
 local use_single = not use_legion
 
-
-local LE, legion_env, LW
+local LE, legion_env, LW, use_partitioning
 if use_legion then
   LE            = rawget(_G, '_legion_env')
   legion_env    = LE.legion_env[0]
   LW            = require 'ebb.src.legionwrap'
+  use_partitioning = rawget(_G, '_run_config').use_partitioning
 end
 
 local T                 = require 'ebb.src.types'
@@ -46,7 +46,12 @@ local semant            = require 'ebb.src.semant'
 local phase             = require 'ebb.src.phase'
 local stencil           = require 'ebb.src.stencil'
 
-local Planner           = require 'ebb.src.planner'
+local Planner, Machine
+if use_partitioning then
+  Planner               = require 'ebb.src.planner'
+  -- TODO: should get rid of machine dependency here.
+  Machine               = require 'ebb.src.machine'
+end
 
 F._INTERNAL_DEV_OUTPUT_PTX = false
 
@@ -269,13 +274,23 @@ function Function:_doForEach(relset, ...)
   local typeversion = self:_Get_Type_Version_Table(4, relset, ...)
 
   -- Insert partitioning hooks here and communication to planning component
-  --Planner.note_launch { typedfunc = typeversion }
-  --Planner.query_for_partitions(typeversion, node_desc, node_id, proc_id)
-
+  local legion_partition_data = nil
+  if use_partitioning then
+    if params.location == Pre.GPU then
+      error('GPU launches are currently unsupported with partitioning and legion.')
+    end
+    -- probably want to get rid of node-type here eventually...
+    Planner.note_launch { typedfunc = typeversion }
+    legion_partition_data =
+      Planner.query_for_partitions(typeversion)
+  end
+  
   -- now we either retrieve or construct the appropriate function version
   local version = get_ufunc_version(self, typeversion, relset, params)
 
-  version:Execute()
+  version:Execute {
+    partition_data = legion_partition_data,
+  }
 end
 
 
@@ -288,6 +303,7 @@ function Function:getCompileTime()
   sumtime:setName(self._name..'_compile_time')
   return sumtime
 end
+
 function Function:getExecutionTime()
   local versions  = self:GetAllVersions()
   local sumtime   = Stats.NewTimer('')
@@ -302,11 +318,3 @@ function Function:_TESTING_GetFieldAccesses(relset, ...)
   local typeversion = self:_Get_Type_Version_Table(4, relset, ...)
   return typeversion.field_accesses -- these have the stencils in them
 end
-
-
-
-
-
-
-
-

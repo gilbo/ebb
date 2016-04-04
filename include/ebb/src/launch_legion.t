@@ -33,11 +33,6 @@ local terra legion_has_llvm_support() : bool
           "legion_runtime_register_task_variant_llvmir") ~= [&opaque](0))
 end
 local use_llvm = legion_has_llvm_support()
-if not use_llvm then
-  error("ERROR: Your build of Legion library does not support " ..
-        "registering tasks dynamically. Please update your Legion repository," ..
-        "and rebuild Legion.")
-end
 
 -------------------------------------------------------------------------------
 --[[  Legion options/ environment                                           ]]--
@@ -63,7 +58,6 @@ local run_config = rawget(_G, '_run_config')
 
 -- Load Legion library (this needs run_config to be set up correctly)
 local LW = require "ebb.src.legionwrap"
-
 
 -- Note 4 types of processors
 --      TOC_PROC = ::TOC_PROC, // Throughput core
@@ -187,7 +181,6 @@ local TID_TOP_LEVEL = LW.get_new_task_id()
 -------------------------------------------------------------------------------
 --[[  Launch Legion and top level control task                             ]]--
 -------------------------------------------------------------------------------
-
 -- Main function that launches Legion runtime
 local terra main()
 
