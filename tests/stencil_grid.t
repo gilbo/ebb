@@ -85,6 +85,17 @@ do
   test.rec_aeq(brect, {{-1,1},{-1,1}})
 end
 
+g2d.cells:NewField('field3',L.float):Load(6)
+local ebb read1( c : g2d.cells )
+  var tmp = c.field3 + 5
+  L.assert(tmp == 11)
+end
+g2d.cells:foreach(read1)
+do
+  local fa_s = read1:_TESTING_GetFieldAccesses(g2d.cells)
+  test.neq( next(fa_s), nil )
+end
+
 
 
 
