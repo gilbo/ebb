@@ -319,8 +319,7 @@ function Phase.phasePass(ufunc_ast)
   -- record the relation being mapped over
   ctxt.relation = ufunc_ast.relation
 
-  diag:begin()
-    ufunc_ast:phasePass(ctxt)
+  ufunc_ast:phasePass(ctxt)
   diag:finishandabortiferrors("Errors during phasechecking Ebb", 1)
 
   local field_use   = ctxt:dumpFieldTypes()

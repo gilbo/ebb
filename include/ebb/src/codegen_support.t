@@ -517,7 +517,8 @@ local function atomic_gpu_mat_red_exp(op, result_typ, lval, rhe, rhtyp)
     local N = result_typ.N
     local rhbind, rhcoords = let_vec_binding(rhtyp, N, rhe)
 
-    local v = symbol() -- pointer to vector location of reduction result
+    -- pointer to vector location of reduction result
+    local v = symbol(&result_typ:terrabasetype())
 
     local result = quote end
     for i = 0, N-1 do
@@ -527,7 +528,7 @@ local function atomic_gpu_mat_red_exp(op, result_typ, lval, rhe, rhtyp)
       end
     end
     return quote
-      var [v] : &result_typ:terrabasetype() = [&result_typ:terrabasetype()](&[lval])
+      var [v] = [&result_typ:terrabasetype()](&[lval])
       [rhbind]
     in
       [result]
@@ -538,7 +539,7 @@ local function atomic_gpu_mat_red_exp(op, result_typ, lval, rhe, rhtyp)
     local M = result_typ.Ncol
     local rhbind, rhcoords = let_mat_binding(rhtyp, N, M, rhe)
 
-    local m = symbol()
+    local m = symbol(&result_typ:terratype())
 
     local result = quote end
     for i = 0, N-1 do
@@ -550,7 +551,7 @@ local function atomic_gpu_mat_red_exp(op, result_typ, lval, rhe, rhtyp)
       end
     end
     return quote
-      var [m] : &result_typ:terratype() = [&result_typ:terratype()](&[lval])
+      var [m] = [&result_typ:terratype()](&[lval])
       [rhbind]
       in
       [result]
