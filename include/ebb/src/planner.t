@@ -123,7 +123,7 @@ local newlist = terralib.newlist
 
     Index 3) legion_data_index
       for each  (LocalGhostPattern, ...(query_params)...)
-      produce   the relevant legion data to return
+      produce the relevant legion data (indexed by node id) to return
       NOTE: Might have to redesign this when we start using index partitions.
   
 
@@ -416,14 +416,24 @@ function Planner:refresh_partition_index()
 
           -- FOR NOW: also assume this local partition is over all the nodes
           -- in global partition, since there is only one node type.
-          -- If there are heterogeneous nodes, we'll need to map machine nodes
-          -- to global partition nodes.
 
           -- create and cache a local partition for this combination of keys
           -- strategy, and record which nodes use this local partition
-          local nodes = terralib.newlist()  -- a list of node ids
-          for n = 1,global_partition:get_n_nodes() do
-            nodes:insert(n)
+          local nodes    = terralib.newlist()  -- a list of node ids
+          local blocking = global_partition:get_blocking()
+          local ndims    = #blocking
+          if ndims == 3 then
+            for x = 1, blocking[1] do
+              for y = 1, blocking[2] do
+                for z = 1, blocking[3] do
+                  nodes:insert({x, y, z})
+            end end end
+          else
+            for x = 1, blocking[1] do
+              for y = 1, blocking[2] do
+                nodes:insert({x, y})
+            end end
+            assert(ndims == 2)
           end
           local local_partition = P.RelLocalPartition {
             rel_global_partition  = global_partition,
@@ -486,14 +496,7 @@ end
 
 -------------------------------------------------------------------------------
 
--- initialization of private Legion partition data
-local function get_partition_store(planner)
-  if planner._partition_storage then return planner._partition_storage end
-
-  planner._partition_storage = {
-    trees = {} -- maps RelGlobalPartitions to partition objects
-  }
-  return planner._partition_storage
+local function get_legion_ghost_regions()
 end
 
 -- Rebuild legion region trees and legion_data_index, for newly computed
@@ -515,13 +518,10 @@ function Planner:rebuild_partitions()
     local_ghost_pattern:execute_partition()
   end
 
-  -- get legion regions (for all nodes), for each local ghost pattern
+  -- get legion ghost regions (for all nodes), for each local ghost pattern
   for _,local_ghost_pattern in ipairs(self.new_ghost_pattern_queue) do
-    local data = {
-      partition = local_ghost_pattern:TEMPORARY_get_legion_subregions()
-    }
     self.legion_data_index:insert(
-      data,
+      local_ghost_pattern:get_ghost_legion_subregions(),
       { local_ghost_pattern = local_ghost_pattern }
     )
   end

@@ -47,48 +47,6 @@ local SingleCPUNode   = Machine.SingleCPUNode
 local newlist = terralib.newlist
 
 -------------------------------------------------------------------------------
---[[ SplitTrees                                                            ]]--
--------------------------------------------------------------------------------
-
-local SplitTree   = {}
-SplitTree.__index = SplitTree
-
-local SplitNode   = setmetatable({},SplitTree)
-SplitNode.__index = SplitNode
-
-local SplitLeaf   = setmetatable({},SplitTree)
-SplitLeaf.__index = SplitLeaf
-
-local function is_splitleaf(obj) return getmetatable(obj) == SplitLeaf end
-local function is_splitnode(obj) return getmetatable(obj) == SplitNode end
-local function is_splittree(obj)
-  return is_splitleaf(obj) or is_splitnode(obj)
-end
-Exports.is_splitleaf = is_splitleaf
-Exports.is_splitnode = is_splitnode
-Exports.is_splittree = is_splittree
-
-Exports.NewSplitNode = Util.memoize(function(
-  axis_i, split_percent, leftnode, rightnode
-)
-  return setmetatable({
-    axis  = axis_i,
-    frac  = split_percent,
-    left  = leftnode,
-    right = rightnode,
-  }, SplitNode)
-end)
-
--- could be extended?
-Exports.NewSplitLeaf = Util.memoize(function(proc_type)
-  return setmetatable({ proc = proc_type }, SplitLeaf)
-end)
-
-
-
-
-
--------------------------------------------------------------------------------
 --[[ Relation Local / Global Partitions:                                   ]]--
 -------------------------------------------------------------------------------
 
@@ -122,28 +80,52 @@ Exports.RelLocalPartition = Util.memoize_named({
 }, function(args)
   assert(args.rel_global_partition)
   assert(args.node_type)
+  assert(args.nodes)
+  local lin_nodes = terralib.newlist()
+  for i, nid in args.nodes do
+    lin_nodes[i] = args.rel_global_partition:get_linearized_node_id(nid)
+  end
   return setmetatable({
     _global_part  = args.rel_global_partition,
     _node_type    = args.node_type,
-    _nodes        = args.nodes,  -- list of node ids this paritioning is used for
-    _lregs        = nil,         -- list of regions for nodes
-    --_split_tree   = args.split_tree,
+    -- list of node ids this paritioning is used for
+    _nodes        = terralib.newlist({unpack(nodes)}),  -- make a copy
+    _lin_nodes    = lin_nodes,
+    -- list of regions for nodes, indexed by linearized node id
+    _lregs        = nil,
   },RelationLocalPartition)
 end)
-
-local function linearize_idx_3d(i,j,k,nx,ny,nz)
-  return i*ny*nz + j*nz + k
-end
-local function linearize_idx_2d(i,j,nx,ny)
-  return i*ny + j
-end
 
 function RelationGlobalPartition:get_n_nodes()
   return self._n_nodes
 end
 
+function RelationGlobalPartition:get_blocking()
+  return {self._n_x, self._n_y, self._n_z}
+end
+
 function RelationGlobalPartition:nDims()
   return #self._rel_dims
+end
+
+-- wrap around for global boundaries
+function RelationGlobalPartition:get_neighbor_id(nid, offset)
+  local ndims  = self:nDims()
+  local nbr_id = {}
+  for d = 1,ndims do
+    nbr_id[d] = (nid[d] + offset[d]) % self._blocking[d]
+  end
+  return nbr_id
+end
+
+function RelationGlobalPartition:get_linearized_node_id(nid)
+  local ndims = self:nDims()
+  if ndims == 3 then
+    return (nid[3]-1)*self._ny_*self._n_z + (nid[2]-1)*self._n_z + nid[3]
+  else
+    assert(ndims == 2)
+    return (nid[1]-1)*self._n_y + nid[2]
+  end
 end
 
 function RelationGlobalPartition:get_subrects()
@@ -187,8 +169,9 @@ function RelationGlobalPartition:subregions()
   return self._lpart:subregions()
 end
 
-function RelationGlobalPartition:TEMPORARY_get_subregion_for_node(node)
-  return self:subregions()[node]
+function RelationGlobalPartition:get_subregion_for_node(node)
+  local lin_id = self:get_linearized_nod_id(node)
+  return self:subregions()[lin_id]
 end
 
 function RelationLocalPartition:get_global_partition()
@@ -197,6 +180,20 @@ end
 
 function RelationLocalPartition:nDims()
   return self:get_global_partition():nDims()
+end
+
+-- caller should not mutate this list
+function RelationLocalPartition:get_node_ids()
+  return self._nodes
+end
+
+-- caller should not mutate this list
+function RelationLocalPartition:get_linearized_node_ids()
+  return self._lin_nodes
+end
+
+function RelationLocalPartition:get_neighbor_id(nid, offset)
+  return self:get_global_partition():get_neighbor_id()
 end
 
 function RelationLocalPartition:execute_partition()
@@ -208,19 +205,19 @@ function RelationLocalPartition:execute_partition()
   -- FOR NOW: Assume there is just one processor partition per node.
   -- Copy over partitions for all supported nodes.
   for i, nid in ipairs(self._nodes) do
-    self._lregs[i] = self._global_part:TEMPORARY_get_subregion_for_node(i)
+    self._lregs[nid] = self._global_part:get_subregion_for_node(nid)
   end
 end
 
 function RelationLocalPartition:get_legion_partition()
   error("Local partitions implemented with subregions right now " ..
         "that emulate index space. Please use " ..
-        "TEMPORARY_get_legion_subregions()", 2)
+        "get_legion_subregions()", 2)
 end
 
--- Returns a list of partition regions, indexed by node.
+-- Returns a list of partition regions, indexed by linearized node id.
 -- No porcessor indexing yet.
-function RelationLocalPartition:TEMPORARY_get_subregions()
+function RelationLocalPartition:get_subregions()
   return self._lregs
 end
 
@@ -257,14 +254,15 @@ Exports.LocalGhostPattern   = Util.memoize_named({
   assert(args.rel_local_partition)
   assert(args.uniform_depth)
   local global_pattern = NewGlobalGhostPattern{
-    rel_global_partition  = args.rel_local_partition._global_part,
+    rel_global_partition  = args.rel_local_partition:get_global_partition(),
     uniform_depth         = args.uniform_depth,
   }
   return setmetatable({
     _rel_local_partition  = args.rel_local_partition,
     _depth                = args.uniform_depth,
     _global_pattern       = global_pattern,
-    _lregs                = nil,  -- first indexed by node, then by ghost number
+    -- following two are indexed first by node number and then by ghost number
+    _aliased_lregs         = nil,  -- aliased, but within home local partition
   },LocalGhostPattern)
 end)
 
@@ -276,6 +274,32 @@ end
 function LocalGhostPattern:get_local_partition()
   return self._rel_local_partition
 end
+
+function LocalGhostPattern:get_node_ids()
+  return selfLget_local_partition():get_node_ids()
+end
+
+local ghost_regions_layout = {
+  dim_2 = {9, 3, 1},
+  dim_3 = {3, 1}
+}
+Exports.ghost_regions_layout = ghost_regions_layout
+
+-- aliased ghost regions that belong inside a disjoint local partition
+function Exports.ComputeAliasedGhostRegionNum(id)
+  if #id == 3 then
+    return (id[1]+1)*ghost_regions_layout.dim_3[1] +
+           (id[2]+1)*ghost_regions_layout.dim_3[2] +
+           (id[3]+1)*ghost_regions_layout.dim_3[3] + 1
+
+  else
+    return (id[1]+1)*ghost_regions_layout.dim_2[1] +
+           (id[2]+1)*ghost_regions_layout.dim_2[2] + 1
+  end
+end
+local ComputeAliasedGhostRegionNum = Exports.ComputeAliasedGhostRegionNum
+-- ghost regions with a non-zero stencil, from neighboring partitions
+Exports.ComputeGhostRegionNum      = Exports.ComputeAliasedGhostRegionNum
 
 -- Return a list of ghost regions first indexed by node and
 -- then by ghost position
@@ -289,7 +313,7 @@ function LocalGhostPattern:get_all_subrects()
   local is3d = local_partition:nDims() == 3
 
   if is3d then
-    for i,reg in ipairs(local_partition:TEMPORARY_get_subregions()) do
+    for nid,reg in pairs(local_partition:get_subregions()) do
       local node_rects = newlist()
       if depth ~= 0 then
         local rect = reg:get_rect()
@@ -312,13 +336,14 @@ function LocalGhostPattern:get_all_subrects()
                      },
                   }
         for x = 1,3 do for y = 1,3 do for z = 1,3 do
-              node_rects:insert(rect:clip(b[1][x]):clip(b[2][y]):clip(b[3][z]))
+              local rnum = ComputeAliasedGhostRegionNum {x-2, y-2, z-2 }
+              node_rects[rnum] = rect:clip(b[1][x]):clip(b[2][y]):clip(b[3][z])
         end end end  -- x, y, z
       end
-      all_rects:insert(node_rects)
+      all_rects[nid] = node_rects
     end
   else
-    for i,reg in ipairs(local_partition:TEMPORARY_get_subregions()) do
+    for nid,reg in pairs(local_partition:get_subregions()) do
       local node_rects = newlist()
       if depth ~= 0 then
         local rect = reg:get_rect()
@@ -336,10 +361,11 @@ function LocalGhostPattern:get_all_subrects()
                       }
                     }
         for x = 1,3 do for y = 1,3 do
-              node_rects:insert(rect:clip(b[1][x]):clip(b[2][y]))
+            local rnum = ComputeAliasedGhostRegionNum {x-2, y-2}
+            node_rects[rnum] = rect:clip(b[1][x]):clip(b[2][y])
         end end  -- x, y
       end
-      all_rects:insert(node_rects)
+      all_rects[nid] = node_rects
     end
   end
   return all_rects
@@ -352,48 +378,90 @@ end
 function LocalGhostPattern:get_legion_partition()
   error("Local partitions implemented with subregions right now " ..
         "that emulate index space. Please use " ..
-        "TEMPORARY_get_legion_subregions()", 2)
-  -- return legion partitions for each node
-  if self._depth == 0 then
-    return self._rel_local_partition:get_legion_partition()
-  else
-    -- TODO: HACK: for now, just return nil for non-zero stencils
-    -- This will make legionwrap add entire logical region instead of
-    -- a partition.
-    -- We should use computed ghost regions instead
-    return nil
-  end
+        "get_legion_subregions()", 2)
 end
 
 -- set up ghost regions internal to a node
 function LocalGhostPattern:execute_partition()
-  if self._lregs then return end  -- make idempotent
+  if self._ghost_regs then return end  -- make idempotent
 
   self._global_pattern:execute_partition()
 
-  local all_subrects = self:get_all_subrects()
+  local all_subrects  = self:get_all_subrects()
 
-  local disjoint_regions = self:get_local_partition():TEMPORARY_get_subregions()
-  self._lregs  = newlist()
+  local disjoint_regions = self:get_local_partition():get_subregions()
+  self._aliased_lregs = {}
   -- FOR NOW: Assume there is just one processor partition per node.
   -- Set up ghost regions for the one partition for every node.
-  for n,ghosts in ipairs(all_subrects) do
-    local lregs = false
+  for nid,ghosts in pairs(all_subrects) do
+    local aliased_lregs = nil
     if #ghosts ~= 0 then
-      local subrects = all_subrects[n]
-      lregs          = false
-      -- TODO: for now, return false for non-zero ghosts, so legionwrap adds
-      -- the entire logical region.
-      --lregs          = disjoint_regions[n]:CreateOverlappingPartition(subrects)
+      local subrects = all_subrects[nid]
+      aliased_lregs  = disjoint_regions[nid]:CreateOverlappingPartition(subrects)
     else
-      lregs          = disjoint_regions[n] 
+      aliased_lregs  = disjoint_regions[nid] 
     end
-    self._lregs:insert(lregs)
+    self._aliased_lregs[nid] = aliased_lregs
   end
 end
 
--- Returns a 2 level list of aliased partition regions first indexed by node
--- and then indexed by ghost number.
-function LocalGhostPattern:TEMPORARY_get_legion_subregions()
-  return self._lregs
+function LocalGhostPattern:get_aliased_legion_subregions(node_id)
+  assert(self._aliased_lregs)
+  local global_partition = self:get_local_partition():get_global_partition()
+  local lin_id           = global_partition:get_linearized_id(node_id)
+  return self._aliased_lregs[lin_id]
+end
+
+function LocalGhostPattern:get_aliased_legion_subregion(node_id, ghost_id)
+  assert(self._aliased_lregs)
+  local global_partition = self:get_local_partition():get_global_partition()
+  local lin_id           = global_partition:get_linearized_id(node_id)
+  local gnum             = ComputeAliasedGhostRegionNum(ghost_id)
+  return self._aliased_lregs[lin_id][gnum]
+end
+
+-- FOR NOW: assume that there is no need to look up RelLocalPartition for
+-- a neighbor node id. This is true as long as there is only one node type.
+-- NOTE:
+-- With multiple node types, we need to do a lookup the correct LocalPartition
+-- and GhostPattern given a neighbor node id,
+-- and we also need to update execute partitions to  generate correct ghosts
+-- for neighbors.
+function LocalGhostPattern:get_ghost_legion_subregions()
+  local data             = terralib.newlist()
+  local local_partition  = self:get_local_partition()
+  local node_ids         = local_partition:get_node_ids()
+  local is3d             = local_partition:nDims() == 3
+  if is3d then
+    for i, nid in ipairs(node_ids) do
+      local ghost_lregs      = terralib.newlist()
+      if self._depth == 0 then
+        ghost_lregs[1]      = self:get_aliased_legion_subregions(nid)[1]
+      else
+        for x = -1,1 do for y = -1,1 do for z = -1,1 do
+          local nbr_id      = local_partition:get_neighbor_id(nid, {x, y, z})
+          local rnum        = ComputeGhostRegionNum({x, y, z})
+          ghost_lregs[rnum] =
+            self:get_aliased_legion_subregion(nbr_id, {-x, -y, -z})
+        end end end
+      end
+    end
+    data[nid]             = ghost_lregs 
+  else
+    for i, nid in ipairs(node_ids) do
+      local ghost_lregs      = terralib.newlist()
+      if self._depth == 0 then
+        ghost_lregs[1]      = self:get_aliased_legion_subregions(nid)[1]
+      else
+        for x = -1,1 do for y = -1,1 do
+          local nbr_id      = local_partition:get_neighbor_id(nid, {x, y})
+          local rnum        = ComputeGhostRegionNum({x, y})
+          ghost_lregs[rnum] =
+            self:get_aliased_legion_subregion(nbr_id, {-x, -y})
+        end end
+      end
+    end
+    data[nid]             = ghost_lregs 
+  end
+  return data
 end

@@ -159,41 +159,55 @@ end)
 --[[  Region Requirements                                                  ]]--
 -------------------------------------------------------------------------------
 
-local RegionReq         = {}
-RegionReq.__index = RegionReq
+local RegionReqs         = {}
+RegionReqs.__index = RegionReqs
 
 --[[
 {
-  relation,
-  privilege
+  log_region_handle,
+  num_group,
+  num_total,
+  offset,
+  privilege,
   coherence,
-  reduce_op,
-  reduce_typ,
-  centered
-  num
+  reduce_func_id,
+  centered,
+  ids
 }
 --]]
-function LW.NewRegionReq(params)
+function LW.NewRegionReqs(params)
   local reduce_func_id = (params.privilege == LW.REDUCE)
             and LW.GetFieldReductionId(params.reduce_op, params.reduce_typ)
             or nil
   local relation = params.relation
+  local offset   = params.offset
+  local ids = terralib.newlist()
+  for i = 1, params.num_total do
+    ids[i] = offset + i - 1
+  end
   local reg_req = setmetatable({
     log_reg_handle  = relation._logical_region_wrapper:get_handle(),
-    num             = params.num,
-    -- GOAL: Remove the next data item as a dependency
-    --        through more refactoring
-    relation_for_partitioning = relation,
+    num_group       = params.num_group,   -- can be zero
+    num_total       = params.num_total,
+    offset          = params.offset,      -- can be zero 
     privilege       = params.privilege,
     coherence       = params.coherence,
     reduce_func_id  = reduce_func_id,       
-    --partition       = nil,
     centered        = params.centered,
-  }, RegionReq)
+    ids             = ids,
+  }, RegionReqs)
   return reg_req
 end
 
-function RegionReq:isreduction() return self.privilege == LW.REDUCE end
+function RegionReqs:isreduction() return self.privilege == LW.REDUCE end
+
+function RegionReqs:GetIds()
+  return self.ids
+end
+
+function RegionReqs:GroupNum()
+  return self.num_group
+end
 
 
 -------------------------------------------------------------------------------
@@ -330,37 +344,49 @@ function TaskLauncher:IsOnGPU()
   return self._on_gpu
 end
 
-function TaskLauncher:AddRegionReq(req, partn_or_reg)
-  local is_logical_partition   = getmetatable(partn_or_reg) == LW.LogicalPartition
-  local is_partition_subregion = (partn_or_reg ~= nil and
-                                  partn_or_reg ~= false)  -- TEMPORARY: till we use ghost regions
-  local handle = is_partition_subregion and
-                 partn_or_reg:get_handle() or
-                 req.log_reg_handle
-
-  -- Assemble the call
-  local args = newlist { self._launcher, handle }
-  local str  = 'legion'
-  if self._index_launch   then    args:insert(0)
-                                  str = str .. '_index'
-                          else    str = str .. '_task' end
-  str = str .. '_launcher_add_region_requirement_logical'
-  if is_logical_partition then     str = str .. '_partition'
-                          else     str = str .. '_region' end
-  if req:isreduction()    then     args:insert(req.reduce_func_id)
-                                   str = str .. '_reduction'
-                          else     args:insert(req.privilege)
-                          end
-  args:insertall { req.coherence, req.log_reg_handle, 0, false }
-  -- Do the call
-  return LW[str](unpack(args))
+function TaskLauncher:AddRegionReqs(reqs, regs)
+  if use_partitioning then
+    -- using partitioning
+    assert(regs ~= nil)
+    assert(reqs.total_num == #regs)
+  end
+  local req_ids = reqs:GetIds()
+  for i, req_id in ipairs(req_ids)  do
+    local partn_or_reg = regs and regs[i]
+    local handle       = partn_or_reg and partn_or_reg:get_handle() or
+                         reqs.log_reg_handle
+    -- Assemble the call
+    local args = newlist { self._launcher, handle }
+    local str = 'legion'
+    local is_logical_partition = (getmetatable(partn_or_reg) ==
+                                  LW.LogicalPartition)
+    if self._index_launch   then    args:insert(0)
+                                    str = str .. '_index'
+                            else    str = str .. '_task' end
+    str = str .. '_launcher_add_region_requirement_logical'
+    if is_logical_partition then     str = str .. '_partition'
+                            else     str = str .. '_region' end
+    if reqs:isreduction()   then     args:insert(reqs.reduce_func_id)
+                                     str = str .. '_reduction'
+                            else     args:insert(reqs.privilege)
+                            end
+    args:insertall { reqs.coherence, reqs.log_reg_handle, 0, false }
+    -- Do the call
+    local id = LW[str](unpack(args))
+    -- assert that region requirements are actually added as recorded
+    -- when building legion signature
+    assert(id == req_id)
+  end
 end
 
-function TaskLauncher:AddField(reg_req, fid)
-  local AddFieldVariant =
-    (self._index_launch and LW.legion_index_launcher_add_field) or
-    LW.legion_task_launcher_add_field
-  AddFieldVariant(self._launcher, reg_req, fid, true)
+function TaskLauncher:AddField(reg_reqs, fid)
+  local req_ids = reg_reqs:GetIds()
+  for _, rid in ipairs(req_ids) do
+    local AddFieldVariant =
+      (self._index_launch and LW.legion_index_launcher_add_field) or
+      LW.legion_task_launcher_add_field
+    AddFieldVariant(self._launcher, rid, fid, true)
+  end
 end
 
 function TaskLauncher:AddFuture(future)
@@ -1322,7 +1348,7 @@ local _TEMPORARY_memoize_empty_task_launcher = Util.memoize_named({
   'relation' },
   function(args)
     -- one region requirement for the relation
-    local reg_req = LW.NewRegionReq {
+    local reg_reqs = LW.NewRegionReqs {
       num             = 0,
       relation        = args.relation,
       privilege       = LW.READ_WRITE,
@@ -1343,10 +1369,10 @@ local _TEMPORARY_memoize_empty_task_launcher = Util.memoize_named({
     -- assumption: these are the only fields that are needed to force on physical
     -- instance with valid data for all fields over the region
     for _, field in pairs(args.relation._fields) do
-      task_launcher:AddField(0, field._fid)
+      task_launcher:AddField(reg_reqs, field._fid)
     end
     for _, subset in pairs(args.relation._subsets) do
-      task_launcher:AddField(0, subset._boolmask._fid)
+      task_launcher:AddField(reg_reqs, subset._boolmask._fid)
     end
     return task_launcher
   end

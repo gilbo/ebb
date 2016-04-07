@@ -458,6 +458,12 @@ void check_legion_arg_consistency(ebb_Options * options) {
       exit(1);
     }
   }
+  if (options->partition) {
+    if (!options->uselegion)
+      fprintf(stderr,
+        "cannot run partitions without Legion\n");
+      exit(1);
+  }
 }
 
 //this stuff is from lua's lua.c repl implementation:

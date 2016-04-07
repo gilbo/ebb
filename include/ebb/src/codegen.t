@@ -35,10 +35,12 @@ local G   = require 'ebb.src.gpu_util'
 local Support = require 'ebb.src.codegen_support'
 local F   = require 'ebb.src.functions'
 
-local LW, run_config
+local LW, run_config, Partitions, use_partitioning
 if use_legion then
   LW = require "ebb.src.legionwrap"
   run_config = rawget(_G, '_run_config')
+  Partitions = require "ebb.src.partitions"
+  use_partitioning = rawget(_G, '_run_config').use_partitioning
 end
 
 
@@ -148,16 +150,49 @@ function Context:hasExclusivePhase(field)
   return self.ufv._field_use[field]:isCentered()
 end
 
+-- zero indexed
+function Context:ComputeLegionRegionToAccess(key)
+  if not use_partitioning then return `0 end
+  local ndims = #ctxt:dims()
+  local pos   = symbol(uint)
+  local compute_pos = quote
+    var pos = 0
+  end
+  local strides = Partitions.ghost_regions_layout['dim_' .. tostring(ndims)]
+  for d = 1, ndims do
+    compute_pos = quote
+      [compute_pos]
+      do
+        var p    = 1  -- middle region
+        var k    = key.['a'..tostring(d-1)]
+        var b    = [ctxt:argsym()].bounds[d-1]
+        if k < b.lo then
+          p = 0  -- lower ghost region
+        elseif k > b.hi then
+          p = 2  -- upper ghost region
+        end
+        pos = pos + p * strides(d)
+      end
+    end
+  end
+  return quote
+    [compute_pos]
+  in
+    pos
+  end
+end
+
 function Context:FieldElemPtr(field, key)
-  --local farg        = `[ self:argsym() ].[ self.ufv:_getFieldId(field) ]
-  local farg        = self.ufv:_getTerraField(self:argsym(), field)
   if use_single then
+    local farg      = self.ufv:_getTerraField(self:argsym(), field)
     local ptr       = farg
     return `(ptr + key:terraLinearize())
   elseif use_legion then
+    local rnum      = self:ComputeLegionRegionToAccess(key)
+    local farg      = self.ufv:_getTerraField(self:argsym(), field)
     local ftyp      = field:Type():terratype()
-    local ptr       = `farg.ptr
-    return `[&ftyp](ptr + key:legionTerraLinearize(farg.strides))
+    local ptr       = `farg[rnum].ptr
+    return `[&ftyp](ptr + key:legionTerraLinearize(farg[rnum].strides))
   end
 end
 
@@ -909,13 +944,15 @@ function ast.FieldWrite:codegen (ctxt)
     local key     = self.fieldaccess.key:codegen(ctxt)
     local keytyp  = self.fieldaccess.key.node_type
 
+    -- TODO: compute which field accessor to access
+    local rnum = ctxt:ComputeLegionRegionToAccess(self.fieldaccess.field, key)
     local farg = ctxt.ufv:_getTerraField(ctxt:argsym(),
                                          self.fieldaccess.field)
     return
         Support.legion_cpu_atomic_stmt(self.reduceop,
                                        self.fieldaccess.node_type,
                                        `key, keytyp,
-                                       `farg.handle,
+                                       `farg[rnum].handle,
                                        rexp, self.exp.node_type)
   else
     -- just re-direct to an assignment statement otherwise
