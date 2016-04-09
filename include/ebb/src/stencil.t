@@ -527,6 +527,8 @@ function ast.DeclStatement:stencilPass(ctxt)
     end
 
     ctxt:record_key_stencil(self.name, rhs)
+  elseif self.initializer then
+    self.initializer:stencilPass(ctxt)
   end
 end
 
