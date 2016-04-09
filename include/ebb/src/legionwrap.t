@@ -1284,6 +1284,7 @@ function LW.RegisterReductions()
     end)
   end)
 end
+LW.RegisterReductions = terralib.cast({}->{},LW.RegisterReductions)
 
 
 -------------------------------------------------------------------------------
