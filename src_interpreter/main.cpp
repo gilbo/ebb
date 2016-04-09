@@ -384,7 +384,7 @@ void parse_args(
     };
     /*  Parse commandline options  */
     opterr = 0;
-    while ((ch = getopt_long(argc, argv, "+hv:idglr:pa:",
+    while ((ch = getopt_long(argc, argv, "+hvidglr:pa:",
                              longopts, NULL)) != -1) {
         switch (ch) {
             case 'v':
@@ -459,10 +459,11 @@ void check_legion_arg_consistency(ebb_Options * options) {
     }
   }
   if (options->partition) {
-    if (!options->uselegion)
+    if (!options->uselegion) {
       fprintf(stderr,
         "cannot run partitions without Legion\n");
       exit(1);
+    }
   }
 }
 
