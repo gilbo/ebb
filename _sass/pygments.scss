@@ -3,9 +3,9 @@
    ========================================================================== */
 
 .highlight {
-	background-color: #efefef;
+  background-color: $code-background-color;
 	font-family: $code-font;
-	@include font(12);
+	@include font-rem(13);
 	color: #333332;
 	margin-bottom: 1.5em;
 	@include rounded(4px);
