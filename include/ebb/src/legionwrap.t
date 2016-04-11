@@ -209,6 +209,10 @@ function RegionReqs:GroupNum()
   return self.num_group
 end
 
+function RegionReqs:TotalNum()
+  return self.num_total
+end
+
 
 -------------------------------------------------------------------------------
 --[[  Legion Tasks                                                         ]]--
@@ -348,7 +352,9 @@ function TaskLauncher:AddRegionReqs(reqs, regs)
   if use_partitioning then
     -- using partitioning
     assert(regs ~= nil)
-    assert(reqs.total_num == #regs)
+    assert(reqs:TotalNum() == #regs,
+      "Recorded " .. tostring(reqs:TotalNum()) .. " requirements vs got " ..
+      tostring(#regs) .. " requirements.")
   end
   local req_ids = reqs:GetIds()
   for i, req_id in ipairs(req_ids)  do

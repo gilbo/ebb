@@ -71,13 +71,12 @@ local newlist = terralib.newlist
 local function compute_num_regions(relation, is_centered)
   assert((not use_partitioning) or relation:isGrid(),
          "ERROR: Partitioning on non-grid relations is not supported.")
-  if not use_partitioning then return 1 end
-  if is_centered then return 1 end
-  local ndims = #rel:Dims()
+  if is_centered or not use_partitioning then return 1 end
+  local ndims = #relation:Dims()
   if ndims == 3 then
-    return 1
+    return 27
   elseif ndims == 2 then
-      return 1
+      return 9
   else
     error("Expected 2D or 3D grid when using Legion and partitioning.")
   end
@@ -1575,8 +1574,8 @@ function UFVersion:_CreateLegionTaskLauncher(task_func, exec_args)
     local accesses = self._legion_signature:getRegReqsRequestAccesses(gid)
     local regions = nil
     if use_partitioning then
-      regions = pdata[accesses[1]].regions
       if #accesses > 0 then
+        regions = pdata[accesses[1]].regions
         for _, access in pairs(accesses) do
           if pdata[access].regions ~= regions then
             error('INTERNAL ERROR: Recorded region requirements are ' ..
@@ -1658,7 +1657,7 @@ function UFVersion:_CreateLegionLauncher(task_func)
   -- index task launches.
     return function(leg_args, exec_args)
       -- Repack exec args partition data to emulate index space launch
-      -- into:
+      -- into the following per node partition_data:
       --[[ node {
              partition_data : {
                field_access_1 : {

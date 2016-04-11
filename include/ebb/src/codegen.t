@@ -44,9 +44,6 @@ if use_legion then
 end
 
 
-
-
-
 --[[--------------------------------------------------------------------]]--
 --[[                 Context Object for Compiler Pass                   ]]--
 --[[--------------------------------------------------------------------]]--
@@ -150,13 +147,19 @@ function Context:hasExclusivePhase(field)
   return self.ufv._field_use[field]:isCentered()
 end
 
+function Context:hasGhostRegions(field)
+  return use_partitioning and not self:hasExclusivePhase(field)
+end
+
 -- zero indexed
-function Context:ComputeLegionRegionToAccess(key)
-  if not use_partitioning then return `0 end
-  local ndims = #ctxt:dims()
+function Context:ComputeLegionRegionToAccess(field, key)
+  if not self:hasGhostRegions(field) then
+    return `0
+  end
+  local ndims = #self:dims()
   local pos   = symbol(uint)
   local compute_pos = quote
-    var pos = 0
+    var [pos] = 0
   end
   local strides = Partitions.ghost_regions_layout['dim_' .. tostring(ndims)]
   for d = 1, ndims do
@@ -165,13 +168,13 @@ function Context:ComputeLegionRegionToAccess(key)
       do
         var p    = 1  -- middle region
         var k    = key.['a'..tostring(d-1)]
-        var b    = [ctxt:argsym()].bounds[d-1]
+        var b    = [self:argsym()].bounds[d-1]
         if k < b.lo then
           p = 0  -- lower ghost region
         elseif k > b.hi then
           p = 2  -- upper ghost region
         end
-        pos = pos + p * strides(d)
+        [pos] = [pos] + p * [strides[d]]
       end
     end
   end
@@ -188,7 +191,7 @@ function Context:FieldElemPtr(field, key)
     local ptr       = farg
     return `(ptr + key:terraLinearize())
   elseif use_legion then
-    local rnum      = self:ComputeLegionRegionToAccess(key)
+    local rnum      = self:ComputeLegionRegionToAccess(field, key)
     local farg      = self.ufv:_getTerraField(self:argsym(), field)
     local ftyp      = field:Type():terratype()
     local ptr       = `farg[rnum].ptr
@@ -311,7 +314,10 @@ local function terraIterNd(keytyp, dims, func)
         lo = dims[d].lo
         hi = dims[d].hi
       end
-      loop = quote for [iters[d]] = lo, hi do [loop] end end
+      loop = quote for [iters[d]] = lo, hi do
+        -- C.printf("Dimension %d, %d\n", d, [iters[d]])
+        [loop]
+      end end
     end
     return loop
 

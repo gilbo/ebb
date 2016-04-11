@@ -245,14 +245,25 @@ function Exports.note_launch(args)
   end
 end
 
------------------------------------------------
---  This function is called to get necessary
---  launch parameters: partition data so that
---  a Legion launch can be performed.
+-------------------------------------------------------------------------------
+
+--  This function is called to get necessary launch parameters:
+--  partition data so that a Legion launch can be performed.
 --  FOR NOW: This assumes that there is only one node type.
 --  Returns data first indexed by field accesses, then by nodes.
 --  There is no processor indexing yet (see refresh_partition_index/
 --  rebuild_partitions/ execute_partition in partitions.t).
+--  Returned data is structured as:
+--[[
+--{
+--  access_1 : {
+--    partition : {per node regions}
+--  },
+--  access_2 : {
+--    partition : {per node regions}
+--  }
+--}
+--]]
 function Exports.query_for_partitions(typedfunc)
   local self = ThePlanner
 
@@ -506,8 +517,6 @@ function Planner:rebuild_partitions()
     -- * potentially reconstruct the partition tree
     -- * update the final index appropriately
   
-  local pstore = get_partition_store(self)
-
   -- make sure that legion data is built for these local partitions
   for local_partition,_ in pairs(self.active_local_partitions) do
     local_partition:execute_partition()
@@ -520,8 +529,10 @@ function Planner:rebuild_partitions()
 
   -- get legion ghost regions (for all nodes), for each local ghost pattern
   for _,local_ghost_pattern in ipairs(self.new_ghost_pattern_queue) do
-    self.legion_data_index:insert(
-      local_ghost_pattern:get_ghost_legion_subregions(),
+    local data = {
+      partition = local_ghost_pattern:get_ghost_legion_subregions(),
+    }
+    self.legion_data_index:insert(data,
       { local_ghost_pattern = local_ghost_pattern }
     )
   end
