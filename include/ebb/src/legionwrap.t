@@ -120,8 +120,8 @@ for d = 1,3 do
     args[d+k]   = hi_args[k]
   end
   LW.DomainRect[d] = terra( [args] )
-    var lo = [LW.LegionPoint[d]]({ arrayof(int, [lo_args]) })
-    var hi = [LW.LegionPoint[d]]({ arrayof(int, [hi_args]) })
+    var lo = [LW.LegionPoint[d]]({ arrayof(int64, [lo_args]) })
+    var hi = [LW.LegionPoint[d]]({ arrayof(int64, [hi_args]) })
     var bounds = [LW.LegionRect[d]]({ lo, hi })
     return [LW.LegionDomFromRect[d]](bounds)
   end
@@ -129,13 +129,13 @@ end
 
 local LegionCreatePoint = {}
 LegionCreatePoint[1] = terra(pt1 : int)
-  return [LW.LegionPoint[1]]{array(pt1)}
+  return [LW.LegionPoint[1]]{arrayof(int64, pt1)}
 end
 LegionCreatePoint[2] = terra(pt1 : int, pt2 : int)
-  return [LW.LegionPoint[2]]{array(pt1, pt2)}
+  return [LW.LegionPoint[2]]{arrayof(int64, pt1, pt2)}
 end
 LegionCreatePoint[3] = terra(pt1 : int, pt2 : int, pt3 : int)
-  return [LW.LegionPoint[3]]{array(pt1, pt2, pt3)}
+  return [LW.LegionPoint[3]]{arrayof(int64, pt1, pt2, pt3)}
 end
 
 local LegionDomainPoint = macro(function(pt1,pt2,pt3)
@@ -159,41 +159,59 @@ end)
 --[[  Region Requirements                                                  ]]--
 -------------------------------------------------------------------------------
 
-local RegionReq         = {}
-RegionReq.__index = RegionReq
+local RegionReqs         = {}
+RegionReqs.__index = RegionReqs
 
 --[[
 {
-  relation,
-  privilege
+  log_region_handle,
+  num_group,
+  num_total,
+  offset,
+  privilege,
   coherence,
-  reduce_op,
-  reduce_typ,
-  centered
-  num
+  reduce_func_id,
+  centered,
+  ids
 }
 --]]
-function LW.NewRegionReq(params)
+function LW.NewRegionReqs(params)
   local reduce_func_id = (params.privilege == LW.REDUCE)
             and LW.GetFieldReductionId(params.reduce_op, params.reduce_typ)
             or nil
   local relation = params.relation
+  local offset   = params.offset
+  local ids = terralib.newlist()
+  for i = 1, params.num_total do
+    ids[i] = offset + i - 1
+  end
   local reg_req = setmetatable({
     log_reg_handle  = relation._logical_region_wrapper:get_handle(),
-    num             = params.num,
-    -- GOAL: Remove the next data item as a dependency
-    --        through more refactoring
-    relation_for_partitioning = relation,
+    num_group       = params.num_group,   -- can be zero
+    num_total       = params.num_total,
+    offset          = params.offset,      -- can be zero 
     privilege       = params.privilege,
     coherence       = params.coherence,
     reduce_func_id  = reduce_func_id,       
-    --partition       = nil,
     centered        = params.centered,
-  }, RegionReq)
+    ids             = ids,
+  }, RegionReqs)
   return reg_req
 end
 
-function RegionReq:isreduction() return self.privilege == LW.REDUCE end
+function RegionReqs:isreduction() return self.privilege == LW.REDUCE end
+
+function RegionReqs:GetIds()
+  return self.ids
+end
+
+function RegionReqs:GroupNum()
+  return self.num_group
+end
+
+function RegionReqs:TotalNum()
+  return self.num_total
+end
 
 
 -------------------------------------------------------------------------------
@@ -233,31 +251,27 @@ function(ufv_name, on_gpu, task_func)
   -- new task id
   local TID = LW.get_new_task_id()
   -- register given task function with the task id
-  local ir = terralib.saveobj(nil, "llvmir", { entry = task_func })
   local terra register()
-    escape
-      if use_llvm then
-        emit quote
-          LW.legion_runtime_register_task_variant_llvmir(
-            legion_env.runtime, TID, [(on_gpu and LW.TOC_PROC) or LW.LOC_PROC],
-            true,
-            LW.legion_task_config_options_t { leaf = true, inner = false,
-                                              idempotent = false },
-            ufv_name, [&opaque](0), 0,
-            ir, "entry")
-        end  -- emit quote
-      else
-        emit quote
-          LW.legion_runtime_register_task_variant_fnptr(
-            legion_env.runtime, TID, [(on_gpu and LW.TOC_PROC) or LW.LOC_PROC],
-            LW.legion_task_config_options_t { leaf = true, inner = false,
-                                              idempotent = false },
-            ufv_name, [&opaque](0), 0,
-            task_func)
-        end  -- emit quote
-      end  -- if else
-    end  -- escape
-  end
+    escape if run_config.use_llvm then
+      local ir = terralib.saveobj(nil, "llvmir", { entry = task_func })
+      emit quote 
+        LW.legion_runtime_register_task_variant_llvmir(
+          legion_env.runtime, TID, [(on_gpu and LW.TOC_PROC) or LW.LOC_PROC],
+          true,
+          LW.legion_task_config_options_t { leaf = true, inner = false, idempotent = false },
+          ufv_name, [&opaque](0), 0,
+          ir, "entry")
+      end  -- emit quote
+    else
+      emit quote
+        LW.legion_runtime_register_task_variant_fnptr(
+          legion_env.runtime, TID, [(on_gpu and LW.TOC_PROC) or LW.LOC_PROC],
+          LW.legion_task_config_options_t { leaf = true, inner = false, idempotent = false },
+          ufv_name, [&opaque](0), 0,
+          task_func)
+      end  -- emit quote
+    end end  -- escape if else
+  end  -- terra function
   register()
   return TID
 end)
@@ -334,37 +348,51 @@ function TaskLauncher:IsOnGPU()
   return self._on_gpu
 end
 
-function TaskLauncher:AddRegionReq(req, partn_or_reg)
-  local is_logical_partition   = getmetatable(partn_or_reg) == LW.LogicalPartition
-  local is_partition_subregion = (partn_or_reg ~= nil and
-                                  partn_or_reg ~= false)  -- TEMPORARY: till we use ghost regions
-  local handle = is_partition_subregion and
-                 partn_or_reg:get_handle() or
-                 req.log_reg_handle
-
-  -- Assemble the call
-  local args = newlist { self._launcher, handle }
-  local str  = 'legion'
-  if self._index_launch   then    args:insert(0)
-                                  str = str .. '_index'
-                          else    str = str .. '_task' end
-  str = str .. '_launcher_add_region_requirement_logical'
-  if is_logical_partition then     str = str .. '_partition'
-                          else     str = str .. '_region' end
-  if req:isreduction()    then     args:insert(req.reduce_func_id)
-                                   str = str .. '_reduction'
-                          else     args:insert(req.privilege)
-                          end
-  args:insertall { req.coherence, req.log_reg_handle, 0, false }
-  -- Do the call
-  return LW[str](unpack(args))
+function TaskLauncher:AddRegionReqs(reqs, regs)
+  if use_partitioning then
+    -- using partitioning
+    assert(regs ~= nil)
+    assert(reqs:TotalNum() == #regs,
+      "Recorded " .. tostring(reqs:TotalNum()) .. " requirements vs got " ..
+      tostring(#regs) .. " requirements.")
+  end
+  local req_ids = reqs:GetIds()
+  for i, req_id in ipairs(req_ids)  do
+    local partn_or_reg = regs and regs[i]
+    local handle       = partn_or_reg and partn_or_reg:get_handle() or
+                         reqs.log_reg_handle
+    -- Assemble the call
+    local args = newlist { self._launcher, handle }
+    local str = 'legion'
+    local is_logical_partition = (getmetatable(partn_or_reg) ==
+                                  LW.LogicalPartition)
+    if self._index_launch   then    args:insert(0)
+                                    str = str .. '_index'
+                            else    str = str .. '_task' end
+    str = str .. '_launcher_add_region_requirement_logical'
+    if is_logical_partition then     str = str .. '_partition'
+                            else     str = str .. '_region' end
+    if reqs:isreduction()   then     args:insert(reqs.reduce_func_id)
+                                     str = str .. '_reduction'
+                            else     args:insert(reqs.privilege)
+                            end
+    args:insertall { reqs.coherence, reqs.log_reg_handle, 0, false }
+    -- Do the call
+    local id = LW[str](unpack(args))
+    -- assert that region requirements are actually added as recorded
+    -- when building legion signature
+    assert(id == req_id)
+  end
 end
 
-function TaskLauncher:AddField(reg_req, fid)
-  local AddFieldVariant =
-    (self._index_launch and LW.legion_index_launcher_add_field) or
-    LW.legion_task_launcher_add_field
-  AddFieldVariant(self._launcher, reg_req, fid, true)
+function TaskLauncher:AddField(reg_reqs, fid)
+  local req_ids = reg_reqs:GetIds()
+  for _, rid in ipairs(req_ids) do
+    local AddFieldVariant =
+      (self._index_launch and LW.legion_index_launcher_add_field) or
+      LW.legion_task_launcher_add_field
+    AddFieldVariant(self._launcher, rid, fid, true)
+  end
 end
 
 function TaskLauncher:AddFuture(future)
@@ -583,8 +611,8 @@ local CreateGridIndexSpace = {}
 
 -- Internal method: Ask Legion to create 1 dimensional index space
 CreateGridIndexSpace[1] = terra(x : int)
-  var pt_lo = LW.legion_point_1d_t { arrayof(int, 0) }
-  var pt_hi = LW.legion_point_1d_t { arrayof(int, x-1) }
+  var pt_lo = LW.legion_point_1d_t { arrayof(int64, 0) }
+  var pt_hi = LW.legion_point_1d_t { arrayof(int64, x-1) }
   var rect  = LW.legion_rect_1d_t { pt_lo, pt_hi }
   var dom   = LW.legion_domain_from_rect_1d(rect)
   return LW.legion_index_space_create_domain(
@@ -593,8 +621,8 @@ end
 
 -- Internal method: Ask Legion to create 2 dimensional index space
 CreateGridIndexSpace[2] = terra(x : int, y : int)
-  var pt_lo = LW.legion_point_2d_t { arrayof(int, 0, 0) }
-  var pt_hi = LW.legion_point_2d_t { arrayof(int, x-1, y-1) }
+  var pt_lo = LW.legion_point_2d_t { arrayof(int64, 0, 0) }
+  var pt_hi = LW.legion_point_2d_t { arrayof(int64, x-1, y-1) }
   var rect  = LW.legion_rect_2d_t { pt_lo, pt_hi }
   var dom   = LW.legion_domain_from_rect_2d(rect)
   return LW.legion_index_space_create_domain(
@@ -603,8 +631,8 @@ end
 
 -- Internal method: Ask Legion to create 3 dimensional index space
 CreateGridIndexSpace[3] = terra(x : int, y : int, z : int)
-  var pt_lo = LW.legion_point_3d_t { arrayof(int, 0, 0, 0) }
-  var pt_hi = LW.legion_point_3d_t { arrayof(int, x-1, y-1, z-1) }
+  var pt_lo = LW.legion_point_3d_t { arrayof(int64, 0, 0, 0) }
+  var pt_hi = LW.legion_point_3d_t { arrayof(int64, x-1, y-1, z-1) }
   var rect  = LW.legion_rect_3d_t { pt_lo, pt_hi }
   var dom   = LW.legion_domain_from_rect_3d(rect)
   return LW.legion_index_space_create_domain(
@@ -1327,7 +1355,7 @@ local _TEMPORARY_memoize_empty_task_launcher = Util.memoize_named({
   'relation' },
   function(args)
     -- one region requirement for the relation
-    local reg_req = LW.NewRegionReq {
+    local reg_reqs = LW.NewRegionReqs {
       num             = 0,
       relation        = args.relation,
       privilege       = LW.READ_WRITE,
@@ -1348,10 +1376,10 @@ local _TEMPORARY_memoize_empty_task_launcher = Util.memoize_named({
     -- assumption: these are the only fields that are needed to force on physical
     -- instance with valid data for all fields over the region
     for _, field in pairs(args.relation._fields) do
-      task_launcher:AddField(0, field._fid)
+      task_launcher:AddField(reg_reqs, field._fid)
     end
     for _, subset in pairs(args.relation._subsets) do
-      task_launcher:AddField(0, subset._boolmask._fid)
+      task_launcher:AddField(reg_reqs, subset._boolmask._fid)
     end
     return task_launcher
   end
