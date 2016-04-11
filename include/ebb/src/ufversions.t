@@ -1378,6 +1378,9 @@ function UFVersion:_GenerateUnpackLegionTaskArgs(argsym, task_args, gredptr)
         for d = 0, n_reldim do
           base = base - [rect].lo.x[d] * strides[d].offset
         end
+        --C.printf("Accessor %d is field %s, region %d, has bounds %d to %d, %d to %d\n",
+        --  [i-1], [field:Name()], ri,
+        --  [rect].lo.x[0], [rect].hi.x[0], [rect].lo.x[1], [rect].hi.x[1])
         [ ufv._terra_signature.terraptr(argsym, field) ][i-1] =
           [ LW.FieldAccessor[n_reldim] ] { base, strides, f_access }
       end)
@@ -1419,6 +1422,8 @@ function UFVersion:_GenerateUnpackLegionTaskArgs(argsym, task_args, gredptr)
           for i=1,ndims do emit quote
             [argsym].bounds[i-1].lo = rect.lo.x[i-1]
             [argsym].bounds[i-1].hi = rect.hi.x[i-1]
+            --C.printf("Primary region bounds for dim %d is %d, %d\n", i,
+            --  rect.lo.x[i-1], rect.hi.x[i-1])
           end end
         -- unstructured
         else emit quote

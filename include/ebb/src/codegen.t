@@ -152,6 +152,7 @@ function Context:hasGhostRegions(field)
 end
 
 -- zero indexed
+local max_ghost_supported = 2  -- FOR NOW: hard code wrapping around
 function Context:ComputeLegionRegionToAccess(field, key)
   if not self:hasGhostRegions(field) then
     return `0
@@ -170,16 +171,26 @@ function Context:ComputeLegionRegionToAccess(field, key)
         var k    = key.['a'..tostring(d-1)]
         var b    = [self:argsym()].bounds[d-1]
         if k < b.lo then
-          p = 0  -- lower ghost region
+          if b.lo >= max_ghost_supported and k >= b.lo - max_ghost_supported then  -- lower ghost region, safe unsigned arithmetic
+            p = 0  -- lower ghost region
+          else  -- wrap around
+            p = 2
+          end
         elseif k > b.hi then
-          p = 2  -- upper ghost region
+          if k <= b.hi + max_ghost_supported then
+            p = 2  -- upper ghost region
+          else  -- wrap around
+            p = 0
+          end
         end
+        --C.printf("Iter dim %d, value %d, lower %d, upper %d, p %d\n", d, k, b.lo, b.hi, p)
         [pos] = [pos] + p * [strides[d]]
       end
     end
   end
   return quote
     [compute_pos]
+    --C.printf("Accessing region %d\n", [pos])
   in
     pos
   end

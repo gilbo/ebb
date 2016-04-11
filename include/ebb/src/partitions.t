@@ -323,19 +323,19 @@ function LocalGhostPattern:get_all_subrects()
         local xlo,ylo,zlo,xhi,yhi,zhi = rect:mins_maxes()
         local b = { 
                      { 
-                        Util.NewRect3d({-math.huge,xlo+depth},all,all),
-                        Util.NewRect3d({ xlo+depth,xhi-depth},all,all),
-                        Util.NewRect3d({ xhi-depth,math.huge},all,all)
+                        Util.NewRect3d({-math.huge,  xlo+depth-1},all,all),
+                        Util.NewRect3d({ xlo,        xhi        },all,all),
+                        Util.NewRect3d({ xhi-depth+1,math.huge  },all,all)
                      },
                      { 
-                        Util.NewRect3d(all,{-math.huge,ylo+depth},all),
-                        Util.NewRect3d(all,{ ylo+depth,yhi-depth},all),
-                        Util.NewRect3d(all,{ yhi-depth,math.huge},all)
+                        Util.NewRect3d(all,{-math.huge,  ylo+depth-1},all),
+                        Util.NewRect3d(all,{ ylo,        yhi},        all),
+                        Util.NewRect3d(all,{ yhi-depth+1,math.huge  },all)
                      },
                      { 
-                        Util.NewRect3d(all,all,{-math.huge,zlo+depth}),
-                        Util.NewRect3d(all,all,{ zlo+depth,zhi-depth}),
-                        Util.NewRect3d(all,all,{ zhi-depth,math.huge})
+                        Util.NewRect3d(all,all,{-math.huge,  zlo+depth-1}),
+                        Util.NewRect3d(all,all,{ zlo,        zhi        }),
+                        Util.NewRect3d(all,all,{ zhi-depth+1,math.huge  })
                      },
                   }
         for x = 1,3 do for y = 1,3 do for z = 1,3 do
@@ -353,14 +353,14 @@ function LocalGhostPattern:get_all_subrects()
         local xlo,ylo,xhi,yhi = rect:mins_maxes()
         local b = {
                      {
-                        Util.NewRect2d({-math.huge,xlo+depth},all),
-                        Util.NewRect2d({ xlo+depth,xhi-depth},all),
-                        Util.NewRect2d({ xhi-depth,math.huge},all)
+                        Util.NewRect2d({-math.huge,  xlo+depth-1},all),
+                        Util.NewRect2d({ xlo,        xhi        },all),
+                        Util.NewRect2d({ xhi-depth+1,math.huge  },all)
                      },
                      {
-                        Util.NewRect2d(all,{-math.huge,ylo+depth}),
-                        Util.NewRect2d(all,{ ylo+depth,yhi-depth}),
-                        Util.NewRect2d(all,{ yhi-depth,math.huge})
+                        Util.NewRect2d(all,{-math.huge,  ylo+depth-1}),
+                        Util.NewRect2d(all,{ ylo,        yhi        }),
+                        Util.NewRect2d(all,{ yhi-depth+1,math.huge  })
                       }
                     }
         for x = 1,3 do for y = 1,3 do
@@ -424,7 +424,7 @@ function LocalGhostPattern:get_aliased_legion_subregion(node_id, ghost_id)
   assert(self._aliased_lparts)
   local aliased_lregs    = self._aliased_lparts[lin_id]:subregions()
   assert(aliased_lregs[gnum])
-  return aliased_lregs[lin_id]
+  return aliased_lregs[gnum]
 end
 
 -- FOR NOW: assume that there is no need to look up RelLocalPartition for
