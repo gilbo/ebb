@@ -1360,10 +1360,12 @@ function UFVersion:_GenerateUnpackLegionTaskArgs(argsym, task_args, gredptr)
 
       local f_access = symbol(LW.legion_accessor_generic_t, 'field_accessor')
       if phase:isUncenteredReduction() then
-        unpack_fields_code:insert(quote var [f_access] =
+        unpack_fields_code:insert(quote
+        var [f_access] =
           LW.legion_physical_region_get_accessor_generic(physical_reg)
       end) else
-        unpack_fields_code:insert(quote var [f_access] =
+        unpack_fields_code:insert(quote
+        var [f_access] =
           LW.legion_physical_region_get_field_accessor_generic(physical_reg,
                                                                field._fid)
       end) end
