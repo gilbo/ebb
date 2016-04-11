@@ -35,8 +35,11 @@ TERRA_DIR?=../terra
 # The following variables are only necessary for Legion development
 LEGION_DIR?=
 TERRA_ROOT_DIR?=
-# You need LLVM installed.  If your installation of LLVM is not on the
-# path, then you can point this variable at the config tool.
+# The following is important for distributed Legion development
+GASNET_DIR?=
+# You need LLVM installed for running with Legion.
+# If your installation of LLVM is not on the path,
+# then you can point this variable at the config tool.
 LLVM_CONFIG ?= $(shell which llvm-config-3.5 llvm-config | head -1)
 
 
@@ -66,10 +69,10 @@ endif
 ifeq ($(PLATFORM),OSX)
   CMD_LINE_TOOLS_INSTALLED:=$(shell xcode-select -p >/dev/null; echo $$?)
   ifneq ($(CMD_LINE_TOOLS_INSTALLED),0)
-  	$(error \
-  		The Command Line Tools were not found, or their installation was \
-  		incomplete; Executing 'xcode-select --install' may fix the problem \
-  	 )
+    $(error \
+      The Command Line Tools were not found, or their installation was \
+      incomplete; Executing 'xcode-select --install' may fix the problem \
+     )
   endif
 endif
 
@@ -99,6 +102,7 @@ LINUX_TERRA_URL=https://github.com/zdevito/terra/releases/download/release-2015-
 # Unlike Terra, we won't download Legion automatically.
 # However, if we can't find Legion, that's fine
 LEGION_DIR_EXISTS:=$(wildcard $(LEGION_DIR))
+GASNET_DIR_EXISTS:=$(wildcard $(GASNET_DIR))
 LEGION_SYMLINK_EXISTS:=$(wildcard legion)
 ifdef LEGION_SYMLINK_EXISTS
   LEGION_INSTALLED=1
@@ -122,6 +126,14 @@ ifdef LEGION_INSTALLED
   USE_CUDA=1
   endif
 
+  # gasnet configuration; off by default
+  USE_GASNET=0
+  ifdef GASNET_DIR_EXISTS
+  	REAL_GASNET_DIR:=$(realpath $(GASNET_DIR))
+    USE_GASNET=1
+    GASNET_CONDUIT=ibv
+  endif
+
   # Locations of various directories needed for the Legion build
   LUAJIT_DIR:=$(REAL_TERRA_DIR)/build/LuaJIT-2.0.3
   LEGION_BIND_DIR:=$(REAL_LEGION_DIR)/bindings/terra
@@ -131,7 +143,9 @@ ifdef LEGION_INSTALLED
   LIBLEGION_TERRA_DEBUG:=$(LEGION_BIND_DIR)/liblegion_terra_debug.so
   # environment variables to be set for recursive call to Legion build
   SET_ENV_VAR:=LUAJIT_DIR=$(LUAJIT_DIR) TERRA_DIR=$(REAL_TERRA_DIR) \
-    LG_RT_DIR=$(REAL_LEGION_DIR)/runtime SHARED_LOWLEVEL=0 USE_GASNET=0 \
+    LG_RT_DIR=$(REAL_LEGION_DIR)/runtime SHARED_LOWLEVEL=0 \
+    GASNET_ROOT=$(REAL_GASNET_DIR) CONDUIT=$(GASNET_CONDUIT) \
+    USE_GASNET=$(USE_GASNET) \
     USE_CUDA=$(USE_CUDA) USE_LLVM=1 LLVM_CONFIG=$(LLVM_CONFIG)
 endif # LEGION_INSTALLED
 
