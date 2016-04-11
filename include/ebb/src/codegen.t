@@ -643,8 +643,9 @@ function ast.NumericFor:codegen (ctxt)
   local stepexp = self.step and self.step:codegen(ctxt) or nil
 
   ctxt:enterblock()
+  local itertyp = self.node_type:terratype()
   local iterstr = self.name
-  local itersym = symbol()
+  local itersym = symbol(itertyp, tostring(iterstr))
   ctxt:localenv()[iterstr] = itersym
 
   ctxt:enterblock()
@@ -787,7 +788,8 @@ end
 
 function ast.GenericFor:codegen (ctxt)
     local set       = self.set:codegen(ctxt)
-    local iter      = symbol("iter")
+    local itertype  = self.node_type:terratype().entries[1].type
+    local iter      = symbol(itertype, tostring(self.name))
     local dstrel    = self.set.node_type.relation
     -- the key being used to drive the where query should
     -- come from a grouped relation, which is necessarily 1d
@@ -851,12 +853,13 @@ end
 
 function ast.Where:codegen(ctxt)
   local key       = self.key:codegen(ctxt)
+  local kType     = self.key.node_type:terratype()
   local sType     = self.node_type:terratype()
 
   local dstrel    = self.relation
   local off_field = dstrel:_INTERNAL_GroupedOffset()
   local len_field = dstrel:_INTERNAL_GroupedLength()
-  local keysym    = symbol()
+  local keysym    = symbol(kType)
   local v = quote
     var [keysym]  = [key]
     var off       = @[ ctxt:FieldElemPtr(off_field, keysym) ]

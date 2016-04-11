@@ -156,6 +156,7 @@ function load_ebb()
     LW.heavyweightBarrier()
   end, top_level_err_handler)
 end
+load_ebb = terralib.cast({}->{},load_ebb)
 
 -- Run Ebb compiler/ Lua-Terra interpreter as a top level task
 local terra top_level_task(data : & opaque, datalen : C.size_t,

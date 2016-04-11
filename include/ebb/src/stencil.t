@@ -375,8 +375,6 @@ function Context:had_warnings()
   return self._has_warnings
 end
 function Context:begin()
-  self._ediag:begin()
-  self._wdiag:begin()
 end
 function Context:finish() -- will crash on errors
   --self._wdiag:finish() -- no need to do

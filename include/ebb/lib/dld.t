@@ -205,42 +205,50 @@ terra DLD:setlocation( enum : uint8 )
   self.location       = enum
 end
 
-terra DLD:settype( enum : uint16, stride : uint8, dim1 : uint8, dim2 : uint8 )
-  self.base_type      = enum
-  self.type_stride    = stride
-  self.type_dims      = array(dim1, dim2)
-end
-terra DLD:settype( enum : uint16, stride : uint8, dim1 : uint8 )
-  self.base_type      = enum
-  self.type_stride    = stride
-  self.type_dims      = array(dim1, 1)
-end
-terra DLD:settype( enum : uint16, stride : uint8 )
-  self.base_type      = enum
-  self.type_stride    = stride
-  self.type_dims      = arrayof(uint8, 1, 1)
-end
+DLD.methods.settype = terralib.overloadedfunction("settype", 
+{ 
+  terra( self:&DLD, enum : uint16, stride : uint8, dim1 : uint8, dim2 : uint8 )
+    self.base_type      = enum
+    self.type_stride    = stride
+    self.type_dims      = arrayof(uint8, dim1, dim2)
+  end,
+  terra( self:&DLD, enum : uint16, stride : uint8, dim1 : uint8 )
+    self.base_type      = enum
+    self.type_stride    = stride
+    self.type_dims      = arrayof(uint8, dim1, 1)
+  end,
+  terra( self:&DLD, enum : uint16, stride : uint8 )
+    self.base_type      = enum
+    self.type_stride    = stride
+    self.type_dims      = arrayof(uint8, 1, 1)
+  end,
+})
 
-terra DLD:setsize( dim1 : uint64, dim2 : uint64, dim3 : uint64 )
-  self.dim_size       = array( dim1, dim2, dim3 )
-end
-terra DLD:setsize( dim1 : uint64, dim2 : uint64 )
-  self.dim_size       = array( dim1, dim2, 1 )
-end
-terra DLD:setsize( dim1 : uint64 )
-  self.dim_size       = array( dim1, 1, 1 )
-end
+DLD.methods.setsize = terralib.overloadedfunction("setsize", 
+{ 
+  terra( self : &DLD, dim1 : uint64, dim2 : uint64, dim3 : uint64 )
+    self.dim_size       = array( dim1, dim2, dim3 )
+  end,
+  terra( self : &DLD, dim1 : uint64, dim2 : uint64 )
+    self.dim_size       = array( dim1, dim2, 1 )
+  end,
+  terra( self : &DLD, dim1 : uint64 )
+    self.dim_size       = array( dim1, 1, 1 )
+  end,
+})
 
-terra DLD:setstride( s1 : uint64, s2 : uint64, s3 : uint64 )
-  self.dim_stride     = array( s1, s2, s3 )
-end
-terra DLD:setstride( s1 : uint64, s2 : uint64 )
-  self.dim_stride     = array( s1, s2, 1 )
-end
-terra DLD:setstride( s1 : uint64 )
-  self.dim_stride     = array( s1, 1, 1 )
-end
-
+DLD.methods.setstride = terralib.overloadedfunction("setstride",
+{
+  terra( self : &DLD, s1 : uint64, s2 : uint64, s3 : uint64 )
+    self.dim_stride     = array( s1, s2, s3 )
+  end,
+  terra( self : &DLD, s1 : uint64, s2 : uint64 )
+    self.dim_stride     = array( s1, s2, 1 )
+  end,
+  terra( self : &DLD, s1 : uint64 )
+    self.dim_stride     = array( s1, 1, 1 )
+  end,
+})
 
 
 terra DLD:num_dims() : uint
