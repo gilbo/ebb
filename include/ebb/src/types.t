@@ -248,12 +248,14 @@ local function legion_domain_point_gen(keytyp)
   if dims == 2 then return terra([key]) : LW.legion_domain_point_t
     return LW.legion_domain_point_t {
       dim = 2,
-      point_data = arrayof(int64, [int64](key.a0), [int64](key.a1), 0)
+      point_data = arrayof(LW.coord_t,
+        [LW.coord_t](key.a0), [LW.coord_t](key.a1), 0)
     } end
   elseif dims == 3 then return terra([key]) : LW.legion_domain_point_t
     return LW.legion_domain_point_t {
       dim = 3,
-      point_data = arrayof(int64, [int64](key.a0), [int64](key.a1), [int64](key.a2))
+      point_data = arrayof(LW.coord_t,
+        [LW.coord_t](key.a0), [LW.coord_t](key.a1), [LW.coord_t](key.a2))
     } end
   else return macro(function()
       error('INTERNAL :DomainPoint() undefined for key of dimension '..dims)
