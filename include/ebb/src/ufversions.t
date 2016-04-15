@@ -949,18 +949,16 @@ function UFVersion:_generateGPUReductionPreProcess(argptrsym)
   if not self:UsesGlobalReduce() then return quote end end
 
   -- allocate GPU global memory for the reduction
-  local n_blocks = symbol()
-  local code = quote
-    var [n_blocks] = [self:_numGPUBlocks(argptrsym)]
+  return quote
+    var n_blocks = [self:_numGPUBlocks(argptrsym)]
+    escape for globl, _ in pairs(self._global_reductions) do
+      local ttype     = globl._type:terratype()
+      local reduceptr = self:_getTerraGreductionPtr(argptrsym, globl)
+      emit quote
+        [reduceptr] = [&ttype](G.malloc(sizeof(ttype) * n_blocks))
+      end
+    end end
   end
-  for globl, _ in pairs(self._global_reductions) do
-    local ttype     = globl._type:terratype()
-    local reduceptr = self:_getTerraGreductionPtr(argptrsym, globl)
-    code = quote code
-      [reduceptr] = [&ttype](G.malloc(sizeof(ttype) * n_blocks))
-    end
-  end
-  return code
 end
 
 
