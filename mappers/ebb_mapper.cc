@@ -17,7 +17,7 @@
 #include <map>
 #include <set>
 
-#include "default_mapper.h"
+#include "shim_mapper.h"
 #include "ebb_mapper.h"
 #include "serialize.h"
 
@@ -32,22 +32,13 @@ enum MapperMessageType {
   MAPPER_TOTAL_MESSAGES
 };
 
-class EbbMapper : public DefaultMapper {
+class EbbMapper : public ShimMapper {
 public:
   EbbMapper(Machine machine, HighLevelRuntime *rt, Processor local);
   virtual void select_task_options(Task *task);
   virtual bool map_task(Task *task);
   virtual bool map_inline(Inline *inline_operation);
   virtual void notify_mapping_failed(const Mappable *mappable);
-  virtual bool rank_copy_targets(const Mappable *mappable,
-                                 LogicalRegion rebuild_region,
-                                 const std::set<Memory> &current_instances,
-                                 bool complete,
-                                 size_t max_blocking_factor,
-                                 std::set<Memory> &to_reuse,
-                                 std::vector<Memory> &to_create,
-                                 bool &create_one,
-                                 size_t &blocking_factor);
   virtual void handle_message(Processor source,
                               const void *message, size_t length);
 private:
@@ -61,7 +52,8 @@ private:
 
 // EbbMapper constructor
 EbbMapper::EbbMapper(Machine machine, HighLevelRuntime *rt, Processor local)
-  : DefaultMapper(machine, rt, local) {
+  : ShimMapper(machine, rt, local) {
+    //printf("Hello from mapper\n");
 }
 
 LogicalRegion EbbMapper::get_logical_region(const RegionRequirement &req) {
@@ -87,11 +79,11 @@ LogicalRegion EbbMapper::get_root_region(const LogicalPartition &handle) {
 }
 
 void EbbMapper::select_task_options(Task *task) {
-  DefaultMapper::select_task_options(task);
+  ShimMapper::select_task_options(task);
 }
 
 bool EbbMapper::map_task(Task *task) {
-  bool success = DefaultMapper::map_task(task);
+  bool success = ShimMapper::map_task(task);
 
   // add additional fields to region requirements
   std::vector<RegionRequirement> &regions = task->regions;
@@ -114,7 +106,7 @@ bool EbbMapper::map_task(Task *task) {
           buffer << (int)MAPPER_RECORD_FIELD;
           buffer << name;
           buffer << req.privilege_fields;
-          broadcast_message(buffer.get_buffer(), buffer.bytes_used());
+          // broadcast_message(buffer.get_buffer(), buffer.bytes_used());
           additional.insert(pf);
         }
       }
@@ -127,7 +119,7 @@ bool EbbMapper::map_task(Task *task) {
 }
 
 bool EbbMapper::map_inline(Inline *inline_operation) {
-  bool success = DefaultMapper::map_inline(inline_operation);
+  bool success = ShimMapper::map_inline(inline_operation);
 
   // determine logical region and fields
   RegionRequirement &req = inline_operation->requirement;
@@ -141,7 +133,7 @@ bool EbbMapper::map_inline(Inline *inline_operation) {
   buffer << (int)MAPPER_RECORD_FIELD;
   buffer << name;
   buffer << req.privilege_fields;
-  broadcast_message(buffer.get_buffer(), buffer.bytes_used());
+  // broadcast_message(buffer.get_buffer(), buffer.bytes_used());
 
   // add information to local map
   active_fields[name].insert(req.privilege_fields.begin(),
@@ -187,21 +179,6 @@ void EbbMapper::notify_mapping_failed(const Mappable *mappable) {
     }
   }
   assert(0 && "mapping failed");
-}
-
-bool EbbMapper::rank_copy_targets(const Mappable *mappable,
-                                      LogicalRegion rebuild_region,
-                                      const std::set<Memory> &current_instances,
-                                      bool complete,
-                                      size_t max_blocking_factor,
-                                      std::set<Memory> &to_reuse,
-                                      std::vector<Memory> &to_create,
-                                      bool &create_one,
-                                      size_t &blocking_factor) {
-  DefaultMapper::rank_copy_targets(mappable, rebuild_region, current_instances,
-                                   complete, max_blocking_factor, to_reuse,
-                                   to_create, create_one, blocking_factor);
-  return false;
 }
 
 static void create_mappers(Machine machine,
