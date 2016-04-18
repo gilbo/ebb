@@ -288,6 +288,33 @@ local function NewAccessPattern(params)
   return ap
 end
 
+--[[
+params {
+ field,
+ read,
+ write
+}
+--]]
+function Module.NewCenteredAccessPattern(params)
+  local ndims = #params.field:Relation():Dims()
+  local centered_stencil
+  if ndims == 1 then  -- unstructured cases
+    centered_stencil = NewStencilAny()
+  end
+  if ndims == 2 then
+    centered_stencil = NewStencil2d{ rect = NewRect2d({0,0},{0,0}) }
+  else
+    centered_stencil = NewStencil3d{ rect = NewRect2d({0,0},{0,0},{0,0}) }
+  end
+  return NewAccessPattern {
+    write    = params.write,
+    read     = params.read,
+    centered = true,
+    stencil  = centered_stencil,
+    field    = params.field
+  }
+end
+
 -- directly merge new pattern
 function AccessPattern:accum(params)
   assert(self._field == params.field,

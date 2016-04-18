@@ -55,6 +55,12 @@ end
 
 F._INTERNAL_DEV_OUTPUT_PTX = false
 
+local function shallowcopy_table(tbl)
+  local x = {}
+  for k,v in pairs(tbl) do x[k] = v end
+  return x
+end
+
 -------------------------------------------------------------------------------
 
 local Function    = {}
@@ -113,6 +119,114 @@ function F.PrintStats()
 end
 
 
+--[[
+Takes in params {
+  relset,
+  phase_results,
+  field_accesses
+}
+Returns {
+  field_use,
+  field_accesses,  -- TODO: combine field_use and field_accesses
+  insert_data,
+  delete_data,
+  global_use,
+  global_reductions,
+}
+--]]
+function GetAllFieldAndGlobalUses(params)
+  local relset    = params.relset
+  local relation  = R.is_subset(relset) and relset:Relation() or relset
+
+
+  -- VERIFY SET OF FIELDS IN PHASE_RESULTS AND FIELD_ACCESSES MATCH
+  for f, _ in pairs(params.phase_results.field_use) do
+    assert(params.field_accesses[f], "ERROR: field " .. f:Name() ..
+           " in field uses but not in field accesses.")
+  end
+  for f, _ in pairs(params.field_accesses) do
+    assert(params.phase_results.field_use[f], "ERROR: field " .. f:Name() ..
+           " in field accesses but not in field use.")
+  end
+
+  local data = {
+    field_use         = shallowcopy_table(params.phase_results.field_use),
+    field_accesses    = shallowcopy_table(params.field_accesses),
+    global_use        = shallowcopy_table(params.phase_results.global_use),
+    global_reductions = {},
+  }
+
+  -- BOOL MASKS
+  if relation:isElastic() then
+    if use_legion then error("LEGION UNSUPPORTED ELASTIC") end
+    local use_deletes = not not params.phase_results.deletes
+    data.field_use[relation._is_live_mask] = phase.PhaseType.New {
+      centered  = true,
+      read      = true,
+      write     = use_deletes,
+    }
+    data.field_accesses[relset._is_live_mask] =
+      stencil.NewCenteredAccessPattern {
+        field = relset._is_live_mask,
+        read  = true,
+        write = use_deletes,
+      }
+  end
+  if R.is_subset(relset) and relset._boolmask  then
+    data.field_use[relset._boolmask] = phase.PhaseType.New {
+      centered  = true,
+      read      = true,
+    }
+    data.field_accesses[relset._boolmask] =
+      stencil.NewCenteredAccessPattern {
+        field = relset._boolmask,
+        read  = true,
+        write = false,
+      }
+  end
+
+  -- INSERTS : Here or in UFVersions?
+  if params.phase_results.inserts then
+    -- max 1 insert allowed right now
+    local insert_rel, ast_nodes = next(params.phase_results.inserts)
+    data.insert_data = {
+      relation    = insert_rel,
+      record_type = ast_nodes[1].record_type,
+      write_idx   = Pre.Global(T.uint64, 0),
+    }
+    -- also need to support reductions?
+    data.global_use[data.insert_data.write_idx] = phase.PhaseType.New {
+      reduceop    = '+',
+    }
+
+    for _,f in ipairs(insert_rel._fields) do
+      assert(data.field_use[f] == nil, 'trying to add duplicate field')
+      data.field_use[f] = phase.PhaseType.New {
+        centered = false,
+        write    = true,
+      }
+    end
+    data.field_use[insert_rel._is_live_mask] = phase.PhaseType.New {
+      centered = false,
+      write    = true,
+    }
+  end
+  -- DELETES : Here or in UFVersions?
+  if params.phase_results.deletes then
+    -- max 1 delete allowed right now
+    local del_rel = next(params.phase_results.deletes)
+    data.delete_data = {
+      relation  = del_rel,
+      n_deleted = Pre.Global(T.uint64, 0)
+    }
+    -- also need to support reductions?
+    data.global_use[data.delete_data.n_deleted] = phase.PhaseType.New {
+      reduceop    = '+',
+    }
+  end
+
+  return data
+end
 
 local get_ufunc_typetable =
 Util.memoize_from(2, function(calldepth, ufunc, relset, ...)
@@ -152,15 +266,24 @@ Util.memoize_from(2, function(calldepth, ufunc, relset, ...)
   local phase_results   = phase.phasePass( typed_ast )
   local field_accesses  = stencil.stencilPass( typed_ast )
 
+  local f_g_uses      = GetAllFieldAndGlobalUses {
+    relset         = relset,
+    phase_results  = phase_results,
+    field_accesses = field_accesses,
+  }
+
   return {
     typed_ast       = typed_ast,
-    phase_results   = phase_results,
-    field_accesses  = field_accesses,
+    field_use       = f_g_uses.field_use,
+    field_accesses  = f_g_uses.field_accesses,
+    insert_data     = f_g_uses.insert_data,
+    delete_data     = f_g_uses.delete_data,
+    global_use      = f_g_uses.global_use,
     versions        = terralib.newlist(),
 
     -- hacks for planner right now
     relation        = function() return relation end,
-    all_accesses    = function() return field_accesses end,
+    all_accesses    = function() return f_g_uses.field_accesses end,
   }
 end)
 
@@ -173,11 +296,18 @@ local get_cached_ufversion = Util.memoize_named({
   'blocksize'
 },
 function(sig)
+  -- Make a copy of tables for each version in case
   local version             = F.NewUFVersion(sig.ufunc, sig)
-  version._typed_ast        = sig.typtable.typed_ast
-  version._phase_data       = sig.typtable.phase_results
-  version._field_accesses   = sig.typtable.field_accesses
-  sig.typtable.versions:insert(version)
+  local typtable            = sig.typtable
+  version._typed_ast        = typtable.typed_ast
+  version._field_use        = shallowcopy_table(typtable.field_use)
+  version._field_accesses   = shallowcopy_table(typtable.field_accesses)
+  version._insert_data      = typtable.insert_data and
+                              shallowcopy_table(typtable.insert_data)
+  version._delete_data      = typtable.delete_data and
+                              shallowcopy_table(typtable.delete_data)
+  version._global_use       = shallowcopy_table(typtable.global_use)
+  typtable.versions:insert(version)
   return version
 end)
 
@@ -274,8 +404,11 @@ function Function:_doForEach(relset, ...)
   local typeversion = self:_Get_Type_Version_Table(4, relset, ...)
 
   -- Insert partitioning hooks here and communication to planning component
-  local legion_partition_data
+  local legion_partition_data = nil
   if use_partitioning then
+    if params.location == Pre.GPU then
+      error('GPU launches are currently unsupported with partitioning and legion.')
+    end
     -- probably want to get rid of node-type here eventually...
     Planner.note_launch { typedfunc = typeversion }
     legion_partition_data =
@@ -300,6 +433,7 @@ function Function:getCompileTime()
   sumtime:setName(self._name..'_compile_time')
   return sumtime
 end
+
 function Function:getExecutionTime()
   local versions  = self:GetAllVersions()
   local sumtime   = Stats.NewTimer('')
@@ -314,11 +448,3 @@ function Function:_TESTING_GetFieldAccesses(relset, ...)
   local typeversion = self:_Get_Type_Version_Table(4, relset, ...)
   return typeversion.field_accesses -- these have the stencils in them
 end
-
-
-
-
-
-
-
-

@@ -96,20 +96,19 @@ end
 --[[-----------------------------------------------------------------------]]--
 local vprintf = terralib.externfunction("cudart:vprintf", {&int8,&int8} -> int)
 local function createbuffer(args)
-  local Buf = terralib.types.newstruct()
+  local Buf         = terralib.types.newstruct()
+  for i,e in ipairs(args) do
+    local typ       = e:gettype()
+    local fieldname = "_"..tonumber(i)
+    typ = typ == float and double or typ
+    Buf.entries:insert{fieldname,typ}
+  end
   return quote
     var buf : Buf
-    escape
-      for i,e in ipairs(args) do
-        local typ = e:gettype()
-        local field = "_"..tonumber(i)
-        typ = typ == float and double or typ
-        table.insert(Buf.entries,{field,typ})
-        emit quote
-          buf.[field] = e
-        end
-      end
-    end
+    escape for i,e in ipairs(args) do
+      local fieldname = "_"..tonumber(i)
+      emit quote buf.[fieldname] = e end
+    end end
   in
     [&int8](&buf)
   end
@@ -312,9 +311,11 @@ end
 local mul = macro(function(a, b) return `a*b end)
 local add = macro(function(a, b) return `a+b end)
 local div = macro(function(a, b) return `a/b end)
-local max = macro(function(a, b) return
-  quote
-    var max
+local max = macro(function(a, b)
+  local atyp, btyp = a:gettype(), b:gettype()
+  assert(atyp == btyp)
+  return quote
+    var max : atyp
     if a > b then max = a
     else          max = b
     end
@@ -322,9 +323,11 @@ local max = macro(function(a, b) return
     max
   end
 end)
-local min = macro(function(a, b) return
-  quote 
-    var min
+local min = macro(function(a, b)
+  local atyp, btyp = a:gettype(), b:gettype()
+  assert(atyp == btyp)
+  return quote 
+    var min : atyp
     if a < b then min = a
     else          min = b
     end
@@ -337,10 +340,14 @@ end)
 --[[ Convenience Functions                                                 ]]--
 --[[-----------------------------------------------------------------------]]--
 local function throw_err() error('Cuda error') end
-local function cuda_checkpoint()
-  print('CUDA CHECK HERE')
-  print(debug.traceback())
-end
+throw_err = terralib.cast({}->{},throw_err)
+--local terra cuda_trap()
+--  terralib.asm(terralib.types.unit, "trap;")
+--end
+--local function cuda_checkpoint()
+--  print('CUDA CHECK HERE')
+--  print(debug.traceback())
+--end
 local cuda_error_checking = macro(function(code)
   --local function say_code()
   --    code:printpretty()
