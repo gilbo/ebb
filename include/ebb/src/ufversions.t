@@ -35,10 +35,7 @@ local Util  = require 'ebb.src.util'
 
 local CPU       = Pre.CPU
 local GPU       = Pre.GPU
-local uint64T   = T.uint64
 local keyT      = T.key
-
-local EbbGlobal = Pre.Global
 
 local codegen         = require "ebb.src.codegen"
 local codesupport     = require "ebb.src.codegen_support"
@@ -57,14 +54,6 @@ local F         = require 'ebb.src.functions'
 local UFunc     = F.Function
 local UFVersion = F.UFVersion
 local _INTERNAL_DEV_OUTPUT_PTX = F._INTERNAL_DEV_OUTPUT_PTX
-local Phase     = require 'ebb.src.phase'
-local PhaseType = Phase.PhaseType
-
-local function shallowcopy_table(tbl)
-  local x = {}
-  for k,v in pairs(tbl) do x[k] = v end
-  return x
-end
 
 local newlist = terralib.newlist
 
@@ -279,10 +268,6 @@ function UFVersion:Compile()
   self._compile_timer:start()
 
   local typed_ast   = self._typed_ast
-  local phase_data  = self._phase_data
-  -- shallow copy so that we can add entries
-  self._field_use   = shallowcopy_table(phase_data.field_use)
-  self._global_use  = shallowcopy_table(phase_data.global_use)
 
   -- Build Signatures defining interface boundaries for
   -- constructing various kinds of task wrappers
@@ -321,78 +306,21 @@ end
 
 function UFVersion:_CompileTerraSignature()
   local fields, globals   = newlist(), newlist()
-  local global_reductions = newlist()
   self._global_reductions = {}
+  local global_reductions = newlist()
 
-  if self:overElasticRelation() then
-    if use_legion then error("LEGION UNSUPPORTED ELASTIC") end
-    local use_deletes = not not self._phase_data.deletes
-    self._field_use[self._relation._is_live_mask] = PhaseType.New {
-      centered  = true,
-      read      = true,
-      write     = use_deletes,
-    }
-  end
-  if self:isOverSubset() and self._subset._boolmask then
-    self._compiled_with_boolmask = true
-    self._field_use[self._subset._boolmask] = PhaseType.New {
-      centered  = true,
-      read      = true,
-    }
+  for f, use in pairs(self._field_use) do
+    fields:insert(f)
   end
 
-  -- INSERTS
-  if self._phase_data.inserts then
-    -- max 1 insert allowed right now
-    local insert_rel, ast_nodes = next(self._phase_data.inserts)
-    self._insert_data = {
-      relation    = insert_rel,
-      record_type = ast_nodes[1].record_type,
-      write_idx   = EbbGlobal(uint64T, 0),
-    }
-    -- also need to support reductions?
-    self._global_use[self._insert_data.write_idx] = PhaseType.New {
-      reduceop    = '+',
-    }
-
-    for _,f in ipairs(insert_rel._fields) do
-      assert(self._field_use[f] == nil, 'trying to add duplicate field')
-      fields:insert(f) -- might this be a duplicate?  No?
-      self._field_use[f] = PhaseType.New {
-        centered = false,
-        write    = true,
-      }
-    end
-    self._field_use[insert_rel._is_live_mask] = PhaseType.New {
-      centered = false,
-      write    = true,
-    }
-  end
-  -- DELETES
-  if self._phase_data.deletes then
-    -- max 1 delete allowed right now
-    local del_rel = next(self._phase_data.deletes)
-    self._delete_data = {
-      relation  = del_rel,
-      n_deleted = EbbGlobal(uint64T, 0)
-    }
-    -- also need to support reductions?
-    self._global_use[self._delete_data.n_deleted] = PhaseType.New {
-      reduceop    = '+',
-    }
-  end
-
-
-  for f, use in pairs(self._field_use) do  fields:insert(f) end
   for g, phase in pairs(self._global_use) do
     globals:insert(g)
     if phase.reduceop then
-      global_reductions:insert(g)
-      self._uses_global_reduce  = true
-
       self._global_reductions[g] = {
         phase = phase,
       }
+      self._uses_global_reduce = true
+      global_reductions:insert(g)
     end
   end
 
@@ -480,16 +408,6 @@ function UFVersion:_DynamicChecks()
       error("cannot execute function because hidden field "..
             underscore_field_fail:FullName()..
             " is not currently located on "..tostring(self._proc), 3)
-    end
-  end
-
-  if self:isOverSubset() then
-    if self._compiled_with_boolmask and not self:isBoolMaskSubset() then
-      error('INTERNAL: Should not try to run a function compiled for '..
-            'boolmask subsets over an index subset')
-    elseif not self._compiled_with_boolmask and not self:isIndexSubset() then
-      error('INTERNAL: Should not try to run a function compiled for '..
-            'index subsets over a boolmask subset')
     end
   end
 
@@ -1577,16 +1495,17 @@ function UFVersion:_CreateLegionTaskLauncher(task_func, exec_args)
   local pdata = exec_args.partition_data
   for gid, reqs in self._legion_signature:RegReqsIterator() do
     local accesses = self._legion_signature:getRegReqsRequestAccesses(gid)
+    local fields = self._legion_signature:getRegReqsFields(gid)
     local regions = nil
     if use_partitioning then
       if #accesses > 0 then
         regions = pdata[accesses[1]].regions
-        for _, access in pairs(accesses) do
+        for fnum, access in pairs(accesses) do
           if pdata[access].regions ~= regions then
             error('INTERNAL ERROR: Recorded region requirements are ' ..
                   'inconsistent with planner. Planner returned different ' ..
-                  'set of regions for accesses grouped by ' ..
-                  'BuildLegionSignature.')
+                  'set of regions for field ' .. fields[fnum]:Name() ..
+                  ' but is grouped by BuildLegionSignature.')
           end
         end
       else
