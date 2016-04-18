@@ -33,12 +33,14 @@ local g2d  = Grid.NewGrid2d {
   origin  = {0,0},
   width   = {nX,nY},
 }
+g2d.cells:SetPartitions{2,2}
 
 local g3d  = Grid.NewGrid3d {
   size    = {nX,nY,nZ},
   origin  = {0,0,0},
   width   = {nX,nY,nZ},
 }
+g3d.cells:SetPartitions{2,2,2}
 
 g2d.cells:NewField('a', L.double):Load(0)
 g2d.cells:NewField('b', L.double):Load(0)

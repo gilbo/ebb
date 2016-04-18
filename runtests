@@ -25,10 +25,11 @@
 
 local ffi = require "ffi"
 
-local USE_LEGION = false
+local USE_LEGION    = false
 local USE_PARTITION = false
-local USE_GPU    = false
-local ONE_LINE_ERR = false
+local USE_MPI       = false
+local USE_GPU       = false
+local ONE_LINE_ERR  = false
 
 if #arg > 0 then
   for i=1,#arg do
@@ -41,6 +42,9 @@ if #arg > 0 then
     if arg[i] == '-gpu' or arg[i] == '--gpu' then
       USE_GPU = true
     end
+    if arg[i] == '-mpi' or arg[i] == '--mpi' then
+      USE_MPI = true
+    end
     if arg[i] == '-h' or arg[i] == '--help' then
       print("Usage : run_tests [options]")
       print("Options:")
@@ -48,6 +52,7 @@ if #arg > 0 then
       print("  -legion, --legion        run tests with legion")
       print("  -partition, --partition  run tests with partitioning")
       print("  -gpu, --gpu              run tests on the GPU")
+      print("  -mpi, --mpi              run tests with mpirun prefix")
       os.exit(0)
     end
   end
@@ -152,6 +157,10 @@ for line in io.popen(lscmd):lines() do
         execstring = execstring .. " | grep -v INFO > .test_out"
       elseif should_fail then
         execstring = execstring .. " > /dev/null 2>&1"
+      end
+
+      if USE_MPI then
+        execstring = 'mpirun -n 2 -H n0000,n0001 -npernode 1 -bind-to none '..execstring
       end
 
       --things in the fail directory should cause terra compiler errors

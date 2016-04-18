@@ -97,20 +97,20 @@ void sigsegv(int sig, siginfo_t *info, void * uap) {
     raise(sig);   //rethrow the signal to the default handler
 }
 void registerhandler() {
-	struct sigaction sa;
-	sa.sa_flags = SA_RESETHAND | SA_SIGINFO;
-	sigemptyset(&sa.sa_mask);
-	sa.sa_sigaction = sigsegv;
-	sigaction(SIGSEGV, &sa, NULL);
-	sigaction(SIGILL, &sa, NULL);
+  struct sigaction sa;
+  sa.sa_flags = SA_RESETHAND | SA_SIGINFO;
+  sigemptyset(&sa.sa_mask);
+  sa.sa_sigaction = sigsegv;
+  sigaction(SIGSEGV, &sa, NULL);
+  sigaction(SIGILL, &sa, NULL);
 }
 #else
 LONG WINAPI windowsexceptionhandler(EXCEPTION_POINTERS * ExceptionInfo) {
-	terratraceback(ExceptionInfo->ContextRecord);
-	return EXCEPTION_EXECUTE_HANDLER;
+  terratraceback(ExceptionInfo->ContextRecord);
+  return EXCEPTION_EXECUTE_HANDLER;
 }
 void registerhandler() {
-	SetUnhandledExceptionFilter(windowsexceptionhandler);
+  SetUnhandledExceptionFilter(windowsexceptionhandler);
 }
 #endif
 
@@ -175,7 +175,7 @@ void setupcrashsignal(lua_State * L) {
     if(!tb)
         return; //debug not supported
     terratraceback = *(void(**)(void*))tb;
-	registerhandler();
+  registerhandler();
     lua_pop(L,2);
 }
 
@@ -388,9 +388,9 @@ void parse_args(
                              longopts, NULL)) != -1) {
         switch (ch) {
             case 'v':
-	            if (optarg) {
-		            if (strstr(optarg, "terra"))
-		                 options->verbose++;
+              if (optarg) {
+                if (strstr(optarg, "terra"))
+                     options->verbose++;
                 }
                 break;
             case 'i':
@@ -406,22 +406,22 @@ void parse_args(
                 ebboptions->uselegion = 1;
                 break;
             case 'r':
-	            if (optarg) {
-		            if (strstr(optarg, "debug"))
-		                ebboptions->debug = 1;
-		            if (strstr(optarg, "legionspy"))
-		                ebboptions->legionspy = 1;
-		            if (strstr(optarg, "legionprof"))
-		                ebboptions->legionprof = 1;
-		            }
-                break;
+              if (optarg) {
+                if (strstr(optarg, "debug"))
+                    ebboptions->debug = 1;
+                if (strstr(optarg, "legionspy"))
+                    ebboptions->legionspy = 1;
+                if (strstr(optarg, "legionprof"))
+                    ebboptions->legionprof = 1;
+              }
+              break;
             case 'p':
                 ebboptions->partition = 1;
                 break;
             case 'a':
-	            if (optarg) {
+              if (optarg) {
                     strncpy(ebboptions->additional, optarg, ADDITIONAL_ARG_LEN);
-		            }
+                }
                 break;
             case ':':
             case 'h':

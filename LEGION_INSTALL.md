@@ -116,6 +116,8 @@ git clone git@github.com:StanfordLegion/gasnet.git
 
 We'll call the root directory for gasnet `<gasnet>`
 
+*UH-OH* it turns out that there's some weird bug with 1.26.  So what you now need to do is download Gasnet 1.24 from the gasnet site and replace the tarball with that one.  Then you need to go into the makefile and change the version number at the top.  Joy!
+
 ## Build GASnet
 
 ```
@@ -125,13 +127,24 @@ make CONDUIT=ibv
 
 Hopefully that works out alright.  If not, you may want to just blow away the gasnet directory, re-download and rebuild.  There isn't a `make clean` option.  I also have no idea how to test whether this installation was correct.
 
+Hopefully everything isn't wrong, but it probably is.  Joy!
+
+## WOOPS KIDDING
+
+Hey, actually you need to do something totally different.  Just ask people.  I guess.  Joy!
+
+
+
 ## Modify `Makefile.inc`
 
 Add the line
 
 ```
-GASNET_DIR=<gasnet>/release
+GASNET_DIR=<gasnet>
 ```
+
+Just remember that this is magic somewhere gasnet.  I guess.  Joy!
+
 
 ## Rebuild Liszt-Ebb
 
@@ -143,7 +156,7 @@ make
 ## Weird way to run?
 
 ```
-mpirun -n 2 -H n0000,n0001 -npernode 1 -bind-to none ./ebb ...
+mpirun -n 2 -H n0000,n0001 -npernode 1 -bind-to none ./ebb -lp ...
 ```
 
 
