@@ -43,7 +43,10 @@ public:
                               const void *message, size_t length);
 private:
   // active fields for a logical region
-  std::map<std::string, std::set<FieldID> > active_fields;
+  std::map<std::string, std::set<FieldID> >   active_fields;
+  std::vector<Processor>                      all_procs;
+  int                                         n_nodes;
+  int                                         per_node;
   // get logical region corresponding to a region requirement
   LogicalRegion get_logical_region(const RegionRequirement &req);
   LogicalRegion get_root_region(const LogicalRegion &handle);
@@ -52,8 +55,28 @@ private:
 
 // EbbMapper constructor
 EbbMapper::EbbMapper(Machine machine, HighLevelRuntime *rt, Processor local)
-  : ShimMapper(machine, rt, local) {
-    //printf("Hello from mapper\n");
+  : ShimMapper(machine, rt, local)
+{
+  Machine::ProcessorQuery query_all_procs =
+        Machine::ProcessorQuery(machine).only_kind(Processor::LOC_PROC);
+  all_procs.insert(all_procs.begin(),
+                   query_all_procs.begin(),
+                   query_all_procs.end());
+  n_nodes = 0;
+  for(int i=0; i<all_procs.size(); i++) {
+    if (all_procs[i].address_space() >= n_nodes) {
+      n_nodes = all_procs[i].address_space() + 1;
+    }
+  }
+  per_node = all_procs.size() / n_nodes;
+
+  //if (local.id == all_procs[0].id) {
+  //  printf("Hello from mapper\n");
+  //  for(int i=0; i<all_procs.size(); i++)
+  //    printf(" PROC %d %llx %d %u\n", i, all_procs[i].id,
+  //                                 all_procs[i].kind(),
+  //                                 all_procs[i].address_space());
+  //}
 }
 
 LogicalRegion EbbMapper::get_logical_region(const RegionRequirement &req) {
@@ -80,6 +103,13 @@ LogicalRegion EbbMapper::get_root_region(const LogicalPartition &handle) {
 
 void EbbMapper::select_task_options(Task *task) {
   ShimMapper::select_task_options(task);
+  if (!task->regions.empty() && task->regions[0].handle_type == SINGULAR) {
+    Color index = get_logical_region_color(task->regions[0].region);
+    int proc_off = (int(index) / n_nodes)%per_node;
+    int node_off = int(index) % n_nodes;
+    task->target_proc =
+      all_procs[(node_off*per_node + proc_off)%all_procs.size()];
+  }
 }
 
 bool EbbMapper::map_task(Task *task) {

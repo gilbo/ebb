@@ -24,7 +24,7 @@ import 'ebb'
 local L = require 'ebblib'
 
 local N = 1024
-local ITER = 5e0
+local ITER = 2e0
 local cells = L.NewRelation { name="cells",  dims={N,N} }
 cells:SetPartitions{2,2}
 
