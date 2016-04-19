@@ -1236,35 +1236,55 @@ end)
 
 function LW.RegisterReductions()
   local T = require 'ebb.src.types'
-  local reduction_op_translate = {
-    ['+']   = 'plus',
-    ['*']   = 'times',
-    ['max'] = 'max',
-    ['min'] = 'min'
+  local reduction_ops = {
+    {'+', 'plus'},
+    {'*', 'times'},
+    {'max', 'max'},
+    {'min', 'min'},
   }
+  local reduction_op_translate = {}
+  for i, redop in ipairs(reduction_ops) do
+    local ebb_op, lg_op = unpack(redop)
+    reduction_op_translate[ebb_op] = lg_op
+  end
+
   local basetyps = {
-    [T.int]     = 'int32',
-    [T.float]   = 'float',
-    [T.double]  = 'double',
+    {T.int, 'int32'},
+    {T.float, 'float'},
+    {T.double, 'double'},
   }
 
   -- construct list of all types with their mappings to string names
+  local alltyps = terralib.newlist()
   local typ_map = {}
-  for ebbt,lgt in pairs(basetyps) do typ_map[ebbt] = lgt end
+  for _,typ in pairs(basetyps) do
+    local ebbt, lgt = unpack(typ)
+    alltyps:insert(typ)
+    typ_map[ebbt] = lgt
+  end
   for i=2,4 do
-    for ebbt,lgt in pairs(basetyps) do
-      typ_map[T.vector(ebbt,i)] = lgt..'_vec'..i
+    for _,typ in pairs(basetyps) do
+      local ebbt, lgt = unpack(typ)
+      local vebbt, vlgt = T.vector(ebbt,i), lgt..'_vec'..i
+      alltyps:insert({vebbt, vlgt})
+      typ_map[vebbt] = vlgt
     end
     for j=2,4 do
-      for ebbt,lgt in pairs(basetyps) do
-        typ_map[T.matrix(ebbt,i,j)] = lgt..'_mat'..i..'x'..j
+      for _,typ in pairs(basetyps) do
+        local ebbt, lgt = unpack(typ)
+        local mebbt, mlgt = T.matrix(ebbt,i,j), lgt..'_mat'..i..'x'..j
+        alltyps:insert({mebbt, mlgt})
+        typ_map[mebbt] = mlgt
       end
     end
   end
 
   -- now register all the corresponding functions
-  for ebb_op, lg_op in pairs(reduction_op_translate) do
-    for ebbt, lgt in pairs(typ_map) do
+  for _, redop in ipairs(reduction_ops) do
+    local ebb_op, lg_op = unpack(redop)
+    for _, typ in ipairs(alltyps) do
+      local ebbt, lgt = unpack(typ)
+
       local f_reg_func = LW['register_reduction_field_'..lg_op..'_'..lgt]
       if f_reg_func then
         f_reg_func( LW.GetFieldReductionId(ebb_op, ebbt) )
