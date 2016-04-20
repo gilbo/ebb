@@ -1720,21 +1720,21 @@ function Field:Print()
     if self._type:ismatrix() then
       local s = ''
       for c=1,self._type.Ncol do s = s .. flattenkey(datum[1][c]) .. ' ' end
-      print("", idstr .. alive, s)
+      print("  "..idstr .. alive.."  "..s)
 
       for r=2,self._type.Nrow do
         local s = ''
         for c=1,self._type.Ncol do s = s .. flattenkey(datum[r][c]) .. ' ' end
-        print("", "", s)
+        print("    "..s)
       end
 
     elseif self._type:isvector() then
       local s = ''
       for k=1,self._type.N do s = s .. flattenkey(datum[k]) .. ' ' end
-      print("", idstr .. alive, s)
+      print("    "..idstr .. alive .."  ".. s)
 
     else
-      print("", idstr .. alive, flattenkey(datum))
+      print("    "..idstr .. alive .."  ".. flattenkey(datum))
     end
   end)
 end

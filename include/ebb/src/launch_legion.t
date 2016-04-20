@@ -123,10 +123,10 @@ if terralib.cudacompile then
 end
 if use_legion_prof then
   table.insert(legion_args, "-hl:prof")
-  table.insert(legion_args, "1")
+  table.insert(legion_args, "4")
 end
 table.insert(legion_args, "-logfile")
-table.insert(legion_args, "legion_log")
+table.insert(legion_args, "legion_ebb_%.log")
 if additional_args then
     for word in additional_args:gmatch("%S+") do
         table.insert(legion_args, word)
