@@ -1182,7 +1182,7 @@ function UFVersion:_WrapIntoLegionTask(argsym, basic_launcher)
     [ ufv:_CleanLegionTask(argsym) ]
     [ return_future_code ]
   end
-  task:setname(ufv._name)
+  task:setname(ufv._name .. '_task')
 
   -- wrap task with preamble and postamle
   local task_wrapped = terra(data : & opaque, datalen : C.size_t,
@@ -1213,7 +1213,7 @@ function UFVersion:_WrapIntoLegionTask(argsym, basic_launcher)
       end  -- if else
     end  -- escape
   end  -- end terra function
-  task_wrapped:setname(ufv._name)
+  task_wrapped:setname(ufv._name .. '_wrapped_task')
 
   return task_wrapped
 end

@@ -1339,7 +1339,7 @@ local terra _TEMPORARY_EmptyTaskFunction(data : & opaque, datalen : C.size_t,
                           &task_args.regions, &task_args.num_regions,
                           &task_args.lg_ctx, &task_args.lg_runtime)
 
-  C.printf("** WARNING: Executing empty tproc_id : LW.legion_lowlevel_id_t) ask. ")
+  C.printf("** WARNING: Executing empty Legion task. ")
   C.printf("This is a hack for Ebb/Legion. ")
   C.printf("If you are seeing this message and do not know what this is, ")
   C.printf("please contact the developers.\n")
@@ -1349,48 +1349,79 @@ local terra _TEMPORARY_EmptyTaskFunction(data : & opaque, datalen : C.size_t,
                            [&opaque](0), 0)
 end
 
--- empty task function launcher
--- to make it work with legion without blowing up memory
-local _TEMPORARY_memoize_empty_task_launcher = Util.memoize_named({
-  'relation' },
-  function(args)
-    -- one region requirement for the relation
-    local reg_reqs = LW.NewRegionReqs {
-      num             = 0,
-      relation        = args.relation,
-      privilege       = LW.READ_WRITE,
-      coherence       = LW.EXCLUSIVE,
-      centered        = true
-    }
-    -- task launcher
-    local task_launcher = LW.NewTaskLauncher {
-      ufv_name         = "_TEMPORARY_PrepareSimulation",
-      task_func        = _TEMPORARY_EmptyTaskFunction,
-      gpu              = false,
-      use_index_launch = false,
-      domain           = nil
-    }
-    -- add region requirement to task launcher
-    task_launcher:AddRegionReq(reg_req)
-    -- iterate over user define fields and subset boolmasks
-    -- assumption: these are the only fields that are needed to force on physical
-    -- instance with valid data for all fields over the region
-    for _, field in pairs(args.relation._fields) do
-      task_launcher:AddField(reg_reqs, field._fid)
-    end
-    for _, subset in pairs(args.relation._subsets) do
-      task_launcher:AddField(reg_reqs, subset._boolmask._fid)
-    end
-    return task_launcher
+--[[
+args {
+legion_context,
+legion_runtime,
+relation,
+region
+}
+--]]
+local function _TEMPORARY_LaunchEmptyLegionTask(args)
+  -- create task launcher
+  local task_launcher = LW.NewTaskLauncher {
+    ufv_name         = 'TEMPORARY_PrepareSimulation_' .. args.relation:Name(),
+    task_func        = _TEMPORARY_EmptyTaskFunction,
+    gpu              = false,
+    use_index_launch = false,
+  }
+  -- create one centered region requirement
+  local reg_reqs = LW.NewRegionReqs {
+    num_group       = 0,
+    num_total       = 1,
+    offset          = 0,
+    relation        = args.relation,
+    privilege       = LW.READ_WRITE,
+    coherence       = LW.EXCLUSIVE,
+    centered        = true
+  }
+  -- add region requirement
+  task_launcher:AddRegionReqs(reg_reqs, args.region)
+  -- add all fields to region requirement
+  for _, field in pairs(args.relation._fields) do
+    task_launcher:AddField(reg_reqs, field._fid)
   end
-)
+  -- launch task
+  task_launcher:Execute(args.legion_runtime, args.legion_context)
+  -- destroy task launcher
+  task_launcher:Destroy()
+end
 
 -- empty task function launch
 -- to make it work with legion without blowing up memory
+-- THIS CODE IS EXTREMELY UGLY, AND HOPEFULLY ONLY TEMPORARY
 function LW._TEMPORARY_LaunchEmptySingleTaskOnRelation(relation)
-  local task_launcher = _TEMPORARY_memoize_empty_task_launcher(
-  {
-    relation = relation
-  })
-  task_launcher:Execute(legion_env.runtime, legion_env.ctx)
+  if not use_partitioning then
+    _TEMPORARY_LaunchEmptyLegionTask({
+      legion_context = legion_env.ctx,
+      legion_runtime = legion_env.runtime,
+      relation       = relation,
+    })
+  else
+    -- get partition data from planner
+    local planner
+    if use_partitioning then
+      planner = require "ebb.src.planner"
+    end
+    local typeversion = {
+      field_accesses = {},
+      relation       = function() return relation end,
+      all_accesses   = function() return {} end
+    }
+    planner.note_launch { typedfunc = typeversion }
+    local legion_partition_data = planner.query_for_partitions(typeversion)
+    local access, access_data = next(legion_partition_data)
+    assert(next(legion_partition_data, access) == nil)
+    -- launch emptu task per node/partition
+    for node, region in ipairs(access_data.partition) do
+      -- assert that there is only one region returned by planner and
+      -- that the region is disjoint
+      _TEMPORARY_LaunchEmptyLegionTask({
+        legion_context = legion_env.ctx,
+        legion_runtime = legion_env.runtime,
+        relation       = relation,
+        region         = region
+      })
+    end
+  end
 end
