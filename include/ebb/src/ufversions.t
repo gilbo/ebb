@@ -1189,6 +1189,7 @@ function UFVersion:_WrapIntoLegionTask(argsym, basic_launcher)
                              userdata : &opaque, userlen : C.size_t,
                              proc_id : LW.legion_lowlevel_id_t)
     var task_args : LW.TaskArgs
+    -- C.printf("Starting %s task\n", self._name)
     -- legion preamble
     LW.legion_task_preamble(data, datalen, proc_id, &task_args.task,
                             &task_args.regions, &task_args.num_regions,
@@ -1212,6 +1213,7 @@ function UFVersion:_WrapIntoLegionTask(argsym, basic_launcher)
         end  -- emit quote
       end  -- if else
     end  -- escape
+    -- C.printf("Finishing %s task\n", self._name)
   end  -- end terra function
   task_wrapped:setname(ufv._name .. '_wrapped_task')
 
