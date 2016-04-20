@@ -110,6 +110,9 @@ table.insert(legion_args, tostring(util_cpus))
 -- cpu memory
 table.insert(legion_args, "-ll:csize")
 table.insert(legion_args, "8000") -- MB
+-- message buffer memory
+table.insert(legion_args, "-ll:lmbsize")
+table.insert(legion_args, "2048")
 if terralib.cudacompile then
   -- # of gpus
   table.insert(legion_args, "-ll:gpu")

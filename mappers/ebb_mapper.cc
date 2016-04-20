@@ -107,8 +107,10 @@ void EbbMapper::select_task_options(Task *task) {
     Color index = get_logical_region_color(task->regions[0].region);
     int proc_off = (int(index) / n_nodes)%per_node;
     int node_off = int(index) % n_nodes;
-    task->target_proc =
-      all_procs[(node_off*per_node + proc_off)%all_procs.size()];
+    int proc_num = (node_off*per_node + proc_off)%all_procs.size();
+    Processor p   = all_procs[proc_num];
+    //printf("Launching on %llx\n", p.id);
+    task->target_proc = p;
   }
 }
 
