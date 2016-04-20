@@ -88,7 +88,7 @@ local util_cpus = 2
 local num_gpus  = 1
 
 -- legion logging options
-local logging_level = "1"
+local logging_level = "3"
 -- hide warnings for region requirements without any fields
 logging_level = logging_level .. ",tasks=5"
 if use_legion_prof then
