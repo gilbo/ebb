@@ -23,10 +23,15 @@
 import 'ebb'
 local L = require 'ebblib'
 
-local N = 1024
+local N = 4096
 local ITER = 2e0
+local P = 1
+local mult = 0.5
+ITER = ITER*mult*mult
+--P    = P*mult
+--N    = N / mult
 local cells = L.NewRelation { name="cells",  dims={N,N} }
-cells:SetPartitions{2,2}
+cells:SetPartitions{P,P}
 
 cells:NewField('f', L.double):Load(0)
 

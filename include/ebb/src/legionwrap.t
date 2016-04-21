@@ -322,7 +322,11 @@ function LW.NewTaskLauncher(params)
   else
     launcher_args:insertall({argstruct[0], LW.legion_predicate_true()})
   end
-  launcher_args:insertall({0, 0})
+  local tag = 0
+  if params.node_id then
+    tag = params.node_id + 1
+  end
+  launcher_args:insertall({0, tag})
   local launcher = launcher_create(unpack(launcher_args))
 
   return setmetatable({

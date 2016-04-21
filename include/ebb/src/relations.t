@@ -1558,6 +1558,10 @@ function Field:Load(arg, ...)
   elseif isloader(arg) then
     return arg._func(self, ...)
 
+  elseif isdumper(arg) then
+    error("tried to use a dumper object to load.  "..
+          "Did you mean to use the corresponding dumper object?", 2)
+
   elseif  type(arg) == 'cdata' then
     local typ = terralib.typeof(arg)
     if typ:ispointer() then
@@ -1619,6 +1623,11 @@ function Relation:Load(fieldargs, arg, ...)
     return self:_INTERNAL_LoadTerraBulkFunction(fields, arg, ...)
   end
 
+  if isdumper(arg) then
+    error("tried to use a dumper object to load.  "..
+          "Did you mean to use the corresponding dumper object?", 2)
+  end
+
   -- catch-all fall-through
   error('unrecognized argument for Relation:Load(...)', 2)
 end
@@ -1645,6 +1654,11 @@ function Field:Dump(arg, ...)
     end
   end
 
+  if isloader(arg) then
+    error("tried to use a loader object to dump.  "..
+          "Did you mean to use the corresponding loader object?", 2)
+  end
+
   -- catch all fall-through
   error('unrecognized argument for Field:Dump(...)', 2)
 end
@@ -1667,6 +1681,11 @@ function Relation:Dump(fieldargs, arg, ...)
 
   elseif type(arg) == 'function' then
     return self:_INTERNAL_DumpLuaPerElemFunction(fields, arg)
+  end
+
+  if isloader(arg) then
+    error("tried to use a loader object to dump.  "..
+          "Did you mean to use the corresponding loader object?", 2)
   end
 
   -- catch-all fall-through
