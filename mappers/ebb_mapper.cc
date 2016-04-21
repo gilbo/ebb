@@ -17,14 +17,16 @@
 #include <map>
 #include <set>
 
-#include "shim_mapper.h"
-#include "ebb_mapper.h"
+#include "default_mapper.h"
 #include "serialize.h"
 
-using namespace LegionRuntime::HighLevel;
+#include "ebb_mapper.h"
+
+using namespace Legion;
+using namespace Legion::Mapping;
 
 // legion logger
-LegionRuntime::Logger::Category log_mapper("mapper");
+static LegionRuntime::Logger::Category log_mapper("mapper");
 
 // message types
 enum MapperMessageType {
@@ -32,15 +34,26 @@ enum MapperMessageType {
   MAPPER_TOTAL_MESSAGES
 };
 
-class EbbMapper : public ShimMapper {
+class EbbMapper : public DefaultMapper {
 public:
-  EbbMapper(Machine machine, HighLevelRuntime *rt, Processor local);
-  virtual void select_task_options(Task *task);
-  virtual bool map_task(Task *task);
-  virtual bool map_inline(Inline *inline_operation);
-  virtual void notify_mapping_failed(const Mappable *mappable);
-  virtual void handle_message(Processor source,
-                              const void *message, size_t length);
+  EbbMapper(Machine machine, Processor local,
+            const char *mapper_name = NULL);
+  virtual Processor default_policy_select_initial_processor(
+                                    MapperContext ctx, const Task &task);
+  virtual LogicalRegion default_policy_select_instance_region(
+                                    MapperContext ctx, Memory target_memory,
+                                    const RegionRequirement &req,
+                                    const LayoutConstraintSet &constraints,
+                                    bool force_new_instances,
+                                    bool meets_constraints);
+  virtual void default_policy_select_constraint_fields(
+                                    MapperContext ctx,
+                                    const RegionRequirement &req,
+                                    std::vector<FieldID> &fields);
+  virtual bool default_policy_select_close_virtual(const MapperContext ctx,
+                                                   const Close &close);
+  virtual void handle_message(const MapperContext ctx,
+                              const MapperMessage& message);
 private:
   // active fields for a logical region
   std::map<std::string, std::set<FieldID> >   active_fields;
@@ -48,14 +61,18 @@ private:
   int                                         n_nodes;
   int                                         per_node;
   // get logical region corresponding to a region requirement
-  LogicalRegion get_logical_region(const RegionRequirement &req);
-  LogicalRegion get_root_region(const LogicalRegion &handle);
-  LogicalRegion get_root_region(const LogicalPartition &handle);
+  LogicalRegion get_root_region(MapperContext ctx,
+                                   const RegionRequirement &req);
+  LogicalRegion get_root_region(MapperContext ctx,
+                                const LogicalRegion &handle);
+  LogicalRegion get_root_region(MapperContext ctx,
+                                const LogicalPartition &handle);
 };  // class EbbMapper
 
 // EbbMapper constructor
-EbbMapper::EbbMapper(Machine machine, HighLevelRuntime *rt, Processor local)
-  : ShimMapper(machine, rt, local)
+EbbMapper::EbbMapper(Machine machine, Processor local,
+                     const char *mapper_name)
+  : DefaultMapper(machine, local, mapper_name)
 {
   Machine::ProcessorQuery query_all_procs =
         Machine::ProcessorQuery(machine).only_kind(Processor::LOC_PROC);
@@ -79,166 +96,74 @@ EbbMapper::EbbMapper(Machine machine, HighLevelRuntime *rt, Processor local)
   //}
 }
 
-LogicalRegion EbbMapper::get_logical_region(const RegionRequirement &req) {
-  LogicalRegion root;
-  if (req.handle_type == SINGULAR || req.handle_type == REG_PROJECTION) {
-    root = get_root_region(req.region);
-  } else {
-    assert(req.handle_type == PART_PROJECTION);
-    root = get_root_region(req.partition);
-  }
-  return root;
-}
-
-LogicalRegion EbbMapper::get_root_region(const LogicalRegion &handle) {
-  if (has_parent_logical_partition(handle)) {
-    return get_root_region(get_parent_logical_partition(handle));
-  }
-  return handle;
-}
-
-LogicalRegion EbbMapper::get_root_region(const LogicalPartition &handle) {
-  return get_root_region(get_parent_logical_region(handle));
-}
-
-void EbbMapper::select_task_options(Task *task) {
-  ShimMapper::select_task_options(task);
-  if (false && task->tag != 0) {
+Processor EbbMapper::default_policy_select_initial_processor(
+                                    MapperContext ctx, const Task &task) {
+  if (false && task.tag != 0) {
     // all_procs here is a safety modulus
-    int proc_num = (task->tag - 1)%all_procs.size();
-    Processor p   = all_procs[proc_num];
-    //printf("Launching Tagged on %llx %lx\n", p.id, task->tag);
-    task->target_proc = p;
-  } else if (!task->regions.empty() &&
-           task->regions[0].handle_type == SINGULAR)
+    int proc_num = (task.tag - 1)%all_procs.size();
+    Processor p = all_procs[proc_num];
+    //printf("Launching Tagged on %llx %lx\n", p.id, task.tag);
+    return p;
+  } else if (!task.regions.empty() &&
+             task.regions[0].handle_type == SINGULAR)
   {
-    Color index = get_logical_region_color(task->regions[0].region);
+    Color index = mapper_rt_get_logical_region_color(ctx, task.regions[0].region);
     int proc_off = (int(index) / n_nodes)%per_node;
     int node_off = int(index) % n_nodes;
     // all_procs here is a safety modulus
     int proc_num = (node_off*per_node + proc_off)%all_procs.size();
-    Processor p   = all_procs[proc_num];
-    //printf("Launching Tagless on %llx %lx\n", p.id, task->tag);
-    task->target_proc = p;
+    Processor p = all_procs[proc_num];
+    //printf("Launching Tagless on %llx %lx\n", p.id, task.tag);
+    return p;
   }
+  return DefaultMapper::default_policy_select_initial_processor(ctx, task);
 }
 
-bool EbbMapper::map_task(Task *task) {
-  bool success = ShimMapper::map_task(task);
-
-  // add additional fields to region requirements
-  std::vector<RegionRequirement> &regions = task->regions;
-  for (std::vector<RegionRequirement>::iterator it = regions.begin();
-        it != regions.end(); it++) {
-    RegionRequirement &req = *it;
-    if (!req.redop) {
-      LogicalRegion root = get_logical_region(req);
-      const char *name_c;
-      runtime->retrieve_name(root, name_c);
-      std::string name(name_c);
-
-      std::set<FieldID> &additional = active_fields[name];
-      for (std::set<FieldID>::iterator pf_it = req.privilege_fields.begin();
-           pf_it != req.privilege_fields.end(); pf_it++) {
-        FieldID pf = *pf_it;
-        if (additional.find(pf) == additional.end()) {
-          // broadcast and record a new field
-          Realm::Serialization::DynamicBufferSerializer buffer(name.size() + 16);
-          buffer << (int)MAPPER_RECORD_FIELD;
-          buffer << name;
-          buffer << req.privilege_fields;
-          // broadcast_message(buffer.get_buffer(), buffer.bytes_used());
-          additional.insert(pf);
-        }
-      }
-      req.additional_fields.insert(additional.begin(),
-                                   additional.end());
-    }
-  }
-
-  return success;
+LogicalRegion EbbMapper::default_policy_select_instance_region(
+                                    MapperContext ctx, Memory target_memory,
+                                    const RegionRequirement &req,
+                                    const LayoutConstraintSet &constraints,
+                                    bool force_new_instances, 
+                                    bool meets_constraints) {
+  return req.region;
 }
 
-bool EbbMapper::map_inline(Inline *inline_operation) {
-  bool success = ShimMapper::map_inline(inline_operation);
-
-  // determine logical region and fields
-  RegionRequirement &req = inline_operation->requirement;
-  LogicalRegion root = get_logical_region(req);
+void EbbMapper::default_policy_select_constraint_fields(
+                                    MapperContext ctx,
+                                    const RegionRequirement &req,
+                                    std::vector<FieldID> &fields) {
+  LogicalRegion root = get_root_region(ctx, req);
   const char *name_c;
-  runtime->retrieve_name(root, name_c);
+  mapper_rt_retrieve_name(ctx, root, name_c);
   std::string name(name_c);
 
-  // broadcast this information
-  Realm::Serialization::DynamicBufferSerializer buffer(name.size() + 16);
-  buffer << (int)MAPPER_RECORD_FIELD;
-  buffer << name;
-  buffer << req.privilege_fields;
-  // broadcast_message(buffer.get_buffer(), buffer.bytes_used());
-
-  // add information to local map
-  active_fields[name].insert(req.privilege_fields.begin(),
-                             req.privilege_fields.end());
-  return success;
-}
-
-void EbbMapper::notify_mapping_failed(const Mappable *mappable) {
-  switch (mappable->get_mappable_kind()) {
-  case Mappable::TASK_MAPPABLE:
-    {
-      log_mapper.warning("mapping failed on task");
-      break;
-    }
-  case Mappable::COPY_MAPPABLE:
-    {
-      log_mapper.warning("mapping failed on copy");
-      break;
-    }
-  case Mappable::INLINE_MAPPABLE:
-    {
-      Inline *_inline = mappable->as_mappable_inline();
-      RegionRequirement &req = _inline->requirement;
-      LogicalRegion region = req.region;
-      log_mapper.warning(
-        "mapping %s on inline region (%d,%d,%d) memory " IDFMT,
-        (req.mapping_failed ? "failed" : "succeeded"),
-        region.get_index_space().get_id(),
-        region.get_field_space().get_id(),
-        region.get_tree_id(),
-        req.selected_memory.id);
-      break;
-    }
-  case Mappable::ACQUIRE_MAPPABLE:
-    {
-      log_mapper.warning("mapping failed on acquire");
-      break;
-    }
-  case Mappable::RELEASE_MAPPABLE:
-    {
-      log_mapper.warning("mapping failed on release");
-      break;
+  std::set<FieldID> &additional = active_fields[name];
+  for (std::set<FieldID>::iterator pf_it = req.privilege_fields.begin();
+       pf_it != req.privilege_fields.end(); pf_it++) {
+    FieldID pf = *pf_it;
+    if (additional.find(pf) == additional.end()) {
+      // broadcast and record a new field
+      Realm::Serialization::DynamicBufferSerializer buffer(name.size() + 16);
+      buffer << (int)MAPPER_RECORD_FIELD;
+      buffer << name;
+      buffer << req.privilege_fields;
+      // broadcast_message(buffer.get_buffer(), buffer.bytes_used());
+      additional.insert(pf);
     }
   }
-  assert(0 && "mapping failed");
+  fields.insert(fields.begin(), additional.begin(), additional.end());
 }
 
-static void create_mappers(Machine machine,
-                           HighLevelRuntime *runtime,
-                           const std::set<Processor> &local_procs
-) {
-  for (
-    std::set<Processor>::const_iterator it = local_procs.begin();
-    it != local_procs.end();
-    it++) {
-    runtime->replace_default_mapper(
-      new EbbMapper(machine, runtime, *it), *it
-    );
-  }
+bool EbbMapper::default_policy_select_close_virtual(const MapperContext ctx,
+                                                    const Close &close)
+{
+  return false;
 }
 
-void EbbMapper::handle_message(Processor source,
-                               const void *message, size_t length) {
-  Realm::Serialization::FixedBufferDeserializer buffer(message, length);
+void EbbMapper::handle_message(const MapperContext ctx,
+                               const MapperMessage& message)
+{
+  Realm::Serialization::FixedBufferDeserializer buffer(message.message, message.size);
   int msg_type;
   buffer >> msg_type;
   switch(msg_type) {
@@ -257,6 +182,45 @@ void EbbMapper::handle_message(Processor source,
       printf("Invalid message recieved by mapper\n");
       assert(false);
     }
+  }
+}
+
+LogicalRegion EbbMapper::get_root_region(MapperContext ctx,
+                                            const RegionRequirement &req) {
+  LogicalRegion root;
+  if (req.handle_type == SINGULAR || req.handle_type == REG_PROJECTION) {
+    root = get_root_region(ctx, req.region);
+  } else {
+    assert(req.handle_type == PART_PROJECTION);
+    root = get_root_region(ctx, req.partition);
+  }
+  return root;
+}
+
+LogicalRegion EbbMapper::get_root_region(MapperContext ctx,
+                                         const LogicalRegion &handle) {
+  if (mapper_rt_has_parent_logical_partition(ctx, handle)) {
+    return get_root_region(ctx, mapper_rt_get_parent_logical_partition(ctx, handle));
+  }
+  return handle;
+}
+
+LogicalRegion EbbMapper::get_root_region(MapperContext ctx,
+                                         const LogicalPartition &handle) {
+  return get_root_region(ctx, mapper_rt_get_parent_logical_region(ctx, handle));
+}
+
+static void create_mappers(Machine machine,
+                           Runtime *runtime,
+                           const std::set<Processor> &local_procs
+) {
+  for (
+    std::set<Processor>::const_iterator it = local_procs.begin();
+    it != local_procs.end();
+    it++) {
+    runtime->replace_default_mapper(
+      new EbbMapper(machine, *it, "ebb_mapper"), *it
+    );
   }
 }
 
