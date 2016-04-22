@@ -355,13 +355,20 @@ end
 function Lua_DLD:toTerra()
   local dld = terralib.new(DLD)
   dld:init()
-  dld:settype( self.base_type, self.type_stride,
-               self.type_dims[1], self.type_dims[2] )
+
+  local variant = 1 or (self.dim_size[2] and 2) or (self.dim_size[3] and 3)
+  local settype, setsize, setstride =
+    dld.settype:getdefinitions()[variant],
+    dld.setsize:getdefinitions()[variant],
+    dld.setstride:getdefinitions()[variant]
+
+  settype( dld, self.base_type, self.type_stride,
+                self.type_dims[1], self.type_dims[2] )
   dld:setlocation( self.location )
 
   dld.address = terralib.cast(uint64, self.address)
-  dld:setsize( self.dim_size[1], self.dim_size[2], self.dim_size[3] )
-  dld:setstride( self.dim_stride[1], self.dim_stride[2], self.dim_stride[3] )
+  setsize( dld, self.dim_size[1], self.dim_size[2], self.dim_size[3] )
+  setstride( dld, self.dim_stride[1], self.dim_stride[2], self.dim_stride[3] )
 
   return dld
 end

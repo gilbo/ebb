@@ -27,6 +27,7 @@ devapps/gpu/red_ops.t
 
 local_files
 legion_log
+*logs.tgz
 
 simple_trimesh_diffusion_output
 vega_output

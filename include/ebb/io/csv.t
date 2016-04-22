@@ -30,7 +30,6 @@ local L     = require "ebblib"
 local PN    = require "ebb.lib.pathname"
 
 -------------------------------------------------------------------------------
-
 local loader_cache = {}
 local function get_cached_loader(typ)
   if loader_cache[typ] then return loader_cache[typ] end
@@ -45,7 +44,7 @@ local function get_cached_loader(typ)
   else    assert(false, "unrecognized base type in CSV.Load") end
 
   -- some Terra macro programming
-  local fp = symbol('fp')
+  local fp = symbol(&C.FILE, 'fp')
   -- error check
   local ec = macro(function(test, msg, ...)
     local varargs = {...}
@@ -163,7 +162,7 @@ local function get_cached_dumper(typ, precision)
   else    assert(false, "unrecognized base type in CSV.Dump") end
 
   -- some Terra macro programming
-  local fp = symbol('fp')
+  local fp = symbol(&C.FILE, 'fp')
   -- error check
   local ec = macro(function(test, msg, ...)
     local varargs = {...}

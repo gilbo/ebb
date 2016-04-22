@@ -1,4 +1,3 @@
---DISABLE-ON-LEGION
 -- The MIT License (MIT)
 -- 
 -- Copyright (c) 2015 Stanford University.
@@ -23,10 +22,23 @@
 -- DEALINGS IN THE SOFTWARE.
 import 'ebb'
 local L = require 'ebblib'
+require "tests/test"
 
-local R = L.NewRelation { name="R", size=5 }
+local CSV = require 'ebb.io.csv'
 
-local ebb fail_assert (r : R)
-    L.assert(false)
+local cells = L.NewRelation { dims = {10,10}, name = 'cells' }
+cells:SetPartitions{2,2}
+
+cells:NewField('foo', L.double):Load(0)
+
+local ebb init( c : cells )
+  c.foo = L.double(L.xid(c)) * L.double(L.yid(c))
 end
-R:foreach(fail_assert)
+cells:foreach(init)
+
+-- dump output, diff and remove output
+local tmp_file = "tests/csvexample.gen.csv"
+cells.foo:Dump(CSV.Dump, tmp_file, { precision = 3 })
+local diff_string = 'diff tests/csvexample.ref.csv ' .. tmp_file
+success = os.execute(diff_string)
+os.execute('rm '..tmp_file)

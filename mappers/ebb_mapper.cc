@@ -103,13 +103,22 @@ LogicalRegion EbbMapper::get_root_region(const LogicalPartition &handle) {
 
 void EbbMapper::select_task_options(Task *task) {
   ShimMapper::select_task_options(task);
-  if (!task->regions.empty() && task->regions[0].handle_type == SINGULAR) {
+  if (false && task->tag != 0) {
+    // all_procs here is a safety modulus
+    int proc_num = (task->tag - 1)%all_procs.size();
+    Processor p   = all_procs[proc_num];
+    //printf("Launching Tagged on %llx %lx\n", p.id, task->tag);
+    task->target_proc = p;
+  } else if (!task->regions.empty() &&
+           task->regions[0].handle_type == SINGULAR)
+  {
     Color index = get_logical_region_color(task->regions[0].region);
     int proc_off = (int(index) / n_nodes)%per_node;
     int node_off = int(index) % n_nodes;
+    // all_procs here is a safety modulus
     int proc_num = (node_off*per_node + proc_off)%all_procs.size();
     Processor p   = all_procs[proc_num];
-    //printf("Launching on %llx\n", p.id);
+    //printf("Launching Tagless on %llx %lx\n", p.id, task->tag);
     task->target_proc = p;
   }
 }
