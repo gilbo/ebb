@@ -40,12 +40,6 @@ public:
             const char *mapper_name = NULL);
   virtual Processor default_policy_select_initial_processor(
                                     MapperContext ctx, const Task &task);
-  virtual LogicalRegion default_policy_select_instance_region(
-                                    MapperContext ctx, Memory target_memory,
-                                    const RegionRequirement &req,
-                                    const LayoutConstraintSet &constraints,
-                                    bool force_new_instances,
-                                    bool meets_constraints);
   virtual void default_policy_select_constraint_fields(
                                     MapperContext ctx,
                                     const RegionRequirement &req,
@@ -117,15 +111,6 @@ Processor EbbMapper::default_policy_select_initial_processor(
     return p;
   }
   return DefaultMapper::default_policy_select_initial_processor(ctx, task);
-}
-
-LogicalRegion EbbMapper::default_policy_select_instance_region(
-                                    MapperContext ctx, Memory target_memory,
-                                    const RegionRequirement &req,
-                                    const LayoutConstraintSet &constraints,
-                                    bool force_new_instances, 
-                                    bool meets_constraints) {
-  return req.region;
 }
 
 void EbbMapper::default_policy_select_constraint_fields(
