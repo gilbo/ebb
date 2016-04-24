@@ -1,21 +1,27 @@
--- Test partitioning on 2d grid.
-
-import "ebb"
-local L = require "ebblib"
-
---[[
-print("***************************************************")
-print("**  This is an Ebb application intended to test  **")
-print("**  partitioning over 2d grid relations          **")
-print("***************************************************")
-]]
-
--- This example is intended to check for:
---   - correctly setting read/ write privileges for fields
---   - partitioning write into disjoint regions
---   - correctly reading globals/ constants
-local do_global_reduction = true
-local do_field_reduction  = false
+-- The MIT License (MIT)
+-- 
+-- Copyright (c) 2015 Stanford University.
+-- All rights reserved.
+-- 
+-- Permission is hereby granted, free of charge, to any person obtaining a
+-- copy of this software and associated documentation files (the "Software"),
+-- to deal in the Software without restriction, including without limitation
+-- the rights to use, copy, modify, merge, publish, distribute, sublicense,
+-- and/or sell copies of the Software, and to permit persons to whom the
+-- Software is furnished to do so, subject to the following conditions:
+-- 
+-- The above copyright notice and this permission notice shall be included
+-- in all copies or substantial portions of the Software.
+-- 
+-- THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+-- IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+-- FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+-- AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+-- LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING 
+-- FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+-- DEALINGS IN THE SOFTWARE.
+import 'ebb'
+local L = require 'ebblib'
 
 -- includes
 local Grid  = require 'ebb.domains.grid'
@@ -43,17 +49,13 @@ V:SetPartitions {2,3}
 C:NewField('value', L.double)
 V:NewField('value', L.double)
 
--- globals and constants
-local d = L.Global(L.double, 0.9)
-local sum_val = L.Global(L.double, 0)
-
 local ebb InitCellVal(c)
   var center = c.center
   c.value = center[0]*0.1 * center[1] + 0.1
 end
 
 local ebb InitVertexVal(v)
-  v.value = L.double(L.xid(v) + L.yid(v)) * 100
+  v.value = L.double(L.xid(v) + L.yid(v))
 end
 
 -- invoke initialization
@@ -61,30 +63,19 @@ C:foreach(InitCellVal)
 V:foreach(InitVertexVal)
 
 -------------------------------------------------------------------------------
---  Diffuse values                                                           --
+--  Read values                                                              --
 -------------------------------------------------------------------------------
 
-local ebb ScatterToVerts(c)
-  c.vertex(-1,  1).value += d * c.value
-  c.vertex( 1, -1).value += d * c.value
-  c.vertex(-1, -1).value += d * c.value
-  c.vertex( 1,  1).value += d * c.value
-end
-
 local ebb ScaleVerts(v)
-  v.value *= 0.2
+  v.value *= 0.98
 end
 
 local ebb GatherAtCells(c)
   c.value += c.vertex(-1,  1).value + c.vertex(1, -1).value
   c.value += c.vertex(-1, -1).value + c.vertex(1,  1).value
-  c.value *= (0.2 / d) * 0.95
+  c.value *= 1
   var center = c.center
   c.value += 0.05 * center[0]*0.1 * center[1]
-end
-
-local ebb SumValue(c)
-  sum_val += c.value
 end
 
 local ebb RoundValues(c)
@@ -93,13 +84,10 @@ end
 
 -- loop/ main
 for iter = 1, 100 do
-    sum_val:set(0)
-    C:foreach(ScatterToVerts)
     V:foreach(ScaleVerts)
     C:foreach(GatherAtCells)
     C:foreach(RoundValues)
     V:foreach(RoundValues)
-    C:foreach(SumValue)
 end
 
 function VerifyDump(field, ref_file)
@@ -111,6 +99,7 @@ function VerifyDump(field, ref_file)
   L.assert(success)
 end
 
+
 -- dump output, diff and remove output
-VerifyDump(C.value, "tests/grid_uncentered_accesses_cells.ref.csv")
-VerifyDump(V.value, "tests/grid_uncentered_accesses_verts.ref.csv")
+VerifyDump(C.value, "tests/grid_partition_uncentered_reads_cells.ref.csv")
+VerifyDump(V.value, "tests/grid_partition_uncentered_reads_verts.ref.csv")

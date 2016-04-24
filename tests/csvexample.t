@@ -42,3 +42,4 @@ cells.foo:Dump(CSV.Dump, tmp_file, { precision = 3 })
 local diff_string = 'diff tests/csvexample.ref.csv ' .. tmp_file
 success = os.execute(diff_string)
 os.execute('rm '..tmp_file)
+L.assert(success)
