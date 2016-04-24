@@ -76,6 +76,18 @@ end
 enum_c_define = enum_c_define .. '}\n'
 
 
+-- system timer
+local sys_time = [[
+#include <sys/time.h>
+double get_wall_time(){
+  struct timeval time;
+  if (gettimeofday(&time,NULL)){
+    return 0;
+  }
+  return (double)time.tv_sec + (double)time.tv_usec * .000001;
+}
+]]
+
 
 -- Load the blob of C defines
 local c_blob = terralib.includecstring(
@@ -99,7 +111,8 @@ FILE * __sew_get__stdin()  { return stdin; }
 FILE * __sew_get__stderr() { return stderr; }
 
 ]]..
-enum_c_define
+enum_c_define ..
+sys_time
 )
 
 rawset(c_blob, 'stdout', c_blob.__sew_get__stdout())
