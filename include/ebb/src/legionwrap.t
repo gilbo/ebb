@@ -182,13 +182,17 @@ function LW.NewRegionReqs(params)
   local relation = params.relation
   local offset   = params.offset
   local ids = terralib.newlist()
-  for i = 1, params.num_total do
+  local num_total = #params.region_idx
+  --for i = 1, params.num_total do
+  for i = 1, #params.region_idx do
     ids[i] = offset + i - 1
   end
   local reg_req = setmetatable({
     log_reg_handle  = relation._logical_region_wrapper:get_handle(),
     num_group       = params.num_group,   -- can be zero
-    num_total       = params.num_total,
+    --num_total       = params.num_total,
+    num_total       = #params.region_idx,
+    region_idx      = terralib.newlist(params.region_idx),
     offset          = params.offset,      -- can be zero 
     privilege       = params.privilege,
     coherence       = params.coherence,
@@ -213,6 +217,9 @@ function RegionReqs:TotalNum()
   return self.num_total
 end
 
+function RegionReqs:_TEMPORARY_GetRegionsToUse()
+  return self.region_idx
+end
 
 -------------------------------------------------------------------------------
 --[[  Legion Tasks                                                         ]]--
@@ -356,13 +363,12 @@ function TaskLauncher:AddRegionReqs(reqs, regs)
   if use_partitioning then
     -- using partitioning
     assert(regs ~= nil)
-    assert(reqs:TotalNum() == #regs,
-      "Recorded " .. tostring(reqs:TotalNum()) .. " requirements vs got " ..
-      tostring(#regs) .. " requirements.")
   end
   local req_ids = reqs:GetIds()
+  local regions_to_use = reqs:_TEMPORARY_GetRegionsToUse()
   for i, req_id in ipairs(req_ids)  do
-    local partn_or_reg = regs and regs[i]
+    local rid          = regions_to_use[i]
+    local partn_or_reg = regs and regs[rid]
     local handle       = partn_or_reg and partn_or_reg:get_handle() or
                          reqs.log_reg_handle
     -- Assemble the call
@@ -1406,6 +1412,7 @@ local function _TEMPORARY_LaunchEmptyLegionTask(args)
   local reg_reqs = LW.NewRegionReqs {
     num_group       = 0,
     num_total       = 1,
+    region_idx      = { 1 },
     offset          = 0,
     relation        = args.relation,
     privilege       = LW.READ_WRITE,

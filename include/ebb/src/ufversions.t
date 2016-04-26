@@ -71,6 +71,27 @@ local function compute_num_regions(relation, is_centered)
   end
 end
 
+--[[
+Assumes that indexing with ghost regions is as follows:
+[ 1 2 3 ] [ 10 11 12 ] [ 19 20 21 ]
+[ 4 5 6 ] [ 13 14 15 ] [ 22 23 24 ]
+[ 7 8 9 ] [ 16 17 18 ] [ 25 26 27 ]
+--]]
+-- returns which regions to use
+local function _TEMPORARY_regions_to_use(relation, is_centered)
+  assert((not use_partitioning) or relation:isGrid(),
+         "ERROR: Partitioning on non-grid relations is not supported.")
+  if is_centered or not use_partitioning then return { 1 } end
+  local ndims = #relation:Dims()
+  if ndims == 3 then
+    return { 5, 11, 13, 14, 15, 17, 23 } -- 1 indexed elseif ndims == 2 then
+  elseif ndims == 2 then
+      return { 2, 4, 5, 6, 8 }
+  else
+    error("Expected 2D or 3D grid when using Legion and partitioning.")
+  end
+end
+
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
 --[[ Terra Signature                                                       ]]--
@@ -933,6 +954,7 @@ function(args)
   local regreqs = LW.NewRegionReqs {
     num_group       = args.build_data.num_groups,
     num_total       = compute_num_regions(args.relation, args.centered),
+    region_idx      = _TEMPORARY_regions_to_use(args.relation, args.centered),
     offset          = args.build_data.num_total,
     relation        = args.relation,
     privilege       = args.privilege,
@@ -964,6 +986,7 @@ local function get_primary_regreqs(build_data, relation)
   local regreqs = LW.NewRegionReqs {
     num_group       = 0,
     num_total       = 1,
+    region_idx      = { 1 },
     offset          = 0,
     relation        = relation,
     privilege       = LW.NO_ACCESS,
@@ -1001,7 +1024,7 @@ local function BuildLegionSignature(params)
   }
   function build_data:record_reg_reqs(reg_req_group)
     self.reg_req_list[self.num_groups] = reg_req_group
-    self.num_total    = self.num_total + reg_req_group.num_total
+    self.num_total    = self.num_total + reg_req_group:TotalNum()
     self.num_groups   = self.num_groups + 1
   end
 
@@ -1144,7 +1167,7 @@ function UFVersion:_WrapIntoLegionTask(argsym, basic_launcher)
   -- execute the basic launcher multiple times if given a weird
   -- iteration construct induced by legion
   local function index_iterator_wrap(argsym, task_args)
-    local pnum = ufv._legion_signature:getPrimaryRegReqs():GetIds()[0]
+    local pnum = ufv._legion_signature:getPrimaryRegReqs():GetIds()[1]
     return quote
       var lg_index_space = LW.legion_physical_region_get_logical_region(
           task_args.regions[pnum]
@@ -1266,11 +1289,11 @@ function UFVersion:_GenerateUnpackLegionTaskArgs(argsym, task_args, gredptr)
   -- UNPACK FIELDS
   local unpack_fields_code = newlist()
   for field, phase in pairs(ufv._field_use) do
-    local relation      = field:Relation()
-    local n_reldim      = #relation:Dims()
-    local req_ids       = ufv._legion_signature:getRegReqs(field):GetIds()
-    local total_regions = compute_num_regions(relation, phase:isCentered())
-    assert(total_regions == #req_ids)
+    local relation       = field:Relation()
+    local n_reldim       = #relation:Dims()
+    local reqs           = ufv._legion_signature:getRegReqs(field)
+    local req_ids        = reqs:GetIds()
+    local req_regions_to_use = reqs:_TEMPORARY_GetRegionsToUse()
     for i, ri in ipairs(req_ids) do
       local rtemp         = region_temporaries[ri]
       local physical_reg  = rtemp.physical_reg
@@ -1287,6 +1310,8 @@ function UFVersion:_GenerateUnpackLegionTaskArgs(argsym, task_args, gredptr)
           LW.legion_physical_region_get_field_accessor_generic(physical_reg,
                                                                field._fid)
       end) end
+
+      local req_reg_to_use = req_regions_to_use[i]
       -- structured
       if relation:isGrid() then unpack_fields_code:insert(quote
         var subrect : LW.LegionRect[n_reldim]
@@ -1299,8 +1324,9 @@ function UFVersion:_GenerateUnpackLegionTaskArgs(argsym, task_args, gredptr)
         --C.printf("Accessor %d is field %s, region %d, has bounds %d to %d, %d to %d\n",
         --  [i-1], [field:Name()], ri,
         --  [rect].lo.x[0], [rect].hi.x[0], [rect].lo.x[1], [rect].hi.x[1])
-        [ ufv._terra_signature.terraptr(argsym, field) ][i-1] =
+        [ ufv._terra_signature.terraptr(argsym, field) ][req_reg_to_use-1] =
           [ LW.FieldAccessor[n_reldim] ] { base, strides, f_access }
+        --C.printf("Unpacking %s %i\n", [field:Name()], req_reg_to_use-1)
       end)
       -- unstructured
       else unpack_fields_code:insert(quote
@@ -1310,7 +1336,7 @@ function UFVersion:_GenerateUnpackLegionTaskArgs(argsym, task_args, gredptr)
         C.assert(LW.legion_accessor_generic_get_soa_parameters(
           f_access, [&&opaque](&base), &stride_val ))
         strides[0].offset = stride_val
-        [ ufv._terra_signature.terraptr(argsym, field) ][i-1] =
+        [ ufv._terra_signature.terraptr(argsym, field) ][req_reg_to_use-1] =
           [ LW.FieldAccessor[1] ] { base, strides, f_access }
       end) end  -- quote, if-else
     end  -- for over all region reqs in a group
@@ -1430,8 +1456,9 @@ function UFVersion:_CleanLegionTask(argsym)
   local stmts = newlist()
   for field, phase in pairs(self._field_use) do
     local relation      = field:Relation()
-    local total_regions = compute_num_regions(relation, phase:isCentered())
-    for i = 1, total_regions do
+    local regions_used  =
+      _TEMPORARY_regions_to_use(relation, phase:isCentered())
+    for _,i in ipairs(regions_used) do
       stmts:insert(quote LW.legion_accessor_generic_destroy(
         [ self._terra_signature.terraptr(argsym, field) ][i-1].handle
       ) end)
