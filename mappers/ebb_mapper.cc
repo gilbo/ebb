@@ -61,6 +61,10 @@ public:
             const char *mapper_name = NULL);
   virtual Processor default_policy_select_initial_processor(
                                     MapperContext ctx, const Task &task);
+  virtual void default_policy_select_target_processors(
+                                    MapperContext ctx,
+                                    const Task &task,
+                                    std::vector<Processor> &target_procs);
   virtual void default_policy_select_constraint_fields(
                                     MapperContext ctx,
                                     const RegionRequirement &req,
@@ -138,6 +142,14 @@ Processor EbbMapper::default_policy_select_initial_processor(
     return p;
   }
   return DefaultMapper::default_policy_select_initial_processor(ctx, task);
+}
+
+void EbbMapper::default_policy_select_target_processors(
+                                    MapperContext ctx,
+                                    const Task &task,
+                                    std::vector<Processor> &target_procs)
+{
+  target_procs.push_back(task.target_proc);
 }
 
 void EbbMapper::default_policy_select_constraint_fields(
