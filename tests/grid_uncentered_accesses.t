@@ -53,7 +53,7 @@ local ebb InitCellVal(c)
 end
 
 local ebb InitVertexVal(v)
-  v.value = L.double(L.xid(v) + L.yid(v)) * 100
+  v.value = L.double(L.xid(v) + L.yid(v))
 end
 
 -- invoke initialization
