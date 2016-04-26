@@ -599,6 +599,8 @@ function LogicalRegion:AllocateField(typ)
           'issues in field allocation.  Fixing it 100% will probably '..
           'require Mike making changes in the Legion runtime.\n')
   end
+  LW.ebb_mapper_add_field(legion_env.runtime, legion_env.ctx,
+                          self.handle, fid)
   return fid
 end
 
@@ -609,6 +611,17 @@ end
 function LogicalRegion:AttachNameToField(fid, name)
   LW.legion_field_id_attach_name(legion_env.runtime, self.fs, fid,
                                  name, true)
+end
+
+function LogicalRegion:InitConstField(fid, cdata_ptr, cdata_size)
+  LW.legion_runtime_fill_field(legion_env.runtime, legion_env.ctx,
+    self.handle,
+    self.handle, --parent
+    fid,
+    -- void * and size_t respectively for next two args
+    cdata_ptr, cdata_size,
+    LW.legion_predicate_true()
+  )
 end
 
 local CreateGridIndexSpace = {}

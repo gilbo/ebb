@@ -904,38 +904,47 @@ function Relation:_INTERNAL_NewSubsetFromLuaFunction (name, predicate)
   rawset(self, name, subset)
   self._subsets:insert(subset)
 
-  -- NOW WE DECIDE how to encode the subset
-  -- we'll try building a mask and decide between using a mask or index
-  local SUBSET_CUTOFF_FRAC = 0.1
-  local SUBSET_CUTOFF = SUBSET_CUTOFF_FRAC * self:Size()
-
-  local boolmask  = CreateField(self, name..'_subset_boolmask', boolT)
-  local index_tbl = {}
-  local subset_size = 0
-  local dims = self:Dims()
-  boolmask:_INTERNAL_LoadLuaPerElemFunction(function(xi,yi,zi)
-    local val = predicate(xi,yi,zi)
-    local ids = {xi,yi,zi}
-    if val then
-      table.insert(index_tbl, ids)
-      subset_size = subset_size + 1
-    end
-    return val
-  end)
-
-  if use_legion or subset_size > SUBSET_CUTOFF or self:isGrid() then
-  -- USE MASK
+  -- simpler case using only boolmask for Legion that will not
+  -- explode Lua memory when trying to scale up.
+  if use_legion then
+    local boolmask  = CreateField(self, name..'_subset_boolmask', boolT)
+    boolmask:_INTERNAL_LoadLuaPerElemFunction(predicate)
     rawset(subset, '_boolmask', boolmask)
   else
-  -- USE INDEX
-    rawset(subset, '_index', Index.New{
-      owner=self,
-      terra_type = keyT(self):terratype(),
-      ndims=#self:Dims(),
-      name=name..'_subset_index',
-      data=index_tbl
-    })
-    boolmask:_INTERNAL_ClearData() -- free memory
+
+    -- NOW WE DECIDE how to encode the subset
+    -- we'll try building a mask and decide between using a mask or index
+    local SUBSET_CUTOFF_FRAC = 0.1
+    local SUBSET_CUTOFF = SUBSET_CUTOFF_FRAC * self:Size()
+
+    local boolmask  = CreateField(self, name..'_subset_boolmask', boolT)
+    local index_tbl = {}
+    local subset_size = 0
+    local dims = self:Dims()
+    boolmask:_INTERNAL_LoadLuaPerElemFunction(function(xi,yi,zi)
+      local val = predicate(xi,yi,zi)
+      local ids = {xi,yi,zi}
+      if val then
+        table.insert(index_tbl, ids)
+        subset_size = subset_size + 1
+      end
+      return val
+    end)
+
+    if subset_size > SUBSET_CUTOFF or self:isGrid() then
+    -- USE MASK
+      rawset(subset, '_boolmask', boolmask)
+    else
+    -- USE INDEX
+      rawset(subset, '_index', Index.New{
+        owner=self,
+        terra_type = keyT(self):terratype(),
+        ndims=#self:Dims(),
+        name=name..'_subset_index',
+        data=index_tbl
+      })
+      boolmask:_INTERNAL_ClearData() -- free memory
+    end
   end
 
   return subset
@@ -1358,9 +1367,19 @@ end
 
 function Field:_INTERNAL_LoadConstant(c)
   -- TODO: Convert implementation to Terra
-  self:_INTERNAL_LoadLuaPerElemFunction(function()
-    return c
-  end)
+  if use_legion then
+    local typ     = self:Type()
+    local ttyp    = typ:terratype()
+    local memsize = terralib.sizeof(ttyp)
+    local memval  = terralib.cast(&ttyp, C.malloc(memsize))
+    memval[0]     = T.luaToEbbVal( c, typ )
+    local lreg    = self:Relation()._logical_region_wrapper
+    lreg:InitConstField(self._fid, memval, memsize)
+  else
+    self:_INTERNAL_LoadLuaPerElemFunction(function()
+      return c
+    end)
+  end
 end
 
 
@@ -1553,9 +1572,13 @@ function Field:Load(arg, ...)
 
   -- TODO(Chinmayee): deprecate this
   if type(arg) == 'function' then
+    --print("LOAD FIELD FROM LUA FUNCTION")
+    --print(debug.traceback())
     return self:_INTERNAL_LoadLuaPerElemFunction(arg)
 
   elseif isloader(arg) then
+    --print("LOAD FIELD FROM LOADER")
+    --print(debug.traceback())
     return arg._func(self, ...)
 
   elseif isdumper(arg) then
@@ -1572,10 +1595,14 @@ function Field:Load(arg, ...)
   elseif  type(arg) == 'table' then
     -- terra function
     if (terralib.isfunction(arg)) then
+      --print("LOAD FIELD FROM TERRA FUNCTION")
+      --print(debug.traceback())
       return self:_INTERNAL_LoadTerraBulkFunction(arg, ...)
 
     -- field
     elseif is_field(arg) then
+      --print("LOAD FIELD FROM FIELD")
+      --print(debug.traceback())
       if arg._owner ~= self._owner then
         error('Can only load from another field on the same relation', 2)
       end
@@ -1593,6 +1620,8 @@ function Field:Load(arg, ...)
       -- fall-through to constant loading
 
     else
+      --print("LOAD FIELD FROM LUA LIST")
+      --print(debug.traceback())
       -- default tables to try loading as Lua lists
       -- TODO: TYPECHECKING HERE
       argcheck_list_dims_and_type(arg, self._owner:Dims(), self._type, 2)
@@ -1620,6 +1649,8 @@ function Relation:Load(fieldargs, arg, ...)
   -- No support for Lua functions here
   -- Currently no support for loaders, but that should change
   if terralib.isfunction(arg) then
+    --print("LOAD RELATION FROM TERRA FUNCTION")
+    --print(debug.traceback())
     return self:_INTERNAL_LoadTerraBulkFunction(fields, arg, ...)
   end
 

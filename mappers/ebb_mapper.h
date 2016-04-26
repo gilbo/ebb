@@ -22,6 +22,11 @@ extern "C" {
 
 #include "legion_c.h"
 
+void ebb_mapper_add_field(legion_runtime_t runtime,
+                          legion_context_t ctx,
+                          legion_logical_region_t region,
+                          legion_field_id_t fid);
+
 void register_ebb_mappers();
 
 #ifdef __cplusplus

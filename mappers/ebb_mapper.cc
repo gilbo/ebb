@@ -18,12 +18,16 @@
 #include <set>
 
 #include "default_mapper.h"
+#include "legion_c_util.h"
 #include "serialize.h"
+#include "utilities.h"
 
 #include "ebb_mapper.h"
 
 using namespace Legion;
 using namespace Legion::Mapping;
+
+using LegionRuntime::ImmovableLock;
 
 // legion logger
 static LegionRuntime::Logger::Category log_mapper("mapper");
@@ -32,6 +36,23 @@ static LegionRuntime::Logger::Category log_mapper("mapper");
 enum MapperMessageType {
   MAPPER_RECORD_FIELD,
   MAPPER_TOTAL_MESSAGES
+};
+
+class AutoImmovableLock {
+public:
+  AutoImmovableLock(ImmovableLock& _lock)
+    : lock(_lock)
+  {
+    lock.lock();
+  }
+
+  ~AutoImmovableLock(void)
+  {
+    lock.unlock();
+  }
+
+protected:
+  ImmovableLock& lock;
 };
 
 class EbbMapper : public DefaultMapper {
@@ -48,9 +69,14 @@ public:
                                                    const Close &close);
   virtual void handle_message(const MapperContext ctx,
                               const MapperMessage& message);
+
+  void add_field(FieldSpace fs, FieldID fid);
 private:
   // active fields for a logical region
-  std::map<std::string, std::set<FieldID> >   active_fields;
+  std::map<FieldSpace, std::set<FieldID> >   active_fields;
+  ImmovableLock active_fields_lock;
+
+  // cached values from the machine model
   std::vector<Processor>                      all_procs;
   int                                         n_nodes;
   int                                         per_node;
@@ -67,6 +93,7 @@ private:
 EbbMapper::EbbMapper(Machine machine, Processor local,
                      const char *mapper_name)
   : DefaultMapper(machine, local, mapper_name)
+  , active_fields_lock(true)
 {
   Machine::ProcessorQuery query_all_procs =
         Machine::ProcessorQuery(machine).only_kind(Processor::LOC_PROC);
@@ -117,26 +144,11 @@ void EbbMapper::default_policy_select_constraint_fields(
                                     MapperContext ctx,
                                     const RegionRequirement &req,
                                     std::vector<FieldID> &fields) {
-  LogicalRegion root = get_root_region(ctx, req);
-  const char *name_c;
-  mapper_rt_retrieve_name(ctx, root, name_c);
-  std::string name(name_c);
+  FieldSpace fs = req.parent.get_field_space();
 
-  std::set<FieldID> &additional = active_fields[name];
-  for (std::set<FieldID>::iterator pf_it = req.privilege_fields.begin();
-       pf_it != req.privilege_fields.end(); pf_it++) {
-    FieldID pf = *pf_it;
-    if (additional.find(pf) == additional.end()) {
-      // broadcast and record a new field
-      Realm::Serialization::DynamicBufferSerializer buffer(name.size() + 16);
-      buffer << (int)MAPPER_RECORD_FIELD;
-      buffer << name;
-      buffer << req.privilege_fields;
-      // broadcast_message(buffer.get_buffer(), buffer.bytes_used());
-      additional.insert(pf);
-    }
-  }
-  fields.insert(fields.begin(), additional.begin(), additional.end());
+  AutoImmovableLock guard(active_fields_lock);
+  std::set<FieldID> &active = active_fields[fs];
+  fields.insert(fields.begin(), active.begin(), active.end());
 }
 
 bool EbbMapper::default_policy_select_close_virtual(const MapperContext ctx,
@@ -152,21 +164,36 @@ void EbbMapper::handle_message(const MapperContext ctx,
   int msg_type;
   buffer >> msg_type;
   switch(msg_type) {
-    case MAPPER_RECORD_FIELD:
-    {
-      std::string name;
-      buffer >> name;
-      std::set<FieldID> privilege_fields;
-      buffer >> privilege_fields;
-      active_fields[name].insert(privilege_fields.begin(),
-                                 privilege_fields.end());
-      break;
-    }
+    //case MAPPER_RECORD_FIELD:
+    //{
+    //  FieldSpace fs;
+    //  buffer >> fs;
+    //  FieldID field;
+    //  buffer >> field;
+    //  AutoImmovableLock guard(active_fields_lock);
+    //  active_fields[fs].insert(field);
+    //  break;
+    //}
     default:
     {
       printf("Invalid message recieved by mapper\n");
       assert(false);
     }
+  }
+}
+
+void EbbMapper::add_field(FieldSpace fs, FieldID fid)
+{
+  AutoImmovableLock guard(active_fields_lock);
+  std::set<FieldID> &active = active_fields[fs];
+  if (active.find(fid) == active.end()) {
+    // broadcast and record a new field
+    //Realm::Serialization::DynamicBufferSerializer buffer(sizeof(FieldSpace) + sizeof(FieldID));
+    //buffer << (int)MAPPER_RECORD_FIELD;
+    //buffer << fs;
+    //buffer << fid;
+    // broadcast_message(buffer.get_buffer(), buffer.bytes_used());
+    active.insert(fid);
   }
 }
 
@@ -207,6 +234,18 @@ static void create_mappers(Machine machine,
       new EbbMapper(machine, *it, "ebb_mapper"), *it
     );
   }
+}
+
+void ebb_mapper_add_field(legion_runtime_t runtime_,
+                          legion_context_t ctx_,
+                          legion_logical_region_t region_,
+                          legion_field_id_t fid) {
+  Runtime *runtime = CObjectWrapper::unwrap(runtime_);
+  Context ctx = CObjectWrapper::unwrap(ctx_)->context();
+  LogicalRegion region = CObjectWrapper::unwrap(region_);
+
+  EbbMapper *mapper = dynamic_cast<EbbMapper *>(runtime->get_mapper(ctx, 0));
+  mapper->add_field(region.get_field_space(), fid);
 }
 
 void register_ebb_mappers() {
