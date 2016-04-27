@@ -26,6 +26,7 @@
 
 local ffi = require 'ffi'
 
+local use_gpu = rawget(_G,'EBB_USE_GPU_SIGNAL')
 
 local enum_list = {
   {str='SEEK_SET',ctype='int',ttype=int},
@@ -46,7 +47,7 @@ local enum_list = {
 
 -- If we've got CUDA available
 local cuda_include = ""
-if terralib.cudacompile then
+if use_gpu then
   terralib.includepath = terralib.includepath..";/usr/local/cuda/include"
   cuda_include = [[
   #include "cuda_runtime.h"

@@ -23,6 +23,8 @@
 local B = {}
 package.loaded["ebb.src.builtins"] = B
 
+local use_gpu = rawget(_G,'EBB_USE_GPU_SIGNAL')
+
 local Pre = require "ebb.src.prelude"
 local T   = require "ebb.src.types"
 local C   = require "ebb.src.c"
@@ -392,7 +394,7 @@ end
 -- NADA FOR NOW
 local gpuAssert = terra(test : bool, file : rawstring, line : int) end
 
-if terralib.cudacompile then
+if use_gpu then
     gpuAssert = terra(test : bool, file : rawstring, line : int)
         if not test then
             G.printf("%s:%d: assertion failed!\n", file, line)

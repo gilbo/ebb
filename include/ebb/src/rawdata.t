@@ -27,6 +27,8 @@ local Raw = {}
 package.loaded["ebb.src.rawdata"] = Raw
 
 
+local use_gpu = rawget(_G,'EBB_USE_GPU_SIGNAL')
+
 local C   = require "ebb.src.c"
 local G   = require "ebb.src.gpu_util"
 local Pre = require "ebb.src.prelude"
@@ -113,7 +115,7 @@ local cpu_gpu_copy = gpu_allocate
 local gpu_cpu_copy = gpu_allocate
 local gpu_gpu_copy = gpu_allocate
 
-if terralib.cudacompile then
+if use_gpu then
   gpu_allocate = function(array)
     return terralib.cast(&array._type,
                          G.malloc(array._size * terralib.sizeof(array._type)))

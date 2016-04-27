@@ -25,7 +25,8 @@ local GPU = {}
 package.loaded['ebb.src.gpu_util'] = GPU
 local C   = require 'ebb.src.c'
 
-if not terralib.cudacompile then return end
+local use_gpu = rawget(_G,'EBB_USE_GPU_SIGNAL')
+if not use_gpu then return end
 
 local WARPSIZE = 32
 
