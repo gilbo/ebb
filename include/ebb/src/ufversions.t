@@ -1024,7 +1024,7 @@ local function BuildLegionSignature(params)
   }
   function build_data:record_reg_reqs(reg_req_group)
     self.reg_req_list[self.num_groups] = reg_req_group
-    self.num_total    = self.num_total + reg_req_group.num_total
+    self.num_total    = self.num_total + reg_req_group:TotalNum()
     self.num_groups   = self.num_groups + 1
   end
 
