@@ -25,6 +25,8 @@
 
 local C     = require "ebb.src.c"
 
+local use_gpu = rawget(_G,'EBB_USE_GPU_SIGNAL')
+
 -- Check that Legion library is updated and built correctly so that dynamic
 -- task registration is available.
 local dlfcn = terralib.includec("dlfcn.h")
@@ -110,7 +112,7 @@ table.insert(legion_args, tostring(util_cpus))
 -- cpu memory
 table.insert(legion_args, "-ll:csize")
 table.insert(legion_args, "8000") -- MB
-if terralib.cudacompile then
+if use_gpu then
   -- # of gpus
   table.insert(legion_args, "-ll:gpu")
   table.insert(legion_args, tostring(num_gpus))
