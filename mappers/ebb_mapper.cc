@@ -61,6 +61,16 @@ public:
             const char *mapper_name = NULL);
   virtual Processor default_policy_select_initial_processor(
                                     MapperContext ctx, const Task &task);
+  virtual void default_policy_select_target_processors(
+                                    MapperContext ctx,
+                                    const Task &task,
+                                    std::vector<Processor> &target_procs);
+  virtual LogicalRegion default_policy_select_instance_region(
+                                    MapperContext ctx, Memory target_memory,
+                                    const RegionRequirement &req,
+                                    const LayoutConstraintSet &constraints,
+                                    bool force_new_instances,
+                                    bool meets_constraints);
   virtual void default_policy_select_constraint_fields(
                                     MapperContext ctx,
                                     const RegionRequirement &req,
@@ -138,6 +148,38 @@ Processor EbbMapper::default_policy_select_initial_processor(
     return p;
   }
   return DefaultMapper::default_policy_select_initial_processor(ctx, task);
+}
+
+void EbbMapper::default_policy_select_target_processors(
+                                    MapperContext ctx,
+                                    const Task &task,
+                                    std::vector<Processor> &target_procs)
+{
+  target_procs.push_back(task.target_proc);
+}
+
+LogicalRegion EbbMapper::default_policy_select_instance_region(
+                                    MapperContext ctx, Memory target_memory,
+                                    const RegionRequirement &req,
+                                    const LayoutConstraintSet &constraints,
+                                    bool force_new_instances,
+                                    bool meets_constraints) {
+  // One one node, build a large instance; otherwise build smaller instances.
+  LogicalRegion result = req.region;
+  if (!meets_constraints || (req.privilege == REDUCE))
+    return result;
+  if (total_nodes == 1)
+  {
+    while (mapper_rt_has_parent_logical_partition(ctx, result))
+    {
+      LogicalPartition parent =
+        mapper_rt_get_parent_logical_partition(ctx, result);
+      result = mapper_rt_get_parent_logical_region(ctx, parent);
+    }
+    return result;
+  }
+  else
+    return result;
 }
 
 void EbbMapper::default_policy_select_constraint_fields(

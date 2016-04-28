@@ -20,6 +20,7 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING 
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -49,8 +50,6 @@
 #include <libgen.h>
 #endif
 #include "terra.h"
-
-#define ADDITIONAL_ARG_LEN 100
 
 struct ebb_Options {
   int uselegion;
@@ -304,7 +303,7 @@ int main(int argc, char ** argv) {
 
     ebb_Options ebboptions;
     memset(&ebboptions, 0, sizeof(ebb_Options));
-    char additional_args[ADDITIONAL_ARG_LEN] = "";
+    char additional_args[1] = "";
     ebboptions.additional = additional_args;
     
     bool interactive = false;
@@ -420,7 +419,9 @@ void parse_args(
                 break;
             case 'a':
               if (optarg) {
-                    strncpy(ebboptions->additional, optarg, ADDITIONAL_ARG_LEN);
+                    // Just leak this memory, it will outlive the program anyway.
+                    ebboptions->additional = strdup(optarg);
+                    assert(ebboptions->additional != NULL);
                 }
                 break;
             case ':':
