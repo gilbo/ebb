@@ -108,7 +108,7 @@ function VerifyDump(field, ref_file)
   local diff_string = 'diff ' .. ref_file .. ' ' .. tmp_file
   local success = os.execute(diff_string)
   os.execute('rm ' .. tmp_file)
-  L.assert(success)
+  L.assert(success == 0)
 end
 
 -- dump output, diff and remove output
