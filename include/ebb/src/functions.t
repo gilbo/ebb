@@ -95,6 +95,15 @@ function F.NewFunction(func_ast, luaenv)
   return ufunc
 end
 
+function Function:setname(name)
+  if type(name) ~= 'string' then error('expected string argument', 2) end
+  if self._typed_at_least_once then
+    error('cannot re-name a function after it has been compiled once', 2)
+  end
+  self._name = name
+  self._decl_ast.id = name
+end
+
 local ufunc_version_id = 1
 function F.NewUFVersion(ufunc, signature)
   local version = setmetatable({
@@ -349,6 +358,7 @@ local function get_func_call_params_from_args(...)
                                else return {} end
 end
 function Function:_Get_Type_Version_Table(calldepth, relset, ...)
+  self._typed_at_least_once = true
   if not (R.is_subset(relset) or R.is_relation(relset)) then
     error('Functions must be executed over a relation or subset, but '..
           'argument was neither: '..tostring(relset), calldepth)
