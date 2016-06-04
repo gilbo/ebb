@@ -51,9 +51,13 @@
 #endif
 #include "terra.h"
 
+#define STR_EXPAND(tok) #tok
+#define STR(tok) STR_EXPAND(tok)
+
 struct ebb_Options {
   int uselegion;
   int usegpu;
+  int useexp;
   int debug;
   int legionspy;
   int legionprof;
@@ -189,10 +193,35 @@ void setupebb(lua_State * L, ebb_Options * ebboptions) {
 
     // Make sure we can find the Terra files
     snprintf(buffer, bufsize,
-      "package.terrapath = package.terrapath..';%s/../include/?.t;'",
+      "package.terrapath = package.terrapath..';"
+    #ifdef E2_DIR
+      STR(E2_DIR) "/lua/?.t;"
+    #endif
+      "%s/../include/?.t;'",
       bindir);
     if (terra_dostring(L, buffer))
         doerror(L);
+
+    if (ebboptions->useexp) {
+      #ifndef E2_DIR
+        fprintf(stderr, "Build Variables Missing; "
+                        "Cannot run experimental mode\n");
+      #else
+        snprintf(buffer, bufsize,
+          "terralib.includepath = terralib.includepath..';"
+          "%s/release_gasnet/include;"
+          "%s/release_gasnet/include/udp-conduit;"
+          "'", STR(E2_DIR), STR(E2_DIR));
+        if (terra_dostring(L, buffer))
+            doerror(L);
+        snprintf(buffer, bufsize, "terralib.linklibrary('%s/gasnet.so')",
+                                  STR(E2_DIR));
+        if (terra_dostring(L, buffer))
+            doerror(L);
+        lua_pushboolean(L, true);
+        lua_setglobal(L, "EBB_USE_EXPERIMENTAL_SIGNAL");
+      #endif
+    }
 
     if (ebboptions->uselegion) {
         // extend the Terra include path
@@ -355,6 +384,7 @@ void usage() {
       "    -h print this help message\n"
       "    -i enter the REPL after processing source files\n"
       "    -g run tasks on a gpu by default\n"
+      "    -e enable Experimental support\n"
       "    -l enable Legion support\n"
       "    -r runtime options\n"
       "       for legion : -r debug,legionspy,legionprof\n"
@@ -375,6 +405,7 @@ void parse_args(
         { "debugsymbols",   no_argument,          NULL,           'd' },
         { "interactive",    no_argument,          NULL,           'i' },
         { "gpu",            no_argument,          NULL,           'g' },
+        { "experimental",   no_argument,          NULL,           'e' },
         { "legion",         no_argument,          NULL,           'l' },
         { "runoptions",     optional_argument,    NULL,           'r' },
         { "partition",      no_argument,          NULL,           'p' },
@@ -383,7 +414,7 @@ void parse_args(
     };
     /*  Parse commandline options  */
     opterr = 0;
-    while ((ch = getopt_long(argc, argv, "+hvidglr:pa:",
+    while ((ch = getopt_long(argc, argv, "+hvidgelr:pa:",
                              longopts, NULL)) != -1) {
         switch (ch) {
             case 'v':
@@ -400,6 +431,9 @@ void parse_args(
                 break;
             case 'g':
                 ebboptions->usegpu = 1;
+                break;
+            case 'e':
+                ebboptions->useexp = 1;
                 break;
             case 'l':
                 ebboptions->uselegion = 1;

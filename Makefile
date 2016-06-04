@@ -32,6 +32,8 @@
 # location of terra directory in binary release, or the /release subdir in
 # a custom build of Terra
 TERRA_DIR?=../terra
+# The following variable is needed for experimental development
+E2_DIR?=
 # The following variables are only necessary for Legion development
 LEGION_DIR?=
 TERRA_ROOT_DIR?=
@@ -162,6 +164,9 @@ EXEC_OBJS = main.o linenoise.o
 INTERP_CFLAGS = -Wall -g -fPIC
 INTERP_CFLAGS += -I build -I src_interpreter -I terra/include/terra
 INTERP_CFLAGS += -D_GNU_SOURCE -D__STDC_CONSTANT_MACROS -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -O0 -fno-rtti -fno-common -Woverloaded-virtual -Wcast-qual -fvisibility-inlines-hidden
+ifdef E2_DIR
+  INTERP_CFLAGS += -DE2_DIR="$(E2_DIR)"
+endif
 
 INTERP_LFLAGS = -g
 ifeq ($(PLATFORM),OSX)

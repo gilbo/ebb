@@ -35,6 +35,13 @@
 local return_code = 0
 
 local use_gpu = rawget(_G,'EBB_USE_GPU_SIGNAL')
+local use_exp = rawget(_G,'EBB_USE_EXPERIMENTAL_SIGNAL')
+print("USE E ", use_exp)
+if use_exp then
+  rawset(_G,'GASNET_PRELOADED',true)
+  local gas = require 'gasnet'
+  print('DEMONSTRATE LINKING INCLUDE WORKING', gas)
+end
 
 local function top_level_err_handler ( errobj )
   local err = tostring(errobj)
