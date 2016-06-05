@@ -58,6 +58,7 @@ struct ebb_Options {
   int uselegion;
   int usegpu;
   int useexp;
+  int n_nodes;
   int debug;
   int legionspy;
   int legionprof;
@@ -207,6 +208,12 @@ void setupebb(lua_State * L, ebb_Options * ebboptions) {
         fprintf(stderr, "Build Variables Missing; "
                         "Cannot run experimental mode\n");
       #else
+        if (ebboptions->n_nodes < 2) {
+          fprintf(stderr, "When running in experimental distributed "
+                          "mode, you must supply a number of nodes "
+                          "(2 or greater) to run on\n");
+          exit(1);
+        }
         snprintf(buffer, bufsize,
           "terralib.includepath = terralib.includepath..';"
           "%s/release_gasnet/include;"
@@ -220,6 +227,8 @@ void setupebb(lua_State * L, ebb_Options * ebboptions) {
             doerror(L);
         lua_pushboolean(L, true);
         lua_setglobal(L, "EBB_USE_EXPERIMENTAL_SIGNAL");
+        lua_pushinteger(L, ebboptions->n_nodes);
+        lua_setglobal(L, "EBB_EXPERIMENTAL_N_NODES");
       #endif
     }
 
@@ -315,6 +324,9 @@ int load_launchscript( lua_State * L, ebb_Options * ebboptions ) {
     if (ebboptions->uselegion) {
         snprintf(buffer, bufsize,
                  "%s/../include/ebb/src/launch_legion.t", bindir);
+    } else if (ebboptions->useexp) {
+        snprintf(buffer, bufsize,
+                 "%s/../include/ebb/src/launch_exp.t", bindir);
     } else {
         snprintf(buffer, bufsize,
                  "%s/../include/ebb/src/launch_script.t", bindir);
@@ -384,7 +396,7 @@ void usage() {
       "    -h print this help message\n"
       "    -i enter the REPL after processing source files\n"
       "    -g run tasks on a gpu by default\n"
-      "    -e enable Experimental support\n"
+      "    -n number of nodes to run experimental distributed mode in\n"
       "    -l enable Legion support\n"
       "    -r runtime options\n"
       "       for legion : -r debug,legionspy,legionprof\n"
@@ -405,7 +417,7 @@ void parse_args(
         { "debugsymbols",   no_argument,          NULL,           'd' },
         { "interactive",    no_argument,          NULL,           'i' },
         { "gpu",            no_argument,          NULL,           'g' },
-        { "experimental",   no_argument,          NULL,           'e' },
+        { "n_nodes",        required_argument,    NULL,           'n' },
         { "legion",         no_argument,          NULL,           'l' },
         { "runoptions",     optional_argument,    NULL,           'r' },
         { "partition",      no_argument,          NULL,           'p' },
@@ -414,7 +426,7 @@ void parse_args(
     };
     /*  Parse commandline options  */
     opterr = 0;
-    while ((ch = getopt_long(argc, argv, "+hvidgelr:pa:",
+    while ((ch = getopt_long(argc, argv, "+hvidgn:lr:pa:",
                              longopts, NULL)) != -1) {
         switch (ch) {
             case 'v':
@@ -432,7 +444,11 @@ void parse_args(
             case 'g':
                 ebboptions->usegpu = 1;
                 break;
-            case 'e':
+            case 'n':
+                ebboptions->n_nodes = 0; // default
+                if (optarg) {
+                  ebboptions->n_nodes = (int)(strtol(optarg, NULL, 10));
+                }
                 ebboptions->useexp = 1;
                 break;
             case 'l':

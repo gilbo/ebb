@@ -22,41 +22,34 @@
 -- DEALINGS IN THE SOFTWARE.
 
 
--- This file is really dumb.
--- Its entire goal is to provide an
--- opportunity to shim in extra Lua
--- junk before we launch an Ebb program.
+local Exports = {}
+package.loaded["ebb.src.ewrap"] = Exports
+
+local use_exp = rawget(_G,'EBB_USE_EXPERIMENTAL_SIGNAL')
+if not use_exp then return Exports end
+
+local C     = require "ebb.src.c"
+local DLD   = require "ebb.lib.dld"
+local Util  = require 'ebb.src.util'
+
+-- signal to gasnet library not to try to find the shared lib or headers
+rawset(_G,'GASNET_PRELOADED',true)
+local gas       = require 'gasnet'
+local gaswrap   = require 'gaswrap'
+local distdata  = require 'distdata'
+
+local newlist = terralib.newlist
 
 
--- Here, we wrap the call with error handling.
--- So now, we'll always get a stack trace with any errors
--- SUH-WEET!
+-------------------------------------------------------------------------------
+--[[            Data Accessors - Fields, Futures Declarations              ]]--
+-------------------------------------------------------------------------------
 
-local return_code = 0
 
-local use_gpu = rawget(_G,'EBB_USE_GPU_SIGNAL')
 
-local function top_level_err_handler ( errobj )
-  local err = tostring(errobj)
-  if not string.match(err, 'stack traceback:') then
-    err = err .. '\n' .. debug.traceback()
-  end
-  print(err)
-  os.exit(1)
-end
 
-script_filename = arg[0]
 
-exit_code = xpcall( function ()
-  assert(terralib.loadfile(script_filename))()
 
-  if use_gpu then
-    -- make sure all CUDA computations have finished
-    -- before we exit
-    local errcode = require('ebb.src.gpu_util').device_sync()
-    if errcode ~= 0 then
-      error('saw CUDA error code when exiting: '..errcode)
-    end
-  end
 
-end, top_level_err_handler)
+
+
