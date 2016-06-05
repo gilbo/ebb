@@ -37,7 +37,8 @@ local Pre = {}
 package.loaded["ebb.src.prelude"] = Pre
 
 local use_legion = not not rawget(_G, '_legion_env')
-local use_single = not use_legion
+local use_exp    = not not rawget(_G, 'EBB_USE_EXPERIMENTAL_SIGNAL')
+local use_single = not use_legion and not use_exp
 
 local LE, legion_env, LW
 if use_legion then
@@ -113,6 +114,9 @@ function Pre.Global (typ, init)
     rawset(s, '_data', DataArray.New({size=1,type=tt}))
     s:set(init)
 
+  elseif use_exp then
+    error('EXPERIMENTAL TODO: create global')
+
   elseif use_legion then
     s:set(init)
   end
@@ -134,6 +138,9 @@ function Global:set(val)
     local ptr = self._data:open_write_ptr()
     ptr[0] = T.luaToEbbVal(val, self._type)
     self._data:close_write_ptr()
+
+  elseif use_exp then
+    error('EXPERIMENTAL TODO: set global')
 
   elseif use_legion then
     local typ    = self._type
@@ -158,6 +165,9 @@ function Global:get()
     local ptr = self._data:open_read_ptr()
     value = T.ebbToLuaVal(ptr[0], self._type)
     self._data:close_read_ptr()
+
+  elseif use_exp then
+    error('EXPERIMENTAL TODO: get global')
 
   elseif use_legion then
     local tt = self._type:terratype()

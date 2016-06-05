@@ -25,11 +25,12 @@
 
 local ffi = require "ffi"
 
-local USE_LEGION    = false
-local USE_PARTITION = false
-local USE_MPI       = false
-local USE_GPU       = false
-local ONE_LINE_ERR  = false
+local USE_LEGION        = false
+local USE_PARTITION     = false
+local USE_EXPERIMENTAL  = false
+local USE_MPI           = false
+local USE_GPU           = false
+local ONE_LINE_ERR      = false
 
 if #arg > 0 then
   for i=1,#arg do
@@ -38,6 +39,11 @@ if #arg > 0 then
     end
     if arg[i] == '-partition' or arg[i] == '--partition' then
       USE_PARTITION = true
+    end
+    if arg[i] == '-experimental' or arg[i] == '--experimental' or
+       arg[i] == '-exp' or arg[i] == '--exp'
+    then
+      USE_EXPERIMENTAL = true
     end
     if arg[i] == '-gpu' or arg[i] == '--gpu' then
       USE_GPU = true
@@ -51,6 +57,7 @@ if #arg > 0 then
       print("  -h, --help               show this help message and exit")
       print("  -legion, --legion        run tests with legion")
       print("  -partition, --partition  run tests with partitioning")
+      print("  -exp, --exp              run tests w/ experimental multinode")
       print("  -gpu, --gpu              run tests on the GPU")
       print("  -mpi, --mpi              run tests with mpirun prefix")
       os.exit(0)
@@ -109,6 +116,8 @@ local function is_disabled (filename)
   return disabled_all or (USE_GPU     and disabled_gpu)
                       or (USE_LEGION  and disabled_legion)
                       or (USE_PARTITION and disabled_part)
+                      or (USE_EXPERIMENTAL and disabled_part)
+                      or (USE_EXPERIMENTAL and disabled_legion)
 end
 
 local function output_name (filename)
@@ -147,6 +156,9 @@ for line in io.popen(lscmd):lines() do
       end
       if USE_PARTITION then
         execstring = execstring .. " --partition "
+      end
+      if USE_EXPERIMENTAL then
+        execstring = execstring .. " -n 4 "
       end
       if USE_GPU then
         execstring = execstring .. " --gpu "

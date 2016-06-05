@@ -26,7 +26,8 @@ local R = {}
 package.loaded["ebb.src.relations"] = R
 
 local use_legion = not not rawget(_G, '_legion_env')
-local use_single = not use_legion
+local use_exp    = not not rawget(_G, 'EBB_USE_EXPERIMENTAL_SIGNAL')
+local use_single = not use_legion and not use_exp
 
 local Pre   = require "ebb.src.prelude"
 local T     = require "ebb.src.types"
@@ -236,6 +237,9 @@ function R.NewRelation(params)
     -- create a mask to track which rows are live.
     rawset(rel, '_is_live_mask', CreateField(rel, '_is_live_mask', boolT))
     rel._is_live_mask:Load(true)
+
+  elseif use_exp then
+    error('EXPERIMENTAL TODO: create relation')
 
   elseif use_legion then
     -- create a logical region.
@@ -547,6 +551,8 @@ function Relation:_INTERNAL_SortBy(keyfield)
     keydld          = keyfield:GetDLD()
     keydld.address  = keyfield._array:open_readwrite_ptr()
     keydld:setlocation(DLD.CPU)
+  elseif use_exp then
+    error('EXPERIMENTAL TODO: sort by')
   elseif use_legion then
     legion_region = LW.NewInlinePhysicalRegion {
       relation  = self,
@@ -574,6 +580,8 @@ function Relation:_INTERNAL_SortBy(keyfield)
   -- release lock on the key data
   if use_single then
     keyfield._array:close_readwrite_ptr()
+  elseif use_exp then
+    error('EXPERIMENTAL TODO: sort by close')
   elseif use_legion then
     legion_region:Destroy()
   end
@@ -590,6 +598,8 @@ function Relation:_INTERNAL_SortBy(keyfield)
       dld         = f:GetDLD()
       dld.address = f._array:open_readwrite_ptr()
       dld:setlocation(DLD.CPU)
+  elseif use_exp then
+    error('EXPERIMENTAL TODO: sort by shuffle open')
     elseif use_legion then
       legion_region = LW.NewInlinePhysicalRegion {
         relation  = self,
@@ -608,6 +618,8 @@ function Relation:_INTERNAL_SortBy(keyfield)
 
     if use_single then
       f._array:close_readwrite_ptr()
+  elseif use_exp then
+    error('EXPERIMENTAL TODO: sort by shuffle close')
     elseif use_legion then
       legion_region:Destroy()
     end
@@ -693,6 +705,8 @@ function Relation:GroupBy(keyf_name)
     key_field._array:close_read_ptr()
     length_f._array:close_write_ptr()
     offset_f._array:close_write_ptr()
+  elseif use_exp then
+    error('EXPERIMENTAL TODO: group by')
   elseif use_legion then
 
     local keyf_list = key_field:Dump({})
@@ -737,6 +751,7 @@ function Relation:GroupBy(keyf_name)
 end
 
 function Relation:MoveTo( proc )
+  if use_exp then error('MoveTo() unsupported multi-node', 2) end
   if use_legion then error("MoveTo() unsupported using Legion", 2) end
   if proc ~= CPU and proc ~= GPU then
     error('must specify valid processor to move to', 2)
@@ -753,6 +768,8 @@ end
 
 
 function Relation:Print()
+  if use_exp then
+    error('print() currently unsupported multi-node', 2) end
   if use_legion then
     error("print() currently unsupported using Legion", 2)
   end
@@ -910,6 +927,8 @@ function Relation:_INTERNAL_NewSubsetFromLuaFunction (name, predicate)
     local boolmask  = CreateField(self, name..'_subset_boolmask', boolT)
     boolmask:_INTERNAL_LoadLuaPerElemFunction(predicate)
     rawset(subset, '_boolmask', boolmask)
+  elseif use_exp then
+    error('EXPERIMENTAL TODO: new subset')
   else
 
     -- NOW WE DECIDE how to encode the subset
@@ -1060,6 +1079,8 @@ function CreateField(rel, name, typ)
   }, Field)
   if use_single then
     field:_INTERNAL_Allocate()
+  elseif use_exp then
+    error('EXPERIMENTAL TODO: create field')
   elseif use_legion then
     rawset( field, '_fid',
             rel._logical_region_wrapper:AllocateField(typ:terratype()) )
@@ -1089,7 +1110,8 @@ function Field:Type()
   return self._type
 end
 function Field:_Raw_DataPtr()
-  if use_legion then error('DataPtr() unsupported using legion') end
+  if use_exp then error('_Raw_DataPtr() unsupported multi-node') end
+  if use_legion then error('_Raw_DataPtr() unsupported using legion') end
   return self._array:_raw_ptr()
 end
 function Field:Relation()
@@ -1143,6 +1165,7 @@ end
 
 -- TODO: Hide this function so it's not public
 function Field:_INTERNAL_Allocate()
+  if use_exp then error('No Allocate() using multi-node') end
   if use_legion then error('No Allocate() using legion') end
   if not self._array then
     --if self._owner:isElastic() then
@@ -1162,6 +1185,7 @@ end
 -- TODO: Hide this function so it's not public
 -- remove allocated data and clear any depedent data, such as indices
 function Field:_INTERNAL_ClearData()
+  if use_exp then error('No ClearData() using multi-node') end
   if use_legion then error('No ClearData() using legion') end
   if self._array then
     self._array:free()
@@ -1176,6 +1200,7 @@ function Field:_INTERNAL_ClearData()
 end
 
 function Field:MoveTo( proc )
+  if use_exp then error('No MoveTo() using multi-node') end
   if use_legion then error('No MoveTo() using legion') end
   if proc ~= CPU and proc ~= GPU then
     error('must specify valid processor to move to', 2)
@@ -1199,6 +1224,8 @@ function Relation:Swap( f1_name, f2_name )
     local tmp = f1._array
     f1._array = f2._array
     f2._array = tmp
+  elseif use_exp then
+    error('EXPERIMENTAL TODO: Swap')
   elseif use_legion then
     local region  = self._logical_region_wrapper
     local rhandle = region:get_handle()
@@ -1246,6 +1273,9 @@ function Relation:Copy( p )
       to:_INTERNAL_Allocate()
     end
     to._array:copy(from._array)
+
+  elseif use_exp then
+    error('EXPERIMENTAL TODO: Copy')
 
   elseif use_legion then
     LW.CopyField {
@@ -1303,6 +1333,9 @@ function Relation:_INTERNAL_MapJointFunction(
                  else   fields[i]._array:close_read_ptr() end
     end
     return unpack(retvals)
+
+  elseif use_exp then
+    error('EXPERIMENTAL TODO: Internal Map Joint Function')
 
   elseif use_legion then
     -- create a physical mapping and get the DLDs from these
@@ -1375,6 +1408,8 @@ function Field:_INTERNAL_LoadConstant(c)
     memval[0]     = T.luaToEbbVal( c, typ )
     local lreg    = self:Relation()._logical_region_wrapper
     lreg:InitConstField(self._fid, memval, memsize)
+  elseif use_exp then
+    error('EXPERIMENTAL TODO: LoadConstant')
   else
     self:_INTERNAL_LoadLuaPerElemFunction(function()
       return c
@@ -1833,6 +1868,8 @@ function Field:GetDLD()
       dim_size        = dim_size,
       dim_stride      = dim_stride,
     }
+  elseif use_exp then
+    error('EXPERIMENTAL TODO: GetDLD')
   elseif use_legion then
     error('DLD TO BE REVISED for LEGION')
   else
@@ -1853,6 +1890,7 @@ function Relation:_INTERNAL_Resize(new_concrete_size, new_logical)
   if not self:isElastic() then
     error('Can only resize ELASTIC relations', 2)
   end
+  if use_exp then error("Can't resize while multi-node", 2) end
   if use_legion then error("Can't resize while using Legion", 2) end
 
   self._is_live_mask._array:resize(new_concrete_size)

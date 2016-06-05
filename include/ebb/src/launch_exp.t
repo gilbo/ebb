@@ -27,10 +27,11 @@ local cmdline_n_nodes = tonumber(rawget(_G,'EBB_EXPERIMENTAL_N_NODES'))
 print('OK JUST RECEIVED N_NODES', cmdline_n_nodes)
 for k,v in pairs(arg) do print('',k,v) end
 
-local ewrap   = require 'ebb.src.ewrap'
 
+rawset(_G,'GASNET_PRELOADED',true)
 local gas     = require 'gasnet'
 local gaswrap = require 'gaswrap'
+
 
 -------------------------------------------------------------------------------
 --[[  Initialize Networking Subsystem                                      ]]--
@@ -69,10 +70,21 @@ local THIS_NODE = tonumber(gas.mynode())
 
 
 -------------------------------------------------------------------------------
+-- E Wrap Include...
+-------------------------------------------------------------------------------
+
+-- We wait until after the network has been initialized to execute the
+-- E-wrap script.  Doing so ensures that the E-Wrap script is able to
+-- introspect about which node it is being executed on.
+
+local ewrap   = require 'ebb.src.ewrap'
+
+
+-------------------------------------------------------------------------------
 -- Register Events
 -------------------------------------------------------------------------------
 
-gaswrap.registerLuaEvent('shutdown',function()
+gaswrap.registerLuaEvent('Shutdown',function()
   print('['..THIS_NODE..'] AT THE END')
   gas.BARRIER()
   gaswrap.shutdownGasnet()
@@ -89,7 +101,7 @@ local function top_level_err_handler ( errobj )
     err = err .. '\n' .. debug.traceback()
   end
   print(err)
-  gaswrap.broadcastLuaEvent('shutdown')
+  gaswrap.broadcastLuaEvent('Shutdown')
   gaswrap.shutdownGasnetOnError()
 end
 
@@ -98,6 +110,7 @@ script_filename = arg[0]
 
 if THIS_NODE == 0 then
   xpcall( function ()
+    -- run the script
     assert(terralib.loadfile(script_filename))()
 
     if use_gpu then
@@ -109,7 +122,7 @@ if THIS_NODE == 0 then
       end
     end
 
-    gaswrap.broadcastLuaEvent('shutdown')
+    gaswrap.broadcastLuaEvent('Shutdown')
     gaswrap.pollLuaEvents(0,0)
 
   end, top_level_err_handler)

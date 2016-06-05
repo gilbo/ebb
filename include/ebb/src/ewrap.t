@@ -46,6 +46,101 @@ local newlist = terralib.newlist
 -------------------------------------------------------------------------------
 
 
+local N_NODES     = gas.nodes()
+local THIS_NODE   = gas.mynode()
+
+
+-------------------------------------------------------------------------------
+-- Check metadata/field
+-------------------------------------------------------------------------------
+
+
+local struct FieldData {
+  array      : distdata.Array;
+  field_name : uint8[64];
+  rel_name   : uint8[64];
+}
+
+--[[
+local terra dumpFloatFieldData(args : &opaque)
+  var worker_id : uint = [gas.mynode()]
+  var field_data = [&FieldData](args)
+  var ptr : &float = [&float](field_data.array:DataPtr())
+  C.printf('[%u] Dumping field data for relation %s, field %s\n',
+           worker_id, field_data.rel_name, field_data.field_name)
+  var lo     = field_data.array:LowerBounds()
+  var hi     = field_data.array:HigherBounds()
+  var stride = field_data.array:Stride()
+  for j = lo[1], hi[1], 1 do
+    for i = lo[0], hi[0], 1 do
+      C.printf('[%u] %u, %u : %f\n', worker_id, i, j,
+                                     ptr[i*stride[0] + j*stride[1] ])
+    end
+  end
+end
+
+-- print list of relations, fields, and data over the fields
+local function dumpAllFields()
+  os.execute('sleep 2')
+  for _, rel in pairs(distdata._TESTING_relation_metadata) do
+    local bounds = rel:GetPartitionBounds()
+    local bounds_str = '{' .. gaswrap.stringify_list(bounds.lo) ..
+                       ',' ..
+                       gaswrap.stringify_list(bounds.hi) .. '}'
+    local map_str   = gaswrap.stringify_list(rel:GetPartitionMap())
+    print('[' .. tostring(gas.mynode()) ..
+          '] Relation ' .. tostring(rel:Name()) .. ', bounds ' .. bounds_str ..
+          ', map ' .. map_str .. ':')
+    for _, field in pairs(rel:Fields()) do
+      print('  [' .. tostring(gas.mynode()) ..
+            '] Field ' .. tostring(field:Name()))
+      local field_data = terralib.cast(&FieldData,
+                            C.malloc(terralib.sizeof(FieldData)))
+      field_data.array = field:GetArray()
+      field_data.field_name = field:Name()
+      field_data.rel_name   = rel:Name()
+      gaswrap.acquireScheduler()
+      local ws = field:GetPreviousWriteSignal()
+      local a_out = ws:exec(0, dumpFloatFieldData:getpointer(),
+                               field_data)
+      field:RecordRead(a_out)
+      gaswrap.releaseScheduler()
+    end
+  end
+end
+
+gaswrap.registerLuaEvent('dumpAllFields', dumpAllFields)
+--]]
+
+
+
+
+
+
+
+-------------------------------------------------------------------------------
+-- Extra Events
+-------------------------------------------------------------------------------
+
+
+
+-------------------------------------------------------------------------------
+-- Exports
+-------------------------------------------------------------------------------
+
+Exports.N_NODES                       = N_NODES
+Exports.THIS_NODE                     = THIS_NODE
+
+
+-- functions
+Exports.broadcastNewRelation          = distdata.broadcastNewRelation
+Exports.broadcastGlobalGridPartition  = distdata.broadcastGlobalGridPartition
+Exports.broadcastNewField             = distdata.broadcastNewField
+Exports.remoteAllocateField           = distdata.remoteAllocateField
+Exports.remoteLoadFieldConstant       = distdata.remoteLoadFieldConstant
+
+-- structs
+Exports.Array                        = distdata.Array
 
 
 

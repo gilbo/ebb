@@ -26,7 +26,8 @@ local Exports = {}
 package.loaded["ebb.src.machine"] = Exports
 
 local use_legion = not not rawget(_G, '_legion_env')
-local use_single = not use_legion
+local use_exp    = not not rawget(_G, 'EBB_USE_EXPERIMENTAL_SIGNAL')
+local use_single = not use_legion and not use_exp
 
 local LE, legion_env, LW, use_partitioning
 if use_legion then
@@ -35,6 +36,8 @@ if use_legion then
   LW                = require 'ebb.src.legionwrap'
   use_partitioning  = rawget(_G, '_run_config').use_partitioning
 end
+
+local ewrap         = use_exp and require 'ebb.src.ewrap'
 
 local Util              = require 'ebb.src.util'
 local C                 = require 'ebb.src.c'
@@ -89,6 +92,12 @@ function Exports.GetAllNodeTypes() return all_node_types end
 --[[ Machine Setup / Detection:                                            ]]--
 -------------------------------------------------------------------------------
 
+
+local extract_all_processors, extract_all_memories = true, true
+local group_nodes = true
+
+if use_legion then
+
 -- from legion headers, a processor kind is one of the following enumeration
 --[[
     typedef enum legion_lowlevel_processor_kind_t {
@@ -131,7 +140,8 @@ local mem_kind_str = {
   -- otherwise, meh
 }
 
-local function extract_all_processors( machine )
+assert(extract_all_processors)
+function extract_all_processors( machine )
   local n_proc  = tonumber(LW.legion_machine_get_all_processors_size(machine))
   local procs   = terralib.cast( &LW.legion_processor_t,
                       C.malloc(sizeof(LW.legion_processor_t) * n_proc) )
@@ -220,6 +230,15 @@ local function group_nodes(procs, mems)
   end
 end
 
+end -- end use_legion
+
+
+
+-------------------------------------------------------------------------------
+--[[ Machine Setup / Detection:                                            ]]--
+-------------------------------------------------------------------------------
+
+
 -------------------------------------------------------------------------------
 --[[ Defining a Machine                                                    ]]--
 -------------------------------------------------------------------------------
@@ -228,24 +247,51 @@ local Machine   = {}
 Machine.__index = Machine
 local TheMachine
 
-local function initialize_machine_model()
-  local machine = LW.legion_machine_create()
-  
-  local procs = extract_all_processors(machine)
-  local mems  = extract_all_memories(machine)
+if use_legion and use_partitioning then
+  local function initialize_legion_machine_model()
+    local machine = LW.legion_machine_create()
+    
+    local procs = extract_all_processors(machine)
+    local mems  = extract_all_memories(machine)
 
-  local nodes = group_nodes(procs, mems)
+    local nodes = group_nodes(procs, mems)
 
-  TheMachine = setmetatable({
-    nodes = nodes,
-  }, Machine)
+    TheMachine = setmetatable({
+      nodes = nodes,
+    }, Machine)
 
-  --print('OK\nOK\nOK\nOK')
+    --print('OK\nOK\nOK\nOK')
 
-  LW.legion_machine_destroy(machine)
+    LW.legion_machine_destroy(machine)
+  end
+
+  initialize_legion_machine_model()
 end
 
-if use_partitioning then
+if use_exp then
+  local function initialize_machine_model()
+    local n_nodes     = ewrap.N_NODES
+    local this_node   = ewrap.THIS_NODE
+
+    -- for now just assume each machine has one CPU
+    local nodes = newlist()
+    for i=1,n_nodes do
+      local n_threads = 1
+
+      local node = {
+        node_id = i-1,
+        node_type = CreateNodeType{
+          n_cpus = 1,
+          n_gpus = 0,
+        },
+      }
+    end
+
+    TheMachine = setmetatable({
+      nodes = nodes,
+    }, Machine)
+  end
+
   initialize_machine_model()
 end
 

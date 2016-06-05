@@ -25,14 +25,14 @@
 local Exports = {}
 package.loaded["ebb.src.planner"] = Exports
 
-local use_legion = not not rawget(_G, '_legion_env')
-local use_single = not use_legion
-local LE, legion_env, LW
-if use_legion then
-  LE            = rawget(_G, '_legion_env')
-  legion_env    = LE.legion_env[0]
-  LW            = require 'ebb.src.legionwrap'
-end
+--local use_legion = not not rawget(_G, '_legion_env')
+--local use_single = not use_legion
+--local LE, legion_env, LW
+--if use_legion then
+--  LE            = rawget(_G, '_legion_env')
+--  legion_env    = LE.legion_env[0]
+--  LW            = require 'ebb.src.legionwrap'
+--end
 
 
 local Util  = require 'ebb.src.util'
