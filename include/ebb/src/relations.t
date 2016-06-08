@@ -67,6 +67,8 @@ if use_legion then
   end
 end
 
+local ewrap   = use_exp and require 'ebb.src.ewrap'
+
 local valid_name_err_msg_base =
   "must be valid Lua Identifiers: a letter or underscore,"..
   " followed by zero or more underscores, letters, and/or numbers"
@@ -239,7 +241,14 @@ function R.NewRelation(params)
     rel._is_live_mask:Load(true)
 
   elseif use_exp then
-    error('EXPERIMENTAL TODO: create relation')
+    if mode == 'GRID' then
+      rawset(rel, '_ewrap_relation', ewrap.NewGridRelation {
+        name    = params.name,
+        dims    = rel._dims,
+      })
+    else
+      error('EXPERIMENTAL TODO: Only GRID currently supported multinode')
+    end
 
   elseif use_legion then
     -- create a logical region.
@@ -1080,7 +1089,11 @@ function CreateField(rel, name, typ)
   if use_single then
     field:_INTERNAL_Allocate()
   elseif use_exp then
-    error('EXPERIMENTAL TODO: create field')
+    rawset( field, '_ewrap_field', ewrap.NewField {
+      rel   = rel._ewrap_relation,
+      name  = name,
+      type  = typ:terratype(),
+    })
   elseif use_legion then
     rawset( field, '_fid',
             rel._logical_region_wrapper:AllocateField(typ:terratype()) )
@@ -2093,9 +2106,11 @@ function Relation:SetPartitions(num_partitions)
   end
   rawset(self, '_total_partitions', total_partitions)
   rawset(self, '_num_partitions', num_partitions_table)
-  if use_partitioning then
+  if use_legion and use_partitioning then
     rawset(self, '_rel_global_partition',
                  P.RelGlobalPartition(self, unpack(num_partitions)))
+  elseif use_exp then
+    self._ewrap_relation:partition{ blocking=num_partitions }
   end
 end
 
