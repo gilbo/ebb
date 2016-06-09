@@ -28,22 +28,66 @@ package.loaded["ebb.src.ewrap"] = Exports
 local use_exp = rawget(_G,'EBB_USE_EXPERIMENTAL_SIGNAL')
 if not use_exp then return Exports end
 
-local C     = require "ebb.src.c"
-local DLD   = require "ebb.lib.dld"
-local Util  = require 'ebb.src.util'
+local C       = require "ebb.src.c"
+local DLD     = require "ebb.lib.dld"
+local Util    = require 'ebb.src.util'
+
+-- Following modules are probably not going to depdend (directly or indirectly)
+-- on ewrap since they define basic types.
+--local Pre     = require 'ebb.src.prelude'
+--local Types   = require 'ebb.src.types'
+--local rawdata = require 'ebb.src.rawdata'
 
 -- signal to gasnet library not to try to find the shared lib or headers
 rawset(_G,'GASNET_PRELOADED',true)
 local gas       = require 'gasnet'
 local gaswrap   = require 'gaswrap'
-local distdata  = require 'distdata'
 
 local newlist = terralib.newlist
 
 
 -------------------------------------------------------------------------------
---            Helper Functions
+-- Basic Setup  
 -------------------------------------------------------------------------------
+
+local N_NODES                   = gas.nodes()
+local THIS_NODE                 = gas.mynode()
+local CONTROL_NODE              = 0
+
+local BASIC_SAFE_GHOST_WIDTH    = 2
+
+-- constants/modes
+local GRID                      = 'GRID'
+local CPU                       = 'CPU'
+local GPU                       = 'GPU'
+
+
+-------------------------------------------------------------------------------
+-- Helper methods
+-------------------------------------------------------------------------------
+
+-- assumption: 0 is control node, remaining are compute nodes
+local function numComputeNodes()  -- get total number of compute nodes
+  return gas.nodes() - 1
+end
+local function broadcastLuaEventToComputeNodes(event_name, ...)
+  print('*** DEBUG INFO: Sending ' .. event_name)
+  for i = 1,numComputeNodes() do
+    gaswrap.sendLuaEvent(i, event_name, ...)
+  end
+end
+
+local default_align_max_pow = 32 -- this should accomodate diff architectures
+local function pow2align(N,max_pow)
+  max_pow = max_pow or default_align_max_pow
+  if N > max_pow then -- smallest multiple of max_pow that works
+    return math.ceil(N/max_pow)*max_pow
+  else
+    -- find smallest power of 2 >= N
+    while max_pow / 2 >= N do max_pow = max_pow / 2 end
+    return max_pow
+  end
+end
 
 local function is_2_nums(obj)
   return type(obj) == 'table' and #obj == 2
@@ -57,18 +101,422 @@ end
 
 
 -------------------------------------------------------------------------------
---            Basic Setup  
+-- Relation and Field objects at compute nodes
 -------------------------------------------------------------------------------
 
-local N_NODES                   = gas.nodes()
-local THIS_NODE                 = gas.mynode()
+-- Use DLD when integrating
+local struct Array {
+  ptr         : &opaque;
+  n_elems     : uint64;     -- remove this?
+  lo          : uint64[3];
+  hi          : uint64[3];
+  dim_stride  : uint64[3];
+  ghost_width : uint64[3];
+  type_stride : uint32;
+  type_size   : uint32;
+}
 
-local BASIC_SAFE_GHOST_WIDTH    = 2
+-- Accessors to shield usage from implementation
+terra Array:DataPtr()
+  return self.ptr
+end
+terra Array:NumElems()
+  return self.n_elems
+end
+terra Array:LowerBounds()
+  return self.lo
+end
+terra Array:HigherBounds()
+  return self.hi
+end
+terra Array:Stride()
+  return self.dim_stride
+end
+terra Array:GhostWidth()
+  return self.ghost_width
+end
+terra Array:TypeSize()
+  return self.type_size
+end
+terra Array:TypeStride()
+  return self.type_stride
+end
+
+--[[
+FieldMetada : {
+  type, { base_type, n_rows, n_cols } (pull this out from ebb types?)
+  name,
+  relation,
+  array, { ghost_width, n_elems, ptr } (pull this out from rawdata?)
+  rw_signal, (signal representing previous read/write, triggers when done)
+}
+--]]
+
+local FieldData = {}
+FieldData.__index = FieldData
+
+local function NewFieldData(relation, name, typ_size)
+  return setmetatable({
+                        typ_size     = typ_size,
+                        name         = name,
+                        relation     = relation,
+                        array        = nil,
+                        last_read    = nil,
+                        last_write   = nil,
+                      },
+                      FieldData)
+end
+
+function FieldData:Name()
+  return self.name
+end
+
+function FieldData:isAllocated()
+  return (self.array ~= nil)
+end
+
+function FieldData:AllocateArray(gw)
+  assert(self.array == nil, 'Trying to allocate already allocated array.')
+  assert(self.relation:isPartitioned(),
+         'Relation ' .. self.relation:Name() .. 'not partitioned. ' ..
+         'Cannot allocate data over it.')
+  local bounds = self.relation:GetPartitionBounds()
+  local n_elems = 1
+  local dim_stride   = {}
+  local ghost_width  = {}
+  for d = 1,3 do
+    dim_stride[d]  = n_elems  -- column major?
+    ghost_width[d] = gw[d] or 0 
+    n_elems       = n_elems * (bounds.hi[d] - bounds.lo[d]
+                                            + 1 + 2*ghost_width[d])
+  end
+  local elem_size   = self:GetTypeSize()
+  local elem_stride = pow2align(elem_size)
+  self.array = terralib.new(Array, {
+    ptr         = C.malloc(elem_stride * n_elems),
+    n_elems     = n_elems,
+    lo          = bounds.lo,
+    hi          = bounds.hi,
+    dim_stride  = dim_stride,
+    ghost_width = ghost_width,
+    type_size   = elem_size,
+    type_stride = elem_stride,
+  })
+  self.last_read  = gaswrap.newSignalSource():trigger()
+  self.last_write = gaswrap.newSignalSource():trigger()
+end
+
+--function FieldData:GetType()
+--  return self.type
+--end
+function FieldData:GetTypeSize()
+  return self.typ_size
+end
+
+function FieldData:GetArray()
+  return self.array
+end
+
+-- n+1th signal should not be used by caller
+-- it is used here for later depdendencies
+function FieldData:ForkPreviousReadSignal(n)
+  local signals = terralib.new(gaswrap.Signal[n+1])
+  self.last_read:fork(n+1, signals)
+  self.last_read = signals[n]
+  return signals
+end
+function FieldData:GetPreviousWriteSignal()
+  return self.last_write
+end
+function FieldData:RecordRead(signal)
+  self.last_read = signal
+end
+function FieldData:RecordReadWrite(signal)
+  local signals = terralib.new(gaswrap.Signal[2])
+  signal:fork(2, signals)
+  self.last_read  = signals[0]
+  self.last_write = signals[1]
+end
+
+--[[
+RelationData : {
+  name,
+  mode,
+  dims,  (global dimensions, might not need this)
+  partition, { blocking, block_id, bounds, map },
+  fields,
+}
+--]]
+
+local RelationData = {}
+RelationData.__index = RelationData
+
+local function NewRelationData(name, mode, dims)
+  assert(mode == 'GRID', 'Relations must be of grid type on GASNet.')
+  return setmetatable({
+                        name      = name,
+                        mode      = mode,
+                        dims      = dims,
+                        partition = nil,
+                        fields    = {},
+                      }, RelationData)
+end
+
+function RelationData:Name()
+  return self.name
+end
+
+function RelationData:Dims()
+  return self.dims
+end
+
+function RelationData:Fields()
+  return self.fields
+end
+
+function RelationData:RecordPartition(blocking, block_id, bounds, map)
+  if self.partition ~= nil then
+    print(
+          'Only one partition per relation supported. Node ' ..
+          tostring(gas.mynode()) .. ' already has partition ' ..
+          gaswrap.lson_stringify(self.partition.bounds.lo) .. ',' ..
+          gaswrap.lson_stringify(self.partition.bounds.hi) .. '.' ..
+          'Cannot add ' .. gaswrap.lson_stringify(bounds.lo) .. ',' ..
+          gaswrap.lson_stringify(bounds.hi) .. '.'
+         )
+    assert(false)
+  end
+  assert(bounds.lo and bounds.hi, 'Bounds should have a lo and a hi point.')
+  for d = 1,3 do
+    if not bounds.lo[d] then bounds.lo[d] = 0 end
+    if not bounds.hi[d] then bounds.hi[d] = 1 end
+  end
+  self.partition = {
+    blocking = blocking,
+    block_id = block_id,
+    bounds   = bounds,
+    map      = map,
+  }
+end
+
+function RelationData:isPartitioned()
+  return self.partition
+end
+
+function RelationData:RecordField(f_id, name, typ_size)
+  assert(self.fields[f_id] == nil, "Recording already recorded field '"..
+                                   name.."' with id # "..f_id)
+  self.fields[f_id] = NewFieldData(self, name, typ_size)
+end
+
+function RelationData:GetFieldData(f_id)
+  return self.fields[f_id]
+end
+
+function RelationData:GetPartitionBounds()
+  return self.partition.bounds
+end
+
+function RelationData:GetPartitionMap()
+  return self.partition.map
+end
+
+-- relation_name -> relation_metadata
+local relation_metadata = {}
+
+local function RecordNewRelation(unq_id, name, mode, dims)
+  assert(relation_metadata[unq_id] == nil,
+         "Recordling already recorded relation '"..name..
+         "' with id # "..unq_id)
+  relation_metadata[unq_id] = NewRelationData(name, mode, dims)
+end
+
+local function GetRelationData(unq_id)
+  return relation_metadata[unq_id]
+end
 
 
 -------------------------------------------------------------------------------
---            Relations
+-- Relations, fields, partitions
 -------------------------------------------------------------------------------
+
+------------------------------------
+-- EVENT BROADCASTS/ EVENT HANDLERS
+
+-- send relation metadata
+local function broadcastNewRelation(unq_id, name, mode, dims)
+  assert(mode == 'GRID', 'Unsupported relation mode ' .. mode)
+  assert(type(dims) == 'table')
+  local rel_size = gaswrap.lson_stringify(dims)
+  broadcastLuaEventToComputeNodes( 'newRelation', unq_id, name,
+                                                  mode, rel_size)
+end
+-- event handler for relation metadata
+local function createNewRelation(unq_id, name, mode, dims)
+  RecordNewRelation(tonumber(unq_id), name, mode, gaswrap.lson_eval(dims))
+end
+
+-- disjoint partition blocking over relation
+-- options: send subregions here or let nodes construct it from the blocking
+-- assumption: we'll have only one disjoint partitioning per relation
+--             works for static relations, revisit later for dynamic relations
+local function sendGlobalGridPartition(
+  nid, rel_id, blocking, bid, partition, map_str
+)
+  local blocking_str  = gaswrap.lson_stringify(blocking)
+  local block_id_str  = gaswrap.lson_stringify(bid) 
+  local partition_str = gaswrap.lson_stringify(partition)
+  gaswrap.sendLuaEvent(nid, 'globalGridPartition', rel_id, blocking_str,
+                       block_id_str, partition_str, map_str)
+end
+local function broadcastGlobalGridPartition(
+  rel_id, blocking, partitioning, map
+)
+  -- map: How node/partitions are arranged into a block.
+  --      So could be {{1,2}, {3,4}}.
+  -- Lets controller decide which partitions go where.
+  local num_partitions = 1
+  for d = 1,#blocking do
+    num_partitions = num_partitions * blocking[d]
+  end
+  assert(num_partitions == numComputeNodes(),
+         'Number of partitions ' .. num_partitions ..
+         ' ~= number of nodes ' .. numComputeNodes())
+  local map_str = gaswrap.lson_stringify(map)
+  if #blocking == 2 then
+    for xid, m in ipairs(map) do
+      for yid, nid in ipairs(m) do
+        assert(nid >= 1 and nid <= numComputeNodes())
+        sendGlobalGridPartition(nid, rel_id, blocking, {xid, yid},
+                                partitioning[xid][yid], map_str)
+      end
+    end
+  else
+    assert(#blocking == 3, 'Expected 2 or 3 dimensional grid.')
+    for xid, mt in ipairs(map) do
+      for yid, m in ipairs(mt) do
+        for zid, nid in ipairs(mt) do
+          assert(nid >= 1 and nid <= numComputeNodes())
+          sendGlobalGridPartition(nid, rel_id, blocking, {xid, yid, zid},
+                                  partitioning[xid][yid][zid], map_str)
+        end
+      end
+    end
+  end
+end
+-- event handler for partition metadata
+-- assumption: only one partition gets mapped to this node
+-- question: how do we do local partititons in a node?
+local function createGlobalGridPartition(rel_id, blocking_str,
+                                         blocking_id_str,
+                                         partition_str, map_str)
+  local relation = GetRelationData(tonumber(rel_id))
+  assert(relation,
+         'Relation #' .. rel_id .. ' to partition is not defined.')
+  assert(relation.block_id == nil,
+         'Already recorded a partition. ' ..
+         'Are multiple partitions mapped to this node?')
+  local blocking  = gaswrap.lson_eval(blocking_str)
+  local block_id  = gaswrap.lson_eval(blocking_id_str)
+  local bounds    = gaswrap.lson_eval(partition_str)
+  local map       = gaswrap.lson_eval(map_str)
+  relation:RecordPartition(blocking, block_id, bounds, map)
+end
+
+-- record a new field over a relation
+local function broadcastNewField(f_id, rel_id, field_name, type_size)
+  broadcastLuaEventToComputeNodes('recordNewField', f_id, rel_id, field_name,
+                                                    type_size)
+end
+local function recordNewField(f_id, rel_id, field_name, type_size)
+  local relation = GetRelationData(tonumber(rel_id))
+  relation:RecordField(tonumber(f_id), field_name, tonumber(type_size))
+end
+
+-- allocate field over remote nodes
+-- shared memory, one array across threads for now
+local function remoteAllocateField(f_id, rel_id, ghost_width)
+  broadcastLuaEventToComputeNodes('allocateField', f_id, rel_id,
+                                  gaswrap.lson_stringify(ghost_width))
+end
+-- event handler to allocate array for a field
+local function allocateField(f_id, rel_id, ghost_width_str)
+  local rel   = GetRelationData(tonumber(rel_id))
+  assert(rel, 'Attempt to allocate for field of '..
+              'unrecorded relation #'..rel_id)
+  local field = rel:GetFieldData(tonumber(f_id))
+  assert(field, 'Attempt to allocate unrecorded field #'..f_id..
+                ' on relation '..rel:Name()..' #'..rel_id)
+  local ghost_width = gaswrap.lson_eval(ghost_width_str)
+  assert(#ghost_width == #rel:Dims(),
+         'Relation dimensions ' .. #rel:Dims() ..
+         ' do not match ghost width dimensions ' .. #ghost_width)
+  field:AllocateArray(ghost_width)
+end
+-- reallocate memory for a field
+local function reallocateField(msg)
+  -- TODO
+end
+
+-- just constant for now
+-- can probably convert other kinds of loads to tasks
+-- value should be a 2 level list right now, can relax this once we start using
+-- luatoebb conversions from ebb.
+local function remoteLoadFieldConstant(f_id, rel_id, value)
+  local value_ser = gaswrap.lson_stringify(value)
+  broadcastLuaEventToComputeNodes('loadFieldConstant', f_id, rel_id, value_ser)
+end
+
+local struct ArrayLoadConst{
+  array : Array,
+  val   : &opaque,
+}
+
+local terra load_field_constant(args : &opaque)
+  var array_data  = [&ArrayLoadConst](args)
+  var ptr         = [&uint8](array_data.array:DataPtr())
+  var type_size   = array_data.array:TypeSize()
+  var type_stride = array_data.array:TypeStride()
+  for i = 0, array_data.array:NumElems() do
+  -- write over ghost values too as it doesn't matter
+    C.memcpy(ptr, array_data.val, type_size)
+    ptr = ptr + type_stride
+  end
+  C.free(array_data.val)
+  C.free(array_data)
+end
+local function loadFieldConstant(f_id, rel_id, value_ser)
+  local rel      = GetRelationData(tonumber(rel_id))
+  assert(rel, 'Attempt to load into a field over unrecorded relation ' ..
+               rel_id)
+  local field    = rel:GetFieldData(tonumber(f_id))
+  assert(field, 'Attempt to load into unrecorded field ' .. f_id ..
+                ' over ' .. rel_id .. '.')
+  assert(field:isAllocated(), 'Attempt to load into unallocated field ' ..
+                              field:Name() ..  ' over ' .. rel:Name() .. '.')
+  local array_data  = terralib.cast(&ArrayLoadConst,
+                                    C.malloc(terralib.sizeof(ArrayLoadConst)))
+  array_data.array  = field:GetArray()
+  local typ         = field:GetType()
+  local val_data    = terralib.new(typ.base_type[typ.n_cols][typ.n_cols],
+                                   gaswrap.lson_eval(value_ser))
+  local elem_size   = terralib.sizeof(typ.base_type) *
+                      typ.n_rows * typ.n_cols
+  array_data.val    = C.malloc(elem_size)
+  C.memcpy(array_data.val, val_data, elem_size)
+  -- single threaded right now
+  gaswrap.acquireScheduler()
+  field:GetPreviousWriteSignal():sink()
+  local a_in  = field:ForkPreviousReadSignal(1)[0]
+  local a_out = a_in:exec(0, load_field_constant:getpointer(),
+                          array_data)
+  field:RecordReadWrite(a_out)
+  gaswrap.releaseScheduler()
+end
+
+-----------------------------------
+-- HELPER METHODS FOR CONTROL NODE
+-----------------------------------
 
 local EGridRelation   = {}
 EGridRelation.__index = EGridRelation
@@ -79,8 +527,6 @@ end
 local EField   = {}
 EField.__index = EField
 local function is_efield(obj) return getmetatable(obj) == EField end
-
-
 
 --[[
   name = 'string'
@@ -96,7 +542,7 @@ local function NewGridRelation(args)
   local rel_id        = relation_id_counter
   relation_id_counter = rel_id + 1
 
-  distdata.broadcastNewRelation(rel_id, args.name, 'GRID', args.dims)
+  broadcastNewRelation(rel_id, args.name, 'GRID', args.dims)
 
   return setmetatable({
     id    = rel_id,
@@ -120,12 +566,11 @@ local function NewField(args)
   field_id_counter  = f_id + 1
 
   -- create the field
-  distdata.broadcastNewField(f_id, args.rel.id, args.name,
-                             terralib.sizeof(args.type))
+  broadcastNewField(f_id, args.rel.id, args.name, terralib.sizeof(args.type))
   -- allocate memory to back the field
   local ghosts = {}
   for i,_ in ipairs(args.rel.dims) do ghosts[i] = BASIC_SAFE_GHOST_WIDTH end
-  distdata.remoteAllocateField(args.rel.id, f_id, ghosts)
+  remoteAllocateField(args.rel.id, f_id, ghosts)
 
   local f = setmetatable({
     id      = f_id,
@@ -134,9 +579,6 @@ local function NewField(args)
 
   return f
 end
-
-
-
 
 --[[
   blocking = {#,#,?} -- dimensions of grid of blocks
@@ -204,74 +646,142 @@ function EGridRelation:partition(args)
 
   self._partition_map     = map
   self._partition_bounds  = bounds
-  distdata.broadcastGlobalGridPartition(self.id, blocks, bounds, map)
+  broadcastGlobalGridPartition(self.id, blocks, bounds, map)
 end
 
 
 -------------------------------------------------------------------------------
---            Yadda
+-- Handle actions over sets of fields and privileges
 -------------------------------------------------------------------------------
 
---[[
-local struct FieldData {
-  array      : distdata.Array;
-  field_name : uint8[64];
-  rel_name   : uint8[64];
-}
+-- **** THIS SECTION IS VERY UNSTABLE AND INCOMPLETE ****
 
 --[[
-local terra dumpFloatFieldData(args : &opaque)
-  var worker_id : uint = [gas.mynode()]
-  var field_data = [&FieldData](args)
-  var ptr : &float = [&float](field_data.array:DataPtr())
-  C.printf('[%u] Dumping field data for relation %s, field %s\n',
-           worker_id, field_data.rel_name, field_data.field_name)
-  var lo     = field_data.array:LowerBounds()
-  var hi     = field_data.array:HigherBounds()
-  var stride = field_data.array:Stride()
-  for j = lo[1], hi[1], 1 do
-    for i = lo[0], hi[0], 1 do
-      C.printf('[%u] %u, %u : %f\n', worker_id, i, j,
-                                     ptr[i*stride[0] + j*stride[1] ])
-    end
-  end
-end
+Each task is associated with:
+  * terra code for the task
+  * relation the task is compiled for
+  * processor (CPU or GPU)
+  * field_accesses
+  * .. globals not yet
+Each ufversion maps to a unique task.
+The controller node is responsible for managing mapping between functions
+and ufversions, making launch decisions, and invoking the correct task with
+a selected partitioning.
+If the controller decides to invoke a function across cpus + gpus (in rare
+cases?), it is responsible for invoking two tasks, the cpu version and the gpu
+version, with the correct partitioning.
+Compute nodes should not be making these decisions.
 
--- print list of relations, fields, and data over the fields
-local function dumpAllFields()
-  os.execute('sleep 2')
-  for _, rel in pairs(distdata._TESTING_relation_metadata) do
-    local bounds = rel:GetPartitionBounds()
-    local bounds_str = '{' .. gaswrap.stringify_list(bounds.lo) ..
-                       ',' ..
-                       gaswrap.stringify_list(bounds.hi) .. '}'
-    local map_str   = gaswrap.stringify_list(rel:GetPartitionMap())
-    print('[' .. tostring(gas.mynode()) ..
-          '] Relation ' .. tostring(rel:Name()) .. ', bounds ' .. bounds_str ..
-          ', map ' .. map_str .. ':')
-    for _, field in pairs(rel:Fields()) do
-      print('  [' .. tostring(gas.mynode()) ..
-            '] Field ' .. tostring(field:Name()))
-      local field_data = terralib.cast(&FieldData,
-                            C.malloc(terralib.sizeof(FieldData)))
-      field_data.array = field:GetArray()
-      field_data.field_name = field:Name()
-      field_data.rel_name   = rel:Name()
-      gaswrap.acquireScheduler()
-      local ws = field:GetPreviousWriteSignal()
-      local a_out = ws:exec(0, dumpFloatFieldData:getpointer(),
-                               field_data)
-      field:RecordRead(a_out)
-      gaswrap.releaseScheduler()
-    end
-  end
-end
+A task can be invoked with different partitionings. This partitioning only
+determines how a task is run in parallel all the local processors, and over
+what parts of the relation.
+A task partitioning over a relation must be registered separately before a task
+with that partitioning is invoked.
 
-gaswrap.registerLuaEvent('dumpAllFields', dumpAllFields)
+For now, we assume that the controller node has allocated data correctly on
+worker nodes, to support all the tasks (with uncentered accesses), and
+that there is only one instance of data for every {relation, field}.
 --]]
 
+local used_task_id    = 0   -- last used task id, for generating ids
+local task_id_to_name = {}  -- task id to name
+local task_table      = {}  -- map task id to terra code and other task metadata
 
+--[[
+A task is defined by:
+  * name (optional)
+  * task id (auto-generated)
+  * terra code
+  * rel_id
+  * processor
+  * field_accesses
+This is designed for serializing/deserializing.
+--]]
+local Task   = {}
+Task.__index = Task
+local Access = {}
+Access.__index = Access
 
+local function NewTask(params)
+  assert(params.task_func and params.rel_id and
+         params.processor and params.accesses,
+         'One or more arguments necessary to define a new task missing.')
+  assert(terralib.isfunction(params.task_func) and
+         params.task_func:gettype() == ({&opaque} -> {}),
+         'Invalid task function to NewTask.')
+  assert(params.processor == CPU, 'Only CPU tasks supported right now.')
+  used_task_id = used_task_id + 1
+  local field_accesses = {}
+  return setmetatable({
+                        name      = params.name or params.task_func:getname(),
+                        task_id   = used_task_id,
+                        rel_id    = params.rel_id,
+                        processor = params.processor,
+                        accesses  = accesses
+                      }, Task)
+end
+
+-- Event/handler for registering a new task. Returns a task id.
+--[[
+params : {
+  task,
+  task_name,
+  rel_id,
+  processor,
+  accesses
+}
+--]]
+local function sendNewTask(params)
+  assert(gas.mynode() == CONTROL_NODE,
+         'Can send tasks from control node only.')
+  local task_name    = params.task_name or params.task:getname()
+  local bitcode_ser  = terralib.saveobj(nil, 'bitcode', {[task_name]=params.task})
+  used_task_id       = used_task_id + 1
+  local task_id      = used_task_id
+  assert(params.processor == CPU, 'Tasks over ' .. GPU .. ' not supported yet.')
+  local accesses_ser = lson_stringify(accesses)
+  broadcastLuaEventToComputeNodes('newTask', task_id, bitcode_ser, task_name,
+                                  params.rel_id, params.processor, accesses_ser)
+  return task_id
+end
+local function receiveNewTask(task_id_ser, bitcode_ser, task_name, rel_ser,
+                              proc_ser, accesses_ser)
+  local bitcode   = terralib.linkllvmstring(bitcode_ser)
+  local task_code = bitcode:extern(task_name, {&opaque} -> {})
+  task_code:setname(task_name)
+  local task_id   = tonumber(task_id_ser)
+  assert(not task_id_to_name[task_id],
+         'Received task ' .. task_id_ser .. ' : ' .. task_name ..
+         ', but already recorded ' .. ' a task with the same task id.')
+  task_id_to_name[task_id] = task_name
+  task_table[task_id] = task_code
+end
+
+-- Send task partitioning over a relation.
+local function sendLocalGridPartition(relation, local_partitioning)
+end
+local function recordLocalGridPartition(rel_ser, local_partitioning_ser)
+end
+
+-- Invoke a single task.
+-- Task sequences can be done using:
+--   1. update this to support a sequence
+--      pros: reduce communication/lua event overhead
+--      not sure if we actually need this
+--   2. register a new terra task that performs a series of tasks
+--      pros: can reorder/transform code when fusing tasks
+--      cons: probably not trivial to support any data exchanges within the task
+local function sendTaskLaunch(task_id, partition_id)
+  broadcastLuaEventToComputeNodes('launchTask', task_id)
+end
+local function launchTask(task_id_ser, partition_id_ser)
+  local task_id = tonumber(task_id_ser)
+  assert(task_table[task_id], 'Task ' .. task_id_ser ..  ' is not registered.')
+  -- TODO: add dependencies, set up args, and enqueue this action
+  task_table[task_id](nil)
+end
+
+-- TODO: Task sequences
 
 
 
@@ -281,6 +791,35 @@ gaswrap.registerLuaEvent('dumpAllFields', dumpAllFields)
 -------------------------------------------------------------------------------
 
 
+-------------------------------------------------------------------------------
+-- Register event handlers 
+-------------------------------------------------------------------------------
+
+-- relational data
+gaswrap.registerLuaEvent('newRelation', createNewRelation)
+gaswrap.registerLuaEvent('globalGridPartition', createGlobalGridPartition)
+gaswrap.registerLuaEvent('recordNewField', recordNewField)
+gaswrap.registerLuaEvent('allocateField', allocateField)
+gaswrap.registerLuaEvent('reallocateField', reallocateField)
+gaswrap.registerLuaEvent('loadFieldConstant', loadFieldConstant)
+
+-- task code and data
+gaswrap.registerLuaEvent('newTask', receiveNewTask)
+gaswrap.registerLuaEvent('launchTask', launchTask)
+
+
+-------------------------------------------------------------------------------
+-- Exports for testing
+-------------------------------------------------------------------------------
+
+Exports._TESTING_broadcastNewRelation         = broadcastNewRelation
+Exports._TESTING_broadcastGlobalGridPartition = broadcastGlobalGridPartition
+Exports._TESTING_broadcastNewField            = broadcastNewField
+Exports._TESTING_remoteAllocateField          = remoteAllocateField
+Exports._TESTING_remoteLoadFieldConstant      = remoteLoadFieldConstant
+Exports._TESTING_broadcastLuaEventToComputeNodes =
+  broadcastLuaEventToComputeNodes
+Exports._TESTING_Array                        = Array
 
 -------------------------------------------------------------------------------
 -- Exports
@@ -289,23 +828,5 @@ gaswrap.registerLuaEvent('dumpAllFields', dumpAllFields)
 Exports.N_NODES                       = N_NODES
 Exports.THIS_NODE                     = THIS_NODE
 
-
--- functions
-Exports.broadcastNewRelation          = distdata.broadcastNewRelation
-Exports.broadcastGlobalGridPartition  = distdata.broadcastGlobalGridPartition
-Exports.broadcastNewField             = distdata.broadcastNewField
-Exports.remoteAllocateField           = distdata.remoteAllocateField
-Exports.remoteLoadFieldConstant       = distdata.remoteLoadFieldConstant
-
 Exports.NewGridRelation               = NewGridRelation
 Exports.NewField                      = NewField
-
--- structs
-Exports.Array                         = distdata.Array
-
-
-
-
-
-
-
