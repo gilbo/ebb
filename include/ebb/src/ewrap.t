@@ -34,9 +34,10 @@ local Util    = require 'ebb.src.util'
 
 -- Following modules are probably not going to depdend (directly or indirectly)
 -- on ewrap since they define basic types.
---local Pre     = require 'ebb.src.prelude'
+local Pre     = require 'ebb.src.prelude'
+local Rawdata = require 'ebb.src.rawdata'
+local DynamicArray = Rawdata.DynamicArray
 --local Types   = require 'ebb.src.types'
---local rawdata = require 'ebb.src.rawdata'
 
 -- signal to gasnet library not to try to find the shared lib or headers
 rawset(_G,'GASNET_PRELOADED',true)
@@ -104,42 +105,59 @@ end
 -- Relation and Field objects at compute nodes
 -------------------------------------------------------------------------------
 
--- Use DLD when integrating
-local struct Array {
-  ptr         : &opaque;
-  n_elems     : uint64;     -- remove this?
-  lo          : uint64[3];
-  hi          : uint64[3];
-  dim_stride  : uint64[3];
-  ghost_width : uint64[3];
-  type_stride : uint32;
-  type_size   : uint32;
-}
+--[[
+array,
+dld
+--]]
+local DataInstance = {}
+DataInstance.__index = DataInstance
 
--- Accessors to shield usage from implementation
-terra Array:DataPtr()
-  return self.ptr
+--[[
+params {
+  bounds,
+  ghost_width,
+  type_size
+}
+--]]
+local function NewDataInstance(params)
+  local range        = params.bounds:getranges()
+  local ghost_width  = params.ghost_width
+  local n_elems      = 1
+  local dim_size     = {}
+  local dim_stride   = {}
+  for d = 1,3 do
+    dim_stride[d]  = n_elems  -- column major?
+    if not ghost_width[d] then ghost_width[d] = 0 end
+    dim_size[d]    = range[d][2] - range[d][1] + 1
+    n_elems        = n_elems * (dim_size[d] + 2*ghost_width[d])
+  end
+  local elem_size   = params.type_size
+  local elem_stride = pow2align(elem_size)
+  local array = DynamicArray.New {
+    size      = elem_size * n_elems,
+    type      = uint8[elem_size],
+    processor = Pre.CPU,
+  }
+  local dld = DLD.NewDLD {
+    base_type   = DLD.UINT_8,
+    location    = DLD.CPU,
+    type_stride = elem_stride,
+    address     = array:_raw_ptr(),
+    dim_size    = dim_size,
+    dim_stride  = dim_stride,
+  }
+  return setmetatable ({
+    array = array,
+    dld   = dld,
+  }, DataInstance)
 end
-terra Array:NumElems()
-  return self.n_elems
+
+function DataInstance:DataPtr()
+  return self.array:_raw_ptr()
 end
-terra Array:LowerBounds()
-  return self.lo
-end
-terra Array:HigherBounds()
-  return self.hi
-end
-terra Array:Stride()
-  return self.dim_stride
-end
-terra Array:GhostWidth()
-  return self.ghost_width
-end
-terra Array:TypeSize()
-  return self.type_size
-end
-terra Array:TypeStride()
-  return self.type_stride
+
+function DataInstance:DLD()
+  return self.dld
 end
 
 --[[
@@ -157,7 +175,7 @@ FieldData.__index = FieldData
 
 local function NewFieldData(relation, name, typ_size)
   return setmetatable({
-                        typ_size     = typ_size,
+                        type_size    = typ_size,
                         name         = name,
                         relation     = relation,
                         array        = nil,
@@ -175,46 +193,34 @@ function FieldData:isAllocated()
   return (self.array ~= nil)
 end
 
-function FieldData:AllocateArray(gw)
+function FieldData:AllocateInstance(gw)
   assert(self.array == nil, 'Trying to allocate already allocated array.')
   assert(self.relation:isPartitioned(),
          'Relation ' .. self.relation:Name() .. 'not partitioned. ' ..
          'Cannot allocate data over it.')
-  local bounds = self.relation:GetPartitionBounds()
-  local n_elems = 1
-  local dim_stride   = {}
-  local ghost_width  = {}
-  for d = 1,3 do
-    dim_stride[d]  = n_elems  -- column major?
-    ghost_width[d] = gw[d] or 0 
-    n_elems       = n_elems * (bounds.hi[d] - bounds.lo[d]
-                                            + 1 + 2*ghost_width[d])
-  end
-  local elem_size   = self:GetTypeSize()
-  local elem_stride = pow2align(elem_size)
-  self.array = terralib.new(Array, {
-    ptr         = C.malloc(elem_stride * n_elems),
-    n_elems     = n_elems,
-    lo          = bounds.lo,
-    hi          = bounds.hi,
-    dim_stride  = dim_stride,
-    ghost_width = ghost_width,
-    type_size   = elem_size,
-    type_stride = elem_stride,
-  })
+  self.instance   = NewDataInstance {
+                      bounds      = self.relation:GetPartitionBounds(),
+                      ghost_width = gw,
+                      type_size   = self:GetTypeSize(),
+                    }
   self.last_read  = gaswrap.newSignalSource():trigger()
   self.last_write = gaswrap.newSignalSource():trigger()
 end
 
---function FieldData:GetType()
---  return self.type
---end
 function FieldData:GetTypeSize()
-  return self.typ_size
+  return self.type_size
 end
 
-function FieldData:GetArray()
-  return self.array
+function FieldData:GetInstance()
+  return self.instance
+end
+
+function FieldData:GetDLD()
+  return self.instance:DLD()
+end
+
+function FieldData:GetDataPtr()
+  return self.instance:DataPtr()
 end
 
 -- n+1th signal should not be used by caller
@@ -279,18 +285,12 @@ function RelationData:RecordPartition(blocking, block_id, bounds, map)
     print(
           'Only one partition per relation supported. Node ' ..
           tostring(gas.mynode()) .. ' already has partition ' ..
-          gaswrap.lson_stringify(self.partition.bounds.lo) .. ',' ..
-          gaswrap.lson_stringify(self.partition.bounds.hi) .. '.' ..
-          'Cannot add ' .. gaswrap.lson_stringify(bounds.lo) .. ',' ..
-          gaswrap.lson_stringify(bounds.hi) .. '.'
+          gaswrap.lson_stringify(self.partition.bounds) .. ',' ..
+          'Cannot add ' .. gaswrap.lson_stringify(bounds)
          )
     assert(false)
   end
-  assert(bounds.lo and bounds.hi, 'Bounds should have a lo and a hi point.')
-  for d = 1,3 do
-    if not bounds.lo[d] then bounds.lo[d] = 0 end
-    if not bounds.hi[d] then bounds.hi[d] = 1 end
-  end
+  assert(Util.isrect2d(bounds) or Util.isrect3d(bounds))
   self.partition = {
     blocking = blocking,
     block_id = block_id,
@@ -342,6 +342,7 @@ end
 
 ------------------------------------
 -- EVENT BROADCASTS/ EVENT HANDLERS
+------------------------------------
 
 -- send relation metadata
 local function broadcastNewRelation(unq_id, name, mode, dims)
@@ -365,7 +366,8 @@ local function sendGlobalGridPartition(
 )
   local blocking_str  = gaswrap.lson_stringify(blocking)
   local block_id_str  = gaswrap.lson_stringify(bid) 
-  local partition_str = gaswrap.lson_stringify(partition)
+  assert(Util.isrect2d(partition) or Util.isrect3d(partition))
+  local partition_str = gaswrap.lson_stringify(partition:getranges())
   gaswrap.sendLuaEvent(nid, 'globalGridPartition', rel_id, blocking_str,
                        block_id_str, partition_str, map_str)
 end
@@ -418,7 +420,9 @@ local function createGlobalGridPartition(rel_id, blocking_str,
          'Are multiple partitions mapped to this node?')
   local blocking  = gaswrap.lson_eval(blocking_str)
   local block_id  = gaswrap.lson_eval(blocking_id_str)
-  local bounds    = gaswrap.lson_eval(partition_str)
+  local range     = gaswrap.lson_eval(partition_str)
+  if not range[3] then range[3] = {1,1} end
+  local bounds = Util.NewRect3d(unpack(range))
   local map       = gaswrap.lson_eval(map_str)
   relation:RecordPartition(blocking, block_id, bounds, map)
 end
@@ -451,27 +455,23 @@ local function allocateField(f_id, rel_id, ghost_width_str)
   assert(#ghost_width == #rel:Dims(),
          'Relation dimensions ' .. #rel:Dims() ..
          ' do not match ghost width dimensions ' .. #ghost_width)
-  field:AllocateArray(ghost_width)
-end
--- reallocate memory for a field
-local function reallocateField(msg)
-  -- TODO
+  field:AllocateInstance(ghost_width)
 end
 
+--[[
 -- just constant for now
 -- can probably convert other kinds of loads to tasks
 -- value should be a 2 level list right now, can relax this once we start using
 -- luatoebb conversions from ebb.
 local function remoteLoadFieldConstant(f_id, rel_id, value)
+  assert(false, 'INTERNAL ERROR: Load is broken currently.')
   local value_ser = gaswrap.lson_stringify(value)
   broadcastLuaEventToComputeNodes('loadFieldConstant', f_id, rel_id, value_ser)
 end
-
 local struct ArrayLoadConst{
   array : Array,
   val   : &opaque,
 }
-
 local terra load_field_constant(args : &opaque)
   var array_data  = [&ArrayLoadConst](args)
   var ptr         = [&uint8](array_data.array:DataPtr())
@@ -486,6 +486,7 @@ local terra load_field_constant(args : &opaque)
   C.free(array_data)
 end
 local function loadFieldConstant(f_id, rel_id, value_ser)
+  assert(false, 'INTERNAL ERROR: Load is broken currently.')
   local rel      = GetRelationData(tonumber(rel_id))
   assert(rel, 'Attempt to load into a field over unrecorded relation ' ..
                rel_id)
@@ -513,6 +514,7 @@ local function loadFieldConstant(f_id, rel_id, value_ser)
   field:RecordReadWrite(a_out)
   gaswrap.releaseScheduler()
 end
+--]]
 
 -----------------------------------
 -- HELPER METHODS FOR CONTROL NODE
@@ -608,10 +610,7 @@ function EGridRelation:partition(args)
       for j=1,nY do
         local node_id = (i-1)*nY + (j-1) + 1
         map[i][j]     = node_id
-        bounds[i][j]  = {
-          lo = {xlo,ylo},
-          hi = {xhi-1,yhi-1}, -- inclusive bound
-        }
+        bounds[i][j]  = Util.NewRect2d({xlo,xhi-1},{ylo,yhi-1})
         ylo,yhi = yhi,yhi+dy
       end
       xlo,xhi = xhi,xhi+dx
@@ -632,10 +631,7 @@ function EGridRelation:partition(args)
         for k=1,nZ do
           local node_id   = (i-1)*nY*nZ + (j-1)*nZ + (k-1) + 1
           map[i][j][k]    = node_id
-          bounds[i][j][k] = {
-            lo = {xlo,ylo,zlo},
-            hi = {xhi-1,yhi-1,zhi-1}, -- inclusive bound
-          }
+          bounds[i][j][k] = Util.NewRect3d({xlo,xhi-1},{ylo,yhi-1},{zlo,zhi-1})
           zlo,zhi = zhi,zhi+dz
         end
         ylo,yhi = yhi,yhi+dy
@@ -800,8 +796,7 @@ gaswrap.registerLuaEvent('newRelation', createNewRelation)
 gaswrap.registerLuaEvent('globalGridPartition', createGlobalGridPartition)
 gaswrap.registerLuaEvent('recordNewField', recordNewField)
 gaswrap.registerLuaEvent('allocateField', allocateField)
-gaswrap.registerLuaEvent('reallocateField', reallocateField)
-gaswrap.registerLuaEvent('loadFieldConstant', loadFieldConstant)
+--gaswrap.registerLuaEvent('loadFieldConstant', loadFieldConstant)
 
 -- task code and data
 gaswrap.registerLuaEvent('newTask', receiveNewTask)
@@ -816,10 +811,9 @@ Exports._TESTING_broadcastNewRelation         = broadcastNewRelation
 Exports._TESTING_broadcastGlobalGridPartition = broadcastGlobalGridPartition
 Exports._TESTING_broadcastNewField            = broadcastNewField
 Exports._TESTING_remoteAllocateField          = remoteAllocateField
-Exports._TESTING_remoteLoadFieldConstant      = remoteLoadFieldConstant
+--Exports._TESTING_remoteLoadFieldConstant      = remoteLoadFieldConstant
 Exports._TESTING_broadcastLuaEventToComputeNodes =
   broadcastLuaEventToComputeNodes
-Exports._TESTING_Array                        = Array
 
 -------------------------------------------------------------------------------
 -- Exports
