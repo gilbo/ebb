@@ -2110,7 +2110,7 @@ function Relation:SetPartitions(num_partitions)
     rawset(self, '_rel_global_partition',
                  P.RelGlobalPartition(self, unpack(num_partitions)))
   elseif use_exp then
-    self._ewrap_relation:partition{ blocking=num_partitions }
+    self._ewrap_relation:partition_across_nodes{ blocking=num_partitions }
   end
 end
 
