@@ -107,7 +107,8 @@ end
 
 --[[
 array,
-dld
+dld,
+ghost_width
 --]]
 local FieldInstanceTable = {}
 FieldInstanceTable.__index = FieldInstanceTable
@@ -126,7 +127,7 @@ local function NewFieldInstanceTable(params)
   local dim_size     = {}
   local dim_stride   = {}
   for d = 1,3 do
-    dim_stride[d]  = n_elems  -- column major?
+    dim_stride[d]  = n_elems   -- column major?
     if not ghost_width[d] then ghost_width[d] = 0 end
     dim_size[d]    = range[d][2] - range[d][1] + 1
     n_elems        = n_elems * (dim_size[d] + 2*ghost_width[d])
@@ -147,13 +148,24 @@ local function NewFieldInstanceTable(params)
     dim_stride  = dim_stride,
   }
   return setmetatable ({
-    array = array,
-    dld   = dld,
+    array       = array,
+    dld         = dld,
+    ghost_width = ghost_width,
   }, FieldInstanceTable)
 end
 
 function FieldInstanceTable:DataPtr()
   return self.array:_raw_ptr()
+end
+
+function FieldInstanceTable:DataPtrGhostAdjusted()
+  local ptr = terralib.cast(&uint8, self:DataPtr())
+  local offset = 0
+  for d = 1,3 do
+    offset = offset + self.ghost_width[d] *
+                      self.dld.dim_stride[d] * self.dld.type_stride
+  end
+  return ptr - offset
 end
 
 function FieldInstanceTable:DLD()
@@ -181,7 +193,7 @@ local function NewFieldData(relation, name, typ_size)
                         type_size    = typ_size,
                         name         = name,
                         relation     = relation,
-                        array        = nil,
+                        instance     = nil,
                         last_read    = nil,
                         last_write   = nil,
                       },
@@ -821,13 +833,26 @@ end
 local function LaunchTask(task_id_ser, partition_id_ser)
   local task = task_table[tonumber(task_id_ser)]
   assert(task, 'Task ' .. task_id_ser ..  ' is not registered.')
-  -- allocate signal arrays/ task args
+  -- allocate signal arrays
   local num_fields  = #task.fields
   local signals_in  = terralib.new(gaswrap.Signal[num_fields])
   local a_out_forked = terralib.new(gaswrap.Signal[num_fields])
+  -- can we/ should we reuse args across launches?
+  -- ** TASK IS RESPONSIBLE FOR CLEANING UP ARGS **
   local args  = terralib.cast(&TaskArgs, C.malloc(terralib.sizeof(TaskArgs)))
   args.fields = terralib.cast(&FieldInstance,
                               C.malloc(num_fields * terralib.sizeof(FieldInstance)))
+  local bounds = GetRelationData(task.rel_id):GetPartitionBounds()
+  local range  = bounds:getranges()
+  for d = 1,3 do
+    args.bounds[d-1].lo = range[d][1]
+    args.bounds[d-1].hi = range[d][2]
+  end
+  for n, fid in ipairs(task.fields) do
+    local field = GetFieldData(fid)
+    args.fields[n-1].ptr = field:GetInstance():DataPtrGhostAdjusted()
+    args.fields[n-1].dld = field:GetDLD():toTerra()
+  end
   -- ACQUIRE SCHEDULER
   gaswrap.acquireScheduler()
   for n, fid in ipairs(task.fields) do
@@ -836,7 +861,7 @@ local function LaunchTask(task_id_ser, partition_id_ser)
     if access.privilege == privileges.read_only then
       local f_read     = field:GetPreviousReadSignal()
       local f_write    = field:ForkPreviousWriteSignal()
-      local signals    = terralib.new(gaswrap.Signals[2], {f_read, f_write})
+      local signals    = terralib.new(gaswrap.Signal[2], {f_read, f_write})
       signals_in[n-1]  = gaswrap.mergeSignals(2, signals)
     else
       local f_read     = field:GetPreviousReadSignal()
@@ -852,19 +877,6 @@ local function LaunchTask(task_id_ser, partition_id_ser)
   else
     a_in = gaswrap.newSignalSource():trigger()
   end
-  -- can we/ should we reuse args across launches?
-  -- ** TASK IS RESPONSIBLE FOR CLEANING UP ARGS **
-  local bounds = GetRelationData(task.rel_id):GetPartitionBounds()
-  local range  = bounds:getranges()
-  for d = 1,3 do
-    args.bounds[d-1].lo = range[d][1]
-    args.bounds[d-1].hi = range[d][2]
-  end
-  for n, fid in ipairs(task.fields) do
-    local field = GetFieldData(fid)
-    args.fields[n-1].ptr = terralib.cast(&uint8, field:GetDataPtr())
-    args.fields[n-1].dld = field:GetDLD():toTerra()
-  end
   -- TODO: use partition id to run task across worker threads
   local a_out        = a_in:exec(0, task.func, args)
   -- record output signal
@@ -875,14 +887,14 @@ local function LaunchTask(task_id_ser, partition_id_ser)
     a_out_forked[0] = a_out
   else
     a_out:fork(num_fields, a_out_forked)
-    for n, fid in ipairs(task.fields) do
-      local field  = GetFieldData(fid)
-      local access = task.field_accesses[fid]
-      if access.privilege == privileges.read_only then
-        field:RecordRead(a_out[n])
-      else
-        field:RecordReadWrite(a_out[n])
-      end
+  end
+  for n, fid in ipairs(task.fields) do
+    local field  = GetFieldData(fid)
+    local access = task.field_accesses[fid]
+    if access.privilege == privileges.read_only then
+      field:RecordRead(a_out_forked[n-1])
+    else
+      field:RecordReadWrite(a_out_forked[n-1])
     end
   end
   -- RELEASE SCHEDULER
