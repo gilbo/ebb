@@ -343,7 +343,7 @@ end
 -------------------------------------------------------------------------------
 
 ------------------------------------
--- EVENT BroadcastS/ EVENT HANDLERS
+-- EVENT BROADCASTS/ EVENT HANDLERS
 ------------------------------------
 
 -- send relation metadata
@@ -718,15 +718,16 @@ local used_task_id    = 0   -- last used task id, for generating ids
 local task_table      = {}  -- map task id to terra code and other task metadata
 
 --[[
-params {
+{
   id,
   name, (optional)
-  func,
+  func, (args : bounds, ordered list of fields, 0 indexed, return : void)
   rel_id,
   processor,
   fields, (ordered list, 1 indexed)
   field_accesses
 }
+  ** TASK IS RESPONSIBLE FOR CLEANING UP ARGS **
 --]]
 local Task   = {}
 Task.__index = Task
@@ -737,7 +738,7 @@ local struct FieldInstance {
   dld : DLD.C_DLD;
 }
 local struct TaskArgs {
-  bounds : BoundsStruct;
+  bounds : BoundsStruct[3];
   fields : &FieldInstance;
 }
 
@@ -745,10 +746,9 @@ local function NewTaskMessage(task_id, params)
   assert(params.task_func and params.rel_id and
          params.processor and params.fields and params.field_accesses,
          'One or more arguments necessary to define a new task missing.')
-  assert(terralib.isfunction(params.task_func) and
-         params.task_func:gettype() == ({&opaque} -> {}),
+  assert(terralib.isfunction(params.task_func),
          'Invalid task function to NewTask.')
-  assert(params.processor == CPU, 'Only CPU tasks supported right now.')
+  assert(params.processor == Pre.CPU, 'Only CPU tasks supported right now.')
   local fields = newlist(params.fields)
   local field_accesses = {}
   for field,access in pairs(params.field_accesses) do
@@ -758,56 +758,60 @@ local function NewTaskMessage(task_id, params)
     field_accesses[field._ewrap_field.id] = NewAccess(privilege)
   end
   local task_name = params.name or params.task_func:getname()
+  local bitcode   = terralib.saveobj(nil, 'bitcode',
+                                    {[task_name]=params.task_func})
   local t = {
-              id        = task_id,
+              task_id   = task_id,
               name      = task_name,
-              bitcode   = terralib.saveobj(nil, 'bitcode',
-                                           {[task_name]=params.task_func}),
               rel_id    = params.rel_id,
               processor = tostring(params.processor),
               fields    = fields,
               field_accesses = field_accesses,
             }
-  BroadcastLuaEventToComputeNodes('newTask', gaswrap.lson_stringify(t))
+  BroadcastLuaEventToComputeNodes('newTask', bitcode, gaswrap.lson_stringify(t))
 end
 
-local function TaskFromString(msg)
+local function TaskFromString(bitcode, msg)
   local t         = gaswrap.lson_eval(msg)
   assert(t.processor == CPU)
-  local bitcode   = terralib.linkllvmstring(t.bitcode)
-  local task_func = bitcode:extern(t.name, {&opaque} -> {})
+  local blob      = terralib.linkllvmstring(bitcode)
+  local task_func = blob:extern(t.name, {&opaque} -> {})
   local task = setmetatable({
-    id             = tostring(t.task_id),
+    id             = t.task_id,
     name           = t.name,
-    func           = task_func,
+    func           = task_func:compile(),
     rel_id         = t.rel_id,
     processor      = Pre.CPU,
     fields         = t.fields,
     field_accesses = t.field_accesses,
   }, Task)
+  return task
 end
 
 -- Event/handler for registering a new task. Returns a task id.
 --[[
 params : {
-  task,
+  task_func,
   task_name,
   rel_id,
   processor,
-  accesses
+  fields,
+  field_accesses
 }
+returns task_id
 --]]
 local function RegisterNewTask(params)
   assert(gas.mynode() == CONTROL_NODE,
          'Can send tasks from control node only.')
   assert(params.processor == Pre.CPU, 'Tasks over ' .. GPU .. ' not supported yet.')
   used_task_id  = used_task_id + 1
-  task_id       = used_task_id
+  local task_id = used_task_id
   local msg     = NewTaskMessage(task_id, params)
   return task_id
 end
-local function ReceiveNewTask(msg)
-  task_table[task.id] = TaskFromString(msg)
+local function ReceiveNewTask(bitcode, msg)
+  local task = TaskFromString(bitcode, msg)
+  task_table[task.id] = task
 end
 
 -- Invoke a single task.
@@ -815,11 +819,17 @@ local function SendTaskLaunch(task_id, partition_id)
   BroadcastLuaEventToComputeNodes('launchTask', task_id)
 end
 local function LaunchTask(task_id_ser, partition_id_ser)
-  local task = task_table[tonumber(task_id)]
+  local task = task_table[tonumber(task_id_ser)]
   assert(task, 'Task ' .. task_id_ser ..  ' is not registered.')
-  -- TODO: add dependencies
+  -- allocate signal arrays/ task args
   local num_fields  = #task.fields
-  local signals_in  = terralib.new(gaswrap.Signals[num_fields])
+  local signals_in  = terralib.new(gaswrap.Signal[num_fields])
+  local a_out_forked = terralib.new(gaswrap.Signal[num_fields])
+  local args  = terralib.cast(&TaskArgs, C.malloc(terralib.sizeof(TaskArgs)))
+  args.fields = terralib.cast(&FieldInstance,
+                              C.malloc(num_fields * terralib.sizeof(FieldInstance)))
+  -- ACQUIRE SCHEDULER
+  gaswrap.acquireScheduler()
   for n, fid in ipairs(task.fields) do
     local field  = GetFieldData(fid)
     local access = task.field_accesses[fid]
@@ -827,39 +837,56 @@ local function LaunchTask(task_id_ser, partition_id_ser)
       local f_read     = field:GetPreviousReadSignal()
       local f_write    = field:ForkPreviousWriteSignal()
       local signals    = terralib.new(gaswrap.Signals[2], {f_read, f_write})
-      signals_in[fid]  = gaswrap.mergeSignals(2, f_read, f_write)
+      signals_in[n-1]  = gaswrap.mergeSignals(2, signals)
     else
       local f_read     = field:GetPreviousReadSignal()
       local f_write    = field:GetPreviousWriteSignal()
-      local signals    = terralib.new(gaswrap.Signals[2], {f_read, f_write})
-      signals_in[fid]  = gaswrap.mergeSignals(2, f_read, f_write)
+      local signals    = terralib.new(gaswrap.Signal[2], {f_read, f_write})
+      signals_in[n-1]  = gaswrap.mergeSignals(2, signals)
     end
   end
-  local signals_in_merge = terralib.new(gaswrap.Signals[num_fields], signals_in)
-  local a_in  = gaswrap.mergeSignals(signals_in_merge)
+  local signals_in_merge = terralib.new(gaswrap.Signal[num_fields], signals_in)
+  local a_in = nil
+  if num_fields ~= 0 then
+    a_in = gaswrap.mergeSignals(num_fields, signals_in_merge)
+  else
+    a_in = gaswrap.newSignalSource():trigger()
+  end
   -- can we/ should we reuse args across launches?
-  local args  = terralib.cast(&TaskArgs, C.malloc(terralib.sizeof(TaskArgs)))
-  args.fields = terralib.cast(&FieldInstance,
-                              num_fields*C.malloc(terralib.sizeof(FieldInstance)))
+  -- ** TASK IS RESPONSIBLE FOR CLEANING UP ARGS **
+  local bounds = GetRelationData(task.rel_id):GetPartitionBounds()
+  local range  = bounds:getranges()
+  for d = 1,3 do
+    args.bounds[d-1].lo = range[d][1]
+    args.bounds[d-1].hi = range[d][2]
+  end
   for n, fid in ipairs(task.fields) do
-    local field = GetFielddata(fid)
-    args.fields[n-1].ptr = field:GetDataPtr()
+    local field = GetFieldData(fid)
+    args.fields[n-1].ptr = terralib.cast(&uint8, field:GetDataPtr())
     args.fields[n-1].dld = field:GetDLD():toTerra()
   end
   -- TODO: use partition id to run task across worker threads
-  local a_out        = a_in:exec(0, task.func, nil)
+  local a_out        = a_in:exec(0, task.func, args)
   -- record output signal
-  local a_out_forked = terralib.new(gaswrap.Signal[num_fields])
-  a_out:fork(num_out, a_out_forked)
-  for n, fid in ipairs(task.fields) do
-    local field  = GetFieldData(fid)
-    local access = task.field_accesses[fid]
-    if access.privilege == privileges.read_only then
-      field:RecordRead(a_out[n])
-    else
-      field:RecordReadWrite(a_out[n])
+  if num_fields == 0 then
+    a_out:sink()
+  elseif num_fields == 1 then
+    -- avoid assertion error when forking to just 1 signal
+    a_out_forked[0] = a_out
+  else
+    a_out:fork(num_fields, a_out_forked)
+    for n, fid in ipairs(task.fields) do
+      local field  = GetFieldData(fid)
+      local access = task.field_accesses[fid]
+      if access.privilege == privileges.read_only then
+        field:RecordRead(a_out[n])
+      else
+        field:RecordReadWrite(a_out[n])
+      end
     end
   end
+  -- RELEASE SCHEDULER
+  gaswrap.releaseScheduler()
 end
 
 -- Task sequences can be done using:
@@ -914,3 +941,8 @@ Exports.THIS_NODE                     = THIS_NODE
 Exports.NewGridRelation               = NewGridRelation
 Exports.NewField                      = NewField
 Exports.RegisterNewTask               = RegisterNewTask
+
+Exports.TaskArgs                      = TaskArgs
+Exports.FieldInstance                 = FieldInstance
+Exports.RegisterNewTask               = RegisterNewTask
+Exports.SendTaskLaunch                = SendTaskLaunch
