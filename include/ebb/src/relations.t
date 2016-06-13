@@ -1422,7 +1422,7 @@ function Field:_INTERNAL_LoadConstant(c)
     local lreg    = self:Relation()._logical_region_wrapper
     lreg:InitConstField(self._fid, memval, memsize)
   elseif use_exp then
-    error('EXPERIMENTAL TODO: LoadConstant')
+    self._ewrap_field:LoadConst( T.luaToEbbVal( c, self:Type() ) )
   else
     self:_INTERNAL_LoadLuaPerElemFunction(function()
       return c

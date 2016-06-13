@@ -77,6 +77,7 @@ local function BroadcastLuaEventToComputeNodes(event_name, ...)
     gaswrap.sendLuaEvent(i, event_name, ...)
   end
 end
+local function on_control_node() return THIS_NODE == CONTROL_NODE end
 
 local default_align_max_pow = 32 -- this should accomodate diff architectures
 local function pow2align(N,max_pow)
@@ -121,21 +122,23 @@ params {
 }
 --]]
 local function NewFieldInstanceTable(params)
-  local range        = params.bounds:getranges()
+  local widths       = params.bounds:getwidths()
   local ghost_width  = params.ghost_width
+
   local n_elems      = 1
   local dim_size     = {}
   local dim_stride   = {}
   for d = 1,3 do
     dim_stride[d]  = n_elems   -- column major?
     if not ghost_width[d] then ghost_width[d] = 0 end
-    dim_size[d]    = range[d][2] - range[d][1] + 1
+    dim_size[d]    = widths[d] + 1 -- adjust for hi/lo inclusive convention
     n_elems        = n_elems * (dim_size[d] + 2*ghost_width[d])
   end
+
   local elem_size   = params.type_size
   local elem_stride = pow2align(elem_size)
   local array = DynamicArray.New {
-    size      = elem_size * n_elems,
+    size      = n_elems,
     type      = uint8[elem_size],
     processor = Pre.CPU,
   }
@@ -151,6 +154,7 @@ local function NewFieldInstanceTable(params)
     array       = array,
     dld         = dld,
     ghost_width = ghost_width,
+    _n_elems    = n_elems,
   }, FieldInstanceTable)
 end
 
@@ -171,25 +175,28 @@ end
 function FieldInstanceTable:DLD()
   return self.dld
 end
+function FieldInstanceTable:n_elems() return self._n_elems end
 
 local relation_metadata = {}
 local field_metadata    = {}
 
 --[[
-FieldMetada : {
-  type, { base_type, n_rows, n_cols } (pull this out from ebb types?)
-  name,
-  relation,
-  array, { ghost_width, n_elems, ptr } (pull this out from rawdata?)
-  rw_signal, (signal representing previous read/write, triggers when done)
+WorkerField : {
+  id          = #,
+  type_size   = #, (bytes)
+  name        = 'string',
+  relation    = WorkerRelation,
+  instance    = FieldInstance,
+  last_read   = Signal,
+  last_write  = Signal,
 }
 --]]
+local WorkerField = {}
+WorkerField.__index = WorkerField
 
-local FieldData = {}
-FieldData.__index = FieldData
-
-local function NewFieldData(relation, name, typ_size)
+local function NewWorkerField(relation, f_id, name, typ_size)
   return setmetatable({
+                        id           = f_id,
                         type_size    = typ_size,
                         name         = name,
                         relation     = relation,
@@ -197,18 +204,18 @@ local function NewFieldData(relation, name, typ_size)
                         last_read    = nil,
                         last_write   = nil,
                       },
-                      FieldData)
+                      WorkerField)
 end
 
-function FieldData:Name()
+function WorkerField:Name()
   return self.name
 end
 
-function FieldData:isAllocated()
-  return (self.array ~= nil)
+function WorkerField:isAllocated()
+  return (self.instance ~= nil)
 end
 
-function FieldData:AllocateInstance(gw)
+function WorkerField:AllocateInstance(gw)
   assert(self.array == nil, 'Trying to allocate already allocated array.')
   assert(self.relation:isPartitioned(),
          'Relation ' .. self.relation:Name() .. 'not partitioned. ' ..
@@ -222,38 +229,53 @@ function FieldData:AllocateInstance(gw)
   self.last_write = gaswrap.newSignalSource():trigger()
 end
 
-function FieldData:GetTypeSize()
+function WorkerField:GetTypeSize()
   return self.type_size
 end
+function WorkerField:GetTypeStride()
+  return self.instance:DLD().type_stride
+end
 
-function FieldData:GetInstance()
+function WorkerField:GetInstance()
   return self.instance
 end
 
-function FieldData:GetDLD()
+function WorkerField:GetDLD()
   return self.instance:DLD()
 end
 
-function FieldData:GetDataPtr()
+function WorkerField:GetDataPtr()
   return self.instance:DataPtr()
 end
+function WorkerField:GetElemCount() -- includes ghosts
+  return self.instance:n_elems()
+end
 
-function FieldData:GetPreviousReadSignal()
+function WorkerField:GetReadSignal()
   return self.last_read
 end
-function FieldData:GetPreviousWriteSignal()
+function WorkerField:GetWriteSignal()
   return self.last_write
 end
-function FieldData:ForkPreviousWriteSignal()
+function WorkerField:GetReadWriteSignal()
+  local signals = terralib.new(gaswrap.Signal[2])
+  signals[0] = self.last_read
+  signals[1] = self.last_write
+  return gaswrap.mergeSignals(2, signals)
+end
+function WorkerField:ForkWriteSignal()
   local signals = terralib.new(gaswrap.Signal[2])
   self.last_write:fork(2, signals)
   self.last_write = signals[1]
   return signals[0]
 end
-function FieldData:RecordRead(signal)
-  self.last_read = signal
+function WorkerField:MergeReadSignal(signal)
+  local signals = terralib.new(gaswrap.Signal[2])
+  signals[0] = self.last_read
+  signals[1] = signal
+  self.last_read = gaswrap.mergeSignals(2, signals)
 end
-function FieldData:RecordReadWrite(signal)
+function WorkerField:SetReadWriteSignal(signal)
   local signals = terralib.new(gaswrap.Signal[2])
   signal:fork(2, signals)
   self.last_read  = signals[0]
@@ -261,19 +283,18 @@ function FieldData:RecordReadWrite(signal)
 end
 
 --[[
-RelationData : {
-  name,
-  mode,
-  dims,  (global dimensions, might not need this)
-  partition, { blocking, block_id, bounds, map },
-  fields,
+WorkerRelation : {
+  name        = 'string',
+  mode        = 'GRID',
+  dims        = { #, #, ? },
+  partition   = { blocking, block_id, bounds, map },
+  fields      = list{ WorkerField },
 }
 --]]
+local WorkerRelation = {}
+WorkerRelation.__index = WorkerRelation
 
-local RelationData = {}
-RelationData.__index = RelationData
-
-local function NewRelationData(name, mode, dims)
+local function NewWorkerRelation(name, mode, dims)
   assert(mode == 'GRID', 'Relations must be of grid type on GASNet.')
   return setmetatable({
                         name      = name,
@@ -281,22 +302,22 @@ local function NewRelationData(name, mode, dims)
                         dims      = dims,
                         partition = nil,
                         fields    = newlist(),
-                      }, RelationData)
+                      }, WorkerRelation)
 end
 
-function RelationData:Name()
+function WorkerRelation:Name()
   return self.name
 end
 
-function RelationData:Dims()
+function WorkerRelation:Dims()
   return self.dims
 end
 
-function RelationData:Fields()
+function WorkerRelation:Fields()
   return self.fields
 end
 
-function RelationData:RecordPartition(blocking, block_id, bounds, map)
+function WorkerRelation:RecordPartition(blocking, block_id, bounds, map)
   if self.partition ~= nil then
     print(
           'Only one partition per relation supported. Node ' ..
@@ -315,22 +336,22 @@ function RelationData:RecordPartition(blocking, block_id, bounds, map)
   }
 end
 
-function RelationData:isPartitioned()
+function WorkerRelation:isPartitioned()
   return self.partition
 end
 
-function RelationData:RecordField(f_id, name, typ_size)
+function WorkerRelation:RecordField(f_id, name, typ_size)
   assert(self.fields[f_id] == nil, "Recording already recorded field '"..
                                    name.."' with id # "..f_id)
   self.fields:insert(f_id)
-  field_metadata[f_id] = NewFieldData(self, name, typ_size)
+  field_metadata[f_id] = NewWorkerField(self, f_id, name, typ_size)
 end
 
-function RelationData:GetPartitionBounds()
+function WorkerRelation:GetPartitionBounds()
   return self.partition.bounds
 end
 
-function RelationData:GetPartitionMap()
+function WorkerRelation:GetPartitionMap()
   return self.partition.map
 end
 
@@ -338,14 +359,14 @@ local function RecordNewRelation(unq_id, name, mode, dims)
   assert(relation_metadata[unq_id] == nil,
          "Recordling already recorded relation '"..name..
          "' with id # "..unq_id)
-  relation_metadata[unq_id] = NewRelationData(name, mode, dims)
+  relation_metadata[unq_id] = NewWorkerRelation(name, mode, dims)
 end
 
-local function GetRelationData(unq_id)
+local function GetWorkerRelation(unq_id)
   return relation_metadata[unq_id]
 end
 
-function GetFieldData(f_id)
+function GetWorkerField(f_id)
   return field_metadata[f_id]
 end
 
@@ -426,7 +447,7 @@ end
 local function CreateGlobalGridPartition(rel_id, blocking_str,
                                          blocking_id_str,
                                          partition_str, map_str)
-  local relation = GetRelationData(tonumber(rel_id))
+  local relation = GetWorkerRelation(tonumber(rel_id))
   assert(relation,
          'Relation #' .. rel_id .. ' to partition is not defined.')
   assert(relation.block_id == nil,
@@ -447,7 +468,7 @@ local function BroadcastNewField(f_id, rel_id, field_name, type_size)
                                                     type_size)
 end
 local function RecordNewField(f_id, rel_id, field_name, type_size)
-  local relation = GetRelationData(tonumber(rel_id))
+  local relation = GetWorkerRelation(tonumber(rel_id))
   relation:RecordField(tonumber(f_id), field_name, tonumber(type_size))
 end
 
@@ -459,69 +480,95 @@ local function RemoteAllocateField(f_id, ghost_width)
 end
 -- event handler to allocate array for a field
 local function AllocateField(f_id, ghost_width_str)
-  local field = GetFieldData(tonumber(f_id))
+  local field = GetWorkerField(tonumber(f_id))
   assert(field, 'Attempt to allocate unrecorded field #'..f_id)
   local ghost_width = gaswrap.lson_eval(ghost_width_str)
   field:AllocateInstance(ghost_width)
 end
 
---[[
+
+
+
+local function stringify_binary_data( n_bytes, valptr )
+  assert(n_bytes % 4 == 0, 'unexpected size, bin_stringify NEEDS FIXING')
+  local n_words   = n_bytes / 4
+  local w_ptr     = terralib.cast(&uint32, valptr)
+  local num_list  = newlist()
+  for k=1,n_words do num_list[k] = w_ptr[k-1] end
+  return gaswrap.lson_stringify(num_list)
+end
+local function destringify_binary_data( valstr, n_bytes, valptr )
+  assert(n_bytes % 4 == 0, 'unexpected size, bin_destringify NEEDS FIXING')
+  local num_list  = gaswrap.lson_eval(valstr)
+  local n_words   = n_bytes / 4
+  local w_ptr     = terralib.cast(&uint32, valptr)
+  for k=1,n_words do w_ptr[k-1] = num_list[k] end
+end
+
+--
 -- just constant for now
--- can probably convert other kinds of loads to tasks
--- value should be a 2 level list right now, can relax this once we start using
--- luatoebb conversions from ebb.
-local function RemoteLoadFieldConstant(f_id, rel_id, value)
-  assert(false, 'INTERNAL ERROR: Load is broken currently.')
-  local value_ser = gaswrap.lson_stringify(value)
-  BroadcastLuaEventToComputeNodes('loadFieldConstant', f_id, rel_id, value_ser)
+local function RemoteLoadFieldConstant(f_id, n_bytes, valptr)
+  local value_ser = stringify_binary_data(n_bytes, valptr)
+  BroadcastLuaEventToComputeNodes('loadFieldConstant', f_id, value_ser)
 end
-local struct ArrayLoadConst{
-  array : Array,
-  val   : &opaque,
+local struct LoadConstArgs{
+  data_ptr  : &uint8
+  valptr    : &uint8
+  val_size  : uint32
+  n_elems   : uint32
 }
-local terra load_field_constant(args : &opaque)
-  var array_data  = [&ArrayLoadConst](args)
-  var ptr         = [&uint8](array_data.array:DataPtr())
-  var type_size   = array_data.array:TypeSize()
-  var type_stride = array_data.array:TypeStride()
-  for i = 0, array_data.array:NumElems() do
-  -- write over ghost values too as it doesn't matter
-    C.memcpy(ptr, array_data.val, type_size)
-    ptr = ptr + type_stride
+local terra load_field_constant_action(raw_args : &opaque)
+  var args        = [&LoadConstArgs](raw_args)
+  var data_ptr    = args.data_ptr
+  var valptr      = args.valptr
+  var val_size    = args.val_size
+  var n_elems     = args.n_elems
+  -- fill out array
+  for i=0, n_elems do
+    for k=0, val_size do
+      data_ptr[k] = valptr[k]
+    end
+    data_ptr = data_ptr + val_size
   end
-  C.free(array_data.val)
-  C.free(array_data)
+  -- free
+  C.free(valptr)
+  C.free(args)
 end
-local function LoadFieldConstant(f_id, rel_id, value_ser)
-  assert(false, 'INTERNAL ERROR: Load is broken currently.')
-  local rel      = GetRelationData(tonumber(rel_id))
-  assert(rel, 'Attempt to load into a field over unrecorded relation ' ..
-               rel_id)
-  local field    = rel:GetFieldData(tonumber(f_id))
-  assert(field, 'Attempt to load into unrecorded field ' .. f_id ..
-                ' over ' .. rel_id .. '.')
+local terra alloc_temp_val( n_bytes : uint32 ) : &uint8
+  var p = [&uint8](C.malloc(n_bytes))
+  for k=0,n_bytes do p[k] = 0 end
+  return p
+end
+local terra alloc_LoadConstArgs()
+  return [&LoadConstArgs](C.malloc(sizeof(LoadConstArgs)))
+end
+local function LoadFieldConstant(f_id, value_ser)
+  local field    = GetWorkerField(tonumber(f_id))
+  assert(field, 'Attempt to load into unrecorded field ' .. f_id .. '.')
   assert(field:isAllocated(), 'Attempt to load into unallocated field ' ..
-                              field:Name() ..  ' over ' .. rel:Name() .. '.')
-  local array_data  = terralib.cast(&ArrayLoadConst,
-                                    C.malloc(terralib.sizeof(ArrayLoadConst)))
-  array_data.array  = field:GetArray()
-  local typ         = field:GetType()
-  local val_data    = terralib.new(typ.base_type[typ.n_cols][typ.n_cols],
-                                   gaswrap.lson_eval(value_ser))
-  local elem_size   = terralib.sizeof(typ.base_type) *
-                      typ.n_rows * typ.n_cols
-  array_data.val    = C.malloc(elem_size)
-  C.memcpy(array_data.val, val_data, elem_size)
+                              field:Name())
+
+  local args        = alloc_LoadConstArgs()
+  args.data_ptr     = terralib.cast(&uint8, field:GetDataPtr())
+  local elem_stride = field:GetTypeStride()
+  -- fill out the value with up-to-stride 0-padded
+  args.valptr       = alloc_temp_val(elem_stride)
+  destringify_binary_data(value_ser, field:GetTypeSize(), args.valptr)
+  args.val_size     = elem_stride
+  args.n_elems      = field:GetElemCount()
+
+  -- schedule action to load the field.
+  local worker_id = 0
   -- single threaded right now
   gaswrap.acquireScheduler()
-  field:GetPreviousWriteSignal():sink()
-  local a_in  = field:ForkPreviousReadSignal(1)[0]
-  local a_out = a_in:exec(0, load_field_constant:getpointer(),
-                          array_data)
-  field:RecordReadWrite(a_out)
+  local a_in  = field:GetReadWriteSignal()
+  local a_out = a_in:exec(worker_id,
+                          load_field_constant_action:getpointer(),
+                          args)
+  field:SetReadWriteSignal(a_out)
   gaswrap.releaseScheduler()
 end
---]]
+
 
 -----------------------------------
 -- HELPER METHODS FOR CONTROL NODE
@@ -533,19 +580,19 @@ end
   _partition_map,
   _partition_bounds,
 --]]
-local EGridRelation   = {}
-EGridRelation.__index = EGridRelation
-local function is_egrid_relation(obj)
-  return getmetatable(obj) == EGridRelation
+local ControllerGridRelation    = {}
+ControllerGridRelation.__index  = ControllerGridRelation
+local function is_cgrid_relation(obj)
+  return getmetatable(obj) == ControllerGridRelation
 end
 
 --[[
   rel_id,
   id
 --]]
-local EField   = {}
-EField.__index = EField
-local function is_efield(obj) return getmetatable(obj) == EField end
+local ControllerField   = {}
+ControllerField.__index = ControllerField
+local function is_cfield(obj) return getmetatable(obj) == ControllerField end
 
 --[[
   name = 'string'
@@ -566,19 +613,19 @@ local function NewGridRelation(args)
   return setmetatable({
     id    = rel_id,
     dims  = args.dims
-  }, EGridRelation)
+  }, ControllerGridRelation)
 end
 
 --[[
   name = 'string'
-  rel  = EGridRelation
+  rel  = ControllerGridRelation
   type = TerraType
 --]]
 local field_id_counter = 1
 local function NewField(args)
   assert(type(args)=='table','expected table')
   assert(type(args.name) == 'string',"expected 'name' string arg")
-  assert(is_egrid_relation(args.rel),"expected 'rel' relation arg")
+  assert(is_cgrid_relation(args.rel),"expected 'rel' relation arg")
   assert(terralib.types.istype(args.type),"expected 'type' terra type arg")
 
   local f_id        = field_id_counter
@@ -594,7 +641,8 @@ local function NewField(args)
   local f = setmetatable({
     id      = f_id,
     rel_id  = args.rel.id,
-  }, EField)
+    type    = args.type,
+  }, ControllerField)
 
   return f
 end
@@ -602,7 +650,7 @@ end
 --[[
   blocking = {#,#,?} -- dimensions of grid of blocks
 --]]
-function EGridRelation:partition_across_nodes(args)
+function ControllerGridRelation:partition_across_nodes(args)
   assert(type(args)=='table','expected table')
   assert(is_2_nums(args.blocking) or is_3_nums(args.blocking),
          "expected 'blocking' arg: list of 2 or 3 numbers")
@@ -664,7 +712,15 @@ end
 
 -- TODO:
 -- local partitions (for partitioning task across threads)
-function EGridRelation:partition_within_nodes()
+function ControllerGridRelation:partition_within_nodes()
+end
+
+function ControllerField:LoadConst( c_val )
+  local typsize   = terralib.sizeof(self.type)
+  local temp_mem  = terralib.cast(&self.type, C.malloc(typsize))
+  temp_mem[0]     = c_val
+  RemoteLoadFieldConstant(self.id, typsize, temp_mem)
+  C.free(temp_mem)
 end
 
 
@@ -842,32 +898,26 @@ local function LaunchTask(task_id_ser, partition_id_ser)
   local args  = terralib.cast(&TaskArgs, C.malloc(terralib.sizeof(TaskArgs)))
   args.fields = terralib.cast(&FieldInstance,
                               C.malloc(num_fields * terralib.sizeof(FieldInstance)))
-  local bounds = GetRelationData(task.rel_id):GetPartitionBounds()
+  local bounds = GetWorkerRelation(task.rel_id):GetPartitionBounds()
   local range  = bounds:getranges()
   for d = 1,3 do
     args.bounds[d-1].lo = range[d][1]
     args.bounds[d-1].hi = range[d][2]
   end
   for n, fid in ipairs(task.fields) do
-    local field = GetFieldData(fid)
+    local field = GetWorkerField(fid)
     args.fields[n-1].ptr = field:GetInstance():DataPtrGhostAdjusted()
     args.fields[n-1].dld = field:GetDLD():toTerra()
   end
   -- ACQUIRE SCHEDULER
   gaswrap.acquireScheduler()
   for n, fid in ipairs(task.fields) do
-    local field  = GetFieldData(fid)
+    local field  = GetWorkerField(fid)
     local access = task.field_accesses[fid]
     if access.privilege == privileges.read_only then
-      local f_read     = field:GetPreviousReadSignal()
-      local f_write    = field:ForkPreviousWriteSignal()
-      local signals    = terralib.new(gaswrap.Signal[2], {f_read, f_write})
-      signals_in[n-1]  = gaswrap.mergeSignals(2, signals)
+      signals_in[n-1] = field:ForkWriteSignal()
     else
-      local f_read     = field:GetPreviousReadSignal()
-      local f_write    = field:GetPreviousWriteSignal()
-      local signals    = terralib.new(gaswrap.Signal[2], {f_read, f_write})
-      signals_in[n-1]  = gaswrap.mergeSignals(2, signals)
+      signals_in[n-1] = field:GetReadWriteSignal()
     end
   end
   local signals_in_merge = terralib.new(gaswrap.Signal[num_fields], signals_in)
@@ -889,12 +939,12 @@ local function LaunchTask(task_id_ser, partition_id_ser)
     a_out:fork(num_fields, a_out_forked)
   end
   for n, fid in ipairs(task.fields) do
-    local field  = GetFieldData(fid)
+    local field  = GetWorkerField(fid)
     local access = task.field_accesses[fid]
     if access.privilege == privileges.read_only then
-      field:RecordRead(a_out_forked[n-1])
+      field:MergeReadSignal(a_out_forked[n-1])
     else
-      field:RecordReadWrite(a_out_forked[n-1])
+      field:SetReadWriteSignal(a_out_forked[n-1])
     end
   end
   -- RELEASE SCHEDULER
@@ -924,7 +974,7 @@ gaswrap.registerLuaEvent('newRelation',         CreateNewRelation)
 gaswrap.registerLuaEvent('globalGridPartition', CreateGlobalGridPartition)
 gaswrap.registerLuaEvent('recordNewField',      RecordNewField)
 gaswrap.registerLuaEvent('allocateField',       AllocateField)
---gaswrap.registerLuaEvent('loadFieldConstant', LoadFieldConstant)
+gaswrap.registerLuaEvent('loadFieldConstant',   LoadFieldConstant)
 
 -- task code and data
 gaswrap.registerLuaEvent('newTask',             ReceiveNewTask)

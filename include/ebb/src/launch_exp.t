@@ -101,7 +101,6 @@ local function top_level_err_handler ( errobj )
     err = err .. '\n' .. debug.traceback()
   end
   print(err)
-  gaswrap.broadcastLuaEvent('Shutdown')
   gaswrap.shutdownGasnetOnError()
 end
 

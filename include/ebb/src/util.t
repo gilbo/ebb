@@ -209,6 +209,13 @@ end
 function Rect3d:getranges()
   return { { self:xminmax() }, { self:yminmax() }, { self:zminmax() } }
 end
+function Rect2d:getwidths()
+  return { self._x[2] - self._x[1], self._y[2] - self._y[1] }
+end
+function Rect3d:getwidths()
+  return { self._x[2] - self._x[1], self._y[2] - self._y[1],
+                                    self._z[2] - self._z[1] }
+end
 
 function Rect2d:containsPoint(i,j)
   return self._x[1] <= i and i <= self._x[2] and
