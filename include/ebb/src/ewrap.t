@@ -767,7 +767,6 @@ that there is only one instance of data for every {relation, field}.
   fields, (ordered list, 1 indexed)
   field_accesses
 }
-  ** TASK IS RESPONSIBLE FOR CLEANING UP ARGS **
 --]]
 
 
@@ -835,6 +834,20 @@ WorkerTask.__index      = WorkerTask
 local task_id_counter   = 0
 local worker_task_store = {}
 
+local struct BoundsStruct { lo : uint64, hi : uint64 }
+local struct FieldInstance {
+  ptr : &uint8;
+  dld : DLD.C_DLD;
+}
+local struct TaskArgs {
+  bounds : BoundsStruct[3];
+  fields : &FieldInstance;
+}
+local struct TaskLaunchArgs {
+  task_args : TaskArgs;
+  func      : {&opaque} -> {}
+}
+
 -- Event/handler for registering a new task. Returns a task id.
 --[[
 params : {
@@ -891,8 +904,16 @@ local function NewWorkerTask(bitcode, metadata)
 
   -- convert bitcode
   local blob        = terralib.linkllvmstring(bitcode)
-  local task_func   = blob:extern(md.name, {&opaque} -> {})
-  task_func:compile()
+  local task_func   = blob:extern(md.name, {TaskArgs} -> {})
+  local task_wrapper = terra(args : &opaque)
+    var launch_args = [&TaskLaunchArgs](args)
+    var task_args   = launch_args.task_args
+    task_func(task_args)
+    -- free memory allocated for args
+    C.free(task_args.fields)
+    C.free(launch_args)
+  end
+  task_wrapper:compile()
 
   -- convert faccesses
   local wfaccesses = newlist()
@@ -903,7 +924,7 @@ local function NewWorkerTask(bitcode, metadata)
   local wtask = setmetatable({
     id              = md.id,
     name            = md.name,
-    func            = task_func,
+    func            = task_wrapper,
     rel_id          = md.rel_id,
     processor       = Pre.CPU,
     field_accesses  = wfaccesses,
@@ -924,19 +945,10 @@ end
 -- Task Execution
 -----------------------------------
 
-
-local struct BoundsStruct { lo : uint64, hi : uint64 }
-local struct FieldInstance {
-  ptr : &uint8;
-  dld : DLD.C_DLD;
-}
-local struct TaskArgs {
-  bounds : BoundsStruct[3];
-  fields : &FieldInstance;
-}
-local terra allocTaskArgs( n_fields : uint32 ) : &TaskArgs
-  var args    = [&TaskArgs]( C.malloc(sizeof(TaskArgs)) )
-  args.fields = [&FieldInstance]( C.malloc(n_fields * sizeof(FieldInstance)) )
+local terra allocTaskArgs( n_fields : uint32 ) : &TaskLaunchArgs
+  var args    = [&TaskLaunchArgs]( C.malloc(sizeof(TaskLaunchArgs)) )
+  args.task_args.fields =
+    [&FieldInstance]( C.malloc(n_fields * sizeof(FieldInstance)) )
   return args
 end
 
@@ -960,8 +972,8 @@ local function LaunchTask(task_id)
   -- because a task may be scheduled more than once before being
   -- executed, we must either re-allocate the arguments each time
   -- or ensure that the arguments are the same on all executions
-  -- ** TASK IS RESPONSIBLE FOR CLEANING UP ARGS **
-  local args  = allocTaskArgs(n_fields)
+  local launch_args  = allocTaskArgs(n_fields)
+  local args         = launch_args.task_args
   local range = relation:GetPartitionBounds():getranges()
   for d = 1,3 do
     args.bounds[d-1].lo   = range[d][1]
@@ -995,7 +1007,7 @@ local function LaunchTask(task_id)
   end
   -- Schedule the task action itself
   local worker_id = 0 -- TODO: use partition in the future...?
-  local a_out     = a_in:exec(worker_id, task.func:getpointer(), args)
+  local a_out     = a_in:exec(worker_id, task.func:getpointer(), launch_args)
   -- fork and record the output signal
   if n_fields == 0 then
     a_out:sink()

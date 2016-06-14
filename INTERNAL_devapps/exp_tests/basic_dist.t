@@ -21,9 +21,8 @@ cells:SetPartitions {2,2}
 local mass = cells:NewField('mass', L.float)
 
 -- Init mass task
-local terra InitMass(task_args : &opaque)
+local terra InitMass(args : ewrap.TaskArgs)
   C.printf('Executing InitMass\n')
-  var args = [&ewrap.TaskArgs](task_args)
   var x_lo = args.bounds[0].lo
   var y_lo = args.bounds[1].lo
   var x_hi = args.bounds[0].hi
@@ -61,9 +60,8 @@ local init_mass_etask = ewrap.RegisterNewTask{
 }
 
 -- Dump mass task
-local terra DumpMass(task_args : &opaque)
+local terra DumpMass(args : ewrap.TaskArgs)
   C.printf('Executing DumpMass\n')
-  var args = [&ewrap.TaskArgs](task_args)
   var x_lo = args.bounds[0].lo
   var y_lo = args.bounds[1].lo
   var x_hi = args.bounds[0].hi
