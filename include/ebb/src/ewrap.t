@@ -795,7 +795,6 @@ local task_table      = {}  -- map task id to terra code and other task metadata
   fields, (ordered list, 1 indexed)
   field_accesses
 }
-  ** TASK IS RESPONSIBLE FOR CLEANING UP ARGS **
 --]]
 local Task   = {}
 Task.__index = Task
@@ -809,6 +808,11 @@ local struct TaskArgs {
   bounds : BoundsStruct[3];
   fields : &FieldInstance;
 }
+local struct TaskLaunchArgs {
+  task_args : TaskArgs;
+  func      : {&opaque} -> {}
+}
+
 
 local function NewTaskMessage(task_id, params)
   assert(params.task_func and params.rel_id and
@@ -843,11 +847,18 @@ local function TaskFromString(bitcode, msg)
   local t         = gaswrap.lson_eval(msg)
   assert(t.processor == CPU)
   local blob      = terralib.linkllvmstring(bitcode)
-  local task_func = blob:extern(t.name, {&opaque} -> {})
+  local task_func = blob:extern(t.name, {TaskArgs} -> {})
+  local task_wrapper = terra(args : &opaque)
+    var launch_args = [&TaskLaunchArgs](args)
+    var task_args   = launch_args.task_args
+    task_func(task_args)
+    C.free(task_args.fields)
+    C.free(launch_args)
+  end
   local task = setmetatable({
     id             = t.task_id,
     name           = t.name,
-    func           = task_func:compile(),
+    func           = task_wrapper:compile(),
     rel_id         = t.rel_id,
     processor      = Pre.CPU,
     fields         = t.fields,
@@ -867,6 +878,9 @@ params : {
   field_accesses
 }
 returns task_id
+NOTES:
+* Field instance list in args contains fields in the same order as fields in
+  params passed by caller.
 --]]
 local function RegisterNewTask(params)
   assert(gas.mynode() == CONTROL_NODE,
@@ -894,8 +908,9 @@ local function LaunchTask(task_id_ser, partition_id_ser)
   local signals_in  = terralib.new(gaswrap.Signal[num_fields])
   local a_out_forked = terralib.new(gaswrap.Signal[num_fields])
   -- can we/ should we reuse args across launches?
-  -- ** TASK IS RESPONSIBLE FOR CLEANING UP ARGS **
-  local args  = terralib.cast(&TaskArgs, C.malloc(terralib.sizeof(TaskArgs)))
+  local launch_args  = terralib.cast(&TaskLaunchArgs,
+                                     C.malloc(terralib.sizeof(TaskLaunchArgs)))
+  local args  = launch_args.task_args
   args.fields = terralib.cast(&FieldInstance,
                               C.malloc(num_fields * terralib.sizeof(FieldInstance)))
   local bounds = GetWorkerRelation(task.rel_id):GetPartitionBounds()
@@ -928,7 +943,7 @@ local function LaunchTask(task_id_ser, partition_id_ser)
     a_in = gaswrap.newSignalSource():trigger()
   end
   -- TODO: use partition id to run task across worker threads
-  local a_out        = a_in:exec(0, task.func, args)
+  local a_out        = a_in:exec(0, task.func, launch_args)
   -- record output signal
   if num_fields == 0 then
     a_out:sink()
