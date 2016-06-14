@@ -757,34 +757,6 @@ worker nodes, to support all the tasks (with uncentered accesses), and
 that there is only one instance of data for every {relation, field}.
 --]]
 
-local privileges = {
-  read_only  = 1,
-  read_write = 2,
-  reduce     = 4
-}
---[[
-  privilege,
-  ghost_width/uncentered to indicate communication?
---]]
-local Access = {}
-Access.__index = Access
-local function NewAccess(privilege)
-  return setmetatable({
-    privilege = privilege,
-  }, Access)
-end
-function Access:__tostring()
-  return '{' ..
-            tostring(self.privilege) ..
-         '}'
-end
-local function AccessFromString(str)
-  return NewAccess(unpack(gaswrap.lson_eval(str)))
-end
-
-local used_task_id    = 0   -- last used task id, for generating ids
-local task_table      = {}  -- map task id to terra code and other task metadata
-
 --[[
 {
   id,
@@ -797,8 +769,161 @@ local task_table      = {}  -- map task id to terra code and other task metadata
 }
   ** TASK IS RESPONSIBLE FOR CLEANING UP ARGS **
 --]]
-local Task   = {}
-Task.__index = Task
+
+
+
+-----------------------------------
+-- Field Accesses
+-----------------------------------
+
+
+-- enum constants
+local READ_ONLY_PRIVILEGE     = 1
+local READ_WRITE_PRIVILEGE    = 2
+local REDUCE_PRIVILEGE        = 3
+Exports.READ_ONLY_PRIVILEGE   = READ_ONLY_PRIVILEGE
+Exports.READ_WRITE_PRIVILEGE  = READ_WRITE_PRIVILEGE
+Exports.REDUCE_PRIVILEGE      = REDUCE_PRIVILEGE
+
+--[[
+{
+  privilege   = <enum>,
+  field       = ControllerField,
+}
+--]]
+local FAccess           = {}
+FAccess.__index         = FAccess
+local function NewFAccess(args)
+  assert(is_cfield(args.field), 'expecting ewrap field arg')
+  return setmetatable({
+    privilege   = assert(args.privilege),
+    field       = args.field,
+  }, FAccess)
+end
+local function is_faccess(obj) return getmetatable(obj) == FAccess end
+
+--[[
+{
+  privilege   = <enum>,
+  field       = WorkerField,
+}
+--]]
+local WorkerFAccess     = {}
+WorkerFAccess.__index   = WorkerFAccess
+local function NewWorkerFAccess(rawobj)
+  local field = GetWorkerField(rawobj.f_id)
+  return setmetatable({
+    privilege   = assert(rawobj.privilege),
+    field       = field,
+  }, WorkerFAccess)
+end
+
+
+
+
+
+
+-----------------------------------
+-- Task Creation
+-----------------------------------
+
+
+local ControllerTask    = {}
+ControllerTask.__index  = ControllerTask
+local WorkerTask        = {}
+WorkerTask.__index      = WorkerTask
+local task_id_counter   = 0
+local worker_task_store = {}
+
+-- Event/handler for registering a new task. Returns a task id.
+--[[
+params : {
+  func              = <terra func>,
+  name              = 'string', (optional)
+  rel_id            = #,
+  processor         = <enum>,
+  field_accesses    = list{ FAccess },
+}
+--]]
+local function RegisterNewTask(params)
+  assert(on_control_node())
+  assert(type(params) == 'table', 'expect named args')
+  assert(terralib.isfunction(params.func),
+                                "expect arg: terra function 'func'")
+  assert(is_cgrid_relation(params.relation),
+                                "expect arg: ewrap relation 'relation'")
+  assert(params.processor,      "expect arg: enum value 'processor'")
+  assert(params.field_accesses, "expect arg: list of FAccess 'field_ids'")
+
+  assert(params.processor == Pre.CPU, 'Only CPU tasks supported right now.')
+
+  -- generate id and other arguments
+  task_id_counter = task_id_counter + 1
+  local task_id   = task_id_counter
+  local task_name = params.name or params.func:getname()
+  local fas       = newlist()
+  for i,fa in ipairs(params.field_accesses) do
+    assert(is_faccess(fa), "entry #"..i.." is not a field access")
+    fas:insert{ privilege = fa.privilege, f_id = fa.field.id }
+  end
+  local bitcode   = terralib.saveobj(nil,'bitcode',{[task_name]=params.func})
+
+  -- broadcast to workers
+  BroadcastLuaEventToComputeNodes('newTask', bitcode,
+    gaswrap.lson_stringify {
+      id              = task_id,
+      name            = task_name,
+      rel_id          = params.relation.id,
+      processor       = tostring(params.processor),
+      field_accesses  = fas,
+  })
+
+  local controller_task = setmetatable({
+    id      = task_id,
+    rel_id  = params.rel_id,
+  }, ControllerTask)
+  return controller_task
+end
+
+local function NewWorkerTask(bitcode, metadata)
+  local md          = gaswrap.lson_eval(metadata)
+  assert(md.processor == 'CPU')
+
+  -- convert bitcode
+  local blob        = terralib.linkllvmstring(bitcode)
+  local task_func   = blob:extern(md.name, {&opaque} -> {})
+  task_func:compile()
+
+  -- convert faccesses
+  local wfaccesses = newlist()
+  for i,fa in ipairs(md.field_accesses) do
+    wfaccesses[i] = NewWorkerFAccess(fa)
+  end
+
+  local wtask = setmetatable({
+    id              = md.id,
+    name            = md.name,
+    func            = task_func,
+    rel_id          = md.rel_id,
+    processor       = Pre.CPU,
+    field_accesses  = wfaccesses,
+  }, WorkerTask)
+  return wtask
+end
+local function ReceiveNewTask(bitcode, metadata)
+  local task = NewWorkerTask(bitcode, metadata)
+  worker_task_store[task.id] = task
+end
+
+function WorkerTask:GetRelation()
+  return GetWorkerRelation(self.rel_id)
+end
+
+
+-----------------------------------
+-- Task Execution
+-----------------------------------
+
 
 local struct BoundsStruct { lo : uint64, hi : uint64 }
 local struct FieldInstance {
@@ -809,145 +934,86 @@ local struct TaskArgs {
   bounds : BoundsStruct[3];
   fields : &FieldInstance;
 }
-
-local function NewTaskMessage(task_id, params)
-  assert(params.task_func and params.rel_id and
-         params.processor and params.fields and params.field_accesses,
-         'One or more arguments necessary to define a new task missing.')
-  assert(terralib.isfunction(params.task_func),
-         'Invalid task function to NewTask.')
-  assert(params.processor == Pre.CPU, 'Only CPU tasks supported right now.')
-  local fields = newlist(params.fields)
-  local field_accesses = {}
-  for field,access in pairs(params.field_accesses) do
-    local privilege = access:isReadOnly() and privileges.read_only or
-                      access:requiresExclusive() and privileges.read_write or
-                      privileges.reduction
-    field_accesses[field._ewrap_field.id] = NewAccess(privilege)
-  end
-  local task_name = params.name or params.task_func:getname()
-  local bitcode   = terralib.saveobj(nil, 'bitcode',
-                                    {[task_name]=params.task_func})
-  local t = {
-              task_id   = task_id,
-              name      = task_name,
-              rel_id    = params.rel_id,
-              processor = tostring(params.processor),
-              fields    = fields,
-              field_accesses = field_accesses,
-            }
-  BroadcastLuaEventToComputeNodes('newTask', bitcode, gaswrap.lson_stringify(t))
+local terra allocTaskArgs( n_fields : uint32 ) : &TaskArgs
+  var args    = [&TaskArgs]( C.malloc(sizeof(TaskArgs)) )
+  args.fields = [&FieldInstance]( C.malloc(n_fields * sizeof(FieldInstance)) )
+  return args
 end
 
-local function TaskFromString(bitcode, msg)
-  local t         = gaswrap.lson_eval(msg)
-  assert(t.processor == CPU)
-  local blob      = terralib.linkllvmstring(bitcode)
-  local task_func = blob:extern(t.name, {&opaque} -> {})
-  local task = setmetatable({
-    id             = t.task_id,
-    name           = t.name,
-    func           = task_func:compile(),
-    rel_id         = t.rel_id,
-    processor      = Pre.CPU,
-    fields         = t.fields,
-    field_accesses = t.field_accesses,
-  }, Task)
-  return task
-end
 
--- Event/handler for registering a new task. Returns a task id.
---[[
-params : {
-  task_func,
-  task_name,
-  rel_id,
-  processor,
-  fields,
-  field_accesses
-}
-returns task_id
---]]
-local function RegisterNewTask(params)
-  assert(gas.mynode() == CONTROL_NODE,
-         'Can send tasks from control node only.')
-  assert(params.processor == Pre.CPU, 'Tasks over ' .. GPU .. ' not supported yet.')
-  used_task_id  = used_task_id + 1
-  local task_id = used_task_id
-  local msg     = NewTaskMessage(task_id, params)
-  return task_id
+function ControllerTask:exec()
+  BroadcastLuaEventToComputeNodes('launchTask', self.id)
 end
-local function ReceiveNewTask(bitcode, msg)
-  local task = TaskFromString(bitcode, msg)
-  task_table[task.id] = task
-end
+local function LaunchTask(task_id)
+  local task  = worker_task_store[tonumber(task_id)]
+  assert(task, 'Task #' .. task_id ..  ' is not registered.')
 
--- Invoke a single task.
-local function SendTaskLaunch(task_id, partition_id)
-  BroadcastLuaEventToComputeNodes('launchTask', task_id)
-end
-local function LaunchTask(task_id_ser, partition_id_ser)
-  local task = task_table[tonumber(task_id_ser)]
-  assert(task, 'Task ' .. task_id_ser ..  ' is not registered.')
+  -- unpack things
+  local relation    = task:GetRelation()
+
   -- allocate signal arrays
-  local num_fields  = #task.fields
-  local signals_in  = terralib.new(gaswrap.Signal[num_fields])
-  local a_out_forked = terralib.new(gaswrap.Signal[num_fields])
-  -- can we/ should we reuse args across launches?
+  local n_fields    = #task.field_accesses
+  local sigs_f_in   = terralib.new(gaswrap.Signal[n_fields])
+  local sigs_f_out  = terralib.new(gaswrap.Signal[n_fields])
+
+  -- Assemble Arguments
+  -- because a task may be scheduled more than once before being
+  -- executed, we must either re-allocate the arguments each time
+  -- or ensure that the arguments are the same on all executions
   -- ** TASK IS RESPONSIBLE FOR CLEANING UP ARGS **
-  local args  = terralib.cast(&TaskArgs, C.malloc(terralib.sizeof(TaskArgs)))
-  args.fields = terralib.cast(&FieldInstance,
-                              C.malloc(num_fields * terralib.sizeof(FieldInstance)))
-  local bounds = GetWorkerRelation(task.rel_id):GetPartitionBounds()
-  local range  = bounds:getranges()
+  local args  = allocTaskArgs(n_fields)
+  local range = relation:GetPartitionBounds():getranges()
   for d = 1,3 do
-    args.bounds[d-1].lo = range[d][1]
-    args.bounds[d-1].hi = range[d][2]
+    args.bounds[d-1].lo   = range[d][1]
+    args.bounds[d-1].hi   = range[d][2]
   end
-  for n, fid in ipairs(task.fields) do
-    local field = GetWorkerField(fid)
-    args.fields[n-1].ptr = field:GetInstance():DataPtrGhostAdjusted()
-    args.fields[n-1].dld = field:GetDLD():toTerra()
+  for i, fa in ipairs(task.field_accesses) do
+    args.fields[i-1].ptr  = fa.field:GetInstance():DataPtrGhostAdjusted()
+    args.fields[i-1].dld  = fa.field:GetDLD():toTerra()
   end
-  -- ACQUIRE SCHEDULER
+
+
+  -- Do Scheduling
   gaswrap.acquireScheduler()
-  for n, fid in ipairs(task.fields) do
-    local field  = GetWorkerField(fid)
-    local access = task.field_accesses[fid]
-    if access.privilege == privileges.read_only then
-      signals_in[n-1] = field:ForkWriteSignal()
-    else
-      signals_in[n-1] = field:GetReadWriteSignal()
-    end
+  -- collect and merge all the input signals
+  for i, fa in ipairs(task.field_accesses) do
+    if fa.privilege == READ_ONLY_PRIVILEGE then
+      sigs_f_in[i-1]  = fa.field:ForkWriteSignal()
+    elseif fa.privilege == READ_WRITE_PRIVILEGE then
+      sigs_f_in[i-1]  = fa.field:GetReadWriteSignal()
+    elseif fa.privilege == REDUCE_PRIVILEGE then
+      error('TODO: REDUCE PRIV UNIMPLEMENTED')
+    else assert('unrecognized field privilege') end
   end
-  local signals_in_merge = terralib.new(gaswrap.Signal[num_fields], signals_in)
   local a_in = nil
-  if num_fields ~= 0 then
-    a_in = gaswrap.mergeSignals(num_fields, signals_in_merge)
-  else
+  if n_fields == 0 then
     a_in = gaswrap.newSignalSource():trigger()
-  end
-  -- TODO: use partition id to run task across worker threads
-  local a_out        = a_in:exec(0, task.func, args)
-  -- record output signal
-  if num_fields == 0 then
-    a_out:sink()
-  elseif num_fields == 1 then
-    -- avoid assertion error when forking to just 1 signal
-    a_out_forked[0] = a_out
+  elseif n_fields == 1 then
+    a_in = sigs_f_in[0]
   else
-    a_out:fork(num_fields, a_out_forked)
+    a_in = gaswrap.mergeSignals(n_fields, sigs_f_in)
   end
-  for n, fid in ipairs(task.fields) do
-    local field  = GetWorkerField(fid)
-    local access = task.field_accesses[fid]
-    if access.privilege == privileges.read_only then
-      field:MergeReadSignal(a_out_forked[n-1])
-    else
-      field:SetReadWriteSignal(a_out_forked[n-1])
-    end
+  -- Schedule the task action itself
+  local worker_id = 0 -- TODO: use partition in the future...?
+  local a_out     = a_in:exec(worker_id, task.func:getpointer(), args)
+  -- fork and record the output signal
+  if n_fields == 0 then
+    a_out:sink()
+  elseif n_fields == 1 then
+    sigs_f_out[0]   = a_out
+  else
+    a_out:fork(n_fields, sigs_f_out)
   end
-  -- RELEASE SCHEDULER
+  for i, fa in ipairs(task.field_accesses) do
+    if fa.privilege == READ_ONLY_PRIVILEGE then
+      fa.field:MergeReadSignal(sigs_f_out[i-1])
+    elseif fa.privilege == READ_WRITE_PRIVILEGE then
+      fa.field:SetReadWriteSignal(sigs_f_out[i-1])
+    elseif fa.privilege == REDUCE_PRIVILEGE then
+      error('TODO: REDUCE PRIV UNIMPLEMENTED')
+    else assert('unrecognized field privilege') end
+  end
+  -- Release
   gaswrap.releaseScheduler()
 end
 
@@ -958,6 +1024,12 @@ end
 --   2. register a new terra task that performs a series of tasks
 --      pros: can reorder/transform code when fusing tasks
 --      cons: probably not trivial to support any data exchanges within the task
+
+
+
+
+
+
 
 
 -------------------------------------------------------------------------------
@@ -1006,5 +1078,8 @@ Exports.RegisterNewTask               = RegisterNewTask
 
 Exports.TaskArgs                      = TaskArgs
 Exports.FieldInstance                 = FieldInstance
+Exports.NewFAccess                    = NewFAccess
 Exports.RegisterNewTask               = RegisterNewTask
-Exports.SendTaskLaunch                = SendTaskLaunch
+
+
+

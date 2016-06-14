@@ -46,22 +46,19 @@ local terra InitMass(task_args : &opaque)
   end
   C.printf('Completed InitMass\n')
 end
-local init_mass_fields = { mass._ewrap_field.id }
 local init_mass_field_accesses = {
-  [mass] = stencil.NewCenteredAccessPattern {
-    field = mass,
-    read  = true,
-    write = true,
+  ewrap.NewFAccess {
+    field = mass._ewrap_field,
+    privilege = ewrap.READ_WRITE_PRIVILEGE,
   }
 }
-local init_mass_id = ewrap.RegisterNewTask({
-  task_func      = InitMass,
-  task_name      = 'InitMass',
-  rel_id         = cells._ewrap_relation.id,
-  processor      = L.CPU,
-  fields         = init_mass_fields,
-  field_accesses = init_mass_field_accesses,
-})
+local init_mass_etask = ewrap.RegisterNewTask{
+  func            = InitMass,
+  name            = 'InitMass',
+  relation        = cells._ewrap_relation,
+  processor       = L.CPU,
+  field_accesses  = init_mass_field_accesses,
+}
 
 -- Dump mass task
 local terra DumpMass(task_args : &opaque)
@@ -86,24 +83,21 @@ local terra DumpMass(task_args : &opaque)
   end
   C.printf('Completed DumpMass\n')
 end
-local dump_mass_fields = { mass._ewrap_field.id }
 local dump_mass_field_accesses = {
-  [mass] = stencil.NewCenteredAccessPattern {
-    field = mass,
-    read  = true,
-    write = false,
+  ewrap.NewFAccess {
+    field     = mass._ewrap_field,
+    privilege = ewrap.READ_ONLY_PRIVILEGE,
   }
 }
-local dump_mass_id = ewrap.RegisterNewTask({
-  task_func      = DumpMass,
-  task_name      = 'DumpMass',
-  rel_id         = cells._ewrap_relation.id,
-  processor      = L.CPU,
-  fields         = dump_mass_fields,
-  field_accesses = dump_mass_field_accesses,
-})
+local dump_mass_etask = ewrap.RegisterNewTask{
+  func            = DumpMass,
+  name            = 'DumpMass',
+  relation        = cells._ewrap_relation,
+  processor       = L.CPU,
+  field_accesses  = dump_mass_field_accesses,
+}
 
-ewrap.SendTaskLaunch(init_mass_id)
-ewrap.SendTaskLaunch(dump_mass_id)
+init_mass_etask:exec()
+dump_mass_etask:exec()
 
 print("*** Completed control pogram.")
