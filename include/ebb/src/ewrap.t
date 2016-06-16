@@ -45,10 +45,17 @@ local gas       = require 'gasnet'
 local gaswrap   = require 'gaswrap'
 
 local newlist = terralib.newlist
+local function shallow_copy(table)
+  local t = {}
+  for k,v in pairs(table) do
+    t[k] = v
+  end
+  return t
+end
 
 
 -------------------------------------------------------------------------------
--- Basic Setup  
+-- Basic Prepare  
 -------------------------------------------------------------------------------
 
 local N_NODES                   = gas.nodes()
@@ -61,6 +68,11 @@ local BASIC_SAFE_GHOST_WIDTH    = 2
 local GRID                      = 'GRID'
 local CPU                       = tostring(Pre.CPU)
 local GPU                       = tostring(Pre.GPU)
+
+local GHOST_DIGITS              = 3
+local NODE_DIGITS               = 4
+
+local USE_CONSERVATIVE_GHOSTS   = true
 
 
 -------------------------------------------------------------------------------
@@ -114,6 +126,12 @@ ghost_width
 local FieldInstanceTable = {}
 FieldInstanceTable.__index = FieldInstanceTable
 
+local struct BoundsStruct { lo : uint64, hi : uint64 }
+local struct FieldInstance {
+  ptr : &uint8;
+  dld : DLD.C_DLD;
+}
+
 --[[
 params {
   bounds,
@@ -123,7 +141,7 @@ params {
 --]]
 local function NewFieldInstanceTable(params)
   local widths       = params.bounds:getwidths()
-  local ghost_width  = params.ghost_width
+  local ghost_width  = shallow_copy(params.ghost_width)
 
   local n_elems      = 1
   local dim_size     = {}
@@ -177,8 +195,137 @@ function FieldInstanceTable:DLD()
 end
 function FieldInstanceTable:n_elems() return self._n_elems end
 
-local relation_metadata = {}
-local field_metadata    = {}
+local GhostMetadata = {}
+GhostMetadata.__index = GhostMetadata
+
+local struct GhostInstance  {
+  union {
+    src : &gaswrap.AsyncBufSrcChannel;
+    dst : &gaswrap.AsyncBufDstChannel;
+  } channel;
+  buffer : &uint8;
+  -- add global bounds
+}
+
+-- use an hid_base as there could be multiple channels for the same field
+-- programmatically generate the rest, keep last 3 digits for ghost num, and
+-- NODE_DIGITS digits for node ids (source and destination).
+local function hs_id(hid_base, src, dst, ghost_num)
+  return ghost_num +
+         dst      * math.pow(10, GHOST_DIGITS) +
+         src      * math.pow(10, GHOST_DIGITS + NODE_DIGITS) +
+         hid_base * math.pow(10, GHOST_DIGITS + NODE_DIGITS * 2)
+end
+
+local worker_ghost_num_channels = {}
+local worker_ghost_channels_freeze = {}
+
+--[[
+  allocates buffer for ghost region
+  params {
+  fid,
+  ndims,
+  hid_base,
+  ghost_id,
+  partition,
+  ghost_width
+  }
+--]]
+local function CreateGridGhostMetadata(off, params)
+  assert(not worker_ghost_channels_freeze[params.hid_base],
+         'Already started setting up ghost channels. ' ..
+         'All calls to create ghost channels must precede channel set up calls.')
+  local g        = {
+    fid      = params.fid,
+    ghost_id = params.ghost_id,
+    hid_base = params.hid_base,
+    nb_id    = nil,
+    buffer   = nil,
+    buf_size = 0
+  }
+  local blocking = params.partition.blocking
+  local bid      = params.partition.block_id
+  local allocate = true
+  local nb_bid = {}
+  for d = 1, params.ndims do
+    if not params.periodic then
+      local nb_bid[d] = bid[d] + off[d]
+      allocate = allocate and (nb_bid[d] >= 1 and nb_bid[d] <= blocking[d])
+      nb_bid[d] = (nb_bid[d] - 1) % blocking[d] + 1
+    end
+  end
+  if allocate then
+    local nb_lin_id = params.partition.map
+    for d = 1, params.ndims do
+      nb_lin_id = nb_lin_id[nb_bid[d]]
+    end
+    g.nb_id    = nb_lin_id
+    local partition_width = params.partition.bounds:getwidths()
+    local ghost_width     = params.ghost_width
+    local buf_size = params.type_size
+    for d = 1, params.ndims do
+      if off[d] == 0 then
+        buf_size = buf_size * ghost_width[d]
+      else
+        buf_size = buf_size * partition_width[d]
+      end
+    end
+    g.buf_size = buf_size
+    g.buffer = terralib.cast(&uint8, C.malloc(buf_size))
+    if not worker_ghost_num_channels[params.hid_base] then
+      worker_ghost_num_channels[params.hid_base] = 0
+    else
+      worker_ghost_num_channels[params.hid_base] =
+        worker_ghost_num_channels[params.hid_base] + 1
+    end
+  end
+  return setmetatable(g, GhostMetadata)
+end
+
+function GhostMetadata:CreateOutgoingGhostChannel(g)
+  worker_ghost_channels_freeze[self.hid_base] = true
+  -- set buffer
+  g.buffer = self.buffer
+  if not self.buffer then return end
+  local function DoneCallback(chan)
+    worker_ghost_num_channels[hid_base] =
+      worker_ghost_num_channels[hid_base] - 1
+    if worker_ghost_num_channels[hid_base] == 0 then
+      -- inform controller that ghost channel setup is done
+      gaswrap.sendLuaEvent(CONTROL_NODE, 'markGhostsReady',
+                           self.fid, self.hid_base)
+    end
+    -- set channel
+    g.channel.src = chan
+  end
+  local hid = hs_id(self.hid_base, gas.mynode(), self.nb_id, self.ghost_id)
+  gaswrap.CreateAsyncBufSrcChannel(self.nb_id, hs_id,
+                                   self.buffer, self.buf_size, DoneCallback)
+end
+
+function GhostMetadata:CreateIncomingGhostChannel(g)
+  worker_ghost_channels_freeze[self.hid_base] = true
+  -- set buffer
+  g.buffer = self.buffer
+  if not self.buffer then return end
+  local function DoneCallback(chan)
+    worker_ghost_num_channels[hid_base] =
+      worker_ghost_num_channels[hid_base] - 1
+    if worker_ghost_num_channels[hid_base] == 0 then
+      -- inform controller that ghost channel setup is done
+      gaswrap.sendLuaEvent(CONTROL_NODE, 'markGhostsReady',
+                           self.fid, self.hid_base)
+    end
+    -- set channel
+    g.channel.dst = chan
+  end
+  local hid = hs_id(self.hid_base, self.nb_id, gas.mynode(), self.ghost_num)
+  gaswrap.CreateAsyncBufDstChannel(self.nb_id, hs_id,
+                                   self.buffer, self.buf_size, DoneCallback)
+end
+
+local worker_relation_metadata = {}
+local worker_field_metadata    = {}
 
 --[[
 WorkerField : {
@@ -194,11 +341,11 @@ WorkerField : {
 local WorkerField = {}
 WorkerField.__index = WorkerField
 
-local function NewWorkerField(relation, f_id, name, typ_size)
+local function NewWorkerField(relation, params)
   return setmetatable({
-                        id           = f_id,
-                        type_size    = typ_size,
-                        name         = name,
+                        id           = params.f_id,
+                        type_size    = params.typ_size,
+                        name         = params.name,
                         relation     = relation,
                         instance     = nil,
                         last_read    = nil,
@@ -282,10 +429,198 @@ function WorkerField:SetReadWriteSignal(signal)
   self.last_write = signals[1]
 end
 
+-- Allocate incoming and outgoing buffers for data exchange, set up channels
+-- with neighboring nodes, and send a confirmation to control node when all
+-- channels are set up.
+local ghost_listing_2d = newlist()
+local ghost_listing_3d = newlist()
+if USE_CONSERVATIVE_GHOSTS then
+  for x = -1,1 do
+    for y = -1,1 do
+      ghost_listing_2d:insert({x,y})
+      for z = -1,1 do
+        ghost_listing_3d:insert({x,y,z})
+      end
+    end
+  end
+else
+  for d = 1,3 do
+    local neg, pos = {0,0}, {0,0}
+    neg[d] = -1
+    pos[d] =  1
+    ghost_listing_2d:insertall({neg, pos})
+  end
+  for d = 1,3 do
+    local neg, pos = {0,0,0}, {0,0,0}
+    neg[d] = -1
+    pos[d] =  1
+    ghost_listing_3d:insertall({neg, pos})
+  end
+end
+local function ghost_id(offset, ndims)
+  local g = 0
+  for d = 1, ndims do
+    g = g * 3 + offset
+  end
+  return g
+end
+function WorkerField:SetUpGhostChannels(hid_base, ghost_width)
+  local ndims = #self.relation:Dims()
+  local ghost_listing = nil
+  if ndims == 2 then
+    ghost_listing = ghost_listing_2d
+  else
+    ghost_listing = ghost_listing_3d
+  end
+  local partition    = self.relation:GetPartition()
+  local inner_ghosts = newlist()
+  local outer_ghosts = newlist()
+  for i = 0,#ghost_listing do
+    local off = ghost_listing[i]
+    inner_ghosts[i] = CreateGridGhostMetadata(
+      off, {
+              fid = self.id,
+              ndims = ndims, hid_base = hid_base,
+              ghost_id = ghost_id(off, ndims),
+              partition = partition,
+              ghost_width = ghost_width
+            })
+    local nb_off = {}
+    for d = 1,ndims do
+      nb_off[d] = -off[d]
+    end
+    outer_ghosts[i] = CreateGridGhostMetadata(
+      off, {
+              fid = self.id,
+              ndims = ndims, hid_base = hid_base,
+              ghost_id = ghost_id(nb_off, ndims),
+              partition = partition,
+              ghost_width = ghost_width
+            })
+  end
+  self.inner_ghosts_size = #ghost_listing
+  self.outer_ghosts_size = #ghost_listing
+  self.inner_ghosts = terralib.new(GhostInstance[#ghost_listing])
+  self.outer_ghosts = terralib.new(GhostInstance[#ghost_listing])
+  for i = 0,#ghost_listing do
+    inner_ghosts[i]:CreateOutgoingGhostChannel(self.inner_ghosts[i])
+    outer_ghosts[i]:CreateIncomingGhostChannel(self.outer_ghosts[i])
+  end
+end
+
+local struct GhostCopyArgs {
+  bounds : BoundsStruct[3];
+  field : FieldInstance;
+  num_ghosts : uint;
+  ghosts : &GhostInstance;
+}
+
+-- send ghosts
+-- TODO: incomplete
+terra WorkerField.CopyGhostsToSend(copy_args : GhostCopyArgs)
+end
+terra WorkerField.CopyAndSendGhosts(start_sig : gaswrap.Signal,
+                                    num_ghosts : uint32,
+                                    ghosts : &GhostInstance)
+  -- just schedule on one worker thread for now
+  var worker_id : uint32 = 0
+  gaswrap.acquireScheduler()
+  -- copy into buffers
+  var copy_args = [&GhostCopyArgs](C.malloc(sizeof(GhostCopyArgs)))
+  var copy_sig = start_sig:exec(worker_id, self.CopyGhostsToSend:getpointer(),
+                                copy_args)
+  var copy_sig_forked : gaswrap.Signal[num_ghosts] 
+  copy_sig:fork(num_ghosts, copy_sig_forked)
+  var send_sig : gaswrap.Signal[num_ghosts]
+  -- send all the buffers
+  for i = 0, num_ghosts do
+    if ghosts[i].buffer == nil then
+      copy_sig_forked[i]:sink()
+      send_sig[i] = gaswrap.newSignalSource():trigger()
+    else
+      send_sig[i] = ghosts[i].channel.src.send(copy_sig_forked[i])
+    end
+  end
+  -- merge send done signals
+  var done_sig = gaswrap.mergeSignals(num_ghosts, send_sig)
+  gaswrap.releaseScheduler()
+  return done_sig
+end
+
+-- send ghosts
+-- TODO: incomplete
+-- one or multiple actions per ghost?
+terra WorkerField.CopyGhostsToSend(copy_args : GhostCopyArgs)
+  C.printf('**** CopyGhostsToSend UINIMPLEMENTED.\n')
+end
+-- start_sig = last write
+-- merge output signal with read
+terra WorkerField.CopyAndSendGhosts(start_sig : gaswrap.Signal,
+                                    num_ghosts : uint32,
+                                    ghosts : &GhostInstance)
+  gaswrap.acquireScheduler()
+  -- just schedule on one worker thread for now
+  var worker_id : uint32 = 0
+  -- copy into buffers once start_sig triggers
+  var copy_args = [&GhostCopyArgs](C.malloc(sizeof(GhostCopyArgs)))
+  var copy_sig = start_sig:exec(worker_id, self.CopyGhostsToSend:getpointer(),
+                                copy_args)
+  -- send buffers after copying
+  var copy_sig_forked : gaswrap.Signal[num_ghosts] 
+  copy_sig:fork(num_ghosts, copy_sig_forked)
+  var send_sig : gaswrap.Signal[num_ghosts]
+  for i = 0, num_ghosts do
+    if ghosts[i].buffer == nil then
+      copy_sig_forked[i]:sink()
+      send_sig[i] = gaswrap.newSignalSource():trigger()
+    else
+      send_sig[i] = ghosts[i].channel.src:send(copy_sig_forked[i])
+    end
+  end
+  -- merge send done signals
+  var done_sig = gaswrap.mergeSignals(num_ghosts, send_sig)
+  gaswrap.releaseScheduler()
+  return done_sig
+end
+
+-- receive ghosts
+-- TODO: incomplete
+-- one or multiple actions per ghost?
+terra WorkerField.CopyGhostsRcved(copy_args : GhostCopyArgs)
+  C.printf('**** CopyGhostsRcved UINIMPLEMENTED.\n')
+end
+-- start_sig = (? I think this should depend on the last uncentered read)
+-- merge output signal with last write
+terra WorkerField.RecvAndCopyGhosts(start_sig : gaswrap.Signal,
+                                    num_ghosts : uint32,
+                                    ghosts : &GhostInstance)
+  gaswrap.acquireScheduler()
+  -- receive all the buffers
+  var recv_and_start_sig : gaswrap.Signal[num_ghosts+1]
+  for i = 0, num_ghosts do
+    if ghosts[i].buffer == nil then
+      recv_and_start_sig[i] = gaswrap.newSignalSource():trigger()
+    else
+      recv_and_start_sig[i] = ghosts[i].channel.dst:recv()
+    end
+  end
+  -- just schedule on one worker thread for now
+  var worker_id : uint32 = 0
+  -- copy out from buffers once all data is received and start_sig triggers
+  var copy_sig = gaswrap.mergeSignals(num_ghosts+1, recv_and_start_sig)
+  -- copy into buffers
+  var copy_args = [&GhostCopyArgs](C.malloc(sizeof(GhostCopyArgs)))
+  var done_sig = copy_sig:exec(
+    worker_id, self.CopyGhostsToSend:getpointer(), copy_args)
+  -- merge send done signals
+  gaswrap.releaseScheduler()
+  return done_sig
+end
+
 --[[
 WorkerRelation : {
   name        = 'string',
-  mode        = 'GRID',
+  mode        = GRID,
   dims        = { #, #, ? },
   partition   = { blocking, block_id, bounds, map },
   fields      = list{ WorkerField },
@@ -294,12 +629,14 @@ WorkerRelation : {
 local WorkerRelation = {}
 WorkerRelation.__index = WorkerRelation
 
-local function NewWorkerRelation(name, mode, dims)
-  assert(mode == 'GRID', 'Relations must be of grid type on GASNet.')
+local function NewWorkerRelation(params)
+  assert(params.mode == GRID, 'Relations must be of grid type on GASNet.')
   return setmetatable({
-                        name      = name,
-                        mode      = mode,
-                        dims      = dims,
+                        id        = params.id,
+                        name      = params.name,
+                        mode      = params.mode,
+                        dims      = params.dims,
+                        periodic  = params.periodic,
                         partition = nil,
                         fields    = newlist(),
                       }, WorkerRelation)
@@ -329,10 +666,10 @@ function WorkerRelation:RecordPartition(blocking, block_id, bounds, map)
   end
   assert(Util.isrect2d(bounds) or Util.isrect3d(bounds))
   self.partition = {
-    blocking = blocking,
-    block_id = block_id,
-    bounds   = bounds,
-    map      = map,
+    blocking = blocking,  -- how relation is partitioned
+    block_id = block_id,  -- multi-dimensional partition block id
+    bounds   = bounds,    -- bounds for this partition
+    map      = map,       -- from block id to node id
   }
 end
 
@@ -340,11 +677,16 @@ function WorkerRelation:isPartitioned()
   return self.partition
 end
 
-function WorkerRelation:RecordField(f_id, name, typ_size)
+function WorkerRelation:RecordField(params)
+  local f_id = params.id
   assert(self.fields[f_id] == nil, "Recording already recorded field '"..
-                                   name.."' with id # "..f_id)
+                                   params.name.."' with id # "..f_id)
   self.fields:insert(f_id)
-  field_metadata[f_id] = NewWorkerField(self, f_id, name, typ_size)
+  worker_field_metadata[f_id] = NewWorkerField(self, params)
+end
+
+function WorkerRelation:GetPartition()
+  return self.relation
 end
 
 function WorkerRelation:GetPartitionBounds()
@@ -355,19 +697,20 @@ function WorkerRelation:GetPartitionMap()
   return self.partition.map
 end
 
-local function RecordNewRelation(unq_id, name, mode, dims)
-  assert(relation_metadata[unq_id] == nil,
+local function RecordNewRelation(params)
+  local unq_id = params.id
+  assert(worker_relation_metadata[unq_id] == nil,
          "Recordling already recorded relation '"..name..
          "' with id # "..unq_id)
-  relation_metadata[unq_id] = NewWorkerRelation(name, mode, dims)
+  worker_relation_metadata[unq_id] = NewWorkerRelation(params)
 end
 
 local function GetWorkerRelation(unq_id)
-  return relation_metadata[unq_id]
+  return worker_relation_metadata[unq_id]
 end
 
 function GetWorkerField(f_id)
-  return field_metadata[f_id]
+  return worker_field_metadata[f_id]
 end
 
 
@@ -380,16 +723,23 @@ end
 ------------------------------------
 
 -- send relation metadata
-local function BroadcastNewRelation(unq_id, name, mode, dims)
-  assert(mode == 'GRID', 'Unsupported relation mode ' .. mode)
+local function BroadcastNewRelation(unq_id, name, mode, dims, periodic)
+  assert(mode == GRID, 'Unsupported relation mode ' .. mode)
   assert(type(dims) == 'table')
-  local rel_size = gaswrap.lson_stringify(dims)
+  local dims_ser     = gaswrap.lson_stringify(dims)
+  local periodic_ser = gaswrap.lson_stringify(periodic)
   BroadcastLuaEventToComputeNodes( 'newRelation', unq_id, name,
-                                                  mode, rel_size)
+                                                  mode, dims_ser, periodic_ser)
 end
 -- event handler for relation metadata
-local function CreateNewRelation(unq_id, name, mode, dims)
-  RecordNewRelation(tonumber(unq_id), name, mode, gaswrap.lson_eval(dims))
+local function CreateNewRelation(unq_id, name, mode, dims, periodic)
+  RecordNewRelation {
+    id       = tonumber(unq_id),
+    name     = name,
+    mode     = mode,
+    dims     = gaswrap.lson_eval(dims),
+    periodic = gaswrap.lson_eval(periodic),
+  }
 end
 
 -- disjoint partition blocking over relation
@@ -469,24 +819,31 @@ local function BroadcastNewField(f_id, rel_id, field_name, type_size)
 end
 local function RecordNewField(f_id, rel_id, field_name, type_size)
   local relation = GetWorkerRelation(tonumber(rel_id))
-  relation:RecordField(tonumber(f_id), field_name, tonumber(type_size))
+  relation:RecordField {
+    id        = tonumber(f_id),
+    name      = field_name,
+    type_size = tonumber(type_size)
+  }
 end
 
--- allocate field over remote nodes
+local hid_base_used = 0
+
+-- allocate field array over remote nodes and channels between neighbors
 -- shared memory, one array across threads for now
-local function RemoteAllocateField(f_id, ghost_width)
+local function RemotePrepareField(f_id, ghost_width, hid_base)
+  hid_base_used = hid_base_used + 1
   BroadcastLuaEventToComputeNodes('allocateField', f_id,
-                                  gaswrap.lson_stringify(ghost_width))
+                                  gaswrap.lson_stringify(ghost_width),
+                                  hid_base_used)
 end
--- event handler to allocate array for a field
-local function AllocateField(f_id, ghost_width_str)
+-- event handler to allocate arrays, and channels for a field
+local function PrepareField(f_id, ghost_width_str, hid_base)
   local field = GetWorkerField(tonumber(f_id))
   assert(field, 'Attempt to allocate unrecorded field #'..f_id)
   local ghost_width = gaswrap.lson_eval(ghost_width_str)
   field:AllocateInstance(ghost_width)
+  field:SetUpGhostChannels(hid_base, ghost_width)
 end
-
-
 
 
 local function stringify_binary_data( n_bytes, valptr )
@@ -574,6 +931,9 @@ end
 -- HELPER METHODS FOR CONTROL NODE
 -----------------------------------
 
+local controller_relations = {}
+local controller_fields    = {}
+
 --[[
   id,
   dims,
@@ -608,12 +968,14 @@ local function NewGridRelation(args)
   local rel_id        = relation_id_counter
   relation_id_counter = rel_id + 1
 
-  BroadcastNewRelation(rel_id, args.name, 'GRID', args.dims)
+  BroadcastNewRelation(rel_id, args.name, GRID, args.dims, args.periodic)
 
-  return setmetatable({
-    id    = rel_id,
-    dims  = args.dims
+  local rel = setmetatable({
+    id       = rel_id,
+    dims     = args.dims,
+    periodic = args.periodic,
   }, ControllerGridRelation)
+  controller_relations[rel.id] = rel
 end
 
 --[[
@@ -636,13 +998,16 @@ local function NewField(args)
   -- allocate memory to back the field
   local ghosts = {}
   for i,_ in ipairs(args.rel.dims) do ghosts[i] = BASIC_SAFE_GHOST_WIDTH end
-  RemoteAllocateField(f_id, ghosts)
+  RemotePrepareField(f_id, ghosts, fid)
 
   local f = setmetatable({
     id      = f_id,
     rel_id  = args.rel.id,
     type    = args.type,
+    ready   = false,   -- set ready when field arrays and channels are set up
+    waiting_on = numComputeNodes(),
   }, ControllerField)
+  controller_fields[f.id] = f
 
   return f
 end
@@ -723,6 +1088,17 @@ function ControllerField:LoadConst( c_val )
   C.free(temp_mem)
 end
 
+-- Mark ghosts instances (buffers and channels) ready to use for a field
+local function MarkGhostsReady(fid, hid_base)
+  -- ignore hid_base for now
+  -- assume only one set of ghost channels (one hid_base) per field
+  local field = controller_fields[fid]
+  field.waiting_on = field.waiting_on - 1
+  if field.waiting_on == 0 then
+    field.ready = true
+  end
+end
+
 
 -------------------------------------------------------------------------------
 -- Handle actions over sets of fields and privileges
@@ -797,6 +1173,8 @@ local function NewFAccess(args)
   return setmetatable({
     privilege   = assert(args.privilege),
     field       = args.field,
+    centered    = args.centered,
+    -- TODO: Add stencil support 
   }, FAccess)
 end
 local function is_faccess(obj) return getmetatable(obj) == FAccess end
@@ -834,11 +1212,6 @@ WorkerTask.__index      = WorkerTask
 local task_id_counter   = 0
 local worker_task_store = {}
 
-local struct BoundsStruct { lo : uint64, hi : uint64 }
-local struct FieldInstance {
-  ptr : &uint8;
-  dld : DLD.C_DLD;
-}
 local struct TaskArgs {
   bounds : BoundsStruct[3];
   fields : &FieldInstance;
@@ -877,7 +1250,10 @@ local function RegisterNewTask(params)
   local fas       = newlist()
   for i,fa in ipairs(params.field_accesses) do
     assert(is_faccess(fa), "entry #"..i.." is not a field access")
-    fas:insert{ privilege = fa.privilege, f_id = fa.field.id }
+    fas:insert {
+                 privilege = fa.privilege, f_id = fa.field.id,
+                 centered  = fa.centered,  stencil
+               }
   end
   local bitcode   = terralib.saveobj(nil,'bitcode',{[task_name]=params.func})
 
@@ -1057,8 +1433,9 @@ end
 gaswrap.registerLuaEvent('newRelation',         CreateNewRelation)
 gaswrap.registerLuaEvent('globalGridPartition', CreateGlobalGridPartition)
 gaswrap.registerLuaEvent('recordNewField',      RecordNewField)
-gaswrap.registerLuaEvent('allocateField',       AllocateField)
+gaswrap.registerLuaEvent('prepareField',        PrepareField)
 gaswrap.registerLuaEvent('loadFieldConstant',   LoadFieldConstant)
+gaswrap.registerLuaEvent('markGhostsReady',     MarkGhostsReady)
 
 -- task code and data
 gaswrap.registerLuaEvent('newTask',             ReceiveNewTask)
@@ -1069,11 +1446,11 @@ gaswrap.registerLuaEvent('launchTask',          LaunchTask)
 -- Exports for testing
 -------------------------------------------------------------------------------
 
-Exports._TESTING_VroadcastNewRelation         = BroadcastNewRelation
+Exports._TESTING_BroadcastNewRelation         = BroadcastNewRelation
 Exports._TESTING_BroadcastGlobalGridPartition = BroadcastGlobalGridPartition
 Exports._TESTING_BroadcastNewField            = BroadcastNewField
-Exports._TESTING_RemoteAllocateField          = RemoteAllocateField
---Exports._TESTING_remoteLoadFieldConstant      = remoteLoadFieldConstant
+Exports._TESTING_RemotePrepareField           = RemotePrepareField
+Exports._TESTING_RemoteLoadFieldConstant      = RemoteLoadFieldConstant
 Exports._TESTING_BroadcastLuaEventToComputeNodes =
   BroadcastLuaEventToComputeNodes
 

@@ -2,8 +2,6 @@ import 'ebb'
 local L = require 'ebblib'
 
 local ewrap     = require 'ebb.src.ewrap'
-local stencil   = require 'ebb.src.stencil'
-
 local C = terralib.includecstring [[
   #include <stdio.h>
   #include <stdlib.h>
