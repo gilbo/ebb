@@ -29,7 +29,6 @@ local use_exp = rawget(_G,'EBB_USE_EXPERIMENTAL_SIGNAL')
 if not use_exp then return Exports end
 
 local C       = require "ebb.src.c"
-local DLD     = require "ebb.lib.dld"
 local Util    = require 'ebb.src.util'
 
 -- Following modules are probably not going to depdend (directly or indirectly)
@@ -107,9 +106,9 @@ end
 -------------------------------------------------------------------------------
 
 --[[
-array,
-dld,
-ghost_width
+_array,
+_ghost_width,
+_ ... see below
 --]]
 local FieldInstanceTable = {}
 FieldInstanceTable.__index = FieldInstanceTable
@@ -122,60 +121,52 @@ params {
 }
 --]]
 local function NewFieldInstanceTable(params)
-  local widths       = params.bounds:getwidths()
-  local ghost_width  = params.ghost_width
+  local widths      = params.bounds:getwidths()
+  local ghost_width = params.ghost_width
 
-  local n_elems      = 1
-  local dim_size     = {}
-  local dim_stride   = {}
+  local n_elems     = 1
+  local dim_size    = {}
+  local strides     = {}
   for d = 1,3 do
-    dim_stride[d]  = n_elems   -- column major?
+    strides[d]      = n_elems   -- column major?
     if not ghost_width[d] then ghost_width[d] = 0 end
-    dim_size[d]    = widths[d] + 1 -- adjust for hi/lo inclusive convention
-    n_elems        = n_elems * (dim_size[d] + 2*ghost_width[d])
+    dim_size[d]     = widths[d] + 1 -- adjust for hi/lo inclusive convention
+    n_elems         = n_elems * (dim_size[d] + 2*ghost_width[d])
   end
 
   local elem_size   = params.type_size
-  local elem_stride = pow2align(elem_size)
+  local elem_stride = pow2align(elem_size,4)
+  assert(elem_stride == elem_size)
   local array = DynamicArray.New {
     size      = n_elems,
     type      = uint8[elem_size],
     processor = Pre.CPU,
   }
-  local dld = DLD.NewDLD {
-    base_type   = DLD.UINT_8,
-    location    = DLD.CPU,
-    type_stride = elem_stride,
-    address     = array:_raw_ptr(),
-    dim_size    = dim_size,
-    dim_stride  = dim_stride,
-  }
   return setmetatable ({
-    array       = array,
-    dld         = dld,
-    ghost_width = ghost_width,
-    _n_elems    = n_elems,
+    _array        = array,
+    _strides      = strides,
+    _elem_size    = elem_size,
+    _ghost_width  = ghost_width,
+    _n_elems      = n_elems,
   }, FieldInstanceTable)
 end
 
 function FieldInstanceTable:DataPtr()
-  return self.array:_raw_ptr()
+  return self._array:_raw_ptr()
 end
 
 function FieldInstanceTable:DataPtrGhostAdjusted()
   local ptr = terralib.cast(&uint8, self:DataPtr())
   local offset = 0
   for d = 1,3 do
-    offset = offset + self.ghost_width[d] *
-                      self.dld.dim_stride[d] * self.dld.type_stride
+    offset = offset + self._ghost_width[d] * self._strides[d]
   end
-  return ptr - offset
+  return ptr + offset * self._elem_size
 end
 
-function FieldInstanceTable:DLD()
-  return self.dld
-end
-function FieldInstanceTable:n_elems() return self._n_elems end
+function FieldInstanceTable:NElems() return self._n_elems end
+function FieldInstanceTable:Strides() return self._strides end
+function FieldInstanceTable:ElemSize() return self._elem_size end
 
 local relation_metadata = {}
 local field_metadata    = {}
@@ -233,22 +224,21 @@ function WorkerField:GetTypeSize()
   return self.type_size
 end
 function WorkerField:GetTypeStride()
-  return self.instance:DLD().type_stride
+  return self.instance:ElemSize()
 end
 
 function WorkerField:GetInstance()
   return self.instance
 end
 
-function WorkerField:GetDLD()
-  return self.instance:DLD()
-end
-
 function WorkerField:GetDataPtr()
   return self.instance:DataPtr()
 end
 function WorkerField:GetElemCount() -- includes ghosts
-  return self.instance:n_elems()
+  return self.instance:NElems()
+end
+function WorkerField:GetStrides()
+  return self.instance:Strides()
 end
 
 function WorkerField:GetReadSignal()
@@ -836,16 +826,12 @@ local worker_task_store = {}
 
 local struct BoundsStruct { lo : uint64, hi : uint64 }
 local struct FieldInstance {
-  ptr : &uint8;
-  dld : DLD.C_DLD;
+  ptr     : &uint8
+  strides : uint64[3]
 }
 local struct TaskArgs {
   bounds : BoundsStruct[3];
   fields : &FieldInstance;
-}
-local struct TaskLaunchArgs {
-  task_args : TaskArgs;
-  func      : {&opaque} -> {}
 }
 
 -- Event/handler for registering a new task. Returns a task id.
@@ -898,6 +884,7 @@ local function RegisterNewTask(params)
   return controller_task
 end
 
+local keep_hooks_live = newlist()
 local function NewWorkerTask(bitcode, metadata)
   local md          = gaswrap.lson_eval(metadata)
   assert(md.processor == 'CPU')
@@ -905,13 +892,16 @@ local function NewWorkerTask(bitcode, metadata)
   -- convert bitcode
   local blob        = terralib.linkllvmstring(bitcode)
   local task_func   = blob:extern(md.name, {TaskArgs} -> {})
+  keep_hooks_live:insert(task_func)
+  keep_hooks_live:insert(blob)
   local task_wrapper = terra(args : &opaque)
-    var launch_args = [&TaskLaunchArgs](args)
-    var task_args   = launch_args.task_args
-    task_func(task_args)
+    var task_args   = [&TaskArgs](args)
+    --C.printf('[%d] start exec action in wrapper\n', THIS_NODE)
+    task_func(@task_args)
     -- free memory allocated for args
-    C.free(task_args.fields)
-    C.free(launch_args)
+    --C.printf('[%d] done exec action in wrapper\n', THIS_NODE)
+    if task_args.fields ~= nil then C.free(task_args.fields) end
+    C.free(task_args)
   end
   task_wrapper:compile()
 
@@ -945,10 +935,12 @@ end
 -- Task Execution
 -----------------------------------
 
-local terra allocTaskArgs( n_fields : uint32 ) : &TaskLaunchArgs
-  var args    = [&TaskLaunchArgs]( C.malloc(sizeof(TaskLaunchArgs)) )
-  args.task_args.fields =
-    [&FieldInstance]( C.malloc(n_fields * sizeof(FieldInstance)) )
+local terra allocTaskArgs( n_fields : uint32 ) : &TaskArgs
+  var args    = [&TaskArgs]( C.malloc(sizeof(TaskArgs)) )
+  if n_fields == 0 then args.fields = nil
+  else
+    args.fields = [&FieldInstance]( C.malloc(n_fields*sizeof(FieldInstance)) )
+  end
   return args
 end
 
@@ -959,9 +951,11 @@ end
 local function LaunchTask(task_id)
   local task  = worker_task_store[tonumber(task_id)]
   assert(task, 'Task #' .. task_id ..  ' is not registered.')
+  --print(THIS_NODE..' launch task started')
 
   -- unpack things
   local relation    = task:GetRelation()
+  local n_dims      = #relation.dims
 
   -- allocate signal arrays
   local n_fields    = #task.field_accesses
@@ -972,16 +966,22 @@ local function LaunchTask(task_id)
   -- because a task may be scheduled more than once before being
   -- executed, we must either re-allocate the arguments each time
   -- or ensure that the arguments are the same on all executions
-  local launch_args  = allocTaskArgs(n_fields)
-  local args         = launch_args.task_args
-  local range = relation:GetPartitionBounds():getranges()
+  local args        = allocTaskArgs(n_fields)
+  local range       = relation:GetPartitionBounds():getranges()
   for d = 1,3 do
     args.bounds[d-1].lo   = range[d][1]
     args.bounds[d-1].hi   = range[d][2]
   end
   for i, fa in ipairs(task.field_accesses) do
-    args.fields[i-1].ptr  = fa.field:GetInstance():DataPtrGhostAdjusted()
-    args.fields[i-1].dld  = fa.field:GetDLD():toTerra()
+    local local_ptr   = fa.field:GetInstance():DataPtrGhostAdjusted()
+    local strides     = fa.field:GetStrides()
+    local af          = args.fields[i-1]
+    local offset      = 0
+    for d=1,n_dims do
+      offset          = offset + strides[d] * range[d][1]
+      af.strides[d-1] = strides[d]
+    end
+    af.ptr            = local_ptr - offset * fa.field:GetTypeStride()
   end
 
 
@@ -1007,7 +1007,7 @@ local function LaunchTask(task_id)
   end
   -- Schedule the task action itself
   local worker_id = 0 -- TODO: use partition in the future...?
-  local a_out     = a_in:exec(worker_id, task.func:getpointer(), launch_args)
+  local a_out     = a_in:exec(worker_id, task.func:getpointer(), args)
   -- fork and record the output signal
   if n_fields == 0 then
     a_out:sink()
@@ -1027,6 +1027,7 @@ local function LaunchTask(task_id)
   end
   -- Release
   gaswrap.releaseScheduler()
+  --print(THIS_NODE..' launch task exited')
 end
 
 -- Task sequences can be done using:

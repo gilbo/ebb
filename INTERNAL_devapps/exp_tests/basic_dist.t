@@ -20,6 +20,19 @@ local cells = L.NewRelation { name='cells', dims={8,8} }
 cells:SetPartitions {2,2}
 local mass = cells:NewField('mass', L.float)
 
+local function genfoo()
+  local N = ewrap.THIS_NODE
+  local Foo = terralib.types.newstruct('foo'..N)
+  Foo.entries:insertall{
+    { 'x', double },
+    { 'y', double },
+  }
+  for k=1,N do Foo.entries:insert{ 'v'..k, double } end
+  Foo:complete()
+  return Foo
+end
+local Foo = genfoo()
+
 -- Init mass task
 local terra InitMass(args : ewrap.TaskArgs)
   C.printf('Executing InitMass\n')
@@ -29,10 +42,9 @@ local terra InitMass(args : ewrap.TaskArgs)
   var y_hi = args.bounds[1].hi
   C.printf('Bounds are {%i, %i}, {%i, %i}\n', x_lo, x_hi, y_lo, y_hi)
   var mass = args.fields[0]
-  var stride = mass.dld.dim_stride
+  var stride = mass.strides
   C.printf('Elem stride %i, %i\n', stride[0], stride[1])
-  C.printf('Original pointer %p, ghost adjusted pointer %p\n',
-           mass.dld.address, mass.ptr)
+  C.printf('Ghost adjusted pointer %p\n', mass.ptr)
   var mass_ptr = [&float](mass.ptr)
   var drift = 0.01
   for y = y_lo,y_hi do
@@ -43,6 +55,10 @@ local terra InitMass(args : ewrap.TaskArgs)
       C.printf('x %i, y %i, offset %i, mass %f\n', x, y, offset, mass_ptr[offset])
     end
   end
+  var f : Foo
+  f.x = 3.4
+  f.y = 2.9
+  C.printf('init foo print %f %f\n', f.x, f.y)
   C.printf('Completed InitMass\n')
 end
 local init_mass_field_accesses = {
@@ -68,10 +84,9 @@ local terra DumpMass(args : ewrap.TaskArgs)
   var y_hi = args.bounds[1].hi
   C.printf('Bounds are {%i, %i}, {%i, %i}\n', x_lo, x_hi, y_lo, y_hi)
   var mass = args.fields[0]
-  var stride = mass.dld.dim_stride
+  var stride = mass.strides
   C.printf('Elem stride %i, %i\n', stride[0], stride[1])
-  C.printf('Original pointer %p, ghost adjusted pointer %p\n',
-           mass.dld.address, mass.ptr)
+  C.printf('Ghost adjusted pointer %p\n', mass.ptr)
   var mass_ptr = [&float](mass.ptr)
   for y = y_lo,y_hi do
     for x = x_lo,x_hi do

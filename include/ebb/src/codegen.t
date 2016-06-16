@@ -24,7 +24,8 @@ local Codegen = {}
 package.loaded["ebb.src.codegen"] = Codegen
 
 local use_legion = not not rawget(_G, '_legion_env')
-local use_single = not use_legion
+local use_exp    = not not rawget(_G, 'EBB_USE_EXPERIMENTAL_SIGNAL')
+local use_single = not use_legion and not use_exp
 
 local ast = require "ebb.src.ast"
 local T   = require "ebb.src.types"
@@ -42,6 +43,8 @@ if use_legion then
   Partitions = require "ebb.src.partitions"
   use_partitioning = rawget(_G, '_run_config').use_partitioning
 end
+
+local ewrap = use_exp and require 'ebb.src.ewrap'
 
 
 --[[--------------------------------------------------------------------]]--
@@ -201,6 +204,10 @@ function Context:FieldElemPtr(field, key)
     local farg      = self.ufv:_getTerraField(self:argsym(), field)
     local ptr       = farg
     return `(ptr + key:terraLinearize())
+  elseif use_exp then
+    local farg      = self.ufv:_getTerraField(self:argsym(), field)
+    local ftyp      = field:Type():terratype()
+    return `[&ftyp](farg.ptr) + key:stridedLinearize(farg.strides)
   elseif use_legion then
     local rnum      = self:ComputeLegionRegionToAccess(field, key)
     local farg      = self.ufv:_getTerraField(self:argsym(), field)
@@ -433,6 +440,8 @@ function Codegen.codegen (ufunc_ast, ufunc_version)
         error('INTERNAL: ELASTIC ON LEGION CURRENTLY UNSUPPORTED')
       --elseif ctxt:onGPU() then
       --  error("INTERNAL: ELASTIC ON GPU CURRENTLY UNSUPPORTED")
+      elseif use_exp then
+        error('INTERNAL: ELASTIC ON EXP CURRENTLY UNSUPPORTED')
       else
         body = quote
           if [ctxt:isLiveCheck(param)] then [body] end
@@ -471,6 +480,8 @@ function Codegen.codegen (ufunc_ast, ufunc_version)
         local bounds    = { bounds[1] }
         if use_legion then
           error('INTERNAL: INDEX SUBSETS ON LEGION CURRENTLY UNSUPPORTED')
+        elseif use_exp then
+          error('INTERNAL: INDEX SUBSETS OF EXPERIMENTAL UNSUPPORTED')
         elseif ctxt:onGPU() then
           body = terraGPUId_to_Nd(paramtyp, bounds, linid, function(iter)
             return quote
@@ -588,6 +599,8 @@ function Codegen.codegen (ufunc_ast, ufunc_version)
 
   if use_legion then
     return ctxt.ufv:_WrapIntoLegionTask(ctxt:argsym(), launcher)
+  elseif use_exp then
+    return launcher
   else
     return launcher
   end
@@ -957,6 +970,10 @@ function ast.FieldWrite:codegen (ctxt)
     return Support.gpu_atomic_exp(self.reduceop,
                                   self.fieldaccess.node_type,
                                   lval, rexp, self.exp.node_type)
+  elseif use_exp and self.reduceop and
+         not ctxt:hasExclusivePhase(self.fieldaccess.field)
+  then
+    error('EXP TODO: support field reductions')
   elseif use_legion and self.reduceop and
          not ctxt:hasExclusivePhase(self.fieldaccess.field)
   then
