@@ -927,8 +927,8 @@ function UFVersion:_CompileGlobalMemReductionKernel()
 
   local cuda_kernel =
   terra([array_len], [args])
-    var [tid]    : uint32 = G.thread_id()
-    var [bid]    : uint32 = G.block_id()
+    var [tid]             = G.thread_id()
+    var [bid]             = G.block_id()
     var n_blocks : uint32 = G.num_blocks()
     var gt                = tid + [ufv._blocksize] * bid
     

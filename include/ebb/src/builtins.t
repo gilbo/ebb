@@ -460,11 +460,11 @@ local function buildPrintSpec(ctxt, output, printSpec, elemQuotes, definitions)
 
     if lt:isvector() then
         printSpec = printSpec .. "{"
-        local sym = symbol()
+        local sym = symbol(tt)
         local bt = lt:basetype()
         definitions = quote
             [definitions]
-            var [sym] : tt = [code]
+            var [sym] = [code]
         end
         for i = 0, lt.N - 1 do
             printSpec = printSpec .. ' ' ..
@@ -474,11 +474,11 @@ local function buildPrintSpec(ctxt, output, printSpec, elemQuotes, definitions)
 
     elseif lt:ismatrix() then
         printSpec = printSpec .. '{'
-        local sym = symbol()
+        local sym = symbol(tt)
         local bt = lt:basetype()
         definitions = quote
             [definitions]
-            var [sym] : tt = [code]
+            var [sym] = [code]
         end
         for i = 0, lt.Nrow - 1 do
             printSpec = printSpec .. ' {'
@@ -992,7 +992,7 @@ local function TerraCheck(func)
         local rettype = nil
         local try = function()
             local terrafunc = terra([argsyms]) return func([argsyms]) end
-            rettype = terrafunc:getdefinitions()[1]:gettype().returntype
+            rettype = terrafunc:gettype().returntype
         end
         local success, retval = pcall(try)
         if not success then

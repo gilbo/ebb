@@ -1610,7 +1610,6 @@ function S.check(some_ast)
 
   --------------------------------------------------------------------------
 
-  diag:begin()
   env:enterblock()
   local typed_ast  = some_ast:check(ctxt)
   env:leaveblock()

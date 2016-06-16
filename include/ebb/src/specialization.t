@@ -85,7 +85,6 @@ function S.specialize(luaenv, some_ast)
   local diag = terralib.newdiagnostics()
   local ctxt = Context.new(env, diag)
 
-  diag:begin()
   env:enterblock()
   local new_ast = some_ast:specialize(ctxt)
   env:leaveblock()
