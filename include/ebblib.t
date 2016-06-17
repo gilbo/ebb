@@ -129,4 +129,12 @@ L.is_constant     = Pre.is_constant
 L.is_macro        = Pre.is_macro
 L.is_type         = T.istype
 
+-- for distributed use
+local use_exp   = not not rawget(_G, 'EBB_USE_EXPERIMENTAL_SIGNAL')
+local ewrap     = use_exp and require 'ebb.src.ewrap'
+
+L.SyncBarrier     = function()
+  if use_exp then ewrap.SyncBarrier() end
+end
+
 
