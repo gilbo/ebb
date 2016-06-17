@@ -24,8 +24,8 @@
 
 local use_gpu         = rawget(_G,'EBB_USE_GPU_SIGNAL')
 local cmdline_n_nodes = tonumber(rawget(_G,'EBB_EXPERIMENTAL_N_NODES'))
-print('OK JUST RECEIVED N_NODES', cmdline_n_nodes)
-for k,v in pairs(arg) do print('',k,v) end
+--print('OK JUST RECEIVED N_NODES', cmdline_n_nodes)
+--for k,v in pairs(arg) do print('',k,v) end
 
 
 rawset(_G,'GASNET_PRELOADED',true)
@@ -86,8 +86,8 @@ local ewrap   = require 'ebb.src.ewrap'
 
 gaswrap.registerLuaEvent('Shutdown',function()
   print('['..THIS_NODE..'] AT THE END')
-  gas.BARRIER()
   gaswrap.shutdownGasnet()
+  print('ok') -- will never run
 end)
 
 

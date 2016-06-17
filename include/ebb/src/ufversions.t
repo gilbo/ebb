@@ -25,7 +25,8 @@ local UF   = {}
 package.loaded["ebb.src.ufversions"] = UF
 
 local use_legion = not not rawget(_G, '_legion_env')
-local use_single = not use_legion
+local use_exp    = not not rawget(_G, 'EBB_USE_EXPERIMENTAL_SIGNAL')
+local use_single = not use_legion and not use_exp
 
 local Pre   = require "ebb.src.prelude"
 local C     = require "ebb.src.c"
@@ -48,6 +49,8 @@ if use_legion then
 end
 local use_partitioning = use_legion and run_config.use_partitioning
 local DataArray       = require('ebb.src.rawdata').DataArray
+
+local ewrap     = use_exp and require 'ebb.src.ewrap'
 
 local R         = require 'ebb.src.relations'
 local F         = require 'ebb.src.functions'
@@ -99,6 +102,15 @@ end
 -------------------------------------------------------------------------------
 
 local struct bounds_struct { lo : uint64, hi : uint64 }
+local exp_field_struct = {}
+for d=1,3 do
+  exp_field_struct[d] = terralib.types.newstruct('exp_field_struct_'..d)
+  exp_field_struct[d].entries:insertall {
+    { 'ptr',        &opaque },
+    { 'strides',    uint64[d] },
+  }
+  exp_field_struct[d]:complete()
+end
 
 --[[
 args = {
@@ -137,6 +149,9 @@ local function BuildTerraSignature(args)
     field_names[f] = name
     if use_single then
       terrasig.entries:insert{ field=name, type=&( f:Type():terratype() ) }
+    elseif use_exp then
+      local f_dims = #f:Relation():Dims()
+      terrasig.entries:insert { field=name, type=exp_field_struct[f_dims] }
     elseif use_legion then
       local num_total =
         compute_num_regions(f:Relation(), args.field_use[f]:isCentered())
@@ -297,6 +312,7 @@ function UFVersion:Compile()
   -- which may be used by CompileLegionSignature.
   -- For instance, add boolmask field to _field_use if over subset.
   if use_legion then self:_CompileLegionSignature() end
+  if use_exp    then self:_CompileExpSignature() end
 
   -- handle GPU specific compilation
   if self:onGPU() and self:UsesGlobalReduce() then
@@ -318,6 +334,8 @@ function UFVersion:Compile()
 
   elseif use_legion then
     self:_CompileLegionAndGetLauncher(typed_ast)
+  elseif use_exp then
+    self:_CompileExpAndGetLauncher(typed_ast)
   else
     error("INTERNAL: IMPOSSIBLE BRANCH")
   end
@@ -372,14 +390,18 @@ end
 
 function UFVersion:_setFieldPtr(field)
   if use_legion then
-    error('INTERNAL: Do not call setFieldPtr() when using Legion') end
+    error('INTERNAL: Do not call _setFieldPtr() when using Legion') end
+  if use_exp then
+    error('INTERNAL: Do not call _setFieldPtr() when using exp') end
   self._terra_signature.luaset(self._args:_raw_ptr(),
                                field,
                                field:_Raw_DataPtr())
 end
 function UFVersion:_setGlobalPtr(global)
   if use_legion then
-    error('INTERNAL: Do not call setGlobalPtr() when using Legion') end
+    error('INTERNAL: Do not call _setGlobalPtr() when using Legion') end
+  if use_exp then
+    error('INTERNAL: Do not call _setGlobalPtr() when using exp') end
   self._terra_signature.luaset(self._args:_raw_ptr(),
                                global,
                                global:_Raw_DataPtr())
@@ -455,7 +477,7 @@ end
 function UFVersion:_bindFieldGlobalSubsetArgs()
   -- Don't worry about binding on Legion, since we need
   -- to handle that a different way anyways
-  if use_legion then return end
+  if use_legion or use_exp then return end
 
   local argptr    = self._args:_raw_ptr()
 
@@ -499,6 +521,8 @@ function UFVersion:_Launch(exec_args)
   if use_legion then
     self._executable({ ctx = legion_env.ctx, runtime = legion_env.runtime },
                      exec_args)
+  elseif use_exp then
+    self._executable()
   else
     self._executable(self._args:_raw_ptr())
   end
@@ -533,6 +557,7 @@ end
 
 function UFVersion:_DynamicInsertChecks()
   if use_legion then error('INSERT unsupported on legion currently', 4) end
+  if use_exp then error('INSERT unsupported on exp currently', 4) end
 
   local rel = self._insert_data.relation
   local unsafe_msg = rel:UnsafeToInsert(self._insert_data.record_type)
@@ -585,6 +610,7 @@ end
 
 function UFVersion:_DynamicDeleteChecks()
   if use_legion then error('DELETE unsupported on legion currently', 4) end
+  if use_exp then error('INSERT unsupported on exp currently', 4) end
 
   local unsafe_msg = self._delete_data.relation:UnsafeToDelete()
   if unsafe_msg then error(unsafe_msg, 4) end
@@ -926,6 +952,157 @@ function UFVersion:_generateGPUReductionPostProcess(argptrsym)
   return code
 end
 
+
+
+
+
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+--[[ Experimental Signature                                                ]]--
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+
+-- convert record phase to legion privilege
+local function phase_to_exp_privilege(phase)
+  assert(not phase:iserror(), 'INTERNAL: phase should not be in error')
+  if     phase:isReadOnly() then  return ewrap.READ_ONLY_PRIVILEGE
+  elseif phase:isCentered() then  return ewrap.READ_WRITE_PRIVILEGE
+  else                            return ewrap.REDUCE_PRIVILEGE     end
+end
+
+--[[
+{
+  field_accesses
+  field_use
+  global_use
+  relation
+}
+--]]
+-- This signature helps establish a canonical argument ordering
+local function BuildExpSignature(params)
+  if use_single or use_legion then
+    error('INTERNAL: Should only call '..
+          'BuildExpSignature() when running on experimental runtime')
+  end
+
+
+  -- get primary relation
+  local prim_relation   = params.relation
+  local prim_e_relation = prim_relation._ewrap_relation
+
+  -- get field accesses
+  local field_list      = newlist()
+  local faccess_list    = newlist()
+  local faccess_map     = {}
+  for field, phase in pairs(params.field_use) do
+    assert(params.field_accesses[field],
+           "There is no recorded field access for field : " .. field:Name())
+    local faccess = ewrap.NewFAccess{
+      field     = field._ewrap_field,
+      privilege = phase_to_exp_privilege(phase)
+    }
+
+    field_list:insert(field)
+    faccess_map[field] = faccess
+    faccess_list:insert(faccess)
+  end
+  -- sanity check
+  for field,_ in pairs(params.field_accesses) do
+    assert(params.field_use[field],
+           "There is no recorded field use for field : " .. field:Name())
+  end
+
+
+  local ExpSignature = {}
+
+  function ExpSignature:GetFAccessList()
+    return faccess_list
+  end
+  function ExpSignature:GetFieldList()
+    return field_list
+  end
+
+  return ExpSignature
+end
+
+function UFVersion:_CompileExpSignature()
+  self._exp_signature = BuildExpSignature {
+    field_use       = self._field_use,
+    global_use      = self._global_use,
+    relation        = self._relation,
+    field_accesses  = self._field_accesses,
+  }
+end
+
+
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+--[[ Experimental Mode Extensions                                          ]]--
+-------------------------------------------------------------------------------
+-------------------------------------------------------------------------------
+
+function UFVersion:_CompileExpAndGetLauncher(typed_ast)
+  local task_function     = codegen.codegen(typed_ast, self)
+  self._executable        = self:_CreateExpLauncher(task_function)
+end
+
+
+function UFVersion:_CreateExpWrappedTask(task_func)
+  local ufv = self
+
+  -- sanity checks
+  assert( not ufv._subset, 'EXP TODO: Support Subsets' )
+
+  -- unpack things
+  local n_dims  = #ufv._relation:Dims()
+  local tSig    = ufv:_argsType()
+
+  local terra wrapped_func( e_args : ewrap.TaskArgs )
+    -- translate args to terra signature
+    var t_args : tSig
+
+    -- re-pack iteration bounds
+    for d = 0, n_dims do
+      t_args.bounds[d].lo   = e_args.bounds[d].lo
+      t_args.bounds[d].hi   = e_args.bounds[d].hi
+    end
+
+    -- re-pack field data
+    escape for i,f in ipairs(ufv._exp_signature:GetFieldList()) do
+      local tf = ufv:_getTerraField(t_args, f)
+      emit quote tf.ptr = e_args.fields[i-1].ptr end
+      for d = 1,n_dims do
+        emit quote tf.strides[d-1] = e_args.fields[i-1].strides[d-1] end
+      end
+    end end
+
+    task_func(&t_args)
+  end
+  wrapped_func:setname(ufv._name .. '_task')
+
+  return wrapped_func
+end
+
+
+-- Launches Legion task and returns.
+function UFVersion:_CreateExpLauncher(task_func)
+  local ufv = self
+
+  local exp_task_func = ufv:_CreateExpWrappedTask(task_func)
+
+  -- register a new task object across the system
+  local exp_task = ewrap.RegisterNewTask {
+    func            = exp_task_func,
+    name            = ufv._name,
+    relation        = ufv._relation._ewrap_relation,
+    processor       = ufv._proc,
+    field_accesses  = ufv._exp_signature:GetFAccessList(),
+  }
+
+  return function()
+    exp_task:exec()
+  end
+end
 
 
 -------------------------------------------------------------------------------

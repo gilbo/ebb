@@ -242,6 +242,24 @@ local function legion_terra_lin_gen(keytyp)
   end
   return terra( [key], [strides] ) : uint64   return exp  end
 end
+local function linearize_strided_gen(keytyp)
+  local key     = symbol(keytyp)
+  local strides = symbol(uint64[#keytyp.entries])
+  local exp     = `key.a0 * strides[0]
+  for k=2,#keytyp.entries do
+    exp = `[exp] + key.['a'..tostring(k-1)] * strides[k-1]
+  end
+  -- TODO: THIS IS A HACK TO AVOID LLVM IR SHIPPING ERRORS
+  --        Might be a good idea to figure out how to simplify the
+  --        complexity of generated code here in the future.
+  --return terra( [key], [strides] ) : uint64   return exp  end
+  return macro(function(k, s)
+    return quote
+      var [key] = k
+      var [strides] = s
+    in exp end
+  end)
+end
 local function legion_domain_point_gen(keytyp)
   local key  = symbol(keytyp)
   local dims = #keytyp.entries
@@ -315,6 +333,7 @@ local function keyType(relation)
   -- Install methods
   tstruct.methods.luaLinearize            = lua_lin_gen(strides)
   tstruct.methods.terraLinearize          = terra_lin_gen(tstruct, strides)
+  tstruct.methods.stridedLinearize        = linearize_strided_gen(tstruct)
   if use_legion then
     tstruct.methods.legionTerraLinearize  = legion_terra_lin_gen(tstruct)
     tstruct.methods.domainPoint           = legion_domain_point_gen(tstruct)

@@ -158,7 +158,7 @@ for line in io.popen(lscmd):lines() do
         execstring = execstring .. " --partition "
       end
       if USE_EXPERIMENTAL then
-        execstring = execstring .. " -n 4 "
+        execstring = execstring .. " -n 5 "
       end
       if USE_GPU then
         execstring = execstring .. " --gpu "
