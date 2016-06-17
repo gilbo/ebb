@@ -14,8 +14,8 @@ local C = terralib.includecstring [[
 -------------------------------------------------------------------------------
 
 -- Data
-local cells = L.NewRelation { name='cells', dims={8,8}, periodic={true,false} }
-cells:SetPartitions {2,2}
+local cells = L.NewRelation { name='cells', dims={8,8}, periodic={false,false} }
+cells:SetPartitions {2,1}
 local mass = cells:NewField('mass', L.float)
 
 local function genfoo()
@@ -33,7 +33,7 @@ local Foo = genfoo()
 
 -- Init mass task
 local terra InitMass(args : ewrap.TaskArgs)
-  C.printf('Executing InitMass\n')
+  C.printf('*** Executing InitMass\n')
   var x_lo = args.bounds[0].lo
   var y_lo = args.bounds[1].lo
   var x_hi = args.bounds[0].hi
@@ -45,19 +45,19 @@ local terra InitMass(args : ewrap.TaskArgs)
   C.printf('Ghost adjusted pointer %p\n', mass.ptr)
   var mass_ptr = [&float](mass.ptr)
   var drift = 0.01
-  for y = y_lo,y_hi do
-    for x = x_lo,x_hi do
-      var offset = (x-x_lo)*stride[0] + (y-y_lo)*stride[1]
-      mass_ptr[offset] = 2 + drift
-      drift = drift + 0.01
-      C.printf('x %i, y %i, offset %i, mass %f\n', x, y, offset, mass_ptr[offset])
-    end
-  end
-  var f : Foo
-  f.x = 3.4
-  f.y = 2.9
-  C.printf('init foo print %f %f\n', f.x, f.y)
-  C.printf('Completed InitMass\n')
+--  for y = y_lo,y_hi do
+--    for x = x_lo,x_hi do
+--      var offset = (x)*stride[0] + (y)*stride[1]
+--      mass_ptr[offset] = 2 + drift
+--      drift = drift + 0.01
+--      C.printf('x %i, y %i, offset %i, mass %f\n', x, y, offset, mass_ptr[offset])
+--    end
+--  end
+--  var f : Foo
+--  f.x = 3.4
+--  f.y = 2.9
+--  C.printf('init foo print %f %f\n', f.x, f.y)
+  C.printf('*** Completed InitMass\n')
 end
 local init_mass_field_accesses = {
   ewrap.NewFAccess {
@@ -88,7 +88,7 @@ local terra DumpMass(args : ewrap.TaskArgs)
   var mass_ptr = [&float](mass.ptr)
   for y = y_lo,y_hi do
     for x = x_lo,x_hi do
-      var offset = (x-x_lo)*stride[0] + (y-y_lo)*stride[1]
+      var offset = (x)*stride[0] + (y)*stride[1]
       C.printf('x %i, y %i, offset %i, mass %f\n', x, y, offset, mass_ptr[offset])
     end
   end
@@ -109,6 +109,6 @@ local dump_mass_etask = ewrap.RegisterNewTask{
 }
 
 init_mass_etask:exec()
-dump_mass_etask:exec()
+--dump_mass_etask:exec()
 
 print("*** Completed control pogram.")
