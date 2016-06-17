@@ -84,7 +84,7 @@ local function numComputeNodes()  -- get total number of compute nodes
   return gas.nodes() - 1
 end
 local function BroadcastLuaEventToComputeNodes(event_name, ...)
-  print('*** DEBUG INFO: Sending ' .. event_name)
+  --print('*** DEBUG INFO: Sending ' .. event_name)
   for i = 1,numComputeNodes() do
     gaswrap.sendLuaEvent(i, event_name, ...)
   end
@@ -424,6 +424,12 @@ function WorkerField:SetReadWriteSignal(signal)
   self.last_read  = signals[0]
   self.last_write = signals[1]
 end
+function WorkerField:GetAllSignals()
+  return self:GetReadWriteSignal()
+end
+function WorkerField:SetAllSignals()
+  return self:SetReadWriteSignal()
+end
 
 -- Allocate incoming and outgoing buffers for data exchange, set up channels
 -- with neighboring nodes, and send a confirmation to control node when all
@@ -686,6 +692,12 @@ end
 
 function GetWorkerField(f_id)
   return worker_field_metadata[f_id]
+end
+
+local function GetAllWorkerFields()
+  local fs = newlist()
+  for _,f in pairs(field_metadata) do fs:insert(f) end
+  return fs
 end
 
 
@@ -1433,6 +1445,67 @@ end
 -------------------------------------------------------------------------------
 
 
+local current_control_barrier = 0
+local function OpenBarrierOnController()
+  -- initialize barrier semaphore
+  current_control_barrier = numComputeNodes()
+
+  BroadcastLuaEventToComputeNodes('openBarrier')
+
+  -- wait on the semaphore count
+  while current_control_barrier > 0 do
+    C.usleep(1)
+    gaswrap.pollLuaEvents(0,0)
+  end
+end
+
+local function CloseBarrierOnController()
+  current_control_barrier = current_control_barrier - 1
+end
+gaswrap.registerLuaEvent('closeBarrier',        CloseBarrierOnController)
+
+local terra barrier_action( args : &opaque )
+  gaswrap.sendLuaEvent(CONTROL_NODE, 'closeBarrier')
+end
+
+local function OpenBarrierOnWorker()
+  assert(not on_control_node(), 'worker only')
+
+  -- collect necessary data
+  local fields    = GetAllWorkerFields()
+  local n_fields  = #fields
+  local sigs_in   = terralib.new(gaswrap.Signal[n_fields])
+  local sigs_out  = terralib.new(gaswrap.Signal[n_fields])
+
+  -- schedule worker-level barrier
+  gaswrap.acquireScheduler()
+
+  -- merge all field signals
+  for i,f in ipairs(fields) do
+    sigs_in[i-1] = f:GetAllSignals()
+  end
+  local s_in = nil
+  if      n_fields == 0 then  s_in = gaswrap.newSignalSource():trigger()
+  elseif  n_fields == 1 then  s_in = sigs_in[0]
+                        else  gaswrap.mergeSignals(n_fields, sigs_in) end
+  -- barrier action
+  local s_out = s_in:exec(0,barrier_action:getpointer(),nil)
+  -- fork all field signals
+  if      n_fields == 0 then  s_out = gaswrap.newSignalSource():trigger()
+  elseif  n_fields == 1 then  s_out = sigs_in[0]
+                        else  s_out:fork(n_fields, sigs_out) end
+  for i,f in ipairs(fields) do
+    f:SetAllSignals(sigs_out[i-1])
+  end
+
+  gaswrap.releaseScheduler()
+end
+gaswrap.registerLuaEvent('openBarrier',         OpenBarrierOnWorker)
+
+
+
+
+
 -------------------------------------------------------------------------------
 -- Register event handlers 
 -------------------------------------------------------------------------------
@@ -1478,5 +1551,5 @@ Exports.FieldInstance                 = FieldInstance
 Exports.NewFAccess                    = NewFAccess
 Exports.RegisterNewTask               = RegisterNewTask
 
-
+Exports.SyncBarrier                   = OpenBarrierOnController
 
