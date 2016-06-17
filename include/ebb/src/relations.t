@@ -223,8 +223,8 @@ function R.NewRelation(params)
       rel._dims[i]    = n
       rel._strides[i] = size
       size            = size * n
-      if params.periodic and params.periodic[i] then rel._periodic = true
-                                                else rel._periodic = false end
+      if params.periodic and params.periodic[i] then rel._periodic[i] = true
+                                                else rel._periodic[i] = false end
     end
   end
   rawset(rel, '_concrete_size', size)
@@ -243,8 +243,9 @@ function R.NewRelation(params)
   elseif use_exp then
     if mode == 'GRID' then
       rawset(rel, '_ewrap_relation', ewrap.NewGridRelation {
-        name    = params.name,
-        dims    = rel._dims,
+        name     = params.name,
+        dims     = rel._dims,
+        periodic = rel._periodic,
       })
     else
       error('EXPERIMENTAL TODO: Only GRID currently supported multinode')

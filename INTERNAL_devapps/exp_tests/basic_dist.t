@@ -14,7 +14,7 @@ local C = terralib.includecstring [[
 -------------------------------------------------------------------------------
 
 -- Data
-local cells = L.NewRelation { name='cells', dims={8,8} }
+local cells = L.NewRelation { name='cells', dims={8,8}, periodic={true,false} }
 cells:SetPartitions {2,2}
 local mass = cells:NewField('mass', L.float)
 

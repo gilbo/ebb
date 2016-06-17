@@ -118,6 +118,8 @@ end
 -- Relation and Field objects at compute nodes
 -------------------------------------------------------------------------------
 
+local struct BoundsStruct { lo : uint64, hi : uint64 }
+
 --[[
 _array,
 _ghost_width,
@@ -126,11 +128,28 @@ _ ... see below
 local FieldInstanceTable = {}
 FieldInstanceTable.__index = FieldInstanceTable
 
-local struct BoundsStruct { lo : uint64, hi : uint64 }
 local struct FieldInstance {
-  ptr     : &uint8
-  strides : uint64[3]
+  ptr       : &uint8;
+  strides   : uint64[3];  -- in terms of elements for now
+  elem_size : uint64;
 }
+
+local GhostMetadata = {}
+GhostMetadata.__index = GhostMetadata
+
+local struct GhostInstance  {
+  union {
+    src : &gaswrap.AsyncBufSrcChannel;
+    dst : &gaswrap.AsyncBufDstChannel;
+  }
+  bounds    : BoundsStruct[3];
+  ptr       : &uint8;
+  strides   : uint64[3];  -- in terms of elements for now, similar to field instance
+  elem_size : uint64;
+}
+
+local WorkerField = {}
+WorkerField.__index = WorkerField
 
 --[[
 params {
@@ -186,22 +205,10 @@ function FieldInstanceTable:NElems() return self._n_elems end
 function FieldInstanceTable:Strides() return self._strides end
 function FieldInstanceTable:ElemSize() return self._elem_size end
 
-local GhostMetadata = {}
-GhostMetadata.__index = GhostMetadata
-
-local struct GhostInstance  {
-  union {
-    src : &gaswrap.AsyncBufSrcChannel;
-    dst : &gaswrap.AsyncBufDstChannel;
-  }
-  buffer : &uint8;
-  -- add global bounds
-}
-
 -- use an hid_base as there could be multiple channels for the same field
 -- programmatically generate the rest, keep last 3 digits for ghost num, and
 -- NODE_DIGITS digits for node ids (source and destination).
-local function hs_id(hid_base, src, dst, ghost_num)
+local function gen_hs_id(hid_base, src, dst, ghost_num)
   return ghost_num +
          dst      * math.pow(10, GHOST_DIGITS) +
          src      * math.pow(10, GHOST_DIGITS + NODE_DIGITS) +
@@ -211,52 +218,88 @@ end
 local worker_ghost_num_channels = {}
 local worker_ghost_channels_freeze = {}
 
+local function ghost_id(offset, ndims)
+  local g = 0
+  for d = 1, ndims do
+    g = g * 3 + (offset[d] + 1)
+  end
+  return g
+end
 --[[
-  allocates buffer for ghost region
   params {
-  hid_base,      -- id info
-  ghost_id,      -- id info
-  fid,           -- for call back, signaling to controller when ready
-  type_size,     -- elem size
-  ndims,
-  partition,     -- neighbor info, bounds/location
-  ghost_width,   -- size
+    hid_base,    -- id info
+    offset,      -- which ghost (offset wrt center)
+    inner,       -- true if inner ghost, false if outer ghost
+    ghost_width  -- ghost width
   }
 --]]
-local function CreateGridGhostMetadata(off, params)
+function WorkerField:CreateGridGhostMetadata(params)
   assert(not worker_ghost_channels_freeze[params.hid_base],
          'Already started setting up ghost channels. ' ..
          'All calls to create ghost channels must precede channel set up calls.')
-  local g        = {
-    hid_base = params.hid_base,
-    ghost_id = params.ghost_id,
-    fid      = params.fid,
-    nb_id    = nil,
-    buffer   = nil,
-    buf_size = 0,
-    bounds   = nil,
-  }
-  local blocking = params.partition.blocking
-  local bid      = params.partition.block_id
-  local allocate = true
-  local nb_bid = {}
-  for d = 1, params.ndims do
-    if not params.periodic then
-      nb_bid[d] = bid[d] + off[d]
-      allocate = allocate and (nb_bid[d] >= 1 and nb_bid[d] <= blocking[d])
-      nb_bid[d] = (nb_bid[d] - 1) % blocking[d] + 1
+  local ndims     = #self.relation:Dims()
+  local off       = params.offset
+  local owner_off = shallow_copy(params.offset)
+  if not params.inner then
+    for d = 1,ndims do
+      owner_off[d] = -owner_off[d]
     end
   end
-  if allocate then
-    local nb_lin_id = params.partition.map
-    for d = 1, params.ndims do
-      nb_lin_id = nb_lin_id[nb_bid[d]]
+  local partition = self.relation:GetPartition()
+  local blocking  = partition.blocking
+  local bid       = partition.block_id
+  local allocate  = true
+  local periodic  = self.relation.periodic
+  -- compute neigbor's id
+  local nb_bid    = {}
+  local nb_lin_id = partition.map
+  for d = 1, ndims do
+    nb_bid[d] = bid[d] + off[d]
+    if not periodic[d] then
+      allocate = allocate and (nb_bid[d] >= 1 and nb_bid[d] <= blocking[d])
     end
-    g.nb_id    = nb_lin_id
-    local partition_width = params.partition.bounds:getwidths()
-    local ghost_width     = params.ghost_width
-    local buf_size = params.type_size
-    for d = 1, params.ndims do
+    nb_bid[d] = (nb_bid[d] - 1) % blocking[d] + 1
+    nb_lin_id = nb_lin_id[nb_bid[d]]
+  end
+  -- compute bounds for this ghost
+  local pbounds      = partition.bounds:getranges()
+  local ghost_width  = params.ghost_width
+  local bounds       = {}
+  for d = 1, ndims do
+    bounds[d] = {}
+    if off[d] == -1 then
+      bounds[d][1] = params.inner and pbounds[d][1] or
+                     pbounds[d][1] - ghost_width[d] + 1
+      bounds[d][2] = params.inner and pbounds[d][1] + ghost_width[d] - 1 or
+                     pbounds[d][1] - 1
+    elseif off[d] == 0 then
+      bounds[d][1] = pbounds[d][1]
+      bounds[d][2] = pbounds[d][2]
+    elseif off[d] == 1 then
+      bounds[d][1] = params.inner and pbounds[d][2] - ghost_width[d] + 1 or
+                     pbounds[d][2] + 1
+      bounds[d][2] = params.inner and pbounds[d][2] or
+                     pbounds[d][1] + ghost_width[d] - 1
+    end
+  end
+  if ndims == 2 then bounds[3] = {1,1} end
+  local bounds_rect = Util.NewRect3d(unpack(bounds))
+  -- ghost metadata
+  local g        = {
+    hid_base  = params.hid_base,             -- generate channel id
+    ghost_id  = ghost_id(owner_off, ndims),  -- generate channel id
+    fid       = self.id,      -- whhich field, useful to signal to controller
+    nb_id     = nb_lin_id,    -- which node to set up channel with
+    buffer    = nil,          -- data
+    buf_size  = 0,            -- size of buffer
+    elem_size = self:GetTypeSize(),  -- element size (for copying elements)
+    bounds    = bounds_rect,  -- inclusive bounds
+  }
+  -- allocate buffer
+  if allocate then
+    local partition_width = partition.bounds:getwidths()
+    local buf_size = self:GetTypeSize()
+    for d = 1, ndims do
       if off[d] == 0 then
         buf_size = buf_size * ghost_width[d]
       else
@@ -266,7 +309,7 @@ local function CreateGridGhostMetadata(off, params)
     g.buf_size = buf_size
     g.buffer = terralib.cast(&uint8, C.malloc(buf_size))
     if not worker_ghost_num_channels[params.hid_base] then
-      worker_ghost_num_channels[params.hid_base] = 0
+      worker_ghost_num_channels[params.hid_base] = 1
     else
       worker_ghost_num_channels[params.hid_base] =
         worker_ghost_num_channels[params.hid_base] + 1
@@ -275,12 +318,21 @@ local function CreateGridGhostMetadata(off, params)
   return setmetatable(g, GhostMetadata)
 end
 
-function GhostMetadata:CreateOutgoingGhostChannel(g)
+function GhostMetadata:CreateOutgoingGridGhostChannel(g)
   worker_ghost_channels_freeze[self.hid_base] = true
   -- set buffer
-  g.buffer = self.buffer
+  g.ptr = self.buffer
   if not self.buffer then return end
+  -- set bounds
+  local range = self.bounds:getranges()
+  for d = 1,#range do
+    g.bounds[d-1].lo = range[d][1]
+    g.bounds[d-1].hi = range[d][2]
+  end
   local function DoneCallback(chan)
+    print('*** Node ' .. gas.mynode() .. ' decrementing channel counter for ' ..
+          self.fid .. '. Old counter value is ' ..
+          worker_ghost_num_channels[self.hid_base])
     worker_ghost_num_channels[self.hid_base] =
       worker_ghost_num_channels[self.hid_base] - 1
     if worker_ghost_num_channels[self.hid_base] == 0 then
@@ -293,17 +345,31 @@ function GhostMetadata:CreateOutgoingGhostChannel(g)
     -- set channel
     g.src = chan
   end
-  local hid = hs_id(self.hid_base, gas.mynode(), self.nb_id, self.ghost_id)
+  local hid = gen_hs_id(self.hid_base, gas.mynode(), self.nb_id, self.ghost_id)
   gaswrap.CreateAsyncBufSrcChannel(self.nb_id, hid,
                                    self.buffer, self.buf_size, DoneCallback)
 end
 
-function GhostMetadata:CreateIncomingGhostChannel(g)
+function GhostMetadata:CreateIncomingGridGhostChannel(g)
   worker_ghost_channels_freeze[self.hid_base] = true
   -- set buffer
-  g.buffer = self.buffer
+  g.ptr       = self.buffer
+  g.elem_size = self.elem_size
   if not self.buffer then return end
+  -- set bounds
+  local range = self.bounds:getranges()
+  local width = self.bounds:getwidths()
+  local n_elems = 1
+  for d = 1,3 do
+    g.bounds[d-1].lo = range[d][1]
+    g.bounds[d-1].hi = range[d][2]
+    g.strides[d-1]   = n_elems
+    n_elems          = n_elems * (width[d] + 1)
+  end
   local function DoneCallback(chan)
+    print('*** Node ' .. gas.mynode() .. ' decrementing channel counter for ' ..
+          self.fid .. '. Old counter value is ' ..
+          worker_ghost_num_channels[self.hid_base])
     worker_ghost_num_channels[self.hid_base] =
       worker_ghost_num_channels[self.hid_base] - 1
     if worker_ghost_num_channels[self.hid_base] == 0 then
@@ -316,7 +382,7 @@ function GhostMetadata:CreateIncomingGhostChannel(g)
     -- set channel
     g.dst = chan
   end
-  local hid = hs_id(self.hid_base, self.nb_id, gas.mynode(), self.ghost_id)
+  local hid = gen_hs_id(self.hid_base, self.nb_id, gas.mynode(), self.ghost_id)
   gaswrap.CreateAsyncBufDstChannel(self.nb_id, hid,
                                    self.buffer, self.buf_size, DoneCallback)
 end
@@ -335,8 +401,6 @@ WorkerField : {
   last_write  = Signal,
 }
 --]]
-local WorkerField = {}
-WorkerField.__index = WorkerField
 
 local function NewWorkerField(relation, params)
   return setmetatable({
@@ -463,13 +527,6 @@ else
     ghost_listing_3d:insertall({neg, pos})
   end
 end
-local function ghost_id(offset, ndims)
-  local g = 0
-  for d = 1, ndims do
-    g = g * 3 + (offset[d] + 1)
-  end
-  return g
-end
 function WorkerField:SetUpGhostChannels(hid_base, ghost_width)
   local ndims = #self.relation:Dims()
   local ghost_listing = nil
@@ -483,119 +540,29 @@ function WorkerField:SetUpGhostChannels(hid_base, ghost_width)
   local outer_ghosts = newlist()
   for i = 1,#ghost_listing do
     local off = ghost_listing[i]
-    inner_ghosts[i] = CreateGridGhostMetadata(
-      off, {
-              hid_base    = hid_base,
-              ghost_id    = ghost_id(off, ndims),
-              fid         = self.id,
-              ndims       = ndims,
-              type_size   = self:GetTypeSize(),
-              partition   = partition,
-              ghost_width = ghost_width
-            })
-    local nb_off = {}
-    for d = 1,ndims do
-      nb_off[d] = -off[d]
-    end
-    outer_ghosts[i] = CreateGridGhostMetadata(
-      off, {
-              hid_base    = hid_base,
-              ghost_id    = ghost_id(nb_off, ndims),
-              fid         = self.id,
-              ndims       = ndims,
-              type_size   = self:GetTypeSize(),
-              partition   = partition,
-              ghost_width = ghost_width
-            })
+    inner_ghosts[i] = self:CreateGridGhostMetadata(
+      {
+         hid_base    = hid_base,
+         offset      = off,
+         inner       = true,
+         ghost_width = ghost_width
+      })
+    outer_ghosts[i] = self:CreateGridGhostMetadata(
+      {
+         hid_base    = hid_base,
+         offset      = off,
+         inner       = false,
+         ghost_width = ghost_width
+      })
   end
   self.inner_ghosts_size = #ghost_listing
   self.outer_ghosts_size = #ghost_listing
   self.inner_ghosts = terralib.new(GhostInstance[#ghost_listing])
   self.outer_ghosts = terralib.new(GhostInstance[#ghost_listing])
   for i = 1,#ghost_listing do
-    inner_ghosts[i]:CreateOutgoingGhostChannel(self.inner_ghosts[i-1])
-    outer_ghosts[i]:CreateIncomingGhostChannel(self.outer_ghosts[i-1])
+    inner_ghosts[i]:CreateOutgoingGridGhostChannel(self.inner_ghosts[i-1])
+    outer_ghosts[i]:CreateIncomingGridGhostChannel(self.outer_ghosts[i-1])
   end
-end
-
-local struct GhostCopyArgs {
-  bounds : BoundsStruct[3];
-  field : FieldInstance;
-  num_ghosts : uint;
-  ghosts : &GhostInstance;
-}
-
--- send ghosts
--- TODO: incomplete
--- one or multiple actions per ghost?
-local terra CopyGhostsToSend(copy_args : &opaque)
-  C.printf('**** CopyGhostsToSend UINIMPLEMENTED.\n')
-end
--- start_sig = last write
--- merge output signal with read
-local terra CopyAndSendGhosts(start_sig : gaswrap.Signal,
-                              num_ghosts : uint32, ghosts : &GhostInstance)
-  var copy_sig_forked : &gaswrap.Signal =
-    [&gaswrap.Signal](C.malloc(sizeof(gaswrap.Signal) * num_ghosts))
-  var send_sig : &gaswrap.Signal =
-    [&gaswrap.Signal](C.malloc(sizeof(gaswrap.Signal) * num_ghosts))
-  gaswrap.acquireScheduler()
-  -- just schedule on one worker thread for now
-  var worker_id : uint32 = 0
-  -- copy into buffers once start_sig triggers
-  var copy_args = [&GhostCopyArgs](C.malloc(sizeof(GhostCopyArgs)))
-  var copy_sig = start_sig:exec(
-    worker_id, CopyGhostsToSend, copy_args)
-  -- send buffers after copying
-  for i = 0, num_ghosts do
-    if ghosts[i].buffer == nil then
-      copy_sig_forked[i]:sink()
-      send_sig[i] = gaswrap.newSignalSource():trigger()
-    else
-      send_sig[i] = ghosts[i].src:send(copy_sig_forked[i])
-    end
-  end
-  -- merge send done signals
-  var done_sig = gaswrap.mergeSignals(num_ghosts, send_sig)
-  gaswrap.releaseScheduler()
-  C.free(copy_sig_forked)
-  C.free(send_sig)
-  return done_sig
-end
-
--- receive ghosts
--- TODO: incomplete
--- one or multiple actions per ghost?
-local terra CopyGhostsRcved(copy_args : &opaque)
-  C.printf('**** CopyGhostsRcved UINIMPLEMENTED.\n')
-end
--- start_sig = (? I think this should depend on the last uncentered read)
--- merge output signal with last write
-local terra RecvAndCopyGhosts(start_sig : gaswrap.Signal,
-                              num_ghosts : uint32, ghosts : &GhostInstance)
-  var recv_and_start_sig : &gaswrap.Signal =
-    [&gaswrap.Signal](C.malloc(sizeof(gaswrap.Signal) * (num_ghosts + 1)))
-  gaswrap.acquireScheduler()
-  -- receive all the buffers
-  for i = 0, num_ghosts do
-    if ghosts[i].buffer == nil then
-      recv_and_start_sig[i] = gaswrap.newSignalSource():trigger()
-    else
-      recv_and_start_sig[i] = ghosts[i].dst:recv()
-    end
-  end
-  -- just schedule on one worker thread for now
-  var worker_id : uint32 = 0
-  -- copy out from buffers once all data is received and start_sig triggers
-  var copy_sig = gaswrap.mergeSignals(num_ghosts+1, recv_and_start_sig)
-  -- copy into buffers
-  var copy_args = [&GhostCopyArgs](C.malloc(sizeof(GhostCopyArgs)))
-  var done_sig = copy_sig:exec(
-    worker_id, CopyGhostsRcved, copy_args)
-  -- merge send done signals
-  gaswrap.releaseScheduler()
-  C.free(recv_and_start_sig)
-  return done_sig
 end
 
 --[[
@@ -698,6 +665,132 @@ local function GetAllWorkerFields()
   local fs = newlist()
   for _,f in pairs(field_metadata) do fs:insert(f) end
   return fs
+end
+
+
+-------------------------------------------------------------------------------
+-- Copying ghost data, sending, receiving
+-------------------------------------------------------------------------------
+
+local struct GhostCopyArgs {
+  num_ghosts   : uint32;
+  ghosts       : &GhostInstance;
+  field_bounds : BoundsStruct[3];
+  field        : FieldInstance;
+}
+
+-- send ghosts
+-- TODO: incomplete
+-- one or multiple actions per ghost?
+local CopyGridGhosts = {
+  Send = 0,
+  Recv = 0,
+}
+for k,_ in pairs(CopyGridGhosts) do
+  CopyGridGhosts[k] = terra (copy_args : &opaque)
+    C.printf('*** CopyGridGhosts executing.\n')
+    var args = [&GhostCopyArgs](copy_args)
+    var field        = args.field
+    var fx_lo, fx_hi = args.field_bounds[0].lo, args.field_bounds[0].hi 
+    var fy_lo, fy_hi = args.field_bounds[1].lo, args.field_bounds[1].hi 
+    var fz_lo, fz_hi = args.field_bounds[2].lo, args.field_bounds[2].hi 
+    var fstride      = field.strides
+    for i = 0, args.num_ghosts do
+      var ghost : GhostInstance = args.ghosts[i]
+      var gx_lo, gx_hi = ghost.bounds[0].lo, ghost.bounds[0].hi 
+      var gy_lo, gy_hi = ghost.bounds[1].lo, ghost.bounds[1].hi 
+      var gz_lo, gz_hi = ghost.bounds[2].lo, ghost.bounds[2].hi 
+      var gstride      = ghost.strides
+      if ghost.ptr ~= nil then
+        for z = gz_lo, gz_hi + 1 do
+          for y = gy_lo, gy_hi + 1 do
+            for x = gx_lo, gx_hi + 1 do
+              var foff = ((x-fx_lo)*fstride[0] + (y-fy_lo)*fstride[1] +
+                          (z-fz_lo)*fstride[2]) * field.elem_size
+              var goff = ((x-gx_lo)*gstride[0] + (y-gy_lo)*gstride[1] +
+                          (z-gz_lo)*gstride[2]) * ghost.elem_size
+              escape
+                if k == 'Send' then
+                  emit quote
+                    C.memcpy(ghost.ptr + goff, field.ptr + foff, ghost.elem_size)
+                  end
+                else
+                  emit quote
+                    C.memcpy(field.ptr + foff, ghost.ptr + goff, ghost.elem_size)
+                  end
+                end
+              end
+            end
+          end
+        end
+      end
+    end
+    C.free(copy_args)
+    C.printf('*** CopyGridGhosts done.\n')
+  end
+end
+
+-- start_sig = last write
+-- merge output signal with read
+local terra CopyAndSendGridGhosts(start_sig : gaswrap.Signal,
+                                  copy_args : &GhostCopyArgs)
+  var num_ghosts = copy_args.num_ghosts
+  var ghosts     = copy_args.ghosts
+  var copy_sig_forked : &gaswrap.Signal =
+    [&gaswrap.Signal](C.malloc(sizeof(gaswrap.Signal) * num_ghosts))
+  var send_sig : &gaswrap.Signal =
+    [&gaswrap.Signal](C.malloc(sizeof(gaswrap.Signal) * num_ghosts))
+  gaswrap.acquireScheduler()
+  -- just schedule on one worker thread for now
+  var worker_id : uint32 = 0
+  -- copy into buffers once start_sig triggers
+  var copy_sig = start_sig:exec(
+    worker_id, CopyGridGhosts.Send, [&opaque](copy_args))
+  -- send buffers after copying
+  for i = 0, num_ghosts do
+    if ghosts[i].ptr == nil then
+      copy_sig_forked[i]:sink()
+      send_sig[i] = gaswrap.newSignalSource():trigger()
+    else
+      send_sig[i] = ghosts[i].src:send(copy_sig_forked[i])
+    end
+  end
+  -- merge send done signals
+  var done_sig = gaswrap.mergeSignals(num_ghosts, send_sig)
+  gaswrap.releaseScheduler()
+  C.free(copy_sig_forked)
+  C.free(send_sig)
+  return done_sig
+end
+-- start_sig = (? I think this should depend on the last uncentered read)
+-- merge output signal with last write
+local terra RecvAndCopyGridGhosts(start_sig : gaswrap.Signal,
+                                 copy_args : &GhostCopyArgs)
+  var num_ghosts = copy_args.num_ghosts
+  var ghosts     = copy_args.ghosts
+  var recv_and_start_sig : &gaswrap.Signal =
+    [&gaswrap.Signal](C.malloc(sizeof(gaswrap.Signal) * (num_ghosts + 1)))
+  gaswrap.acquireScheduler()
+  -- receive all the buffers
+  for i = 0, num_ghosts do
+    if ghosts[i].ptr == nil then
+      recv_and_start_sig[i] = gaswrap.newSignalSource():trigger()
+    else
+      recv_and_start_sig[i] = ghosts[i].dst:recv()
+    end
+  end
+  -- just schedule on one worker thread for now
+  var worker_id : uint32 = 0
+  -- copy out from buffers once all data is received and start_sig triggers
+  var copy_sig = gaswrap.mergeSignals(num_ghosts+1, recv_and_start_sig)
+  -- copy into buffers
+  var copy_args = [&GhostCopyArgs](C.malloc(sizeof(GhostCopyArgs)))
+  var done_sig = copy_sig:exec(
+    worker_id, CopyGridGhosts.Recv, [&opaque](copy_args))
+  -- merge send done signals
+  gaswrap.releaseScheduler()
+  C.free(recv_and_start_sig)
+  return done_sig
 end
 
 
@@ -829,7 +922,7 @@ local function PrepareField(f_id, ghost_width_str, hid_base)
   assert(field, 'Attempt to allocate unrecorded field #'..f_id)
   local ghost_width = gaswrap.lson_eval(ghost_width_str)
   field:AllocateInstance(ghost_width)
-  field:SetUpGhostChannels(hid_base, ghost_width)
+  --field:SetUpGhostChannels(hid_base, ghost_width)
 end
 
 
@@ -958,12 +1051,21 @@ local function NewGridRelation(args)
   local rel_id        = relation_id_counter
   relation_id_counter = rel_id + 1
 
-  BroadcastNewRelation(rel_id, args.name, GRID, args.dims, args.periodic)
+  local periodic = nil
+  if args.periodic then
+    periodic = args.periodic
+  else
+    periodic = {}
+    for d = 1,#args.dims do
+      periodic[d] = false
+    end
+  end
+  BroadcastNewRelation(rel_id, args.name, GRID, args.dims, periodic)
 
   local rel = setmetatable({
     id       = rel_id,
     dims     = args.dims,
-    periodic = args.periodic,
+    periodic = periodic,
   }, ControllerGridRelation)
   controller_relations[rel.id] = rel
   return rel
@@ -1376,6 +1478,7 @@ local function LaunchTask(task_id)
       af.strides[d-1] = strides[d]
     end
     af.ptr            = local_ptr - offset * fa.field:GetTypeStride()
+    af.elem_size      = fa.field.instance:ElemSize()
   end
 
 
