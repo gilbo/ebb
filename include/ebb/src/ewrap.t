@@ -191,6 +191,8 @@ function FieldInstanceTable:ElemSize() return self._elem_size end
 -------------------------------------------------------------------------------
 
 
+--[[
+
 -- use an hid_base as there could be multiple channels for the same field
 -- programmatically generate the rest, keep last 3 digits for ghost num, and
 -- NODE_DIGITS digits for node ids (source and destination).
@@ -230,7 +232,7 @@ end
   elem_size = self:GetTypeSize(),  -- element size (for copying elements)
   bounds    = bounds_rect,  -- inclusive bounds
 }
---]]
+--
 local GhostMetadata = {}
 GhostMetadata.__index = GhostMetadata
 
@@ -241,7 +243,7 @@ GhostMetadata.__index = GhostMetadata
     inner,       -- true if inner ghost, false if outer ghost
     ghost_width  -- ghost width
   }
---]]
+--
 function WorkerField:CreateGridGhostMetadata(params)
   assert(not worker_ghost_channels_freeze[params.hid_base],
          'Already started setting up ghost channels. All calls to '..
@@ -264,7 +266,7 @@ function WorkerField:CreateGridGhostMetadata(params)
       allocate = allocate and (nb_bid[d] >= 1 and nb_bid[d] <= blocking[d])
     end
     nb_bid[d] = (nb_bid[d] - 1) % blocking[d] + 1
-    nb_lin_id = nb_lin_id[nb_bid[d]]
+    nb_lin_id = nb_lin_id[nb_bid[d] ]
   end
   -- compute bounds for this ghost
   local pbounds      = partition.bounds:getranges()
@@ -322,47 +324,7 @@ function WorkerField:CreateGridGhostMetadata(params)
 end
 
 
-local controller_field_ghost_ready_semaphores = {}
 
-local function InitFieldGhostSemaphore(f_id)
-  assert(on_control_node(), 'only for controller')
-  controller_field_ghost_ready_semaphores[f_id] = numComputeNodes()
-end
-
-local function MarkFieldGhostsReady(f_id, hid_base)
-  f_id = tonumber(f_id)
-  local semaphore_val = controller_field_ghost_ready_semaphores[f_id]
-  controller_field_ghost_ready_semaphores[f_id] = semaphore_val - 1
-  print(THIS_NODE, 'DECREMENT f#'..f_id..': '..(semaphore_val-1))
-end
-gaswrap.registerLuaEvent('MarkFieldGhostsReady', MarkFieldGhostsReady)
-
-local function WaitOnFieldGhostReady(f_id)
-  assert(on_control_node(), 'only for controller')
-  local semaphore_val = controller_field_ghost_ready_semaphores[f_id]
-  assert(semaphore_val, 'tried to wait on uninitialized field '..f_id)
-  while semaphore_val > 0 do
-    C.usleep(POLL_USLEEP)
-    gaswrap.pollLuaEvents(0, 0)
-    semaphore_val = controller_field_ghost_ready_semaphores[f_id]
-  end
-  print(THIS_NODE, 'DONE waiting on f#'..f_id)
-end
-
-
-
-
-
-local struct GhostInstance  {
-  union {
-    src : &gaswrap.AsyncBufSrcChannel;
-    dst : &gaswrap.AsyncBufDstChannel;
-  }
-  bounds    : BoundsStruct[3];
-  ptr       : &uint8;
-  strides   : uint64[3];  -- in element counts, matching field instances
-  elem_size : uint64;
-}
 
 function GhostMetadata:CreateOutgoingGridGhostChannel(g)
   worker_ghost_channels_freeze[self.hid_base] = true
@@ -434,42 +396,9 @@ function GhostMetadata:CreateIncomingGridGhostChannel(g)
                                    self.buffer, self.buf_size, DoneCallback)
 end
 
--- Allocate incoming and outgoing buffers for data exchange, set up channels
--- with neighboring nodes, and send a confirmation to control node when all
--- channels are set up.
-local ghost_listing_2d = newlist()
-local ghost_listing_3d = newlist()
-if USE_CONSERVATIVE_GHOSTS then
-  for x = -1,1 do
-    for y = -1,1 do
-      if x ~= 0 or y ~= 0 then
-        ghost_listing_2d:insert({x,y})
-      end
-      for z = -1,1 do
-        if x ~= 0 or y ~= 0 or z ~= 0 then
-          ghost_listing_3d:insert({x,y,z})
-        end
-      end
-    end
-  end
-else
-  for d = 1,2 do
-    local neg, pos = {0,0}, {0,0}
-    neg[d] = -1
-    pos[d] =  1
-    ghost_listing_2d:insertall({neg, pos})
-  end
-  for d = 1,3 do
-    local neg, pos = {0,0,0}, {0,0,0}
-    neg[d] = -1
-    pos[d] =  1
-    ghost_listing_3d:insertall({neg, pos})
-  end
-end
 function WorkerField:SetUpGhostChannels(hid_base, ghost_width)
   local ndims = #self.relation:Dims()
   local ghost_listing = ndims == 2 and ghost_listing_2d or ghost_listing_3d
-  local partition     = self.relation:GetPartition()
   local inner_ghosts  = newlist()
   local outer_ghosts  = newlist()
   for i,off in ipairs(ghost_listing) do
@@ -497,6 +426,228 @@ function WorkerField:SetUpGhostChannels(hid_base, ghost_width)
     outer_ghosts[i]:CreateIncomingGridGhostChannel(self.outer_ghosts[i-1])
   end
 end
+
+
+
+
+
+
+
+
+local struct GhostInstance  {
+  union {
+    src : &gaswrap.AsyncBufSrcChannel;
+    dst : &gaswrap.AsyncBufDstChannel;
+  }
+  bounds    : BoundsStruct[3];
+  ptr       : &uint8;
+  strides   : uint64[3];  -- in element counts, matching field instances
+  elem_size : uint64;
+}
+
+--]]
+
+
+
+local struct GhostInstance  {
+  union {
+    src : &gaswrap.AsyncBufSrcChannel;
+    dst : &gaswrap.AsyncBufDstChannel;
+  }
+  bounds    : BoundsStruct[3];
+  ptr       : &uint8;
+  strides   : uint64[3];  -- in element counts, matching field instances
+  elem_size : uint64;
+}
+
+
+
+local controller_field_ghost_ready_semaphores = {}
+
+local function InitFieldGhostSemaphore(f_id)
+  assert(on_control_node(), 'only for controller')
+  controller_field_ghost_ready_semaphores[f_id] = numComputeNodes()
+end
+
+local function MarkFieldGhostsReady(f_id, hid_base)
+  f_id = tonumber(f_id)
+  local semaphore_val = controller_field_ghost_ready_semaphores[f_id]
+  controller_field_ghost_ready_semaphores[f_id] = semaphore_val - 1
+  print(THIS_NODE, 'DECREMENT f#'..f_id..': '..(semaphore_val-1))
+end
+gaswrap.registerLuaEvent('MarkFieldGhostsReady', MarkFieldGhostsReady)
+
+local function WaitOnFieldGhostReady(f_id)
+  assert(on_control_node(), 'only for controller')
+  local semaphore_val = controller_field_ghost_ready_semaphores[f_id]
+  assert(semaphore_val, 'tried to wait on uninitialized field '..f_id)
+  while semaphore_val > 0 do
+    C.usleep(POLL_USLEEP)
+    gaswrap.pollLuaEvents(0, 0)
+    semaphore_val = controller_field_ghost_ready_semaphores[f_id]
+  end
+  print(THIS_NODE, 'DONE waiting on f#'..f_id)
+end
+
+
+
+-- Allocate incoming and outgoing buffers for data exchange, set up channels
+-- with neighboring nodes, and send a confirmation to control node when all
+-- channels are set up.
+local ghost_listing_2d = newlist()
+local ghost_listing_3d = newlist()
+if USE_CONSERVATIVE_GHOSTS then
+  for x = -1,1 do
+    for y = -1,1 do
+      if x ~= 0 or y ~= 0 then
+        ghost_listing_2d:insert({x,y})
+      end
+      for z = -1,1 do
+        if x ~= 0 or y ~= 0 or z ~= 0 then
+          ghost_listing_3d:insert({x,y,z})
+        end
+      end
+    end
+  end
+  assert(#ghost_listing_2d == 8)
+  assert(#ghost_listing_3d == 26)
+else
+  for d = 1,2 do
+    local neg, pos = {0,0}, {0,0}
+    neg[d] = -1
+    pos[d] =  1
+    ghost_listing_2d:insertall({neg, pos})
+  end
+  for d = 1,3 do
+    local neg, pos = {0,0,0}, {0,0,0}
+    neg[d] = -1
+    pos[d] =  1
+    ghost_listing_3d:insertall({neg, pos})
+  end
+  assert(#ghost_listing_2d == 4)
+  assert(#ghost_listing_3d == 6)
+end
+
+local worker_ghost_channel_semaphores = {} -- keyed by field id
+local function ProcessAllGhostChannels(field, handshake_unq_id, ghost_width)
+  local relation      = field.relation
+  local ndims         = #relation.dims
+  local off_patterns  = ndims == 2 and ghost_listing_2d or ghost_listing_3d
+  worker_ghost_channel_semaphores[field.id] = 2 * #off_patterns
+  local function dec_semaphore()
+    local semaphore_val = worker_ghost_channel_semaphores[field.id] - 1
+    worker_ghost_channel_semaphores[field.id] = semaphore_val
+    if semaphore_val == 0 then
+      gaswrap.sendLuaEvent(CONTROL_NODE, 'MarkFieldGhostsReady', field.id)
+    end
+  end
+
+  local function gen_handshake_id(src_node, off, flip_off)
+    local h_id  = handshake_unq_id
+    h_id        = src_node + N_NODES * h_id
+    local o     = { off[1], off[2], off[3] or 0 }
+    if flip_off then for d=1,3 do o[d] = -o[d] end end
+    h_id        = (3*3)*(o[1]+1) + 3*(o[2]+1) + (o[3]+1) + (3*3*3)*h_id
+    return h_id
+  end
+
+  local send_ghosts   = terralib.new(GhostInstance[#off_patterns])
+  local recv_ghosts   = terralib.new(GhostInstance[#off_patterns])
+  for i,off in ipairs(off_patterns) do
+    -- Compute:
+    --    node to connect to
+    --    index bounds for the ghost cell region (send and recv)
+    --    strides for the ghost cell region
+    --    number of elements in the ghost cell region
+    local other_node
+    do
+      local blockDims   = relation:GetPartitionBlockDims()
+      local bid         = relation:GetPartitionBlockId()
+      local nid         = {}
+      for d=1,ndims do
+        nid[d] = (bid[d]+off[d]-1) % blockDims[d] + 1
+      end
+      other_node        = relation:GetNodeIdFromMap(nid)
+    end
+    local gsend_bounds, grecv_bounds, gstrides, n_elems
+    do
+      local bds         = relation:GetPartitionBounds():getranges()
+      gsend_bounds      = {}
+      grecv_bounds      = {}
+      gstrides          = {}
+      n_elems           = 1
+      for d=1,ndims do
+        local gw      = ghost_width[d]
+        gstrides[d]   = n_elems
+        if off[d] == 0 then
+          gsend_bounds[d] = bds[d]
+          grecv_bounds[d] = bds[d]
+          n_elems         = n_elems * (bds[d][2]-bds[d][1]+1)
+        elseif off[d] == -1 then
+          gsend_bounds[d] = { bds[d][1], bds[d][1] + gw - 1 }
+          grecv_bounds[d] = { bds[d][1] - gw, bds[d][1] - 1 }
+          n_elems         = gw * n_elems
+        elseif off[d] == 1 then
+          gsend_bounds[d] = { bds[d][2] - gw + 1, bds[d][2] }
+          grecv_bounds[d] = { bds[d][2] + 1, bds[d][2] + gw }
+          n_elems         = gw * n_elems
+        else assert(false,'bad offset pattern') end
+      end
+    end
+
+    -- Compute other derived data
+    local elem_size   = field:GetTypeSize()
+    local buf_size    = n_elems * elem_size
+
+    -- Create Send Channel
+    local sendg     = send_ghosts[i-1]
+    if other_node == THIS_NODE then
+      sendg.ptr = nil
+      dec_semaphore()
+    else
+      sendg.ptr       = terralib.cast(&uint8, C.malloc(buf_size))
+      sendg.elem_size = elem_size
+      for d = 1,ndims do
+        sendg.bounds[d-1].lo  = gsend_bounds[d][1]
+        sendg.bounds[d-1].hi  = gsend_bounds[d][2]
+        sendg.strides[d-1]    = gstrides[d]
+      end
+      if ndims == 2 then sendg.strides[2] = 0 end
+      gaswrap.CreateAsyncBufSrcChannel(
+        other_node, gen_handshake_id(THIS_NODE, off, false),
+        sendg.ptr, buf_size,
+        function(chan)  sendg.src = chan; dec_semaphore() end)
+    end
+
+
+    -- Create Recv Channel
+    local recvg     = recv_ghosts[i-1]
+    if other_node == THIS_NODE then
+      recvg.ptr = nil
+      dec_semaphore()
+    else
+      recvg.ptr       = terralib.cast(&uint8, C.malloc(buf_size))
+      recvg.elem_size = elem_size
+      for d = 1,ndims do
+        recvg.bounds[d-1].lo  = grecv_bounds[d][1]
+        recvg.bounds[d-1].hi  = grecv_bounds[d][2]
+        recvg.strides[d-1]    = gstrides[d]
+      end
+      if ndims == 2 then recvg.strides[2] = 0 end
+      gaswrap.CreateAsyncBufDstChannel(
+        other_node, gen_handshake_id(other_node, off, true),
+        recvg.ptr, buf_size,
+        function(chan)  recvg.dst = chan; dec_semaphore() end)
+    end
+  end
+  field.inner_ghosts        = send_ghosts
+  field.outer_ghosts        = recv_ghosts
+  field.inner_ghosts_size   = #off_patterns
+  field.outer_ghosts_size   = #off_patterns
+end
+
+
+
 
 
 
@@ -579,6 +730,8 @@ end
 function WorkerField:GetStrides()
   return self.instance:Strides()
 end
+
+function WorkerField:nDims()  return #self.relation.dims  end
 
 function WorkerField:GetReadWriteSignal()
   local signals = terralib.new(gaswrap.Signal[2])
@@ -680,10 +833,10 @@ function WorkerRelation:RecordPartition(blocking, block_id, bounds, map)
   end
   assert(Util.isrect2d(bounds) or Util.isrect3d(bounds))
   self.partition = {
-    blocking = blocking,  -- how relation is partitioned
-    block_id = block_id,  -- multi-dimensional partition block id
-    bounds   = bounds,    -- bounds for this partition
-    map      = map,       -- from block id to node id
+    blocking = blocking,  -- {#,#,?}
+    block_id = block_id,  -- {#,#,?} (where in block grid this node is)
+    bounds   = bounds,    -- 2 or 3 ranges specifying block coord bounds
+    map      = map,       -- global map from block grid ids to node id #s
   }
 end
 
@@ -706,7 +859,17 @@ end
 function WorkerRelation:GetPartitionBounds()
   return self.partition.bounds
 end
-
+function WorkerRelation:GetPartitionBlockId()
+  return self.partition.block_id
+end
+function WorkerRelation:GetPartitionBlockDims()
+  return self.partition.blocking
+end
+function WorkerRelation:GetNodeIdFromMap(nid)
+  local id = self.partition.map
+  for _,i in ipairs(nid) do id = id[i] end
+  return id
+end
 function WorkerRelation:GetPartitionMap()
   return self.partition.map
 end
@@ -959,7 +1122,7 @@ local function CreateGlobalGridPartition(rel_id, blocking_str,
   local block_id  = gaswrap.lson_eval(blocking_id_str)
   local range     = gaswrap.lson_eval(partition_str)
   if not range[3] then range[3] = {1,1} end
-  local bounds = Util.NewRect3d(unpack(range))
+  local bounds    = Util.NewRect3d(unpack(range))
   local map       = gaswrap.lson_eval(map_str)
   relation:RecordPartition(blocking, block_id, bounds, map)
 end
@@ -994,7 +1157,7 @@ local function PrepareField(f_id, ghost_width_str, hid_base)
   assert(field, 'Attempt to allocate unrecorded field #'..f_id)
   local ghost_width = gaswrap.lson_eval(ghost_width_str)
   field:AllocateInstance(ghost_width)
-  field:SetUpGhostChannels(tonumber(hid_base), ghost_width)
+  ProcessAllGhostChannels(field, tonumber(hid_base), ghost_width)
 end
 
 
@@ -1577,7 +1740,7 @@ local function LaunchTask(task_id)
       sigs_f_in[i-1]  = fa.field:GetReadWriteSignal()
     elseif fa.privilege == REDUCE_PRIVILEGE then
       error('TODO: REDUCE PRIV UNIMPLEMENTED')
-    else assert('unrecognized field privilege') end
+    else assert(false, 'unrecognized field privilege') end
   end
   local a_in = nil
   if n_fields == 0 then
@@ -1616,7 +1779,7 @@ local function LaunchTask(task_id)
     print('Merge end in setwrite on node ' .. gas.mynode())
     elseif fa.privilege == REDUCE_PRIVILEGE then
       error('TODO: REDUCE PRIV UNIMPLEMENTED')
-    else assert('unrecognized field privilege') end
+    else assert(false, 'unrecognized field privilege') end
   end
   -- Release
   gaswrap.releaseScheduler()
