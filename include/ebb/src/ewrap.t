@@ -353,7 +353,6 @@ function GhostMetadata:CreateOutgoingGridGhostChannel(g)
     g.src = chan
   end
   local hid = gen_hs_id(self.hid_base, gas.mynode(), self.nb_id, self.ghost_id)
-  print('*** src', hid, self.buf_size)
   gaswrap.CreateAsyncBufSrcChannel(self.nb_id, hid,
                                    self.buffer, self.buf_size, DoneCallback)
 end
@@ -391,7 +390,6 @@ function GhostMetadata:CreateIncomingGridGhostChannel(g)
     g.dst = chan
   end
   local hid = gen_hs_id(self.hid_base, self.nb_id, gas.mynode(), self.ghost_id)
-  print('*** dst', hid, self.buf_size)
   gaswrap.CreateAsyncBufDstChannel(self.nb_id, hid,
                                    self.buffer, self.buf_size, DoneCallback)
 end
@@ -737,7 +735,8 @@ function WorkerField:GetReadWriteSignal()
   local signals = terralib.new(gaswrap.Signal[2])
   signals[0] = self.last_read
   signals[1] = self.last_write
-  return gaswrap.mergeSignals(2, signals)
+  local signal = gaswrap.mergeSignals(2, signals)
+  return signal
 end
 function WorkerField:ForkReadSignal()
   local signals = terralib.new(gaswrap.Signal[2])
@@ -988,9 +987,7 @@ local terra CopyAndSendGridGhosts(start_sig : gaswrap.Signal,
     end
   end
   -- merge send done signals
-  C.printf('Merge begin in send\n')
   var done_sig = gaswrap.mergeSignals(num_ghosts, send_sig)
-  C.printf('Merge end in send\n')
   C.free(copy_sig_forked)
   C.free(send_sig)
   return done_sig
@@ -1017,9 +1014,7 @@ local terra RecvAndCopyGridGhosts(start_sig : gaswrap.Signal,
   -- just schedule on one worker thread for now
   var worker_id : uint32 = 0
   -- copy out from buffers once all data is received and start_sig triggers
-  C.printf('Merge begin in receive\n')
   var copy_sig = gaswrap.mergeSignals(num_ghosts+1, recv_and_start_sig)
-  C.printf('Merge end in receive\n')
   -- copy into buffers
   var done_sig = copy_sig:exec(
     worker_id, CopyGridGhosts.Recv, [&opaque](copy_args))
@@ -1748,9 +1743,7 @@ local function LaunchTask(task_id)
   elseif n_fields == 1 then
     a_in = sigs_f_in[0]
   else
-    print('Merge begin in a_in')
     a_in = gaswrap.mergeSignals(n_fields, sigs_f_in)
-    print('Merge end in a_in')
   end
   -- Schedule the task action itself
   local worker_id = 0 -- TODO: use partition in the future...?
@@ -1770,13 +1763,11 @@ local function LaunchTask(task_id)
       local f_out = terralib.new(gaswrap.Signal[2])
       sigs_f_out[i-1]:fork(2, f_out)
       local send_done = CopyAndSendGridGhosts(f_out[0], send_args[i-1])
-      fa.field:SetReadSignal(f_out[0])
+      fa.field:SetReadSignal(send_done)
       local writes = terralib.new(gaswrap.Signal[2])
       writes[0] = recv_done[i-1]
       writes[1] = f_out[1]
-    print('Merge begin in setwrite on node ' .. gas.mynode())
       fa.field:SetWriteSignal(gaswrap.mergeSignals(2, writes))
-    print('Merge end in setwrite on node ' .. gas.mynode())
     elseif fa.privilege == REDUCE_PRIVILEGE then
       error('TODO: REDUCE PRIV UNIMPLEMENTED')
     else assert(false, 'unrecognized field privilege') end
@@ -1848,7 +1839,7 @@ local function OpenBarrierOnWorker()
   local s_in = nil
   if      n_fields == 0 then  s_in = gaswrap.newSignalSource():trigger()
   elseif  n_fields == 1 then  s_in = sigs_in[0]
-                        else  gaswrap.mergeSignals(n_fields, sigs_in) end
+                        else gaswrap.mergeSignals(n_fields, sigs_in) end
   -- barrier action
   local s_out = s_in:exec(0,barrier_action:getpointer(),nil)
   -- fork all field signals

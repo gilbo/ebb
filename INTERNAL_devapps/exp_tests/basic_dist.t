@@ -109,6 +109,6 @@ local dump_mass_etask = ewrap.RegisterNewTask{
 }
 
 init_mass_etask:exec()
---dump_mass_etask:exec()
+dump_mass_etask:exec()
 
 print("*** Completed control pogram.")
