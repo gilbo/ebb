@@ -101,13 +101,13 @@ end
 -------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
 
-local struct bounds_struct { lo : uint64, hi : uint64 }
+local struct bounds_struct { lo : int64, hi : int64 }
 local exp_field_struct = {}
 for d=1,3 do
   exp_field_struct[d] = terralib.types.newstruct('exp_field_struct_'..d)
   exp_field_struct[d].entries:insertall {
     { 'ptr',        &opaque },
-    { 'strides',    uint64[d] },
+    { 'strides',    int64[d] },
   }
   exp_field_struct[d]:complete()
 end
@@ -140,7 +140,7 @@ local function BuildTerraSignature(args)
   -- add subset data
   if args.use_subset then -- make sure it's available
     terrasig.entries:insert{field='index',      type=&arg_keyT}
-    terrasig.entries:insert{field='index_size', type=uint64}
+    terrasig.entries:insert{field='index_size', type=int64}
   end
   -- add fields
   for i,f in ipairs(args.fields) do

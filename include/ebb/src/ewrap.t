@@ -111,7 +111,7 @@ end
 -- Various Structures
 -------------------------------------------------------------------------------
 
-local struct BoundsStruct { lo : uint64, hi : uint64 }
+local struct BoundsStruct { lo : int64, hi : int64 }
 
 --[[
 _array,

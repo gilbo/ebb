@@ -308,7 +308,7 @@ end
 --       allowing the loop bounds to be dynamically driven
 local function terraIterNd(keytyp, dims, func)
   local addr = symbol(keytyp)
-  if keytyp == uint64 then -- special index case
+  if keytyp == int64 then -- special index case
     local lo = 0
     local hi = dims[1]
     if type(dims[1]) == 'table' and dims[1].lo then
@@ -343,7 +343,7 @@ local function terraIterNd(keytyp, dims, func)
 end
 
 local function terraGPUId_to_Nd(keytyp, dims, id, func)
-  if keytyp == uint64 then -- special index case
+  if keytyp == int64 then -- special index case
     local addr = symbol(keytyp)
     return quote
       var [addr] = id + [dims[1].lo]
@@ -354,36 +354,38 @@ local function terraGPUId_to_Nd(keytyp, dims, id, func)
 
   else -- usual case
     local diffs = {}
+    --local atyps = {}
     for d=1,#dims do
       diffs[d] = `[dims[d].hi] - [dims[d].lo]
+      --atyps[d] = keytyp.entries[d].type
     end
 
-    local addr = symbol(keytyp)
+    local addr  = symbol(keytyp)
     local translate, guard
     if #dims == 1 then
       translate = quote
-        var xid  : uint64 = id
-        var xoff : uint64 = xid + [dims[1].lo]
+        var xid  : int64 = id
+        var xoff : int64 = xid + [dims[1].lo]
         var [addr] = [keytyp]({ xoff })
       end
       guard     = `[addr].a0 < [dims[1].hi]
     elseif #dims == 2 then
       translate = quote
-        var xid  : uint64 = id % [diffs[1]]
-        var yid  : uint64 = id / [diffs[1]]
-        var xoff : uint64 = xid + [dims[1].lo]
-        var yoff : uint64 = yid + [dims[2].lo]
+        var xid  : int64 = id % [diffs[1]]
+        var yid  : int64 = id / [diffs[1]]
+        var xoff : int64 = xid + [dims[1].lo]
+        var yoff : int64 = yid + [dims[2].lo]
         var [addr] = [keytyp]({ xoff,yoff })
       end
       guard = `[addr].a1 < [dims[2].hi]
     elseif #dims == 3 then
       translate = quote
-        var xid  : uint64 = id % [diffs[1]]
-        var yid  : uint64 = (id / [diffs[1]]) % [diffs[2]]
-        var zid  : uint64 = id / ([diffs[1]]*[diffs[2]])
-        var xoff : uint64 = xid + [dims[1].lo]
-        var yoff : uint64 = yid + [dims[2].lo]
-        var zoff : uint64 = zid + [dims[3].lo]
+        var xid  : int64 = id % [diffs[1]]
+        var yid  : int64 = (id / [diffs[1]]) % [diffs[2]]
+        var zid  : int64 = id / ([diffs[1]]*[diffs[2]])
+        var xoff : int64 = xid + [dims[1].lo]
+        var yoff : int64 = yid + [dims[2].lo]
+        var zoff : int64 = zid + [dims[3].lo]
         var [addr] = [keytyp]({ xoff,yoff,zoff })
       end
       guard     = `[addr].a2 < [dims[3].hi]
@@ -414,7 +416,7 @@ function Codegen.codegen (ufunc_ast, ufunc_version)
   local bd_decl = quote end
   local bounds = {}
   for d=1,#ctxt:dims() do
-    bounds[d] = { lo = symbol(uint64), hi = symbol(uint64), }
+    bounds[d] = { lo = symbol(int64), hi = symbol(int64), }
     bd_decl = quote [bd_decl]
       var [bounds[d].lo] = [ctxt:argsym()].bounds[d-1].lo
       var [bounds[d].hi] = [ctxt:argsym()].bounds[d-1].hi + 1
@@ -429,7 +431,7 @@ function Codegen.codegen (ufunc_ast, ufunc_version)
     ctxt:localenv()[pname] = param
 
     local linid
-    if ctxt:onGPU() then linid  = symbol(uint64) end
+    if ctxt:onGPU() then linid  = symbol(int64) end
 
     local body = ufunc_ast.body:codegen(ctxt)
 
@@ -476,7 +478,7 @@ function Codegen.codegen (ufunc_ast, ufunc_version)
       elseif ctxt:isIndexSubset() then
       -- INDEX SUBSET BRANCH
         -- collapse bounds to the one-dimension we're going to use
-        local paramtyp  = uint64
+        local paramtyp  = int64
         local bounds    = { bounds[1] }
         if use_legion then
           error('INTERNAL: INDEX SUBSETS ON LEGION CURRENTLY UNSUPPORTED')

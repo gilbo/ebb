@@ -231,7 +231,7 @@ local function terra_lin_gen(keytyp, strides)
   for k=2,#strides do
     exp = `[exp] + [strides[k]] * key.['a'..tostring(k-1)]
   end
-  return terra( [key] ) : uint64  return exp  end
+  return terra( [key] ) : int64  return exp  end
 end
 local function legion_terra_lin_gen(keytyp)
   local key     = symbol(keytyp)
@@ -240,11 +240,11 @@ local function legion_terra_lin_gen(keytyp)
   for k=2,#keytyp.entries do
     exp = `[exp] + strides[k-1].offset * key.['a'..tostring(k-1)]
   end
-  return terra( [key], [strides] ) : uint64   return exp  end
+  return terra( [key], [strides] ) : int64  return exp  end
 end
 local function linearize_strided_gen(keytyp)
   local key     = symbol(keytyp)
-  local strides = symbol(uint64[#keytyp.entries])
+  local strides = symbol(int64[#keytyp.entries])
   local exp     = `key.a0 * strides[0]
   for k=2,#keytyp.entries do
     exp = `[exp] + key.['a'..tostring(k-1)] * strides[k-1]
@@ -252,7 +252,7 @@ local function linearize_strided_gen(keytyp)
   -- TODO: THIS IS A HACK TO AVOID LLVM IR SHIPPING ERRORS
   --        Might be a good idea to figure out how to simplify the
   --        complexity of generated code here in the future.
-  --return terra( [key], [strides] ) : uint64   return exp  end
+  --return terra( [key], [strides] ) : int64  return exp  end
   return macro(function(k, s)
     return quote
       var [key] = k
@@ -282,9 +282,9 @@ local function legion_domain_point_gen(keytyp)
 end
 
 local function dim_to_bits(n_dim)
-  if      n_dim < 256         then  return 8
-  elseif  n_dim < 65536       then  return 16
-  elseif  n_dim < 4294967296  then  return 32
+  if      n_dim < 128         then  return 8
+  elseif  n_dim < 32768       then  return 16
+  elseif  n_dim < 2147483648  then  return 32
                               else  return 64 end
 end
 
@@ -308,12 +308,12 @@ local function keyType(relation)
   local name        = 'key'
   if relation:isElastic() then
     dimbits = {64}
-    dimtyps = {uint64}
+    dimtyps = {int64}
     name    = 'key_64'
   else
     for i,d in ipairs(dims) do
       dimbits[i]  = dim_to_bits(d)
-      dimtyps[i]  = assert(_G['uint'..tostring(dimbits[i])])
+      dimtyps[i]  = assert(_G['int'..tostring(dimbits[i])])
       name        = name .. '_' .. tostring(dimbits[i])
     end
   end
@@ -451,8 +451,8 @@ end
 
 local struct emptyStruct {}
 local struct  QueryType {
-    start : uint64;
-    finish : uint64;
+    start : int64;
+    finish : int64;
 }
 function Type:terratype()
   if     self:isprimitive()   then return self._terra_type

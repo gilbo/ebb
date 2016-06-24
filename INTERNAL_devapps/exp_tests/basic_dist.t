@@ -45,18 +45,14 @@ local terra InitMass(args : ewrap.TaskArgs)
   C.printf('Ghost adjusted pointer %p\n', mass.ptr)
   var mass_ptr = [&float](mass.ptr)
   var drift = 0.01
---  for y = y_lo,y_hi do
---    for x = x_lo,x_hi do
---      var offset = (x)*stride[0] + (y)*stride[1]
---      mass_ptr[offset] = 2 + drift
---      drift = drift + 0.01
---      C.printf('x %i, y %i, offset %i, mass %f\n', x, y, offset, mass_ptr[offset])
---    end
---  end
---  var f : Foo
---  f.x = 3.4
---  f.y = 2.9
---  C.printf('init foo print %f %f\n', f.x, f.y)
+  for y = y_lo,y_hi do
+    for x = x_lo,x_hi do
+      var offset = (x)*stride[0] + (y)*stride[1]
+      mass_ptr[offset] = 2 + drift
+      drift = drift + 0.01
+      C.printf('x %i, y %i, offset %i, mass %f\n', x, y, offset, mass_ptr[offset])
+    end
+  end
   C.printf('*** Completed InitMass\n')
 end
 local init_mass_field_accesses = {
@@ -108,6 +104,7 @@ local dump_mass_etask = ewrap.RegisterNewTask{
   field_accesses  = dump_mass_field_accesses,
 }
 
+init_mass_etask:exec()
 init_mass_etask:exec()
 dump_mass_etask:exec()
 
