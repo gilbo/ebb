@@ -415,12 +415,19 @@ function B.assert.check(ast, ctxt)
     end
 end
 
-local terra ebbAssert(test : bool, file : rawstring, line : int)
-    if not test then
+--local terra ebbAssert(test : bool, file : rawstring, line : int)
+--    if not test then
+--        C.fprintf(C.stderr, "%s:%d: assertion failed!\n", file, line)
+--        C.exit(1)
+--    end
+--end
+local ebbAssert = macro(function(test, file, line)
+    return quote if not test then
         C.fprintf(C.stderr, "%s:%d: assertion failed!\n", file, line)
         C.exit(1)
-    end
-end
+    end end
+end)
+
 
 -- NADA FOR NOW
 local gpuAssert = terra(test : bool, file : rawstring, line : int) end

@@ -94,6 +94,8 @@ local DataArray = use_single and
 local C   = require 'ebb.src.c'
 local T   = require 'ebb.src.types'
 
+local ewrap = use_exp and require 'ebb.src.ewrap'
+
 -------------------------------------------------------------------------------
 --[[ Globals:                                                              ]]--
 -------------------------------------------------------------------------------
@@ -109,13 +111,16 @@ function Pre.Global (typ, init)
 
   local s  = setmetatable({_type=typ}, Global)
 
+  local tt = typ:terratype()
   if use_single then
-    local tt = typ:terratype()
     rawset(s, '_data', DataArray.New({size=1,type=tt}))
     s:set(init)
 
   elseif use_exp then
-    error('EXPERIMENTAL TODO: create global')
+    rawset(s, '_ewrap_global', ewrap.NewGlobal {
+      size = terralib.sizeof(tt),
+    })
+    s:set(init)
 
   elseif use_legion then
     s:set(init)
@@ -140,7 +145,10 @@ function Global:set(val)
     self._data:close_write_ptr()
 
   elseif use_exp then
-    error('EXPERIMENTAL TODO: set global')
+    local tt  = self._type:terratype()
+    local buf = terralib.cast( &tt, C.malloc(terralib.sizeof(tt)) )
+    buf[0]    = T.luaToEbbVal(val, self._type)
+    self._ewrap_global:set(buf)
 
   elseif use_legion then
     local typ    = self._type
@@ -167,7 +175,9 @@ function Global:get()
     self._data:close_read_ptr()
 
   elseif use_exp then
-    error('EXPERIMENTAL TODO: get global')
+    local tt      = self._type:terratype()
+    local valptr  = terralib.cast(&tt, self._ewrap_global:get())
+    value = T.ebbToLuaVal(valptr[0], self._type)
 
   elseif use_legion then
     local tt = self._type:terratype()

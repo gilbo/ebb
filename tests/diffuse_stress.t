@@ -43,3 +43,5 @@ local ebb spin( c : cells )
 end
 
 for i=1,ITER do cells:foreach(spin) end
+
+L.SyncBarrier()

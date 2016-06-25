@@ -721,16 +721,16 @@ function UFVersion:_CompileGPUReduction()
                                   sizeof(ttype) * self._blocksize
     else
       local op      = data.phase.reduceop
-      local lz_type = globl._type
+      local ebbtype = globl._type
       local reduceobj = G.ReductionObj.New {
         ttype             = ttype,
         blocksize         = self._blocksize,
-        reduce_ident      = codesupport.reduction_identity(lz_type, op),
+        reduce_ident      = codesupport.reduction_identity(ebbtype, op),
         reduce_binop      = function(lval, rhs)
-          return codesupport.reduction_binop(lz_type, op, lval, rhs)
+          return codesupport.reduction_binop(ebbtype, op, lval, rhs)
         end,
         gpu_reduce_atomic = function(lval, rhs)
-          return codesupport.gpu_atomic_exp(op, lz_type, lval, rhs, lz_type)
+          return codesupport.gpu_atomic_exp(op, ebbtype, lval, rhs, ebbtype)
         end,
       }
       data.reduceobj = reduceobj
@@ -970,6 +970,20 @@ local function phase_to_exp_privilege(phase)
   else                            return ewrap.REDUCE_PRIVILEGE     end
 end
 
+local get_exp_reduceop = Util.memoize(function(op_str, ebb_type)
+  local tt = ebb_type:terratype()
+  local terra reduction( accptr : &uint8, valptr : &uint8 )
+    var acc     = [&tt](accptr)
+    var val     = @[&tt](valptr)
+    @acc = [codesupport.reduction_binop(ebb_type, op_str, `@acc, val)]
+  end
+  local e_reduce_op = ewrap.NewReduceOp {
+    func = reduction,
+    name = 'reduce_'..op_str..'_'..tostring(ebb_type),
+  }
+  return e_reduce_op
+end)
+
 --[[
 {
   field_accesses
@@ -1012,6 +1026,22 @@ local function BuildExpSignature(params)
            "There is no recorded field use for field : " .. field:Name())
   end
 
+  -- get global accesses
+  local global_list     = newlist()
+  local global_map      = {}
+  local gaccess_list    = newlist()
+  for globl, phase in pairs(params.global_use) do
+    local gaccess = ewrap.NewGAccess {
+      global    = globl._ewrap_global,
+      privilege = phase_to_exp_privilege(phase),
+      reduceop  = get_exp_reduceop(phase:reductionOp(), globl:Type()),
+    }
+
+    global_list:insert(globl)
+    global_map[globl] = gaccess
+    gaccess_list:insert(gaccess)
+  end
+
 
   local ExpSignature = {}
 
@@ -1020,6 +1050,12 @@ local function BuildExpSignature(params)
   end
   function ExpSignature:GetFieldList()
     return field_list
+  end
+  function ExpSignature:GetGAccessList()
+    return gaccess_list
+  end
+  function ExpSignature:GetGlobalList()
+    return global_list
   end
 
   return ExpSignature
@@ -1076,7 +1112,24 @@ function UFVersion:_CreateExpWrappedTask(task_func)
       end
     end end
 
+    -- re-pack global data
+    escape for i,g in ipairs(ufv._exp_signature:GetGlobalList()) do
+      local phase = ufv._global_use[g]
+      local g_ptr = self:_getTerraGlobalPtr(t_args, g)
+      local tt    = g:Type():terratype()
+      emit quote [g_ptr]  = [&tt](e_args.globals[i-1].ptr) end
+      if phase:isUncenteredReduction() then
+        -- initialize temp area if doing a reduction
+        local op = assert(phase:reductionOp(), 'expecting reduce op')
+        emit quote
+          @[g_ptr] = [codesupport.reduction_identity(g:Type(), op)]
+        end
+      else assert(phase:isReadOnly()) end
+    end end
+
     task_func(&t_args)
+
+    -- reduced globals will be unpacked and shipped back by ewrap
   end
   wrapped_func:setname(ufv._name .. '_task')
 
@@ -1097,6 +1150,7 @@ function UFVersion:_CreateExpLauncher(task_func)
     relation        = ufv._relation._ewrap_relation,
     processor       = ufv._proc,
     field_accesses  = ufv._exp_signature:GetFAccessList(),
+    global_accesses = ufv._exp_signature:GetGAccessList(),
   }
 
   return function()

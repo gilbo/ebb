@@ -30,6 +30,7 @@ if not use_exp then return Exports end
 
 local C       = require "ebb.src.c"
 local Util    = require 'ebb.src.util'
+local ffi     = require 'ffi'
 
 -- Following modules are probably not going to depdend (directly or indirectly)
 -- on ewrap since they define basic types.
@@ -125,6 +126,10 @@ local struct FieldInstance {
   ptr       : &uint8;
   strides   : uint64[3];  -- in terms of elements for now
   elem_size : uint64;
+}
+
+local struct GlobalInstance {
+  ptr       : &uint8;
 }
 
 local WorkerField = {}
@@ -533,8 +538,8 @@ end
 function WorkerField:GetAllSignals()
   return self:GetReadWriteSignal()
 end
-function WorkerField:SetAllSignals()
-  return self:SetReadWriteSignal()
+function WorkerField:SetAllSignals(signal)
+  return self:SetReadWriteSignal(signal)
 end
 
 
@@ -647,7 +652,7 @@ end
 
 local function GetAllWorkerFields()
   local fs = newlist()
-  for _,f in pairs(field_metadata) do fs:insert(f) end
+  for _,f in pairs(worker_field_metadata) do fs:insert(f) end
   return fs
 end
 
@@ -669,7 +674,7 @@ local struct GhostCopyArgs {
 local CopyGridGhosts = {}
 for _,sendrecv in ipairs({'Send','Recv'}) do
   CopyGridGhosts[sendrecv] = terra (copy_args : &opaque)
-    C.printf('*** CopyGridGhosts executing for %s.\n', sendrecv)
+    --C.printf('*** CopyGridGhosts executing for %s.\n', sendrecv)
     var args = [&GhostCopyArgs](copy_args)
     var field        = args.field
     var fx_lo, fx_hi = args.field_bounds[0].lo, args.field_bounds[0].hi 
@@ -707,7 +712,7 @@ for _,sendrecv in ipairs({'Send','Recv'}) do
       end
     end
     C.free(copy_args)
-    C.printf('*** CopyGridGhosts done for %s.\n', sendrecv)
+    --C.printf('*** CopyGridGhosts done for %s.\n', sendrecv)
   end
 end
 
@@ -926,21 +931,57 @@ local function PrepareField(f_id, ghost_width_str, hid_base)
 end
 
 
+-- dst length should be 2*n+1, twice src
+local terra binary_stringify_terra( dst : rawstring, n : uint32, src : &uint8 )
+  for k=0,n do
+    var byte    = src[k]
+    var lo      = [int8](byte and [uint8](0x0F))
+    var hi      = [int8](byte and [uint8](0xF0)) / [uint8](0x10)
+    dst[2*k+0]  = [int8](0x40) + lo
+    dst[2*k+1]  = [int8](0x40) + hi
+  end
+  dst[2*n] = [int8](0)
+end
+-- src length should be 2*n, twice dst
+local terra binary_destring_terra( dst : &uint8, n : uint32, src : rawstring )
+  for k=0,n do
+    var lo      = [uint8](src[2*k+0]) and [uint8](0x0F)
+    var hi      = [uint8](src[2*k+1]) and [uint8](0x0F)
+    var byte    = [uint8](0x10) * hi + lo
+    dst[k]      = byte
+  end
+end
+
 local function stringify_binary_data( n_bytes, valptr )
-  assert(n_bytes % 4 == 0, 'unexpected size, bin_stringify NEEDS FIXING')
-  local n_words   = n_bytes / 4
-  local w_ptr     = terralib.cast(&uint32, valptr)
+  local tmpstr      = terralib.cast(rawstring, C.malloc(n_bytes*2+1))
+  binary_stringify_terra(tmpstr, n_bytes, terralib.cast(&uint8, valptr))
+  local str         = ffi.string(tmpstr, n_bytes*2)
+  C.free(tmpstr)
+  return str
+end
+
+--[[
+local function stringify_binary_data( n_bytes, valptr )
+  local n_words   = math.ceil(n_bytes / 4)
+  local tmp_buf   = terralib.cast(&uint32, C.malloc(n_words*4))
+  assert(n_words > 0)
+  tmp_buf[n_words-1] = 0 -- zero out where memcpy may not initialize
+  C.memcpy(tmp_buf, valptr, n_bytes)
+
   local num_list  = newlist()
-  for k=1,n_words do num_list[k] = w_ptr[k-1] end
+  for k=1,n_words do num_list[k] = tmp_buf[k-1] end
+  C.free(tmp_buf)
   return gaswrap.lson_stringify(num_list)
 end
-local function destringify_binary_data( valstr, n_bytes, valptr )
-  assert(n_bytes % 4 == 0, 'unexpected size, bin_destringify NEEDS FIXING')
+local function destringify_binary_data( valptr, n_bytes, valstr )
   local num_list  = gaswrap.lson_eval(valstr)
-  local n_words   = n_bytes / 4
-  local w_ptr     = terralib.cast(&uint32, valptr)
-  for k=1,n_words do w_ptr[k-1] = num_list[k] end
+  local n_words   = math.ceil(n_bytes / 4)
+  local tmp_buf   = terralib.cast(&uint32, C.malloc(n_words*4))
+  for k=1,n_words do tmp_buf[k-1] = num_list[k] end
+  C.memcpy(valstr, tmp_buf, n_bytes)
+  C.free(tmp_buf)
 end
+--]]
 
 --
 -- just constant for now
@@ -990,7 +1031,7 @@ local function LoadFieldConstant(f_id, value_ser)
   local elem_stride = field:GetTypeStride()
   -- fill out the value with up-to-stride 0-padded
   args.valptr       = alloc_temp_val(elem_stride)
-  destringify_binary_data(value_ser, field:GetTypeSize(), args.valptr)
+  binary_destring_terra(args.valptr, field:GetTypeSize(), value_ser)
   args.val_size     = elem_stride
   args.n_elems      = field:GetElemCount()
 
@@ -1171,6 +1212,121 @@ function ControllerField:LoadConst( c_val )
 end
 
 
+
+
+-----------------------------------
+-- Globals
+-----------------------------------
+
+--[[
+  size
+--]]
+local WorkerGlobal    = {}
+WorkerGlobal.__index  = WorkerGlobal
+local function is_wglobal(obj) return getmetatable(obj)==WorkerGlobal end
+
+--[[
+  size
+  reductions
+--]]
+local ControllerGlobal    = {}
+ControllerGlobal.__index  = ControllerGlobal
+local function is_cglobal(obj) return getmetatable(obj)==ControllerGlobal end
+
+local global_id_counter = 0
+local worker_global_objects = {}
+local controller_global_objects = {}
+
+local function NewWorkerGlobal(g_id, size)
+  g_id = assert(tonumber(g_id))
+  size = assert(tonumber(size))
+  local g = setmetatable({
+    id    = g_id,
+    size  = size,
+    data  = C.malloc(size),
+  }, WorkerGlobal)
+  worker_global_objects[g_id] = g
+end
+local function GetWorkerGlobal(g_id)
+  return assert(worker_global_objects[g_id],
+                'expected to find global #'..g_id)
+end
+gaswrap.registerLuaEvent('NewWorkerGlobal', NewWorkerGlobal)
+
+local function BroadcastNewGlobal(id, size)
+  BroadcastLuaEventToComputeNodes( 'NewWorkerGlobal', id, size)
+end
+local function NewControllerGlobal(args)
+  assert(args.size, 'expected size arg')
+  local id = global_id_counter + 1
+  global_id_counter = id
+
+  BroadcastNewGlobal(id, args.size)
+
+  local g = setmetatable({
+    _id   = id,
+    _size = args.size,
+    _data = C.malloc(args.size),
+  }, ControllerGlobal)
+  controller_global_objects[id] = g
+
+  return g
+end
+local function GetControllerGlobal(g_id)
+  return assert(controller_global_objects[g_id],
+                'expected to find global #'..g_id)
+end
+
+local function SetWorkerGlobal(g_id, val_data)
+  local wg = GetWorkerGlobal(tonumber(g_id))
+  binary_destring_terra(wg.data, wg.size, val_data)
+end
+gaswrap.registerLuaEvent('SetWorkerGlobal', SetWorkerGlobal)
+
+function ControllerGlobal:set(val_buf)
+  if val_buf ~= self._data then -- edge case
+    C.memcpy(self._data, val_buf, self._size)
+  end
+  local value_ser = stringify_binary_data(self._size, self._data)
+  BroadcastLuaEventToComputeNodes('SetWorkerGlobal', self._id, value_ser)
+end
+
+local global_reduction_semaphores = {}
+local function InitGlobalReduceSemaphore(glob)
+  global_reduction_semaphores[glob] = numComputeNodes()
+end
+local function DecrementGlobalReduceSemaphore(glob)
+  local sval = global_reduction_semaphores[glob] - 1
+  global_reduction_semaphores[glob] = sval
+  return sval
+end
+local function WaitGlobalReduceSemaphore(glob)
+  local sval = global_reduction_semaphores[glob]
+  while sval and sval > 0 do
+    C.usleep(1)
+    gaswrap.pollLuaEvents(0,0)
+    sval = global_reduction_semaphores[glob]
+  end
+end
+
+function ControllerGlobal:get()
+  -- make sure we're not waiting on any reductions
+  WaitGlobalReduceSemaphore(self)
+  return self._data
+end
+
+function WorkerGlobal:getptr()
+  return self.data
+end
+function WorkerGlobal:getsize()
+  return self.size
+end
+function WorkerGlobal:getid()
+  return self.id
+end
+
+
+
 -------------------------------------------------------------------------------
 -- Handle actions over sets of fields and privileges
 -------------------------------------------------------------------------------
@@ -1217,6 +1373,63 @@ that there is only one instance of data for every {relation, field}.
 --]]
 
 
+-----------------------------------
+-- Reduction Operations
+-----------------------------------
+
+local ReduceOp    = {}
+ReduceOp.__index  = ReduceOp
+local function is_reduceop(obj) return getmetatable(obj) == ReduceOp end
+
+local reduceop_counter = 0
+local reduceop_controller_objects = {}
+
+local struct ReduceOpArgs {
+  accum   : &uint8
+  val     : &uint8
+}
+
+--[[
+{
+  func        = terra function with above arguments,
+  name        = 'string'?,
+}
+--]]
+local function NewReduceOp(args)
+  local f   = assert(args.func)
+  reduceop_counter = reduceop_counter + 1
+  local rop = setmetatable({
+    id    = reduceop_counter,
+    func  = f,
+    name  = args.name,
+  }, ReduceOp)
+  reduceop_controller_objects[rop.id] = rop
+  return rop
+end
+local function GetControllerReduceOp(red_id)
+  return assert(reduceop_controller_objects[red_id],
+                'expected to find reduction #'..red_id)
+end
+
+local function BroadcastFullyReducedValue(glob)
+  glob:set(glob._data)
+end
+local function ReportGlobalReduction( g_id, red_id, data_str )
+  -- do the reduction operation
+  local g     = GetControllerGlobal(tonumber(g_id))
+  local rop   = GetControllerReduceOp(tonumber(red_id))
+  local data  = terralib.cast(&uint8, C.malloc(g._size))
+  binary_destring_terra(data, g._size, data_str)
+  rop.func(g._data, data)
+
+  -- keep track of a semaphore
+  if DecrementGlobalReduceSemaphore(g) == 0 then
+    BroadcastFullyReducedValue(g)
+  end
+
+  C.free(data)
+end
+gaswrap.registerLuaEvent('ReportGlobalReduction', ReportGlobalReduction)
 
 -----------------------------------
 -- Field Accesses
@@ -1235,6 +1448,7 @@ Exports.REDUCE_PRIVILEGE      = REDUCE_PRIVILEGE
 {
   privilege   = <enum>,
   field       = ControllerField,
+  centered    = bool,
 }
 --]]
 local FAccess           = {}
@@ -1250,12 +1464,6 @@ local function NewFAccess(args)
 end
 local function is_faccess(obj) return getmetatable(obj) == FAccess end
 
---[[
-{
-  privilege   = <enum>,
-  field       = WorkerField,
-}
---]]
 local WorkerFAccess     = {}
 WorkerFAccess.__index   = WorkerFAccess
 local function NewWorkerFAccess(rawobj)
@@ -1267,6 +1475,39 @@ local function NewWorkerFAccess(rawobj)
   }, WorkerFAccess)
 end
 
+
+--[[
+{
+  privilege   = <enum>,
+  reduceop    = 'op_string'?,
+  global      = ControllerGlobal,
+}
+--]]
+local GAccess           = {}
+GAccess.__index         = GAccess
+local function NewGAccess(args)
+  assert(args.privilege)
+  if args.privilege == REDUCE_PRIVILEGE then
+    assert(is_reduceop(args.reduceop), 'expected reduction operation')
+  else assert(args.reduceop == nil, 'expected no reduction operation') end
+  return setmetatable({
+    privilege   = args.privilege,
+    reduceop    = args.reduceop,
+    global      = args.global,
+  }, GAccess)
+end
+local function is_gaccess(obj) return getmetatable(obj) == GAccess end
+
+local WorkerGAccess     = {}
+WorkerGAccess.__index   = WorkerGAccess
+local function NewWorkerGAccess(rawobj)
+  local g = GetWorkerGlobal(rawobj.g_id)
+  return setmetatable({
+    privilege   = assert(rawobj.privilege),
+    reduce_id   = rawobj.reduce_id,
+    global      = g,
+  }, WorkerGAccess)
+end
 
 
 
@@ -1285,8 +1526,9 @@ local task_id_counter   = 0
 local worker_task_store = {}
 
 local struct TaskArgs {
-  bounds : BoundsStruct[3];
-  fields : &FieldInstance;
+  bounds  : BoundsStruct[3];
+  fields  : &FieldInstance;
+  globals : &GlobalInstance;
 }
 
 -- Event/handler for registering a new task. Returns a task id.
@@ -1297,6 +1539,8 @@ params : {
   rel_id            = #,
   processor         = <enum>,
   field_accesses    = list{ FAccess },
+  globals           = list{ CGlobals },
+  reductions        = map{ g}
 }
 --]]
 local function RegisterNewTask(params)
@@ -1307,7 +1551,10 @@ local function RegisterNewTask(params)
   assert(is_cgrid_relation(params.relation),
                                 "expect arg: ewrap relation 'relation'")
   assert(params.processor,      "expect arg: enum value 'processor'")
-  assert(params.field_accesses, "expect arg: list of FAccess 'field_ids'")
+  assert(params.field_accesses,
+         "expect arg: list of FAccess 'field_accesses'")
+  assert(params.global_accesses,
+         "expect arg: list of GAccess 'global_accesses'")
 
   assert(params.processor == Pre.CPU, 'Only CPU tasks supported right now.')
 
@@ -1316,12 +1563,21 @@ local function RegisterNewTask(params)
   local task_id   = task_id_counter
   local task_name = params.name or params.func:getname()
   local fas       = newlist()
+  local gas       = newlist()
   for i,fa in ipairs(params.field_accesses) do
     assert(is_faccess(fa), "entry #"..i.." is not a field access")
     fas:insert {
-      privilege  = fa.privilege,
-      f_id       = fa.field.id,
-      centered   = fa.centered,
+      privilege   = fa.privilege,
+      f_id        = fa.field.id,
+      centered    = fa.centered,
+    }
+  end
+  for i,ga in ipairs(params.global_accesses) do
+    assert(is_gaccess(ga), "entry #"..i.." is not a global access")
+    gas:insert {
+      privilege   = ga.privilege,
+      reduce_id   = ga.reduceop.id,
+      g_id        = ga.global._id,
     }
   end
   local bitcode   = terralib.saveobj(nil,'bitcode',{[task_name]=params.func})
@@ -1334,12 +1590,14 @@ local function RegisterNewTask(params)
       rel_id          = params.relation.id,
       processor       = tostring(params.processor),
       field_accesses  = fas,
+      global_accesses = gas,
   })
 
   local controller_task = setmetatable({
-    id             = task_id,
-    rel_id         = params.rel_id,
-    field_accesses = params.field_accesses,
+    id              = task_id,
+    rel_id          = params.relation.id,
+    field_accesses  = params.field_accesses,
+    global_accesses = params.global_accesses,
   }, ControllerTask)
   return controller_task
 end
@@ -1349,35 +1607,78 @@ local function NewWorkerTask(bitcode, metadata)
   local md          = gaswrap.lson_eval(metadata)
   assert(md.processor == 'CPU')
 
-  -- convert bitcode
-  local blob        = terralib.linkllvmstring(bitcode)
-  local task_func   = blob:extern(md.name, {TaskArgs} -> {})
-  keep_hooks_live:insert(task_func)
-  keep_hooks_live:insert(blob)
-  local task_wrapper = terra(args : &opaque)
-    var task_args   = [&TaskArgs](args)
-    --C.printf('[%d] start exec action in wrapper\n', THIS_NODE)
-    task_func(@task_args)
-    -- free memory allocated for args
-    --C.printf('[%d] done exec action in wrapper\n', THIS_NODE)
-    if task_args.fields ~= nil then C.free(task_args.fields) end
-    C.free(task_args)
-  end
-  task_wrapper:compile()
-
   -- convert faccesses
   local wfaccesses = newlist()
   for i,fa in ipairs(md.field_accesses) do
     wfaccesses[i] = NewWorkerFAccess(fa)
   end
+  -- convert global ids
+  local wgaccesses = newlist()
+  for i,raw_ga in ipairs(md.global_accesses) do
+    wgaccesses[i] = NewWorkerGAccess(raw_ga)
+  end
+
+  -- convert bitcode
+  local blob        = terralib.linkllvmstring(bitcode)
+  local task_func   = blob:extern(md.name, {TaskArgs} -> {})
+  keep_hooks_live:insert(task_func)
+  keep_hooks_live:insert(blob)
+  local tmp_ptr_mem = newlist()
+  local task_wrapper = terra(args : &opaque)
+    var task_args   = [&TaskArgs](args)
+
+    -- if we have global reductions, allocate temporary stack space
+    escape for i,ga in ipairs(wgaccesses) do
+      if ga.privilege == REDUCE_PRIVILEGE then
+        local ptrsym = symbol(&uint8)
+        tmp_ptr_mem:insert(ptrsym)
+        emit quote
+          var [ptrsym] = [&uint8](C.malloc([ ga.global:getsize() ]))
+          task_args.globals[i-1].ptr = ptrsym
+        end
+      end
+    end end
+
+    -- run task
+    task_func(@task_args)
+
+    -- if we have global reductions, then handle shipping those back
+    escape for i,ga in ipairs(wgaccesses) do
+      if ga.privilege == REDUCE_PRIVILEGE then
+        local size    = ga.global:getsize()
+        local g_id    = ga.global:getid()
+        local red_id  = ga.reduce_id
+        emit quote
+          var str_buf = [rawstring](C.malloc(2*size+1))
+          binary_stringify_terra(str_buf, size, task_args.globals[i-1].ptr)
+          -- TODO: Move this to the work-plane
+          gaswrap.sendLuaEvent(CONTROL_NODE, 'ReportGlobalReduction',
+                                             [double](g_id),
+                                             [double](red_id), str_buf)
+          C.free(str_buf)
+        end
+      end
+    end end
+    -- cleanup allocations
+    escape for _,ptr in ipairs(tmp_ptr_mem) do
+      emit quote C.free(ptr) end
+    end end
+
+    -- clean up argument allocation
+    if task_args.fields ~= nil  then C.free(task_args.fields) end
+    if task_args.globals ~= nil then C.free(task_args.globals) end
+    C.free(task_args)
+  end
+  task_wrapper:compile()
 
   local wtask = setmetatable({
     id              = md.id,
     name            = md.name,
     func            = task_wrapper,
-    rel_id          = md.rel_id,
+    relation        = GetWorkerRelation(md.rel_id),
     processor       = Pre.CPU,
     field_accesses  = wfaccesses,
+    global_accesses = wgaccesses,
   }, WorkerTask)
   return wtask
 end
@@ -1386,27 +1687,26 @@ local function ReceiveNewTask(bitcode, metadata)
   worker_task_store[task.id] = task
 end
 
-function WorkerTask:GetRelation()
-  return GetWorkerRelation(self.rel_id)
-end
-
 
 -----------------------------------
 -- Task Execution
 -----------------------------------
 
-local terra allocTaskArgs( n_fields : uint32 ) : &TaskArgs
+local terra allocTaskArgs( n_fields : uint32, n_globals : uint32 ) : &TaskArgs
   var args    = [&TaskArgs]( C.malloc(sizeof(TaskArgs)) )
+  var fsize   = n_fields*sizeof(FieldInstance)
+  var gsize   = n_globals*sizeof(GlobalInstance)
   if n_fields == 0 then args.fields = nil
-  else
-    args.fields = [&FieldInstance]( C.malloc(n_fields*sizeof(FieldInstance)) )
-  end
+                   else args.fields = [&FieldInstance](C.malloc(fsize)) end
+  if n_globals == 0 then args.globals = nil
+                    else args.globals = [&GlobalInstance](C.malloc(gsize)) end
   return args
 end
 
 
 local task_all_ready_for_ghosts = {}
 function ControllerTask:exec()
+  -- make sure no pending field network setup
   if not task_all_ready_for_ghosts[self] then
     for _, fa in ipairs(self.field_accesses) do
       if fa.privilege == READ_WRITE_PRIVILEGE then
@@ -1419,6 +1719,14 @@ function ControllerTask:exec()
     end
     task_all_ready_for_ghosts[self] = true
   end
+  -- make sure no pending global reductions
+  for _, ga in ipairs(self.global_accesses) do
+    WaitGlobalReduceSemaphore(ga.global)
+    -- and setup semaphore barriers for anything we're going to reduce to
+    if ga.privilege == REDUCE_PRIVILEGE then
+      InitGlobalReduceSemaphore(ga.global)
+    end
+  end
   BroadcastLuaEventToComputeNodes('launchTask', self.id)
 end
 
@@ -1428,11 +1736,11 @@ local function LaunchTask(task_id)
   --print(THIS_NODE..' launch task started')
 
   -- unpack things
-  local relation    = task:GetRelation()
-  local n_dims      = #relation.dims
+  local n_dims      = #task.relation.dims
 
   -- allocate signal arrays
   local n_fields    = #task.field_accesses
+  local n_globals   = #task.global_accesses
   local sigs_f_in   = terralib.new(gaswrap.Signal[n_fields])
   local sigs_f_out  = terralib.new(gaswrap.Signal[n_fields])
 
@@ -1440,8 +1748,8 @@ local function LaunchTask(task_id)
   -- because a task may be scheduled more than once before being
   -- executed, we must either re-allocate the arguments each time
   -- or ensure that the arguments are the same on all executions
-  local args        = allocTaskArgs(n_fields)
-  local range       = relation:GetPartitionBounds():getranges()
+  local args        = allocTaskArgs(n_fields, n_globals)
+  local range       = task.relation:GetPartitionBounds():getranges()
   for d = 1,n_dims do
     args.bounds[d-1].lo   = range[d][1]
     args.bounds[d-1].hi   = range[d][2]
@@ -1461,6 +1769,10 @@ local function LaunchTask(task_id)
     end
     af.ptr            = local_ptr - offset * fa.field:GetTypeStride()
     af.elem_size      = elem_size
+  end
+
+  for i,ga in ipairs(task.global_accesses) do
+    args.globals[i-1].ptr   = ga.global:getptr()
   end
 
   -- Do Scheduling
@@ -1575,8 +1887,8 @@ local function OpenBarrierOnWorker()
   -- barrier action
   local s_out = s_in:exec(0,barrier_action:getpointer(),nil)
   -- fork all field signals
-  if      n_fields == 0 then  s_out = gaswrap.newSignalSource():trigger()
-  elseif  n_fields == 1 then  s_out = sigs_in[0]
+  if      n_fields == 0 then  s_out:sink()
+  elseif  n_fields == 1 then  sigs_out[0] = s_out
                         else  s_out:fork(n_fields, sigs_out) end
   for i,f in ipairs(fields) do
     f:SetAllSignals(sigs_out[i-1])
@@ -1627,10 +1939,14 @@ Exports.THIS_NODE                     = THIS_NODE
 
 Exports.NewGridRelation               = NewGridRelation
 Exports.NewField                      = NewField
+Exports.NewGlobal                     = NewControllerGlobal
 
 Exports.TaskArgs                      = TaskArgs
 Exports.FieldInstance                 = FieldInstance
+Exports.GhostInstance                 = GhostInstance
+Exports.NewReduceOp                   = NewReduceOp
 Exports.NewFAccess                    = NewFAccess
+Exports.NewGAccess                    = NewGAccess
 Exports.RegisterNewTask               = RegisterNewTask
 
 Exports.SyncBarrier                   = OpenBarrierOnController
