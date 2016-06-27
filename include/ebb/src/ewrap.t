@@ -224,7 +224,7 @@ local function MarkFieldGhostsReady(f_id, hid_base)
   f_id = tonumber(f_id)
   local semaphore_val = controller_field_ghost_ready_semaphores[f_id]
   controller_field_ghost_ready_semaphores[f_id] = semaphore_val - 1
-  print(THIS_NODE, 'DECREMENT f#'..f_id..': '..(semaphore_val-1))
+  --print(THIS_NODE, 'DECREMENT f#'..f_id..': '..(semaphore_val-1))
 end
 gaswrap.registerLuaEvent('MarkFieldGhostsReady', MarkFieldGhostsReady)
 
@@ -237,7 +237,7 @@ local function WaitOnFieldGhostReady(f_id)
     gaswrap.pollLuaEvents(0, 0)
     semaphore_val = controller_field_ghost_ready_semaphores[f_id]
   end
-  print(THIS_NODE, 'DONE waiting on f#'..f_id)
+  --print(THIS_NODE, 'DONE waiting on f#'..f_id)
 end
 
 
@@ -301,8 +301,8 @@ local function ProcessAllGhostChannels(field, handshake_unq_id, ghost_width)
     return h_id
   end
 
-  local send_ghosts   = terralib.new(GhostInstance[#off_patterns])
-  local recv_ghosts   = terralib.new(GhostInstance[#off_patterns])
+  local send_ghosts   = C.safemalloc(GhostInstance, #off_patterns)
+  local recv_ghosts   = C.safemalloc(GhostInstance, #off_patterns)
   for i,off in ipairs(off_patterns) do
     -- Compute:
     --    node to connect to
@@ -452,7 +452,7 @@ end
 function WorkerField:AllocateInstance(gw)
   assert(self.array == nil, 'Trying to allocate already allocated array.')
   assert(self.relation:isPartitioned(),
-         'Relation ' .. self.relation:Name() .. 'not partitioned. ' ..
+         'Relation ' .. self.relation:Name() .. ' not partitioned. ' ..
          'Cannot allocate data over it.')
   self.instance   = NewFieldInstanceTable {
                       bounds      = self.relation:GetPartitionBounds(),
@@ -487,10 +487,14 @@ end
 function WorkerField:nDims()  return #self.relation.dims  end
 
 function WorkerField:GetReadWriteSignal()
-  local signals = terralib.new(gaswrap.Signal[2])
-  signals[0] = self.last_read
-  signals[1] = self.last_write
-  local signal = gaswrap.mergeSignals(2, signals)
+  --local signals = C.safemalloc(gaswrap.Signal, 2)
+  --signals[0] = self.last_read
+  --signals[1] = self.last_write
+  --print('['..THIS_NODE..'] Getting '..self.id..': '..self.last_read.id..
+  --                                              ' '..self.last_write.id)
+  --local signal = gaswrap.mergeSignals(2, signals)
+  local signal = gaswrap.luaMergeSignals{ self.last_read, self.last_write }
+  --print('['..THIS_NODE..'] Got '..self.id)
   return signal
 end
 function WorkerField:GetReadSignal()
@@ -500,34 +504,44 @@ function WorkerField:GetWriteSignal()
   return self.last_write
 end
 function WorkerField:ForkReadSignal()
-  local signals = terralib.new(gaswrap.Signal[2])
-  self.last_read:fork(2, signals)
-  self.last_read = signals[1]
-  return signals[0]
+  --print('['..THIS_NODE..'] fork read: '..self.id)
+  --local signals = C.safemalloc(gaswrap.Signal, 2)
+  local signals = gaswrap.luaForkSignals(self.last_read, 2)
+  --self.last_read:fork(2, signals)
+  self.last_read = signals[2]
+  return signals[1]
 end
 function WorkerField:ForkWriteSignal()
-  local signals = terralib.new(gaswrap.Signal[2])
-  self.last_write:fork(2, signals)
-  self.last_write = signals[1]
-  return signals[0]
+  --print('['..THIS_NODE..'] fork write: '..self.id)
+  --local signals = C.safemalloc(gaswrap.Signal, 2)
+  local signals = gaswrap.luaForkSignals(self.last_write, 2)
+  --self.last_write:fork(2, signals)
+  self.last_write = signals[2]
+  return signals[1]
 end
 function WorkerField:MergeReadSignal(signal)
-  local signals = terralib.new(gaswrap.Signal[2])
-  signals[0] = self.last_read
-  signals[1] = signal
-  self.last_read = gaswrap.mergeSignals(2, signals)
+  --print('['..THIS_NODE..'] merge read: '..self.id)
+  --local signals = C.safemalloc(gaswrap.Signal, 2)
+  self.last_read = gaswrap.luaMergeSignals{ self.last_read, signal }
+  --signals[0] = self.last_read
+  --signals[1] = signal
+  --self.last_read = gaswrap.mergeSignals(2, signals)
 end
 function WorkerField:MergeWriteSignal(signal)
-  local signals = terralib.new(gaswrap.Signal[2])
-  signals[0] = self.last_write
-  signals[1] = signal
-  self.last_write = gaswrap.mergeSignals(2, signals)
+  self.last_write = gaswrap.luaMergeSignals{ self.last_write, signal }
+  --local signals = C.safemalloc(gaswrap.Signal, 2)
+  --signals[0] = self.last_write
+  --signals[1] = signal
+  --self.last_write = gaswrap.mergeSignals(2, signals)
 end
 function WorkerField:SetReadWriteSignal(signal)
-  local signals = terralib.new(gaswrap.Signal[2])
-  signal:fork(2, signals)
-  self.last_read  = signals[0]
-  self.last_write = signals[1]
+  local signals = gaswrap.luaForkSignals(signal, 2)
+  --local signals = C.safemalloc(gaswrap.Signal, 2)
+  --signal:fork(2, signals)
+  self.last_read  = signals[1]
+  self.last_write = signals[2]
+  --print('['..THIS_NODE..'] SET RW '..self.id..': '..self.last_read.id..
+  --                                              ' '..self.last_write.id)
 end
 function WorkerField:SetReadSignal(signal)
   self.last_read = signal
@@ -720,7 +734,7 @@ end
 -- merge output signal with read
 -- caller must acquire scheduler
 local terra CopyAndSendGridGhosts(start_sig : gaswrap.Signal,
-                                  copy_args : &GhostCopyArgs)
+                                  copy_args : &GhostCopyArgs) : gaswrap.Signal
   var n_ghosts            = copy_args.num_ghosts
   var ghosts              = copy_args.ghosts
   var worker_id : uint32  = 0
@@ -741,7 +755,7 @@ end
 -- merge output signal with task's write
 -- caller must acquire scheduler
 local terra RecvAndCopyGridGhosts(start_sig : gaswrap.Signal,
-                                  copy_args : &GhostCopyArgs)
+                                  copy_args : &GhostCopyArgs) : gaswrap.Signal
   var n_ghosts            = copy_args.num_ghosts
   var ghosts              = copy_args.ghosts
   var worker_id : uint32  = 0
@@ -757,6 +771,8 @@ local terra RecvAndCopyGridGhosts(start_sig : gaswrap.Signal,
   var done  = gaswrap.mergeSignals(n_ghosts+1, sigs)
                 :exec(worker_id, CopyGridGhosts.Recv, [&opaque](copy_args))
   C.free(sigs)
+  --var done  = start_sig:exec(worker_id, CopyGridGhosts.Recv,
+  --                                      [&opaque](copy_args))
 
   return done
 end
@@ -773,6 +789,7 @@ local function scheduleSendAndRecv(wfield)
   local function allocCopyArgs(n_ghosts, ghosts)
     local a = terralib.cast(&GhostCopyArgs,
                             C.malloc(terralib.sizeof(GhostCopyArgs)))
+    --print(THIS_NODE, 'alloc...', a)
     a.num_ghosts      = n_ghosts
     a.ghosts          = ghosts
     a.field.ptr       = local_ptr
@@ -790,6 +807,7 @@ local function scheduleSendAndRecv(wfield)
     return a
   end
 
+  --print(THIS_NODE, 'snd/recv', wfield.send_ghosts, wfield.recv_ghosts)
   local sarg  = allocCopyArgs(wfield.num_send_ghosts, wfield.send_ghosts)
   local rarg  = allocCopyArgs(wfield.num_recv_ghosts, wfield.recv_ghosts)
 
@@ -866,10 +884,10 @@ local function BroadcastGlobalGridPartition(
   else
     assert(#blocking == 3, 'Expected 2 or 3 dimensional grid.')
     for xid, mt in ipairs(map) do
-      for yid, m in ipairs(mt) do
-        for zid, nid in ipairs(mt) do
+      for yid, subm in ipairs(mt) do
+        for zid, nid in ipairs(subm) do
           assert(nid >= 1 and nid <= numComputeNodes())
-          sendGlobalGridPartition(nid, rel_id, blocking, {xid, yid, zid},
+          SendGlobalGridPartition(nid, rel_id, blocking, {xid, yid, zid},
                                   partitioning[xid][yid][zid], map_str)
         end
       end
@@ -1047,6 +1065,60 @@ local function LoadFieldConstant(f_id, value_ser)
   gaswrap.releaseScheduler()
 end
 
+local function LoadBoolFieldFromRects(f_id, rects_ser)
+  local rects = gaswrap.lson_eval(rects_ser)
+  local field = GetWorkerField(assert(tonumber(f_id)))
+  assert(field:isAllocated(), 'Attempt to load into unallocated field ' ..
+                              field:Name())
+
+  -- first, route the field signals back into the control plane
+  gaswrap.acquireScheduler()
+  field:GetReadWriteSignal():sink()
+  local done_loading = gaswrap.newSignalSource()
+  field:SetReadWriteSignal(done_loading)
+  gaswrap.releaseScheduler()
+
+  -- do the load
+  local dataptr     = terralib.cast(&bool, field:GetDataPtr())
+  local n_elems     = field:GetElemCount()
+  local bound_rect  = field.relation:GetPartitionBounds()
+  local n_dims      = #field.relation.dims
+  -- first, zero out the data
+  for i = 0, n_elems-1 do dataptr[i] = false end
+  -- adjust the location of the data ptr
+  dataptr           = terralib.cast(&bool,
+                                field:GetInstance():DataPtrGhostAdjusted())
+  local strides     = field:GetStrides()
+  local offset      = 0
+  for d=1,n_dims do 
+    offset = offset + strides[d] * select(d, bound_rect:mins())
+  end
+  dataptr           = dataptr - offset
+  -- then go through and raster each rectangle
+  for _,r in ipairs(rects) do
+    if n_dims == 2 then
+      local clipped = Util.NewRect2d(unpack(r)):clip(bound_rect):getranges()
+      for y = clipped[2][1],clipped[2][2] do
+        for x = clipped[1][1],clipped[1][2] do
+          dataptr[ x * strides[1] + y * strides[2] ] = true
+      end end
+    else assert(n_dims == 3)
+      local clipped = Util.NewRect3d(unpack(r)):clip(bound_rect):getranges()
+      for z = clipped[3][1],clipped[3][2] do
+        for y = clipped[2][1],clipped[2][2] do
+          for x = clipped[1][1],clipped[1][2] do
+            dataptr[ x * strides[1] + y * strides[2] + z * strides[3] ] = true
+      end end end
+    end
+  end
+
+  -- trigger that the load is complete
+  gaswrap.acquireScheduler()
+  done_loading:trigger()
+  gaswrap.releaseScheduler()
+end
+gaswrap.registerLuaEvent('LoadBoolFieldFromRects', LoadBoolFieldFromRects)
+
 
 -----------------------------------
 -- HELPER METHODS FOR CONTROL NODE
@@ -1148,7 +1220,10 @@ function ControllerGridRelation:partition_across_nodes(args)
                            'match dimension of grid')
   local bounds  = {}
   local map     = {}
-  for i=1,#dims do assert(dims[i] > blocks[i], '# cells < # blocks') end
+  for i=1,#dims do
+    assert(dims[i] >= blocks[i],
+           '# cells < # blocks ('..dims[i]..' <= '..blocks[i]..')')
+  end
 
   -- generate bounds and map
   local nX,nY,nZ = unpack(blocks)
@@ -1211,7 +1286,12 @@ function ControllerField:LoadConst( c_val )
   C.free(temp_mem)
 end
 
-
+function ControllerField:LoadBoolFromRects( rects )
+  local rawrects = newlist()
+  for i,r in ipairs(rects) do rawrects[i] = r:getranges() end
+  local rects_ser = gaswrap.lson_stringify(rawrects)
+  BroadcastLuaEventToComputeNodes('LoadBoolFieldFromRects', self.id, rects_ser)
+end
 
 
 -----------------------------------
@@ -1576,7 +1656,7 @@ local function RegisterNewTask(params)
     assert(is_gaccess(ga), "entry #"..i.." is not a global access")
     gas:insert {
       privilege   = ga.privilege,
-      reduce_id   = ga.reduceop.id,
+      reduce_id   = ga.reduceop and ga.reduceop.id,
       g_id        = ga.global._id,
     }
   end
@@ -1727,13 +1807,14 @@ function ControllerTask:exec()
       InitGlobalReduceSemaphore(ga.global)
     end
   end
+  print('Launching! '..self.id)
   BroadcastLuaEventToComputeNodes('launchTask', self.id)
 end
 
 local function LaunchTask(task_id)
   local task  = worker_task_store[tonumber(task_id)]
   assert(task, 'Task #' .. task_id ..  ' is not registered.')
-  --print(THIS_NODE..' launch task started')
+  print('['..THIS_NODE..'] launch task '..task_id..' started')
 
   -- unpack things
   local n_dims      = #task.relation.dims
@@ -1741,8 +1822,8 @@ local function LaunchTask(task_id)
   -- allocate signal arrays
   local n_fields    = #task.field_accesses
   local n_globals   = #task.global_accesses
-  local sigs_f_in   = terralib.new(gaswrap.Signal[n_fields])
-  local sigs_f_out  = terralib.new(gaswrap.Signal[n_fields])
+  local sigs_f_in   = newlist()--terralib.new(gaswrap.Signal[n_fields])
+  local sigs_f_out  = nil--newlist()--terralib.new(gaswrap.Signal[n_fields])
 
   -- Assemble Arguments
   -- because a task may be scheduled more than once before being
@@ -1777,23 +1858,26 @@ local function LaunchTask(task_id)
 
   -- Do Scheduling
   gaswrap.acquireScheduler()
+  print('['..THIS_NODE..'] start sched')
   -- collect and merge all the input signals
   for i, fa in ipairs(task.field_accesses) do
     if fa.privilege == READ_ONLY_PRIVILEGE then
-      sigs_f_in[i-1]  = fa.field:ForkWriteSignal()
+      sigs_f_in[i]  = fa.field:ForkWriteSignal()
     elseif fa.privilege == READ_WRITE_PRIVILEGE then
-      sigs_f_in[i-1]  = fa.field:GetReadWriteSignal()
+      sigs_f_in[i]  = fa.field:GetReadWriteSignal()
     elseif fa.privilege == REDUCE_PRIVILEGE then
       error('TODO: REDUCE PRIV UNIMPLEMENTED')
     else assert(false, 'unrecognized field privilege') end
   end
   local a_in = nil
+  print('['..THIS_NODE..'] GOT SIGS')
   if n_fields == 0 then
     a_in = gaswrap.newSignalSource():trigger()
   elseif n_fields == 1 then
-    a_in = sigs_f_in[0]
+    a_in = sigs_f_in[1]
   else
-    a_in = gaswrap.mergeSignals(n_fields, sigs_f_in)
+    a_in = gaswrap.luaMergeSignals(sigs_f_in)
+    --a_in = gaswrap.mergeSignals(n_fields, sigs_f_in)
   end
   -- Schedule the task action itself
   local worker_id = 0 -- TODO: use partition in the future...?
@@ -1802,23 +1886,26 @@ local function LaunchTask(task_id)
   if n_fields == 0 then
     a_out:sink()
   elseif n_fields == 1 then
-    sigs_f_out[0]   = a_out
+    sigs_f_out      = newlist{ a_out }
+    --sigs_f_out[0]   = a_out
   else
-    a_out:fork(n_fields, sigs_f_out)
+    sigs_f_out      = gaswrap.luaForkSignals(a_out, n_fields)
+    --a_out:fork(n_fields, sigs_f_out)
   end
   for i, fa in ipairs(task.field_accesses) do
     if fa.privilege == READ_ONLY_PRIVILEGE then
-      fa.field:MergeReadSignal(sigs_f_out[i-1])
+      fa.field:MergeReadSignal(sigs_f_out[i])
     elseif fa.privilege == READ_WRITE_PRIVILEGE then
-      fa.field:SetReadWriteSignal(sigs_f_out[i-1])
+      fa.field:SetReadWriteSignal(sigs_f_out[i])
       scheduleSendAndRecv(fa.field)
     elseif fa.privilege == REDUCE_PRIVILEGE then
       error('TODO: REDUCE PRIV UNIMPLEMENTED')
     else assert(false, 'unrecognized field privilege') end
   end
+  print('['..THIS_NODE..'] Done Schedule '..task_id)
   -- Release
   gaswrap.releaseScheduler()
-  --print(THIS_NODE..' launch task exited')
+  print(THIS_NODE..' launch task exited')
 end
 
 -- Task sequences can be done using:

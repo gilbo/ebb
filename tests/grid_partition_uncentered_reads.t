@@ -35,11 +35,10 @@ local grid = Grid.NewGrid2d {
     origin = {0, 0},
     width  = {20, 20},
     periodic_boundary = {true, true},
+    partitions        = {2,3},
 }
 local C = grid.cells
 local V = grid.vertices
-C:SetPartitions {2,3}
-V:SetPartitions {2,3}
 
 -------------------------------------------------------------------------------
 --  Initialization                                                           --

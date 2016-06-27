@@ -30,6 +30,7 @@ local use_exp    = not not rawget(_G, 'EBB_USE_EXPERIMENTAL_SIGNAL')
 local use_single = not use_legion and not use_exp
 
 local Pre   = require "ebb.src.prelude"
+local Util  = require "ebb.src.util"
 local T     = require "ebb.src.types"
 local C     = require "ebb.src.c"
 local F     = require "ebb.src.functions"
@@ -48,6 +49,8 @@ local GPU       = Pre.GPU
 
 local is_macro      = Pre.is_macro
 local is_function   = F.is_function
+
+local newlist   = terralib.newlist
 
 
 local PN = require "ebb.lib.pathname"
@@ -938,7 +941,7 @@ function Relation:_INTERNAL_NewSubsetFromLuaFunction (name, predicate)
     boolmask:_INTERNAL_LoadLuaPerElemFunction(predicate)
     rawset(subset, '_boolmask', boolmask)
   elseif use_exp then
-    error('EXPERIMENTAL TODO: new subset')
+    error('EXPERIMENTAL TODO: new subset from function')
   else
 
     -- NOW WE DECIDE how to encode the subset
@@ -996,31 +999,55 @@ local function is_subrectangle(rel, obj)
 end
 
 function Relation:_INTERNAL_NewSubsetFromRectangles(name, rectangles)
-  if #self:Dims() == 2 then
-    return self:_INTERNAL_NewSubsetFromLuaFunction(name, function(xi, yi)
-      for _,r in ipairs(rectangles) do
-        local xlo, xhi, ylo, yhi = r[1][1], r[1][2], r[2][1], r[2][2]
-        if xlo <= xi and xi <= xhi and ylo <= yi and yi <= yhi then
-          return true -- found cell inside some rectangle
-        end
-      end
-      return false -- couldn't find cell inside any rectangle
-    end)
+  if use_exp then
+    local rect_objs = newlist()
+    local new_rect  = (#self:Dims() == 2) and Util.NewRect2d or Util.NewRect3d
+    for _,r in ipairs(rectangles) do
+      rect_objs:insert( new_rect(unpack(r)) )
+    end
+
+    -- setup and install the subset object
+    local subset = setmetatable({
+      _owner    = self,
+      _name     = name,
+    }, Subset)
+    rawset(self, name, subset)
+    self._subsets:insert(subset)
+
+    local boolmask  = CreateField(self, name..'_subset_boolmask', boolT)
+    boolmask._ewrap_field:LoadBoolFromRects(rect_objs)
+    rawset(subset, '_boolmask', boolmask)
+
+    return subset
   else
-    assert(#self:Dims() == 3, "grids must be 2 or 3 dimensional")
-    return self:_INTERNAL_NewSubsetFromLuaFunction(name, function(xi, yi, zi)
-      for _,r in ipairs(rectangles) do
-        local xlo, xhi, ylo, yhi, zlo, zhi =
-          r[1][1], r[1][2],  r[2][1], r[2][2], r[3][1], r[3][2]
-        if xlo <= xi and xi <= xhi and
-           ylo <= yi and yi <= yhi and
-           zlo <= zi and zi <= zhi
-        then
-          return true -- found cell inside some rectangle
-        end
-      end
-      return false -- couldn't find cell inside any rectangle
-    end)
+    if #self:Dims() == 2 then
+      return self:_INTERNAL_NewSubsetFromLuaFunction(name,
+        function(xi, yi)
+          for _,r in ipairs(rectangles) do
+            local xlo, xhi, ylo, yhi = r[1][1], r[1][2], r[2][1], r[2][2]
+            if xlo <= xi and xi <= xhi and ylo <= yi and yi <= yhi then
+              return true -- found cell inside some rectangle
+            end
+          end
+          return false -- couldn't find cell inside any rectangle
+        end)
+    else
+      assert(#self:Dims() == 3, "grids must be 2 or 3 dimensional")
+      return self:_INTERNAL_NewSubsetFromLuaFunction(name,
+        function(xi, yi, zi)
+          for _,r in ipairs(rectangles) do
+            local xlo, xhi, ylo, yhi, zlo, zhi =
+              r[1][1], r[1][2],  r[2][1], r[2][2], r[3][1], r[3][2]
+            if xlo <= xi and xi <= xhi and
+               ylo <= yi and yi <= yhi and
+               zlo <= zi and zi <= zhi
+            then
+              return true -- found cell inside some rectangle
+            end
+          end
+          return false -- couldn't find cell inside any rectangle
+        end)
+    end
   end
 end
 

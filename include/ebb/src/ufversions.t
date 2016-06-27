@@ -1031,10 +1031,15 @@ local function BuildExpSignature(params)
   local global_map      = {}
   local gaccess_list    = newlist()
   for globl, phase in pairs(params.global_use) do
+    local priv      = phase_to_exp_privilege(phase)
+    local reduceop  = nil
+    if priv == ewrap.REDUCE_PRIVILEGE then
+      reduceop = get_exp_reduceop(phase:reductionOp(), globl:Type())
+    end
     local gaccess = ewrap.NewGAccess {
       global    = globl._ewrap_global,
-      privilege = phase_to_exp_privilege(phase),
-      reduceop  = get_exp_reduceop(phase:reductionOp(), globl:Type()),
+      privilege = priv,
+      reduceop  = reduceop,
     }
 
     global_list:insert(globl)
@@ -1087,7 +1092,7 @@ function UFVersion:_CreateExpWrappedTask(task_func)
   local ufv = self
 
   -- sanity checks
-  assert( not ufv._subset, 'EXP TODO: Support Subsets' )
+  --assert( not ufv._subset, 'EXP TODO: Support Subsets' )
 
   -- unpack things
   local n_dims  = #ufv._relation:Dims()

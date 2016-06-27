@@ -339,8 +339,8 @@ local function mat_bin_exp(op, result_typ, lhe, rhe, lhtyp, rhtyp)
 
   -- If we fell through to here we've run into an unhandled branch
   error('Internal Error: Could not find any code to generate for '..
-        'binary operator '..op..' with opeands of type '..tostring(lhtyp)..
-        ' and '..tostring(rhtyp))
+        'binary operator '..tostring(op)..' with opeands of type '..
+        tostring(lhtyp)..' and '..tostring(rhtyp))
 end
 
 local function unary_exp(op, typ, expr)
