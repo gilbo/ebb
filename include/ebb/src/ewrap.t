@@ -507,15 +507,7 @@ end
 function WorkerField:nDims()  return #self.relation.dims  end
 
 function WorkerField:GetReadWriteSignal()
-  --local signals = C.safemalloc(gaswrap.Signal, 2)
-  --signals[0] = self.last_read
-  --signals[1] = self.last_write
-  --print('['..THIS_NODE..'] Getting '..self.id..': '..self.last_read.id..
-  --                                              ' '..self.last_write.id)
-  --local signal = gaswrap.mergeSignals(2, signals)
-  local signal = gaswrap.luaMergeSignals{ self.last_read, self.last_write }
-  --print('['..THIS_NODE..'] Got '..self.id)
-  return signal
+  return gaswrap.luaMergeSignals{ self.last_read, self.last_write }
 end
 function WorkerField:GetReadSignal()
   return self.last_read
@@ -524,44 +516,25 @@ function WorkerField:GetWriteSignal()
   return self.last_write
 end
 function WorkerField:ForkReadSignal()
-  --print('['..THIS_NODE..'] fork read: '..self.id)
-  --local signals = C.safemalloc(gaswrap.Signal, 2)
-  local signals = gaswrap.luaForkSignals(self.last_read, 2)
-  --self.last_read:fork(2, signals)
-  self.last_read = signals[2]
-  return signals[1]
+  local sig_copies  = gaswrap.luaForkSignals(self.last_read, 2)
+  self.last_read    = sig_copies[2]
+  return sig_copies[1]
 end
 function WorkerField:ForkWriteSignal()
-  --print('['..THIS_NODE..'] fork write: '..self.id)
-  --local signals = C.safemalloc(gaswrap.Signal, 2)
-  local signals = gaswrap.luaForkSignals(self.last_write, 2)
-  --self.last_write:fork(2, signals)
-  self.last_write = signals[2]
-  return signals[1]
+  local sig_copies  = gaswrap.luaForkSignals(self.last_write, 2)
+  self.last_write   = sig_copies[2]
+  return sig_copies[1]
 end
 function WorkerField:MergeReadSignal(signal)
-  --print('['..THIS_NODE..'] merge read: '..self.id)
-  --local signals = C.safemalloc(gaswrap.Signal, 2)
   self.last_read = gaswrap.luaMergeSignals{ self.last_read, signal }
-  --signals[0] = self.last_read
-  --signals[1] = signal
-  --self.last_read = gaswrap.mergeSignals(2, signals)
 end
 function WorkerField:MergeWriteSignal(signal)
   self.last_write = gaswrap.luaMergeSignals{ self.last_write, signal }
-  --local signals = C.safemalloc(gaswrap.Signal, 2)
-  --signals[0] = self.last_write
-  --signals[1] = signal
-  --self.last_write = gaswrap.mergeSignals(2, signals)
 end
 function WorkerField:SetReadWriteSignal(signal)
   local signals = gaswrap.luaForkSignals(signal, 2)
-  --local signals = C.safemalloc(gaswrap.Signal, 2)
-  --signal:fork(2, signals)
   self.last_read  = signals[1]
   self.last_write = signals[2]
-  --print('['..THIS_NODE..'] SET RW '..self.id..': '..self.last_read.id..
-  --                                              ' '..self.last_write.id)
 end
 function WorkerField:SetReadSignal(signal)
   self.last_read = signal
@@ -801,7 +774,7 @@ end
 -- NOTE: SCHEDULER MUST BE ACQUIRED OUTSIDE THIS FUNCTION
 local function scheduleSendAndRecv(wfield)
   assert(getmetatable(wfield) == WorkerField)
-  print('['..THIS_NODE..'] sched Send/Recv f#'..wfield.id)
+  --print('['..THIS_NODE..'] sched Send/Recv f#'..wfield.id)
   -- fill out argument structures
   local local_ptr   = wfield:GetInstance():DataPtrGhostAdjusted()
   local elem_size   = wfield:GetTypeStride()
@@ -1817,11 +1790,11 @@ function ControllerTask:exec()
   if not task_all_ready_for_ghosts[self] then
     for _, fa in ipairs(self.field_accesses) do
       if fa.privilege == READ_WRITE_PRIVILEGE then
-        print('*** READ WRITE! Checking if ghost channels are set up for ' ..
-              fa.field.id)
+        --print('*** READ WRITE! Checking if ghost channels are set up for ' ..
+        --      fa.field.id)
         WaitOnFieldGhostReady(fa.field.id)
-        print('*** Proceeding. Ghost channels seem to be set up for ' ..
-              fa.field.id)
+        --print('*** Proceeding. Ghost channels seem to be set up for ' ..
+        --      fa.field.id)
       end
     end
     task_all_ready_for_ghosts[self] = true
@@ -1834,14 +1807,14 @@ function ControllerTask:exec()
       InitGlobalReduceSemaphore(ga.global)
     end
   end
-  print('Launching! '..self.id)
+  --print('Launching! '..self.id)
   BroadcastLuaEventToComputeNodes('launchTask', self.id)
 end
 
 local function LaunchTask(task_id)
   local task  = worker_task_store[tonumber(task_id)]
   assert(task, 'Task #' .. task_id ..  ' is not registered.')
-  print('['..THIS_NODE..'] launch task '..task_id..' started')
+  --print('['..THIS_NODE..'] launch task '..task_id..' started')
 
   -- unpack things
   local n_dims      = #task.relation.dims
@@ -1885,7 +1858,7 @@ local function LaunchTask(task_id)
 
   -- Do Scheduling
   gaswrap.acquireScheduler()
-  print('['..THIS_NODE..'] start sched')
+  --print('['..THIS_NODE..'] start sched')
   -- collect and merge all the input signals
   for i, fa in ipairs(task.field_accesses) do
     if fa.privilege == READ_ONLY_PRIVILEGE then
@@ -1931,7 +1904,7 @@ local function LaunchTask(task_id)
   end
   -- Release
   gaswrap.releaseScheduler()
-  print('['..THIS_NODE..'] launch task '..task_id..' exited')
+  --print('['..THIS_NODE..'] launch task '..task_id..' exited')
 end
 
 -- Task sequences can be done using:
