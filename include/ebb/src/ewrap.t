@@ -65,7 +65,7 @@ local GPU                       = tostring(Pre.GPU)
 local GHOST_DIGITS              = 3
 local NODE_DIGITS               = 4
 
-local USE_CONSERVATIVE_GHOSTS   = true
+local USE_CONSERVATIVE_GHOSTS   = false
 local POLL_USLEEP               = 2
 
 
@@ -211,6 +211,20 @@ local struct GhostInstance  {
   strides   : uint64[3];  -- in element counts, matching field instances
   elem_size : uint64;
 }
+local terra printGI( g : &GhostInstance, prefix : rawstring )
+  var prefix_skip = ""
+  if prefix ~= nil then prefix_skip = "\n    "
+                   else prefix = "" end
+  C.printf(["[%d] %s%s"..
+                 "chan, buf, elem_size:   %p %p %d\n"..
+             "    bds ; strides:          %d,%d %d,%d %d,%d ; %d,%d,%d\n"
+           ], THIS_NODE, prefix, prefix_skip, g.src, g.ptr, g.elem_size,
+           g.bounds[0].lo, g.bounds[0].hi,
+           g.bounds[1].lo, g.bounds[1].hi,
+           g.bounds[2].lo, g.bounds[2].hi,
+           g.strides[0], g.strides[1], g.strides[2]
+           )
+end
 
 
 local controller_field_ghost_ready_semaphores = {}
@@ -372,6 +386,9 @@ local function ProcessAllGhostChannels(field, handshake_unq_id, ghost_width)
         sendg.ptr, buf_size,
         function(chan)  sendg.src = chan; dec_semaphore() end)
     end
+    if field.id == 11 then
+      --printGI(sendg,'process send f#'..field.id..' g '..i)
+    end
 
 
     -- Create Recv Channel
@@ -396,6 +413,9 @@ local function ProcessAllGhostChannels(field, handshake_unq_id, ghost_width)
         other_node, gen_handshake_id(other_node, off, true),
         recvg.ptr, buf_size,
         function(chan)  recvg.dst = chan; dec_semaphore() end)
+    end
+    if field.id == 11 then
+      --printGI(recvg,'process recv f#'..field.id..' g '..i)
     end
   end
   field.send_ghosts         = send_ghosts
@@ -781,6 +801,7 @@ end
 -- NOTE: SCHEDULER MUST BE ACQUIRED OUTSIDE THIS FUNCTION
 local function scheduleSendAndRecv(wfield)
   assert(getmetatable(wfield) == WorkerField)
+  print('['..THIS_NODE..'] sched Send/Recv f#'..wfield.id)
   -- fill out argument structures
   local local_ptr   = wfield:GetInstance():DataPtrGhostAdjusted()
   local elem_size   = wfield:GetTypeStride()
@@ -810,6 +831,12 @@ local function scheduleSendAndRecv(wfield)
   --print(THIS_NODE, 'snd/recv', wfield.send_ghosts, wfield.recv_ghosts)
   local sarg  = allocCopyArgs(wfield.num_send_ghosts, wfield.send_ghosts)
   local rarg  = allocCopyArgs(wfield.num_recv_ghosts, wfield.recv_ghosts)
+  for i=1,wfield.num_send_ghosts do
+    --printGI(wfield.send_ghosts[i-1],'sched send f#'..wfield.id..' g '..i)
+  end
+  for i=1,wfield.num_recv_ghosts do
+    --printGI(wfield.recv_ghosts[i-1],'sched recv f#'..wfield.id..' g '..i)
+  end
 
   -- schedule the send
   wfield:SetReadSignal(CopyAndSendGridGhosts(wfield:GetReadSignal(), sarg))
@@ -1822,8 +1849,8 @@ local function LaunchTask(task_id)
   -- allocate signal arrays
   local n_fields    = #task.field_accesses
   local n_globals   = #task.global_accesses
-  local sigs_f_in   = newlist()--terralib.new(gaswrap.Signal[n_fields])
-  local sigs_f_out  = nil--newlist()--terralib.new(gaswrap.Signal[n_fields])
+  local sigs_f_in   = newlist()
+  local sigs_f_out  = nil
 
   -- Assemble Arguments
   -- because a task may be scheduled more than once before being
@@ -1870,7 +1897,7 @@ local function LaunchTask(task_id)
     else assert(false, 'unrecognized field privilege') end
   end
   local a_in = nil
-  print('['..THIS_NODE..'] GOT SIGS')
+  --print('['..THIS_NODE..'] GOT SIGS')
   if n_fields == 0 then
     a_in = gaswrap.newSignalSource():trigger()
   elseif n_fields == 1 then
@@ -1902,10 +1929,9 @@ local function LaunchTask(task_id)
       error('TODO: REDUCE PRIV UNIMPLEMENTED')
     else assert(false, 'unrecognized field privilege') end
   end
-  print('['..THIS_NODE..'] Done Schedule '..task_id)
   -- Release
   gaswrap.releaseScheduler()
-  print(THIS_NODE..' launch task exited')
+  print('['..THIS_NODE..'] launch task '..task_id..' exited')
 end
 
 -- Task sequences can be done using:
