@@ -52,14 +52,17 @@ local arg_list = {}
 local min_idx  = 0
 for idx,_ in pairs(arg) do min_idx = math.min(min_idx, idx) end
 table.insert(arg_list, arg[min_idx])
-table.insert(arg_list, tostring(cmdline_n_nodes))
 for k=min_idx+1,#arg do table.insert(arg_list, arg[k]) end
+--print('args:')
+--for k,a in pairs(arg) do print('',k,a) end
+--print('mod args:')
+--for k,a in pairs(arg_list) do print('',k,a) end
 
 local terra call_init()
   var argc = [#arg_list]
   var arg_array = arrayof(rawstring, [arg_list])
   var argv = &(arg_array[0])
-  gaswrap.initGasnet(&argc, &argv, N_THREADS)
+  gaswrap.initGasnet(argc, argv, cmdline_n_nodes, N_THREADS)
 end
 print('*** Before GASNet initialization.')
 call_init()

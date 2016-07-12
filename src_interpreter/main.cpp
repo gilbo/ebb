@@ -47,6 +47,7 @@
 #include <signal.h>
 #include <getopt.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <libgen.h>
 #endif
 #include "terra.h"
@@ -217,7 +218,7 @@ void setupebb(lua_State * L, ebb_Options * ebboptions) {
         snprintf(buffer, bufsize,
           "terralib.includepath = terralib.includepath..';"
           "%s/release_gasnet/include;"
-          "%s/release_gasnet/include/udp-conduit;"
+          "%s/release_gasnet/include/conduit;"
           "'", STR(E2_DIR), STR(E2_DIR));
         if (terra_dostring(L, buffer))
             doerror(L);
@@ -333,8 +334,109 @@ int load_launchscript( lua_State * L, ebb_Options * ebboptions ) {
     }
     return terra_loadfile(L,buffer);
 }
+#ifdef _WIN32
+void multinode_dumpload_args(int * argc, char *** argv) {} // do nothing
+#else // _WIN32 undefined
+void multinode_read_from_argstash(char *filename, int *buf_len, char **buf) {
+  int tmp_file      = open(filename, O_RDONLY);
+  if(tmp_file < 0) { perror("multinode_read_from_argstash()"); assert(false); }
 
-int main(int argc, char ** argv) {
+  *buf_len          = lseek(tmp_file, 0, SEEK_END);
+                      assert(*buf_len >= 0);
+                      lseek(tmp_file, 0, SEEK_SET);
+  *buf              = (char*)(malloc(*buf_len + 1));
+         assert(-1 != read(tmp_file, *buf, *buf_len));
+  (*buf)[*buf_len]  = '\0';
+         assert(-1 != close(tmp_file));
+}
+void multinode_write_to_argstash(char *filename, int buf_len, char *buf) {
+  int tmp_file      = open(filename, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+  if(tmp_file < 0) { perror("multinode_write_to_argstash()"); assert(false); }
+  assert(-1 != write(tmp_file, buf, buf_len));
+  assert(-1 != close(tmp_file));
+}
+// The following function works around some obnoxious spawn/launching
+// issues when running on the Gasnet IBV conduit launched over SSH
+// for debugging:
+//extern char **environ;
+void multinode_dumpload_args(int * argc, char *** argv) {
+  char * homedir    = getenv("HOME");
+  assert(homedir != NULL);
+  const char *fname = "/.gaswrap_argstash_hack";
+  char * filename   = (char*)(malloc(strlen(homedir) + strlen(fname) + 3));
+                      strcpy(filename, homedir);
+                      strcat(filename, fname);
+
+  char * conduit    = getenv("GASNET_SPAWN_CONDUIT");
+  bool on_ibvmaster = (conduit != NULL) && (0 == strcmp(conduit,"IBV"));
+
+  char * spawn_args = getenv("GASNET_SPAWN_ARGS");
+  bool on_ibvworker = (spawn_args != NULL) && (spawn_args[0] == 'W');
+
+  // helpful for debugging
+  //fprintf(stderr, "PRINTING ENVIRONMENT:\n");
+  //int i = 0;
+  //while(environ[i]) {
+  //  fprintf(stderr, "%d) %s\n", i, environ[i]);
+  //  i++;
+  //}
+  if(on_ibvmaster) { // then stash the arguments in a file
+    //fprintf(stderr, "ibvMASTER\n");
+    // collect arguments into a buffer
+    int buf_len     = 0;
+    int lens[*argc];
+    for(int k=0; k<*argc; k++) {
+      lens[k]       = strlen((*argv)[k]);
+      buf_len      += lens[k] + 1;
+    }
+    char * buf      = (char*)(malloc(buf_len + 1));
+    char * arg_ptr  = buf;
+    for(int k=0; k<*argc; k++) {
+      strncpy(arg_ptr, (*argv)[k], lens[k]);
+      arg_ptr      += lens[k] + 1;
+      arg_ptr[-1]   = '\0';
+    }
+    // dump buffer to file
+    multinode_write_to_argstash(filename, buf_len, buf);
+    free(buf);
+  } else if(on_ibvworker) { // then use the stashed arguments
+    //fprintf(stderr, "ibvWORKER\n");
+    // read buffer from file
+    int buf_len;
+    char * buf;
+    multinode_read_from_argstash(filename, &buf_len, &buf);
+    // create new arguments array from buffer
+    // count args
+    int num_args    = 0;
+    char * arg_ptr  = buf;
+    while(arg_ptr[0] != '\0') {
+      int len       = strlen(arg_ptr);
+      arg_ptr      += len + 1;
+      num_args++;
+    }
+    assert(arg_ptr - buf == buf_len);
+    // now alloc and assign args
+    *argc           = num_args;
+    *argv           = (char**)(malloc(num_args * sizeof(char *)));
+    arg_ptr         = buf;
+    int k           = 0;
+    while(arg_ptr[0] != '\0') {
+      (*argv)[k]    = arg_ptr;
+      int len       = strlen(arg_ptr);
+      arg_ptr      += len + 1;
+      k++;
+    }
+    // DO NOT FREE BUF.  We intentionally leak it b/c it provides
+    // the backing storage for the command line arguments.
+  }
+}
+#endif
+// just ended conditional compilation for when not on _WIN32
+int main(int raw_argc, char ** raw_argv) {
+    int argc        = raw_argc;
+    char ** argv    = raw_argv;
+    multinode_dumpload_args(&argc, &argv);
+
     progname = argv[0];
     lua_State * L = luaL_newstate();
     luaL_openlibs(L);
