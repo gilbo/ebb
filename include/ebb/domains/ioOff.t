@@ -108,8 +108,128 @@ function ioOff.LoadTrimesh(path)
   )
 end
 
+------------------------------------------------------------------------------
 
+local C = terralib.includecstring [[
+#include <stdio.h>
 
+FILE* _io_off_get_stderr() { return stderr; }
+]]
+local DLD = require 'ebb.lib.dld'
 
+-- some Terra macro programming
+local fp = symbol(&C.FILE, 'fp')
+-- error check
+local ec = macro(function(test, msg, ...)
+  local varargs = {...}
+  if msg then
+    msg = msg:asvalue()..'\n'
+    msg = quote C.fprintf(C._io_off_get_stderr(), msg, varargs) end
+  else
+    msg = {}
+  end
+  return quote
+    if not test then
+      C.fclose(fp)
+      [msg]
+      return 1
+    end
+  end
+end)
+
+local terra DumpPositions( dld : &DLD.C_DLD, filename : rawstring ) : int
+  var [fp] = C.fopen(filename, 'a')
+  ec( fp ~= nil, "Cannot open CSV file for writing" )
+
+  ec( dld.version[0] == 1 and dld.version[1] == 0, "bad DLD version" )
+  ec( dld.base_type == DLD.DOUBLE, "expected DLD for doubles" )
+  ec( dld.type_stride == 24, "bad DLD type_stride %d", dld.type_stride )
+  ec( dld.type_dims[0] == 3 and dld.type_dims[1] == 1, "bad DLD type_dims" )
+  ec( dld.location == DLD.CPU, "trying to dump DLD on GPU" )
+  ec( dld.dim_size[1] == 1 and dld.dim_size[2] == 1, "bad DLD dim_size" )
+  ec( dld.dim_stride[0] == 1, "bad DLD dim_stride" )
+
+  var n_verts = dld.dim_size[0]
+  var pos     = [&double](dld.address)
+
+  for i = 0, n_verts do
+    ec( C.fprintf(fp, "%f %f %f\n", pos[3*i+0], pos[3*i+1], pos[3*i+2]) > 0,
+        "error writing entry\n" )
+  end
+
+  C.fclose(fp)
+  return 0
+end
+
+local terra DumpTriangles( dld : &DLD.C_DLD, filename : rawstring ) : int
+  var [fp] = C.fopen(filename, 'a')
+  ec( fp ~= nil, "Cannot open CSV file for writing\n" )
+
+  ec( dld.version[0] == 1 and dld.version[1] == 0, "bad DLD version" )
+  var key_bytes = 1
+      if dld.base_type == DLD.KEY_8  then key_bytes = 1
+                                          ec( dld.type_stride == 3 )
+  elseif dld.base_type == DLD.KEY_16 then key_bytes = 2
+                                          ec( dld.type_stride == 6 )
+  elseif dld.base_type == DLD.KEY_32 then key_bytes = 4
+                                          ec( dld.type_stride == 12 )
+  elseif dld.base_type == DLD.KEY_64 then key_bytes = 8
+                                          ec( dld.type_stride == 24 )
+  else ec( false, "unexpected key type in DLD" ) end
+
+  ec( dld.type_dims[0] == 3 and dld.type_dims[1] == 1, "bad DLD type_dims" )
+  ec( dld.location == DLD.CPU, "trying to dump DLD on GPU" )
+  ec( dld.dim_size[1] == 1 and dld.dim_size[2] == 1, "bad DLD dim_size" )
+  ec( dld.dim_stride[0] == 1, "bad DLD dim_stride" )
+
+  var n_tris  = dld.dim_size[0]
+
+  escape
+    local function genloop(typ) return quote
+      var verts   = [&typ](dld.address)
+      for i = 0, n_tris do
+        ec( C.fprintf(fp, "3 %d %d %d\n",
+                          verts[3*i+0], verts[3*i+1], verts[3*i+2]) > 0,
+            "error writing entry\n" )
+      end
+    end end
+    emit quote
+          if key_bytes == 1 then [genloop(uint8)]
+      elseif key_bytes == 2 then [genloop(uint16)]
+      elseif key_bytes == 4 then [genloop(uint32)]
+                            else [genloop(uint64)] end
+    end
+  end
+
+  C.fclose(fp)
+  return 0
+end
+
+function ioOff.DumpTrimesh(mesh, path)
+  -- make sure we convert the path into a string before use
+  path = tostring(path)
+
+  local off_out = io.open(path, "w")
+  if not off_out then
+    error('failed to open/create output OFF file '..path)
+  end
+
+  -- write out magic word
+  off_out:write("OFF\n")
+
+  -- write out number of elements of each type
+  off_out:write(tostring(mesh.vertices:Size()).." "..
+                tostring(mesh.triangles:Size()).." "..
+                "0\n")
+
+  off_out:close()
+
+  if mesh.vertices.pos:Dump(DumpPositions, path) ~= 0 then
+    error('Error while dumping positions '..path, 2)
+  end
+  if mesh.triangles.v:Dump(DumpTriangles, path) ~= 0 then
+    error('Error while dumping triangles '..path, 2)
+  end
+end
 
 
