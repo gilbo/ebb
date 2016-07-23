@@ -29,11 +29,6 @@ package.loaded["ebb.src.types"] = T
 
 local DLD = require "ebb.lib.dld"
 
--- SHOULD eliminate Legion from this file if at all possible
-local use_legion = not not rawget(_G, '_legion_env')
-local LW
-if use_legion then LW  = require "ebb.src.legionwrap" end
-
 -- From the Lua Documentation
 function pairs_sorted(tbl, compare)
   local arr = {}
@@ -86,12 +81,6 @@ for i=1,#primitives do
   T[p]            = t
   terraprimitive_to_ebb[t._terra_type] = t
   primitives[i]   = t
-end
-
--- TODO: Remove this; why is this an Ebb type?  Is it user-visible or...?
-T.color_type = T.uint
-if use_legion then
-  assert(uint == LW.legion_color_t)
 end
 
 -------------------------------------------------------------------------------
@@ -233,15 +222,6 @@ local function terra_lin_gen(keytyp, strides)
   end
   return terra( [key] ) : int64  return exp  end
 end
-local function legion_terra_lin_gen(keytyp)
-  local key     = symbol(keytyp)
-  local strides = symbol(LW.legion_byte_offset_t[#keytyp.entries])
-  local exp     = `key.a0 * strides[0].offset
-  for k=2,#keytyp.entries do
-    exp = `[exp] + strides[k-1].offset * key.['a'..tostring(k-1)]
-  end
-  return terra( [key], [strides] ) : int64  return exp  end
-end
 local function linearize_strided_gen(keytyp)
   local key     = symbol(keytyp)
   local strides = symbol(int64[#keytyp.entries])
@@ -260,27 +240,6 @@ local function linearize_strided_gen(keytyp)
     in exp end
   end)
 end
-local function legion_domain_point_gen(keytyp)
-  local key  = symbol(keytyp)
-  local dims = #keytyp.entries
-  if dims == 2 then return terra([key]) : LW.legion_domain_point_t
-    return LW.legion_domain_point_t {
-      dim = 2,
-      point_data = arrayof(LW.coord_t,
-        [LW.coord_t](key.a0), [LW.coord_t](key.a1), 0)
-    } end
-  elseif dims == 3 then return terra([key]) : LW.legion_domain_point_t
-    return LW.legion_domain_point_t {
-      dim = 3,
-      point_data = arrayof(LW.coord_t,
-        [LW.coord_t](key.a0), [LW.coord_t](key.a1), [LW.coord_t](key.a2))
-    } end
-  else return macro(function()
-      error('INTERNAL :DomainPoint() undefined for key of dimension '..dims)
-    end)
-  end
-end
-
 local function dim_to_bits(n_dim)
   if      n_dim < 128         then  return 8
   elseif  n_dim < 32768       then  return 16
@@ -334,10 +293,7 @@ local function keyType(relation)
   tstruct.methods.luaLinearize            = lua_lin_gen(strides)
   tstruct.methods.terraLinearize          = terra_lin_gen(tstruct, strides)
   tstruct.methods.stridedLinearize        = linearize_strided_gen(tstruct)
-  if use_legion then
-    tstruct.methods.legionTerraLinearize  = legion_terra_lin_gen(tstruct)
-    tstruct.methods.domainPoint           = legion_domain_point_gen(tstruct)
-  end
+
   -- add equality / inequality tests
   tstruct.metamethods.__eq = macro(function(lhs,rhs)
     local exp = `lhs.a0 == rhs.a0

@@ -23,9 +23,8 @@
 local B = {}
 package.loaded["ebb.src.builtins"] = B
 
-local use_legion = not not rawget(_G, '_legion_env')
 local use_exp    = not not rawget(_G, 'EBB_USE_EXPERIMENTAL_SIGNAL')
-local use_single = not use_legion and not use_exp
+local use_single = not use_exp
 
 local use_gpu = rawget(_G,'EBB_USE_GPU_SIGNAL')
 

@@ -25,9 +25,8 @@
 local R = {}
 package.loaded["ebb.src.relations"] = R
 
-local use_legion = not not rawget(_G, '_legion_env')
 local use_exp    = not not rawget(_G, 'EBB_USE_EXPERIMENTAL_SIGNAL')
-local use_single = not use_legion and not use_exp
+local use_single = not use_exp
 
 local Pre   = require "ebb.src.prelude"
 local Util  = require "ebb.src.util"
@@ -58,17 +57,6 @@ local PN = require "ebb.lib.pathname"
 local rawdata = require('ebb.src.rawdata')
 local DynamicArray = use_single and rawdata.DynamicArray
 local DataArray    = use_single and rawdata.DataArray
-local LW = use_legion and require "ebb.src.legionwrap"
-
-local P
-local use_partitioning
-if use_legion then
-  run_config = rawget(_G, '_run_config')
-  use_partitioning = run_config.use_partitioning
-  if use_partitioning then
-    P     = require "ebb.src.partitions"
-  end
-end
 
 local ewrap   = use_exp and require 'ebb.src.ewrap'
 
@@ -236,7 +224,7 @@ function R.NewRelation(params)
     rawset(rel, '_is_fragmented', false)
   end
 
-  -- SINGLE vs. LEGION
+  -- SINGLE vs. DISTRIBUTE
   if use_single then
     -- TODO: Remove the _is_live_mask for inelastic relations
     -- create a mask to track which rows are live.
@@ -254,19 +242,6 @@ function R.NewRelation(params)
       error('EXPERIMENTAL TODO: Only GRID currently supported multinode')
     end
 
-  elseif use_legion then
-    -- create a logical region.
-    if mode == 'GRID' then
-      rawset(rel, '_logical_region_wrapper', LW.NewGridLogicalRegion {
-        relation = rel,
-        dims     = rel._dims,
-      })
-    else
-      rawset(rel, '_logical_region_wrapper', LW.NewLogicalRegion {
-        relation = rel,
-        n_rows   = size,
-      })
-    end
   end
 
   return rel
@@ -559,20 +534,12 @@ function Relation:_INTERNAL_SortBy(keyfield)
   -- get access to the key data to sort on
   local keydld = nil
   local keytyp = keyfield:Type()
-  local legion_region = nil
   if use_single then
     keydld          = keyfield:GetDLD()
     keydld.address  = keyfield._array:open_readwrite_ptr()
     keydld:setlocation(DLD.CPU)
   elseif use_exp then
     error('EXPERIMENTAL TODO: sort by')
-  elseif use_legion then
-    legion_region = LW.NewInlinePhysicalRegion {
-      relation  = self,
-      fields    = { keyfield },
-      privilege = LW.READ_WRITE,
-    }
-    keydld = legion_region:GetLuaDLDs()[1]
   end
 
   -- verify that the layout is acceptable
@@ -595,8 +562,6 @@ function Relation:_INTERNAL_SortBy(keyfield)
     keyfield._array:close_readwrite_ptr()
   elseif use_exp then
     error('EXPERIMENTAL TODO: sort by close')
-  elseif use_legion then
-    legion_region:Destroy()
   end
 
   if already_sorted then return end
@@ -611,15 +576,8 @@ function Relation:_INTERNAL_SortBy(keyfield)
       dld         = f:GetDLD()
       dld.address = f._array:open_readwrite_ptr()
       dld:setlocation(DLD.CPU)
-  elseif use_exp then
-    error('EXPERIMENTAL TODO: sort by shuffle open')
-    elseif use_legion then
-      legion_region = LW.NewInlinePhysicalRegion {
-        relation  = self,
-        fields    = {f},
-        privilege = LW.READ_WRITE,
-      }
-      dld = legion_region:GetLuaDLDs()[1]
+    elseif use_exp then
+      error('EXPERIMENTAL TODO: sort by shuffle open')
     end
 
     local ftyp = f:Type()
@@ -631,10 +589,8 @@ function Relation:_INTERNAL_SortBy(keyfield)
 
     if use_single then
       f._array:close_readwrite_ptr()
-  elseif use_exp then
-    error('EXPERIMENTAL TODO: sort by shuffle close')
-    elseif use_legion then
-      legion_region:Destroy()
+    elseif use_exp then
+      error('EXPERIMENTAL TODO: sort by shuffle close')
     end
   end
 
@@ -720,41 +676,8 @@ function Relation:GroupBy(keyf_name)
     offset_f._array:close_write_ptr()
   elseif use_exp then
     error('EXPERIMENTAL TODO: group by')
-  elseif use_legion then
-
-    local keyf_list = key_field:Dump({})
-    local dims      = srcrel:Dims()
-
-    local src_scanner = LW.NewControlScanner {
-      relation       = srcrel,
-      fields         = { offset_f, length_f },
-      privilege      = LW.WRITE_ONLY
-    }
-    local dst_i, prev_src = 0,0
-    for ids, ptrs in src_scanner:ScanThenClose() do
-      local src_i   = linid(ids,dims)
-      local offptr  = terralib.cast(&uint64,ptrs[1])
-      local lenptr  = terralib.cast(&uint64,ptrs[2])
-
-      offptr[0] = dst_i
-      local count   = 0
-      while dst_i < n_dst do
-        local lin_src = linid(keyf_list[dst_i+1],dims)
-        if lin_src ~= src_i then break end
-        if lin_src < prev_src then
-          error("GroupBy(): Key field '"..key_field:Name().."' "..
-                "is not sorted.")
-        end
-        count     = count + 1
-        dst_i     = dst_i + 1
-        prev_src  = lin_src
-      end
-      lenptr[0] = count
-    end
-    assert(dst_i == n_dst)
-    assert(dst_i == n_dst)
   else
-    error("INTERNAL: must use either single or legion...")
+    error("INTERNAL: must use either single or distributed...")
   end
 
   
@@ -765,7 +688,6 @@ end
 
 function Relation:MoveTo( proc )
   if use_exp then error('MoveTo() unsupported multi-node', 2) end
-  if use_legion then error("MoveTo() unsupported using Legion", 2) end
   if proc ~= CPU and proc ~= GPU then
     error('must specify valid processor to move to', 2)
   end
@@ -783,9 +705,6 @@ end
 function Relation:Print()
   if use_exp then
     error('print() currently unsupported multi-node', 2) end
-  if use_legion then
-    error("print() currently unsupported using Legion", 2)
-  end
   print(self._name, "size: ".. tostring(self:Size()),
                     "concrete size: "..tostring(self:ConcreteSize()))
   for i,f in ipairs(self._fields) do
@@ -934,13 +853,7 @@ function Relation:_INTERNAL_NewSubsetFromLuaFunction (name, predicate)
   rawset(self, name, subset)
   self._subsets:insert(subset)
 
-  -- simpler case using only boolmask for Legion that will not
-  -- explode Lua memory when trying to scale up.
-  if use_legion then
-    local boolmask  = CreateField(self, name..'_subset_boolmask', boolT)
-    boolmask:_INTERNAL_LoadLuaPerElemFunction(predicate)
-    rawset(subset, '_boolmask', boolmask)
-  elseif use_exp then
+  if use_exp then
     error('EXPERIMENTAL TODO: new subset from function')
   else
 
@@ -1122,10 +1035,6 @@ function CreateField(rel, name, typ)
       name  = name,
       type  = typ:terratype(),
     })
-  elseif use_legion then
-    rawset( field, '_fid',
-            rel._logical_region_wrapper:AllocateField(typ:terratype()) )
-    rel._logical_region_wrapper:AttachNameToField(field._fid, name)
   end
   return field
 end
@@ -1152,7 +1061,6 @@ function Field:Type()
 end
 function Field:_Raw_DataPtr()
   if use_exp then error('_Raw_DataPtr() unsupported multi-node') end
-  if use_legion then error('_Raw_DataPtr() unsupported using legion') end
   return self._array:_raw_ptr()
 end
 function Field:Relation()
@@ -1207,7 +1115,6 @@ end
 -- TODO: Hide this function so it's not public
 function Field:_INTERNAL_Allocate()
   if use_exp then error('No Allocate() using multi-node') end
-  if use_legion then error('No Allocate() using legion') end
   if not self._array then
     --if self._owner:isElastic() then
       rawset(self, '_array', DynamicArray.New{
@@ -1227,7 +1134,6 @@ end
 -- remove allocated data and clear any depedent data, such as indices
 function Field:_INTERNAL_ClearData()
   if use_exp then error('No ClearData() using multi-node') end
-  if use_legion then error('No ClearData() using legion') end
   if self._array then
     self._array:free()
     rawset(self, '_array', nil)
@@ -1242,7 +1148,6 @@ end
 
 function Field:MoveTo( proc )
   if use_exp then error('No MoveTo() using multi-node') end
-  if use_legion then error('No MoveTo() using legion') end
   if proc ~= CPU and proc ~= GPU then
     error('must specify valid processor to move to', 2)
   end
@@ -1267,20 +1172,6 @@ function Relation:Swap( f1_name, f2_name )
     f2._array = tmp
   elseif use_exp then
     error('EXPERIMENTAL TODO: Swap')
-  elseif use_legion then
-    local region  = self._logical_region_wrapper
-    local rhandle = region:get_handle()
-    local fid_1   = f1._fid
-    local fid_2   = f2._fid
-    -- create a temporary Legion field
-    local fid_tmp = region:AllocateField(f1._type:terratype())
-
-    LW.CopyField { region = rhandle,  src_fid = fid_1,    dst_fid = fid_tmp }
-    LW.CopyField { region = rhandle,  src_fid = fid_2,    dst_fid = fid_1   }
-    LW.CopyField { region = rhandle,  src_fid = fid_tmp,  dst_fid = fid_2   }
-
-    -- destroy temporary field
-    region:FreeField(fid_tmp)
   end
 end
 
@@ -1318,12 +1209,6 @@ function Relation:Copy( p )
   elseif use_exp then
     error('EXPERIMENTAL TODO: Copy')
 
-  elseif use_legion then
-    LW.CopyField {
-      region  = self._logical_region_wrapper:get_handle(),
-      src_fid = from._fid,
-      dst_fid = to._fid,
-    }
   end
 end
 
@@ -1378,19 +1263,6 @@ function Relation:_INTERNAL_MapJointFunction(
   elseif use_exp then
     error('EXPERIMENTAL TODO: Internal Map Joint Function')
 
-  elseif use_legion then
-    -- create a physical mapping and get the DLDs from these
-    local region = LW.NewInlinePhysicalRegion {
-      relation  = self,
-      fields    = fields,
-      privilege = iswrite and LW.WRITE_ONLY or LW.READ_ONLY,
-    }
-    local dld_list = isterra and region:GetTerraDLDs() or region:GetLuaDLDs()
-
-    local retvals = { clbk(dld_list, ...) }
-
-    region:Destroy()
-    return unpack(retvals)
   end
 end
 
@@ -1421,7 +1293,6 @@ function Relation:_INTERNAL_LoadTerraBulkFunction(fields, clbk, ...)
   return self:_INTERNAL_MapJointFunction(true, true, clbk, fields, ...)
 end
 
--- this is broken for unstructured relations with legion
 function Field:_INTERNAL_LoadList(tbl)
   local ndims = #self._owner:Dims()
   if ndims == 1 then
@@ -1441,15 +1312,7 @@ end
 
 function Field:_INTERNAL_LoadConstant(c)
   -- TODO: Convert implementation to Terra
-  if use_legion then
-    local typ     = self:Type()
-    local ttyp    = typ:terratype()
-    local memsize = terralib.sizeof(ttyp)
-    local memval  = terralib.cast(&ttyp, C.malloc(memsize))
-    memval[0]     = T.luaToEbbVal( c, typ )
-    local lreg    = self:Relation()._logical_region_wrapper
-    lreg:InitConstField(self._fid, memval, memsize)
-  elseif use_exp then
+  if use_exp then
     self._ewrap_field:LoadConst( T.luaToEbbVal( c, self:Type() ) )
   else
     self:_INTERNAL_LoadLuaPerElemFunction(function()
@@ -1911,10 +1774,8 @@ function Field:GetDLD()
     }
   elseif use_exp then
     error('EXPERIMENTAL TODO: GetDLD')
-  elseif use_legion then
-    error('DLD TO BE REVISED for LEGION')
   else
-    assert(use_single or use_legion)
+    assert(false)
   end
 
 end
@@ -1932,7 +1793,6 @@ function Relation:_INTERNAL_Resize(new_concrete_size, new_logical)
     error('Can only resize ELASTIC relations', 2)
   end
   if use_exp then error("Can't resize while multi-node", 2) end
-  if use_legion then error("Can't resize while using Legion", 2) end
 
   self._is_live_mask._array:resize(new_concrete_size)
   for _,field in ipairs(self._fields) do
@@ -2134,21 +1994,9 @@ function Relation:SetPartitions(num_partitions)
   end
   rawset(self, '_total_partitions', total_partitions)
   rawset(self, '_num_partitions', num_partitions_table)
-  if use_legion and use_partitioning then
-    rawset(self, '_rel_global_partition',
-                 P.RelGlobalPartition(self, unpack(num_partitions)))
-  elseif use_exp then
+  if use_exp then
     self._ewrap_relation:partition_across_nodes{ blocking=num_partitions }
   end
-end
-
-function Relation:_GetGlobalPartition()
-  if not self._rel_global_partition and use_partitioning then
-    error("If running on Legion, you need to call SetPartitions() on all of "..
-          "your relations.  Relation '"..self:Name().."' did not have any "..
-          "partition set.")
-  end
-  return self._rel_global_partition
 end
 
 function Relation:TotalPartitions()
@@ -2195,32 +2043,8 @@ function Relation:IsGhostWidthValid()
   return self._ghost_width_default ~= nil
 end
 
-local ColorPlainIndexSpaceDisjoint = nil
-if use_legion then
-  ColorPlainIndexSpaceDisjoint = terra(darray : &DLD.C_DLD, num_colors : uint)
-    var d = darray[0]
-    var b = d.dim_size[0]
-    var s = d.dim_stride[0]
-    var partn_size = b / num_colors
-    if num_colors * partn_size < b then partn_size = partn_size + 1 end
-    for i = 0, b do
-      var ptr = [&LW.legion_color_t](d.address) + i*s
-      @ptr = i / partn_size
-    end
-  end
-end
-
-
--------------------------------------------------------------------------------
--------------------------------------------------------------------------------
---[[  Temporary Legion hacks                                               ]]--
--------------------------------------------------------------------------------
--------------------------------------------------------------------------------
 
 -- temporary hack
 -- to make it work with legion without blowing up memory
 function Relation:TEMPORARY_PrepareForSimulation()
-  if use_legion then
-    LW._TEMPORARY_LaunchEmptySingleTaskOnRelation(self)
-  end
 end

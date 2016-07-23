@@ -36,16 +36,9 @@
 local Pre = {}
 package.loaded["ebb.src.prelude"] = Pre
 
-local use_legion = not not rawget(_G, '_legion_env')
 local use_exp    = not not rawget(_G, 'EBB_USE_EXPERIMENTAL_SIGNAL')
-local use_single = not use_legion and not use_exp
+local use_single = not use_exp
 
-local LE, legion_env, LW
-if use_legion then
-  LE            = rawget(_G, '_legion_env')
-  legion_env    = LE.legion_env[0]
-  LW            = require 'ebb.src.legionwrap'
-end
 
 -------------------------------------------------------------------------------
 
@@ -122,8 +115,6 @@ function Pre.Global (typ, init)
     })
     s:set(init)
 
-  elseif use_legion then
-    s:set(init)
   end
 
   return s
@@ -150,18 +141,6 @@ function Global:set(val)
     buf[0]    = T.luaToEbbVal(val, self._type)
     self._ewrap_global:set(buf)
 
-  elseif use_legion then
-    local typ    = self._type
-    local tt     = typ:terratype()
-    local blob   = C.safemalloc( tt )
-    blob[0]      = T.luaToEbbVal(val, typ)
-    local future = LW.legion_future_from_bytes( legion_env.runtime,
-                                                blob,
-                                                terralib.sizeof(tt))
-    if self._data then
-      LW.legion_future_destroy(self._data)
-    end
-    rawset(self, '_data', future)
   end
 
 end
@@ -179,11 +158,6 @@ function Global:get()
     local valptr  = terralib.cast(&tt, self._ewrap_global:get())
     value = T.ebbToLuaVal(valptr[0], self._type)
 
-  elseif use_legion then
-    local tt = self._type:terratype()
-    local blob   = C.safemalloc( tt )
-    LW.legion_future_get_result_bytes(self._data, blob, terralib.sizeof(tt))
-    value = T.ebbToLuaVal(blob[0], self._type)
   end
 
   return value

@@ -23,9 +23,8 @@
 local Codegen = {}
 package.loaded["ebb.src.codegen"] = Codegen
 
-local use_legion = not not rawget(_G, '_legion_env')
 local use_exp    = not not rawget(_G, 'EBB_USE_EXPERIMENTAL_SIGNAL')
-local use_single = not use_legion and not use_exp
+local use_single = not use_exp
 
 local ast = require "ebb.src.ast"
 local T   = require "ebb.src.types"
@@ -35,14 +34,6 @@ local C   = require 'ebb.src.c'
 local G   = require 'ebb.src.gpu_util'
 local Support = require 'ebb.src.codegen_support'
 local F   = require 'ebb.src.functions'
-
-local LW, run_config, Partitions, use_partitioning
-if use_legion then
-  LW = require "ebb.src.legionwrap"
-  run_config = rawget(_G, '_run_config')
-  Partitions = require "ebb.src.partitions"
-  use_partitioning = rawget(_G, '_run_config').use_partitioning
-end
 
 local ewrap = use_exp and require 'ebb.src.ewrap'
 
@@ -150,55 +141,6 @@ function Context:hasExclusivePhase(field)
   return self.ufv._field_use[field]:isCentered()
 end
 
-function Context:hasGhostRegions(field)
-  return use_partitioning and not self:hasExclusivePhase(field)
-end
-
--- zero indexed
-local max_ghost_supported = 2  -- FOR NOW: hard code wrapping around
-function Context:ComputeLegionRegionToAccess(field, key)
-  if not self:hasGhostRegions(field) then
-    return `0
-  end
-  local ndims = #self:dims()
-  local pos   = symbol(uint)
-  local compute_pos = quote
-    var [pos] = 0
-  end
-  local strides = Partitions.ghost_regions_layout['dim_' .. tostring(ndims)]
-  for d = 1, ndims do
-    compute_pos = quote
-      [compute_pos]
-      do
-        var p    = 1  -- middle region
-        var k    = key.['a'..tostring(d-1)]
-        var b    = [self:argsym()].bounds[d-1]
-        if k < b.lo then
-          if b.lo >= max_ghost_supported and k >= b.lo - max_ghost_supported then  -- lower ghost region, safe unsigned arithmetic
-            p = 0  -- lower ghost region
-          else  -- wrap around
-            p = 2
-          end
-        elseif k > b.hi then
-          if k <= b.hi + max_ghost_supported then
-            p = 2  -- upper ghost region
-          else  -- wrap around
-            p = 0
-          end
-        end
-        --C.printf("Iter dim %d, value %d, lower %d, upper %d, p %d\n", d, k, b.lo, b.hi, p)
-        [pos] = [pos] + p * [strides[d]]
-      end
-    end
-  end
-  return quote
-    [compute_pos]
-    --C.printf("Accessing region %d\n", [pos])
-  in
-    pos
-  end
-end
-
 function Context:FieldElemPtr(field, key)
   if use_single then
     local farg      = self.ufv:_getTerraField(self:argsym(), field)
@@ -208,12 +150,6 @@ function Context:FieldElemPtr(field, key)
     local farg      = self.ufv:_getTerraField(self:argsym(), field)
     local ftyp      = field:Type():terratype()
     return `[&ftyp](farg.ptr) + key:stridedLinearize(farg.strides)
-  elseif use_legion then
-    local rnum      = self:ComputeLegionRegionToAccess(field, key)
-    local farg      = self.ufv:_getTerraField(self:argsym(), field)
-    local ftyp      = field:Type():terratype()
-    local ptr       = `farg[rnum].ptr
-    return `[&ftyp](ptr + key:legionTerraLinearize(farg[rnum].strides))
   end
 end
 
@@ -438,11 +374,7 @@ function Codegen.codegen (ufunc_ast, ufunc_version)
     -- Handle Masking of dead rows when mapping
     -- Over an Elastic Relation
     if ctxt:isOverElastic() then
-      if use_legion then
-        error('INTERNAL: ELASTIC ON LEGION CURRENTLY UNSUPPORTED')
-      --elseif ctxt:onGPU() then
-      --  error("INTERNAL: ELASTIC ON GPU CURRENTLY UNSUPPORTED")
-      elseif use_exp then
+      if use_exp then
         error('INTERNAL: ELASTIC ON EXP CURRENTLY UNSUPPORTED')
       else
         body = quote
@@ -480,9 +412,7 @@ function Codegen.codegen (ufunc_ast, ufunc_version)
         -- collapse bounds to the one-dimension we're going to use
         local paramtyp  = int64
         local bounds    = { bounds[1] }
-        if use_legion then
-          error('INTERNAL: INDEX SUBSETS ON LEGION CURRENTLY UNSUPPORTED')
-        elseif use_exp then
+        if use_exp then
           error('INTERNAL: INDEX SUBSETS OF EXPERIMENTAL UNSUPPORTED')
         elseif ctxt:onGPU() then
           body = terraGPUId_to_Nd(paramtyp, bounds, linid, function(iter)
@@ -599,9 +529,7 @@ function Codegen.codegen (ufunc_ast, ufunc_version)
 
   end -- CPU / GPU LAUNCHER END
 
-  if use_legion then
-    return ctxt.ufv:_WrapIntoLegionTask(ctxt:argsym(), launcher)
-  elseif use_exp then
+  if use_exp then
     return launcher
   else
     return launcher
@@ -976,23 +904,6 @@ function ast.FieldWrite:codegen (ctxt)
          not ctxt:hasExclusivePhase(self.fieldaccess.field)
   then
     error('EXP TODO: support field reductions')
-  elseif use_legion and self.reduceop and
-         not ctxt:hasExclusivePhase(self.fieldaccess.field)
-  then
-    local rexp    = self.exp:codegen(ctxt)
-    local key     = self.fieldaccess.key:codegen(ctxt)
-    local keytyp  = self.fieldaccess.key.node_type
-
-    -- TODO: compute which field accessor to access
-    local rnum = ctxt:ComputeLegionRegionToAccess(self.fieldaccess.field, key)
-    local farg = ctxt.ufv:_getTerraField(ctxt:argsym(),
-                                         self.fieldaccess.field)
-    return
-        Support.legion_cpu_atomic_stmt(self.reduceop,
-                                       self.fieldaccess.node_type,
-                                       `key, keytyp,
-                                       `farg[rnum].handle,
-                                       rexp, self.exp.node_type)
   else
     -- just re-direct to an assignment statement otherwise
     local assign = ast.Assignment:DeriveFrom(self)

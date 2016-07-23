@@ -23,9 +23,8 @@
 local Module = {}
 package.loaded['ebb.src.stencil'] = Module
 
-local use_legion = not not rawget(_G, '_legion_env')
 local use_exp    = not not rawget(_G, 'EBB_USE_EXPERIMENTAL_SIGNAL')
-local use_single = not use_legion and not use_exp
+local use_single = not use_exp
 
 local ast   = require "ebb.src.ast"
 local T     = require "ebb.src.types"
@@ -462,7 +461,7 @@ function Module.stencilPass(ufunc_ast)
 
   -- if there were no warnings, then the grid-relation accesses should
   -- all have non-trivial stencils; If not, warn the user.
-  if not ctxt:had_warnings() and (use_legion or use_exp)then
+  if not ctxt:had_warnings() and use_exp then
     local aps = ctxt:get_access_patterns()
     local field_warning_list = {}
 
