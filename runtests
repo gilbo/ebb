@@ -25,8 +25,6 @@
 
 local ffi = require "ffi"
 
-local USE_LEGION        = false
-local USE_PARTITION     = false
 local USE_EXPERIMENTAL  = false
 local USE_MPI           = false
 local USE_GPU           = false
@@ -34,12 +32,6 @@ local ONE_LINE_ERR      = false
 
 if #arg > 0 then
   for i=1,#arg do
-    if arg[i] == '-legion' or arg[i] == '--legion' then
-      USE_LEGION = true
-    end
-    if arg[i] == '-partition' or arg[i] == '--partition' then
-      USE_PARTITION = true
-    end
     if arg[i] == '-experimental' or arg[i] == '--experimental' or
        arg[i] == '-exp' or arg[i] == '--exp'
     then
@@ -55,8 +47,6 @@ if #arg > 0 then
       print("Usage : run_tests [options]")
       print("Options:")
       print("  -h, --help               show this help message and exit")
-      print("  -legion, --legion        run tests with legion")
-      print("  -partition, --partition  run tests with partitioning")
       print("  -exp, --exp              run tests w/ experimental multinode")
       print("  -gpu, --gpu              run tests on the GPU")
       print("  -mpi, --mpi              run tests with mpirun prefix")
@@ -114,8 +104,6 @@ local function is_disabled (filename)
                       str_starts_with(line2, disable_partition_str)
   end
   return disabled_all or (USE_GPU     and disabled_gpu)
-                      or (USE_LEGION  and disabled_legion)
-                      or (USE_PARTITION and disabled_part)
                       or (USE_EXPERIMENTAL and disabled_part)
                       or (USE_EXPERIMENTAL and disabled_legion)
 end
@@ -151,12 +139,6 @@ for line in io.popen(lscmd):lines() do
       print(file)
       local should_fail = (file:match("fails/") ~= nil)
       local execstring = "./ebb "
-      if USE_LEGION then
-        execstring = execstring .. " --legion "
-      end
-      if USE_PARTITION then
-        execstring = execstring .. " --partition "
-      end
       if USE_EXPERIMENTAL then
         execstring = execstring .. " -n 5 "
       end

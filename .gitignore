@@ -1,5 +1,4 @@
 terra
-legion
 *.o
 *.so
 *.bc
@@ -26,7 +25,6 @@ devapps/gpu/cudamath.t
 devapps/gpu/red_ops.t
 
 local_files
-legion_log
 *logs.tgz
 
 simple_trimesh_diffusion_output
