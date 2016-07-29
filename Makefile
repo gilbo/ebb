@@ -204,7 +204,6 @@ $(EXECUTABLE): bin/$(EXECUTABLE)
 
 
 clean:
-	$(MAKE) -C deprecated/deprecated_runtime clean
 	-rm -r vdb*
 	-rm -r bin
 	-rm -r build
