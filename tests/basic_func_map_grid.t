@@ -30,3 +30,6 @@ R:SetPartitions{2,2}
 -- The identity function:
 local pass_func = ebb(r : R) end
 R:foreach(pass_func)
+
+L.SyncBarrier()
+--print('out here')
