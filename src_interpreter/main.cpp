@@ -55,14 +55,10 @@
 #define STR(tok) STR_EXPAND(tok)
 
 struct ebb_Options {
-  int uselegion;
   int usegpu;
   int useexp;
   int n_nodes;
   int debug;
-  int legionspy;
-  int legionprof;
-  int partition;
   char *additional;
 };
 
@@ -88,7 +84,6 @@ void parse_args(
   terra_Options * options, ebb_Options * ebboptions,
   bool * interactive, int * begin_script
 );
-void check_legion_arg_consistency(ebb_Options * options);
 static int getargs (lua_State *L, char **argv, int n);
 static int docall (lua_State *L, int narg, int clear);
 
@@ -231,78 +226,6 @@ void setupebb(lua_State * L, ebb_Options * ebboptions) {
         lua_setglobal(L, "EBB_EXPERIMENTAL_N_NODES");
       #endif
     }
-
-    if (ebboptions->uselegion) {
-        // extend the Terra include path
-        snprintf(buffer, bufsize,
-          "terralib.includepath = terralib.includepath.."
-          "';%s/../legion/runtime;"
-          "%s/../legion/runtime/legion;"
-          "%s/../legion/runtime/mappers;"
-          "%s/../mappers;"
-          "%s/../legion_utils;"
-          "%s/../legion/bindings/terra'",
-          bindir, bindir, bindir, bindir, bindir, bindir);
-        if (terra_dostring(L, buffer))
-            doerror(L);
-
-        // extend the Lua include path
-        //snprintf(buffer, bufsize,
-        //  "package.path = package.path.."
-        //  "';%s/../legion/bindings/terra/?.t'",
-        //  bindir);
-        //if (terra_dostring(L, buffer))
-        //    doerror(L);
-
-        // Link the Legion Shared Library into Terra
-        if (ebboptions->debug) {
-            snprintf(buffer, bufsize,"terralib.linklibrary("
-              "'%s/../legion/bindings/terra/liblegion_terra_debug.so')",
-              bindir);
-            if (terra_dostring(L, buffer))
-                doerror(L);
-            snprintf(buffer, bufsize,"terralib.linklibrary("
-              "'%s/../mappers/libmapper_debug.so')",
-              bindir);
-            if (terra_dostring(L, buffer))
-                doerror(L);
-            snprintf(buffer, bufsize,"terralib.linklibrary("
-              "'%s/../legion_utils/liblegion_utils_debug.so')",
-              bindir);
-            if (terra_dostring(L, buffer))
-                doerror(L);
-        } else {
-            snprintf(buffer, bufsize,"terralib.linklibrary("
-              "'%s/../legion/bindings/terra/liblegion_terra_release.so')",
-              bindir);
-            if (terra_dostring(L, buffer))
-                doerror(L);
-            snprintf(buffer, bufsize,"terralib.linklibrary("
-              "'%s/../mappers/libmapper_release.so')",
-              bindir);
-            if (terra_dostring(L, buffer))
-                doerror(L);
-            snprintf(buffer, bufsize,"terralib.linklibrary("
-              "'%s/../legion_utils/liblegion_utils_release.so')",
-              bindir);
-            if (terra_dostring(L, buffer))
-                doerror(L);
-        }
-
-        if (ebboptions->legionspy) {
-            lua_pushboolean(L, true);
-            lua_setglobal(L, "EBB_LEGION_USE_SPY");
-        }
-        if (ebboptions->legionprof) {
-            lua_pushboolean(L, true);
-            lua_setglobal(L, "EBB_LEGION_USE_PROF");
-        }
-        if (ebboptions->partition) {
-            lua_pushboolean(L, true);
-            lua_setglobal(L, "EBB_PARTITION");
-        }
-    }
-
     if (ebboptions->usegpu) {
         lua_pushboolean(L, true);
         lua_setglobal(L, "EBB_USE_GPU_SIGNAL");
@@ -321,10 +244,7 @@ int load_launchscript( lua_State * L, ebb_Options * ebboptions ) {
     char buffer[MAX_PATH_LEN]; // plenty of room
     size_t bufsize = MAX_PATH_LEN;
 
-    if (ebboptions->uselegion) {
-        snprintf(buffer, bufsize,
-                 "%s/../include/ebb/src/launch_legion.t", bindir);
-    } else if (ebboptions->useexp) {
+    if (ebboptions->useexp) {
         snprintf(buffer, bufsize,
                  "%s/../include/ebb/src/launch_exp.t", bindir);
     } else {
@@ -353,8 +273,6 @@ int main(int argc, char ** argv) {
     parse_args(L,argc,argv,&terra_options,&ebboptions,&interactive,&scriptidx);
     // set some arguments by default
     terra_options.usemcjit = 1;
-    // check other arguments
-    check_legion_arg_consistency(&ebboptions);
     
     if(terra_initwithoptions(L, &terra_options))
         doerror(L);
@@ -397,10 +315,6 @@ void usage() {
       "    -i enter the REPL after processing source files\n"
       "    -g run tasks on a gpu by default\n"
       "    -n number of nodes to run experimental distributed mode in\n"
-      "    -l enable Legion support\n"
-      "    -r runtime options\n"
-      "       for legion : -r debug,legionspy,legionprof\n"
-      "    -p use partitioning\n"
       "    -a additional arguments (if spaces or special characters, include in quotes)\n"
       "    -  Execute stdin instead of script and stop parsing options\n");
 }
@@ -418,9 +332,6 @@ void parse_args(
         { "interactive",    no_argument,          NULL,           'i' },
         { "gpu",            no_argument,          NULL,           'g' },
         { "n_nodes",        required_argument,    NULL,           'n' },
-        { "legion",         no_argument,          NULL,           'l' },
-        { "runoptions",     optional_argument,    NULL,           'r' },
-        { "partition",      no_argument,          NULL,           'p' },
         { "additional",     optional_argument,    NULL,           'a' },
         { NULL,             no_argument,          NULL,            0  }
     };
@@ -451,22 +362,6 @@ void parse_args(
                 }
                 ebboptions->useexp = 1;
                 break;
-            case 'l':
-                ebboptions->uselegion = 1;
-                break;
-            case 'r':
-              if (optarg) {
-                if (strstr(optarg, "debug"))
-                    ebboptions->debug = 1;
-                if (strstr(optarg, "legionspy"))
-                    ebboptions->legionspy = 1;
-                if (strstr(optarg, "legionprof"))
-                    ebboptions->legionprof = 1;
-              }
-              break;
-            case 'p':
-                ebboptions->partition = 1;
-                break;
             case 'a':
               if (optarg) {
                     // Just leak this memory, it will outlive the program anyway.
@@ -483,39 +378,6 @@ void parse_args(
         }
     }
     *begin_script = optind;
-}
-void check_legion_arg_consistency(ebb_Options * options) {
-  if (options->legionspy) {
-    if (!options->uselegion) {
-      fprintf(stderr,
-        "cannot generate Legion spy output when not running with Legion\n");
-      exit(1);
-    }
-    if (!options->debug) {
-      fprintf(stderr, "Legion spy output can only be generated when running"
-                      " in Legion debug mode\n");
-      exit(1);
-    }
-  }
-  if (options->legionprof) {
-    if (!options->uselegion) {
-      fprintf(stderr,
-        "cannot generate Legion prof output when not running with Legion\n");
-      exit(1);
-    }
-    if (options->debug) {
-      fprintf(stderr, "Legion prof output can only be generated when running"
-                      " Legion not in debug mode\n");
-      exit(1);
-    }
-  }
-  if (options->partition) {
-    if (!options->uselegion) {
-      fprintf(stderr,
-        "cannot run partitions without Legion\n");
-      exit(1);
-    }
-  }
 }
 
 //this stuff is from lua's lua.c repl implementation:
@@ -682,7 +544,7 @@ static int docall (lua_State *L, int narg, int clear) {
 }
 static void print_welcome() {
     printf("\n"
-           "Liszt-Ebb -- A Language for Physical Simulation\n"
+           "Ebb -- A Language for Physical Simulation\n"
            "  (built w/ Terra)\n"
            "\n"
            "Stanford University\n"
