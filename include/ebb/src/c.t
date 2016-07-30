@@ -133,6 +133,20 @@ rawset(c_blob, 'assert', macro(function(test)
   end
 end))
 
+--[[
+local terra malloc_shim( nbytes : uint64 ) : &opaque
+  var p = c_blob.malloc(nbytes)
+  c_blob.fprintf(c_blob.stderr, "<< Malloc: %p\n", p)
+  return p
+end
+local terra free_shim( p : &opaque )
+  c_blob.fprintf(c_blob.stderr, "<< Free:   %p\n", p)
+  c_blob.free(p)
+end
+rawset(c_blob,'malloc', malloc_shim)
+rawset(c_blob,'free', free_shim)
+--]]
+
 rawset(c_blob, 'safemalloc', macro(function()
   error('safemalloc may not be called inside of Terra code')
 end,
@@ -142,6 +156,13 @@ function( ttype, N )
                              c_blob.malloc( N * terralib.sizeof(ttype) ))
   ffi.gc( ptr, c_blob.free )
   return ptr
+end))
+-- a safe way to free mallocs which have auto-collect on shutdown
+rawset(c_blob, 'safefree', macro(function()
+  error('safefree may not be called inside of Terra code')
+end,
+function( ptr )
+  c_blob.free(ffi.gc( ptr, nil ))
 end))
 
 
