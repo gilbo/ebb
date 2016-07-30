@@ -5,10 +5,10 @@ dummy:
 	# don't do anything
 
 osx_11:
-	gcc -shared -o 11___c_obj.so -I../../include 11___c_code.c
+	gcc -shared -std=c99 -o 11___c_obj.so -I../../include 11___c_code.c
 
 linux_11:
-	gcc -shared -o 11___c_obj.so -I../../include 11___c_code.c
+	gcc -shared -std=c99 -o 11___c_obj.so -I../../include 11___c_code.c
 
 # Location of Terra and Ebb directories
 # These may have to be edited
@@ -29,5 +29,6 @@ linux_18:
 
 clean:
 	-rm 11___c_obj.so
+	-rm sample_out.off
 	-rm 18_exec
 	-rm -rf 18_exec.dSYM # debug sym directory on mac
