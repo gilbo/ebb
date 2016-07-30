@@ -134,13 +134,15 @@ function GetAllFieldAndGlobalUses(params)
 
 
   -- VERIFY SET OF FIELDS IN PHASE_RESULTS AND FIELD_ACCESSES MATCH
-  for f, _ in pairs(params.phase_results.field_use) do
-    assert(params.field_accesses[f], "ERROR: field " .. f:Name() ..
-           " in field uses but not in field accesses.")
-  end
-  for f, _ in pairs(params.field_accesses) do
-    assert(params.phase_results.field_use[f], "ERROR: field " .. f:Name() ..
-           " in field accesses but not in field use.")
+  if use_exp then
+    for f, _ in pairs(params.phase_results.field_use) do
+      assert(params.field_accesses[f], "ERROR: field " .. f:Name() ..
+             " in field uses but not in field accesses.")
+    end
+    for f, _ in pairs(params.field_accesses) do
+      assert(params.phase_results.field_use[f], "ERROR: field " .. f:Name() ..
+             " in field accesses but not in field use.")
+    end
   end
 
   local data = {
@@ -159,24 +161,28 @@ function GetAllFieldAndGlobalUses(params)
       read      = true,
       write     = use_deletes,
     }
-    data.field_accesses[relset._is_live_mask] =
-      stencil.NewCenteredAccessPattern {
-        field = relset._is_live_mask,
-        read  = true,
-        write = use_deletes,
-      }
+    if use_exp then
+      data.field_accesses[relset._is_live_mask] =
+        stencil.NewCenteredAccessPattern {
+          field = relset._is_live_mask,
+          read  = true,
+          write = use_deletes,
+        }
+    end
   end
   if R.is_subset(relset) and relset._boolmask  then
     data.field_use[relset._boolmask] = phase.PhaseType.New {
       centered  = true,
       read      = true,
     }
-    data.field_accesses[relset._boolmask] =
-      stencil.NewCenteredAccessPattern {
-        field = relset._boolmask,
-        read  = true,
-        write = false,
-      }
+    if use_exp then
+      data.field_accesses[relset._boolmask] =
+        stencil.NewCenteredAccessPattern {
+          field = relset._boolmask,
+          read  = true,
+          write = false,
+        }
+    end
   end
 
   -- INSERTS : Here or in UFVersions?
@@ -258,7 +264,7 @@ Util.memoize_from(2, function(calldepth, ufunc, relset, ...)
   -- now actually type and phase check
   local typed_ast       = semant.check( aname_ast )
   local phase_results   = phase.phasePass( typed_ast )
-  local field_accesses  = stencil.stencilPass( typed_ast )
+  local field_accesses  = use_exp and stencil.stencilPass( typed_ast ) or {}
 
   local f_g_uses      = GetAllFieldAndGlobalUses {
     relset         = relset,
@@ -274,10 +280,6 @@ Util.memoize_from(2, function(calldepth, ufunc, relset, ...)
     delete_data     = f_g_uses.delete_data,
     global_use      = f_g_uses.global_use,
     versions        = terralib.newlist(),
-
-    -- hacks for planner right now
-    relation        = function() return relation end,
-    all_accesses    = function() return f_g_uses.field_accesses end,
   }
 end)
 
