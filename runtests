@@ -73,8 +73,7 @@ local exclude = {
 
 local disable_str = '--DISABLE-TEST'
 local disable_gpu_str = '--DISABLE-ON-GPU'
-local disable_legion_str = '--DISABLE-ON-LEGION'
-local disable_partition_str = '--DISABLE-PARTITIONED'
+local disable_dist_str = '--DISABLE-DISTRIBUTED'
 local function str_starts_with(str, prefix)
   return string.sub(str,1,#prefix) == prefix
 end
@@ -85,27 +84,21 @@ local function is_disabled (filename)
   io.close(h)
   local disabled_all    = false
   local disabled_gpu    = false
-  local disabled_legion = false
-  local disabled_part   = false
+  local disabled_dist   = false
   if line1 then
     disabled_all    = disabled_all or str_starts_with(line1, disable_str)
     disabled_gpu    = disabled_gpu or str_starts_with(line1, disable_gpu_str)
-    disabled_legion = disabled_legion or
-                      str_starts_with(line1, disable_legion_str)
-    disabled_part   = disabled_part or
-                      str_starts_with(line1, disable_partition_str)
+    disabled_dist   = disabled_dist or
+                      str_starts_with(line1, disable_dist_str)
   end
   if line2 then
     disabled_all    = disabled_all or str_starts_with(line2, disable_str)
     disabled_gpu    = disabled_gpu or str_starts_with(line2, disable_gpu_str)
-    disabled_legion = disabled_legion or
-                      str_starts_with(line2, disable_legion_str)
-    disabled_part   = disabled_part or
-                      str_starts_with(line2, disable_partition_str)
+    disabled_dist   = disabled_dist or
+                      str_starts_with(line2, disable_dist_str)
   end
   return disabled_all or (USE_GPU     and disabled_gpu)
-                      or (USE_EXPERIMENTAL and disabled_part)
-                      or (USE_EXPERIMENTAL and disabled_legion)
+                      or (USE_EXPERIMENTAL and disabled_dist)
 end
 
 local function output_name (filename)
@@ -213,3 +206,6 @@ printtests("passed but should have failed",bad_passed)
 printtests("disabled tests",disabled)
 
 print(tostring(#passed).." tests passed, "..tostring(#failed + #bad_passed).." tests failed. " .. tostring(#disabled) .. " tests disabled.")
+
+-- make failures visible to other testing infrastructure
+os.exit(#failed + #bad_passed)

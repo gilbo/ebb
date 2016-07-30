@@ -41,7 +41,6 @@
 -- try to explain Terra as well, we recommend that programmers interested in
 -- building custom file I/O read the Terra documentation themselves.
 
-
 import 'ebb'
 local L = require 'ebblib'
 
@@ -153,12 +152,17 @@ local terra readTriangleVertices( dld : &DLD.C_DLD, f : &C.FILE )
   end
 
   var junk : uint
+  var read_buf : uint[4]
 
   if dld.base_type == DLD.KEY_8 then
     var ptr     = [&uint8](dld.address)
     var s       = strideAlign( dld.type_stride, sizeof(uint8) )
     for k=0,size do
-      C.fscanf(f, '%u %u %u %u', &junk, ptr+k*s+0, ptr+k*s+1, ptr+k*s+2)
+      C.fscanf(f, '%u %u %u %u', read_buf, read_buf+1, read_buf+2, read_buf+3)
+      --C.fscanf(f, '%u %u %u %u', &junk, ptr+k*s+0, ptr+k*s+1, ptr+k*s+2)
+      ptr[k*s+0] = read_buf[1]
+      ptr[k*s+1] = read_buf[2]
+      ptr[k*s+2] = read_buf[3]
       errorCheck(f,"ReadTri: Error reading vertex data")
     end
 
@@ -166,7 +170,11 @@ local terra readTriangleVertices( dld : &DLD.C_DLD, f : &C.FILE )
     var ptr     = [&uint16](dld.address)
     var s       = strideAlign( dld.type_stride, sizeof(uint16) )
     for k=0,size do
-      C.fscanf(f, '%u %u %u %u', &junk, ptr+k*s+0, ptr+k*s+1, ptr+k*s+2)
+      C.fscanf(f, '%u %u %u %u', read_buf, read_buf+1, read_buf+2, read_buf+3)
+      --C.fscanf(f, '%u %u %u %u', &junk, ptr+k*s+0, ptr+k*s+1, ptr+k*s+2)
+      ptr[k*s+0] = read_buf[1]
+      ptr[k*s+1] = read_buf[2]
+      ptr[k*s+2] = read_buf[3]
       errorCheck(f,"ReadTri: Error reading vertex data")
     end
 

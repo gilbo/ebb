@@ -1,4 +1,4 @@
---DISABLE-ON-LEGION
+--DISABLE-TEST
 
 -- The MIT License (MIT)
 -- 
