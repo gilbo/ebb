@@ -47,28 +47,32 @@ end
 
 vdb.color = L.Macro(function(vec)
   check_vec(vec, "vdb.color() expects a vector argument of length 3 or more")
-  return ebb `VDB_C.vdb_color(vec[0], vec[1], vec[2])
+  if L.GetDefaultProcessor() == L.GPU then return ebb `0
+  else return ebb `VDB_C.vdb_color(vec[0], vec[1], vec[2]) end
 end)
 
 vdb.normal = L.Macro(function(p0, p1)
   local err = "vdb.normal() expects 2 vector arguments of length 3 or more"
   check_vec(p0, err)
   check_vec(p1, err)
-  return ebb `VDB_C.vdb_normal(p0[0], p0[1], p0[2],
-                                 p1[0], p1[1], p1[2])
+  if L.GetDefaultProcessor() == L.GPU then return ebb `0
+  else return ebb `VDB_C.vdb_normal(p0[0], p0[1], p0[2],
+                                    p1[0], p1[1], p1[2]) end
 end)
 
 vdb.point = L.Macro(function(vec)
   check_vec(vec, "vdb.point() expects a vector argument of length 3 or more")
-  return ebb `VDB_C.vdb_point(vec[0], vec[1], vec[2])
+  if L.GetDefaultProcessor() == L.GPU then return ebb `0
+  else return ebb `VDB_C.vdb_point(vec[0], vec[1], vec[2]) end
 end)
 
 vdb.line = L.Macro(function(p0, p1)
   local err = "vdb.line() expects 2 vector arguments of length 3 or more"
   check_vec(p0, err)
   check_vec(p1, err)
-  return ebb `VDB_C.vdb_line(p0[0], p0[1], p0[2],
-                               p1[0], p1[1], p1[2])
+  if L.GetDefaultProcessor() == L.GPU then return ebb `0
+  else return ebb `VDB_C.vdb_line(p0[0], p0[1], p0[2],
+                                  p1[0], p1[1], p1[2]) end
 end)
 
 vdb.triangle = L.Macro(function(p0, p1, p2)
@@ -76,9 +80,10 @@ vdb.triangle = L.Macro(function(p0, p1, p2)
   check_vec(p0, err)
   check_vec(p1, err)
   check_vec(p2, err)
-  return ebb `VDB_C.vdb_triangle(p0[0], p0[1], p0[2],
-                                   p1[0], p1[1], p1[2],
-                                   p2[0], p2[1], p2[2])
+  if L.GetDefaultProcessor() == L.GPU then return ebb `0
+  else return ebb `VDB_C.vdb_triangle(p0[0], p0[1], p0[2],
+                                      p1[0], p1[1], p1[2],
+                                      p2[0], p2[1], p2[2]) end
 end)
 
 vdb.vbegin  = VDB_C.vdb_begin
