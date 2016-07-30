@@ -84,10 +84,10 @@ else
 endif
 endif
 
-OSX_TERRA_NAME=terra-OSX-x86_64-84bbb0b
-OSX_TERRA_URL=https://github.com/zdevito/terra/releases/download/release-2015-08-03/$(OSX_TERRA_NAME).zip
-LINUX_TERRA_NAME=terra-Linux-x86_64-84bbb0b
-LINUX_TERRA_URL=https://github.com/zdevito/terra/releases/download/release-2015-08-03/$(LINUX_TERRA_NAME).zip
+OSX_TERRA_NAME=terra-OSX-x86_64-332a506
+OSX_TERRA_URL=https://github.com/zdevito/terra/releases/download/release-2016-03-25/$(OSX_TERRA_NAME).zip
+LINUX_TERRA_NAME=terra-Linux-x86_64-332a506
+LINUX_TERRA_URL=https://github.com/zdevito/terra/releases/download/release-2016-03-25/$(LINUX_TERRA_NAME).zip
 
 # # ----------------------------------------------------------------------- # #
 #     Interpreter
