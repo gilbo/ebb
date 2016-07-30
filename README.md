@@ -1,5 +1,5 @@
 
-# Liszt-Ebb
+# Ebb
 
 Ebb is a (domain-specific) language for writing physical simulations.  It is part of the Liszt project at Stanford.
 
