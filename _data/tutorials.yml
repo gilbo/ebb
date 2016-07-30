@@ -54,6 +54,10 @@
       excerpt: "Using DLDs, we can efficiently load data into and dump data out of an Ebb simulation; we write code to load and write OFF triangle mesh files."
       url: 12-file-io
 
+    - title: "18: C Embedding"
+      excerpt: "Ebb is built on Lua and Terra, which makes using the Ebb runtime from a controlling C program as straightforward as library linking."
+      url: 18-c-embedding
+
 - title: Domain Modeling
   description: "These tutorials explain the features that are used to write the standard geometric domain libraries; after reading these tutorials, a programmer should be prepared to start developing their own custom geometric domains. (familiarity with the introduction tutorials is assumed)"
   items:
