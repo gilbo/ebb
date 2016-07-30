@@ -50,10 +50,6 @@ If you are working on multiple DSLs using Terra and want to avoid a redundant Te
 
 You will still need to run `make` even if you already have your own Terra install.  Doing so will build the Ebb interpreter, which is needed to run Ebb programs.
 
-### Legion Setup
-
-If you need to run Ebb on Legion, then please contact the developers directly.  The feature is currently under development.
-
 
 ## VDB Setup
 
@@ -116,9 +112,11 @@ grid.cells:foreach(printsum)
 Save this in a file `hello42.t`.  Then, execute the command `./ebb hello42.t` to run the Ebb program.  This will print out `42` 4 times, once for each of the 4 grid cells in the 2x2 grid we created.
 
 
-## Using Ebb from C code
+-----------------------------------------------------------
 
-Currently the Ebb interpreter is not set up to be called-from/embedded-in C code as a library, though the functionality is relatively easy to add.  Please contact the developers if this use case is important to you.
+# Using Ebb from C code
+
+A [tutorial on embedding Ebb](../tutorials/18-c-embedding) into a C program is available for guidance.  Doing this embedding mostly consists of a standard embedding of the Lua/Terra interpreter.  If you find yourself having trouble with this variation on using Ebb, please contact the developers.
 
 
 -----------------------------------------------------------

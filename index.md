@@ -4,7 +4,7 @@ title: Ebb
 ---
 
 
-is a programming language for writing physical simulations. Ebb programs are _performance portable_: they can be efficiently executed on both CPUs and GPUs.  Ebb is embedded in the [Lua](http://www.lua.org) programming language using [Terra](http://terralang.org).
+is a programming language for writing physical simulations. Ebb programs are _performance portable_: they can be efficiently executed on both CPUs and GPUs.  Ebb is embedded in the [Lua](http://www.lua.org) programming language using [Terra](http://terralang.org), which can itself be embedded in C/C++ programs as a library.
 
 Ebb code looks like this:
 
