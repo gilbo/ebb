@@ -107,18 +107,18 @@ cuda_include ..
 #include <execinfo.h>
 #include <unistd.h>
 
-FILE * __sew_get__stdout() { return stdout; }
-FILE * __sew_get__stdin()  { return stdin; }
-FILE * __sew_get__stderr() { return stderr; }
+FILE * __ebb_get__stdout() { return stdout; }
+FILE * __ebb_get__stdin()  { return stdin; }
+FILE * __ebb_get__stderr() { return stderr; }
 
 ]]..
 enum_c_define ..
 sys_time
 )
 
-rawset(c_blob, 'stdout', c_blob.__sew_get__stdout())
-rawset(c_blob, 'stdin',  c_blob.__sew_get__stdin())
-rawset(c_blob, 'stderr', c_blob.__sew_get__stderr())
+rawset(c_blob, 'stdout', c_blob.__ebb_get__stdout())
+rawset(c_blob, 'stdin',  c_blob.__ebb_get__stdin())
+rawset(c_blob, 'stderr', c_blob.__ebb_get__stderr())
 
 rawset(c_blob, 'assert', macro(function(test)
   local filename = test.tree.filename
