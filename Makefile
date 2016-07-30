@@ -128,7 +128,7 @@ INTERP_LFLAGS += -lcurses -lz
 # set of build dependencies
 ALL_DEP:= terra $(EXECUTABLE) $(EXECUTABLE_CP)
 
-.PHONY: all clean test lmesh
+.PHONY: all clean test
 
 all: $(ALL_DEP)
 
