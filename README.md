@@ -47,6 +47,12 @@ make vdb
 ```
 
 
+## Using Ebb from C code
+
+A [tutorial on embedding Ebb](examples/tutorials/18_c_embedding.c) into a C program is available for guidance.  Doing this embedding mostly consists of a standard embedding of the Lua/Terra interpreter.  If you find yourself having trouble with this variation on using Ebb, please contact the developers.
+
+
+
 ## More Details
 
 See the [full manual](docs/manual.md) for more information.
