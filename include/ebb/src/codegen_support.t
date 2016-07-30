@@ -30,12 +30,6 @@ local C   = require 'ebb.src.c'
 local G   = require 'ebb.src.gpu_util'
 local T   = require 'ebb.src.types'
 
-local use_legion = not not rawget(_G, '_legion_env')
-local LW
-if use_legion then
-  LW = require "ebb.src.legionwrap"
-end
-
 
 -- **** ******** ******** ******** ******** ****
 -- NOTE:
@@ -339,8 +333,8 @@ local function mat_bin_exp(op, result_typ, lhe, rhe, lhtyp, rhtyp)
 
   -- If we fell through to here we've run into an unhandled branch
   error('Internal Error: Could not find any code to generate for '..
-        'binary operator '..op..' with opeands of type '..tostring(lhtyp)..
-        ' and '..tostring(rhtyp))
+        'binary operator '..tostring(op)..' with opeands of type '..
+        tostring(lhtyp)..' and '..tostring(rhtyp))
 end
 
 local function unary_exp(op, typ, expr)
@@ -561,36 +555,9 @@ end
 
 
 --[[--------------------------------------------------------------------]]--
---[[  Utility Functions for Reductions with Legion                      ]]--
---[[--------------------------------------------------------------------]]--
-
--- atomic legion reductions on scalar types
-local function legion_cpu_atomic_red_stmt (op, result_typ, key, key_typ,
-                                           laccessor, rhe, rhtyp)
-  local size = result_typ.valsize or 1
-  local coords
-  if result_typ:isscalar() then  -- scalar
-    coords  = `array(rhe)
-  elseif result_typ:isvector() then  -- vector
-    coords  = `rhe.d
-  else  -- small matrix
-    -- do some weird casting gymnastics in this case
-    -- don't know why we got rid of the linearized small matrix storage...
-    local btyp = result_typ:terrabasetype()
-    coords  = quote var val = [rhe]
-                 in @[&btyp[size]]([&opaque](&val.d[0][0])) end
-  end
-
-  local reductionfunc = LW.GetSafeReductionFunc(op, result_typ, key_typ)
-  return quote reductionfunc(laccessor, key, coords) end
-end
-
-
---[[--------------------------------------------------------------------]]--
 --[[  Export Functions                                                  ]]--
 --[[--------------------------------------------------------------------]]--
 
 Support.unary_exp = unary_exp
 Support.bin_exp = mat_bin_exp
 Support.gpu_atomic_exp = atomic_gpu_mat_red_exp
-Support.legion_cpu_atomic_stmt = legion_cpu_atomic_red_stmt

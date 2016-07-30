@@ -25,7 +25,7 @@ local L = require 'ebblib'
 
 local N = 4096
 local ITER = 2e0
-local P = 1
+local P = 2
 local mult = 0.5
 ITER = ITER*mult*mult
 --P    = P*mult
@@ -43,3 +43,8 @@ local ebb spin( c : cells )
 end
 
 for i=1,ITER do cells:foreach(spin) end
+
+L.SyncBarrier()
+
+
+

@@ -24,16 +24,8 @@
 local F = {}
 package.loaded["ebb.src.functions"] = F
 
-local use_legion = not not rawget(_G, '_legion_env')
-local use_single = not use_legion
-
-local LE, legion_env, LW, use_partitioning
-if use_legion then
-  LE            = rawget(_G, '_legion_env')
-  legion_env    = LE.legion_env[0]
-  LW            = require 'ebb.src.legionwrap'
-  use_partitioning = rawget(_G, '_run_config').use_partitioning
-end
+local use_exp = rawget(_G,'EBB_USE_EXPERIMENTAL_SIGNAL')
+local use_single = not use_exp
 
 local T                 = require 'ebb.src.types'
 local Stats             = require 'ebb.src.stats'
@@ -45,13 +37,6 @@ local specialization    = require 'ebb.src.specialization'
 local semant            = require 'ebb.src.semant'
 local phase             = require 'ebb.src.phase'
 local stencil           = require 'ebb.src.stencil'
-
-local Planner, Machine
-if use_partitioning then
-  Planner               = require 'ebb.src.planner'
-  -- TODO: should get rid of machine dependency here.
-  Machine               = require 'ebb.src.machine'
-end
 
 F._INTERNAL_DEV_OUTPUT_PTX = false
 
@@ -149,13 +134,15 @@ function GetAllFieldAndGlobalUses(params)
 
 
   -- VERIFY SET OF FIELDS IN PHASE_RESULTS AND FIELD_ACCESSES MATCH
-  for f, _ in pairs(params.phase_results.field_use) do
-    assert(params.field_accesses[f], "ERROR: field " .. f:Name() ..
-           " in field uses but not in field accesses.")
-  end
-  for f, _ in pairs(params.field_accesses) do
-    assert(params.phase_results.field_use[f], "ERROR: field " .. f:Name() ..
-           " in field accesses but not in field use.")
+  if use_exp then
+    for f, _ in pairs(params.phase_results.field_use) do
+      assert(params.field_accesses[f], "ERROR: field " .. f:Name() ..
+             " in field uses but not in field accesses.")
+    end
+    for f, _ in pairs(params.field_accesses) do
+      assert(params.phase_results.field_use[f], "ERROR: field " .. f:Name() ..
+             " in field accesses but not in field use.")
+    end
   end
 
   local data = {
@@ -167,31 +154,35 @@ function GetAllFieldAndGlobalUses(params)
 
   -- BOOL MASKS
   if relation:isElastic() then
-    if use_legion then error("LEGION UNSUPPORTED ELASTIC") end
+    if use_exp then error("EXPERIMENTAL UNSUPPORTED ELASTIC") end
     local use_deletes = not not params.phase_results.deletes
     data.field_use[relation._is_live_mask] = phase.PhaseType.New {
       centered  = true,
       read      = true,
       write     = use_deletes,
     }
-    data.field_accesses[relset._is_live_mask] =
-      stencil.NewCenteredAccessPattern {
-        field = relset._is_live_mask,
-        read  = true,
-        write = use_deletes,
-      }
+    if use_exp then
+      data.field_accesses[relset._is_live_mask] =
+        stencil.NewCenteredAccessPattern {
+          field = relset._is_live_mask,
+          read  = true,
+          write = use_deletes,
+        }
+    end
   end
   if R.is_subset(relset) and relset._boolmask  then
     data.field_use[relset._boolmask] = phase.PhaseType.New {
       centered  = true,
       read      = true,
     }
-    data.field_accesses[relset._boolmask] =
-      stencil.NewCenteredAccessPattern {
-        field = relset._boolmask,
-        read  = true,
-        write = false,
-      }
+    if use_exp then
+      data.field_accesses[relset._boolmask] =
+        stencil.NewCenteredAccessPattern {
+          field = relset._boolmask,
+          read  = true,
+          write = false,
+        }
+    end
   end
 
   -- INSERTS : Here or in UFVersions?
@@ -273,7 +264,7 @@ Util.memoize_from(2, function(calldepth, ufunc, relset, ...)
   -- now actually type and phase check
   local typed_ast       = semant.check( aname_ast )
   local phase_results   = phase.phasePass( typed_ast )
-  local field_accesses  = stencil.stencilPass( typed_ast )
+  local field_accesses  = use_exp and stencil.stencilPass( typed_ast ) or {}
 
   local f_g_uses      = GetAllFieldAndGlobalUses {
     relset         = relset,
@@ -289,10 +280,6 @@ Util.memoize_from(2, function(calldepth, ufunc, relset, ...)
     delete_data     = f_g_uses.delete_data,
     global_use      = f_g_uses.global_use,
     versions        = terralib.newlist(),
-
-    -- hacks for planner right now
-    relation        = function() return relation end,
-    all_accesses    = function() return f_g_uses.field_accesses end,
   }
 end)
 
@@ -412,25 +399,11 @@ end
 function Function:_doForEach(relset, ...)
   local params      = get_func_call_params_from_args(...)
   local typeversion = self:_Get_Type_Version_Table(4, relset, ...)
-
-  -- Insert partitioning hooks here and communication to planning component
-  local legion_partition_data = nil
-  if use_partitioning then
-    if params.location == Pre.GPU then
-      error('GPU launches are currently unsupported with partitioning and legion.')
-    end
-    -- probably want to get rid of node-type here eventually...
-    Planner.note_launch { typedfunc = typeversion }
-    legion_partition_data =
-      Planner.query_for_partitions(typeversion)
-  end
   
   -- now we either retrieve or construct the appropriate function version
   local version = get_ufunc_version(self, typeversion, relset, params)
 
-  version:Execute {
-    partition_data = legion_partition_data,
-  }
+  version:Execute()
 end
 
 

@@ -30,12 +30,14 @@ local g2d  = Grid.NewGrid2d {
   size    = {3,2},
   origin  = {1,4},
   width   = {0.9,1.0},
+  partitions  = {2,2},
 }
 
 local g3d  = Grid.NewGrid3d {
   size    = {3,2,2},
   origin  = {1,4,7},
   width   = {0.9,1.0,0.8},
+  partitions  = {2,2,2},
 }
 
 

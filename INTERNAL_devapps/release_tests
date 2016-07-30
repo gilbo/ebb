@@ -1,0 +1,152 @@
+#!./bin/ebb
+-- INFO ABOUT RUNNING THIS:
+--  This file should be run from the ebb root directory
+--  It exists to make it easier for developers to run a
+--  larger, extensive set of checks before committing to the stable
+--  branch; or in order to have a higher degree of confidence in releases
+--  on the master branch.
+
+
+-- The MIT License (MIT)
+-- 
+-- Copyright (c) 2015 Stanford University.
+-- All rights reserved.
+-- 
+-- Permission is hereby granted, free of charge, to any person obtaining a
+-- copy of this software and associated documentation files (the "Software"),
+-- to deal in the Software without restriction, including without limitation
+-- the rights to use, copy, modify, merge, publish, distribute, sublicense,
+-- and/or sell copies of the Software, and to permit persons to whom the
+-- Software is furnished to do so, subject to the following conditions:
+-- 
+-- The above copyright notice and this permission notice shall be included
+-- in all copies or substantial portions of the Software.
+-- 
+-- THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+-- IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+-- FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+-- AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+-- LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING 
+-- FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+-- DEALINGS IN THE SOFTWARE.
+
+local ffi = require "ffi"
+if ffi.os == "Windows" then error('not currently supporting Windows') end
+
+local total_failures    = 0
+
+local USE_EXPERIMENTAL  = false
+local USE_GPU           = false
+
+if #arg > 0 then
+  for i=1,#arg do
+    if arg[i] == '-experimental' or arg[i] == '--experimental' or
+       arg[i] == '-exp' or arg[i] == '--exp'
+    then
+      USE_EXPERIMENTAL = true
+    end
+    if arg[i] == '-gpu' or arg[i] == '--gpu' then
+      USE_GPU = true
+    end
+    if arg[i] == '-h' or arg[i] == '--help' then
+      print("Usage : release_tests [options]")
+      print("Options:")
+      print("  -h, --help               show this help message and exit")
+      print("  -exp, --exp              run tests w/ experimental multinode")
+      print("  -gpu, --gpu              run tests on the GPU")
+      os.exit(0)
+    end
+  end
+end
+
+------------------------------------------------------------------------------
+
+-- run the basic tests, of course
+local runtests_cmd = './runtests'..
+                     (USE_GPU and ' -gpu' or '')..
+                     (USE_EXPERIMENTAL and ' -exp' or '')
+local n_fail_runtests = os.execute(runtests_cmd)
+total_failures = total_failures + n_fail_runtests
+
+
+local base_exec_cmd = "./ebb "..
+                      (USE_GPU and '--gpu ' or '')
+if USE_EXPERIMENTAL then
+  error('release_tests not designed to support experimental yet')
+end
+
+------------------------------------------------------------------------------
+
+local failing_tutorials = terralib.newlist()
+
+-- run the tutorials
+local tutorial_list = {
+'01_hello.t',
+'02_loading.t',
+'03_visualization.t',
+'04_fields_globals.t',
+'05_neighbor_access.t',
+'06_phase_checking.t',
+'07_standard_grid.t',
+'08_relations.t',
+'09_particle_grid.t',
+'10_dlds.t',
+--'11_calling_c.t', -- needs special execution
+'12_file_io.t',
+'13_group_by.t',
+'14_join_tables.t',
+'15_macros.t',
+'16_grid_relations.t',
+'17_subsets.t',
+--'18_c_embedding.t', -- needs special execution
+}
+
+for _,tutorial in ipairs(tutorial_list) do
+  local success = os.execute("cd examples/tutorials; "..
+                             "../../"..base_exec_cmd..tutorial)
+  if success ~= 0 then failing_tutorials:insert(tutorial) end
+end
+
+-- run the two tutorials requring builds
+local tutorial_builds_ok = true
+if ffi.os == "OSX" then
+  local success = os.execute("cd examples/tutorials; make osx_11")
+  if success ~= 0 then tutorial_builds_ok = false end
+  local success = os.execute("cd examples/tutorials; make linux_18")
+  if success ~= 0 then tutorial_builds_ok = false end
+else -- assume linux / posix
+  local success = os.execute("cd examples/tutorials; make linux_11")
+  if success ~= 0 then tutorial_builds_ok = false end
+  local success = os.execute("cd examples/tutorials; make linux_18")
+  if success ~= 0 then tutorial_builds_ok = false end
+end
+if not tutorial_builds_ok then
+  failing_tutorials:insert('tutorials_11_18_builds')
+else
+  local success
+  success = os.execute("cd examples/tutorials; "..
+                       "../../"..base_exec_cmd.."11_calling_c.t")
+  if success ~= 0 then failing_tutorials:insert('11_calling_c.t') end
+  success = os.execute("cd examples/tutorials; ./18_exec")
+  if success ~= 0 then failing_tutorials:insert('18_c_embedding.c') end
+end
+
+-- clean up
+os.execute("cd examples/tutorials; make clean")
+
+if #failing_tutorials > 0 then
+  total_failures = total_failures + #failing_tutorials
+  print('\nFAILING TUTORIALS:')
+  for _,t in ipairs(failing_tutorials) do print('',t) end
+  print('')
+end
+
+------------------------------------------------------------------------------
+
+
+
+print(tostring(total_failures).." tests failed overall.")
+
+
+
+

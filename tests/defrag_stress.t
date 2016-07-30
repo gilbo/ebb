@@ -1,4 +1,4 @@
---DISABLE-ON-LEGION
+--DISABLE-DISTRIBUTED
 
 -- The MIT License (MIT)
 -- 

@@ -23,8 +23,8 @@
 local Codegen = {}
 package.loaded["ebb.src.codegen"] = Codegen
 
-local use_legion = not not rawget(_G, '_legion_env')
-local use_single = not use_legion
+local use_exp    = not not rawget(_G, 'EBB_USE_EXPERIMENTAL_SIGNAL')
+local use_single = not use_exp
 
 local ast = require "ebb.src.ast"
 local T   = require "ebb.src.types"
@@ -35,13 +35,7 @@ local G   = require 'ebb.src.gpu_util'
 local Support = require 'ebb.src.codegen_support'
 local F   = require 'ebb.src.functions'
 
-local LW, run_config, Partitions, use_partitioning
-if use_legion then
-  LW = require "ebb.src.legionwrap"
-  run_config = rawget(_G, '_run_config')
-  Partitions = require "ebb.src.partitions"
-  use_partitioning = rawget(_G, '_run_config').use_partitioning
-end
+local ewrap = use_exp and require 'ebb.src.ewrap'
 
 
 --[[--------------------------------------------------------------------]]--
@@ -147,66 +141,15 @@ function Context:hasExclusivePhase(field)
   return self.ufv._field_use[field]:isCentered()
 end
 
-function Context:hasGhostRegions(field)
-  return use_partitioning and not self:hasExclusivePhase(field)
-end
-
--- zero indexed
-local max_ghost_supported = 2  -- FOR NOW: hard code wrapping around
-function Context:ComputeLegionRegionToAccess(field, key)
-  if not self:hasGhostRegions(field) then
-    return `0
-  end
-  local ndims = #self:dims()
-  local pos   = symbol(uint)
-  local compute_pos = quote
-    var [pos] = 0
-  end
-  local strides = Partitions.ghost_regions_layout['dim_' .. tostring(ndims)]
-  for d = 1, ndims do
-    compute_pos = quote
-      [compute_pos]
-      do
-        var p    = 1  -- middle region
-        var k    = key.['a'..tostring(d-1)]
-        var b    = [self:argsym()].bounds[d-1]
-        if k < b.lo then
-          if b.lo >= max_ghost_supported and k >= b.lo - max_ghost_supported then  -- lower ghost region, safe unsigned arithmetic
-            p = 0  -- lower ghost region
-          else  -- wrap around
-            p = 2
-          end
-        elseif k > b.hi then
-          if k <= b.hi + max_ghost_supported then
-            p = 2  -- upper ghost region
-          else  -- wrap around
-            p = 0
-          end
-        end
-        --C.printf("Iter dim %d, value %d, lower %d, upper %d, p %d\n", d, k, b.lo, b.hi, p)
-        [pos] = [pos] + p * [strides[d]]
-      end
-    end
-  end
-  return quote
-    [compute_pos]
-    --C.printf("Accessing region %d\n", [pos])
-  in
-    pos
-  end
-end
-
 function Context:FieldElemPtr(field, key)
   if use_single then
     local farg      = self.ufv:_getTerraField(self:argsym(), field)
     local ptr       = farg
     return `(ptr + key:terraLinearize())
-  elseif use_legion then
-    local rnum      = self:ComputeLegionRegionToAccess(field, key)
+  elseif use_exp then
     local farg      = self.ufv:_getTerraField(self:argsym(), field)
     local ftyp      = field:Type():terratype()
-    local ptr       = `farg[rnum].ptr
-    return `[&ftyp](ptr + key:legionTerraLinearize(farg[rnum].strides))
+    return `[&ftyp](farg.ptr) + key:stridedLinearize(farg.strides)
   end
 end
 
@@ -301,7 +244,7 @@ end
 --       allowing the loop bounds to be dynamically driven
 local function terraIterNd(keytyp, dims, func)
   local addr = symbol(keytyp)
-  if keytyp == uint64 then -- special index case
+  if keytyp == int64 then -- special index case
     local lo = 0
     local hi = dims[1]
     if type(dims[1]) == 'table' and dims[1].lo then
@@ -336,7 +279,7 @@ local function terraIterNd(keytyp, dims, func)
 end
 
 local function terraGPUId_to_Nd(keytyp, dims, id, func)
-  if keytyp == uint64 then -- special index case
+  if keytyp == int64 then -- special index case
     local addr = symbol(keytyp)
     return quote
       var [addr] = id + [dims[1].lo]
@@ -347,36 +290,38 @@ local function terraGPUId_to_Nd(keytyp, dims, id, func)
 
   else -- usual case
     local diffs = {}
+    --local atyps = {}
     for d=1,#dims do
       diffs[d] = `[dims[d].hi] - [dims[d].lo]
+      --atyps[d] = keytyp.entries[d].type
     end
 
-    local addr = symbol(keytyp)
+    local addr  = symbol(keytyp)
     local translate, guard
     if #dims == 1 then
       translate = quote
-        var xid  : uint64 = id
-        var xoff : uint64 = xid + [dims[1].lo]
+        var xid  : int64 = id
+        var xoff : int64 = xid + [dims[1].lo]
         var [addr] = [keytyp]({ xoff })
       end
       guard     = `[addr].a0 < [dims[1].hi]
     elseif #dims == 2 then
       translate = quote
-        var xid  : uint64 = id % [diffs[1]]
-        var yid  : uint64 = id / [diffs[1]]
-        var xoff : uint64 = xid + [dims[1].lo]
-        var yoff : uint64 = yid + [dims[2].lo]
+        var xid  : int64 = id % [diffs[1]]
+        var yid  : int64 = id / [diffs[1]]
+        var xoff : int64 = xid + [dims[1].lo]
+        var yoff : int64 = yid + [dims[2].lo]
         var [addr] = [keytyp]({ xoff,yoff })
       end
       guard = `[addr].a1 < [dims[2].hi]
     elseif #dims == 3 then
       translate = quote
-        var xid  : uint64 = id % [diffs[1]]
-        var yid  : uint64 = (id / [diffs[1]]) % [diffs[2]]
-        var zid  : uint64 = id / ([diffs[1]]*[diffs[2]])
-        var xoff : uint64 = xid + [dims[1].lo]
-        var yoff : uint64 = yid + [dims[2].lo]
-        var zoff : uint64 = zid + [dims[3].lo]
+        var xid  : int64 = id % [diffs[1]]
+        var yid  : int64 = (id / [diffs[1]]) % [diffs[2]]
+        var zid  : int64 = id / ([diffs[1]]*[diffs[2]])
+        var xoff : int64 = xid + [dims[1].lo]
+        var yoff : int64 = yid + [dims[2].lo]
+        var zoff : int64 = zid + [dims[3].lo]
         var [addr] = [keytyp]({ xoff,yoff,zoff })
       end
       guard     = `[addr].a2 < [dims[3].hi]
@@ -407,7 +352,7 @@ function Codegen.codegen (ufunc_ast, ufunc_version)
   local bd_decl = quote end
   local bounds = {}
   for d=1,#ctxt:dims() do
-    bounds[d] = { lo = symbol(uint64), hi = symbol(uint64), }
+    bounds[d] = { lo = symbol(int64), hi = symbol(int64), }
     bd_decl = quote [bd_decl]
       var [bounds[d].lo] = [ctxt:argsym()].bounds[d-1].lo
       var [bounds[d].hi] = [ctxt:argsym()].bounds[d-1].hi + 1
@@ -422,17 +367,15 @@ function Codegen.codegen (ufunc_ast, ufunc_version)
     ctxt:localenv()[pname] = param
 
     local linid
-    if ctxt:onGPU() then linid  = symbol(uint64) end
+    if ctxt:onGPU() then linid  = symbol(int64) end
 
     local body = ufunc_ast.body:codegen(ctxt)
 
     -- Handle Masking of dead rows when mapping
     -- Over an Elastic Relation
     if ctxt:isOverElastic() then
-      if use_legion then
-        error('INTERNAL: ELASTIC ON LEGION CURRENTLY UNSUPPORTED')
-      --elseif ctxt:onGPU() then
-      --  error("INTERNAL: ELASTIC ON GPU CURRENTLY UNSUPPORTED")
+      if use_exp then
+        error('INTERNAL: ELASTIC ON EXP CURRENTLY UNSUPPORTED')
       else
         body = quote
           if [ctxt:isLiveCheck(param)] then [body] end
@@ -467,10 +410,10 @@ function Codegen.codegen (ufunc_ast, ufunc_version)
       elseif ctxt:isIndexSubset() then
       -- INDEX SUBSET BRANCH
         -- collapse bounds to the one-dimension we're going to use
-        local paramtyp  = uint64
+        local paramtyp  = int64
         local bounds    = { bounds[1] }
-        if use_legion then
-          error('INTERNAL: INDEX SUBSETS ON LEGION CURRENTLY UNSUPPORTED')
+        if use_exp then
+          error('INTERNAL: INDEX SUBSETS OF EXPERIMENTAL UNSUPPORTED')
         elseif ctxt:onGPU() then
           body = terraGPUId_to_Nd(paramtyp, bounds, linid, function(iter)
             return quote
@@ -586,8 +529,8 @@ function Codegen.codegen (ufunc_ast, ufunc_version)
 
   end -- CPU / GPU LAUNCHER END
 
-  if use_legion then
-    return ctxt.ufv:_WrapIntoLegionTask(ctxt:argsym(), launcher)
+  if use_exp then
+    return launcher
   else
     return launcher
   end
@@ -957,23 +900,10 @@ function ast.FieldWrite:codegen (ctxt)
     return Support.gpu_atomic_exp(self.reduceop,
                                   self.fieldaccess.node_type,
                                   lval, rexp, self.exp.node_type)
-  elseif use_legion and self.reduceop and
+  elseif use_exp and self.reduceop and
          not ctxt:hasExclusivePhase(self.fieldaccess.field)
   then
-    local rexp    = self.exp:codegen(ctxt)
-    local key     = self.fieldaccess.key:codegen(ctxt)
-    local keytyp  = self.fieldaccess.key.node_type
-
-    -- TODO: compute which field accessor to access
-    local rnum = ctxt:ComputeLegionRegionToAccess(self.fieldaccess.field, key)
-    local farg = ctxt.ufv:_getTerraField(ctxt:argsym(),
-                                         self.fieldaccess.field)
-    return
-        Support.legion_cpu_atomic_stmt(self.reduceop,
-                                       self.fieldaccess.node_type,
-                                       `key, keytyp,
-                                       `farg[rnum].handle,
-                                       rexp, self.exp.node_type)
+    error('EXP TODO: support field reductions')
   else
     -- just re-direct to an assignment statement otherwise
     local assign = ast.Assignment:DeriveFrom(self)

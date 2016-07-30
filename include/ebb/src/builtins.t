@@ -23,6 +23,9 @@
 local B = {}
 package.loaded["ebb.src.builtins"] = B
 
+local use_exp    = not not rawget(_G, 'EBB_USE_EXPERIMENTAL_SIGNAL')
+local use_single = not use_exp
+
 local use_gpu = rawget(_G,'EBB_USE_GPU_SIGNAL')
 
 local Pre = require "ebb.src.prelude"
@@ -39,6 +42,8 @@ local doubleT   = T.double
 local intT      = T.int
 local uint64T   = T.uint64
 local boolT     = T.bool
+-- pseudo-type
+local int64T    = {}
 
 local keyT      = T.key
 local vectorT   = T.vector
@@ -47,6 +52,22 @@ local vectorT   = T.vector
 local CPU       = Pre.CPU
 local GPU       = Pre.GPU
 
+
+
+
+--local terra full_mod(val : int64, modulus : int64) : int64
+--    return ((val % modulus) + modulus) % modulus
+--end
+local full_mod = macro(function(val, modulus)
+    return quote
+        var m   = [int64](modulus)
+        var v   = [int64](val)
+    in ((v % m) + m) % m end
+end)
+
+local id_mod = macro(function(val, dim_mod)
+    return `[uint64](full_mod(val,dim_mod))
+end)
 
 ---------------------------------------------
 --[[ Builtin functions                   ]]--
@@ -137,7 +158,8 @@ function B.xid.check(ast, ctxt)
     return uint64T
 end
 function B.xid.codegen(ast, ctxt)
-    return `[uint64]( [ast.params[1]:codegen(ctxt)].a0 )
+    local xdim = ast.params[1].node_type.relation:Dims()[1]
+    return `id_mod( [ast.params[1]:codegen(ctxt)].a0, xdim )
 end
 
 B.yid = Builtin.new()
@@ -154,7 +176,8 @@ function B.yid.check(ast, ctxt)
     return uint64T
 end
 function B.yid.codegen(ast, ctxt)
-    return `[uint64]( [ast.params[1]:codegen(ctxt)].a1 )
+    local ydim = ast.params[1].node_type.relation:Dims()[2]
+    return `id_mod( [ast.params[1]:codegen(ctxt)].a1, ydim )
 end
 
 B.zid = Builtin.new()
@@ -176,7 +199,8 @@ function B.zid.check(ast, ctxt)
     return uint64T
 end
 function B.zid.codegen(ast, ctxt)
-    return `[uint64]( [ast.params[1]:codegen(ctxt)].a2 )
+    local zdim = ast.params[1].node_type.relation:Dims()[3]
+    return `id_mod( [ast.params[1]:codegen(ctxt)].a2, zdim )
 end
 
 
@@ -264,9 +288,6 @@ function B.Affine.check(ast, ctxt)
 
     return keyT(dst_rel)
 end
-local terra full_mod(val : int64, modulus : int64) : uint64
-    return ((val % modulus) + modulus) % modulus
-end
 function B.Affine.codegen(ast, ctxt)
     local args      = ast.params
     local dst_rel   = args[1].node_type.value
@@ -276,6 +297,15 @@ function B.Affine.codegen(ast, ctxt)
     local dst_wrap  = dst_rel:Periodic()
     local nrow      = args[2].node_type.Nrow
     local ncol      = args[2].node_type.Ncol
+
+    if use_exp then
+        -- selectively disable periodicity wrap when
+        -- there are ghosts multi-node
+        local n_partitions = dst_rel:NumPartitions()
+        for d,n in ipairs(n_partitions) do
+            if n > 1 then dst_wrap[d] = false end
+        end
+    end
 
     local srckey    = symbol(args[3].node_type:terratype())
     local mat       = symbol(args[2].node_type:terratype())
@@ -291,7 +321,7 @@ function B.Affine.codegen(ast, ctxt)
             sum = `[sum] + mat.d[yi][xi] * srckey.[astr]
         end
         -- make sure to clamp back down into address values
-        sum = `[uint64](sum)
+        sum = `[int64](sum)
         -- add periodicity wrapping if specified
         if dst_wrap[yi+1] then
             results[yi+1] = `full_mod(sum, [ dst_dims[yi+1] ])
@@ -384,12 +414,19 @@ function B.assert.check(ast, ctxt)
     end
 end
 
-local terra ebbAssert(test : bool, file : rawstring, line : int)
-    if not test then
+--local terra ebbAssert(test : bool, file : rawstring, line : int)
+--    if not test then
+--        C.fprintf(C.stderr, "%s:%d: assertion failed!\n", file, line)
+--        C.exit(1)
+--    end
+--end
+local ebbAssert = macro(function(test, file, line)
+    return quote if not test then
         C.fprintf(C.stderr, "%s:%d: assertion failed!\n", file, line)
         C.exit(1)
-    end
-end
+    end end
+end)
+
 
 -- NADA FOR NOW
 local gpuAssert = terra(test : bool, file : rawstring, line : int) end
@@ -455,6 +492,9 @@ local function printSingle (bt, exp, elemQuotes)
     elseif bt == uint64T then 
         table.insert(elemQuotes, exp)
         return "%lu"
+    elseif bt == int64T then
+        table.insert(elemQuotes, exp)
+        return "%ld"
     elseif bt == boolT then
         table.insert(elemQuotes, `terralib.select([exp], "true", "false"))
         return "%s"
@@ -502,7 +542,7 @@ local function buildPrintSpec(ctxt, output, printSpec, elemQuotes, definitions)
     elseif lt:isscalarkey() then
         if lt.ndims == 1 then
             printSpec = printSpec ..
-                        printSingle(uint64T, `code.a0, elemQuotes)
+                        printSingle(int64T, `code.a0, elemQuotes)
         else
             local sym = symbol(lt:terratype())
             definitions = quote
@@ -513,7 +553,7 @@ local function buildPrintSpec(ctxt, output, printSpec, elemQuotes, definitions)
             for i = 0, lt.ndims-1 do
                 local astr = 'a'..tostring(i)
                 printSpec = printSpec .. ' ' ..
-                            printSingle(uint64T, `sym.[astr], elemQuotes)
+                            printSingle(int64T, `sym.[astr], elemQuotes)
             end
             printSpec = printSpec .. ' }'
         end

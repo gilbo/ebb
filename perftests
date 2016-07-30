@@ -25,15 +25,11 @@
 
 local ffi = require "ffi"
 
-local USE_LEGION = false
 local USE_GPU    = false
 local ONE_LINE_ERR = false
 
 if #arg > 0 then
   for i=1,#arg do
-    if arg[i] == '-legion' or arg[i] == '--legion' then
-      USE_LEGION = true
-    end
     if arg[i] == '-gpu' or arg[i] == '--gpu' then
       USE_GPU = true
     end
@@ -41,7 +37,6 @@ if #arg > 0 then
       print("Usage : run_tests [options]")
       print("Options:")
       print("  -h, --help             show this help message and exit")
-      print("  -legion, --legion      run tests with legion")
       print("  -gpu, --gpu            run tests on the GPU")
       os.exit(0)
     end
@@ -83,8 +78,6 @@ for line in io.popen(lscmd):lines() do
       print(file)
       local cpu_time = 0
       local gpu_time = 0
-      local legion_cpu_time = 0
-      local legion_gpu_time = 0
       print("Executing on CPU ...")
       local start_time = terralib.currenttimeinseconds()
       os.execute("./liszt " .. file)
@@ -97,26 +90,10 @@ for line in io.popen(lscmd):lines() do
         local end_time = terralib.currenttimeinseconds()
         gpu_time = end_time - start_time
       end
-      if USE_LEGION then
-        print("Executing on CPU with Legion...")
-        local start_time = terralib.currenttimeinseconds()
-        os.execute("./liszt --legion --nodebug " .. file)
-        local end_time = terralib.currenttimeinseconds()
-        legion_cpu_time = end_time - start_time
-        if USE_GPU then
-          print("Executing on GPU with Legion...")
-          local start_time = terralib.currenttimeinseconds()
-          os.execute("./liszt --legion --nodebug --gpu " .. file)
-          local end_time = terralib.currenttimeinseconds()
-          legion_gpu_time = end_time - start_time
-        end
-      end
       print("Current execution time (seconds)")
       local curr_time = ""
       curr_time = curr_time .. string.format("cpu : %3i", cpu_time)
       curr_time = curr_time .. string.format(" , gpu : %3i", gpu_time)
-      curr_time = curr_time .. string.format(" , legion_cpu : %3i", legion_cpu_time)
-      curr_time = curr_time .. string.format(" , legion_gpu : %3i", legion_gpu_time)
       print(curr_time)
       print("Expected execution time (seconds)")
       os.execute("cat " .. stats)

@@ -29,11 +29,6 @@ package.loaded["ebb.src.types"] = T
 
 local DLD = require "ebb.lib.dld"
 
--- SHOULD eliminate Legion from this file if at all possible
-local use_legion = not not rawget(_G, '_legion_env')
-local LW
-if use_legion then LW  = require "ebb.src.legionwrap" end
-
 -- From the Lua Documentation
 function pairs_sorted(tbl, compare)
   local arr = {}
@@ -86,12 +81,6 @@ for i=1,#primitives do
   T[p]            = t
   terraprimitive_to_ebb[t._terra_type] = t
   primitives[i]   = t
-end
-
--- TODO: Remove this; why is this an Ebb type?  Is it user-visible or...?
-T.color_type = T.uint
-if use_legion then
-  assert(uint == LW.legion_color_t)
 end
 
 -------------------------------------------------------------------------------
@@ -231,42 +220,30 @@ local function terra_lin_gen(keytyp, strides)
   for k=2,#strides do
     exp = `[exp] + [strides[k]] * key.['a'..tostring(k-1)]
   end
-  return terra( [key] ) : uint64  return exp  end
+  return terra( [key] ) : int64  return exp  end
 end
-local function legion_terra_lin_gen(keytyp)
+local function linearize_strided_gen(keytyp)
   local key     = symbol(keytyp)
-  local strides = symbol(LW.legion_byte_offset_t[#keytyp.entries])
-  local exp     = `key.a0 * strides[0].offset
+  local strides = symbol(int64[#keytyp.entries])
+  local exp     = `key.a0 * strides[0]
   for k=2,#keytyp.entries do
-    exp = `[exp] + strides[k-1].offset * key.['a'..tostring(k-1)]
+    exp = `[exp] + key.['a'..tostring(k-1)] * strides[k-1]
   end
-  return terra( [key], [strides] ) : uint64   return exp  end
+  -- TODO: THIS IS A HACK TO AVOID LLVM IR SHIPPING ERRORS
+  --        Might be a good idea to figure out how to simplify the
+  --        complexity of generated code here in the future.
+  --return terra( [key], [strides] ) : int64  return exp  end
+  return macro(function(k, s)
+    return quote
+      var [key] = k
+      var [strides] = s
+    in exp end
+  end)
 end
-local function legion_domain_point_gen(keytyp)
-  local key  = symbol(keytyp)
-  local dims = #keytyp.entries
-  if dims == 2 then return terra([key]) : LW.legion_domain_point_t
-    return LW.legion_domain_point_t {
-      dim = 2,
-      point_data = arrayof(LW.coord_t,
-        [LW.coord_t](key.a0), [LW.coord_t](key.a1), 0)
-    } end
-  elseif dims == 3 then return terra([key]) : LW.legion_domain_point_t
-    return LW.legion_domain_point_t {
-      dim = 3,
-      point_data = arrayof(LW.coord_t,
-        [LW.coord_t](key.a0), [LW.coord_t](key.a1), [LW.coord_t](key.a2))
-    } end
-  else return macro(function()
-      error('INTERNAL :DomainPoint() undefined for key of dimension '..dims)
-    end)
-  end
-end
-
 local function dim_to_bits(n_dim)
-  if      n_dim < 256         then  return 8
-  elseif  n_dim < 65536       then  return 16
-  elseif  n_dim < 4294967296  then  return 32
+  if      n_dim < 128         then  return 8
+  elseif  n_dim < 32768       then  return 16
+  elseif  n_dim < 2147483648  then  return 32
                               else  return 64 end
 end
 
@@ -290,12 +267,12 @@ local function keyType(relation)
   local name        = 'key'
   if relation:isElastic() then
     dimbits = {64}
-    dimtyps = {uint64}
+    dimtyps = {int64}
     name    = 'key_64'
   else
     for i,d in ipairs(dims) do
       dimbits[i]  = dim_to_bits(d)
-      dimtyps[i]  = assert(_G['uint'..tostring(dimbits[i])])
+      dimtyps[i]  = assert(_G['int'..tostring(dimbits[i])])
       name        = name .. '_' .. tostring(dimbits[i])
     end
   end
@@ -315,10 +292,8 @@ local function keyType(relation)
   -- Install methods
   tstruct.methods.luaLinearize            = lua_lin_gen(strides)
   tstruct.methods.terraLinearize          = terra_lin_gen(tstruct, strides)
-  if use_legion then
-    tstruct.methods.legionTerraLinearize  = legion_terra_lin_gen(tstruct)
-    tstruct.methods.domainPoint           = legion_domain_point_gen(tstruct)
-  end
+  tstruct.methods.stridedLinearize        = linearize_strided_gen(tstruct)
+
   -- add equality / inequality tests
   tstruct.metamethods.__eq = macro(function(lhs,rhs)
     local exp = `lhs.a0 == rhs.a0
@@ -432,8 +407,8 @@ end
 
 local struct emptyStruct {}
 local struct  QueryType {
-    start : uint64;
-    finish : uint64;
+    start : int64;
+    finish : int64;
 }
 function Type:terratype()
   if     self:isprimitive()   then return self._terra_type

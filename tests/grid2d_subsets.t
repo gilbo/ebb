@@ -1,7 +1,6 @@
---DISABLE-DISTRIBUTED
 -- The MIT License (MIT)
 -- 
--- Copyright (c) 2015 Stanford University.
+-- Copyright (c) 2016 Stanford University.
 -- All rights reserved.
 -- 
 -- Permission is hereby granted, free of charge, to any person obtaining a
@@ -25,22 +24,52 @@ import 'ebb'
 local L = require 'ebblib'
 require "tests/test"
 
-local cells = L.NewRelation { size = 10, name = 'cells' }
-cells:NewField('val', L.double):Load(5)
 
+local N = 16
+local grid  = L.NewRelation {
+  dims = {N,N},
+  name = 'gridcells'
+}
+grid:SetPartitions{2,2}
 
--- Directly shadowing variables like this shouldn't be
--- a problem but some tricky ordering details in how envirnoments
--- are managed in the compiler can cause errors
+grid:NewField('s1v', L.double):Load(0.0)
+grid:NewField('s2v', L.double):Load(0.0)
 
-local center_shadow = ebb ( c : cells )
-  var c = c
-  L.assert(c.val == 5)
+local ebb init_cells( c : grid )
+  c.s1v = 1.0
+  if L.xid(c) == 0 or L.xid(c) == N-1 or
+     L.yid(c) == 0 or L.yid(c) == N-1 then c.s1v = 0.0 end
+
+  var cx  = L.xid(c) < N/2
+  var cy  = L.yid(c) < N/2
+  if cx == cy then c.s2v = 1.0 else c.s2v = 0.0 end
 end
-cells:foreach(center_shadow)
+grid:foreach(init_cells)
 
-local center_other = ebb ( c : cells )
-  var v = 25
-  var v = 2
+
+grid:NewSubset('interior', { {1,N-2}, {1,N-2} })
+grid:NewSubset('checker', {
+  rectangles = {
+    { {0,N/2-1}, {0,N/2-1} },
+    { {N/2,N-1}, {N/2,N-1} },
+  },
+})
+
+local ebb check_1( c : grid )
+  L.assert(c.s1v == 1.0)
+  c.s1v = 0.0
 end
-cells:foreach(center_other)
+local ebb check_2( c : grid )
+  L.assert(c.s2v == 1.0)
+  c.s2v = 0.0
+end
+
+local ebb check_all_0( c : grid )
+  L.assert(c.s1v == 0.0)
+  L.assert(c.s2v == 0.0)
+end
+
+grid.interior:foreach(check_1)
+grid.checker:foreach(check_2)
+grid:foreach(check_all_0)
+

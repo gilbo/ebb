@@ -442,6 +442,7 @@ Grid.NewGrid2d{
   (optional)
   boundary_depth    = {#,#},        -- depth of boundary region (default value: {1,1})
   periodic_boundary = {bool,bool},  -- use periodic boundary conditions (default value: {false,false})
+  partitions        = {#,#}         -- number of partition blocks in each dim
 }]]
   local function check_params(params)
     if type(params) ~= 'table' then return false end
@@ -453,10 +454,13 @@ Grid.NewGrid2d{
                   is_num(params.width[1])   and is_num(params.width[2])
     local bd = params.boundary_depth
     local pb = params.periodic_boundary
+    local pp = params.partitions
     if bd then check = check and type(bd) == 'table' and
                                  is_num(bd[1]) and is_num(bd[2]) end
     if pb then check = check and type(pb) == 'table' and
                                  is_bool(pb[1]) and is_bool(pb[2]) end
+    if pp then check = check and type(pp) == 'table' and
+                                 is_num(pp[1]) and is_num(pp[2]) end
     return check
   end
   if not check_params(params) then error(calling_convention, 2) end
@@ -489,6 +493,13 @@ Grid.NewGrid2d{
     --faces           = L.NewRelation { name = 'faces',
     --                                  dims = vsize,        periodic = pb },
   }, Grid2d)
+
+  if params.partitions then
+    grid.cells:SetPartitions(params.partitions)
+    grid.dual_vertices:SetPartitions(params.partitions)
+    grid.vertices:SetPartitions(params.partitions)
+    grid.dual_cells:SetPartitions(params.partitions)
+  end
 
   setup2dCells(grid)
   setup2dDualCells(grid)
@@ -815,6 +826,7 @@ Grid.NewGrid3d{
   periodic_boundary = {bool,bool,bool},
                                     -- use periodic boundary conditions
                                         (default value: {false,false,false})
+  partitions    = {#,#,#}           -- number of partition blocks in each dim
 }]]
   local function check_params(params)
     if type(params) ~= 'table' then return false end
@@ -829,10 +841,13 @@ Grid.NewGrid3d{
     end
     local bd = params.boundary_depth
     local pb = params.periodic_boundary
+    local pp = params.partitions
     if bd then check = check and type(bd) == 'table' and is_num(bd[1]) and
                                        is_num(bd[2]) and is_num(bd[3]) end
     if pb then check = check and type(pb) == 'table' and is_bool(pb[1]) and
                                       is_bool(pb[2]) and is_bool(pb[3]) end
+    if pp then check = check and type(pp) == 'table' and is_num(pp[1]) and
+                                       is_num(pp[2]) and is_num(pp[3]) end
     return check
   end
   if not check_params(params) then error(calling_convention, 2) end
@@ -863,6 +878,13 @@ Grid.NewGrid3d{
     dual_cells      = L.NewRelation { name = 'dual_cells',
                         dims = vsize,        periodic = wrap_bnd },
   }, Grid3d)
+
+  if params.partitions then
+    grid.cells:SetPartitions(params.partitions)
+    grid.dual_vertices:SetPartitions(params.partitions)
+    grid.vertices:SetPartitions(params.partitions)
+    grid.dual_cells:SetPartitions(params.partitions)
+  end
 
   setup3dCells(grid)
   setup3dDualCells(grid)
